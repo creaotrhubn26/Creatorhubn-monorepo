@@ -151,9 +151,7 @@ import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import scenesPng from './icons/Keep/roleroom_scenes.png';
 import MemoryCardBackupControlDialog from './MemoryCardBackupControlDialog';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
-
-// WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {

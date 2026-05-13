@@ -99,6 +99,8 @@ import {
   CalendarMonth as CalendarMonthIcon,
   FiberManualRecord as DotIcon,
   Schedule as ScheduleIcon,
+  HourglassEmpty as HourglassIcon,
+  AccountBalanceWallet as WalletIcon,
   LinkOff as UnassignIcon,
   HelpOutline as HelpIcon,
   WorkOutline as ProductionDeptIcon,
@@ -108,6 +110,8 @@ import {
   PostAdd as PostDeptIcon,
   Palette as ArtDeptIcon,
   Checkroom as WardrobeDeptIcon,
+  Brush as MakeupHairDeptIcon,
+  LocalShipping as TransportDeptIcon,
   Category as OtherDeptIcon,
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
@@ -193,8 +197,8 @@ interface CrewActivityLogEntry {
   timestamp: number;
 }
 
-// WCAG 2.2 minimum touch target size (44x44px)
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { RoleStatPillRow } from './primitives';
 
 // Shared focus styles for WCAG 2.4.7 Focus Visible
 const focusVisibleStyles = {
@@ -217,9 +221,9 @@ const formatCrewNoteTimestamp = (value: unknown): string => {
 };
 
 // ─── Department config ────────────────────────────────────────────────────────
-type DeptKey = 'production' | 'camera' | 'lighting' | 'sound' | 'post' | 'art' | 'wardrobe' | 'other';
+type DeptKey = 'production' | 'camera' | 'lighting' | 'sound' | 'post' | 'art' | 'wardrobe' | 'makeup_hair' | 'transport' | 'other';
 
-const DEPT_ORDER: DeptKey[] = ['production', 'camera', 'lighting', 'sound', 'post', 'art', 'wardrobe', 'other'];
+const DEPT_ORDER: DeptKey[] = ['production', 'camera', 'lighting', 'sound', 'post', 'art', 'wardrobe', 'makeup_hair', 'transport', 'other'];
 
 const DEPT_LABELS: Record<DeptKey, string> = {
   production: 'Produksjon',
@@ -229,6 +233,8 @@ const DEPT_LABELS: Record<DeptKey, string> = {
   post: 'Post',
   art: 'Art / Design',
   wardrobe: 'Kostyme',
+  makeup_hair: 'Sminke & Hår',
+  transport: 'Transport',
   other: 'Annet',
 };
 
@@ -240,6 +246,8 @@ const DEPT_COLORS: Record<DeptKey, string> = {
   post: '#f59e0b',
   art: '#ec4899',
   wardrobe: '#a78bfa',
+  makeup_hair: '#fb7185',
+  transport: '#22d3ee',
   other: '#64748b',
 };
 
@@ -251,6 +259,8 @@ const DEPT_ICONS: Record<DeptKey, React.ElementType> = {
   post: PostDeptIcon,
   art: ArtDeptIcon,
   wardrobe: WardrobeDeptIcon,
+  makeup_hair: MakeupHairDeptIcon,
+  transport: TransportDeptIcon,
   other: OtherDeptIcon,
 };
 
@@ -264,7 +274,7 @@ const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
   sound_engineer: 'sound', audio_mixer: 'sound',
   video_editor: 'post', colorist: 'post', vfx_artist: 'post', motion_graphics: 'post',
   production_designer: 'art',
-  makeup_artist: 'other', wardrobe: 'wardrobe', stylist: 'wardrobe',
+  makeup_artist: 'makeup_hair', wardrobe: 'wardrobe', stylist: 'wardrobe',
   collaborator: 'other', other: 'other',
 };
 
@@ -343,9 +353,12 @@ interface DeptSidebarProps {
   filterDept: DeptKey | 'all';
   onDeptClick: (dept: DeptKey | 'all') => void;
   favorites: Set<string>;
+  /** Optional handler for "+ LEGG TIL ROLLE"-knappen i header — typisk
+   *  åpner ny-medlem-dialog. Hvis ikke gitt, vises ikke knappen. */
+  onAddRole?: () => void;
 }
 
-function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: DeptSidebarProps) {
+function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onAddRole }: DeptSidebarProps) {
   const grouped = useMemo(() => {
     const map = new Map<DeptKey, CrewMember[]>();
     DEPT_ORDER.forEach(d => map.set(d, []));
@@ -369,6 +382,59 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
       backdropFilter: 'blur(6px)',
       boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
     }}>
+      {/* "ROLLER & AVDELINGER"-header + "+ LEGG TIL ROLLE"-knapp (matcher team-design) */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          px: 2,
+          pt: 1.5,
+          pb: 1,
+          borderBottom: '1px solid rgba(184,107,255,0.18)',
+        }}
+      >
+        <Typography
+          sx={{
+            color: 'rgba(255,255,255,0.62)',
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+          }}
+        >
+          Roller & avdelinger
+        </Typography>
+        {onAddRole && (
+          <Box
+            component="button"
+            onClick={onAddRole}
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.4,
+              px: 1,
+              py: 0.4,
+              borderRadius: 1,
+              border: '1px solid rgba(184,107,255,0.42)',
+              bgcolor: 'rgba(184,107,255,0.14)',
+              color: '#c4b5fd',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: 0.3,
+              transition: 'background-color 160ms ease-out',
+              '&:hover': { bgcolor: 'rgba(184,107,255,0.24)', color: '#fff' },
+            }}
+          >
+            + Legg til rolle
+          </Box>
+        )}
+      </Box>
+
       {/* All crews */}
       <Box
         onClick={() => onDeptClick('all')}
@@ -390,11 +456,14 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
         <Chip label={crewMembers.length} size="small" sx={{ height: 28, fontSize: 14, fontWeight: 700, color: '#ffffff', bgcolor: 'rgba(184,107,255,0.36)', border: '1px solid rgba(255,255,255,0.26)' }} />
       </Box>
       <Divider sx={{ borderColor: 'rgba(184,107,255,0.2)' }} />
+      {/* Vis ALLE 10 avdelinger med count (også 0) — designet ber om
+          komplett oversikt slik at brukeren ser hele rolle-spekteret */}
       {DEPT_ORDER.map(dept => {
         const members = grouped.get(dept) ?? [];
-        if (members.length === 0) return null;
+        const count = members.length;
         const color = DEPT_COLORS[dept];
         const active = filterDept === dept;
+        const isEmpty = count === 0;
         const DeptIcon = DEPT_ICONS[dept];
         return (
           <Box
@@ -406,7 +475,9 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
               bgcolor: active ? `${color}18` : 'transparent',
               borderLeft: active ? `3px solid ${color}` : '3px solid transparent',
               borderBottom: '1px solid rgba(255,255,255,0.06)',
-              '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
+              opacity: isEmpty && !active ? 0.55 : 1,
+              transition: 'opacity 160ms ease-out',
+              '&:hover': { bgcolor: 'rgba(184,107,255,0.1)', opacity: 1 },
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -415,7 +486,22 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
                 {DEPT_LABELS[dept]}
               </Typography>
             </Box>
-            <Chip label={members.length} size="small" sx={{ height: 26, fontSize: 13, fontWeight: 700, color: '#ffffff', bgcolor: active ? `${color}66` : 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.22)' }} />
+            <Chip
+              label={count}
+              size="small"
+              sx={{
+                height: 26,
+                fontSize: 13,
+                fontWeight: 700,
+                color: isEmpty ? 'rgba(255,255,255,0.55)' : '#ffffff',
+                bgcolor: active
+                  ? `${color}66`
+                  : isEmpty
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(255,255,255,0.2)',
+                border: `1px solid ${isEmpty ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.22)'}`,
+              }}
+            />
           </Box>
         );
       })}
@@ -1579,6 +1665,9 @@ export function CrewManagementPanel({
     const roleCount: Record<string, number> = {};
     let totalRate = 0;
     let availableCount = 0;
+    let pendingCount = 0;
+    let invitedCount = 0;
+    let confirmedCount = 0;
     const assignedTodaySet = new Set(
       crewAssignments
         .filter(a => a.shootDayDate === todayStr && a.assignmentStatus === 'assigned')
@@ -1589,15 +1678,25 @@ export function CrewManagementPanel({
       roleCount[member.role] = (roleCount[member.role] || 0) + 1;
       if (member.rate) totalRate += member.rate;
       if (isAvailableNow(member)) availableCount++;
+      if (member.status === 'pending') pendingCount++;
+      else if (member.status === 'invited') invitedCount++;
+      else if (member.status === 'confirmed') confirmedCount++;
     });
 
     const conflicts = detectConflicts(crewAssignments);
+
+    // Opptatt = bekreftet + tildelt i dag (eller fra crewAssignments) — folk som er bundet opp
+    const busyCount = assignedTodaySet.size;
 
     return {
       total: crewMembers.length,
       roleCount,
       totalDailyRate: totalRate,
       availableNow: availableCount,
+      pendingCount,
+      invitedCount,
+      confirmedCount,
+      busyCount,
       assignedToday: assignedTodaySet.size,
       totalConflicts: conflicts.length,
     };
@@ -3372,19 +3471,19 @@ export function CrewManagementPanel({
         <LinearProgress sx={{ mx: 0, height: 2, bgcolor: 'rgba(184,107,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }} />
       )}
 
-      {/* ── STATS BAR ── */}
+      {/* ── STATS BAR (6 fargekodete kort matcher team-fane-design) ── */}
       <Collapse in={showStats && crewMembers.length > 0}>
-        <Box sx={{ mx: 2, mb: 1, p: 1.5, bgcolor: roleTabAccentSoft, borderRadius: 2, border: `1px solid ${roleBorder}`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(90px,1fr))', gap: 1.5 }}>
-          {[
-            { label: 'Totalt', value: stats.total, color: '#ffffff' },
-            { label: 'Tilgjengelig', value: stats.availableNow, color: '#ffffff' },
-            { label: 'Fast honorar', value: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, color: '#ffffff' },
-          ].map(s => (
-            <Box key={s.label} sx={{ textAlign: 'center' }}>
-              <Typography sx={{ color: s.color, fontWeight: 700, fontSize: { xs: '1.2rem', sm: '1.5rem' } }}>{s.value}</Typography>
-              <Typography sx={{ color: '#ffffff', fontSize: 11 }}>{s.label}</Typography>
-            </Box>
-          ))}
+        <Box sx={{ mx: 2, mb: 1.5 }}>
+          <RoleStatPillRow
+            pills={[
+              { icon: <PeopleIcon />, count: stats.total, label: 'Totalt medlemmer', color: '#a78bfa' },
+              { icon: <CheckCircleIcon />, count: stats.availableNow, label: 'Tilgjengelige nå', color: '#10b981' },
+              { icon: <ScheduleIcon />, count: stats.busyCount, label: 'Opptatt', color: '#f59e0b' },
+              { icon: <HourglassIcon />, count: stats.pendingCount, label: 'Venter på svar', color: '#c084fc' },
+              { icon: <PersonAddIcon />, count: stats.invitedCount, label: 'Invitert', color: '#60a5fa' },
+              { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: 'Total est. kostnad', color: '#22d3ee' },
+            ]}
+          />
         </Box>
       </Collapse>
 
@@ -3810,7 +3909,13 @@ export function CrewManagementPanel({
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', gap: 1.25, px: 2, pb: 1.25 }}>
         {/* LEFT: department sidebar */}
         <Collapse in={showDeptSidebar && !isMobile} orientation="horizontal" sx={{ flexShrink: 0 }}>
-          <DeptSidebarPanel crewMembers={crewMembers} filterDept={filterDept} onDeptClick={setFilterDept} favorites={favorites} />
+          <DeptSidebarPanel
+            crewMembers={crewMembers}
+            filterDept={filterDept}
+            onDeptClick={setFilterDept}
+            favorites={favorites}
+            onAddRole={() => handleOpenDialog()}
+          />
         </Collapse>
 
         {/* CENTER: crew list */}

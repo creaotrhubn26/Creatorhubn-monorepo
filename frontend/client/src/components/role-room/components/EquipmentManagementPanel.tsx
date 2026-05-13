@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent, type HTMLAttributes } from "react";
 import { Box, Alert, Autocomplete, Typography, Button, IconButton, Card, CardContent, CardMedia, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, Stack, Grid, Tooltip, Collapse, FormControl, FormControlLabel, InputLabel, Select, MenuItem, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, useTheme, useMediaQuery, Grow, InputAdornment, LinearProgress, CircularProgress, Tabs, Tab, ImageList, ImageListItem, ImageListItemBar, Divider, Rating } from "@mui/material";
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon } from "@mui/icons-material";
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, StarBorder as StarBorderIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon, Build as MaintenanceIcon, Warehouse as WarehouseIcon } from "@mui/icons-material";
 import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon, PropsIcon } from "./icons/CastingIcons";
 import netflixWordmark from "../../../assets/brands/netflix-wordmark.svg";
 import { useQuery } from "@tanstack/react-query";
@@ -18,8 +18,8 @@ import warehouseInventoryService from "../services/warehouseInventoryService";
 import QrCameraScanner from "./shared/QrCameraScanner";
 import globalTagService from "../services/globalTagService";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
-
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
+import { RoleStatPillRow } from "./primitives";
 
 const focusVisibleStyles = {
   '&:focus-visible': {
@@ -42,7 +42,17 @@ const formatEquipmentNoteTimestamp = (value: unknown): string => {
 
 const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
 
-type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity';
+type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity' | 'created_at' | 'updated_at';
+
+const SORT_FIELD_LABELS: Record<SortField, string> = {
+  name: 'Navn',
+  category: 'Kategori',
+  status: 'Status',
+  condition: 'Tilstand',
+  quantity: 'Antall',
+  created_at: 'Lagt til',
+  updated_at: 'Sist endret',
+};
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
 type WorkspaceView = 'standard' | 'pro';
@@ -718,6 +728,10 @@ export function EquipmentManagementPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
+  // Pagination — 324 elementer uten paginering er reell perf-issue
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<20 | 40 | 80>(20);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
   const [proViewFocus, setProViewFocus] = useState<EquipmentProFocus>('all');
@@ -923,6 +937,62 @@ export function EquipmentManagementPanel({
   const [bulkNewStatus, setBulkNewStatus] = useState<Equipment['status']>('available');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  // Favoritter — samme persistens-mønster som PropManagementPanel.
+  // favoritesApi.get/set lagrer til DB; localStorage er fallback hvis API
+  // er nede. Reload på projectId-bytte slik at hvert prosjekt har sin egen
+  // favoritt-liste.
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { favoritesApi } = await import('../services/castingApiService');
+        const dbFavorites = await favoritesApi.get(projectId, 'equipment');
+        if (cancelled) return;
+        if (dbFavorites.length > 0) {
+          setFavorites(new Set(dbFavorites));
+          return;
+        }
+      } catch (error) {
+        console.warn('Equipment favorites: DB-oppslag feilet, faller tilbake til localStorage', error);
+      }
+      const saved = localStorage.getItem(`equipment-favorites-${projectId}`);
+      if (!cancelled && saved) {
+        try {
+          setFavorites(new Set(JSON.parse(saved)));
+        } catch {
+          /* ignore corrupt JSON */
+        }
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  useEffect(() => {
+    const save = async () => {
+      localStorage.setItem(`equipment-favorites-${projectId}`, JSON.stringify([...favorites]));
+      try {
+        const { favoritesApi } = await import('../services/castingApiService');
+        await favoritesApi.set(projectId, 'equipment', [...favorites]);
+      } catch (error) {
+        console.warn('Equipment favorites: DB-lagring feilet (localStorage er fortsatt oppdatert)', error);
+      }
+    };
+    if (favorites.size > 0 || localStorage.getItem(`equipment-favorites-${projectId}`)) {
+      save();
+    }
+  }, [favorites, projectId]);
+
+  const toggleEquipmentFavorite = useCallback((equipmentId: string) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(equipmentId)) next.delete(equipmentId);
+      else next.add(equipmentId);
+      return next;
+    });
+  }, []);
 
   // Catalog bridge — browse manufacturer catalog and import items into this project
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -3467,13 +3537,25 @@ export function EquipmentManagementPanel({
     if (statusFilter !== 'all') {
       filtered = filtered.filter(eq => eq.status === statusFilter);
     }
-    
+
+    if (locationFilter !== 'all') {
+      filtered = filtered.filter(eq => eq.primary_location_id === locationFilter);
+    }
+
     filtered.sort((a, b) => {
       // Treat quantity as a number so that 0 sorts correctly (not as falsy empty string)
       if (sortField === 'quantity') {
         const aNum = typeof a.quantity === 'number' ? a.quantity : 0;
         const bNum = typeof b.quantity === 'number' ? b.quantity : 0;
         return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+      }
+      // Dato-felter: parse ISO-strenger til timestamps, robust mot null/empty
+      if (sortField === 'created_at' || sortField === 'updated_at') {
+        const aRaw = a[sortField] as string | null | undefined;
+        const bRaw = b[sortField] as string | null | undefined;
+        const aTs = aRaw ? new Date(aRaw).getTime() : 0;
+        const bTs = bRaw ? new Date(bRaw).getTime() : 0;
+        return sortDirection === 'asc' ? aTs - bTs : bTs - aTs;
       }
       let aVal: string = (a[sortField] as string | undefined) ?? '';
       let bVal: string = (b[sortField] as string | undefined) ?? '';
@@ -3485,7 +3567,23 @@ export function EquipmentManagementPanel({
     });
     
     return filtered;
-  }, [equipment, searchQuery, categoryFilter, statusFilter, sortField, sortDirection]);
+  }, [equipment, searchQuery, categoryFilter, statusFilter, locationFilter, sortField, sortDirection]);
+
+  // Reset til side 1 når filtere endres så brukeren ikke ender opp på
+  // en tom side etter aggressiv filtrering.
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, categoryFilter, statusFilter, locationFilter, sortField, sortDirection, pageSize]);
+
+  // Pagination-derivat: total sider og current page-slice.
+  const totalPages = Math.max(1, Math.ceil(filteredEquipment.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const paginationStart = (safePage - 1) * pageSize;
+  const paginationEnd = Math.min(filteredEquipment.length, paginationStart + pageSize);
+  const pagedEquipment = useMemo(
+    () => filteredEquipment.slice(paginationStart, paginationEnd),
+    [filteredEquipment, paginationStart, paginationEnd],
+  );
 
   // Categories for filter dropdown: combines equipment categories + custom categories
   const categories = useMemo(() => {
@@ -4343,6 +4441,28 @@ export function EquipmentManagementPanel({
         </Box>
       )}
 
+      {/* 5-stat-pill-rad — bruker shared RoleStatPillRow-primitive */}
+      {equipment.length > 0 && (() => {
+        const totalItems = equipment.length;
+        const availableCount = equipment.filter((eq) => eq.status === 'available').length;
+        const reservedCount = equipment.filter((eq) => eq.status === 'in_use').length;
+        const maintenanceCount = equipment.filter((eq) => eq.status === 'maintenance').length;
+        const inStockCount = Math.max(0, totalItems - reservedCount - maintenanceCount);
+        return (
+          <Box sx={{ mb: 2, px: 1 }}>
+            <RoleStatPillRow
+              pills={[
+                { icon: <Inventory2Icon />, count: totalItems, label: 'Totalt utstyr', color: '#a78bfa' },
+                { icon: <CheckCircleIcon />, count: availableCount, label: 'Tilgjengelig nå', color: '#10b981' },
+                { icon: <ScheduleIcon />, count: reservedCount, label: 'Reservert', color: '#f59e0b' },
+                { icon: <MaintenanceIcon />, count: maintenanceCount, label: 'På vedlikehold', color: '#ef4444' },
+                { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#60a5fa' },
+              ]}
+            />
+          </Box>
+        );
+      })()}
+
       {/* Compact Stats Bar */}
       {equipment.length > 0 && (
         <Box sx={{
@@ -4682,7 +4802,72 @@ export function EquipmentManagementPanel({
               ))}
             </Select>
           </FormControl>
-          {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all') && (
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Lokasjon</InputLabel>
+            <Select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              label="Lokasjon"
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                },
+              }}
+            >
+              <MenuItem value="all">Alle lokasjoner</MenuItem>
+              {locations.map((loc) => (
+                <MenuItem key={loc.id} value={loc.id}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LocationIcon sx={{ fontSize: 14, color: 'rgba(147,51,234,0.7)' }} />
+                    {loc.name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Sorter</InputLabel>
+            <Select
+              value={`${sortField}:${sortDirection}`}
+              onChange={(e) => {
+                const raw = String(e.target.value);
+                const [field, dir] = raw.split(':') as [SortField, 'asc' | 'desc'];
+                setSortField(field);
+                setSortDirection(dir);
+              }}
+              label="Sorter"
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                },
+              }}
+            >
+              <MenuItem value="updated_at:desc">Nyeste først</MenuItem>
+              <MenuItem value="updated_at:asc">Eldste først</MenuItem>
+              <MenuItem value="created_at:desc">Sist lagt til</MenuItem>
+              <MenuItem value="name:asc">Navn A→Å</MenuItem>
+              <MenuItem value="name:desc">Navn Å→A</MenuItem>
+              <MenuItem value="category:asc">Kategori A→Å</MenuItem>
+              <MenuItem value="status:asc">Status</MenuItem>
+              <MenuItem value="quantity:desc">Antall (flest først)</MenuItem>
+              <MenuItem value="quantity:asc">Antall (færrest først)</MenuItem>
+            </Select>
+          </FormControl>
+          {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all' || locationFilter !== 'all') && (
             <Button
               variant="text"
               size="small"
@@ -4734,7 +4919,7 @@ export function EquipmentManagementPanel({
           <Chip
             label="Nullstill"
             size="small"
-            onClick={() => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); }}
+            onClick={() => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); setLocationFilter('all'); }}
             sx={{ bgcolor: 'transparent', color: 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)', border: '1px solid', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }, cursor: 'pointer' }}
           />
         </Box>
@@ -4778,7 +4963,7 @@ export function EquipmentManagementPanel({
               </Box>
             </Grid>
           ) : (
-            filteredEquipment.map((eq, index) => {
+            pagedEquipment.map((eq, index) => {
               const warehouseTotals = warehouseStockByItem[eq.id];
               return (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={eq.id}>
@@ -4803,27 +4988,66 @@ export function EquipmentManagementPanel({
                 },
               }}>
                 {/* Selection checkbox */}
-                <Box sx={{ 
-                  position: 'absolute', 
-                  top: 8, 
-                  left: 8, 
+                <Box sx={{
+                  position: 'absolute',
+                  top: 8,
+                  left: 8,
                   zIndex: 10,
                 }}>
                   <IconButton
                     size="small"
                     onClick={(e) => { e.stopPropagation(); toggleSelectEquipment(eq.id); }}
                     aria-label={selectedEquipmentIds.has(eq.id) ? `Fjern markering for ${eq.name}` : `Velg ${eq.name}`}
-                    sx={{ 
+                    sx={{
                       bgcolor: selectedEquipmentIds.has(eq.id) ? '#9333ea' : 'rgba(0,0,0,0.5)',
                       backdropFilter: 'blur(4px)',
                       '&:hover': { bgcolor: selectedEquipmentIds.has(eq.id) ? '#c084fc' : 'rgba(0,0,0,0.7)' },
                     }}
                   >
-                    {selectedEquipmentIds.has(eq.id) 
+                    {selectedEquipmentIds.has(eq.id)
                       ? <CheckboxIcon sx={{ fontSize: 18, color: '#fff' }} />
                       : <CheckboxOutlineIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.87)' }} />
                     }
                   </IconButton>
+                </Box>
+                {/* Favoritt-stjerne top-right (toggle, persisteres til DB + localStorage) */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    zIndex: 10,
+                  }}
+                >
+                  <Tooltip
+                    title={favorites.has(eq.id) ? `Fjern ${eq.name} fra favoritter` : `Marker ${eq.name} som favoritt`}
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleEquipmentFavorite(eq.id);
+                      }}
+                      aria-label={favorites.has(eq.id) ? `Fjern ${eq.name} fra favoritter` : `Marker ${eq.name} som favoritt`}
+                      sx={{
+                        bgcolor: 'rgba(0,0,0,0.5)',
+                        backdropFilter: 'blur(4px)',
+                        color: favorites.has(eq.id) ? '#fbbf24' : 'rgba(255,255,255,0.5)',
+                        transition: 'transform 160ms ease-out, color 160ms ease-out',
+                        '&:hover': {
+                          bgcolor: 'rgba(0,0,0,0.7)',
+                          color: favorites.has(eq.id) ? '#fcd34d' : '#fbbf24',
+                          transform: 'scale(1.08)',
+                        },
+                      }}
+                    >
+                      {favorites.has(eq.id) ? (
+                        <StarIcon sx={{ fontSize: 18 }} />
+                      ) : (
+                        <StarBorderIcon sx={{ fontSize: 18 }} />
+                      )}
+                    </IconButton>
+                  </Tooltip>
                 </Box>
                 {/* Equipment Image with overlay */}
                 <Box sx={{ position: 'relative', overflow: 'hidden' }}>
@@ -4944,13 +5168,13 @@ export function EquipmentManagementPanel({
                     {eq.name}
                   </Typography>
                   
-                  {eq.brand && (
-                    <Typography variant="body2" sx={{ 
-                      color: 'rgba(255,255,255,0.87)', 
+                  {(eq.category || eq.brand) && (
+                    <Typography variant="body2" sx={{
+                      color: 'rgba(255,255,255,0.65)',
                       mb: 1.5,
                       fontSize: '0.8rem',
                     }}>
-                      {eq.brand} {eq.model && `• ${eq.model}`}
+                      {[eq.category, eq.brand].filter(Boolean).join(' • ')}
                     </Typography>
                   )}
                   
@@ -5274,7 +5498,7 @@ export function EquipmentManagementPanel({
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredEquipment.map((eq) => {
+              {pagedEquipment.map((eq) => {
                 const warehouseTotals = warehouseStockByItem[eq.id];
                 return (
                 <TableRow 
@@ -5516,6 +5740,108 @@ export function EquipmentManagementPanel({
             </TableBody>
           </Table>
         </TableContainer>
+      )}
+
+      {/* Pagination-rad — vises kun når flere enn én side eksisterer */}
+      {filteredEquipment.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+            mt: 2,
+            px: 1,
+          }}
+        >
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
+            Viser {filteredEquipment.length === 0 ? 0 : paginationStart + 1}–{paginationEnd} av {filteredEquipment.length} elementer
+          </Typography>
+
+          {totalPages > 1 && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <IconButton
+                size="small"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label="Forrige side"
+                sx={{ color: safePage <= 1 ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>‹</Box>
+              </IconButton>
+              {(() => {
+                const pages: Array<number | 'ellipsis'> = [];
+                const showEllipsisLeft = safePage > 3;
+                const showEllipsisRight = safePage < totalPages - 2;
+                pages.push(1);
+                if (showEllipsisLeft) pages.push('ellipsis');
+                for (let p = Math.max(2, safePage - 1); p <= Math.min(totalPages - 1, safePage + 1); p += 1) {
+                  pages.push(p);
+                }
+                if (showEllipsisRight) pages.push('ellipsis');
+                if (totalPages > 1) pages.push(totalPages);
+                return pages.map((p, idx) =>
+                  p === 'ellipsis' ? (
+                    <Typography key={`ell-${idx}`} sx={{ color: 'rgba(255,255,255,0.4)', px: 0.5 }}>
+                      …
+                    </Typography>
+                  ) : (
+                    <Button
+                      key={p}
+                      size="small"
+                      onClick={() => setPage(p)}
+                      sx={{
+                        minWidth: 32,
+                        height: 32,
+                        px: 1,
+                        bgcolor: safePage === p ? '#9333ea' : 'transparent',
+                        color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
+                        fontWeight: safePage === p ? 700 : 500,
+                        '&:hover': { bgcolor: safePage === p ? '#a855f7' : 'rgba(147,51,234,0.18)' },
+                      }}
+                    >
+                      {p}
+                    </Button>
+                  ),
+                );
+              })()}
+              <IconButton
+                size="small"
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                aria-label="Neste side"
+                sx={{ color: safePage >= totalPages ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>›</Box>
+              </IconButton>
+            </Box>
+          )}
+
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <Select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value) as 20 | 40 | 80)}
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                '& .MuiSelect-select': { py: 0.5, fontSize: '0.85rem' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                },
+              }}
+            >
+              <MenuItem value={20}>20 per side</MenuItem>
+              <MenuItem value={40}>40 per side</MenuItem>
+              <MenuItem value={80}>80 per side</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
       )}
 
         </Box>{/* end main content column */}

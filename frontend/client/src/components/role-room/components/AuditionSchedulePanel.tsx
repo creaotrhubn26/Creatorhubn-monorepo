@@ -1,6 +1,6 @@
 import React, { useState, useReducer, useId, useMemo, useEffect, useCallback, useRef, memo } from "react";
-import { Box, Typography, Button, Card, CardContent, TextField, IconButton, Chip, Grid, Tooltip, Collapse, Snackbar, FormControl, Select, MenuItem, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, Checkbox, Stack, useTheme, useMediaQuery, LinearProgress, Slide, Menu, Divider, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Skeleton, Alert } from "@mui/material";
-import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Search as SearchIcon, Star as StarIcon, StarBorder as StarBorderIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, FileDownload as ExportIcon, ContentCopy as DuplicateIcon, GridView as GridViewIcon, TableRows as TableViewIcon, ViewList as CompactViewIcon, Schedule as ScheduleIcon, Person as PersonIcon, Movie as MovieIcon, Clear as ClearIcon, InterpreterMode as InterpreterModeIcon, Note as NoteIcon, Inventory as InventoryIcon, Sort as SortIcon, Today as TodayIcon, SwapVert as BulkStatusIcon, AccessTime as TimeIcon, MoreVert as MoreVertIcon, BookmarkBorder as PoolIcon, HelpOutline as HelpIcon, ViewTimeline as TimelineViewIcon, ViewKanban as PipelineViewIcon, Keyboard as KeyboardIcon, WarningAmber as WarningIcon, Share as ShareIcon, CompareArrows as CompareIcon, Save as SaveIcon, PlaylistAdd as PlaylistAddIcon, ContentPaste as PasteIcon } from "@mui/icons-material";
+import { Box, Typography, Button, Card, CardContent, TextField, IconButton, Chip, Grid, Tooltip, Collapse, Snackbar, FormControl, Select, MenuItem, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, Checkbox, Stack, useTheme, useMediaQuery, LinearProgress, Slide, Menu, Divider, Avatar, AvatarGroup, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Skeleton, Alert } from "@mui/material";
+import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Search as SearchIcon, Star as StarIcon, StarBorder as StarBorderIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, FileDownload as ExportIcon, ContentCopy as DuplicateIcon, GridView as GridViewIcon, TableRows as TableViewIcon, ViewList as CompactViewIcon, Schedule as ScheduleIcon, Person as PersonIcon, Movie as MovieIcon, Clear as ClearIcon, InterpreterMode as InterpreterModeIcon, Note as NoteIcon, Inventory as InventoryIcon, Sort as SortIcon, Today as TodayIcon, SwapVert as BulkStatusIcon, AccessTime as TimeIcon, MoreVert as MoreVertIcon, BookmarkBorder as PoolIcon, HelpOutline as HelpIcon, ViewTimeline as TimelineViewIcon, ViewKanban as PipelineViewIcon, Keyboard as KeyboardIcon, WarningAmber as WarningIcon, Share as ShareIcon, CompareArrows as CompareIcon, Save as SaveIcon, PlaylistAdd as PlaylistAddIcon, ContentPaste as PasteIcon, Groups as GroupsIcon } from "@mui/icons-material";
 import { RolesIcon as TheaterComedyIcon, AuditionsIcon, CandidatesIcon, CalendarCustomIcon as CalendarIcon, LocationsIcon as LocationIcon, StatsIcon } from "./icons/CastingIcons";
 import type { Schedule, Role, Candidate } from "../models/casting";
 import { castingService } from "../services/castingService";
@@ -13,9 +13,8 @@ import { AuditionGuide } from "./production/AuditionGuide";
 import { scheduleReducer, initialScheduleState, stateToApiFilters, hasActiveFilters as computeHasActiveFilters, type SortField as ReducerSortField, type StatusFilter as ReducerStatusFilter } from "../hooks/scheduleReducer";
 import { useAuditionSchedules } from "../hooks/useAuditionSchedules";
 import { ScheduleDetailsDrawer } from "./ScheduleDetailsDrawer";
-
-// WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
+import { RoleStatPillRow } from "./primitives";
 
 /** Escape a string for safe embedding in an HTML template literal. */
 const escapeHtml = (s: string): string =>
@@ -147,7 +146,20 @@ function AuditionSchedulePanelInner({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const titleId = useId();
   const statsId = useId();
-  
+
+  // Pagination — separat fra reducer siden den ikke trenger å persisteres
+  // til server-side state. Brukes for å unngå rendring av hundrevis av
+  // schedule-rader samtidig (perf-issue ved store filterresultater).
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<20 | 40 | 80>(20);
+
+  // Audition-grupperting (synthetisk, frontend-only) — slår sammen schedules
+  // som deler (date, time, roleId, locationId) til én audition-rad med
+  // AvatarGroup av kandidater. Toggle som visnings-modus ved siden av
+  // eksisterende table/card/pro-views. Backend Audition-entitet er en
+  // separat arkitektur-beslutning (memory.md).
+  const [auditionGroupedView, setAuditionGroupedView] = useState<boolean>(false);
+
   // ── UI state — single reducer (replaces 10+ useState) ──────
   const [uiState, dispatch] = useReducer(scheduleReducer, initialScheduleState);
   const {
@@ -549,6 +561,85 @@ function AuditionSchedulePanelInner({
     return result;
   }, [usingHookData, schedules, searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, locationFilter, sortField, sortDirection, favorites, scheduleTimeMs, getCandidateName, getRoleName]);
 
+  // Pagination-derivat: total sider og current page-slice.
+  // Reset til side 1 når filter/sort/pageSize endres så brukeren
+  // ikke ender opp på en tom side etter aggressiv filtrering.
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, locationFilter, sortField, sortDirection, pageSize, auditionGroupedView]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedSchedules.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const paginationStart = (safePage - 1) * pageSize;
+  const paginationEnd = Math.min(filteredAndSortedSchedules.length, paginationStart + pageSize);
+  const pagedSchedules = useMemo(
+    () => filteredAndSortedSchedules.slice(paginationStart, paginationEnd),
+    [filteredAndSortedSchedules, paginationStart, paginationEnd],
+  );
+
+  // Synthetisk audition-grupperting: slår sammen schedules som deler
+  // (date, time, roleId, locationId) til én audition. Hver gruppe gir
+  // en audition-rad med AvatarGroup over alle kandidater i gruppen.
+  // Robust mot manglende felt: tom streng som fallback i nøkkel-bygging.
+  interface AuditionGroup {
+    key: string;
+    title: string;
+    date: string;
+    time: string;
+    roleId: string;
+    roleName: string;
+    locationId: string;
+    locationName: string;
+    schedules: typeof filteredAndSortedSchedules;
+    statuses: Set<NonNullable<Schedule['status']>>;
+    candidateCount: number;
+    completedCount: number;
+  }
+
+  const auditionGroups = useMemo<AuditionGroup[]>(() => {
+    if (!auditionGroupedView) return [];
+    const map = new Map<string, AuditionGroup>();
+    for (const s of filteredAndSortedSchedules) {
+      const date = String(s.date ?? '');
+      const time = String(s.time ?? s.startTime ?? s.start_time ?? '');
+      const roleId = String(s.roleId ?? s.role_id ?? '');
+      const locationId = String(s.locationId ?? s.location_id ?? s.location ?? '');
+      const key = `${date}|${time}|${roleId}|${locationId}`;
+      let existing = map.get(key);
+      if (!existing) {
+        existing = {
+          key,
+          title: roleId ? `${getRoleName(roleId)} – audition` : 'Audition',
+          date,
+          time,
+          roleId,
+          roleName: getRoleName(roleId),
+          locationId,
+          locationName: String(s.location ?? ''),
+          schedules: [],
+          statuses: new Set(),
+          candidateCount: 0,
+          completedCount: 0,
+        };
+        map.set(key, existing);
+      }
+      existing.schedules.push(s);
+      existing.candidateCount += 1;
+      if (s.status) existing.statuses.add(s.status);
+      if (s.status === 'completed' || s.status === 'confirmed') existing.completedCount += 1;
+    }
+    return [...map.values()].sort((a, b) => {
+      const aMs = Date.parse(`${a.date}T${a.time || '00:00'}`);
+      const bMs = Date.parse(`${b.date}T${b.time || '00:00'}`);
+      return sortDirection === 'asc' ? aMs - bMs : bMs - aMs;
+    });
+  }, [auditionGroupedView, filteredAndSortedSchedules, getRoleName, sortDirection]);
+
+  const pagedAuditionGroups = useMemo(
+    () => auditionGroups.slice(paginationStart, Math.min(auditionGroups.length, paginationStart + pageSize)),
+    [auditionGroups, paginationStart, pageSize],
+  );
+
   // Unique location strings derived from the full schedule list (used by the toolbar filter)
   const uniqueLocations = useMemo(
     () => [...new Set(schedules.map((schedule) => schedule.location).filter((location): location is string => Boolean(location)))].sort(),
@@ -833,22 +924,31 @@ function AuditionSchedulePanelInner({
 
   // Statistics – use server counts when hook is live (accurate, includes pool)
   const statistics = useMemo(() => {
+    // Server-aggregert + lokal fallback. confirmed + awaitingCallback (Bekreftet
+    // + Callbacks) matcher 5-kort design — beregnes alltid lokalt siden
+    // serverCounts ikke eksponerer dem direkte (tilbakefall til 0 hvis
+    // serverCounts er aktiv men det lokale datasettet er tomt).
+    const confirmedLocal = schedules.filter((s) => s.status === 'confirmed').length;
+    const callbacksLocal = schedules.filter((s) => s.status === 'awaiting_callback').length;
     if (serverCounts) {
       return {
         total:     serverCounts.total,
         scheduled: serverCounts.scheduled,
         completed: serverCounts.completed,
         cancelled: serverCounts.cancelled,
-        upcoming:  serverCounts.today,   // 'today' maps to upcoming scheduled today
+        upcoming:  serverCounts.today,
         favorites: serverCounts.favorites,
+        confirmed: confirmedLocal,
+        awaitingCallback: callbacksLocal,
       };
     }
-    // Fallback: compute from prop data
     return {
       total:     schedules.length,
       scheduled: schedules.filter((schedule) => schedule.status === 'scheduled').length,
       completed: schedules.filter((schedule) => schedule.status === 'completed').length,
       cancelled: schedules.filter((schedule) => schedule.status === 'cancelled').length,
+      confirmed: confirmedLocal,
+      awaitingCallback: callbacksLocal,
       upcoming:  schedules.filter((schedule) => {
         if (schedule.status !== 'scheduled') return false;
         const ms = scheduleTimeMs.get(schedule.id);
@@ -1871,63 +1971,18 @@ function AuditionSchedulePanelInner({
         </Box>
       )}
 
-      {/* Statistics Panel */}
+      {/* Statistics Panel — 5 stat-pills via shared RoleStatPillRow */}
       <Collapse in={showStats}>
-        <Box
-          id={statsId}
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(6, 1fr)' },
-            gap: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-            mb: 3,
-            p: { xs: 1.5, sm: 2 },
-            bgcolor: roleSurfaceMuted,
-            borderRadius: 2,
-            border: `1px solid ${roleBorder}`,
-          }}
-        >
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: roleTabAccent }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: roleTabAccent, fontWeight: 700 }}>{statistics.total}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Totalt</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#46d9ff' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#46d9ff', fontWeight: 700 }}>{statistics.upcoming}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Kommende</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#46d9ff' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#46d9ff', fontWeight: 700 }}>{statistics.scheduled}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Planlagt</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#10b981' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700 }}>{statistics.completed}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Fullført</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ef4444' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#ef4444', fontWeight: 700 }}>{statistics.cancelled}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Kansellert</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <StarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffc107' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700 }}>{statistics.favorites}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Favoritter</Typography>
-          </Box>
+        <Box id={statsId} sx={{ mb: 3 }}>
+          <RoleStatPillRow
+            pills={[
+              { icon: <AuditionsIcon />, count: statistics.total, label: 'Totalt', color: roleTabAccent },
+              { icon: <CalendarIcon />, count: statistics.scheduled, label: 'Planlagt', color: '#9ca3af' },
+              { icon: <AuditionsIcon />, count: statistics.confirmed, label: 'Bekreftet', color: '#10b981' },
+              { icon: <AuditionsIcon />, count: statistics.awaitingCallback, label: 'Callbacks', color: '#22d3ee' },
+              { icon: <StarIcon />, count: statistics.completed, label: 'Fullført', color: '#ffc107' },
+            ]}
+          />
         </Box>
       </Collapse>
 
@@ -2807,6 +2862,30 @@ function AuditionSchedulePanelInner({
               </IconButton>
             </Tooltip>
           ))}
+          {/* Audition-gruppert toggle — slår sammen schedules som deler
+              (dato, tid, rolle, lokasjon) til én audition-rad. Sekundær
+              visnings-modus ved siden av table/compact/grid. */}
+          <Tooltip title={auditionGroupedView ? 'Vis individuelle kandidater' : 'Grupper som auditions'}>
+            <IconButton
+              onClick={() => setAuditionGroupedView((v) => !v)}
+              size="small"
+              aria-label="Audition-gruppert visning"
+              aria-pressed={auditionGroupedView}
+              sx={{
+                width: TOUCH_TARGET_SIZE,
+                height: TOUCH_TARGET_SIZE,
+                borderRadius: 1,
+                color: auditionGroupedView ? roleTabAccent : 'rgba(255,255,255,0.4)',
+                bgcolor: auditionGroupedView ? 'rgba(184,107,255,0.12)' : 'transparent',
+                border: '1px solid',
+                borderColor: auditionGroupedView ? 'rgba(184,107,255,0.4)' : 'rgba(255,255,255,0.12)',
+                '&:hover': { bgcolor: 'rgba(184,107,255,0.08)', borderColor: 'rgba(184,107,255,0.3)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              <GroupsIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
 
@@ -2973,6 +3052,131 @@ function AuditionSchedulePanelInner({
             </Box>
           )}
         </RoleRoomEmptyState>
+      ) : auditionGroupedView ? (
+        /* ── Audition-gruppert visning — synthetisk grupperting per
+            (date, time, role, location). 1 rad = 1 audition med
+            AvatarGroup over alle kandidater. ── */
+        <TableContainer component={Paper} sx={{ bgcolor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1.5, overflow: 'hidden' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
+                <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', borderColor: 'rgba(255,255,255,0.07)' }}>Audition</TableCell>
+                <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', borderColor: 'rgba(255,255,255,0.07)' }}>Rolle</TableCell>
+                <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', borderColor: 'rgba(255,255,255,0.07)' }}>Dato</TableCell>
+                <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', borderColor: 'rgba(255,255,255,0.07)' }}>Status</TableCell>
+                <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', borderColor: 'rgba(255,255,255,0.07)' }}>Team</TableCell>
+                <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', borderColor: 'rgba(255,255,255,0.07)' }} align="right">Kandidater</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {pagedAuditionGroups.map((group) => {
+                const primaryStatus = [...group.statuses][0] ?? 'scheduled';
+                const dateMs = Date.parse(`${group.date}T${group.time || '00:00'}`);
+                const dateLabel = Number.isFinite(dateMs)
+                  ? new Date(dateMs).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : group.date;
+                return (
+                  <TableRow
+                    key={group.key}
+                    hover
+                    sx={{ '&:last-child td': { borderBottom: 0 } }}
+                  >
+                    <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Typography sx={{ color: '#fff', fontSize: '0.92rem', fontWeight: 600 }}>
+                          {group.title}
+                        </Typography>
+                        {group.locationName && (
+                          <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.75rem' }}>
+                            {group.locationName}
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <Chip
+                        size="small"
+                        label={group.roleName || '—'}
+                        sx={{
+                          bgcolor: `${roleTabAccent}22`,
+                          color: roleTabAccent,
+                          border: `1px solid ${roleTabAccent}55`,
+                          fontWeight: 600,
+                          fontSize: '0.72rem',
+                          height: 22,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.3,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Typography sx={{ color: '#fff', fontSize: '0.85rem' }}>{dateLabel}</Typography>
+                        {group.time && (
+                          <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem' }}>
+                            {group.time}
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <Chip
+                        size="small"
+                        label={getStatusLabel(primaryStatus)}
+                        sx={{
+                          bgcolor: `${getStatusColor(primaryStatus)}22`,
+                          color: getStatusColor(primaryStatus),
+                          border: `1px solid ${getStatusColor(primaryStatus)}55`,
+                          fontWeight: 600,
+                          fontSize: '0.72rem',
+                          height: 22,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.3,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <AvatarGroup
+                        max={4}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          '& .MuiAvatar-root': {
+                            width: 28,
+                            height: 28,
+                            fontSize: '0.68rem',
+                            border: '2px solid rgba(15,23,42,1)',
+                          },
+                        }}
+                      >
+                        {group.schedules.map((s) => {
+                          const candidateId = String(s.candidateId ?? s.candidate_id ?? '');
+                          const candidateName = s.candidateName ?? s.candidate_name ?? getCandidateName(candidateId);
+                          const candidate = candidates.find((c) => c.id === candidateId);
+                          const photo = candidate?.photos?.[0];
+                          return (
+                            <Avatar
+                              key={s.id}
+                              src={photo}
+                              alt={candidateName}
+                              sx={{ bgcolor: `${roleTabAccent}40`, color: '#fff' }}
+                            >
+                              {candidateName.charAt(0).toUpperCase()}
+                            </Avatar>
+                          );
+                        })}
+                      </AvatarGroup>
+                    </TableCell>
+                    <TableCell align="right" sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <Typography sx={{ color: '#fff', fontSize: '0.92rem', fontWeight: 600 }}>
+                        {group.completedCount} / {group.candidateCount}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       ) : viewMode === 'table' ? (
         /* ── Table View (redesigned per UX spec) ── */
         <>
@@ -3033,7 +3237,7 @@ function AuditionSchedulePanelInner({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredAndSortedSchedules.map((schedule, index) => {
+                    {pagedSchedules.map((schedule, index) => {
                       const isFav = favorites.has(schedule.id);
                       const isSelected = selectedIds.has(schedule.id);
                       const statusColor = getStatusColor(schedule.status);
@@ -3174,7 +3378,7 @@ function AuditionSchedulePanelInner({
       ) : viewMode === 'compact' ? (
         /* ── Compact List View ── */
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {filteredAndSortedSchedules.map((schedule, index) => {
+          {pagedSchedules.map((schedule, index) => {
             const isFav = favorites.has(schedule.id);
             const isSelected = selectedIds.has(schedule.id);
             const statusColor = getStatusColor(schedule.status);
@@ -3271,7 +3475,7 @@ function AuditionSchedulePanelInner({
             alignItems: 'stretch',
           }}
         >
-          {filteredAndSortedSchedules.map((schedule, index) => {
+          {pagedSchedules.map((schedule, index) => {
             const isExpanded = expandedCards.has(schedule.id);
             const sceneName = getSceneName(schedule.sceneId);
             const statusColor = getStatusColor(schedule.status);
@@ -3920,6 +4124,116 @@ function AuditionSchedulePanelInner({
               ))}
             </Grid>
           )}
+        </Box>
+      )}
+
+      {/* Pagination-rad — vises kun ved > 0 elementer, og side-navigasjon
+          kun ved > 1 side. Plassert etter alle view-mode-rendringer slik
+          at den fungerer for table/card/pro/audition-gruppert samtidig.
+          Telling oppdateres til auditionGroups når gruppert-view er aktiv. */}
+      {filteredAndSortedSchedules.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+            mt: 2,
+            px: 1,
+          }}
+        >
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
+            {auditionGroupedView
+              ? `Viser ${Math.min(auditionGroups.length, paginationStart + 1)}–${Math.min(auditionGroups.length, paginationStart + pageSize)} av ${auditionGroups.length} auditions (${filteredAndSortedSchedules.length} kandidater)`
+              : `Viser ${paginationStart + 1}–${paginationEnd} av ${filteredAndSortedSchedules.length} avtaler`}
+          </Typography>
+
+          {totalPages > 1 && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <IconButton
+                size="small"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label="Forrige side"
+                sx={{ color: safePage <= 1 ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>‹</Box>
+              </IconButton>
+              {(() => {
+                const pages: Array<number | 'ellipsis'> = [];
+                const showEllipsisLeft = safePage > 3;
+                const showEllipsisRight = safePage < totalPages - 2;
+                pages.push(1);
+                if (showEllipsisLeft) pages.push('ellipsis');
+                for (let p = Math.max(2, safePage - 1); p <= Math.min(totalPages - 1, safePage + 1); p += 1) {
+                  pages.push(p);
+                }
+                if (showEllipsisRight) pages.push('ellipsis');
+                if (totalPages > 1) pages.push(totalPages);
+                return pages.map((p, idx) =>
+                  p === 'ellipsis' ? (
+                    <Typography key={`ell-${idx}`} sx={{ color: 'rgba(255,255,255,0.4)', px: 0.5 }}>
+                      …
+                    </Typography>
+                  ) : (
+                    <Button
+                      key={p}
+                      size="small"
+                      onClick={() => setPage(p)}
+                      sx={{
+                        minWidth: 32,
+                        height: 32,
+                        px: 1,
+                        bgcolor: safePage === p ? '#b86bff' : 'transparent',
+                        color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
+                        fontWeight: safePage === p ? 700 : 500,
+                        '&:hover': { bgcolor: safePage === p ? '#a855f7' : 'rgba(184,107,255,0.18)' },
+                      }}
+                    >
+                      {p}
+                    </Button>
+                  ),
+                );
+              })()}
+              <IconButton
+                size="small"
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                aria-label="Neste side"
+                sx={{ color: safePage >= totalPages ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>›</Box>
+              </IconButton>
+            </Box>
+          )}
+
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <Select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value) as 20 | 40 | 80)}
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(184,107,255,0.3)' },
+                '& .MuiSelect-select': { py: 0.5, fontSize: '0.85rem' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+                    border: '1px solid rgba(148,163,184,0.26)',
+                  },
+                },
+              }}
+            >
+              <MenuItem value={20}>20 per side</MenuItem>
+              <MenuItem value={40}>40 per side</MenuItem>
+              <MenuItem value={80}>80 per side</MenuItem>
+            </Select>
+          </FormControl>
         </Box>
       )}
 

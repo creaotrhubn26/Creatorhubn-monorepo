@@ -186,6 +186,7 @@
     "express-session": "^1.18.2",
     "face-api.js": "^0.22.2",
     "fast-glob": "^3.3.3",
+    "fast-json-patch": "^3.1.1",
     "fast-xml-parser": "^5.3.1",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",

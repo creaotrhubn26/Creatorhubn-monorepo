@@ -95,3 +95,143 @@
     column-gap: var(--rr-spacing-comfortable, 24px);
   }
 }
+
+/*
+ * ============================================================================
+ * Touch-mode polish (phone + iPad). These rules only apply to touch devices
+ * (no hover, coarse pointer) so desktop mouse users keep their existing
+ * hover-driven UX. Apply only inside .role-room-route to avoid leaking.
+ * ============================================================================
+ */
+
+@media (hover: none) and (pointer: coarse) {
+  /* Cards inside Role Room get a press-down feedback by default */
+  .role-room-route .MuiCard-root[role="button"]:active,
+  .role-room-route .MuiCardActionArea-root:active,
+  .role-room-route button.MuiCard-root:active {
+    transform: scale(0.98);
+    transition: transform 0.08s ease;
+  }
+
+  /* Remove the lingering hover background flash on tabs after tap */
+  .role-room-route .MuiTab-root:hover {
+    background-color: transparent;
+  }
+
+  /* Disable pointer hover on outlined-buttons that simulate hover via JS */
+  .role-room-route .MuiButton-outlined:hover {
+    background-color: transparent;
+  }
+
+  /* Hide tap-highlight (Safari/Chrome iOS gray flash) globally inside Role Room */
+  .role-room-route button,
+  .role-room-route a,
+  .role-room-route [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
+/*
+ * ============================================================================
+ * Phone-specific (≤ 599px): tighter dialog/modal tweaks so they fill the screen
+ * comfortably without horizontal scroll.
+ * ============================================================================
+ */
+@media (max-width: 599.95px) {
+  /* Full-screen-ish dialog should respect bottom safe area for iPhone */
+  .role-room-route .MuiDialog-paper.MuiDialog-paperFullScreen {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* DialogActions on phone — let buttons stack naturally */
+  .role-room-route .MuiDialogActions-root {
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+  }
+
+  /* Tabs on phone: ensure scroll buttons remain visible and clickable */
+  .role-room-route .MuiTabs-scrollButtons {
+    min-width: 36px;
+    width: 36px;
+  }
+
+  /* Phone: chips inside legend rows wrap cleanly */
+  .role-room-route .MuiChip-root {
+    max-width: 100%;
+  }
+}
+
+/*
+ * ============================================================================
+ * iPad-specific (600–1199px): roomier components since iPad has more pixels
+ * than a phone but isn't a desktop.
+ * ============================================================================
+ */
+@media (min-width: 600px) and (max-width: 1199.95px) {
+  /* iPad: tabs slightly bigger to take advantage of touch precision */
+  .role-room-route .rr-sub-tabs .MuiTab-root {
+    min-height: 52px;
+    font-size: 0.9rem;
+  }
+
+  /* iPad portrait modals: cap to readable width and center */
+  .role-room-route .MuiDialog-paper:not(.MuiDialog-paperFullScreen) {
+    max-width: min(92vw, 760px);
+  }
+
+  /* Item 062: iPad-spesifikke kort er bredere — desktop-tabeller skal ikke
+   * komprimeres til miniatyrer. Gjelder kort som ikke ligger i en master-rail. */
+  .role-room-route .rr-ipad-content .MuiCard-root {
+    border-radius: var(--rr-card-radius, 16px);
+  }
+}
+
+/*
+ * ============================================================================
+ * Side rail (item 055) — vertikal ikon-nav for iPad landscape. Selve
+ * komponenten setter sx-styling; her gir vi bare token-basert default
+ * width og scrollbar-polish slik at flere konsumenter kan dele patternet.
+ * ============================================================================
+ */
+@media (min-width: 900px) and (max-width: 1199.95px) and (orientation: landscape) {
+  .role-room-route .rr-tab-rail {
+    width: var(--rr-side-rail-width, 88px);
+  }
+
+  /* Slankere scrollbar i rail-en — den er smal og scrollbar bør ikke ta plass. */
+  .role-room-route .rr-tab-rail::-webkit-scrollbar {
+    width: 4px;
+  }
+  .role-room-route .rr-tab-rail::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 2px;
+  }
+  .role-room-route .rr-tab-rail::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/*
+ * iPad portrait (600-899px): rail-en skal ikke vises selv om noen
+ * skulle prøve å rendre den. Vi forsterker dette i CSS som siste linje.
+ */
+@media (min-width: 600px) and (max-width: 899.95px) {
+  .role-room-route .rr-tab-rail {
+    display: none;
+  }
+}
+
+/*
+ * ============================================================================
+ * Reduce-motion guard: respect user's OS-level preference. We never want a
+ * scale/translate to animate when the user has asked for less motion.
+ * ============================================================================
+ */
+@media (prefers-reduced-motion: reduce) {
+  .role-room-route * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

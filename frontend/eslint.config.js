@@ -69,5 +69,32 @@ export default tseslint.config(
       'no-duplicate-imports': 'error',
       '@typescript-eslint/consistent-type-imports': ['warn', { prefer: 'type-imports' }]
     }
+  },
+  // Role Room design-system-guardrails — forhindrer drift på shared
+  // konstanter etter fase 1-3-konsolidering (commits ad5e5536..0f237391).
+  // Definert i 2 nivåer: error for cross-cutting konstanter (touch-target),
+  // warning for soft-foretrukne mønstre (token-bruk).
+  {
+    files: ['frontend/client/src/components/role-room/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          // Forbyr lokal re-deklarasjon av TOUCH_TARGET_SIZE — bruk shared
+          // import fra `constants/accessibility.ts` istedenfor. Etter
+          // fase 2a/2b-migrasjonen er det 0 duplikater igjen i kodebasen
+          // og denne regelen sikrer at neste panel ikke re-introduserer
+          // gjelden.
+          selector: 'VariableDeclarator[id.name="TOUCH_TARGET_SIZE"]',
+          message:
+            'Bruk `import { TOUCH_TARGET_SIZE } from "../constants/accessibility"` istedenfor å re-deklarere lokalt. Se design-system-audit i memory.md.',
+        },
+        {
+          // Forbyr lokal re-deklarasjon av MOBILE_TOUCH_TARGET_SIZE
+          selector: 'VariableDeclarator[id.name="MOBILE_TOUCH_TARGET_SIZE"]',
+          message: 'Bruk shared import fra `constants/accessibility.ts`.',
+        },
+      ],
+    },
   }
 );

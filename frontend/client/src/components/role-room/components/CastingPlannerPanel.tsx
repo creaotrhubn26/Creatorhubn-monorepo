@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, startTransition, memo, type FC, type MouseEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
 import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck } from '../config/professionMode';
@@ -644,9 +645,6 @@ export function CastingPlannerPanel({
   const useDenseDesktopHeader = !useCompactHeaderLayout && isDenseDesktopViewport;
   const toast = useToast();
   const branding = useBrandingSettings();
-  
-  // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
-  const TOUCH_TARGET_SIZE = 44;
 
   // Projects loading state
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -12770,11 +12768,22 @@ type RoleRoomProjectWorkspaceState = {
           </Box>
           <IconButton
             onClick={() => { setRoleDialogOpen(false); setSelectedRole(null); }}
+            aria-label="Lukk dialog"
             sx={{
               color: 'var(--dialog-text)',
               border: '1px solid var(--dialog-border-color)',
               bgcolor: 'rgba(255,255,255,0.02)',
-              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+              // WCAG 2.2 — minimum 44x44 touch-target
+              minWidth: 44,
+              minHeight: 44,
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              WebkitTapHighlightColor: 'transparent',
+              '@media (hover: hover)': {
+                '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+              },
+              '&:active': { transform: 'scale(0.95)' },
             }}
           >
             <CloseIcon />
@@ -13185,9 +13194,19 @@ type RoleRoomProjectWorkspaceState = {
             borderTop: '1px solid var(--dialog-border-color)',
             px: { xs: 2.25, sm: 3, md: 3.25 },
             py: { xs: 1.6, sm: 1.85, md: 1.95 },
-            gap: 1.2,
-            flexWrap: { xs: 'wrap', sm: 'nowrap' },
-            justifyContent: 'flex-end',
+            // Safe-area-padding for iPhone home-indicator (kun mobil/fullscreen)
+            pb: {
+              xs: 'max(1.6em, calc(1.6em + env(safe-area-inset-bottom, 0px)))',
+              sm: 1.85,
+              md: 1.95,
+            },
+            gap: { xs: 1, sm: 1.2 },
+            // **Mobile: column-reverse** så primær-knapp (Lagre) er øverst,
+            // sekundær (Avbryt) under. Matcher iOS HIG og Material 3-mønster.
+            flexDirection: { xs: 'column-reverse', sm: 'row' },
+            flexWrap: { xs: 'nowrap', sm: 'nowrap' },
+            alignItems: { xs: 'stretch', sm: 'center' },
+            justifyContent: { xs: 'stretch', sm: 'flex-end' },
             background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
           }}
         >
@@ -13196,9 +13215,15 @@ type RoleRoomProjectWorkspaceState = {
             sx={{
               color: 'var(--dialog-text)',
               minHeight: TOUCH_TARGET_SIZE,
+              // Mobile: full-width
+              width: { xs: '100%', sm: 'auto' },
               border: '1px solid var(--dialog-border-color)',
               bgcolor: 'rgba(255,255,255,0.02)',
-              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+              WebkitTapHighlightColor: 'transparent',
+              '@media (hover: hover)': {
+                '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+              },
+              '&:active': { transform: { xs: 'scale(0.98)', sm: 'none' } },
             }}
           >
             {branding.tokens.labels.cancelLabel}
@@ -13212,9 +13237,15 @@ type RoleRoomProjectWorkspaceState = {
               color: '#ffffff',
               fontWeight: 700,
               minHeight: TOUCH_TARGET_SIZE,
+              // Mobile: full-width primary action
+              width: { xs: '100%', sm: 'auto' },
               px: 2.25,
               boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
-              '&:hover': { bgcolor: roleDialogAccentColor, filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
+              WebkitTapHighlightColor: 'transparent',
+              '@media (hover: hover)': {
+                '&:hover': { bgcolor: roleDialogAccentColor, filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
+              },
+              '&:active': { transform: { xs: 'scale(0.98)', sm: 'none' } },
             }}
           >
             {branding.tokens.labels.saveRoleLabel}
@@ -13226,9 +13257,15 @@ type RoleRoomProjectWorkspaceState = {
               sx={{
                 color: '#ffffff',
                 minHeight: TOUCH_TARGET_SIZE,
+                // Mobile: full-width destructive action
+                width: { xs: '100%', sm: 'auto' },
                 border: '1px solid rgba(239,68,68,0.36)',
                 bgcolor: 'rgba(239,68,68,0.08)',
-                '&:hover': { bgcolor: 'rgba(239,68,68,0.15)' },
+                WebkitTapHighlightColor: 'transparent',
+                '@media (hover: hover)': {
+                  '&:hover': { bgcolor: 'rgba(239,68,68,0.15)' },
+                },
+                '&:active': { transform: { xs: 'scale(0.98)', sm: 'none' } },
               }}
             >
               {branding.tokens.labels.deleteLabel}

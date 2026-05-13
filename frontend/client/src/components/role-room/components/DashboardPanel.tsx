@@ -25,6 +25,7 @@ import {
   Cancel as CancelIcon,
   CheckCircle as _CheckCircleIcon,
   HelpOutline as HelpIcon,
+  Bolt as BoltIcon,
 } from '@mui/icons-material';
 import DashboardGuide from './DashboardGuide';
 import { 
@@ -47,8 +48,7 @@ const KanbanPanelLazy = lazy(() =>
   import('./KanbanPanel').then(m => ({ default: m.KanbanPanel }))
 );
 
-// WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
@@ -222,6 +222,40 @@ function DashboardPanelInner({
     ].map(s => ({ ...s, count: counts[s.status] || 0 }))
      .filter(s => s.count > 0);
   }, [candidates]);
+
+  // Kanban-skeleton stages: alltid alle 6, også med 0-count for empty-state-cards.
+  // Speiler KanbanPanel.tsx-konfigurasjonen så dashboardet matcher hovedvyen.
+  const kanbanStages = useMemo(() => {
+    const counts = candidates.reduce<Record<string, number>>((acc, c) => {
+      acc[c.status] = (acc[c.status] || 0) + 1;
+      return acc;
+    }, {});
+    return [
+      { status: 'pending',   label: 'Ingen status', color: '#6b7280', tabIndex: 3 },
+      { status: 'requested', label: 'Forespurt',    color: '#00d4ff', tabIndex: 3 },
+      { status: 'shortlist', label: 'Vurderes',     color: '#ffb800', tabIndex: 3 },
+      { status: 'selected',  label: 'Valgt',        color: '#8b5cf6', tabIndex: 3 },
+      { status: 'confirmed', label: 'Bekreftet',    color: '#10b981', tabIndex: 3 },
+      { status: 'rejected',  label: 'Avvist',       color: '#ef4444', tabIndex: 3 },
+    ].map(s => ({ ...s, count: counts[s.status] || 0 }));
+  }, [candidates]);
+
+  // Rolle-stage-skeleton: speiler casting-listevisning (Åpen / Casting / Besatt).
+  // Klikkbare → navigerer til Roller-tab (index 2).
+  const roleStages = useMemo(() => {
+    const counts = roles.reduce<Record<string, number>>((acc, r) => {
+      const key = r.status === 'casting' ? 'casting'
+        : r.status === 'filled' ? 'filled'
+        : 'open'; // default: open-bucket dekker også "open" og udefinert
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    return [
+      { status: 'open',    label: 'Åpen',    color: '#a78bfa', tabIndex: 2 },
+      { status: 'casting', label: 'Casting', color: '#fbbf24', tabIndex: 2 },
+      { status: 'filled',  label: 'Besatt',  color: '#10b981', tabIndex: 2 },
+    ].map(s => ({ ...s, count: counts[s.status] || 0 }));
+  }, [roles]);
 
   const statCards = [
     { title: 'Roller totalt', value: stats.totalRoles, color: '#f48fb1', icon: RolesIcon, tabIndex: 2 },
@@ -543,56 +577,495 @@ function DashboardPanelInner({
         ))}
       </Grid>
 
-      {/* Casting Progress Card */}
-      {candidates.length > 0 && (
-        <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
-          <CardContent sx={{ p: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 3.5 } }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 }, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
-              <TrendingUpIcon sx={{ color: '#8b5cf6', fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 32 } }} />
-              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.05rem', lg: '1.15rem', xl: '1.25rem' } }}>
-                Casting-fremdrift
-              </Typography>
-              {stats.castingProgress > 0 && (
-                <Chip
-                  label={`${stats.castingProgress}% fullført`}
-                  size="small"
-                  sx={{ 
-                    bgcolor: 'rgba(139,92,246,0.2)', 
-                    color: '#8b5cf6', 
-                    ml: 'auto',
-                    height: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 },
-                    fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
+      {/* Rolle-fremdrift — speiler casting-listevisning (Åpen / Casting / Besatt)
+        *
+        * 3 stage-kort i samme stil som kandidat-skeleton under, men kompakte
+        * og horisontalt fordelt (eqv. på desktop, scroll på mobil).
+        */}
+      <Card
+        sx={{
+          bgcolor: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
+        }}
+        aria-labelledby="role-progress-heading"
+        role="region"
+      >
+        <CardContent sx={{ p: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 3.5 } }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1, sm: 1.5 },
+              mb: { xs: 2, sm: 2.5 },
+            }}
+          >
+            <Box
+              sx={{
+                width: { xs: 36, sm: 42 },
+                height: { xs: 36, sm: 42 },
+                borderRadius: 1.5,
+                bgcolor: 'rgba(244, 143, 177, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <RolesIcon
+                sx={{ color: '#f48fb1', fontSize: { xs: 20, sm: 24 } }}
+              />
+            </Box>
+            <Typography
+              id="role-progress-heading"
+              variant="h6"
+              sx={{
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: { xs: '1rem', sm: '1.125rem', md: '1.05rem', lg: '1.15rem', xl: '1.25rem' },
+                flex: 1,
+              }}
+            >
+              Rolle-fremdrift
+            </Typography>
+            {stats.totalRoles > 0 && (
+              <Chip
+                label={`${stats.filledRoles}/${stats.totalRoles} besatt`}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(16,185,129,0.15)',
+                  color: '#10b981',
+                  height: { xs: 22, sm: 26 },
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  fontWeight: 600,
+                }}
+              />
+            )}
+          </Box>
+
+          <Box
+            role="list"
+            aria-label="Roller per status"
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(3, minmax(110px, 1fr))',
+                sm: 'repeat(3, 1fr)',
+              },
+              gap: { xs: 1, sm: 1.25, md: 1.5 },
+            }}
+          >
+            {roleStages.map((stage) => {
+              const isEmpty = stage.count === 0;
+              return (
+                <Box
+                  key={stage.status}
+                  role="listitem"
+                  onClick={() => onNavigateToTab(stage.tabIndex)}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onNavigateToTab(stage.tabIndex);
+                    }
                   }}
-                />
-              )}
-            </Box>
-            
-            {/* Progress bar */}
-            <Box sx={{ display: 'flex', gap: 0.5, height: { xs: 10, sm: 12, md: 11, lg: 13, xl: 16 }, borderRadius: { xs: 5, sm: 6, md: 5.5, lg: 6.5, xl: 8 }, overflow: 'hidden', bgcolor: 'rgba(255,255,255,0.1)', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
-              {statusDistribution.map(({ status, color, count }) => {
-                const percentage = (count / candidates.length) * 100;
-                return (
-                  <Tooltip key={status} title={`${count} kandidater`}>
-                    <Box sx={{ width: `${percentage}%`, bgcolor: color, transition: 'width 0.3s ease', minWidth: percentage > 0 ? 4 : 0 }} />
-                  </Tooltip>
-                );
-              })}
-            </Box>
-            
-            {/* Status legend */}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
-              {statusDistribution.map(({ status, color, label, count }) => (
-                <Box key={status} sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
-                  <Box sx={{ width: { xs: 10, sm: 12, md: 11, lg: 13, xl: 16 }, height: { xs: 10, sm: 12, md: 11, lg: 13, xl: 16 }, borderRadius: '50%', bgcolor: color }} />
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.85rem', lg: '0.9rem', xl: '1rem' } }}>
-                    {label}: <strong style={{ color: '#fff' }}>{count}</strong>
-                  </Typography>
+                  sx={{
+                    border: `1px solid ${stage.color}30`,
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    bgcolor: 'rgba(0,0,0,0.2)',
+                    transition: 'all 0.2s',
+                    '@media (hover: hover)': {
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: `0 4px 12px ${stage.color}33`,
+                        borderColor: `${stage.color}60`,
+                      },
+                    },
+                    '&:active': {
+                      transform: 'scale(0.98)',
+                    },
+                    WebkitTapHighlightColor: 'transparent',
+                    ...focusVisibleStyles,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      bgcolor: `${stage.color}15`,
+                      borderBottom: `1px solid ${stage.color}25`,
+                      px: 1.25,
+                      py: 0.875,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.75,
+                      minHeight: 36,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: stage.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        flex: 1,
+                        color: stage.color,
+                        fontWeight: 600,
+                        fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {stage.label}
+                    </Typography>
+                    <Box
+                      sx={{
+                        minWidth: 24,
+                        height: 20,
+                        px: 0.75,
+                        borderRadius: 10,
+                        bgcolor: isEmpty ? 'rgba(255,255,255,0.08)' : `${stage.color}30`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: isEmpty ? 'rgba(255,255,255,0.4)' : stage.color,
+                          fontWeight: 700,
+                          fontSize: '0.7rem',
+                        }}
+                      >
+                        {stage.count}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box
+                    sx={{
+                      minHeight: { xs: 56, sm: 72 },
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      p: 1,
+                    }}
+                  >
+                    {isEmpty ? (
+                      <AddIcon
+                        aria-hidden
+                        sx={{
+                          fontSize: { xs: 24, sm: 28 },
+                          color: 'rgba(255,255,255,0.18)',
+                        }}
+                      />
+                    ) : (
+                      <Typography
+                        variant="h4"
+                        sx={{
+                          color: stage.color,
+                          fontWeight: 700,
+                          fontSize: { xs: '1.5rem', sm: '1.875rem' },
+                          lineHeight: 1,
+                        }}
+                      >
+                        {stage.count}
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
-              ))}
+              );
+            })}
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Casting-fremdrift — Kanban-skeleton + progress-strip
+        *
+        * UX-design (basert på produkteier-feedback 2026-05-11):
+        *   - Horisontale stage-kort med ikon + label + count + empty-state
+        *   - Klikkbare → navigerer til Kandidater-tab (Kanban-hovedvy)
+        *   - Bolt-ikon header (matcher spec)
+        *   - Progress-strip + chip-legend bevart for samlet fremdrift-view
+        */}
+      <Card
+        sx={{
+          bgcolor: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 },
+        }}
+        aria-labelledby="casting-progress-heading"
+        role="region"
+      >
+        <CardContent sx={{ p: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 3.5 } }}>
+          {/* Header med Bolt-ikon */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1, sm: 1.5 },
+              mb: { xs: 2, sm: 2.5 },
+            }}
+          >
+            <Box
+              sx={{
+                width: { xs: 36, sm: 42 },
+                height: { xs: 36, sm: 42 },
+                borderRadius: 1.5,
+                bgcolor: 'rgba(139, 92, 246, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <BoltIcon
+                sx={{ color: '#8b5cf6', fontSize: { xs: 20, sm: 24 } }}
+              />
             </Box>
-          </CardContent>
-        </Card>
-      )}
+            <Typography
+              id="casting-progress-heading"
+              variant="h6"
+              sx={{
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: { xs: '1rem', sm: '1.125rem', md: '1.05rem', lg: '1.15rem', xl: '1.25rem' },
+                flex: 1,
+              }}
+            >
+              Casting-fremdrift
+            </Typography>
+            {stats.castingProgress > 0 && (
+              <Chip
+                label={`${stats.castingProgress}% fullført`}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(139,92,246,0.2)',
+                  color: '#8b5cf6',
+                  height: { xs: 22, sm: 26 },
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  fontWeight: 600,
+                }}
+              />
+            )}
+          </Box>
+
+          {/* Kanban-skeleton: 6 stage-kort horisontalt (scroll på mobil) */}
+          <Box
+            role="list"
+            aria-label="Kandidater per casting-stadium"
+            sx={{
+              display: 'flex',
+              gap: { xs: 1, sm: 1.25, md: 1.5 },
+              overflowX: 'auto',
+              pb: 1,
+              // Skjul scrollbar visuelt (men beholder funksjon)
+              scrollbarWidth: 'thin',
+              '&::-webkit-scrollbar': { height: 6 },
+              '&::-webkit-scrollbar-thumb': {
+                bgcolor: 'rgba(255,255,255,0.15)',
+                borderRadius: 3,
+              },
+              mb: { xs: 2, sm: 2.5 },
+            }}
+          >
+            {kanbanStages.map((stage) => {
+              const isEmpty = stage.count === 0;
+              return (
+                <Box
+                  key={stage.status}
+                  role="listitem"
+                  onClick={() => onNavigateToTab(stage.tabIndex)}
+                  sx={{
+                    flex: {
+                      xs: '0 0 130px',
+                      sm: '0 0 150px',
+                      md: '0 0 160px',
+                      lg: '1 1 0',
+                    },
+                    minWidth: { xs: 130, sm: 150 },
+                    border: `1px solid ${stage.color}30`,
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    bgcolor: 'rgba(0,0,0,0.2)',
+                    transition: 'all 0.2s',
+                    // Hover-only-effekt (ikke på touch-enheter)
+                    '@media (hover: hover)': {
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: `0 4px 12px ${stage.color}33`,
+                        borderColor: `${stage.color}60`,
+                      },
+                    },
+                    // Press-feedback for touch
+                    '&:active': {
+                      transform: 'scale(0.98)',
+                    },
+                    WebkitTapHighlightColor: 'transparent',
+                    ...focusVisibleStyles,
+                  }}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onNavigateToTab(stage.tabIndex);
+                    }
+                  }}
+                >
+                  {/* Header: icon-box + label + count badge */}
+                  <Box
+                    sx={{
+                      bgcolor: `${stage.color}15`,
+                      borderBottom: `1px solid ${stage.color}25`,
+                      px: 1.25,
+                      py: 0.875,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.75,
+                      minHeight: 36,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: stage.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        flex: 1,
+                        color: stage.color,
+                        fontWeight: 600,
+                        fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {stage.label}
+                    </Typography>
+                    <Box
+                      sx={{
+                        minWidth: 24,
+                        height: 20,
+                        px: 0.75,
+                        borderRadius: 10,
+                        bgcolor: isEmpty ? 'rgba(255,255,255,0.08)' : `${stage.color}30`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: isEmpty ? 'rgba(255,255,255,0.4)' : stage.color,
+                          fontWeight: 700,
+                          fontSize: '0.7rem',
+                        }}
+                      >
+                        {stage.count}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Body: empty-state hint (+ Add) eller count-display */}
+                  <Box
+                    sx={{
+                      minHeight: { xs: 64, sm: 84 },
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      p: 1,
+                    }}
+                  >
+                    {isEmpty ? (
+                      <AddIcon
+                        aria-hidden
+                        sx={{
+                          fontSize: { xs: 28, sm: 32 },
+                          color: 'rgba(255,255,255,0.18)',
+                        }}
+                      />
+                    ) : (
+                      <Typography
+                        variant="h4"
+                        sx={{
+                          color: stage.color,
+                          fontWeight: 700,
+                          fontSize: { xs: '1.5rem', sm: '1.875rem' },
+                          lineHeight: 1,
+                        }}
+                      >
+                        {stage.count}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+
+          {/* Progress-strip (samlet fremdrift) — kun synlig når det finnes kandidater */}
+          {candidates.length > 0 && (
+            <>
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 0.5,
+                  height: { xs: 8, sm: 10 },
+                  borderRadius: { xs: 4, sm: 5 },
+                  overflow: 'hidden',
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  mb: { xs: 1, sm: 1.5 },
+                }}
+                role="img"
+                aria-label={`Status-fordeling: ${statusDistribution
+                  .map((s) => `${s.label} ${s.count}`)
+                  .join(', ')}`}
+              >
+                {statusDistribution.map(({ status, color, count }) => {
+                  const percentage = (count / candidates.length) * 100;
+                  return (
+                    <Tooltip key={status} title={`${count} kandidater`}>
+                      <Box
+                        sx={{
+                          width: `${percentage}%`,
+                          bgcolor: color,
+                          transition: 'width 0.3s ease',
+                          minWidth: percentage > 0 ? 4 : 0,
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                })}
+              </Box>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'rgba(255,255,255,0.5)',
+                  fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                }}
+              >
+                {candidates.length} kandidater fordelt over {statusDistribution.length}{' '}
+                {statusDistribution.length === 1 ? 'stadium' : 'stadier'}
+              </Typography>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>

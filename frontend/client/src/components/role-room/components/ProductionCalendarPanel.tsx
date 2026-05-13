@@ -63,6 +63,10 @@ import globalTagService from '../services/globalTagService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { getRoleLabel } from './shared/technicalCrew';
 import { alpha } from '@mui/material/styles';
+import { MonthGridView } from './calendar/MonthGridView';
+import { CalendarMonthHeader } from './calendar/CalendarMonthHeader';
+import { CalendarStatsBar } from './calendar/CalendarStatsBar';
+import { CrewCalendarView, type CrewCalendarMember } from './calendar/CrewCalendarView';
 
 interface Candidate {
   id: string;
@@ -258,7 +262,23 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const [selectedCrew, setSelectedCrew] = useState<string[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'week'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'week' | 'month' | 'day' | 'crew'>('month');
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+  // Crew-modus jobber med uker, ikke måneder. Bruker mandag i inneværende uke
+  // som ankerpunkt og lar brukeren bla med prev/next.
+  const [crewWeekStart, setCrewWeekStart] = useState<Date>(() => {
+    const today = new Date();
+    const day = today.getDay();
+    // JS getDay: 0=Søn, 1=Man, ..., 6=Lør. Konverter til ISO (Man=0).
+    const isoWeekday = (day + 6) % 7;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - isoWeekday);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  });
   const [candidates, setCandidates] = useState<Candidate[]>(propCandidates || []);
   const [crew, setCrew] = useState<Crew[]>(propCrew || []);
   const [locations, setLocations] = useState<Location[]>(propLocations || []);
@@ -909,7 +929,154 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         ))}
       </Box>
 
-      {events.length === 0 ? (
+      <CalendarMonthHeader
+        monthDate={calendarMonth}
+        viewMode={viewMode === 'list' || viewMode === 'crew' ? 'month' : (viewMode as 'month' | 'week' | 'day')}
+        onMonthChange={setCalendarMonth}
+        onViewModeChange={(mode) => setViewMode(mode)}
+      />
+
+      {/* Crew-Gantt-modus toggle — separat fra MÅNED/UKE/DAG fordi den
+          jobber på uker, ikke måneder */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Box
+          component="button"
+          onClick={() => setViewMode(viewMode === 'crew' ? 'month' : 'crew')}
+          aria-pressed={viewMode === 'crew'}
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 0.5,
+            px: 1.5,
+            py: 0.75,
+            borderRadius: 1.5,
+            border: viewMode === 'crew' ? '1px solid rgba(139,92,246,0.5)' : '1px solid rgba(255,255,255,0.15)',
+            bgcolor: viewMode === 'crew' ? 'rgba(139,92,246,0.22)' : 'transparent',
+            color: viewMode === 'crew' ? '#c4b5fd' : 'rgba(255,255,255,0.7)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            transition: 'background-color 160ms ease-out',
+            '&:hover': { bgcolor: viewMode === 'crew' ? 'rgba(139,92,246,0.32)' : 'rgba(255,255,255,0.05)' },
+          }}
+        >
+          <PersonIcon sx={{ fontSize: 16 }} />
+          Crew-kalender
+        </Box>
+      </Box>
+
+      {viewMode === 'crew' ? (
+        <Box>
+          {/* Crew-kalender uke-nav */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, px: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box
+                component="button"
+                onClick={() => {
+                  const prev = new Date(crewWeekStart);
+                  prev.setDate(prev.getDate() - 7);
+                  setCrewWeekStart(prev);
+                }}
+                aria-label="Forrige uke"
+                sx={{ bgcolor: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', fontSize: '1.3rem', px: 1 }}
+              >
+                ‹
+              </Box>
+              <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.95rem' }}>
+                Uke {(() => {
+                  // ISO-uke-beregning
+                  const d = new Date(crewWeekStart);
+                  const thursday = new Date(d);
+                  thursday.setDate(d.getDate() + 3);
+                  const jan4 = new Date(thursday.getFullYear(), 0, 4);
+                  const diffDays = Math.round((thursday.getTime() - jan4.getTime()) / 86_400_000);
+                  return 1 + Math.floor(diffDays / 7);
+                })()} · {crewWeekStart.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })} – {(() => {
+                  const end = new Date(crewWeekStart);
+                  end.setDate(end.getDate() + 6);
+                  return end.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' });
+                })()}
+              </Typography>
+              <Box
+                component="button"
+                onClick={() => {
+                  const next = new Date(crewWeekStart);
+                  next.setDate(next.getDate() + 7);
+                  setCrewWeekStart(next);
+                }}
+                aria-label="Neste uke"
+                sx={{ bgcolor: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', fontSize: '1.3rem', px: 1 }}
+              >
+                ›
+              </Box>
+            </Box>
+            <Box
+              component="button"
+              onClick={() => {
+                const today = new Date();
+                const isoWeekday = (today.getDay() + 6) % 7;
+                const monday = new Date(today);
+                monday.setDate(today.getDate() - isoWeekday);
+                monday.setHours(0, 0, 0, 0);
+                setCrewWeekStart(monday);
+              }}
+              sx={{ bgcolor: 'transparent', border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', color: 'rgba(255,255,255,0.85)', fontSize: '0.78rem', fontWeight: 600, px: 1.5, py: 0.5, borderRadius: 1, fontFamily: 'inherit' }}
+            >
+              Denne uken
+            </Box>
+          </Box>
+
+          <CrewCalendarView
+            weekStart={crewWeekStart}
+            members={crew.map<CrewCalendarMember>((m) => ({
+              id: m.id,
+              name: m.name,
+              role: m.role,
+              avatarUrl: (m as { photo_url?: string | null }).photo_url ?? null,
+              statusColor: (m as { status?: string }).status === 'confirmed' ? '#10b981'
+                : (m as { status?: string }).status === 'pending' ? '#f59e0b'
+                : (m as { status?: string }).status === 'invited' ? '#60a5fa'
+                : null,
+            }))}
+            events={events}
+            eventTypeConfig={{
+              audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
+              selection: { label: 'Utvelgelse', color: '#22d3ee', icon: <HowToRegIcon /> },
+              fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
+              rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
+              shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
+              general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
+            }}
+            onAddEventForCrewDate={(crewId, date) => {
+              setStartTime(`${date.toISOString().slice(0, 10)}T09:00`);
+              setEndTime(`${date.toISOString().slice(0, 10)}T17:00`);
+              setSelectedCrew([crewId]);
+              handleOpenDialog();
+            }}
+            onEditEvent={(event) => handleOpenDialog(event)}
+          />
+        </Box>
+      ) : viewMode === 'month' ? (
+        <MonthGridView
+          monthDate={calendarMonth}
+          events={events}
+          eventTypeConfig={{
+            audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
+            selection: { label: 'Utvelgelse', color: '#22d3ee', icon: <HowToRegIcon /> },
+            fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
+            rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
+            shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
+            general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
+          }}
+          onAddEventForDate={(date) => {
+            setStartTime(`${date.toISOString().slice(0, 10)}T09:00`);
+            setEndTime(`${date.toISOString().slice(0, 10)}T17:00`);
+            handleOpenDialog();
+          }}
+          onEditEvent={(event) => handleOpenDialog(event)}
+        />
+      ) : events.length === 0 ? (
         <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
           Ingen hendelser planlagt. Klikk "Ny hendelse" for å legge til opptak, prøver, eller andre produksjonshendelser.
         </Alert>
@@ -1052,6 +1219,8 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           ))}
         </Box>
       )}
+
+      <CalendarStatsBar events={events} />
 
       <Dialog
         open={dialogOpen}

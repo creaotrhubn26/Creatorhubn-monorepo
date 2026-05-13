@@ -18,6 +18,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Menu,
+  ListItemIcon,
+  ListItemText,
   Table,
   TableBody,
   TableCell,
@@ -45,6 +48,7 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  MoreVert as MoreVertIcon,
   Search as SearchIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
@@ -208,15 +212,15 @@ const LIGHTING_PRESETS: LightingPreset[] = [
   },
 ];
 import type { Candidate, ContactInfo, Role } from '../models/casting';
+import { getRoleTypeMeta } from '../config/roleType';
+import { formatRelativeNb } from '../utils/formatRelativeNb';
 import { castingService } from '../services/castingService';
 import { castingToSceneService } from '../services/castingToSceneService';
 import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import kandidaterPng from './icons/Keep/roleroom_kandidater.png';
-
-// WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
@@ -321,6 +325,12 @@ function CandidateManagementPanelInner({
   const [showStats, setShowStats] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  // Per-rad ⋮-meny: holder anchor-element OG hvilken kandidat
+  // menyen gjelder. Lukkes ved menu-bytte (ny rad åpnes) eller
+  // explisitt onClose. Robust mot stale-state: når kandidaten
+  // slettes, settes til null automatisk via filter-update.
+  const [rowActionMenuAnchor, setRowActionMenuAnchor] = useState<null | HTMLElement>(null);
+  const [rowActionMenuCandidate, setRowActionMenuCandidate] = useState<Candidate | null>(null);
   const [localQuickContacts, setLocalQuickContacts] = useState<Set<string>>(new Set());
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -3237,7 +3247,6 @@ function CandidateManagementPanelInner({
                   />
                 </TableCell>
                 <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Favoritt</TableCell>
-                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Bilde</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'name'}
@@ -3245,7 +3254,7 @@ function CandidateManagementPanelInner({
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
                   >
-                    Navn
+                    Kandidat
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3258,7 +3267,6 @@ function CandidateManagementPanelInner({
                     Status
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Kontakt</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'roles'}
@@ -3269,6 +3277,7 @@ function CandidateManagementPanelInner({
                     Roller
                   </TableSortLabel>
                 </TableCell>
+                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Sist oppdatert</TableCell>
                 <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
               </TableRow>
             </TableHead>
@@ -3316,54 +3325,85 @@ function CandidateManagementPanelInner({
                       </Tooltip>
                     </Box>
                   </TableCell>
+                  {/* Kombinert KANDIDAT-kolonne — foto + navn + email + telefon (matcher design) */}
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Avatar
-                      src={candidate.photos?.[0]}
-                      alt={candidate.name}
-                      sx={{
-                        width: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
-                        height: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
-                        bgcolor: `${getStatusColor(candidate.status)}20`,
-                        '& .MuiAvatar-img': {
-                          objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
-                        },
-                      }}
-                    >
-                      <PersonIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 }, color: getStatusColor(candidate.status) }} />
-                    </Avatar>
-                  </TableCell>
-                  <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{candidate.name}</Typography>
-                  </TableCell>
-                  <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Chip
-                      label={getStatusLabel(candidate.status)}
-                      size="small"
-                      sx={{ bgcolor: `${getStatusColor(candidate.status)}20`, color: getStatusColor(candidate.status), fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }}
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                      <Avatar
+                        src={candidate.photos?.[0]}
+                        alt={candidate.name}
+                        sx={{
+                          width: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
+                          height: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
+                          bgcolor: `${getStatusColor(candidate.status)}20`,
+                          flexShrink: 0,
+                          '& .MuiAvatar-img': {
+                            objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
+                          },
+                        }}
+                      >
+                        <PersonIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 }, color: getStatusColor(candidate.status) }} />
+                      </Avatar>
+                      <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography
+                          sx={{
+                            color: '#fff',
+                            fontWeight: 600,
+                            fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {candidate.name}
+                        </Typography>
+                        {contactInfo.email && (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: 'rgba(255,255,255,0.6)',
+                              fontSize: { xs: '0.7rem', sm: '0.72rem', md: '0.7rem', lg: '0.76rem', xl: '0.85rem' },
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {contactInfo.email}
+                          </Typography>
+                        )}
+                        {contactInfo.phone && (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: 'rgba(255,255,255,0.6)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.4,
+                              fontSize: { xs: '0.7rem', sm: '0.72rem', md: '0.7rem', lg: '0.76rem', xl: '0.85rem' },
+                            }}
+                          >
+                            {contactInfo.phone}
+                            {!/^\+?\d[\d\s\-()]{6,18}$/.test(String(contactInfo.phone).trim()) && (
+                              <Tooltip title="Telefonnummer er ikke i gyldig format — WhatsApp/SMS kan ikke leveres">
+                                <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
+                              </Tooltip>
+                            )}
+                            {!/^\+/.test(String(contactInfo.phone).trim()) && /^\d/.test(String(contactInfo.phone).trim()) && (
+                              <Tooltip title="Mangler landskode (+47, …) — WhatsApp/SMS krever internasjonalt format">
+                                <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
+                              </Tooltip>
+                            )}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Box>
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Stack spacing={0.5}>
-                      {contactInfo.email && (
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                          <EmailIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.email}
-                        </Typography>
-                      )}
-                      {contactInfo.phone && (
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                          <PhoneIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.phone}
-                          {!/^\+?\d[\d\s\-()]{6,18}$/.test(String(contactInfo.phone).trim()) && (
-                            <Tooltip title="Telefonnummer er ikke i gyldig format — WhatsApp/SMS kan ikke leveres til denne kandidaten">
-                              <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24', ml: 0.4 }} />
-                            </Tooltip>
-                          )}
-                          {!/^\+/.test(String(contactInfo.phone).trim()) && /^\d/.test(String(contactInfo.phone).trim()) && (
-                            <Tooltip title="Mangler landskode (+47, +1, …) — WhatsApp/SMS krever internasjonalt format">
-                              <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24', ml: 0.4 }} />
-                            </Tooltip>
-                          )}
-                        </Typography>
-                      )}
+                      <Chip
+                        label={getStatusLabel(candidate.status)}
+                        size="small"
+                        sx={{ bgcolor: `${getStatusColor(candidate.status)}20`, color: getStatusColor(candidate.status), fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }}
+                      />
                       {(() => {
                         const prefs = (candidate.reminderPrefs ?? candidate.reminder_prefs) as
                           | {
@@ -3417,53 +3457,64 @@ function CandidateManagementPanelInner({
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {assignedRoles.slice(0, 2).map(roleId => (
-                        <Chip key={roleId} label={getRoleName(roleId)} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
-                      ))}
+                      {assignedRoles.slice(0, 2).map(roleId => {
+                        const role = safeRoles.find(r => r.id === roleId);
+                        const meta = getRoleTypeMeta((role?.roleType ?? role?.role_type) as string | undefined);
+                        return (
+                          <Chip
+                            key={roleId}
+                            label={getRoleName(roleId)}
+                            size="small"
+                            sx={{
+                              bgcolor: `${meta.color}22`,
+                              color: meta.color,
+                              border: `1px solid ${meta.color}55`,
+                              fontWeight: 600,
+                              fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' },
+                              height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 },
+                            }}
+                            title={meta.canonical !== 'unknown' && meta.label ? meta.label : undefined}
+                          />
+                        );
+                      })}
                       {assignedRoles.length > 2 && (
                         <Chip label={`+${assignedRoles.length - 2}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                       )}
                     </Box>
                   </TableCell>
+                  <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'rgba(255,255,255,0.72)',
+                        fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {formatRelativeNb(candidate.updatedAt ?? candidate.updated_at) || '—'}
+                    </Typography>
+                  </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <Tooltip title="Lagre til pool">
-                        <IconButton
-                          onClick={() => handleSaveToPool(candidate)}
-                          aria-label={`Lagre ${candidate.name} til pool`}
-                          sx={{ color: '#8b5cf6', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <UploadIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Dupliser">
-                        <IconButton
-                          onClick={() => handleDuplicate(candidate)}
-                          aria-label={`Dupliser ${candidate.name}`}
-                          sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <DuplicateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Rediger">
-                        <IconButton
-                          onClick={() => onEditCandidate(candidate)}
-                          aria-label={`Rediger ${candidate.name}`}
-                          sx={{ color: '#b86bff', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Slett">
-                        <IconButton
-                          onClick={() => handleDeleteWithUndo(candidate)}
-                          aria-label={`Slett ${candidate.name}`}
-                          sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
+                    <Tooltip title="Handlinger">
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRowActionMenuAnchor(e.currentTarget);
+                          setRowActionMenuCandidate(candidate);
+                        }}
+                        aria-label={`Handlinger for ${candidate.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={rowActionMenuCandidate?.id === candidate.id ? 'true' : 'false'}
+                        sx={{
+                          color: 'rgba(255,255,255,0.78)',
+                          minWidth: TOUCH_TARGET_SIZE,
+                          minHeight: TOUCH_TARGET_SIZE,
+                          '&:hover': { color: '#b86bff', bgcolor: 'rgba(184,107,255,0.1)' },
+                        }}
+                      >
+                        <MoreVertIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
                 );
@@ -4505,6 +4556,83 @@ function CandidateManagementPanelInner({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Per-rad ⋮-action-menu — konsoliderer 4 IconButtons til én anchorPos-meny */}
+      <Menu
+        anchorEl={rowActionMenuAnchor}
+        open={Boolean(rowActionMenuAnchor && rowActionMenuCandidate)}
+        onClose={() => {
+          setRowActionMenuAnchor(null);
+          setRowActionMenuCandidate(null);
+        }}
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: 'rgba(15,23,42,0.98)',
+              border: '1px solid rgba(168,85,247,0.32)',
+              backdropFilter: 'blur(8px)',
+              color: '#fff',
+              minWidth: 200,
+            },
+          },
+        }}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) onEditCandidate(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(184,107,255,0.14)' } }}
+        >
+          <ListItemIcon sx={{ color: '#b86bff', minWidth: 36 }}>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Rediger</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) void handleSaveToPool(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(139,92,246,0.14)' } }}
+        >
+          <ListItemIcon sx={{ color: '#8b5cf6', minWidth: 36 }}>
+            <UploadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Lagre til pool</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) void handleDuplicate(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}
+        >
+          <ListItemIcon sx={{ color: 'rgba(255,255,255,0.78)', minWidth: 36 }}>
+            <DuplicateIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Dupliser</ListItemText>
+        </MenuItem>
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) void handleDeleteWithUndo(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fca5a5', '&:hover': { bgcolor: 'rgba(239,68,68,0.14)' } }}
+        >
+          <ListItemIcon sx={{ color: '#ef4444', minWidth: 36 }}>
+            <DeleteIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Slett</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

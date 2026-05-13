@@ -597,10 +597,56 @@ export interface AvailabilityCell {
   [key: string]: unknown;
 }
 
+/**
+ * Audition-entitet — container som grupperer schedule-rader til én
+ * logisk audition. Backend-store i `auditions`-tabell (migrasjon 140).
+ *
+ * Tidligere ble dette utledet synthetisk i frontend ved å gruppere
+ * schedules på (date+time+roleId+locationId). Den syntetiske
+ * grupperingen forblir aktivt som fallback for eldre data hvor
+ * audition_id er null.
+ */
+export interface Audition {
+  id: string;
+  projectId?: string;
+  project_id?: string;
+  title: string;
+  roleId?: string;
+  role_id?: string;
+  roleName?: string;
+  role_name?: string;
+  locationId?: string;
+  location_id?: string;
+  locationName?: string;
+  location_name?: string;
+  date: string;
+  startTime?: string;
+  start_time?: string;
+  endTime?: string;
+  end_time?: string;
+  status?: 'scheduled' | 'confirmed' | 'awaiting_callback' | 'completed' | 'cancelled';
+  /** Team-medlemmer for AvatarGroup-visning (casting director, assistants). */
+  teamMembers?: Array<{ crewId: string; role: string }>;
+  team_members?: Array<{ crewId: string; role: string }>;
+  notes?: string;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  createdBy?: string;
+  created_by?: string;
+  updatedBy?: string;
+  updated_by?: string;
+  [key: string]: unknown;
+}
+
 export interface Schedule {
   id: string;
   projectId?: string;
   project_id?: string;
+  /** Optional FK til auditions-tabellen. NULL for eldre rader uten grupperting. */
+  auditionId?: string;
+  audition_id?: string;
   title?: string;
   candidateId?: string;
   candidate_id?: string;

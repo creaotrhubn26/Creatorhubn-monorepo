@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useId, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useId, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -11,6 +11,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Autocomplete,
+  CircularProgress,
   Select,
   MenuItem,
   FormControl,
@@ -83,6 +85,14 @@ import {
   AddPhotoAlternate as AddPhotoIcon,
   UploadFile as UploadFileIcon,
   HelpOutline as HelpIcon,
+  CompareArrows as CompareArrowsIcon,
+  LocalParking as ParkingIcon,
+  Wifi as WifiIcon,
+  Power as PowerIcon,
+  Wc as WcIcon,
+  Restaurant as CateringIcon,
+  Checkroom as DressingRoomsIcon,
+  MoreHoriz as MoreFacilityIcon,
 } from '@mui/icons-material';
 import {
   MapContainer,
@@ -109,13 +119,13 @@ import { LocationManagementGuide } from './production/LocationManagementGuide';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import locationPng from './icons/Keep/roleroom_location.png';
+import { VerifyLocationDialog } from './VerifyLocationDialog';
+import { LocationMapThumbnail } from './LocationMapThumbnail';
 import { getRoleLabel, isTechnicalCrewMember as isTechnicalCrewMemberFromShared } from './shared/technicalCrew';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { useAuth } from '../../../hooks/useAuth';
 import 'leaflet/dist/leaflet.css';
-
-// WCAG 2.2 - 2.5.5 Target Size (minimum 44x44px)
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // Focus visible styles for WCAG 2.4.7
 const focusVisibleStyles = {
@@ -645,6 +655,74 @@ export function LocationManagementPanel({
   // Search, filter, sort state
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<Location['type'] | 'all'>('all');
+  const [filterFacility, setFilterFacility] = useState<string>('all');
+  const [filterCoordinates, setFilterCoordinates] = useState<'all' | 'with' | 'without'>('all');
+  const [filterRegion, setFilterRegion] = useState<string>('all');
+  // Verifiserings-dialog (Kartverket-diff). Trigges fra ⋯-meny eller knapp per kort.
+  const [verifyingLocation, setVerifyingLocation] = useState<Location | null>(null);
+  // Adresse-autocomplete-state (Kartverket Geonorge-API).
+  // Lar brukeren søke på navn/adresse-tekst og auto-fyller koordinater i
+  // bakgrunnen — koordinater eksponeres aldri direkte for brukeren.
+  const [addressSuggestions, setAddressSuggestions] = useState<
+    Array<{ address: string; municipality: string; county: string; postalCode: string; coordinates: { lat: number; lng: number } }>
+  >([]);
+  const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
+  const [addressQuery, setAddressQuery] = useState('');
+
+  // Nylig brukte adresser — lokal cache av de siste 20 valgte adressene
+  // for å gi raskere flyt for innholdsprodusenter som lager flere prosjekter
+  // på samme lokasjoner. Versjonert localStorage-key for kompatibilitet ved
+  // fremtidige shape-endringer.
+  type RecentAddress = {
+    address: string;
+    municipality: string;
+    county: string;
+    postalCode: string;
+    coordinates: { lat: number; lng: number };
+    usedAt: number;
+  };
+  const RECENT_ADDRESSES_KEY = `roleroom_recent_addresses_v1_${projectId}`;
+  const RECENT_ADDRESSES_MAX = 20;
+  const [recentAddresses, setRecentAddresses] = useState<RecentAddress[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_ADDRESSES_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const cleaned = parsed
+        .filter((e: unknown): e is RecentAddress =>
+          typeof e === 'object' && e !== null
+          && typeof (e as RecentAddress).address === 'string'
+          && (e as RecentAddress).address.length > 0,
+        )
+        .slice(0, RECENT_ADDRESSES_MAX);
+      setRecentAddresses(cleaned);
+    } catch {
+      /* graceful fallback ved corrupt JSON / localStorage utilgjengelig */
+    }
+  }, [RECENT_ADDRESSES_KEY]);
+
+  const rememberRecentAddress = useCallback(
+    (entry: Omit<RecentAddress, 'usedAt'>) => {
+      if (!entry.address?.trim()) return;
+      setRecentAddresses((prev) => {
+        const deduped = prev.filter((r) => r.address !== entry.address);
+        const next: RecentAddress[] = [{ ...entry, usedAt: Date.now() }, ...deduped].slice(
+          0,
+          RECENT_ADDRESSES_MAX,
+        );
+        try {
+          localStorage.setItem(RECENT_ADDRESSES_KEY, JSON.stringify(next));
+        } catch {
+          /* quota exceeded / private mode — ikke kritisk */
+        }
+        return next;
+      });
+    },
+    [RECENT_ADDRESSES_KEY],
+  );
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -728,6 +806,41 @@ export function LocationManagementPanel({
   useEffect(() => {
     setProPageSize(24);
   }, [searchQuery, filterType, sortField, sortDirection, proPreset, operationalFilter]);
+
+  // Adresse-autocomplete: debounced 300ms-fetch til Kartverket.
+  // Cancel-flagg via AbortController hindrer race-betingelser når brukeren
+  // skriver raskt. Cache (60s) ligger i ExternalDataService.
+  useEffect(() => {
+    const trimmed = addressQuery.trim();
+    if (trimmed.length < 2) {
+      setAddressSuggestions([]);
+      setAddressSuggestionsLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setAddressSuggestionsLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        const results = await externalDataService.searchKartverketAddressSuggestions(trimmed, {
+          limit: 10,
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) {
+          setAddressSuggestions(results);
+          setAddressSuggestionsLoading(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setAddressSuggestions([]);
+          setAddressSuggestionsLoading(false);
+        }
+      }
+    }, 300);
+    return () => {
+      clearTimeout(handle);
+      controller.abort();
+    };
+  }, [addressQuery]);
 
   // Selection state for bulk operations
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -898,6 +1011,46 @@ export function LocationManagementPanel({
     return labels[facility] || facility;
   };
 
+  /**
+   * Returnerer regional label for filtrering. Prioritert kilde:
+   *   1. loc.county (fylke) — fra autocomplete-data via Kartverket
+   *   2. loc.municipality (kommune) — fra autocomplete-data via Kartverket
+   *   3. Heuristisk parsing av poststed fra address-streng (siste komma-del)
+   *   4. tom streng (vises som "Ukjent")
+   *
+   * Brukes både for å bygge dropdown-listen og for å filtrere.
+   */
+  const getLocationRegion = useCallback((loc: Location): string => {
+    const county = (loc.county as string | undefined)?.trim();
+    if (county) return county;
+    const municipality = (loc.municipality as string | undefined)?.trim();
+    if (municipality) return municipality;
+    if (loc.address) {
+      // "Karl Johans gate 5, 0154 Oslo" → "Oslo"
+      const parts = loc.address.split(',').map((p) => p.trim()).filter(Boolean);
+      const last = parts[parts.length - 1] || '';
+      // Fjern postnummer (4-sifret tall) hvis det leder
+      const noPostal = last.replace(/^\d{4}\s+/, '').trim();
+      if (noPostal) return noPostal;
+    }
+    return '';
+  }, []);
+
+  // Kompakt ikon per fasilitet — brukt i kort-pill-rad som matcher design.
+  // Returnerer null for ukjente fasiliteter slik at de filtreres ut av
+  // ikon-raden (de vises fortsatt som tekst-chip i den utvidede listen).
+  const getFacilityIcon = (facility: string): React.ReactNode => {
+    switch (facility) {
+      case 'parking': return <ParkingIcon sx={{ fontSize: 14 }} />;
+      case 'wifi': return <WifiIcon sx={{ fontSize: 14 }} />;
+      case 'power': return <PowerIcon sx={{ fontSize: 14 }} />;
+      case 'restrooms': return <WcIcon sx={{ fontSize: 14 }} />;
+      case 'catering': return <CateringIcon sx={{ fontSize: 14 }} />;
+      case 'dressing_rooms': return <DressingRoomsIcon sx={{ fontSize: 14 }} />;
+      default: return null;
+    }
+  };
+
   // Filter and sort locations
   const filteredAndSortedLocations = useMemo(() => {
     let result = [...locations];
@@ -917,6 +1070,27 @@ export function LocationManagementPanel({
     // Type filter
     if (filterType !== 'all') {
       result = result.filter((loc) => loc.type === filterType);
+    }
+
+    // Facility filter: behold kun lokasjoner med valgt fasilitet i listen
+    if (filterFacility !== 'all') {
+      result = result.filter((loc) =>
+        Array.isArray(loc.facilities) && loc.facilities.includes(filterFacility),
+      );
+    }
+
+    // Koordinat-filter: 'with' = må ha koordinater, 'without' = må mangle
+    if (filterCoordinates !== 'all') {
+      result = result.filter((loc) => {
+        const hasCoords = Boolean(loc.coordinates?.lat && loc.coordinates?.lng);
+        return filterCoordinates === 'with' ? hasCoords : !hasCoords;
+      });
+    }
+
+    // Region-filter (fylke/kommune/poststed): bruker samme extractor som
+    // dropdown-listen, så filter-match alltid stemmer
+    if (filterRegion !== 'all') {
+      result = result.filter((loc) => getLocationRegion(loc) === filterRegion);
     }
 
     // Sort - favorites first
@@ -944,7 +1118,18 @@ export function LocationManagementPanel({
     });
 
     return result;
-  }, [locations, searchQuery, filterType, sortField, sortDirection, favorites]);
+  }, [locations, searchQuery, filterType, filterFacility, filterCoordinates, filterRegion, sortField, sortDirection, favorites, getLocationRegion]);
+
+  // Bygg unik liste av regioner som finnes i nåværende locations (sortert
+  // alfabetisk). Filtreres så bare regioner med ≥ 1 location vises.
+  const availableRegions = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    locations.forEach((loc) => {
+      const region = getLocationRegion(loc);
+      if (region) set.add(region);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, 'nb'));
+  }, [locations, getLocationRegion]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -3371,23 +3556,99 @@ export function LocationManagementPanel({
             </Select>
           </FormControl>
 
-          {(filterType !== 'all' || searchQuery) && (
+          {/* Fasilitets-filter — bygger valgmuligheter fra commonFacilities */}
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Fasiliteter</InputLabel>
+            <Select
+              value={filterFacility}
+              onChange={(e) => setFilterFacility(String(e.target.value))}
+              label="Fasiliteter"
+              sx={{
+                color: '#fff',
+                minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+              }}
+            >
+              <MenuItem value="all">Alle fasiliteter</MenuItem>
+              {commonFacilities.map((fac) => (
+                <MenuItem key={fac} value={fac}>{getFacilityLabel(fac)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Kart-status-filter — utfalls-fokusert språk istedenfor "har koordinater".
+              Normale brukere tenker "klar til å vises på kart", ikke i lat/lng. */}
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Kart-status</InputLabel>
+            <Select
+              value={filterCoordinates}
+              onChange={(e) => setFilterCoordinates(e.target.value as 'all' | 'with' | 'without')}
+              label="Kart-status"
+              sx={{
+                color: '#fff',
+                minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+              }}
+            >
+              <MenuItem value="all">Alle</MenuItem>
+              <MenuItem value="with">Kart-verifisert</MenuItem>
+              <MenuItem value="without">Trenger adresse-verifisering</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Region/fylke-filter — bygger valg fra eksisterende locations.
+              Bruker getLocationRegion-helper (fylke → kommune → poststed-fallback) */}
+          {availableRegions.length > 0 && (
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Område</InputLabel>
+              <Select
+                value={filterRegion}
+                onChange={(e) => setFilterRegion(String(e.target.value))}
+                label="Område"
+                sx={{
+                  color: '#fff',
+                  minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                  height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                }}
+              >
+                <MenuItem value="all">Alle områder</MenuItem>
+                {availableRegions.map((region) => (
+                  <MenuItem key={region} value={region}>{region}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {(filterType !== 'all' || filterFacility !== 'all' || filterCoordinates !== 'all' || filterRegion !== 'all' || searchQuery || sortField !== 'name' || sortDirection !== 'asc') && (
             <Button
               variant="text"
               onClick={() => {
                 setFilterType('all');
+                setFilterFacility('all');
+                setFilterCoordinates('all');
+                setFilterRegion('all');
                 setSearchQuery('');
+                setSortField('name');
+                setSortDirection('asc');
               }}
-              sx={{ 
-                color: '#9333ea', 
+              aria-label="Tøm alle aktive filtre og sortering"
+              sx={{
+                color: '#9333ea',
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                ...focusVisibleStyles 
+                fontWeight: 600,
+                ...focusVisibleStyles,
               }}
             >
-              Nullstill
+              Tøm filtre
             </Button>
           )}
         </Box>
@@ -6187,6 +6448,52 @@ export function LocationManagementPanel({
                               border: `1px solid ${typeColor}60`,
                             }}
                           />
+                          {Array.isArray(location.facilities) && location.facilities.length > 0 && (
+                            <Box sx={{ display: 'inline-flex', gap: 0.5, alignItems: 'center' }}>
+                              {location.facilities
+                                .map((fac) => ({ key: fac, icon: getFacilityIcon(fac), label: getFacilityLabel(fac) }))
+                                .filter((entry) => entry.icon !== null)
+                                .slice(0, 4)
+                                .map((entry) => (
+                                  <Tooltip key={entry.key} title={entry.label} arrow>
+                                    <Box
+                                      sx={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: 26,
+                                        height: 22,
+                                        borderRadius: 1,
+                                        bgcolor: 'rgba(147,51,234,0.18)',
+                                        color: '#c4b5fd',
+                                        border: '1px solid rgba(147,51,234,0.32)',
+                                      }}
+                                    >
+                                      {entry.icon}
+                                    </Box>
+                                  </Tooltip>
+                                ))}
+                              {location.facilities.filter((fac) => getFacilityIcon(fac) !== null).length > 4 && (
+                                <Tooltip title={`+${location.facilities.filter((fac) => getFacilityIcon(fac) !== null).length - 4} fasiliteter til`} arrow>
+                                  <Box
+                                    sx={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: 26,
+                                      height: 22,
+                                      borderRadius: 1,
+                                      bgcolor: 'rgba(255,255,255,0.08)',
+                                      color: 'rgba(255,255,255,0.65)',
+                                      border: '1px solid rgba(255,255,255,0.15)',
+                                    }}
+                                  >
+                                    <MoreFacilityIcon sx={{ fontSize: 14 }} />
+                                  </Box>
+                                </Tooltip>
+                              )}
+                            </Box>
+                          )}
                           {location.capacity && (
                             <Chip
                               icon={<GroupIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 }, color: 'rgba(255,255,255,0.7) !important' }} />}
@@ -6203,23 +6510,50 @@ export function LocationManagementPanel({
                         </Box>
                       </Box>
                     </Box>
-                    <IconButton
-                      onClick={() => toggleFavorite(location.id)}
-                      aria-label={favorites.has(location.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
-                      sx={{
-                        color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
-                        bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.12)' : 'transparent',
-                        minWidth: TOUCH_TARGET_SIZE,
-                        minHeight: TOUCH_TARGET_SIZE,
-                        borderRadius: 1.75,
-                        '&:hover': {
-                          bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.22)' : 'rgba(255,255,255,0.08)',
-                        },
-                        ...focusVisibleStyles,
-                      }}
-                    >
-                      {favorites.has(location.id) ? <StarIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />}
-                    </IconButton>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      {location.address?.trim() && (
+                        <Tooltip title="Verifiser adresse mot Kartverket" arrow>
+                          <IconButton
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVerifyingLocation(location);
+                            }}
+                            aria-label={`Verifiser ${location.name} mot Kartverket`}
+                            sx={{
+                              color: 'rgba(168,85,247,0.7)',
+                              bgcolor: 'transparent',
+                              minWidth: TOUCH_TARGET_SIZE,
+                              minHeight: TOUCH_TARGET_SIZE,
+                              borderRadius: 1.75,
+                              '&:hover': {
+                                bgcolor: 'rgba(168,85,247,0.12)',
+                                color: '#c4b5fd',
+                              },
+                              ...focusVisibleStyles,
+                            }}
+                          >
+                            <CompareArrowsIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 } }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <IconButton
+                        onClick={() => toggleFavorite(location.id)}
+                        aria-label={favorites.has(location.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
+                        sx={{
+                          color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
+                          bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.12)' : 'transparent',
+                          minWidth: TOUCH_TARGET_SIZE,
+                          minHeight: TOUCH_TARGET_SIZE,
+                          borderRadius: 1.75,
+                          '&:hover': {
+                            bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.22)' : 'rgba(255,255,255,0.08)',
+                          },
+                          ...focusVisibleStyles,
+                        }}
+                      >
+                        {favorites.has(location.id) ? <StarIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />}
+                      </IconButton>
+                    </Stack>
                   </Box>
                 </Box>
 
@@ -6249,19 +6583,30 @@ export function LocationManagementPanel({
                         border: '1px solid rgba(168,85,247,0.25)',
                       }}
                     >
-                      <Box
-                        sx={{
-                          width: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
-                          height: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
-                          borderRadius: 1.5,
-                          bgcolor: 'rgba(168,85,247,0.25)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#c4b5fd' }} />
-                      </Box>
+                      {/* Map-thumbnail erstatter den abstrakte LocationIcon-boksen
+                          når koordinater finnes — bruker ser HVOR, ikke bare et symbol */}
+                      {location.coordinates?.lat && location.coordinates?.lng ? (
+                        <LocationMapThumbnail
+                          coordinates={location.coordinates}
+                          width={58}
+                          height={58}
+                          label={`Kartvisning av ${location.name}`}
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            width: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
+                            height: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
+                            borderRadius: 1.5,
+                            bgcolor: 'rgba(168,85,247,0.25)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#c4b5fd' }} />
+                        </Box>
+                      )}
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography
                           sx={{
@@ -6958,32 +7303,148 @@ export function LocationManagementPanel({
             />
 
             <Box>
-              <TextField
-                label="Adresse"
+              <Autocomplete
+                freeSolo
                 fullWidth
+                options={(() => {
+                  // Når brukeren ikke har skrevet noe: vis recent addresses
+                  // (raskere flyt for innholdsprodusenter med flere prosjekter
+                  // på samme lokasjoner). Når brukeren skriver: vis Kartverket-
+                  // forslag som vanlig. Krever at recent-objektene har samme
+                  // shape som addressSuggestions for renderOption-konsistens.
+                  if (addressQuery.trim().length < 2 && recentAddresses.length > 0) {
+                    return recentAddresses.map((r) => ({
+                      address: r.address,
+                      municipality: r.municipality,
+                      county: r.county,
+                      postalCode: r.postalCode,
+                      coordinates: r.coordinates,
+                      _recent: true as const,
+                    }));
+                  }
+                  return addressSuggestions;
+                })()}
+                loading={addressSuggestionsLoading}
+                filterOptions={(x) => x}
+                getOptionLabel={(option) => typeof option === 'string' ? option : option.address}
+                groupBy={(option) => typeof option !== 'string' && (option as { _recent?: boolean })._recent ? 'Nylig brukt' : 'Forslag fra Kartverket'}
                 value={formData.address || ''}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <AddressIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
-                    </InputAdornment>
-                  ),
+                noOptionsText={
+                  addressQuery.trim().length < 2
+                    ? 'Begynn å skrive minst 2 tegn …'
+                    : addressSuggestionsLoading
+                      ? 'Henter forslag fra Kartverket …'
+                      : 'Finner ikke adressen i Kartverket — fortsett med fri tekst'
+                }
+                loadingText="Henter forslag fra Kartverket …"
+                onInputChange={(_event, value) => {
+                  // Når brukeren editerer adresse-feltet manuelt: bli kvitt
+                  // tidligere koordinater siden de ikke lenger nødvendigvis
+                  // peker på riktig sted. Trygt — coordinates settes om
+                  // igjen ved nytt valg fra dropdown.
+                  setFormData((prev) => {
+                    const sameAddress = prev.address === value;
+                    if (sameAddress) {
+                      return { ...prev, address: value };
+                    }
+                    const { coordinates: _drop, ...rest } = prev;
+                    void _drop;
+                    return { ...rest, address: value };
+                  });
+                  setAddressQuery(value);
                 }}
-                sx={{
-                  mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
-                  '& .MuiOutlinedInput-root': {
-                    color: '#fff',
-                    minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '& input': {
-                      py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
+                onChange={(_event, value) => {
+                  // Brukeren valgte et autocomplete-forslag — auto-fyll
+                  // koordinater + administrative data SILENT (uten å vise lat/lng).
+                  // Smart auto-fill av navn: hvis Navn-feltet er tomt, prefill
+                  // med adressetekst slik at brukeren ikke trenger å skrive den
+                  // to ganger. Bruker kan overstyre om de vil ha et annet navn
+                  // ("TV2-studio" istedenfor "Karl Johans gate 5").
+                  if (value && typeof value !== 'string') {
+                    setFormData((prev) => ({
+                      ...prev,
+                      address: value.address,
+                      coordinates: value.coordinates,
+                      // Persist administrative felt — brukes til regional
+                      // filtrering (Vestlandet/Østlandet/etc.) uten å eksponere
+                      // dem som egne input-felt for brukeren.
+                      municipality: value.municipality || undefined,
+                      county: value.county || undefined,
+                      postalCode: value.postalCode || undefined,
+                      name: prev.name?.trim() ? prev.name : value.address,
+                    }));
+                    // Lagre i recent-list for fremtidige raskere oppslag
+                    rememberRecentAddress({
+                      address: value.address,
+                      municipality: value.municipality || '',
+                      county: value.county || '',
+                      postalCode: value.postalCode || '',
+                      coordinates: value.coordinates,
+                    });
+                  } else if (typeof value === 'string') {
+                    setFormData((prev) => ({ ...prev, address: value }));
+                  }
+                }}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} key={`${option.address}-${option.postalCode}`}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                      <Typography sx={{ color: '#fff', fontSize: '0.9rem', fontWeight: 500 }}>
+                        {option.address}
+                      </Typography>
+                      {option.municipality && (
+                        <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem' }}>
+                          {option.postalCode} {option.municipality}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Adresse"
+                    placeholder="Begynn å skrive adresse — vi henter forslag fra Kartverket"
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AddressIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <>
+                          {addressSuggestionsLoading && (
+                            <CircularProgress size={16} sx={{ color: '#a855f7', mr: 1 }} />
+                          )}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                    sx={{
+                      mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
+                      '& .MuiOutlinedInput-root': {
+                        color: '#fff',
+                        minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                        fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                        '& input': {
+                          py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
+                        },
+                      },
+                      '& .MuiInputLabel-root': {
+                        color: 'rgba(255,255,255,0.87)',
+                        fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                      },
+                    }}
+                  />
+                )}
+                componentsProps={{
+                  paper: {
+                    sx: {
+                      bgcolor: 'rgba(15,23,42,0.98)',
+                      border: '1px solid rgba(168,85,247,0.3)',
+                      backdropFilter: 'blur(8px)',
                     },
-                  },
-                  '& .MuiInputLabel-root': { 
-                    color: 'rgba(255,255,255,0.87)',
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   },
                 }}
               />
@@ -7005,9 +7466,32 @@ export function LocationManagementPanel({
                 {validatingAddress ? 'Validerer...' : 'Valider adresse'}
               </Button>
               {formData.coordinates && (
-                <Typography variant="caption" sx={{ color: '#a855f7', display: 'block', mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                  Koordinater: {formData.coordinates.lat.toFixed(6)}, {formData.coordinates.lng.toFixed(6)}
-                </Typography>
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 },
+                    px: 1,
+                    py: 0.4,
+                    borderRadius: 999,
+                    bgcolor: 'rgba(16,185,129,0.14)',
+                    border: '1px solid rgba(16,185,129,0.36)',
+                    color: '#6ee7b7',
+                  }}
+                >
+                  <CheckIcon sx={{ fontSize: 14 }} />
+                  <Typography
+                    component="span"
+                    sx={{
+                      fontSize: { xs: '0.7rem', sm: '0.74rem', md: '0.72rem', lg: '0.78rem', xl: '0.85rem' },
+                      fontWeight: 600,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    Kart-verifisert
+                  </Typography>
+                </Box>
               )}
             </Box>
 
@@ -7285,6 +7769,30 @@ export function LocationManagementPanel({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <VerifyLocationDialog
+        open={Boolean(verifyingLocation)}
+        location={verifyingLocation}
+        onClose={() => setVerifyingLocation(null)}
+        onApply={async (locationId, updates) => {
+          // Robust update: oppdater både server og lokal state. Hvis server-call
+          // feiler, vises eksisterende showError-toast; lokal state oppdateres
+          // ikke før serveren bekrefter.
+          const existing = locations.find((l) => l.id === locationId);
+          if (!existing) return;
+          const merged: Location = { ...existing, ...updates };
+          try {
+            await castingService.saveLocation(projectId, merged);
+            setLocations((prev) => prev.map((l) => (l.id === locationId ? merged : l)));
+            showSuccess('Lokasjonen oppdatert med Kartverket-data', 3000);
+          } catch (err) {
+            showError(
+              err instanceof Error ? err.message : 'Kunne ikke lagre Kartverket-oppdateringer',
+              4000,
+            );
+          }
+        }}
+      />
     </Box>
   );
 }

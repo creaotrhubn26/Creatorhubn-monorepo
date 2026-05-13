@@ -49,6 +49,7 @@ import {
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { SceneBreakdown } from '../models/casting';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 interface ContinuityEntry {
   id: string;
@@ -225,7 +226,18 @@ export const ContinuityLogger: FC<ContinuityLoggerProps> = ({
   }, {} as Record<string, ContinuityEntry[]>);
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        // WCAG 2.2 - 2.5.5: 44x44 min touch target for alle IconButtons
+        '& .MuiIconButton-root': {
+          minWidth: TOUCH_TARGET_SIZE,
+          minHeight: TOUCH_TARGET_SIZE,
+        },
+      }}
+    >
       {/* Header */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">

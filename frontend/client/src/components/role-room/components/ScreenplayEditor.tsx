@@ -47,6 +47,7 @@ import {
 import settingsService from '../services/settingsService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import type { Candidate, Role } from '../models/casting';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // 7-Tier Responsive Hook
 type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
@@ -1493,12 +1494,17 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   }, [isFullscreen]);
 
   return (
-    <Box 
+    <Box
       ref={containerRef}
-      sx={{ 
-        height: '100%', 
-        display: 'flex', 
+      sx={{
+        height: '100%',
+        display: 'flex',
         flexDirection: 'column',
+        // WCAG 2.2 - 2.5.5 Target Size: 44×44 min for alle IconButtons
+        '& .MuiIconButton-root': {
+          minWidth: TOUCH_TARGET_SIZE,
+          minHeight: TOUCH_TARGET_SIZE,
+        },
         ...(isFullscreen && {
           position: 'fixed',
           top: 0,

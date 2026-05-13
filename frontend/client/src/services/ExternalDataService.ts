@@ -1760,6 +1760,53 @@ class ExternalDataService {
   /**
    * Get address information from Kartverket
    */
+  /**
+   * Adresse-autocomplete via Kartverket/Geonorge. Returnerer opptil N
+   * forslag som matcher brukerens delvise input. Cache 60s per query for
+   * å unngå API-spam ved hurtig tasting.
+   */
+  async searchKartverketAddressSuggestions(
+    query: string,
+    options: { limit?: number; signal?: AbortSignal } = {},
+  ): Promise<Array<KartverketAddress & { adressetekst: string; poststed: string }>> {
+    const { limit = 10, signal } = options;
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return [];
+
+    const cacheKey = `kartverket_search_${trimmed.toLowerCase()}_${limit}`;
+    const cached = this.getCachedData(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const params = new URLSearchParams({ q: trimmed, limit: String(limit) });
+      // apiRequest håndterer base-url + credentials automatisk;
+      // signal-prop sender vi gjennom fetch-options når støttet
+      const payload = await apiRequest(
+        `/api/external-data/kartverket/address-search?${params.toString()}`,
+        signal ? { signal } : undefined,
+      );
+      if (!payload?.success || !Array.isArray(payload.suggestions)) return [];
+      const results = payload.suggestions.map((s: Record<string, unknown>) => ({
+        address: String(s.address ?? ''),
+        adressetekst: String(s.adressetekst ?? ''),
+        poststed: String(s.poststed ?? ''),
+        postalCode: String(s.postalCode ?? ''),
+        municipality: String(s.municipality ?? ''),
+        county: String(s.county ?? ''),
+        coordinates: (s.coordinates as { lat: number; lng: number }) ?? { lat: 0, lng: 0 },
+        propertyId: String(s.propertyId ?? ''),
+        source: 'kartverket' as const,
+      }));
+      this.setCachedData(cacheKey, results);
+      return results;
+    } catch (error) {
+      // AbortError er bevisst kansellering — ikke logg
+      if (error instanceof Error && error.name === 'AbortError') return [];
+      console.warn('Kartverket address search failed:', error);
+      return [];
+    }
+  }
+
   async getKartverketAddress(address: string): Promise<KartverketAddress> {
     const cacheKey = `kartverket_address_${address}`;
     const cached = this.getCachedData(cacheKey);
