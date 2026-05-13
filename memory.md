@@ -115,21 +115,34 @@ Smoke-test: `bash scripts/smoke-production.sh` → forventer 41/41.
 - **CIRCLED/PRINT-split** som separate Quick Actions — S
 - **Camera-storage-minutter** wires til ekte camera-state — S
 
-#### CMS v2 (etter v1 brukt litt)
-- **TipTap rik tekst-editor** (P0 etter brukerens "Webflow-nivå"-krav) — 1-2 uker
-- **Bilde-opplasting + media-library** (S3/Cloudinary) — 2-3 uker
-- **Block-basert composition** (drag-and-drop Hero/FAQ/Comparison-blokker) — 3-4 uker
-- **Versjon-UI med diff-visning** (backend ferdig — kun UI gjenstår) — 1 uke
-- **Schedule-publish UI** (DB-felter publish_at/unpublish_at finnes) — 1 uke
-- **Multi-lang** (no/en per side med hreflang) — 2 uker
+#### CMS v2 — Webflow-paritet (status 2026-05-14)
+
+**FERDIG (commits ac99fb2d, 8ab77c8b, 68bc3104):**
+- ✅ Block-basert composition — 9 typer (Hero, RichText, FAQ, Comparison, CTA, FeatureList, RelatedStudies, UsageExamples, Image) i `frontend/client/src/components/role-room/cms/`
+- ✅ TipTap rik tekst-editor i RichText-blokken med DOMPurify-sanitering
+- ✅ Drag-drop reorder via @dnd-kit/sortable
+- ✅ Versjon-UI med RevisionsDrawer — list + side-by-side preview + revert
+- ✅ Schedule-publish UI + funksjonell read-time-filtering (SQL filtrerer på publish_at/unpublish_at vs NOW())
+- ✅ Felles `useCmsBlocks(slug)`-hook
+- ✅ Full marketing-dekning: StudentSEOPage, CompetitorComparisonPage, CastingLandingPage (`/`, `/talentportal`), RoleRoomEducationPartnershipPage, PressKitPage konsumerer alle blocks fra CMS
+- ✅ AdminRoom CMS-tab-listing utvidet med konkurrent (vs-X + alternatives) + landing (home/talentportal/utdanningsinstitusjon/presse)
+
+**GJENSTÅR:**
+- ⏸ **Media library** (fase 3) — krever Vercel Blob-token (anbefalt) eller S3/Cloudinary
+- ⏸ **Multi-lang** (fase 7) — krever URL-strategi-beslutning (path-prefix `/en/...` vs subdomene vs query-param)
+
+#### Heavy CMS (i18n for hele appen) — FREMTIDIG
+- Hele CastingPlannerPanel.tsx (16K linjer) er hardkodete strenger. For full i18n/CMS-styring av app-UI trenger man:
+- `string_keys`-tabell i backend + `useCmsStrings()`-hook + AdminRoom strings-editor + ekstrahere alle hardkodete strenger til `t('namespace.key')`-kall
+- Estimat: 2-3 uker. Tasks #15-#18 registrert.
 
 #### Andre v2-items
-- **Post/Contact dialog i Presence-tab** (i dag bare Channel-dialog) — S
-- **Auto-import av engagement-tall** (Reddit/HN-API → upvotes) — M, krever env-vars
-- **Press kit-side** `/presse` — S
-- **AggregateRating-schema** placeholder klar for ekte reviews — XS
-- **HowTo-schema** for onboarding-flow — XS
-- **AdminRoom CMS-editor for konkurrent-sider** (CompetitorComparisonPage-content) — S
+- ✅ **Press kit-side** `/presse` (commit ac99fb2d)
+- ✅ **AggregateRating-schema** placeholder klar for ekte reviews (HTML-kommentar i SoftwareApplication-schema)
+- ✅ **HowTo-schema** for onboarding-flow (5 steg på begge domener)
+- ✅ **Post/Contact dialog i Presence-tab** (i AdminRoom)
+- **Auto-import av engagement-tall** (Reddit/HN-API → upvotes) — M, krever env-vars + Reddit-konto-modning
+- **AdminRoom CMS-editor for konkurrent-sider** (CompetitorComparisonPage-content) — ✅ erstattet av block-CMS
 
 ---
 
