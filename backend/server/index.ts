@@ -370,6 +370,7 @@ import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
 import { setupRoleRoomAuditionsRoutes } from "./role-room-auditions-routes";
 import { setupCmsPagesRoutes } from "./cms-pages-routes";
+import { setupCommunityPresenceRoutes } from "./community-presence-routes";
 import { setupCastingPoolsRoutes } from "./casting-pools-routes";
 import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
@@ -37151,6 +37152,17 @@ setupRoleRoomAuditionsRoutes({
 //   /api/cms/pages/:slug med fallback til hardkodet default ved
 //   404 — så ny landingsside aldri viser blank skjerm.
 setupCmsPagesRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+
+// ── Community-presence + outreach (migrasjon 143) ─────────────
+//   AdminRoom-tab for å koordinere ekstern presence (Product Hunt,
+//   Reddit, IndieHackers, BetaList, HN, Discord, blogger). Inkluderer
+//   post-template-endpoint som The Role Room Agent kan kalle for å
+//   generere utkast per kanal-type.
+setupCommunityPresenceRoutes({
   app,
   pool,
   requireAdminSession,

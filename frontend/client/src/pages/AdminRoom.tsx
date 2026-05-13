@@ -83,7 +83,7 @@ import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/Student
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'role-nav';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -2863,6 +2863,319 @@ function CmsChipListEditor({
 }
 
 // ─────────────────────────────────────────────────────────
+// Section: Presence — community-kanaler + posts + outreach
+// ─────────────────────────────────────────────────────────
+
+interface CommunityChannel {
+  id: string;
+  channel_type: string;
+  display_name: string;
+  handle?: string;
+  url?: string;
+  audience_size?: number;
+  notes?: string;
+  status: string;
+  priority: number;
+}
+
+interface CommunityPost {
+  id: string;
+  channel_id: string;
+  post_type: string;
+  title: string;
+  body?: string;
+  status: string;
+  scheduled_for?: string;
+  published_at?: string;
+  published_url?: string;
+  ai_generated: boolean;
+}
+
+interface OutreachContact {
+  id: string;
+  name: string;
+  role?: string;
+  organization?: string;
+  email?: string;
+  priority: number;
+  status: string;
+  last_contacted?: string;
+  notes?: string;
+}
+
+const CHANNEL_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  product_hunt: { label: 'Product Hunt', color: '#ea552c' },
+  reddit: { label: 'Reddit', color: '#ff4500' },
+  indie_hackers: { label: 'IndieHackers', color: '#0e2439' },
+  beta_list: { label: 'BetaList', color: '#3b82f6' },
+  hacker_news: { label: 'Hacker News', color: '#f97316' },
+  discord: { label: 'Discord', color: '#5865f2' },
+  twitter: { label: 'Twitter/X', color: '#1da1f2' },
+  linkedin: { label: 'LinkedIn', color: '#0a66c2' },
+  tiktok: { label: 'TikTok', color: '#000000' },
+  youtube: { label: 'YouTube', color: '#ff0000' },
+  blog: { label: 'Blogg/Presse', color: '#a78bfa' },
+  other: { label: 'Annet', color: '#94a3b8' },
+};
+
+const STATUS_TONES: Record<string, { bg: string; fg: string; label: string }> = {
+  planned: { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1', label: 'Planlagt' },
+  active: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac', label: 'Aktiv' },
+  paused: { bg: 'rgba(249,115,22,0.16)', fg: '#fdba74', label: 'Pause' },
+  won: { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe', label: 'Vunnet' },
+  lost: { bg: 'rgba(239,68,68,0.16)', fg: '#fca5a5', label: 'Tapt' },
+  draft: { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1', label: 'Utkast' },
+  review: { bg: 'rgba(96,165,250,0.16)', fg: '#bfdbfe', label: 'Til review' },
+  scheduled: { bg: 'rgba(251,191,36,0.16)', fg: '#fcd34d', label: 'Planlagt' },
+  published: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac', label: 'Publisert' },
+  responded: { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe', label: 'Respons' },
+  archived: { bg: 'rgba(148,163,184,0.12)', fg: 'rgba(203,213,225,0.65)', label: 'Arkivert' },
+  not_contacted: { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1', label: 'Ikke kontaktet' },
+  reached_out: { bg: 'rgba(96,165,250,0.16)', fg: '#bfdbfe', label: 'Pitched' },
+  meeting_scheduled: { bg: 'rgba(251,191,36,0.16)', fg: '#fcd34d', label: 'Møte avtalt' },
+  covered: { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe', label: 'Dekket' },
+  no_response: { bg: 'rgba(148,163,184,0.10)', fg: 'rgba(203,213,225,0.65)', label: 'Ingen respons' },
+  not_interested: { bg: 'rgba(239,68,68,0.10)', fg: '#fca5a5', label: 'Ikke interessert' },
+};
+
+function PresenceTab() {
+  const [section, setSection] = useState<'channels' | 'posts' | 'contacts'>('channels');
+
+  return (
+    <Stack spacing={2}>
+      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
+        Koordiner ekstern presence på community-plattformer (Product Hunt, Reddit, HN, IndieHackers, BetaList) og outreach til journalister/bloggere. Bruk The Role Room Agent for å generere post-utkast per kanal-type.
+      </Typography>
+      <Tabs
+        value={section}
+        onChange={(_e, v: 'channels' | 'posts' | 'contacts') => setSection(v)}
+        variant="scrollable"
+        sx={{
+          borderBottom: '1px solid rgba(148,163,184,0.16)',
+          '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: 'rgba(226,232,240,0.78)', minHeight: 38, fontSize: '0.84rem' },
+          '& .Mui-selected': { color: '#f8fafc' },
+          '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
+        }}
+      >
+        <Tab value="channels" label="Kanaler" />
+        <Tab value="posts" label="Posts" />
+        <Tab value="contacts" label="Kontakter / Outreach" />
+      </Tabs>
+      {section === 'channels' && <PresenceChannelsView />}
+      {section === 'posts' && <PresencePostsView />}
+      {section === 'contacts' && <PresenceContactsView />}
+    </Stack>
+  );
+}
+
+function PresenceChannelsView() {
+  const [channels, setChannels] = useState<CommunityChannel[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch('/api/admin/community/channels', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : { channels: [] }))
+      .then((data) => {
+        if (!cancelled) setChannels(Array.isArray(data?.channels) ? data.channels : []);
+      })
+      .catch(() => { if (!cancelled) setChannels([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress /></Stack>;
+
+  return (
+    <Stack spacing={0.8}>
+      {channels.length === 0 ? (
+        <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+          Ingen kanaler ennå. Seed-data er lagt i migrasjon 143 — om denne er tom: backend ikke deployed eller migrasjon ikke kjørt.
+        </Alert>
+      ) : channels.map((c) => {
+        const typeMeta = CHANNEL_TYPE_LABELS[c.channel_type] ?? CHANNEL_TYPE_LABELS.other;
+        const statusMeta = STATUS_TONES[c.status] ?? STATUS_TONES.planned;
+        return (
+          <Stack
+            key={c.id}
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ sm: 'center' }}
+            sx={{
+              p: 1.2, borderRadius: 1.5,
+              border: '1px solid rgba(148,163,184,0.14)',
+              background: 'rgba(2,6,23,0.34)',
+            }}
+          >
+            <Chip
+              label={`P${c.priority}`}
+              size="small"
+              sx={{
+                bgcolor: c.priority === 1 ? 'rgba(239,68,68,0.16)' : c.priority === 2 ? 'rgba(249,115,22,0.16)' : 'rgba(148,163,184,0.16)',
+                color: c.priority === 1 ? '#fca5a5' : c.priority === 2 ? '#fdba74' : '#cbd5e1',
+                fontWeight: 700, height: 22,
+              }}
+            />
+            <Chip
+              label={typeMeta.label}
+              size="small"
+              sx={{ bgcolor: `${typeMeta.color}26`, color: typeMeta.color, fontWeight: 600, height: 22 }}
+            />
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {c.display_name}
+              </Typography>
+              {c.handle ? (
+                <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', fontFamily: 'monospace' }}>
+                  {c.handle}{c.audience_size ? ` · ${(c.audience_size / 1000).toFixed(0)}k` : ''}
+                </Typography>
+              ) : null}
+            </Box>
+            <Chip
+              size="small"
+              label={statusMeta.label}
+              sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }}
+            />
+            {c.url ? (
+              <Button
+                href={c.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="small"
+                endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                sx={{ color: 'rgba(203,213,225,0.85)', textTransform: 'none', fontSize: '0.78rem' }}
+              >
+                Åpne
+              </Button>
+            ) : null}
+          </Stack>
+        );
+      })}
+    </Stack>
+  );
+}
+
+function PresencePostsView() {
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch('/api/admin/community/posts', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : { posts: [] }))
+      .then((data) => {
+        if (!cancelled) setPosts(Array.isArray(data?.posts) ? data.posts : []);
+      })
+      .catch(() => { if (!cancelled) setPosts([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress /></Stack>;
+
+  return posts.length === 0 ? (
+    <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+      Ingen posts ennå. Klikk "Generer utkast via Agent" på en kanal — eller opprett manuelt via API <code>/api/admin/community/posts</code>.
+    </Alert>
+  ) : (
+    <Stack spacing={0.8}>
+      {posts.map((p) => {
+        const statusMeta = STATUS_TONES[p.status] ?? STATUS_TONES.draft;
+        return (
+          <Stack
+            key={p.id}
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ sm: 'center' }}
+            sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.34)' }}
+          >
+            <Chip size="small" label={statusMeta.label} sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }} />
+            {p.ai_generated ? (
+              <Chip size="small" label="AI" sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 700, height: 22 }} />
+            ) : null}
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {p.title}
+              </Typography>
+              <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem' }}>
+                {p.post_type} {p.scheduled_for ? `· planlagt ${new Date(p.scheduled_for).toLocaleDateString('nb-NO')}` : ''}
+              </Typography>
+            </Box>
+            {p.published_url ? (
+              <Button href={p.published_url} target="_blank" rel="noopener noreferrer" size="small" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} sx={{ color: 'rgba(203,213,225,0.85)', textTransform: 'none', fontSize: '0.78rem' }}>
+                Åpne
+              </Button>
+            ) : null}
+          </Stack>
+        );
+      })}
+    </Stack>
+  );
+}
+
+function PresenceContactsView() {
+  const [contacts, setContacts] = useState<OutreachContact[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch('/api/admin/community/contacts', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : { contacts: [] }))
+      .then((data) => {
+        if (!cancelled) setContacts(Array.isArray(data?.contacts) ? data.contacts : []);
+      })
+      .catch(() => { if (!cancelled) setContacts([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress /></Stack>;
+
+  return contacts.length === 0 ? (
+    <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+      Ingen outreach-kontakter ennå. Legg til journalister, community-managers og film-bloggere via API <code>POST /api/admin/community/contacts</code>.
+    </Alert>
+  ) : (
+    <Stack spacing={0.8}>
+      {contacts.map((c) => {
+        const statusMeta = STATUS_TONES[c.status] ?? STATUS_TONES.not_contacted;
+        return (
+          <Stack
+            key={c.id}
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ sm: 'center' }}
+            sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.34)' }}
+          >
+            <Chip
+              label={`P${c.priority}`}
+              size="small"
+              sx={{
+                bgcolor: c.priority === 1 ? 'rgba(239,68,68,0.16)' : 'rgba(148,163,184,0.16)',
+                color: c.priority === 1 ? '#fca5a5' : '#cbd5e1',
+                fontWeight: 700, height: 22,
+              }}
+            />
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem' }}>
+                {c.name}
+              </Typography>
+              <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem' }}>
+                {c.role ?? ''}{c.organization ? ` · ${c.organization}` : ''}{c.email ? ` · ${c.email}` : ''}
+              </Typography>
+            </Box>
+            <Chip size="small" label={statusMeta.label} sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }} />
+          </Stack>
+        );
+      })}
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Page shell
 // ─────────────────────────────────────────────────────────
 
@@ -2889,6 +3202,7 @@ export default function AdminRoom() {
   else if (tab === 'activity') content = <ActivityLogTab />;
   else if (tab === 'analytics') content = <AnalyticsTab />;
   else if (tab === 'cms') content = <CmsTab />;
+  else if (tab === 'presence') content = <PresenceTab />;
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
 
   return (
@@ -2929,6 +3243,7 @@ export default function AdminRoom() {
           <Tab value="activity" label="Aktivitets-logg" />
           <Tab value="analytics" label="Analytics" />
           <Tab value="cms" label="CMS" />
+          <Tab value="presence" label="Presence" />
           <Tab value="role-nav" label="Rolle-navigasjon" />
         </Tabs>
         <Box>{content}</Box>

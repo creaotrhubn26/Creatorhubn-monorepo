@@ -82,11 +82,39 @@ export const suggestNextDecisionSchema = z.object({
   recommended_owner_role: z.string().optional(),
 });
 
+const communityChannelTypeEnum = z.enum([
+  'product_hunt',
+  'reddit',
+  'indie_hackers',
+  'beta_list',
+  'hacker_news',
+  'discord',
+  'twitter',
+  'linkedin',
+  'blog',
+  'other',
+]);
+
+/**
+ * Agent-tool: generer utkast til en community-post per kanal-type.
+ * Agenten kaller dette med kanal + topic + målgruppe, og forventer
+ * en `{title, body}`-mal som den kan fylle ut dynamisk og foreslå
+ * til admin. Backend-endpointet (`/api/admin/community/post-template`)
+ * returnerer base-malen som agent-en bruker.
+ */
+export const generateCommunityPostSchema = z.object({
+  channel_type: communityChannelTypeEnum,
+  topic: z.string().min(1).max(200),
+  audience: z.string().optional(),
+  tone: z.enum(['professional', 'casual', 'enthusiastic', 'understated']).optional(),
+});
+
 export type DraftReviewRequestInput = z.infer<typeof draftReviewRequestSchema>;
 export type ProposeTimelineItemInput = z.infer<typeof proposeTimelineItemSchema>;
 export type SummarizeBriefGapsInput = z.infer<typeof summarizeBriefGapsSchema>;
 export type FlagScopeImpactInput = z.infer<typeof flagScopeImpactSchema>;
 export type SuggestNextDecisionInput = z.infer<typeof suggestNextDecisionSchema>;
+export type GenerateCommunityPostInput = z.infer<typeof generateCommunityPostSchema>;
 
 const TOOL_SCHEMAS = {
   draft_review_request: draftReviewRequestSchema,
@@ -94,6 +122,7 @@ const TOOL_SCHEMAS = {
   summarize_brief_gaps: summarizeBriefGapsSchema,
   flag_scope_impact: flagScopeImpactSchema,
   suggest_next_decision: suggestNextDecisionSchema,
+  generate_community_post: generateCommunityPostSchema,
 } as const;
 
 export type RoleRoomAgentToolName = keyof typeof TOOL_SCHEMAS;
