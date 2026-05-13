@@ -1,9 +1,191 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-12 (sesjon — StoryLogic-splitt 8 commits + skrive-flyt-mikroint. + 7 Role Room UX-fane-audits).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-13 (kvelds-sesjon — Growth/SEO/Agent/Live-Set/DIT infrastruktur).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
 
 ---
+
+## 🚀 MEGA-SESJON: GROWTH/SEO/AGENT/LIVE-SET/DIT INFRASTRUKTUR (2026-05-13 kveld)
+
+**Resultat: 30+ commits pushet til main, alt deployed til prod, 41/41 smoke-tester bestått.**
+
+Commit-range: `efb7f19f` → `1e3437fd` (etter Phase-2-refaktor-merge).
+Smoke-test: `bash scripts/smoke-production.sh` → forventer 41/41.
+
+### ✅ FERDIG — alt live på prod
+
+#### Analytics & observability
+- **GA4-events** (12 instrumenterte): project_created, role_created, candidate_added, audition_created, audition_view_toggled, schedule_confirmed, equipment_added, location_added, location_analyzed, crew_assigned, storyboard_frame_created, tab_changed + 3 SEO-events
+- **roleRoomAnalytics.ts** — typed helper-modul med alle events
+- **Microsoft Clarity** installert i index.html / theroleroom.html / casting.html
+  - Project IDs: `wqg9kj1vxt` (creatorhubn), `wqgcu06tz0` (theroleroom)
+  - clarity.ts wrapper med tag/identify/event/upgrade
+  - Custom tags satt fra SEO-sider (page_type, page_slug, competitor)
+- **AdminRoom Analytics-tab** — 4 platform-kort + live event-log (siste 50)
+
+#### SEO/GEO
+- **14 nye SEO-sider** på theroleroom.com:
+  - 6 vs-X (studiobinder, castingnetworks, moviemagic, yamdu, setkeeper, alternatives)
+  - 8 målgruppe-sider (for-studenter, film-tv-utdanning, casting-director-utdanning, regissor-verktoy, produksjonsledelse-studie, innholdsprodusenter, innholdsproduksjon-studie, dansestudio)
+- **CompetitorComparisonPage.tsx** + **StudentSEOPage.tsx** — config-drevne komponenter
+- **JSON-LD schemas**: FAQPage, SoftwareApplication, Course, BreadcrumbList
+- **GEO-stack**:
+  - `theroleroom-llms.txt` — kanonisk LLM-content (ny standard)
+  - `robots.txt` for 15 AI-crawlere (GPTBot, ClaudeBot, PerplexityBot, etc.)
+  - Vercel-rewrites for `/llms.txt` per domene
+- **Sitemap** utvidet med alle 14 nye URLer
+
+#### CMS (Webflow-style v1)
+- **Backend**: `cms_pages` + `cms_page_revisions` (versjonering + revert)
+- **AdminRoom CMS-tab** med:
+  - Split-pane editor med iframe-live-preview
+  - Desktop/tablet/mobile-responsive switcher
+  - postMessage-bro: editor → preview real-time
+  - Form-felter: H1, intro, audience, CTA, usage-eksempler (repeat), highlighted features (chips), related studies
+  - Draft/Published toggle
+- **StudentSEOPage** henter content fra `/api/cms/pages/:slug` med fallback til hardkodet default
+
+#### Community-presence
+- **Backend**: `community_channels` + `community_posts` + `outreach_contacts` (15 seed-kanaler)
+- **AdminRoom Presence-tab** med 4 sub-tabs: Kanaler / Posts / Kontakter / Reddit Mentions
+- **Channel CRUD-dialog** i UI
+- **Role Room Agent tool**: `generate_community_post` (registrert i agent-definition + schema)
+- **Reddit-integrasjon**:
+  - OAuth (når env-vars satt) + public JSON-API-fallback
+  - Engagement-refresh + mentions-søk
+  - Responsible Builder Policy compliance + 429-handling
+  - AdminRoom Mentions-tab med søk + resultater + status-badge
+
+#### Live Set Mode (matcher Pro-mockup)
+- **LiveSetFooterBar** — 7 status-celler: SET STATUS (klikkbar), VÆR, BATTERIER, LAGRING, TEMPO, TID, CREW KOMMUNIKASJON
+  - Setup-timer + wrap-ETA-projeksjon i TEMPO-cellen
+- **LIVE/EDIT/REVIEW mode-toggle** i header (3-pill med color-coding)
+- **DIT-backup-pips per TAKE-rad** (4 prikker: Original/Primary/Secondary/Offsite)
+- **LiveSetSlateOverlay** — digital klappe med hotkey 'M', animerer striperne ved klikk/space
+- **LiveSetDitPanel** (Drawer) — Jobs/Destinations/Tokens-tabs med:
+  - Real-time job-status (auto-refresh 5s)
+  - Add-destination-dialog
+  - Generér helper-token (vises EN gang)
+  - Destination delete
+
+#### DIT-backup-system (komplett ende-til-ende)
+- **Migrasjon 144** — 4 tabeller (destinations + helper_tokens + jobs + events) + view
+- **Backend**: 2 auth-soner (admin + helper-CLI Bearer-token)
+- **CLI helper** (`@theroleroom/dit-helper` v0.1.0):
+  - Kommandoer: init / test / watch / status
+  - file-watcher (fs.watch) + xxHash64 (xxhash-wasm) + parallel copy
+  - 90-dagers token-rotasjon, SHA-256 hashing før DB-lagring
+- **TakeRow auto-fetch** av per-take backup-status (8s poll)
+- **`tools/dit-helper/README.md`** med komplett brukerguide
+
+#### Build-fixes
+- **Migrasjon 141 → 145 → 146**: ALTER-pattern for å fikse manglende kolonner uten å bryte applied-tracking
+- **fast-json-patch CJS/ESM-interop** (named-export-feilet under esbuild)
+- **package-lock workspace-fri regenerering**: `npm install --workspaces=false --package-lock-only`
+
+#### Dokumentasjon
+- **DEPLOY.md** (i repo-root) — arkitektur + force-deploy + troubleshooting + migrasjon-historikk
+- **livesetmode.md** (lokal, ignored av git) — 531-items roadmap for full Live Set OS
+- **tools/dit-helper/README.md** — DIT-CLI-brukerguide
+
+#### Test-infrastruktur
+- **scripts/smoke-production.sh** — 41 curl-baserte assertions
+- **frontend/e2e/role-room-live-set.spec.ts** — Playwright-spec (klar når Chromium installert)
+- **frontend/e2e/role-room-ga4-events.spec.ts** + **role-room-clarity-smoke.spec.ts** (fra tidligere)
+
+---
+
+### ⚠️ HVA SOM MANGLER
+
+#### Krever brukerhandling
+- **Vercel Git-integrasjon brutt** — auto-deploy fra GitHub trigger ikke. Må fikses i Vercel dashboard → Settings → Git → re-connect repo. Inntil da: `npx vercel --prod --force --yes` etter hver push (krever `vercel link` som er gjort)
+- **Reddit OAuth-app**: brukerens Reddit-konto opprettet 2026-05-13, for ny for app-creation. Reddit krever ≥30 dager + verifisert e-post + 2FA. Forventet klar tidligst 2026-06-13. Inntil da kjører integrasjonen i public-JSON-fallback-modus (fungerer fint)
+- **Render auto-deploy henger av og til** (har skjedd 2-3 ganger denne sessionen). Trigger manuelt: Render UI → service → Manual Deploy
+- **CLI publish til npm**: `cd tools/dit-helper && npm install && npm publish --access public` (krever `@theroleroom`-organisasjon på npm)
+- **CMS-content seeding**: Backend-tabellene `cms_pages` er tomme. AdminRoom CMS-tab lar deg lage content per slug — bruk denne for å overstyre hardkodet default på SEO-sider
+
+#### Live Set Mode v2 (ikke startet)
+- **Multi-cam Video Village** (4 kameraer side-by-side med live-feeds + waveforms) — M (3-4 t)
+- **PROGRAM monitor** stor live-preview med RECORDING-state — M
+- **Camera control panel** (FPS/Shutter/Iris/ISO/WB/Focus/Stabilization) — S (1-2 t)
+- **Camera presets** (Wide / 2-shot / Close osv.) — S
+- **Audio mixer** (Master + 4 cams med VU-meter) — M
+- **Waveform/Vectorscope** live på PROGRAM-feed — M
+- **Scene-assembly node-editor** (EDIT-modus content) — L (~1 dag, sub-agent-spawn ble avbrutt to ganger i denne sessionen — bør prøve igjen i ny session med worktree-isolasjon)
+- **CIRCLED/PRINT-split** som separate Quick Actions — S
+- **Camera-storage-minutter** wires til ekte camera-state — S
+
+#### CMS v2 (etter v1 brukt litt)
+- **TipTap rik tekst-editor** (P0 etter brukerens "Webflow-nivå"-krav) — 1-2 uker
+- **Bilde-opplasting + media-library** (S3/Cloudinary) — 2-3 uker
+- **Block-basert composition** (drag-and-drop Hero/FAQ/Comparison-blokker) — 3-4 uker
+- **Versjon-UI med diff-visning** (backend ferdig — kun UI gjenstår) — 1 uke
+- **Schedule-publish UI** (DB-felter publish_at/unpublish_at finnes) — 1 uke
+- **Multi-lang** (no/en per side med hreflang) — 2 uker
+
+#### Andre v2-items
+- **Post/Contact dialog i Presence-tab** (i dag bare Channel-dialog) — S
+- **Auto-import av engagement-tall** (Reddit/HN-API → upvotes) — M, krever env-vars
+- **Press kit-side** `/presse` — S
+- **AggregateRating-schema** placeholder klar for ekte reviews — XS
+- **HowTo-schema** for onboarding-flow — XS
+- **AdminRoom CMS-editor for konkurrent-sider** (CompetitorComparisonPage-content) — S
+
+---
+
+### 🔑 NØKKEL-PATTERN OG VANER (NYE FOR DETTE PROSJEKTET)
+
+#### Migrasjon-disiplin (NY LÆRDOM)
+- `backend/migrations/14X.sql` er **immutable** etter første deploy
+- Hvis du legger til kolonner/indekser etterpå: LAG NY MIGRASJON med høyere nummer
+- Bruk `ALTER TABLE IF EXISTS ... ADD COLUMN IF NOT EXISTS` så migrasjoner er idempotente
+- `migrate.sh` tracker per **filnavn**, ikke innhold — endringer i applied-filer kjører ikke
+- Historikken denne sesjonen: 141 (cms_pages, første versjon kjørt med færre kolonner) → 145 (legg til publish_at/unpublish_at) → 146 (legg til published + ALLE manglende kolonner som idempotent fail-safe)
+
+#### Vercel-deploy (CRITICAL)
+- Auto-deploy fra GitHub trigger ikke pålitelig — webhook løs
+- Etter push, hvis frontend ikke oppdaterer innen 5 min: `npx vercel --prod --force --yes`
+- `vercel link` er allerede satt opp (i .vercel/project.json — gitignored)
+- Auth: daniel-3399 / creatorhubcom-team
+- Aliases bekrefter ved deploy: creatorhubn.com + theroleroom.com + www.theroleroom.com
+
+#### Render-deploy
+- Auto-deploy fra main fungerer (når det fungerer) — typisk 3-5 min
+- Migrasjoner kjører automatisk i `migrate.sh && node server.js` start-script
+- Hvis build feiler: sjekk Render logs for npm ci, TypeScript-feil, eller migration-errors
+
+#### Backend-routing-pattern (følges av alle nye routes)
+```
+backend/server/<feature>-routes.ts
+  export function setupXxxRoutes({ app, pool, requireAdminSession }) { ... }
+backend/server/index.ts
+  setupXxxRoutes({ app, pool, requireAdminSession });
+```
+Cross-project-leak-validering: alltid sjekk at item tilhører riktig project_id før PATCH/DELETE.
+
+#### CMS-frontend-pattern
+- Komponent henter content fra `/api/cms/pages/:slug`
+- Bruker `mergeOverrides(defaults, response.content)` — tomme felt beholder hardkodet fallback
+- postMessage-lytter for live-preview fra AdminRoom-editor
+
+---
+
+### 📞 TEKNISKE DETALJER (lett å glemme)
+
+- **Reddit User-Agent**: `TheRoleRoom:engagement-monitor:v1.0 (by /u/theroleroom-app)` (overstyres via REDDIT_USER_AGENT env)
+- **DIT-helper-token-format**: `trr_dit_<32-bytes-hex>`, prefiks gjør type tydelig
+- **GA4 Measurement IDs**: `G-6E5MJT8REW` (creatorhub), `G-9T7K5TJVFX` (theroleroom)
+- **GTM IDs**: `GTM-MFWW7X83` (creatorhub), `GTM-TNWTVHSP` (theroleroom)
+- **Clarity Project IDs**: `wqg9kj1vxt` (creatorhub), `wqgcu06tz0` (theroleroom)
+- **Vercel project**: `creatorhub-frontend` (creatorhubcom-team), prj_Xw3uaKEtM64cVUaI6C7SaOt2jDfW
+- **Render service**: `creatorhub-backend-rtbl`, srv-d76ob60ule4c73dv2p60
+- **Backend URL**: https://creatorhub-backend-rtbl.onrender.com
+- **Slate-hotkey**: M (i LiveSetMode — viser digital klappe-overlay)
+- **DIT-drawer-trigger**: Klikk SET STATUS-cellen i LiveSet footer-bar
+
+---
+
+
 
 ## ✅ DESIGN-SYSTEM FOUNDATION KOMPLETT (sesjon 2026-05-13)
 
