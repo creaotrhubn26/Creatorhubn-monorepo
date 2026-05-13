@@ -128,6 +128,7 @@ import {
 } from './icons/CastingIcons';
 import type { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, CrewAssignment } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import ProjectWhatsAppGroupDialog from './ProjectWhatsAppGroupDialog';
@@ -2150,6 +2151,11 @@ export function CrewManagementPanel({
       await castingService.saveCrewAssignment(projectId, newAssignment);
       const code = getMemberDOODCode(crewMemberId, dayId, updated, productionDays) ?? status.toUpperCase();
       showSuccess(`${crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew'} tilordnet dag ${date} (${code})`, 3000);
+      roleRoomAnalytics.crewAssigned({
+        project_id: projectId,
+        crew_id: crewMemberId,
+        role: crewMembers.find(m => m.id === crewMemberId)?.role ?? undefined,
+      });
     } catch {
       showInfo('Tilordning lagret lokalt (sync ved neste tilkobling)');
     }

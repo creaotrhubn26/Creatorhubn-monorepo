@@ -43,6 +43,8 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LanguageIcon from '@mui/icons-material/Language';
 import ShieldIcon from '@mui/icons-material/Shield';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
+import { clarityTag, clarityEvent } from '@/lib/clarity';
 
 export type CompetitorKey = 'studiobinder' | 'castingnetworks' | 'moviemagic' | 'yamdu' | 'setkeeper';
 
@@ -439,7 +441,29 @@ export default function CompetitorComparisonPage({ competitor }: CompetitorCompa
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'auto' });
+      // Lagre referral-slug så login-flow kan attribuere innlogging til SEO-side
+      try {
+        sessionStorage.setItem('roleroom_seo_referral', JSON.stringify({
+          type: competitor === 'alternatives' ? 'alternatives-index' : 'competitor',
+          slug: competitor === 'alternatives' ? 'alternatives' : `vs-${competitor}`,
+          capturedAt: Date.now(),
+        }));
+      } catch {
+        // Ignorer storage-feil (private-mode, etc.)
+      }
     }
+    const pageType = competitor === 'alternatives' ? 'alternatives-index' : 'competitor';
+    const pageSlug = competitor === 'alternatives' ? 'alternatives' : `vs-${competitor}`;
+    roleRoomAnalytics.seoPageViewed({
+      page_type: pageType,
+      page_slug: pageSlug,
+    });
+    clarityTag('page_type', pageType);
+    clarityTag('page_slug', pageSlug);
+    if (competitor !== 'alternatives') {
+      clarityTag('competitor', competitor);
+    }
+    clarityEvent('seo_page_viewed');
   }, [competitor]);
 
   const content = useMemo(() => {

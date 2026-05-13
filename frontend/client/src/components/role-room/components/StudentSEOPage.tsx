@@ -37,6 +37,8 @@ import {
   Typography,
 } from '@mui/material';
 import SchoolIcon from '@mui/icons-material/School';
+import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
+import { clarityTag, clarityEvent } from '@/lib/clarity';
 import MovieFilterIcon from '@mui/icons-material/MovieFilter';
 import GroupsIcon from '@mui/icons-material/Groups';
 import VideoCameraFrontIcon from '@mui/icons-material/VideoCameraFront';
@@ -755,7 +757,25 @@ export default function StudentSEOPage({ pageKey }: StudentSEOPageProps) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'auto' });
+      // Lagre referral-slug så login-flow kan attribuere innlogging til SEO-side
+      try {
+        sessionStorage.setItem('roleroom_seo_referral', JSON.stringify({
+          type: 'student',
+          slug: pageKey,
+          capturedAt: Date.now(),
+        }));
+      } catch {
+        // Ignorer storage-feil
+      }
     }
+    roleRoomAnalytics.seoPageViewed({
+      page_type: 'student',
+      page_slug: pageKey,
+    });
+    // Clarity custom-tags lar oss filtrere session-replays per side-type
+    clarityTag('page_type', 'student-seo');
+    clarityTag('page_slug', pageKey);
+    clarityEvent('seo_page_viewed');
   }, [pageKey]);
 
   const config = useCmsContent(pageKey);

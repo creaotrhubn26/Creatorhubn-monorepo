@@ -115,6 +115,7 @@ import {
 } from './drawing/shapeIntentAssist';
 import type { PencilStroke } from '../hooks/useApplePencil';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
+import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import {
   addStoryboardDrawingDocumentMarker,
   addStoryboardDrawingDocumentBookmark,
@@ -8523,11 +8524,15 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         updatedAt,
       };
       updateFrame(frameId, framePatch);
+      roleRoomAnalytics.storyboardFrameCreated({
+        project_id: storyboardId,
+        frame_id: frameId,
+      });
     }
 
     // Call external save handler
     onSave?.(drawingData, imageData);
-    
+
     setLastSavedImage(imageData);
     setHasUnsavedChanges(false);
   }, [

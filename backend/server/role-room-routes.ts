@@ -16367,25 +16367,29 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   const ROLE_ROOM_NON_LIVE_CREATOR_PATTERN = '^(e2e-test-user|dev-local-user|producer-verification|phase2-producer-)';
 
   const getRoleRoomStatsSummary = async () => {
-    const [kreativeRes, prodRes, rolesRes] = await Promise.all([
+    // Live-projects definert som rader som IKKE matcher test-/demo-mønstre
+    const livePatternArgs = [
+      ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
+      ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
+      ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
+    ];
+    const liveProjectsCTE = `WITH live_projects AS (
+      SELECT id
+      FROM casting_projects
+      WHERE COALESCE(name, '') !~* $1
+        AND COALESCE(id, '') !~* $2
+        AND COALESCE(created_by, '') <> ''
+        AND COALESCE(created_by, '') !~* $3
+    )`;
+
+    const [kreativeRes, prodRes, rolesRes, kandidaterRes, auditionerRes, crewRes, lokasjonerRes] = await Promise.all([
       pool.query(
-        `WITH live_projects AS (
-           SELECT id
-           FROM casting_projects
-           WHERE COALESCE(name, '') !~* $1
-             AND COALESCE(id, '') !~* $2
-             AND COALESCE(created_by, '') <> ''
-             AND COALESCE(created_by, '') !~* $3
-         )
+        `${liveProjectsCTE}
          SELECT COUNT(DISTINCT COALESCE(NULLIF(cur.email, ''), NULLIF(cur.user_id::text, ''))) AS n
          FROM casting_user_roles cur
          INNER JOIN live_projects lp ON lp.id = cur.project_id
          WHERE COALESCE(cur.role, '') <> 'admin'`,
-        [
-          ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
-          ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
-          ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
-        ],
+        livePatternArgs,
       ),
       pool.query(
         `SELECT COUNT(*) AS n
@@ -16394,39 +16398,60 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
            AND COALESCE(id, '') !~* $2
            AND COALESCE(created_by, '') <> ''
            AND COALESCE(created_by, '') !~* $3`,
-        [
-          ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
-          ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
-          ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
-        ],
+        livePatternArgs,
       ),
       pool.query(
-        `WITH live_projects AS (
-           SELECT id
-           FROM casting_projects
-           WHERE COALESCE(name, '') !~* $1
-             AND COALESCE(id, '') !~* $2
-             AND COALESCE(created_by, '') <> ''
-             AND COALESCE(created_by, '') !~* $3
-         )
+        `${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM casting_roles
          INNER JOIN live_projects lp ON lp.id = casting_roles.project_id
          WHERE assigned_candidate_id IS NOT NULL
-            OR LOWER(COALESCE(status, '')) IN ('filled', 'cast', 'booked', 'assigned')`
-        ,
-        [
-          ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
-          ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
-          ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
-        ],
+            OR LOWER(COALESCE(status, '')) IN ('filled', 'cast', 'booked', 'assigned')`,
+        livePatternArgs,
       ),
-    ]);
+      // Kandidater i live-prosjekter
+      pool.query(
+        `${liveProjectsCTE}
+         SELECT COUNT(*) AS n
+         FROM casting_candidates
+         INNER JOIN live_projects lp ON lp.id = casting_candidates.project_id`,
+        livePatternArgs,
+      ),
+      // Auditioner gjennomført (status confirmed/completed på schedules)
+      pool.query(
+        `${liveProjectsCTE}
+         SELECT COUNT(*) AS n
+         FROM schedules
+         INNER JOIN live_projects lp ON lp.id = schedules.project_id
+         WHERE LOWER(COALESCE(schedules.status, '')) IN ('confirmed', 'completed')`,
+        livePatternArgs,
+      ),
+      // Crew-medlemmer
+      pool.query(
+        `${liveProjectsCTE}
+         SELECT COUNT(*) AS n
+         FROM crew
+         INNER JOIN live_projects lp ON lp.id = crew.project_id`,
+        livePatternArgs,
+      ),
+      // Lokasjoner
+      pool.query(
+        `${liveProjectsCTE}
+         SELECT COUNT(*) AS n
+         FROM locations
+         INNER JOIN live_projects lp ON lp.id = locations.project_id`,
+        livePatternArgs,
+      ),
+    ].map((p) => p.catch(() => ({ rows: [{ n: '0' }] }))));
 
     return {
       kreative: parseInt(kreativeRes.rows[0]?.n ?? '0', 10),
       produksjoner: parseInt(prodRes.rows[0]?.n ?? '0', 10),
       rollerBesatt: parseInt(rolesRes.rows[0]?.n ?? '0', 10),
+      kandidater: parseInt(kandidaterRes.rows[0]?.n ?? '0', 10),
+      auditioner: parseInt(auditionerRes.rows[0]?.n ?? '0', 10),
+      crew: parseInt(crewRes.rows[0]?.n ?? '0', 10),
+      lokasjoner: parseInt(lokasjonerRes.rows[0]?.n ?? '0', 10),
     };
   };
 

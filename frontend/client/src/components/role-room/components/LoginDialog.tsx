@@ -80,6 +80,10 @@ interface RoleRoomPublicStats {
   kreative: number;
   produksjoner: number;
   rollerBesatt: number;
+  kandidater?: number;
+  auditioner?: number;
+  crew?: number;
+  lokasjoner?: number;
 }
 
 interface RoleRoomPublicTestimonial {
@@ -2184,14 +2188,24 @@ export default function LoginDialog({
 
   /* ── stats: only show after real traction ── */
   const activeStats: { value: string; label: string }[] = (() => {
-    if (shouldShowRoleRoomStats && roleRoomPublicStats) {
-      return [
-        { value: formatRoleRoomStatValue(roleRoomPublicStats.kreative), label: 'kreative' },
-        { value: formatRoleRoomStatValue(roleRoomPublicStats.produksjoner), label: 'produksjoner' },
-        { value: formatRoleRoomStatValue(roleRoomPublicStats.rollerBesatt), label: 'roller besatt' },
-      ];
+    if (!shouldShowRoleRoomStats || !roleRoomPublicStats) {
+      return [];
     }
-    return [];
+    // Bygg stats fra alle tilgjengelige metrics — viser kun de
+    // med faktisk verdi (>0) så vi unngår "0 kandidater"-pinligheter.
+    const allStats: { value: number | undefined; label: string }[] = [
+      { value: roleRoomPublicStats.kreative, label: 'kreative' },
+      { value: roleRoomPublicStats.produksjoner, label: 'produksjoner' },
+      { value: roleRoomPublicStats.rollerBesatt, label: 'roller besatt' },
+      { value: roleRoomPublicStats.kandidater, label: 'kandidater' },
+      { value: roleRoomPublicStats.auditioner, label: 'auditioner' },
+      { value: roleRoomPublicStats.crew, label: 'crew-medlemmer' },
+      { value: roleRoomPublicStats.lokasjoner, label: 'lokasjoner' },
+    ];
+    return allStats
+      .filter((s) => Number.isFinite(s.value) && (s.value as number) > 0)
+      .slice(0, 4)
+      .map((s) => ({ value: formatRoleRoomStatValue(s.value as number), label: s.label }));
   })();
 
   /* ── testimonials from visual editor or defaults ── */
@@ -2380,6 +2394,10 @@ export default function LoginDialog({
           kreative: Number.isFinite(data.kreative) ? Number(data.kreative) : 0,
           produksjoner: Number.isFinite(data.produksjoner) ? Number(data.produksjoner) : 0,
           rollerBesatt: Number.isFinite(data.rollerBesatt) ? Number(data.rollerBesatt) : 0,
+          kandidater: Number.isFinite(data.kandidater) ? Number(data.kandidater) : undefined,
+          auditioner: Number.isFinite(data.auditioner) ? Number(data.auditioner) : undefined,
+          crew: Number.isFinite(data.crew) ? Number(data.crew) : undefined,
+          lokasjoner: Number.isFinite(data.lokasjoner) ? Number(data.lokasjoner) : undefined,
         });
       } catch (statsError) {
         if (!disposed) {

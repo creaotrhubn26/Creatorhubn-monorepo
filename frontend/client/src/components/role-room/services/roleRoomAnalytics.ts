@@ -87,6 +87,23 @@ interface StoryboardFrameCreatedParams {
   scene_id?: string;
 }
 
+interface SeoPageViewedParams {
+  page_type: 'competitor' | 'student' | 'alternatives-index';
+  page_slug: string;
+}
+
+interface SeoCtaClickedParams {
+  page_type: 'competitor' | 'student' | 'alternatives-index';
+  page_slug: string;
+  cta_label: string;
+  cta_destination: string;
+}
+
+interface SeoCrossLinkClickedParams {
+  from_page: string;
+  to_page: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────
 
 export const roleRoomAnalytics = {
@@ -127,6 +144,16 @@ export const roleRoomAnalytics = {
 
   storyboardFrameCreated: (p: StoryboardFrameCreatedParams) =>
     trackEvent('role_room_storyboard_frame_created', p as Record<string, unknown>),
+
+  // SEO landing pages — viktige for å måle organisk-trafikk-funnel
+  seoPageViewed: (p: SeoPageViewedParams) =>
+    trackEvent('role_room_seo_page_viewed', p as Record<string, unknown>),
+
+  seoCtaClicked: (p: SeoCtaClickedParams) =>
+    trackEvent('role_room_seo_cta_clicked', p as Record<string, unknown>),
+
+  seoCrossLinkClicked: (p: SeoCrossLinkClickedParams) =>
+    trackEvent('role_room_seo_cross_link_clicked', p as Record<string, unknown>),
 };
 
 export type RoleRoomAnalytics = typeof roleRoomAnalytics;

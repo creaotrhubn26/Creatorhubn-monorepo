@@ -1535,7 +1535,12 @@ function CandidatesSubPanel({
             variant="contained"
             disabled={!name.trim() || onAdd.isPending}
             onClick={async () => {
-              await onAdd.mutateAsync({ projectId, data: { name: name.trim(), email: email.trim() || undefined } });
+              const created = await onAdd.mutateAsync({ projectId, data: { name: name.trim(), email: email.trim() || undefined } });
+              roleRoomAnalytics.candidateAdded({
+                project_id: projectId,
+                role_id: (created as { roleId?: string; id?: string })?.roleId ?? 'unassigned',
+                source: 'manual',
+              });
               setName('');
               setEmail('');
               setOpen(false);
