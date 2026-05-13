@@ -5,6 +5,51 @@
 
 ---
 
+## ✅ DESIGN-SYSTEM FOUNDATION KOMPLETT (sesjon 2026-05-13)
+
+Etter intensiv konsistens-audit + 3-faset opprydding er Role Room design-
+systemet nå konsolidert:
+
+### Hva som er gjort
+
+| Fase | Commits | Innhold |
+|---|---|---|
+| **1. Foundation** | `ad5e5536` | accessibility.ts + roleTokens.ts + roleTypography.ts |
+| **2a. WCAG migrate** | `c6b02371` | 10 paneler → shared TOUCH_TARGET_SIZE |
+| **2b. WCAG migrate** | `a2975695` | Siste 5 paneler (incl. spesial-tilfeller) |
+| **3. Primitives** | `5a656bf4` | RoleStatPill/RoleStatPillRow/RolePanelHeader/RoleCard |
+| **Stat-rad migrasjon** | `c534f0b6`, `83b5b0c4`, `0f237391` | Equipment/Crew/Audition → RoleStatPillRow (-136 linjer netto) |
+| **Manuskript/storyboard WCAG** | `2d113ef1`...`cc624bec` | 6 paneler / 114 IconButtons WCAG-compliant via CSS-cascade |
+| **ESLint guardrail** | `6bec7f5d` | no-restricted-syntax mot TOUCH_TARGET_SIZE-re-deklarasjon |
+
+### Hva som GJENSTÅR (re-evaluert)
+
+Sub-agent-audit fant "0 responsive" på manuskript/storyboard-paneler.
+DETTE VAR MISVISENDE — de fleste bruker MUI `variant=""` (innebygd
+responsiv typografi). Korrigert vurdering:
+
+| Panel | Reell responsive-gjeld |
+|---|---|
+| ManuscriptPanel | LAV — bruker MUI variants, 0 hardcoded fontSize-strenger |
+| ScreenplayEditor | LAV — 7 hardcoded fontSize, alle decorative |
+| BeatBoard | MEDIUM — 21 hardcoded fontSize, noen er små chip-labels |
+| StoryStructurePanel | LAV — bruker MUI variants |
+| ScriptAnalysisPanel | LAV — bruker MUI variants |
+| ContinuityLogger | LAV — bruker MUI variants |
+
+**Slutts: full responsive-migrasjon ikke nødvendig på disse panelene.**
+WCAG touch-target-fix var det reelle problemet — nå løst.
+
+### Reell gjenstående gjeld (prioritert)
+
+1. **Equipment** har 71 hardcoded fontSize — men de fleste er
+   responsive-tilstrekkelig via MUI's px-baserte default-skala
+2. **Token-sentralisering** — `roleTabAccent` etc har subtle alpha-
+   variasjoner (0.18 vs 0.24) mellom paneler. Krever eksplisitt
+   visual-design-beslutning om kanonisk verdi før migrasjon.
+3. **Custom px-breakpoints** i CastingPlanner (quickTier2-7) — egen
+   refaktor
+
 ## 🆕 MANUSKRIPT/STORYBOARD-PANELER MANGLER WCAG + RESPONSIVE (sesjon 2026-05-13)
 
 Etter design-konsistens-audit fant vi at de fleste manuskript/storyboard-
