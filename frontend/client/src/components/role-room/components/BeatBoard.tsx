@@ -80,6 +80,7 @@ import {
   CheckBox as CheckedIcon,
 } from '@mui/icons-material';
 import type { BeatCard } from '../services/scriptAnalysisService';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // ─── Extended types ─────────────────────────────────────────────────────────
 
@@ -1123,7 +1124,21 @@ export const BeatBoard: FC<BeatBoardProps> = ({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#0d0d14', overflow: 'hidden' }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: '#0d0d14',
+        overflow: 'hidden',
+        // WCAG 2.2 - 2.5.5 Target Size: 44×44 min for alle IconButtons.
+        // Påvirker IKKE ikon-størrelse, kun klikk-area.
+        '& .MuiIconButton-root': {
+          minWidth: TOUCH_TARGET_SIZE,
+          minHeight: TOUCH_TARGET_SIZE,
+        },
+      }}
+    >
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <Paper
