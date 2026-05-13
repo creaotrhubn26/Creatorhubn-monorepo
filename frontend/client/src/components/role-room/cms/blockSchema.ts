@@ -23,9 +23,21 @@ export type BlockKind =
   | 'usageExamples'
   | 'image';
 
+export type Locale = 'no' | 'en';
+export const SUPPORTED_LOCALES: Locale[] = ['no', 'en'];
+export const DEFAULT_LOCALE: Locale = 'no';
+
 interface BlockBase {
   id: string;
   type: BlockKind;
+  /**
+   * Lokaliserte overrides. Norsk er kanonisk og lever i hovedfeltene.
+   * Engelsk (eller fremtidig andre språk) lever som partial-overrides.
+   * Tom override-objekt = bruk norsk fallback.
+   */
+  i18n?: {
+    en?: Record<string, unknown>;
+  };
 }
 
 export interface HeroBlock extends BlockBase {
@@ -212,3 +224,23 @@ export interface BlocksContent {
 }
 
 export const CURRENT_SCHEMA_VERSION = 1;
+
+/**
+ * Slår sammen kanonisk (norsk) blokk-innhold med locale-overrides.
+ * Tomme override-felter (undefined, '') bevarer kanonisk verdi —
+ * editoren markerer felt som "ikke oversatt" når dette skjer.
+ */
+export function applyLocale<T extends Block>(block: T, locale: Locale): T {
+  if (locale === DEFAULT_LOCALE) return block;
+  const overrides = block.i18n?.[locale];
+  if (!overrides || typeof overrides !== 'object') return block;
+
+  const merged: Record<string, unknown> = { ...block };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key === 'id' || key === 'type' || key === 'i18n') continue;
+    // Tom string / undefined / tom array betyr "behold kanonisk"
+    if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) continue;
+    merged[key] = value;
+  }
+  return merged as T;
+}

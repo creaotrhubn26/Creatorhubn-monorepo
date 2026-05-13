@@ -10,6 +10,7 @@ import TalentPortalView from './components/TalentPortalView';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
+import { detectLocale } from './cms/useLocale';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
 import { clientInvitesApi, googleWorkspaceApi } from './services/castingApiService';
@@ -58,29 +59,39 @@ function upsertHeadLink(rel: string, href: string) {
 }
 
 function CastingStandaloneAppContent() {
+  // Detekter locale fra /en/-prefix og strip det før path-parsing.
+  // Kanonisk innhold på /<path>, oversatt på /en/<path>.
+  const localeCtx = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return { locale: 'no' as const, pathname: '/', fullPath: '/' };
+    }
+    return detectLocale(window.location.pathname);
+  }, []);
+
   const isEducationPath = useMemo(() => {
     if (typeof window === 'undefined') {
       return false;
     }
-    return isRoleRoomEducationPathname(window.location.pathname, window.location);
-  }, []);
+    // Pass strippet pathname så `/en/utdanningsinstitusjon` matches
+    return isRoleRoomEducationPathname(localeCtx.pathname, window.location);
+  }, [localeCtx.pathname]);
 
   // Public SEO-landingssider — detekteres før auth-gate slik at
   // Googlebot kan indeksere innholdet uten login.
-  const competitorKey = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    return parseCompetitorFromPath(window.location.pathname);
-  }, []);
+  const competitorKey = useMemo(
+    () => parseCompetitorFromPath(localeCtx.pathname),
+    [localeCtx.pathname],
+  );
 
-  const studentPageKey = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    return parseStudentPageFromPath(window.location.pathname);
-  }, []);
+  const studentPageKey = useMemo(
+    () => parseStudentPageFromPath(localeCtx.pathname),
+    [localeCtx.pathname],
+  );
 
-  const isPressKitPath = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return parsePressKitFromPath(window.location.pathname);
-  }, []);
+  const isPressKitPath = useMemo(
+    () => parsePressKitFromPath(localeCtx.pathname),
+    [localeCtx.pathname],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -96,19 +107,19 @@ function CastingStandaloneAppContent() {
   }, [isEducationPath, competitorKey, studentPageKey, isPressKitPath]);
 
   if (competitorKey) {
-    return <CompetitorComparisonPage competitor={competitorKey} />;
+    return <CompetitorComparisonPage competitor={competitorKey} locale={localeCtx.locale} />;
   }
 
   if (studentPageKey) {
-    return <StudentSEOPage pageKey={studentPageKey} />;
+    return <StudentSEOPage pageKey={studentPageKey} locale={localeCtx.locale} />;
   }
 
   if (isPressKitPath) {
-    return <PressKitPage />;
+    return <PressKitPage locale={localeCtx.locale} />;
   }
 
   if (isEducationPath) {
-    return <RoleRoomEducationPartnershipPage />;
+    return <RoleRoomEducationPartnershipPage locale={localeCtx.locale} />;
   }
 
   return <CastingStandaloneRuntimeContent />;

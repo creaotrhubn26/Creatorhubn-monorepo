@@ -316,6 +316,33 @@ function upsertLink(rel: string, href: string) {
   element.setAttribute('href', href);
 }
 
+function upsertHreflang(hreflang: string, href: string) {
+  if (typeof document === 'undefined') return;
+  let element = document.head.querySelector<HTMLLinkElement>(
+    `link[rel="alternate"][hreflang="${hreflang}"]`,
+  );
+  if (!element) {
+    element = document.createElement('link');
+    element.setAttribute('rel', 'alternate');
+    element.setAttribute('hreflang', hreflang);
+    document.head.appendChild(element);
+  }
+  element.setAttribute('href', href);
+}
+
+function buildHreflangAlternates(metadata: SeoMetadata, pathname: string): { hreflang: string; href: string }[] {
+  // Path-prefiks-strategi: kanonisk = /<path>, engelsk = /en/<path>.
+  if (metadata.site.key !== 'role-room') return [];
+  const origin = metadata.site.origin;
+  const canonicalPath = pathname === '/' ? '/' : pathname.replace(/^\/en\/?/, '/');
+  const enPath = canonicalPath === '/' ? '/en' : `/en${canonicalPath}`;
+  return [
+    { hreflang: 'no', href: `${origin}${canonicalPath === '/' ? '/' : canonicalPath}` },
+    { hreflang: 'en', href: `${origin}${enPath}` },
+    { hreflang: 'x-default', href: `${origin}${canonicalPath === '/' ? '/' : canonicalPath}` },
+  ];
+}
+
 function upsertStructuredData(id: string, payload: Record<string, unknown>) {
   if (typeof document === 'undefined') return;
 
@@ -448,6 +475,12 @@ export function syncSiteSeo({
     metadata.site.defaultImageUrl,
   );
   upsertLink('canonical', metadata.canonicalUrl);
+
+  // hreflang-alternater for path-prefiks-multi-lang (kun role-room)
+  const normalizedPath = normalizePathname(pathname);
+  for (const alt of buildHreflangAlternates(metadata, normalizedPath)) {
+    upsertHreflang(alt.hreflang, alt.href);
+  }
 
   upsertStructuredData('organization', structuredData.organization);
   upsertStructuredData('website', structuredData.website);

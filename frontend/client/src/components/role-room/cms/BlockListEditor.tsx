@@ -49,6 +49,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { RichTextEditor as TipTapRichTextEditor } from '../components/RichTextEditor';
+import { applyLocale, SUPPORTED_LOCALES, DEFAULT_LOCALE, type Locale } from './blockSchema';
 import type {
   Block,
   BlockKind,
@@ -72,6 +73,7 @@ interface BlockListEditorProps {
 
 export default function BlockListEditor({ blocks, onChange }: BlockListEditorProps) {
   const [newType, setNewType] = useState<BlockKind>('richText');
+  const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -93,9 +95,33 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
     onChange(arrayMove(blocks, idx, target));
   };
 
+  // I locale-mode 'en': beregn diff fra kanonisk blokk og skriv kun
+  // endrede felter til i18n.en. Tomme felter trekkes ut (slettes fra
+  // override-objektet) så de faller tilbake til norsk.
   const handleUpdate = (idx: number, updated: Block) => {
     const next = blocks.slice();
-    next[idx] = updated;
+    const canonical = blocks[idx];
+    if (locale === DEFAULT_LOCALE) {
+      next[idx] = { ...updated, i18n: canonical.i18n };
+    } else {
+      const overrides: Record<string, unknown> = {};
+      const canonicalRecord = canonical as unknown as Record<string, unknown>;
+      for (const [key, value] of Object.entries(updated)) {
+        if (key === 'id' || key === 'type' || key === 'i18n') continue;
+        const canonicalValue = canonicalRecord[key];
+        const isEmpty = value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+        if (isEmpty) continue;
+        if (JSON.stringify(value) === JSON.stringify(canonicalValue)) continue;
+        overrides[key] = value;
+      }
+      next[idx] = {
+        ...canonical,
+        i18n: {
+          ...(canonical.i18n ?? {}),
+          en: Object.keys(overrides).length > 0 ? overrides : undefined,
+        },
+      };
+    }
     onChange(next);
   };
 
@@ -110,6 +136,46 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
 
   return (
     <Stack spacing={2}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1.5}
+        alignItems={{ sm: 'center' }}
+        sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(2,6,23,0.34)' }}
+      >
+        <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', fontWeight: 600 }}>
+          Språk
+        </Typography>
+        <Stack direction="row" spacing={0.6}>
+          {SUPPORTED_LOCALES.map((loc) => {
+            const active = locale === loc;
+            return (
+              <Button
+                key={loc}
+                size="small"
+                onClick={() => setLocale(loc)}
+                sx={{
+                  bgcolor: active ? 'rgba(167,139,250,0.16)' : 'transparent',
+                  color: active ? '#ddd6fe' : 'rgba(203,213,225,0.78)',
+                  border: active ? '1px solid rgba(167,139,250,0.5)' : '1px solid rgba(148,163,184,0.24)',
+                  textTransform: 'uppercase',
+                  fontWeight: 700,
+                  fontSize: '0.74rem',
+                  minWidth: 56,
+                  '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+                }}
+              >
+                {loc === 'no' ? '🇳🇴 NO' : '🇬🇧 EN'}
+              </Button>
+            );
+          })}
+        </Stack>
+        <Typography sx={{ color: 'rgba(148,163,184,0.65)', fontSize: '0.72rem', flex: 1 }}>
+          {locale === DEFAULT_LOCALE
+            ? 'Norsk er kanonisk. Endringer skrives til hovedfeltene.'
+            : 'Engelsk-overrides. Tomme felter beholder norsk verdi. Slett tekst for å fjerne override.'}
+        </Typography>
+      </Stack>
+
       {blocks.length === 0 ? (
         <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.92rem', fontStyle: 'italic' }}>
           Ingen blokker. Velg type under og klikk "Legg til" for å starte.
@@ -121,12 +187,13 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
               {blocks.map((block, idx) => (
                 <BlockCard
                   key={block.id}
-                  block={block}
+                  block={applyLocale(block, locale)}
                   index={idx}
                   total={blocks.length}
                   onUpdate={(b) => handleUpdate(idx, b)}
                   onDelete={() => handleDelete(idx)}
                   onMove={(dir) => handleMove(idx, dir)}
+                  locale={locale}
                 />
               ))}
             </Stack>
@@ -178,9 +245,10 @@ interface BlockCardProps {
   onUpdate: (b: Block) => void;
   onDelete: () => void;
   onMove: (dir: -1 | 1) => void;
+  locale: Locale;
 }
 
-function BlockCard({ block, index, total, onUpdate, onDelete, onMove }: BlockCardProps) {
+function BlockCard({ block, index, total, onUpdate, onDelete, onMove, locale }: BlockCardProps) {
   const {
     attributes,
     listeners,
@@ -230,6 +298,13 @@ function BlockCard({ block, index, total, onUpdate, onDelete, onMove }: BlockCar
             <Typography sx={{ color: 'rgba(148,163,184,0.65)', fontSize: '0.74rem', fontFamily: 'monospace' }}>
               #{index + 1}
             </Typography>
+            {locale !== DEFAULT_LOCALE ? (
+              <Chip
+                label={locale.toUpperCase()}
+                size="small"
+                sx={{ bgcolor: 'rgba(96,165,250,0.16)', color: '#bfdbfe', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
+              />
+            ) : null}
             <Box sx={{ flex: 1 }} />
             <IconButton size="small" onClick={() => onMove(-1)} disabled={index === 0} sx={{ color: 'rgba(203,213,225,0.78)' }} aria-label="Flytt opp">
               <ArrowUpwardIcon fontSize="small" />

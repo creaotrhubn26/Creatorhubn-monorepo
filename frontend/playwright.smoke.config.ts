@@ -17,7 +17,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['**/role-room-clarity-smoke.spec.ts'],
+  testMatch: [
+    '**/role-room-clarity-smoke.spec.ts',
+    '**/role-room-cms-r2-upload.spec.ts',
+  ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

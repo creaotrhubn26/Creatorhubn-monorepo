@@ -27,6 +27,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import DOMPurify from 'dompurify';
+import { applyLocale, DEFAULT_LOCALE, type Locale } from './blockSchema';
 import type {
   Block,
   ComparisonBlock,
@@ -43,14 +44,15 @@ import type {
 
 interface BlockRendererProps {
   blocks: Block[];
+  locale?: Locale;
 }
 
-export default function BlockRenderer({ blocks }: BlockRendererProps) {
+export default function BlockRenderer({ blocks, locale = DEFAULT_LOCALE }: BlockRendererProps) {
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 4, md: 8 } }}>
       <Stack spacing={4}>
         {blocks.map((block) => (
-          <BlockView key={block.id} block={block} />
+          <BlockView key={block.id} block={applyLocale(block, locale)} />
         ))}
       </Stack>
     </Container>

@@ -122,6 +122,26 @@
       "destination": "/theroleroom.html"
     },
     {
+      "source": "/en",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/en/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
       "source": "/talentportal",
       "has": [
         {

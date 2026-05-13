@@ -40,7 +40,7 @@ import SchoolIcon from '@mui/icons-material/School';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag, clarityEvent } from '@/lib/clarity';
 import BlockRenderer from '../cms/BlockRenderer';
-import { isBlockArray, type Block } from '../cms/blockSchema';
+import { isBlockArray, type Block, type Locale, DEFAULT_LOCALE } from '../cms/blockSchema';
 import MovieFilterIcon from '@mui/icons-material/MovieFilter';
 import GroupsIcon from '@mui/icons-material/Groups';
 import VideoCameraFrontIcon from '@mui/icons-material/VideoCameraFront';
@@ -682,6 +682,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
 
 export interface StudentSEOPageProps {
   pageKey: StudentPageKey;
+  locale?: Locale;
 }
 
 /**
@@ -771,7 +772,7 @@ function useCmsContent(pageKey: StudentPageKey): CmsRenderState {
   return { blocks, config: merged };
 }
 
-export default function StudentSEOPage({ pageKey }: StudentSEOPageProps) {
+export default function StudentSEOPage({ pageKey, locale = DEFAULT_LOCALE }: StudentSEOPageProps) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'auto' });
@@ -800,7 +801,7 @@ export default function StudentSEOPage({ pageKey }: StudentSEOPageProps) {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0b1120', color: '#e2e8f0' }}>
-      {blocks ? <BlockRenderer blocks={blocks} /> : <PageView config={config} />}
+      {blocks ? <BlockRenderer blocks={blocks} locale={locale} /> : <PageView config={config} />}
     </Box>
   );
 }

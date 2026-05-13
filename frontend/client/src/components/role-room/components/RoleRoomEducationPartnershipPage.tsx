@@ -23,9 +23,16 @@ import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
 import BlockRenderer from '../cms/BlockRenderer';
 import { useCmsBlocks } from '../cms/useCmsBlocks';
+import { DEFAULT_LOCALE, type Locale } from '../cms/blockSchema';
 const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
 
-export default function RoleRoomEducationPartnershipPage() {
+export interface RoleRoomEducationPartnershipPageProps {
+  locale?: Locale;
+}
+
+export default function RoleRoomEducationPartnershipPage(
+  { locale = DEFAULT_LOCALE }: RoleRoomEducationPartnershipPageProps = {},
+) {
   const cmsBlocks = useCmsBlocks('utdanningsinstitusjon');
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
@@ -50,7 +57,7 @@ export default function RoleRoomEducationPartnershipPage() {
   if (cmsBlocks) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0f', color: '#e2e8f0' }}>
-        <BlockRenderer blocks={cmsBlocks} />
+        <BlockRenderer blocks={cmsBlocks} locale={locale} />
       </Box>
     );
   }

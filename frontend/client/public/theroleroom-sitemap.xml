@@ -1,114 +1,169 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset
   xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd"
 >
   <url>
     <loc>https://theroleroom.com/</loc>
-    <lastmod>2026-04-20</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/talentportal</loc>
-    <lastmod>2026-04-20</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/talentportal" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/talentportal" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/talentportal" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/utdanningsinstitusjon</loc>
-    <lastmod>2026-04-20</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/utdanningsinstitusjon" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/utdanningsinstitusjon" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/utdanningsinstitusjon" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/alternatives</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/alternatives" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/alternatives" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/alternatives" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/vs-studiobinder</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/vs-studiobinder" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/vs-studiobinder" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/vs-studiobinder" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/vs-castingnetworks</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/vs-castingnetworks" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/vs-castingnetworks" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/vs-castingnetworks" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/vs-moviemagic</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/vs-moviemagic" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/vs-moviemagic" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/vs-moviemagic" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/vs-yamdu</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/vs-yamdu" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/vs-yamdu" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/vs-yamdu" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/vs-setkeeper</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/vs-setkeeper" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/vs-setkeeper" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/vs-setkeeper" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/for-studenter</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/for-studenter" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/for-studenter" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/for-studenter" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/film-tv-utdanning</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/film-tv-utdanning" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/film-tv-utdanning" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/film-tv-utdanning" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/casting-director-utdanning</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/casting-director-utdanning" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/casting-director-utdanning" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/casting-director-utdanning" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/regissor-verktoy</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/regissor-verktoy" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/regissor-verktoy" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/regissor-verktoy" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/produksjonsledelse-studie</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/produksjonsledelse-studie" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/produksjonsledelse-studie" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/produksjonsledelse-studie" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/innholdsprodusenter</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/innholdsprodusenter" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/innholdsprodusenter" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/innholdsprodusenter" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/innholdsproduksjon-studie</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/innholdsproduksjon-studie" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/innholdsproduksjon-studie" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/innholdsproduksjon-studie" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/dansestudio</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/dansestudio" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/dansestudio" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/dansestudio" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://theroleroom.com/presse</loc>
-    <lastmod>2026-05-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="no" href="https://theroleroom.com/presse" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://theroleroom.com/en/presse" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://theroleroom.com/presse" />
+    <lastmod>2026-05-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>

@@ -26,6 +26,7 @@ import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag } from '@/lib/clarity';
 import BlockRenderer from '../cms/BlockRenderer';
 import { useCmsBlocks } from '../cms/useCmsBlocks';
+import { DEFAULT_LOCALE, type Locale } from '../cms/blockSchema';
 
 const PRESS_CONTACT_EMAIL = 'presse@theroleroom.com';
 
@@ -111,7 +112,11 @@ export function parsePressKitFromPath(pathname: string): boolean {
   return normalized === '/presse' || normalized === '/press';
 }
 
-export default function PressKitPage() {
+export interface PressKitPageProps {
+  locale?: Locale;
+}
+
+export default function PressKitPage({ locale = DEFAULT_LOCALE }: PressKitPageProps = {}) {
   useOrganizationPressSchema();
   const cmsBlocks = useCmsBlocks('presse');
 
@@ -128,7 +133,7 @@ export default function PressKitPage() {
   }, []);
 
   if (cmsBlocks) {
-    return <BlockRenderer blocks={cmsBlocks} />;
+    return <BlockRenderer blocks={cmsBlocks} locale={locale} />;
   }
 
   return (

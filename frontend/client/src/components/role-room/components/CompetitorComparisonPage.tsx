@@ -47,6 +47,7 @@ import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag, clarityEvent } from '@/lib/clarity';
 import BlockRenderer from '../cms/BlockRenderer';
 import { useCmsBlocks } from '../cms/useCmsBlocks';
+import { DEFAULT_LOCALE, type Locale } from '../cms/blockSchema';
 
 export type CompetitorKey = 'studiobinder' | 'castingnetworks' | 'moviemagic' | 'yamdu' | 'setkeeper';
 
@@ -437,6 +438,7 @@ export function parseCompetitorFromPath(pathname: string): CompetitorKey | 'alte
 
 export interface CompetitorComparisonPageProps {
   competitor: CompetitorKey | 'alternatives';
+  locale?: Locale;
 }
 
 /**
@@ -510,7 +512,7 @@ function useFaqSchema(competitor: CompetitorKey | 'alternatives', config?: Compe
   }, [competitor, config]);
 }
 
-export default function CompetitorComparisonPage({ competitor }: CompetitorComparisonPageProps) {
+export default function CompetitorComparisonPage({ competitor, locale = DEFAULT_LOCALE }: CompetitorComparisonPageProps) {
   const config = competitor !== 'alternatives' ? COMPETITOR_CONFIGS[competitor] : undefined;
   const cmsSlug = competitor === 'alternatives' ? 'alternatives' : `vs-${competitor}`;
   const cmsBlocks = useCmsBlocks(cmsSlug);
@@ -544,10 +546,10 @@ export default function CompetitorComparisonPage({ competitor }: CompetitorCompa
   }, [competitor, cmsSlug]);
 
   const content = useMemo(() => {
-    if (cmsBlocks) return <BlockRenderer blocks={cmsBlocks} />;
+    if (cmsBlocks) return <BlockRenderer blocks={cmsBlocks} locale={locale} />;
     if (competitor === 'alternatives') return <AlternativesIndexView />;
     return <ComparisonView config={COMPETITOR_CONFIGS[competitor]} />;
-  }, [competitor, cmsBlocks]);
+  }, [competitor, cmsBlocks, locale]);
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0b1120', color: '#e2e8f0' }}>

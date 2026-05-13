@@ -24,6 +24,7 @@ import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 import BlockRenderer from '../cms/BlockRenderer';
 import { useCmsBlocks } from '../cms/useCmsBlocks';
+import { useLocale } from '../cms/useLocale';
 import LoginDialog from './LoginDialog';
 import DeviceMockup from './DeviceMockup';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
@@ -54,6 +55,7 @@ const WHAT_FEATURES = [
 ];
 const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
 export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPageProps) {
+  const { locale } = useLocale();
   const cmsBlocks = useCmsBlocks('home');
   const [showIntro, setShowIntro]       = useState(true);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
@@ -234,7 +236,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   if (cmsBlocks) {
     return (
       <Box sx={{ width: '100%', minHeight: '100vh', bgcolor: '#0a0a0f', color: '#e2e8f0' }}>
-        <BlockRenderer blocks={cmsBlocks} />
+        <BlockRenderer blocks={cmsBlocks} locale={locale} />
       </Box>
     );
   }
