@@ -2598,6 +2598,12 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
   const headerPaddingX = is5K ? 6 : is4K ? 5 : is2K ? 4 : 3;
   const [controlPanelDock, setControlPanelDock] = useState<'left' | 'right'>('right');
 
+  // Mode-toggle: LIVE = opptak nå, EDIT = scene-assembly + draft, REVIEW =
+  // sluttinspeksjon før wrap. Matcher Pro-mockup-headeren. Per nå er
+  // LIVE den fullt-implementerte modusen; EDIT og REVIEW viser
+  // placeholder-content til scene-assembly-fundamentet er bygget.
+  const [liveSetMode, setLiveSetMode] = useState<'live' | 'edit' | 'review'>('live');
+
   const {
     state, roll, cut, setupComplete, advanceScene,
     addNote, setNoteInput, setNoteTag, setTakeStatus, addFlag,
@@ -3135,6 +3141,53 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
         )}
 
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* LIVE / EDIT / REVIEW mode-toggle — matcher Pro-mockupen */}
+          <Box
+            sx={{
+              display: 'flex',
+              bgcolor: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '999px',
+              p: 0.3,
+              gap: 0.3,
+              mr: 0.5,
+            }}
+          >
+            {(['live', 'edit', 'review'] as const).map((m) => {
+              const isActive = liveSetMode === m;
+              const accentColor = m === 'live' ? '#ef4444' : m === 'edit' ? '#a78bfa' : '#22d3ee';
+              return (
+                <Box
+                  key={m}
+                  component="button"
+                  onClick={() => setLiveSetMode(m)}
+                  sx={{
+                    px: 1.5,
+                    py: 0.5,
+                    minHeight: 28,
+                    border: 'none',
+                    borderRadius: '999px',
+                    cursor: 'pointer',
+                    bgcolor: isActive ? `${accentColor}22` : 'transparent',
+                    color: isActive ? accentColor : 'rgba(255,255,255,0.55)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    fontFamily: 'inherit',
+                    transition: 'background-color 0.15s, color 0.15s',
+                    '&:hover': {
+                      bgcolor: isActive ? `${accentColor}33` : 'rgba(255,255,255,0.04)',
+                      color: isActive ? accentColor : 'rgba(255,255,255,0.85)',
+                    },
+                  }}
+                >
+                  {m === 'live' && '● '}{m === 'edit' && '✎ '}{m === 'review' && '👁 '}{m}
+                </Box>
+              );
+            })}
+          </Box>
+
           {/* Live state badge */}
           <Chip
             label={
@@ -3222,6 +3275,65 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
 
         </Box>
       </Box>
+
+      {/* Mode-banner for EDIT/REVIEW (LIVE viser ingenting). Bare et
+          visuelt signal til admin om at de er i en alternativ modus —
+          full content kommer i v2 etter scene-assembly er bygget. */}
+      {liveSetMode !== 'live' ? (
+        <Box
+          sx={{
+            width: '100%',
+            maxWidth: liveSetShellMaxWidth,
+            mx: 'auto',
+            px: { xs: 1.5, sm: 2.5 },
+            py: 1.2,
+            bgcolor: liveSetMode === 'edit' ? 'rgba(167,139,250,0.08)' : 'rgba(34,211,238,0.08)',
+            borderBottom: '1px solid',
+            borderColor: liveSetMode === 'edit' ? 'rgba(167,139,250,0.24)' : 'rgba(34,211,238,0.24)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+          }}
+        >
+          <Box
+            sx={{
+              fontSize: 18,
+              color: liveSetMode === 'edit' ? '#a78bfa' : '#22d3ee',
+            }}
+          >
+            {liveSetMode === 'edit' ? '✎' : '👁'}
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: 13 }}>
+              {liveSetMode === 'edit' ? 'EDIT-modus' : 'REVIEW-modus'}
+            </Typography>
+            <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: 11.5 }}>
+              {liveSetMode === 'edit'
+                ? 'Scene-assembly + draft-timeline + NLE-eksport kommer i v2. Bytt tilbake til LIVE for opptaks-modus.'
+                : 'Sluttinspeksjon av dagens opptak + wrap-godkjenning kommer i v2.'}
+            </Typography>
+          </Box>
+          <Box
+            component="button"
+            onClick={() => setLiveSetMode('live')}
+            sx={{
+              border: '1px solid rgba(239,68,68,0.32)',
+              borderRadius: 1,
+              px: 1.2,
+              py: 0.6,
+              bgcolor: 'rgba(239,68,68,0.10)',
+              color: '#fca5a5',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' },
+            }}
+          >
+            ← Tilbake til LIVE
+          </Box>
+        </Box>
+      ) : null}
 
       <Box sx={{ width: '100%', maxWidth: liveSetShellMaxWidth, mx: 'auto' }}>
         <LiveSetStatusBar
