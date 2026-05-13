@@ -41,6 +41,7 @@ import AdminRoom from '../../pages/AdminRoom';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
 import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
+import { roleRoomAnalytics } from './services/roleRoomAnalytics';
 import {
   readLastWorkspace,
   saveLastWorkspace,
@@ -349,10 +350,14 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
-    await createProjectMut.mutateAsync({
+    const created = await createProjectMut.mutateAsync({
       name: newProjectName.trim(),
       description: newProjectDesc.trim() || undefined,
       creatorhubProjectId: creatorhubProjectId ?? undefined,
+    });
+    roleRoomAnalytics.projectCreated({
+      project_id: (created as { id?: string })?.id ?? newProjectName.trim(),
+      source: 'manual',
     });
     setNewProjectName('');
     setNewProjectDesc('');
@@ -927,7 +932,14 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 <RoleRoomTabRail
                   visible
                   value={subTab}
-                  onChange={(next) => setSubTab(next as SubTab)}
+                  onChange={(next) => {
+                    roleRoomAnalytics.tabChanged({
+                      project_id: selectedProjectId ?? undefined,
+                      tab_id: String(next),
+                      from_tab: String(subTab),
+                    });
+                    setSubTab(next as SubTab);
+                  }}
                   ariaLabel="Prosjekt-seksjoner"
                   items={effectiveTabs
                     .filter((v) => {
@@ -986,7 +998,14 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               {!useTabRail && (<>
               <Tabs
                 value={subTab}
-                onChange={(_, v: SubTab) => setSubTab(v)}
+                onChange={(_, v: SubTab) => {
+                  roleRoomAnalytics.tabChanged({
+                    project_id: selectedProjectId ?? undefined,
+                    tab_id: String(v),
+                    from_tab: String(subTab),
+                  });
+                  setSubTab(v);
+                }}
                 className="rr-sub-tabs"
                 sx={{
                   px: { xs: 1, sm: 2 },
@@ -1212,7 +1231,14 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             primaryItems={primaryItems}
             overflowItems={overflowItems}
             value={subTab}
-            onChange={(next) => setSubTab(next as SubTab)}
+            onChange={(next) => {
+              roleRoomAnalytics.tabChanged({
+                project_id: selectedProjectId ?? undefined,
+                tab_id: String(next),
+                from_tab: String(subTab),
+              });
+              setSubTab(next as SubTab);
+            }}
           />
         );
       })()}
@@ -1430,7 +1456,11 @@ function RolesSubPanel({
             variant="contained"
             disabled={!name.trim() || onCreate.isPending}
             onClick={async () => {
-              await onCreate.mutateAsync({ projectId, data: { name: name.trim() } });
+              const created = await onCreate.mutateAsync({ projectId, data: { name: name.trim() } });
+              roleRoomAnalytics.roleCreated({
+                project_id: projectId,
+                role_id: (created as { id?: string })?.id ?? name.trim(),
+              });
               setName('');
               setOpen(false);
             }}

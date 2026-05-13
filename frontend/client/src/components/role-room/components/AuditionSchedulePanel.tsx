@@ -15,6 +15,7 @@ import { useAuditionSchedules } from "../hooks/useAuditionSchedules";
 import { ScheduleDetailsDrawer } from "./ScheduleDetailsDrawer";
 import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
 import { RoleStatPillRow } from "./primitives";
+import { roleRoomAnalytics } from "../services/roleRoomAnalytics";
 
 /** Escape a string for safe embedding in an HTML template literal. */
 const escapeHtml = (s: string): string =>
@@ -136,7 +137,7 @@ function AuditionSchedulePanelInner({
   availableScenes,
   onSchedulesChange,
   onEditSchedule,
-  onCreateSchedule,
+  onCreateSchedule: onCreateScheduleProp,
   onNavigateToTab,
   profession,
   userId,
@@ -146,6 +147,15 @@ function AuditionSchedulePanelInner({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const titleId = useId();
   const statsId = useId();
+
+  // Wrap onCreateSchedule with analytics — every entry point går gjennom denne.
+  const onCreateSchedule = useCallback(() => {
+    roleRoomAnalytics.auditionCreated({
+      project_id: projectId,
+      audition_id: `pending-${Date.now()}`,
+    });
+    onCreateScheduleProp();
+  }, [onCreateScheduleProp, projectId]);
 
   // Pagination — separat fra reducer siden den ikke trenger å persisteres
   // til server-side state. Brukes for å unngå rendring av hundrevis av
@@ -1034,12 +1044,19 @@ function AuditionSchedulePanelInner({
     try {
       await patchMutation.mutateAsync({ scheduleId, patch: { status: nextStatus } });
       onSchedulesChange();
+      if (nextStatus === 'confirmed') {
+        roleRoomAnalytics.scheduleConfirmed({
+          project_id: projectId,
+          schedule_id: scheduleId,
+          role_id: schedule.roleId,
+        });
+      }
     } catch (error) {
       console.error('Failed to update status:', error);
       setStatusOverrides((prev) => ({ ...prev, [scheduleId]: previousStatus }));
       showError('Kunne ikke oppdatere status', 3000);
     }
-  }, [appendProActivity, effectiveSchedules, getCandidateName, onSchedulesChange, patchMutation, showError]);
+  }, [appendProActivity, effectiveSchedules, getCandidateName, onSchedulesChange, patchMutation, projectId, showError]);
 
   /** Called from the Details Drawer when user picks a new status */
   const handleStatusChange = useCallback(async (id: string, status: ScheduleStatus) => {
@@ -2867,7 +2884,16 @@ function AuditionSchedulePanelInner({
               visnings-modus ved siden av table/compact/grid. */}
           <Tooltip title={auditionGroupedView ? 'Vis individuelle kandidater' : 'Grupper som auditions'}>
             <IconButton
-              onClick={() => setAuditionGroupedView((v) => !v)}
+              onClick={() => {
+                setAuditionGroupedView((v) => {
+                  const next = !v;
+                  roleRoomAnalytics.auditionViewToggled({
+                    project_id: projectId,
+                    mode: next ? 'entity' : 'synthetic',
+                  });
+                  return next;
+                });
+              }}
               size="small"
               aria-label="Audition-gruppert visning"
               aria-pressed={auditionGroupedView}

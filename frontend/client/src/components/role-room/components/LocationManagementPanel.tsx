@@ -113,6 +113,7 @@ import {
 } from './icons/CastingIcons';
 import type { CastingProject, CastingShot, CrewMember, Location } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisDialog } from './LocationAnalysisDialog';
 import { LocationManagementGuide } from './production/LocationManagementGuide';
@@ -1688,6 +1689,11 @@ export function LocationManagementPanel({
         showSuccess(`${formData.name} oppdatert`, 3000);
       } else {
         showSuccess(`${formData.name} lagt til`, 3000);
+        roleRoomAnalytics.locationAdded({
+          project_id: projectId,
+          location_id: location.id,
+          source: 'manual',
+        });
       }
 
       if (isCreating) {

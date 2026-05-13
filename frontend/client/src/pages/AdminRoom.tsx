@@ -11,7 +11,7 @@
  * som er stable produktfunksjonalitet.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -43,6 +43,9 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import EmailIcon from '@mui/icons-material/Email';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import InsightsIcon from '@mui/icons-material/Insights';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import {
   fundingAppsApi,
   investorContactsApi,
@@ -76,10 +79,11 @@ import {
 } from '../services/adminRoomApi';
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
+import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'role-nav';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'role-nav';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -1937,6 +1941,928 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
 }
 
 // ─────────────────────────────────────────────────────────
+// Section: Analytics-hub — GA4 + Microsoft Clarity per domene
+// ─────────────────────────────────────────────────────────
+
+interface AnalyticsPlatform {
+  name: string;
+  domain: string;
+  id: string;
+  idLabel: string;
+  url: string;
+  description: string;
+  tone: 'ga4' | 'clarity';
+}
+
+const ANALYTICS_PLATFORMS: AnalyticsPlatform[] = [
+  {
+    name: 'GA4 — CreatorHub',
+    domain: 'creatorhubn.com',
+    id: 'G-6E5MJT8REW',
+    idLabel: 'Measurement ID',
+    url: 'https://analytics.google.com/',
+    description: 'Trafikk, konvertering, events. Real-time + standard-rapporter.',
+    tone: 'ga4',
+  },
+  {
+    name: 'GA4 — The Role Room',
+    domain: 'theroleroom.com',
+    id: 'G-9T7K5TJVFX',
+    idLabel: 'Measurement ID',
+    url: 'https://analytics.google.com/',
+    description: 'Trafikk + Role-Room-events (role_room_*). Konfigurerbare funneler.',
+    tone: 'ga4',
+  },
+  {
+    name: 'Microsoft Clarity — CreatorHub',
+    domain: 'creatorhubn.com',
+    id: 'wqg9kj1vxt',
+    idLabel: 'Project ID',
+    url: 'https://clarity.microsoft.com/projects/view/wqg9kj1vxt/dashboard',
+    description: 'Session-replay, heatmaps, rage-clicks, dead-clicks.',
+    tone: 'clarity',
+  },
+  {
+    name: 'Microsoft Clarity — The Role Room',
+    domain: 'theroleroom.com',
+    id: 'wqgcu06tz0',
+    idLabel: 'Project ID',
+    url: 'https://clarity.microsoft.com/projects/view/wqgcu06tz0/dashboard',
+    description: 'Session-replay, heatmaps. Koblet til GA4 via custom dimension.',
+    tone: 'clarity',
+  },
+];
+
+interface CapturedEvent {
+  name: string;
+  params: Record<string, unknown>;
+  capturedAt: number;
+}
+
+function useRecentGtagEvents(): CapturedEvent[] {
+  const [events, setEvents] = useState<CapturedEvent[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as {
+      dataLayer?: unknown[];
+      __adminRoomGtagHooked?: boolean;
+      __adminRoomGtagListeners?: ((ev: CapturedEvent) => void)[];
+    };
+    w.dataLayer = w.dataLayer || [];
+    w.__adminRoomGtagListeners = w.__adminRoomGtagListeners || [];
+
+    if (!w.__adminRoomGtagHooked) {
+      const originalPush = w.dataLayer.push.bind(w.dataLayer);
+      w.dataLayer.push = (...args: unknown[]) => {
+        for (const entry of args) {
+          // dataLayer fanger både arrays (gtag-syntaks) og objekter (GTM-syntaks)
+          if (Array.isArray(entry) && entry[0] === 'event' && typeof entry[1] === 'string') {
+            const ev: CapturedEvent = {
+              name: String(entry[1]),
+              params: (entry[2] ?? {}) as Record<string, unknown>,
+              capturedAt: Date.now(),
+            };
+            for (const cb of w.__adminRoomGtagListeners!) cb(ev);
+          }
+        }
+        return originalPush(...args);
+      };
+      w.__adminRoomGtagHooked = true;
+    }
+
+    const listener = (ev: CapturedEvent) => {
+      setEvents((prev) => [ev, ...prev].slice(0, 50));
+    };
+    w.__adminRoomGtagListeners.push(listener);
+
+    return () => {
+      const idx = w.__adminRoomGtagListeners!.indexOf(listener);
+      if (idx >= 0) w.__adminRoomGtagListeners!.splice(idx, 1);
+    };
+  }, []);
+
+  return events;
+}
+
+function AnalyticsTab() {
+  const recentEvents = useRecentGtagEvents();
+  const roleRoomEventCount = useMemo(
+    () => recentEvents.filter((e) => e.name.startsWith('role_room_')).length,
+    [recentEvents],
+  );
+
+  return (
+    <Stack spacing={2}>
+      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
+        Snarvei til alle analytics-platformer for begge domener. Klikk en plattform for å åpne dashboardet i ny fane.
+        Hendelses-loggen under viser GA4-events fanget i denne nettleser-sessionen — bruk den for å verifisere at events
+        faktisk fyres i produksjon.
+      </Typography>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 1.5,
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' },
+        }}
+      >
+        {ANALYTICS_PLATFORMS.map((p) => {
+          const accent = p.tone === 'ga4'
+            ? { fg: '#f97316', bg: 'rgba(249,115,22,0.10)', border: 'rgba(249,115,22,0.32)' }
+            : { fg: '#22d3ee', bg: 'rgba(34,211,238,0.10)', border: 'rgba(34,211,238,0.32)' };
+          return (
+            <Card
+              key={p.id}
+              sx={{
+                background: 'rgba(2,6,23,0.42)',
+                border: `1px solid ${accent.border}`,
+                color: '#e2e8f0',
+              }}
+            >
+              <CardContent sx={{ p: 2 }}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                  {p.tone === 'ga4' ? <InsightsIcon sx={{ color: accent.fg }} /> : <VisibilityIcon sx={{ color: accent.fg }} />}
+                  <Typography sx={{ fontWeight: 700, color: '#f8fafc', flex: 1 }}>{p.name}</Typography>
+                  <Chip
+                    size="small"
+                    label={p.domain}
+                    sx={{ bgcolor: accent.bg, color: accent.fg, fontWeight: 600, fontSize: '0.7rem' }}
+                  />
+                </Stack>
+                <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem', mb: 1 }}>
+                  {p.description}
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                  <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                    {p.idLabel}: <Box component="span" sx={{ color: '#cbd5e1' }}>{p.id}</Box>
+                  </Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <Button
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="small"
+                    variant="outlined"
+                    endIcon={<OpenInNewIcon />}
+                    sx={{
+                      color: accent.fg,
+                      borderColor: accent.border,
+                      textTransform: 'none',
+                      '&:hover': { borderColor: accent.fg, bgcolor: accent.bg },
+                    }}
+                  >
+                    Åpne dashboard
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Box>
+
+      <Card sx={{ background: 'rgba(2,6,23,0.42)', border: '1px solid rgba(148,163,184,0.16)', color: '#e2e8f0' }}>
+        <CardContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+            <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>Live GA4-events</Typography>
+            <Chip
+              size="small"
+              label={`${recentEvents.length} totalt / ${roleRoomEventCount} role_room_*`}
+              sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 600 }}
+            />
+          </Stack>
+          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', mb: 1 }}>
+            Lytter på <code>window.dataLayer.push</code> for å fange opp gtag-events i sanntid. Tom på localhost — Clarity og GA4 skipper localhost. Bruk Vercel-preview eller produksjon for å se trafikk.
+          </Typography>
+          {recentEvents.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              Ingen events fanget i denne sessionen ennå. Naviger rundt i Role Room (opprett rolle, bytt tab, etc.) — events vises her i sanntid.
+            </Alert>
+          ) : (
+            <Stack spacing={0.6} sx={{ maxHeight: 420, overflowY: 'auto' }}>
+              {recentEvents.map((ev, idx) => {
+                const isRoleRoom = ev.name.startsWith('role_room_');
+                const tone = isRoleRoom
+                  ? { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe' }
+                  : { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' };
+                return (
+                  <Stack
+                    key={`${ev.capturedAt}-${idx}`}
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    alignItems={{ sm: 'center' }}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.5,
+                      border: '1px solid rgba(148,163,184,0.14)',
+                      background: 'rgba(2,6,23,0.34)',
+                    }}
+                  >
+                    <Chip size="small" label={ev.name} sx={{ bgcolor: tone.bg, color: tone.fg, fontWeight: 700, fontFamily: 'monospace' }} />
+                    <Typography
+                      sx={{
+                        color: 'rgba(203,213,225,0.85)',
+                        fontSize: '0.74rem',
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {Object.entries(ev.params)
+                        .filter(([k]) => k !== 'platform')
+                        .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+                        .join(' · ') || '—'}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                      {new Date(ev.capturedAt).toLocaleTimeString('nb-NO')}
+                    </Typography>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Section: CMS — form-basert editor for SEO-landingssider
+// ─────────────────────────────────────────────────────────
+
+interface CmsUsageExample {
+  title: string;
+  body: string;
+}
+
+interface CmsRelatedStudy {
+  name: string;
+  institution: string;
+  note?: string;
+}
+
+interface CmsPageContent {
+  h1: string;
+  subtitle: string;
+  intro: string;
+  audience: string;
+  ctaLabel: string;
+  usageExamples: CmsUsageExample[];
+  highlightedFeatures: string[];
+  relatedStudies?: CmsRelatedStudy[];
+}
+
+interface CmsPageRow {
+  slug: string;
+  variant: string;
+  published: boolean;
+  content: Record<string, unknown>;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+type CmsState =
+  | { kind: 'list' }
+  | { kind: 'edit'; slug: string };
+
+function CmsTab() {
+  const [state, setState] = useState<CmsState>({ kind: 'list' });
+
+  return (
+    <Stack spacing={2}>
+      {state.kind === 'list' ? (
+        <CmsListView onEdit={(slug) => setState({ kind: 'edit', slug })} />
+      ) : (
+        <CmsEditView slug={state.slug} onClose={() => setState({ kind: 'list' })} />
+      )}
+    </Stack>
+  );
+}
+
+function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
+  const defaultEntries = useMemo(() => {
+    return Object.entries(STUDENT_PAGE_CONFIGS).map(([slug, config]) => ({
+      slug,
+      variant: 'student',
+      h1: config.h1,
+      audience: config.audience,
+    }));
+  }, []);
+
+  const [cmsPages, setCmsPages] = useState<CmsPageRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch('/api/admin/cms/pages', { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : { pages: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setCmsPages(Array.isArray(data?.pages) ? data.pages : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCmsPages([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const cmsBySlug = useMemo(() => {
+    const map: Record<string, CmsPageRow> = {};
+    for (const p of cmsPages) map[p.slug] = p;
+    return map;
+  }, [cmsPages]);
+
+  return (
+    <Stack spacing={2}>
+      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
+        Redigér innholdet på SEO-landingssidene uten kode-deploy. Endringer trer i kraft umiddelbart (med 5-min CDN-cache).
+        Sider markert <Chip size="small" label="kode-default" sx={{ ml: 0.5, height: 18, fontSize: '0.66rem', bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} /> bruker hardkodet fallback til de overstyres her.
+      </Typography>
+      {loading ? (
+        <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress /></Stack>
+      ) : (
+        <Stack spacing={0.6}>
+          {defaultEntries.map((e) => {
+            const cms = cmsBySlug[e.slug];
+            const hasOverride = !!cms;
+            return (
+              <Stack
+                key={e.slug}
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                alignItems={{ sm: 'center' }}
+                sx={{
+                  p: 1.2, borderRadius: 1.5,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  background: 'rgba(2,6,23,0.34)',
+                }}
+              >
+                <Stack direction="row" spacing={0.8} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+                  <Chip
+                    size="small"
+                    label={hasOverride ? (cms.published ? 'live' : 'utkast') : 'kode-default'}
+                    sx={{
+                      bgcolor: hasOverride
+                        ? (cms.published ? 'rgba(34,197,94,0.16)' : 'rgba(249,115,22,0.16)')
+                        : 'rgba(148,163,184,0.16)',
+                      color: hasOverride
+                        ? (cms.published ? '#86efac' : '#fdba74')
+                        : '#cbd5e1',
+                      fontWeight: 700, fontSize: '0.7rem',
+                    }}
+                  />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {e.h1}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', fontFamily: 'monospace' }}>
+                      /{e.slug} · {e.audience.split('·')[0].trim()}
+                    </Typography>
+                  </Box>
+                </Stack>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    href={`https://theroleroom.com/${e.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                    sx={{
+                      color: 'rgba(203,213,225,0.85)',
+                      borderColor: 'rgba(148,163,184,0.24)',
+                      textTransform: 'none',
+                      fontSize: '0.78rem',
+                    }}
+                  >
+                    Preview
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={() => onEdit(e.slug)}
+                    sx={{
+                      bgcolor: '#a78bfa',
+                      color: '#0b1120',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      '&:hover': { bgcolor: '#c4b5fd' },
+                    }}
+                  >
+                    Redigér
+                  </Button>
+                </Stack>
+              </Stack>
+            );
+          })}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
+  const defaultConfig = useMemo(
+    () => STUDENT_PAGE_CONFIGS[slug as keyof typeof STUDENT_PAGE_CONFIGS],
+    [slug],
+  );
+  const [content, setContent] = useState<CmsPageContent>(() => ({
+    h1: defaultConfig?.h1 ?? '',
+    subtitle: defaultConfig?.subtitle ?? '',
+    intro: defaultConfig?.intro ?? '',
+    audience: defaultConfig?.audience ?? '',
+    ctaLabel: defaultConfig?.ctaLabel ?? 'Kom i gang',
+    usageExamples: defaultConfig?.usageExamples ?? [],
+    highlightedFeatures: defaultConfig?.highlightedFeatures ?? [],
+    relatedStudies: defaultConfig?.relatedStudies,
+  }));
+  const [published, setPublished] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const previewReadyRef = useRef(false);
+
+  // Sanntids-preview: send content til iframe via postMessage
+  // hver gang content endres. Debouncet med rAF for å unngå spam.
+  useEffect(() => {
+    if (!previewReadyRef.current) return;
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    const raf = requestAnimationFrame(() => {
+      win.postMessage(
+        { type: 'roleroom-cms-preview', pageKey: slug, content },
+        '*',
+      );
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [content, slug]);
+
+  // Vent til iframe sender "preview-ready" så vi vet at den kan motta postMessage
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'roleroom-cms-preview-ready' && event.data?.pageKey === slug) {
+        previewReadyRef.current = true;
+        // Send current state straks
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'roleroom-cms-preview', pageKey: slug, content },
+          '*',
+        );
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+    // Kun slug — content endring trigger separat effekt over
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  // Last existing CMS-override hvis den finnes — ellers behold defaults.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/admin/cms/pages/${slug}`, { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const c = data?.page?.content as Partial<CmsPageContent> | undefined;
+        if (c && typeof c === 'object') {
+          setContent((prev) => ({
+            ...prev,
+            ...(typeof c.h1 === 'string' && c.h1 ? { h1: c.h1 } : {}),
+            ...(typeof c.subtitle === 'string' && c.subtitle ? { subtitle: c.subtitle } : {}),
+            ...(typeof c.intro === 'string' && c.intro ? { intro: c.intro } : {}),
+            ...(typeof c.audience === 'string' && c.audience ? { audience: c.audience } : {}),
+            ...(typeof c.ctaLabel === 'string' && c.ctaLabel ? { ctaLabel: c.ctaLabel } : {}),
+            ...(Array.isArray(c.usageExamples) ? { usageExamples: c.usageExamples } : {}),
+            ...(Array.isArray(c.highlightedFeatures) ? { highlightedFeatures: c.highlightedFeatures } : {}),
+            ...(Array.isArray(c.relatedStudies) ? { relatedStudies: c.relatedStudies } : {}),
+          }));
+        }
+        if (typeof data?.page?.published === 'boolean') {
+          setPublished(data.page.published);
+        }
+      })
+      .catch(() => {
+        // Ignore — defaults beholdes.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/admin/cms/pages/${slug}`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          variant: 'student',
+          published,
+          content,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setFeedback('Lagret ✓ (cache oppdateres innen 5 min)');
+    } catch (err) {
+      setFeedback(`Feil: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateField = <K extends keyof CmsPageContent>(key: K, value: CmsPageContent[K]) => {
+    setContent((prev) => ({ ...prev, [key]: value }));
+  };
+
+  if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
+
+  const previewWidths = { desktop: '100%', tablet: 768, mobile: 390 };
+
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', lg: 'minmax(380px, 1fr) minmax(0, 1.4fr)' },
+        gap: 2,
+        minHeight: '70vh',
+      }}
+    >
+      {/* ── Editor-pane ────────────────────────────────────── */}
+      <Stack spacing={2} sx={{ minWidth: 0 }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Button onClick={onClose} size="small" sx={{ color: 'rgba(203,213,225,0.85)', textTransform: 'none' }}>
+            ← Oversikt
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button
+            size="small"
+            variant="outlined"
+            href={`https://theroleroom.com/${slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+            sx={{ color: 'rgba(203,213,225,0.85)', borderColor: 'rgba(148,163,184,0.24)', textTransform: 'none', fontSize: '0.78rem' }}
+          >
+            Live
+          </Button>
+        </Stack>
+
+        <Box sx={{ p: 2, bgcolor: 'rgba(2,6,23,0.42)', border: '1px solid rgba(148,163,184,0.16)', borderRadius: 1.5 }}>
+          <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.5, fontSize: '1rem' }}>
+            /{slug}
+          </Typography>
+          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.82rem' }}>
+            Endringer i skjemaet vises i sanntid i preview-panelet. Lagre når du er fornøyd.
+          </Typography>
+        </Box>
+
+        <CmsTextField label="Tittel (H1)" value={content.h1} onChange={(v) => updateField('h1', v)} />
+      <CmsTextField label="Undertittel" value={content.subtitle} onChange={(v) => updateField('subtitle', v)} multiline rows={2} />
+      <CmsTextField label="Intro-tekst" value={content.intro} onChange={(v) => updateField('intro', v)} multiline rows={4} />
+      <CmsTextField label="Målgruppe (vises som chip)" value={content.audience} onChange={(v) => updateField('audience', v)} />
+      <CmsTextField label="CTA-knapp-tekst" value={content.ctaLabel} onChange={(v) => updateField('ctaLabel', v)} />
+
+      <CmsListEditor
+        label="Bruks-eksempler (kort i sentralseksjon)"
+        items={content.usageExamples}
+        onChange={(items) => updateField('usageExamples', items)}
+        emptyItem={{ title: '', body: '' }}
+        renderItem={(item, onUpdate) => (
+          <Stack spacing={1}>
+            <CmsTextField label="Tittel" value={item.title} onChange={(v) => onUpdate({ ...item, title: v })} />
+            <CmsTextField label="Brødtekst" value={item.body} onChange={(v) => onUpdate({ ...item, body: v })} multiline rows={3} />
+          </Stack>
+        )}
+      />
+
+      <CmsChipListEditor
+        label="Fremhevede funksjoner (chips)"
+        items={content.highlightedFeatures}
+        onChange={(items) => updateField('highlightedFeatures', items)}
+      />
+
+      <CmsListEditor
+        label="Relaterte studier (valgfritt — kun for studie-rettede sider)"
+        items={content.relatedStudies ?? []}
+        onChange={(items) => updateField('relatedStudies', items.length > 0 ? items : undefined)}
+        emptyItem={{ name: '', institution: '' }}
+        renderItem={(item, onUpdate) => (
+          <Stack spacing={1}>
+            <CmsTextField label="Studie-navn" value={item.name} onChange={(v) => onUpdate({ ...item, name: v })} />
+            <CmsTextField label="Institusjon" value={item.institution} onChange={(v) => onUpdate({ ...item, institution: v })} />
+            <CmsTextField label="Notat (valgfritt)" value={item.note ?? ''} onChange={(v) => onUpdate({ ...item, note: v || undefined })} />
+          </Stack>
+        )}
+      />
+
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(2,6,23,0.34)' }}>
+        <Chip
+          size="small"
+          label={published ? 'Live' : 'Utkast'}
+          sx={{
+            bgcolor: published ? 'rgba(34,197,94,0.16)' : 'rgba(249,115,22,0.16)',
+            color: published ? '#86efac' : '#fdba74',
+            fontWeight: 700,
+          }}
+        />
+        <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem', flex: 1 }}>
+          {published
+            ? 'Innholdet vises offentlig på theroleroom.com/' + slug
+            : 'Utkast — offentlige besøkende ser hardkodet default-content.'}
+        </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setPublished((p) => !p)}
+          sx={{
+            color: 'rgba(203,213,225,0.85)',
+            borderColor: 'rgba(148,163,184,0.32)',
+            textTransform: 'none',
+          }}
+        >
+          {published ? 'Sett til utkast' : 'Publiser'}
+        </Button>
+      </Stack>
+
+      <Stack direction="row" spacing={1.5} sx={{ pt: 1 }}>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={saving}
+          sx={{
+            bgcolor: '#a78bfa',
+            color: '#0b1120',
+            textTransform: 'none',
+            fontWeight: 700,
+            '&:hover': { bgcolor: '#c4b5fd' },
+          }}
+        >
+          {saving ? 'Lagrer …' : 'Lagre endringer'}
+        </Button>
+        {feedback ? (
+          <Alert
+            severity={feedback.startsWith('Feil') ? 'error' : 'success'}
+            sx={{
+              flex: 1,
+              bgcolor: feedback.startsWith('Feil') ? 'rgba(239,68,68,0.10)' : 'rgba(34,197,94,0.10)',
+              color: feedback.startsWith('Feil') ? '#fca5a5' : '#86efac',
+            }}
+          >
+            {feedback}
+          </Alert>
+        ) : null}
+      </Stack>
+      </Stack>
+
+      {/* ── Preview-pane ──────────────────────────────────── */}
+      <Box
+        sx={{
+          position: 'sticky',
+          top: 16,
+          alignSelf: 'flex-start',
+          width: '100%',
+          height: 'calc(100vh - 100px)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1,
+          p: 1.5,
+          bgcolor: 'rgba(2,6,23,0.62)',
+          border: '1px solid rgba(148,163,184,0.16)',
+          borderRadius: 1.5,
+        }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Chip
+            size="small"
+            label="Live preview"
+            sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#86efac', fontWeight: 700, fontSize: '0.7rem' }}
+          />
+          <Box sx={{ flex: 1 }} />
+          {(['desktop', 'tablet', 'mobile'] as const).map((mode) => (
+            <Button
+              key={mode}
+              size="small"
+              onClick={() => setPreviewMode(mode)}
+              sx={{
+                color: previewMode === mode ? '#a78bfa' : 'rgba(148,163,184,0.85)',
+                bgcolor: previewMode === mode ? 'rgba(167,139,250,0.10)' : 'transparent',
+                textTransform: 'capitalize',
+                minWidth: 0,
+                px: 1.2,
+                fontSize: '0.74rem',
+                '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+              }}
+            >
+              {mode}
+            </Button>
+          ))}
+        </Stack>
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            overflow: 'auto',
+            bgcolor: '#000',
+            borderRadius: 1,
+          }}
+        >
+          <Box
+            sx={{
+              width: previewWidths[previewMode],
+              maxWidth: '100%',
+              height: '100%',
+              transition: 'width 0.25s ease',
+            }}
+          >
+            <iframe
+              ref={iframeRef}
+              src={`/${slug}`}
+              title={`Preview: /${slug}`}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                background: '#0b1120',
+              }}
+            />
+          </Box>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+function CmsTextField({
+  label,
+  value,
+  onChange,
+  multiline,
+  rows,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+  rows?: number;
+}) {
+  return (
+    <TextField
+      label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      multiline={multiline}
+      rows={rows}
+      size="small"
+      fullWidth
+      sx={{
+        '& .MuiInputBase-root': { bgcolor: 'rgba(2,6,23,0.42)', color: '#e2e8f0' },
+        '& .MuiInputLabel-root': { color: 'rgba(148,163,184,0.85)' },
+        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
+      }}
+    />
+  );
+}
+
+function CmsListEditor<T>({
+  label,
+  items,
+  onChange,
+  emptyItem,
+  renderItem,
+}: {
+  label: string;
+  items: T[];
+  onChange: (items: T[]) => void;
+  emptyItem: T;
+  renderItem: (item: T, onUpdate: (next: T) => void) => React.ReactNode;
+}) {
+  return (
+    <Stack spacing={1}>
+      <Typography sx={{ color: 'rgba(203,213,225,0.85)', fontSize: '0.84rem', fontWeight: 600 }}>{label}</Typography>
+      <Stack spacing={1.5}>
+        {items.map((item, idx) => (
+          <Box
+            key={idx}
+            sx={{
+              p: 1.5,
+              borderRadius: 1.5,
+              border: '1px solid rgba(148,163,184,0.16)',
+              bgcolor: 'rgba(2,6,23,0.34)',
+            }}
+          >
+            <Stack spacing={1}>
+              {renderItem(item, (next) => {
+                const copy = [...items];
+                copy[idx] = next;
+                onChange(copy);
+              })}
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  onClick={() => onChange(items.filter((_, i) => i !== idx))}
+                  sx={{ color: '#fca5a5', textTransform: 'none', fontSize: '0.78rem' }}
+                >
+                  Fjern
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        ))}
+        <Button
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={() => onChange([...items, emptyItem])}
+          sx={{
+            color: '#a78bfa',
+            textTransform: 'none',
+            alignSelf: 'flex-start',
+          }}
+        >
+          Legg til
+        </Button>
+      </Stack>
+    </Stack>
+  );
+}
+
+function CmsChipListEditor({
+  label,
+  items,
+  onChange,
+}: {
+  label: string;
+  items: string[];
+  onChange: (items: string[]) => void;
+}) {
+  const [input, setInput] = useState('');
+
+  const add = () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    onChange([...items, trimmed]);
+    setInput('');
+  };
+
+  return (
+    <Stack spacing={1}>
+      <Typography sx={{ color: 'rgba(203,213,225,0.85)', fontSize: '0.84rem', fontWeight: 600 }}>{label}</Typography>
+      <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+        {items.map((item, idx) => (
+          <Chip
+            key={`${item}-${idx}`}
+            label={item}
+            onDelete={() => onChange(items.filter((_, i) => i !== idx))}
+            sx={{
+              bgcolor: 'rgba(167,139,250,0.16)',
+              color: '#ddd6fe',
+              border: '1px solid rgba(167,139,250,0.32)',
+            }}
+          />
+        ))}
+      </Stack>
+      <Stack direction="row" spacing={1}>
+        <TextField
+          size="small"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); add(); }
+          }}
+          placeholder="Ny funksjon …"
+          sx={{
+            flex: 1,
+            '& .MuiInputBase-root': { bgcolor: 'rgba(2,6,23,0.42)', color: '#e2e8f0' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
+          }}
+        />
+        <Button onClick={add} size="small" variant="outlined" sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}>
+          Legg til
+        </Button>
+      </Stack>
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Page shell
 // ─────────────────────────────────────────────────────────
 
@@ -1961,6 +2887,8 @@ export default function AdminRoom() {
   else if (tab === 'partners') content = <PartnerContactsTab />;
   else if (tab === 'business-plan') content = <BusinessPlanTab />;
   else if (tab === 'activity') content = <ActivityLogTab />;
+  else if (tab === 'analytics') content = <AnalyticsTab />;
+  else if (tab === 'cms') content = <CmsTab />;
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
 
   return (
@@ -1999,6 +2927,8 @@ export default function AdminRoom() {
           <Tab value="investors" label="Investor-pipeline" />
           <Tab value="partners" label="Samarbeidspartnere" />
           <Tab value="activity" label="Aktivitets-logg" />
+          <Tab value="analytics" label="Analytics" />
+          <Tab value="cms" label="CMS" />
           <Tab value="role-nav" label="Rolle-navigasjon" />
         </Tabs>
         <Box>{content}</Box>

@@ -95,11 +95,13 @@
     var GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
     var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = 'GTM-TNWTVHSP';
     var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+    var ROLE_ROOM_CLARITY_PROJECT_ID = 'wqgcu06tz0';
 
     window.__creatorhubAnalyticsConfig = {
       site: 'role-room',
       measurementId: ROLE_ROOM_GA_MEASUREMENT_ID,
       tagManagerId: ROLE_ROOM_GOOGLE_TAG_MANAGER_ID,
+      clarityProjectId: ROLE_ROOM_CLARITY_PROJECT_ID,
     };
 
     function readStoredConsent() {
@@ -149,6 +151,8 @@
       var hasLoadedAnalyticsScript = false;
       var hasRequestedAnalyticsScript = false;
       var hasSentInitialPageView = false;
+      var hasRequestedClarityScript = false;
+      var hasLoadedClarityScript = false;
       var storedConsent = readStoredConsent();
 
       window.gtag('consent', 'default', buildConsentPayload(storedConsent));
@@ -201,6 +205,29 @@
         return true;
       }
 
+      function ensureClarityLoaded(consentSettings) {
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !ROLE_ROOM_CLARITY_PROJECT_ID
+        ) {
+          return false;
+        }
+        if (hasLoadedClarityScript || hasRequestedClarityScript) {
+          return true;
+        }
+        hasRequestedClarityScript = true;
+        (function (c, l, a, r, i) {
+          c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+          var t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+          t.onload = function () { hasLoadedClarityScript = true; };
+          t.onerror = function () { hasRequestedClarityScript = false; };
+          var y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+        })(window, document, 'clarity', 'script', ROLE_ROOM_CLARITY_PROJECT_ID);
+        return true;
+      }
+
       function ensureAnalyticsLoaded(consentSettings) {
         if (
           isLocalhost ||
@@ -243,12 +270,14 @@
         if (hasAnalyticsConsent(consentSettings)) {
           ensureTagManagerLoaded(consentSettings);
           ensureAnalyticsLoaded(consentSettings);
+          ensureClarityLoaded(consentSettings);
         }
         return true;
       };
       window.__creatorhubLoadAnalytics = function (consentSettings) {
         var resolvedConsent = consentSettings || readStoredConsent();
         ensureTagManagerLoaded(resolvedConsent);
+        ensureClarityLoaded(resolvedConsent);
         return ensureAnalyticsLoaded(resolvedConsent);
       };
 
@@ -259,6 +288,7 @@
       if (hasAnalyticsConsent(storedConsent)) {
         ensureTagManagerLoaded(storedConsent);
         ensureAnalyticsLoaded(storedConsent);
+        ensureClarityLoaded(storedConsent);
       }
     })();
   </script>

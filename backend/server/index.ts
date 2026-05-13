@@ -369,6 +369,7 @@ import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
 import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
 import { setupRoleRoomAuditionsRoutes } from "./role-room-auditions-routes";
+import { setupCmsPagesRoutes } from "./cms-pages-routes";
 import { setupCastingPoolsRoutes } from "./casting-pools-routes";
 import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
@@ -37139,6 +37140,17 @@ setupRoleRoomBillingAdminRoutes({
 //   audition-grupperting i frontend (commit ebc1ef91 — fortsatt aktivt
 //   som fallback for prosjekter uten migrert audition-data).
 setupRoleRoomAuditionsRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+
+// ── CMS-sider for SEO-landingssider (migrasjon 141) ────────────
+//   AdminRoom redigerer innholdet på student-sidene + konkurrent-
+//   sammenligninger uten kode-deploy. Frontend henter content fra
+//   /api/cms/pages/:slug med fallback til hardkodet default ved
+//   404 — så ny landingsside aldri viser blank skjerm.
+setupCmsPagesRoutes({
   app,
   pool,
   requireAdminSession,

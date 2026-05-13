@@ -7,6 +7,8 @@ import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
+import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
+import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
 import { clientInvitesApi, googleWorkspaceApi } from './services/castingApiService';
@@ -62,6 +64,18 @@ function CastingStandaloneAppContent() {
     return isRoleRoomEducationPathname(window.location.pathname, window.location);
   }, []);
 
+  // Public SEO-landingssider — detekteres før auth-gate slik at
+  // Googlebot kan indeksere innholdet uten login.
+  const competitorKey = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return parseCompetitorFromPath(window.location.pathname);
+  }, []);
+
+  const studentPageKey = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return parseStudentPageFromPath(window.location.pathname);
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -73,7 +87,15 @@ function CastingStandaloneAppContent() {
     });
 
     trackMarketingPageView(window.location.pathname);
-  }, [isEducationPath]);
+  }, [isEducationPath, competitorKey, studentPageKey]);
+
+  if (competitorKey) {
+    return <CompetitorComparisonPage competitor={competitorKey} />;
+  }
+
+  if (studentPageKey) {
+    return <StudentSEOPage pageKey={studentPageKey} />;
+  }
 
   if (isEducationPath) {
     return <RoleRoomEducationPartnershipPage />;

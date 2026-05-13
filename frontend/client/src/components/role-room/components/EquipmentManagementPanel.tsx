@@ -9,6 +9,7 @@ import FirmwareManagementInterface from "../../equipment/FirmwareManagementInter
 import { useAuth } from "../../../hooks/useAuth";
 import { apiRequest } from "../../../lib/queryClient";
 import { equipmentApi, equipmentBookingsApi, equipmentAvailabilityApi, equipmentConflictsApi, equipmentCheckoutApi, crewApi, locationsApi, equipmentTemplatesApi, vendorLinksApi, type Equipment, type EquipmentBooking, type EquipmentAvailability, type EquipmentConflict, type EquipmentCheckout, type CastingCrew, type CastingLocation, type EquipmentTemplate, type EquipmentTemplateItem, type VendorLink } from "../services/castingApiService";
+import { roleRoomAnalytics } from "../services/roleRoomAnalytics";
 import { useToast } from "./ToastStack";
 import { equipmentCategoriesService } from "../services/equipmentCategoriesService";
 import { RoleRoomEmptyState } from "./icons/RoleRoomEmptyState";
@@ -2658,6 +2659,11 @@ export function EquipmentManagementPanel({
       } else {
         createdEquipment = await equipmentApi.create(payload);
         showSuccess('Utstyr opprettet');
+        roleRoomAnalytics.equipmentAdded({
+          project_id: projectId,
+          equipment_id: createdEquipment?.id ?? formData.name,
+          category: formData.category,
+        });
       }
       seedGlobalMentions([formData.notes], [formData.name, formData.brand, formData.model]);
       if (createdEquipment) {

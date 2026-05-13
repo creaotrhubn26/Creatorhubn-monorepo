@@ -64,6 +64,7 @@ import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { Location } from '../models/casting';
 import { externalDataService } from '@/services/ExternalDataService';
 import { analyzeLocation as analyzeLocationApi, type LocationAnalysis as LocationPermitAnalysis } from '../services/locationAnalysisService';
+import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { LocationAnalysisGuide } from './production/LocationAnalysisGuide';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
@@ -703,6 +704,11 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       };
       
       setAnalysis(analysisData);
+      roleRoomAnalytics.locationAnalyzed({
+        project_id: (location as { projectId?: string })?.projectId ?? 'unknown',
+        location_id: location?.id,
+        analysis_type: 'property',
+      });
       if (onAnalysisComplete) {
         onAnalysisComplete(analysisData);
       }

@@ -132,6 +132,106 @@
       "destination": "/theroleroom.html"
     },
     {
+      "source": "/alternatives",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/vs-:competitor",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/for-studenter",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/film-tv-utdanning",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/casting-director-utdanning",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/regissor-verktoy",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/produksjonsledelse-studie",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/innholdsprodusenter",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/innholdsproduksjon-studie",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/dansestudio",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
       "source": "/theroleroom",
       "destination": "/theroleroom.html"
     },

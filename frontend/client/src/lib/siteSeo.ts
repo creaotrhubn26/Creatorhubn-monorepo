@@ -87,7 +87,25 @@ const CREATORHUB_NOINDEX_PATTERNS = [
   /^\/contextual-photography-tips(?:$|\/)/,
 ];
 
-const ROLE_ROOM_PUBLIC_PATHS = new Set(['/', '/talentportal', '/utdanningsinstitusjon']);
+const ROLE_ROOM_PUBLIC_PATHS = new Set([
+  '/',
+  '/talentportal',
+  '/utdanningsinstitusjon',
+  '/alternatives',
+  '/vs-studiobinder',
+  '/vs-castingnetworks',
+  '/vs-moviemagic',
+  '/vs-yamdu',
+  '/vs-setkeeper',
+  '/for-studenter',
+  '/film-tv-utdanning',
+  '/casting-director-utdanning',
+  '/regissor-verktoy',
+  '/produksjonsledelse-studie',
+  '/innholdsprodusenter',
+  '/innholdsproduksjon-studie',
+  '/dansestudio',
+]);
 
 const ROLE_ROOM_NOINDEX_PATTERNS = [
   /^\/admin(?:$|\/)/,
