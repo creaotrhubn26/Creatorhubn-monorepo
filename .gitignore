@@ -128,3 +128,4 @@ Camera Agreement*.pdf
 # Pitch deck render artifacts (regenerable via decks/scripts/render-pitch-decks.ts)
 decks/output/
 decks/screenshots/
+.vercel
