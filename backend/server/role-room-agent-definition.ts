@@ -172,6 +172,35 @@ export const ROLE_ROOM_AGENT_TOOLS = [
       required: ['decision_title', 'why_now'],
     },
   },
+  {
+    name: 'generate_community_post',
+    description:
+      'Generer et utkast til et community-/marketing-post for en spesifikk plattform (Product Hunt, Reddit, Hacker News, IndieHackers, BetaList, Discord, blogger). Returnerer {title, body}-mal som adminen kan tilpasse og publisere. Brukes når brukeren spør om å forberede en launch-post, Show HN, AMA, Reddit-tråd, eller pressemelding-utkast.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        channel_type: {
+          type: 'string',
+          enum: ['product_hunt', 'reddit', 'indie_hackers', 'beta_list', 'hacker_news', 'discord', 'twitter', 'linkedin', 'blog', 'other'],
+          description: 'Hvilken plattform posten er for.',
+        },
+        topic: {
+          type: 'string',
+          description: 'Kort tema (f.eks. "The Role Room", "Launch v2", "AI casting features").',
+        },
+        audience: {
+          type: 'string',
+          description: 'Målgruppe innenfor kanalen (f.eks. "filmmakers", "norske studenter", "indie casting directors").',
+        },
+        tone: {
+          type: 'string',
+          enum: ['professional', 'casual', 'enthusiastic', 'understated'],
+          description: 'Tone i posten. Default: kanal-tilpasset (HN = understated, ProductHunt = enthusiastic, blogg = professional).',
+        },
+      },
+      required: ['channel_type', 'topic'],
+    },
+  },
 ];
 
 export type RoleRoomAgentToolName =
@@ -179,6 +208,7 @@ export type RoleRoomAgentToolName =
   | 'draft_review_request'
   | 'propose_timeline_item'
   | 'flag_scope_impact'
-  | 'suggest_next_decision';
+  | 'suggest_next_decision'
+  | 'generate_community_post';
 
 export const ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS = 1200;
