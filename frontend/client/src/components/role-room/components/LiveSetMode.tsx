@@ -96,6 +96,7 @@ import { useLiveSet, type LiveSetCameraMetadata, type LiveSetNote, type LiveSetT
 import { useLiveSetContext, type ShotOption, type StoryboardTile } from '../hooks/useLiveSetContext';
 import { useLiveWeather, type LiveWeatherRiskLevel, type LiveWeatherState } from '../hooks/useLiveWeather';
 import LiveSetDitPanel from './LiveSetDitPanel';
+import LiveSetSlateOverlay, { buildSlateFromLiveSet } from './LiveSetSlateOverlay';
 import { useShotListSync, type ShotListSyncState, type TakeCaptureForm } from '../hooks/useShotListSync';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
@@ -2674,6 +2675,8 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
   const [liveSetMode, setLiveSetMode] = useState<'live' | 'edit' | 'review'>('live');
   // DIT-backup-drawer toggle
   const [ditDrawerOpen, setDitDrawerOpen] = useState(false);
+  // Slate-overlay toggle (hotkey 'M' for marker)
+  const [slateOpen, setSlateOpen] = useState(false);
 
   // Real-time per-take backup-status fra /api/dit/take-status.
   // Map: take_id → {destination_type: status-info}. Pollet hvert 8 sek.
@@ -3148,6 +3151,12 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
         case 'N':
           setActivityTab('notes');
           setTimeout(() => noteInputRef.current?.focus(), 100);
+          break;
+        case 'M':
+          // Slate / marker hotkey — viser digital klappe-overlay
+          // for sync-marker + scriptie-notat
+          e.preventDefault();
+          setSlateOpen(true);
           break;
         case 'ARROWDOWN':
           e.preventDefault();
@@ -4056,6 +4065,18 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
         open={ditDrawerOpen}
         onClose={() => setDitDrawerOpen(false)}
         projectId={projectId}
+      />
+
+      {/* ── Slate-overlay (hotkey 'M' for marker) ── */}
+      <LiveSetSlateOverlay
+        open={slateOpen}
+        onDismiss={() => setSlateOpen(false)}
+        data={buildSlateFromLiveSet({
+          sceneNumber: state.currentScene?.sceneNumber ?? '—',
+          takeNumber: (state.takes[0]?.takeNumber ?? 0) + 1,
+          cam: state.cam ?? 'A',
+          roll: 'A001',
+        })}
       />
     </Box>
   );
