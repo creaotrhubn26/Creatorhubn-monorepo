@@ -368,6 +368,7 @@ import { setupRoleRoomEducationInquiriesRoutes } from "./role-room-education-inq
 import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
 import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
+import { setupRoleRoomAuditionsRoutes } from "./role-room-auditions-routes";
 import { setupCastingPoolsRoutes } from "./casting-pools-routes";
 import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
@@ -37130,6 +37131,17 @@ setupRoleRoomBillingAdminRoutes({
   ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
   ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
   ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+});
+
+// ── Role Room auditions — Audition-entitet (migrasjon 140).
+//   5 endpoints under /api/role-room/(projects/:id/)?auditions/* for
+//   CRUD + schedule-tilknytting. Erstatter på sikt synthetisk
+//   audition-grupperting i frontend (commit ebc1ef91 — fortsatt aktivt
+//   som fallback for prosjekter uten migrert audition-data).
+setupRoleRoomAuditionsRoutes({
+  app,
+  pool,
+  requireAdminSession,
 });
 
 // ── Casting auth-middleware (F4 wiring) ───────────────────────────────
