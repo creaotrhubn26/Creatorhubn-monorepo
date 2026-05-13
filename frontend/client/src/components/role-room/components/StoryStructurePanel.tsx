@@ -87,6 +87,7 @@ import {
   CallSplit as SubplotIcon,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import {
   analyzeScriptExtended,
   createShareConfig,
@@ -484,7 +485,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
   onGotoLine,
 }) => {
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: 2, '& .MuiIconButton-root': { minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE } }}>
       {/* Act Structure */}
       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
         <TimelineIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />

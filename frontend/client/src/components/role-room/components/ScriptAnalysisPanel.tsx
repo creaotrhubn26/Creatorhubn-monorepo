@@ -46,6 +46,7 @@ import {
   analyzeScript,
   type ScriptAnalysisResult,
 } from '../services/scriptAnalysisService';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 interface ScriptAnalysisPanelProps {
   content: string;
@@ -107,6 +108,11 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         flexDirection: 'column',
         bgcolor: '#1a1a2e',
         overflow: 'hidden',
+        // WCAG 2.2 - 2.5.5: 44x44 min touch target for alle IconButtons
+        '& .MuiIconButton-root': {
+          minWidth: TOUCH_TARGET_SIZE,
+          minHeight: TOUCH_TARGET_SIZE,
+        },
       }}
     >
       {/* Header */}
