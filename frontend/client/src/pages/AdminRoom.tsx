@@ -11,7 +11,7 @@
  * som er stable produktfunksjonalitet.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -2971,24 +2971,60 @@ function PresenceTab() {
 function PresenceChannelsView() {
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [draft, setDraft] = useState<Partial<CommunityChannel>>({
+    channel_type: 'reddit',
+    display_name: '',
+    handle: '',
+    url: '',
+    priority: 3,
+    status: 'planned',
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
     setLoading(true);
     fetch('/api/admin/community/channels', { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : { channels: [] }))
-      .then((data) => {
-        if (!cancelled) setChannels(Array.isArray(data?.channels) ? data.channels : []);
-      })
-      .catch(() => { if (!cancelled) setChannels([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then((data) => setChannels(Array.isArray(data?.channels) ? data.channels : []))
+      .catch(() => setChannels([]))
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleAdd = async () => {
+    try {
+      const res = await fetch('/api/admin/community/channels', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAddOpen(false);
+      setDraft({ channel_type: 'reddit', display_name: '', handle: '', url: '', priority: 3, status: 'planned' });
+      load();
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   if (loading) return <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress /></Stack>;
 
   return (
-    <Stack spacing={0.8}>
+    <Stack spacing={1.5}>
+      <Stack direction="row" justifyContent="flex-end">
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => setAddOpen(true)}
+          sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+        >
+          Ny kanal
+        </Button>
+      </Stack>
+      <Stack spacing={0.8}>
       {channels.length === 0 ? (
         <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
           Ingen kanaler ennå. Seed-data er lagt i migrasjon 143 — om denne er tom: backend ikke deployed eller migrasjon ikke kjørt.
@@ -3052,6 +3088,87 @@ function PresenceChannelsView() {
           </Stack>
         );
       })}
+      </Stack>
+
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'rgba(2,6,23,0.95)', color: '#f8fafc' }}>Ny kanal</DialogTitle>
+        <DialogContent sx={{ bgcolor: 'rgba(2,6,23,0.95)', pt: '20px !important' }}>
+          <Stack spacing={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Type</InputLabel>
+              <Select
+                label="Type"
+                value={draft.channel_type ?? 'reddit'}
+                onChange={(e) => setDraft({ ...draft, channel_type: e.target.value as string })}
+                sx={{ color: '#e2e8f0' }}
+              >
+                {Object.entries(CHANNEL_TYPE_LABELS).map(([k, v]) => (
+                  <MenuItem key={k} value={k}>{v.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Visning-navn"
+              value={draft.display_name ?? ''}
+              onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}
+              size="small"
+              required
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
+            <TextField
+              label="Handle (f.eks. r/Filmmakers)"
+              value={draft.handle ?? ''}
+              onChange={(e) => setDraft({ ...draft, handle: e.target.value })}
+              size="small"
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
+            <TextField
+              label="URL"
+              value={draft.url ?? ''}
+              onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+              size="small"
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
+            <Stack direction="row" spacing={2}>
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Prioritet</InputLabel>
+                <Select
+                  label="Prioritet"
+                  value={draft.priority ?? 3}
+                  onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => <MenuItem key={n} value={n}>P{n}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ flex: 1 }}>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Status</InputLabel>
+                <Select
+                  label="Status"
+                  value={draft.status ?? 'planned'}
+                  onChange={(e) => setDraft({ ...draft, status: e.target.value as string })}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {['planned', 'active', 'paused', 'won', 'lost'].map((s) => (
+                    <MenuItem key={s} value={s}>{STATUS_TONES[s]?.label ?? s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: 'rgba(2,6,23,0.95)' }}>
+          <Button onClick={() => setAddOpen(false)} sx={{ color: 'rgba(203,213,225,0.85)' }}>Avbryt</Button>
+          <Button
+            variant="contained"
+            disabled={!draft.display_name?.trim()}
+            onClick={handleAdd}
+            sx={{ bgcolor: '#a78bfa', color: '#0b1120', '&:hover': { bgcolor: '#c4b5fd' } }}
+          >
+            Opprett
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }
