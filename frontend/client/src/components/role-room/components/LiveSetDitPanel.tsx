@@ -20,18 +20,26 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
+  FormControl,
   IconButton,
+  InputLabel,
   LinearProgress,
+  MenuItem,
+  Select,
   Stack,
   Tab,
   Tabs,
+  TextField,
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 interface DitDestination {
   id: string;
@@ -108,6 +116,15 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
   const [loading, setLoading] = useState(false);
   const [newToken, setNewToken] = useState<{ token: string; expires_at: string } | null>(null);
   const [copyConfirm, setCopyConfirm] = useState(false);
+  const [addDestOpen, setAddDestOpen] = useState(false);
+  const [destDraft, setDestDraft] = useState({
+    destination_type: 'primary',
+    label: '',
+    path: '',
+    storage_type: 'raid',
+    priority: 1,
+  });
+  const [savingDest, setSavingDest] = useState(false);
 
   const loadAll = useCallback(() => {
     if (!projectId) return;
@@ -164,6 +181,47 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
         method: 'DELETE',
         credentials: 'same-origin',
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      loadAll();
+    } catch (err) {
+      window.alert(`Feil: ${(err as Error).message}`);
+    }
+  };
+
+  const saveDestination = async () => {
+    if (!destDraft.label.trim()) return;
+    setSavingDest(true);
+    try {
+      const res = await fetch('/api/dit/destinations', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: projectId,
+          destination_type: destDraft.destination_type,
+          label: destDraft.label.trim(),
+          path: destDraft.path.trim() || null,
+          storage_type: destDraft.storage_type,
+          priority: destDraft.priority,
+          status: 'active',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      setAddDestOpen(false);
+      setDestDraft({ destination_type: 'primary', label: '', path: '', storage_type: 'raid', priority: 1 });
+      loadAll();
+    } catch (err) {
+      window.alert(`Kunne ikke opprette destinasjon: ${(err as Error).message}`);
+    } finally {
+      setSavingDest(false);
+    }
+  };
+
+  const deleteDestination = async (id: string) => {
+    if (!window.confirm('Slett denne destinasjonen? Pågående backup-jobs kan ikke flyttes — slett kun ubrukte destinasjoner.')) return;
+    try {
+      const res = await fetch(`/api/dit/destinations/${id}`, { method: 'DELETE', credentials: 'same-origin' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       loadAll();
     } catch (err) {
@@ -306,33 +364,47 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
 
         {/* ── DESTINATIONS-vy ──────────────────────────────────────── */}
         {section === 'destinations' ? (
-          destinations.length === 0 ? (
-            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
-              Ingen destinasjoner konfigurert. Opprett via API:<br/>
-              <code style={{ fontSize: 11 }}>POST /api/dit/destinations</code> med project_id, destination_type, label, path
-            </Alert>
-          ) : (
-            <Stack spacing={0.8}>
-              {destinations.map((d) => {
-                const meta = DEST_TYPE_LABELS[d.destination_type] ?? { label: d.destination_type, color: '#94a3b8' };
-                return (
-                  <Box key={d.id} sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(2,6,23,0.42)' }}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Chip size="small" label={meta.label} sx={{ bgcolor: `${meta.color}26`, color: meta.color, fontWeight: 700, height: 20 }} />
-                      <Chip size="small" label={d.storage_type} sx={{ bgcolor: 'rgba(148,163,184,0.10)', color: '#cbd5e1', fontWeight: 600, height: 20 }} />
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', flex: 1 }}>{d.label}</Typography>
-                      <Chip size="small" label={d.status} sx={{ bgcolor: d.status === 'active' ? 'rgba(34,197,94,0.16)' : 'rgba(148,163,184,0.16)', color: d.status === 'active' ? '#86efac' : '#cbd5e1', height: 20 }} />
-                    </Stack>
-                    {d.path ? (
-                      <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.78rem', fontFamily: 'monospace', mt: 0.5 }}>
-                        {d.path}
-                      </Typography>
-                    ) : null}
-                  </Box>
-                );
-              })}
+          <Stack spacing={1.5}>
+            <Stack direction="row" justifyContent="flex-end">
+              <Button
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={() => setAddDestOpen(true)}
+                sx={{ color: '#22d3ee', textTransform: 'none' }}
+              >
+                Ny destinasjon
+              </Button>
             </Stack>
-          )
+            {destinations.length === 0 ? (
+              <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+                Ingen destinasjoner ennå. Klikk "Ny destinasjon" for å konfigurere første backup-mål.
+              </Alert>
+            ) : (
+              <Stack spacing={0.8}>
+                {destinations.map((d) => {
+                  const meta = DEST_TYPE_LABELS[d.destination_type] ?? { label: d.destination_type, color: '#94a3b8' };
+                  return (
+                    <Box key={d.id} sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(2,6,23,0.42)' }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Chip size="small" label={meta.label} sx={{ bgcolor: `${meta.color}26`, color: meta.color, fontWeight: 700, height: 20 }} />
+                        <Chip size="small" label={d.storage_type} sx={{ bgcolor: 'rgba(148,163,184,0.10)', color: '#cbd5e1', fontWeight: 600, height: 20 }} />
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', flex: 1 }}>{d.label}</Typography>
+                        <Chip size="small" label={d.status} sx={{ bgcolor: d.status === 'active' ? 'rgba(34,197,94,0.16)' : 'rgba(148,163,184,0.16)', color: d.status === 'active' ? '#86efac' : '#cbd5e1', height: 20 }} />
+                        <IconButton size="small" onClick={() => deleteDestination(d.id)} sx={{ color: 'rgba(252,165,165,0.7)', '&:hover': { color: '#fca5a5' } }}>
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                      {d.path ? (
+                        <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.78rem', fontFamily: 'monospace', mt: 0.5 }}>
+                          {d.path}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  );
+                })}
+              </Stack>
+            )}
+          </Stack>
         ) : null}
 
         {/* ── TOKENS-vy ──────────────────────────────────────────── */}
@@ -436,6 +508,84 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
           </Box>
         </Typography>
       </Box>
+
+      {/* Ny-destinasjon-dialog */}
+      <Dialog open={addDestOpen} onClose={() => setAddDestOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'rgba(7,10,20,0.98)', color: '#f8fafc' }}>Ny backup-destinasjon</DialogTitle>
+        <DialogContent sx={{ bgcolor: 'rgba(7,10,20,0.98)', pt: '20px !important' }}>
+          <Stack spacing={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Type</InputLabel>
+              <Select
+                label="Type"
+                value={destDraft.destination_type}
+                onChange={(e) => setDestDraft({ ...destDraft, destination_type: e.target.value as string })}
+                sx={{ color: '#e2e8f0' }}
+              >
+                {Object.entries(DEST_TYPE_LABELS).map(([k, v]) => (
+                  <MenuItem key={k} value={k}>{v.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Label (vises i UI)"
+              value={destDraft.label}
+              onChange={(e) => setDestDraft({ ...destDraft, label: e.target.value })}
+              size="small"
+              required
+              placeholder="f.eks. Primary RAID Studio A"
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
+            <TextField
+              label="Path / URI"
+              value={destDraft.path}
+              onChange={(e) => setDestDraft({ ...destDraft, path: e.target.value })}
+              size="small"
+              placeholder="/Volumes/RAID-A eller s3://bucket/path"
+              helperText="Tom for 'original' (kortet er kilden)"
+              sx={{
+                '& .MuiInputBase-root': { color: '#e2e8f0' },
+                '& .MuiFormHelperText-root': { color: 'rgba(148,163,184,0.7)' },
+              }}
+            />
+            <Stack direction="row" spacing={2}>
+              <FormControl size="small" sx={{ flex: 1 }}>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Storage</InputLabel>
+                <Select
+                  label="Storage"
+                  value={destDraft.storage_type}
+                  onChange={(e) => setDestDraft({ ...destDraft, storage_type: e.target.value as string })}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {['raid', 'lto', 's3', 'gcs', 'local'].map((s) => <MenuItem key={s} value={s}>{s.toUpperCase()}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Prioritet</InputLabel>
+                <Select
+                  label="Prioritet"
+                  value={destDraft.priority}
+                  onChange={(e) => setDestDraft({ ...destDraft, priority: Number(e.target.value) })}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => <MenuItem key={n} value={n}>{n}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: 'rgba(7,10,20,0.98)' }}>
+          <Button onClick={() => setAddDestOpen(false)} sx={{ color: 'rgba(203,213,225,0.85)' }}>Avbryt</Button>
+          <Button
+            variant="contained"
+            disabled={!destDraft.label.trim() || savingDest}
+            onClick={saveDestination}
+            sx={{ bgcolor: '#22d3ee', color: '#0b1120', '&:hover': { bgcolor: '#67e8f9' } }}
+          >
+            {savingDest ? 'Lagrer…' : 'Opprett'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Drawer>
   );
 }

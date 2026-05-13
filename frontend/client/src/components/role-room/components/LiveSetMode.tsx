@@ -2134,8 +2134,12 @@ interface LiveSetActivityPanelProps {
   noteInput: string;
   noteTag: NoteTag;
   noteInputRef: React.RefObject<HTMLInputElement | null>;
-  /** Set-level DIT-backup-status — propagert til hver TakeRow */
+  /** Set-level fallback ved manglende per-take-data */
   backupStatus?: { original: boolean; primary: boolean; secondary: boolean; offsite: boolean };
+  /** Real-time per-take backup-status fra /api/dit/take-status.
+   *  Map: take_id → {destination_type: {status, completed_at}}. Når
+   *  satt: bruker dette istedenfor set-level backupStatus for taken. */
+  ditTakeStatus?: Record<string, Record<string, { status: string; completed_at?: string }>>;
   onTabChange: (t: 'takes' | 'notes') => void;
   onFocusTake: (i: number) => void;
   onStatusChange: (id: string, s: TakeStatus) => void;
@@ -2147,7 +2151,7 @@ interface LiveSetActivityPanelProps {
 
 const LiveSetActivityPanel: FC<LiveSetActivityPanelProps> = ({
   takes, notes, touchUi, globalMentionCandidates = [], activeTab, focusedTakeIndex,
-  noteInput, noteTag, noteInputRef, backupStatus,
+  noteInput, noteTag, noteInputRef, backupStatus, ditTakeStatus,
   onTabChange, onFocusTake, onStatusChange,
   onNoteInput, onNoteTag, onAddNote, onDeleteNote,
 }) => {
@@ -2239,7 +2243,18 @@ const LiveSetActivityPanel: FC<LiveSetActivityPanelProps> = ({
                 isFocused={focusedTakeIndex === i}
                 onFocus={() => onFocusTake(i)}
                 onStatusChange={onStatusChange}
-                backupStatus={backupStatus}
+                backupStatus={
+                  // Foretrekk per-take DB-status hvis tilgjengelig,
+                  // ellers fall tilbake til set-level proxy
+                  ditTakeStatus?.[take.id]
+                    ? {
+                        original: ditTakeStatus[take.id]?.original?.status === 'verified',
+                        primary: ditTakeStatus[take.id]?.primary?.status === 'verified',
+                        secondary: ditTakeStatus[take.id]?.secondary?.status === 'verified',
+                        offsite: ditTakeStatus[take.id]?.offsite?.status === 'verified',
+                      }
+                    : backupStatus
+                }
               />
             ))
           )
@@ -2659,6 +2674,36 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
   const [liveSetMode, setLiveSetMode] = useState<'live' | 'edit' | 'review'>('live');
   // DIT-backup-drawer toggle
   const [ditDrawerOpen, setDitDrawerOpen] = useState(false);
+
+  // Real-time per-take backup-status fra /api/dit/take-status.
+  // Map: take_id → {destination_type: status-info}. Pollet hvert 8 sek.
+  const [ditTakeStatus, setDitTakeStatus] = useState<Record<string, Record<string, { status: string; completed_at?: string }>>>({});
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`/api/dit/projects/${projectId}/take-status`, { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const map: Record<string, Record<string, { status: string; completed_at?: string }>> = {};
+        if (Array.isArray(data?.take_status)) {
+          for (const row of data.take_status as Array<{ take_id: string; destinations: Record<string, { status: string; completed_at?: string }> }>) {
+            if (row.take_id && row.destinations && typeof row.destinations === 'object') {
+              map[row.take_id] = row.destinations;
+            }
+          }
+        }
+        setDitTakeStatus(map);
+      } catch {
+        // Silent — defensiv
+      }
+    };
+    void fetchStatus();
+    const id = setInterval(fetchStatus, 8000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [projectId]);
 
   const {
     state, roll, cut, setupComplete, advanceScene,
@@ -3464,6 +3509,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
                 secondary: setStatus.backupSecondary,
                 offsite: setStatus.backupOffsite,
               }}
+              ditTakeStatus={ditTakeStatus}
               onTabChange={setActivityTab}
               onFocusTake={focusTake}
               onStatusChange={setTakeStatus}
@@ -3588,6 +3634,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
                 secondary: setStatus.backupSecondary,
                 offsite: setStatus.backupOffsite,
               }}
+              ditTakeStatus={ditTakeStatus}
               onTabChange={setActivityTab}
               onFocusTake={focusTake}
               onStatusChange={setTakeStatus}
