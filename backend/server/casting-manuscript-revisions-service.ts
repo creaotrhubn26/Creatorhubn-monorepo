@@ -20,7 +20,11 @@
  * Bruker `fast-json-patch` (RFC 6902 standard).
  */
 
-import { compare, type Operation } from "fast-json-patch";
+// fast-json-patch er CJS-only — importer default-objektet og destrukturer
+// `compare` derfra. Direkte named-import-faller på esbuild-bundlet
+// ESM-output (Render-bygg). `Operation`-typen er TypeScript-only.
+import fastJsonPatch, { type Operation } from "fast-json-patch";
+const { compare } = fastJsonPatch;
 
 import type {
   CastingManuscriptsService,
