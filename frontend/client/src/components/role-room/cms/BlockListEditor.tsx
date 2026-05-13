@@ -510,9 +510,143 @@ function UsageExamplesEditor({ block, onUpdate }: { block: UsageExamplesBlock; o
 
 function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: ImageBlock) => void }) {
   const upd = (patch: Partial<ImageBlock>) => onUpdate({ ...block, ...patch });
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/admin/cms/media/upload', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        const err = (data?.error as string | undefined) ?? `HTTP ${res.status}`;
+        if (err === 'storage_not_configured') {
+          setUploadError('R2 ikke konfigurert. Sett CMS_R2_* (eller R2_*)-env-vars i backend, så fungerer drag-drop.');
+        } else {
+          setUploadError(`Feil: ${err}${data?.detail ? ` (${data.detail})` : ''}`);
+        }
+        return;
+      }
+      const url = String(data.url ?? '').trim();
+      if (!url) {
+        setUploadError('Mangler URL i respons');
+        return;
+      }
+      upd({ src: url, alt: block.alt || file.name.replace(/\.[^.]+$/, '') });
+    } catch (err) {
+      setUploadError(`Feil: ${(err as Error).message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <Stack spacing={1.5}>
-      <TextRow label="Bilde-URL" value={block.src} onChange={(v) => upd({ src: v })} />
+      <Box
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={async (e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) await uploadFile(file);
+        }}
+        sx={{
+          p: 2,
+          borderRadius: 1.5,
+          border: dragOver
+            ? '2px dashed #a78bfa'
+            : '2px dashed rgba(167,139,250,0.3)',
+          bgcolor: dragOver ? 'rgba(167,139,250,0.08)' : 'rgba(2,6,23,0.34)',
+          textAlign: 'center',
+          transition: 'all 0.15s ease',
+        }}
+      >
+        {block.src ? (
+          <Stack spacing={1.5} alignItems="center">
+            <Box
+              component="img"
+              src={block.src}
+              alt={block.alt}
+              sx={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 1 }}
+            />
+            <Stack direction="row" spacing={1}>
+              <Button
+                component="label"
+                size="small"
+                variant="outlined"
+                disabled={uploading}
+                sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+              >
+                {uploading ? 'Laster opp ...' : 'Bytt bilde'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/svg+xml"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadFile(file);
+                    e.target.value = '';
+                  }}
+                />
+              </Button>
+              <Button
+                size="small"
+                onClick={() => upd({ src: '' })}
+                sx={{ color: '#fca5a5', textTransform: 'none' }}
+              >
+                Fjern
+              </Button>
+            </Stack>
+          </Stack>
+        ) : (
+          <Stack spacing={1} alignItems="center">
+            <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
+              {dragOver ? 'Slipp bildet her' : 'Dra et bilde hit, eller'}
+            </Typography>
+            <Button
+              component="label"
+              size="small"
+              variant="contained"
+              disabled={uploading}
+              sx={{
+                bgcolor: '#a78bfa',
+                color: '#0b1120',
+                textTransform: 'none',
+                fontWeight: 700,
+                '&:hover': { bgcolor: '#c4b5fd' },
+              }}
+            >
+              {uploading ? 'Laster opp ...' : 'Velg fil'}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/svg+xml"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadFile(file);
+                  e.target.value = '';
+                }}
+              />
+            </Button>
+            <Typography sx={{ color: 'rgba(148,163,184,0.65)', fontSize: '0.72rem' }}>
+              Maks 10 MB. JPEG, PNG, WebP, AVIF, GIF, SVG.
+            </Typography>
+          </Stack>
+        )}
+      </Box>
+      {uploadError ? (
+        <Typography sx={{ color: '#fca5a5', fontSize: '0.78rem' }}>{uploadError}</Typography>
+      ) : null}
+      <TextRow label="Bilde-URL (eller lim inn ekstern URL)" value={block.src} onChange={(v) => upd({ src: v })} />
       <TextRow label="Alt-tekst (a11y/SEO)" value={block.alt} onChange={(v) => upd({ alt: v })} />
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
         <TextRow label="Caption (valgfri)" value={block.caption ?? ''} onChange={(v) => upd({ caption: v })} />
@@ -525,9 +659,6 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
           sx={{ ...FIELD_SX, minWidth: 140 }}
         />
       </Stack>
-      <Typography sx={{ color: 'rgba(148,163,184,0.65)', fontSize: '0.72rem' }}>
-        Drag-drop opplasting kommer i fase 3 (media library).
-      </Typography>
     </Stack>
   );
 }

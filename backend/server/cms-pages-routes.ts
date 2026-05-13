@@ -21,6 +21,8 @@
 
 import type express from 'express';
 import type { Pool } from 'pg';
+import multer from 'multer';
+import { uploadCmsMedia, isCmsMediaConfigured } from './cms-media-service.js';
 
 interface AdminSession {
   userId: string;
@@ -74,6 +76,20 @@ function serialize(row: CmsPageRow): Record<string, unknown> {
     updated_by: row.updated_by ?? undefined,
   };
 }
+
+const ALLOWED_IMAGE_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+  'image/gif',
+  'image/svg+xml',
+]);
+
+const cmsMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
   const { app, pool, requireAdminSession } = deps;
@@ -309,6 +325,51 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
       client.release();
     }
   });
+
+  // ── ADMIN MEDIA UPLOAD — laster bilde til R2 for Image-block ────
+  // POST /api/admin/cms/media/upload   (multipart/form-data, field 'file')
+  // Returnerer { url, key } som settes som src i ImageBlock.
+  app.get('/api/admin/cms/media/config', (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    return res.json({ success: true, configured: isCmsMediaConfigured() });
+  });
+
+  app.post(
+    '/api/admin/cms/media/upload',
+    cmsMediaUpload.single('file'),
+    async (req, res) => {
+      const session = requireAdminSession(req, res);
+      if (!session) return;
+
+      const file = (req as express.Request & { file?: Express.Multer.File }).file;
+      if (!file) {
+        return res.status(400).json({ success: false, error: 'file mangler' });
+      }
+      const mime = file.mimetype || 'application/octet-stream';
+      if (!ALLOWED_IMAGE_MIME.has(mime)) {
+        return res.status(415).json({ success: false, error: `mime ikke støttet: ${mime}` });
+      }
+      const result = await uploadCmsMedia({
+        buffer: file.buffer,
+        mime,
+        originalName: file.originalname,
+      });
+      if (!result.ok) {
+        const statusByError: Record<string, number> = {
+          storage_not_configured: 503,
+          unsupported_mime: 415,
+          upload_failed: 500,
+        };
+        return res.status(statusByError[result.error] ?? 500).json({
+          success: false,
+          error: result.error,
+          detail: result.detail,
+        });
+      }
+      return res.json({ success: true, url: result.url, key: result.key, mode: result.mode });
+    },
+  );
 
   // ── ADMIN DELETE — slett en side ────────────────────────────────
   app.delete('/api/admin/cms/pages/:slug', async (req, res) => {
