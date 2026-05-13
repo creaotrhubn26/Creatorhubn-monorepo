@@ -146,7 +146,13 @@ function AuditionSchedulePanelInner({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const titleId = useId();
   const statsId = useId();
-  
+
+  // Pagination — separat fra reducer siden den ikke trenger å persisteres
+  // til server-side state. Brukes for å unngå rendring av hundrevis av
+  // schedule-rader samtidig (perf-issue ved store filterresultater).
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<20 | 40 | 80>(20);
+
   // ── UI state — single reducer (replaces 10+ useState) ──────
   const [uiState, dispatch] = useReducer(scheduleReducer, initialScheduleState);
   const {
@@ -547,6 +553,22 @@ function AuditionSchedulePanelInner({
     
     return result;
   }, [usingHookData, schedules, searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, locationFilter, sortField, sortDirection, favorites, scheduleTimeMs, getCandidateName, getRoleName]);
+
+  // Pagination-derivat: total sider og current page-slice.
+  // Reset til side 1 når filter/sort/pageSize endres så brukeren
+  // ikke ender opp på en tom side etter aggressiv filtrering.
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, locationFilter, sortField, sortDirection, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedSchedules.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const paginationStart = (safePage - 1) * pageSize;
+  const paginationEnd = Math.min(filteredAndSortedSchedules.length, paginationStart + pageSize);
+  const pagedSchedules = useMemo(
+    () => filteredAndSortedSchedules.slice(paginationStart, paginationEnd),
+    [filteredAndSortedSchedules, paginationStart, paginationEnd],
+  );
 
   // Unique location strings derived from the full schedule list (used by the toolbar filter)
   const uniqueLocations = useMemo(
@@ -2996,7 +3018,7 @@ function AuditionSchedulePanelInner({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredAndSortedSchedules.map((schedule, index) => {
+                    {pagedSchedules.map((schedule, index) => {
                       const isFav = favorites.has(schedule.id);
                       const isSelected = selectedIds.has(schedule.id);
                       const statusColor = getStatusColor(schedule.status);
@@ -3137,7 +3159,7 @@ function AuditionSchedulePanelInner({
       ) : viewMode === 'compact' ? (
         /* ── Compact List View ── */
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {filteredAndSortedSchedules.map((schedule, index) => {
+          {pagedSchedules.map((schedule, index) => {
             const isFav = favorites.has(schedule.id);
             const isSelected = selectedIds.has(schedule.id);
             const statusColor = getStatusColor(schedule.status);
@@ -3234,7 +3256,7 @@ function AuditionSchedulePanelInner({
             alignItems: 'stretch',
           }}
         >
-          {filteredAndSortedSchedules.map((schedule, index) => {
+          {pagedSchedules.map((schedule, index) => {
             const isExpanded = expandedCards.has(schedule.id);
             const sceneName = getSceneName(schedule.sceneId);
             const statusColor = getStatusColor(schedule.status);
@@ -3883,6 +3905,113 @@ function AuditionSchedulePanelInner({
               ))}
             </Grid>
           )}
+        </Box>
+      )}
+
+      {/* Pagination-rad — vises kun ved > 0 elementer, og side-navigasjon
+          kun ved > 1 side. Plassert etter alle view-mode-rendringer slik
+          at den fungerer for table/card/pro-view samtidig. */}
+      {filteredAndSortedSchedules.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+            mt: 2,
+            px: 1,
+          }}
+        >
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
+            Viser {paginationStart + 1}–{paginationEnd} av {filteredAndSortedSchedules.length} avtaler
+          </Typography>
+
+          {totalPages > 1 && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <IconButton
+                size="small"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label="Forrige side"
+                sx={{ color: safePage <= 1 ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>‹</Box>
+              </IconButton>
+              {(() => {
+                const pages: Array<number | 'ellipsis'> = [];
+                const showEllipsisLeft = safePage > 3;
+                const showEllipsisRight = safePage < totalPages - 2;
+                pages.push(1);
+                if (showEllipsisLeft) pages.push('ellipsis');
+                for (let p = Math.max(2, safePage - 1); p <= Math.min(totalPages - 1, safePage + 1); p += 1) {
+                  pages.push(p);
+                }
+                if (showEllipsisRight) pages.push('ellipsis');
+                if (totalPages > 1) pages.push(totalPages);
+                return pages.map((p, idx) =>
+                  p === 'ellipsis' ? (
+                    <Typography key={`ell-${idx}`} sx={{ color: 'rgba(255,255,255,0.4)', px: 0.5 }}>
+                      …
+                    </Typography>
+                  ) : (
+                    <Button
+                      key={p}
+                      size="small"
+                      onClick={() => setPage(p)}
+                      sx={{
+                        minWidth: 32,
+                        height: 32,
+                        px: 1,
+                        bgcolor: safePage === p ? '#b86bff' : 'transparent',
+                        color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
+                        fontWeight: safePage === p ? 700 : 500,
+                        '&:hover': { bgcolor: safePage === p ? '#a855f7' : 'rgba(184,107,255,0.18)' },
+                      }}
+                    >
+                      {p}
+                    </Button>
+                  ),
+                );
+              })()}
+              <IconButton
+                size="small"
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                aria-label="Neste side"
+                sx={{ color: safePage >= totalPages ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>›</Box>
+              </IconButton>
+            </Box>
+          )}
+
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <Select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value) as 20 | 40 | 80)}
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(184,107,255,0.3)' },
+                '& .MuiSelect-select': { py: 0.5, fontSize: '0.85rem' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+                    border: '1px solid rgba(148,163,184,0.26)',
+                  },
+                },
+              }}
+            >
+              <MenuItem value={20}>20 per side</MenuItem>
+              <MenuItem value={40}>40 per side</MenuItem>
+              <MenuItem value={80}>80 per side</MenuItem>
+            </Select>
+          </FormControl>
         </Box>
       )}
 
