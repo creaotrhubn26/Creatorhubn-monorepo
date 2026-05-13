@@ -2939,7 +2939,7 @@ const STATUS_TONES: Record<string, { bg: string; fg: string; label: string }> = 
 };
 
 function PresenceTab() {
-  const [section, setSection] = useState<'channels' | 'posts' | 'contacts'>('channels');
+  const [section, setSection] = useState<'channels' | 'posts' | 'contacts' | 'mentions'>('channels');
 
   return (
     <Stack spacing={2}>
@@ -2948,7 +2948,7 @@ function PresenceTab() {
       </Typography>
       <Tabs
         value={section}
-        onChange={(_e, v: 'channels' | 'posts' | 'contacts') => setSection(v)}
+        onChange={(_e, v: 'channels' | 'posts' | 'contacts' | 'mentions') => setSection(v)}
         variant="scrollable"
         sx={{
           borderBottom: '1px solid rgba(148,163,184,0.16)',
@@ -2960,10 +2960,12 @@ function PresenceTab() {
         <Tab value="channels" label="Kanaler" />
         <Tab value="posts" label="Posts" />
         <Tab value="contacts" label="Kontakter / Outreach" />
+        <Tab value="mentions" label="Reddit Mentions" />
       </Tabs>
       {section === 'channels' && <PresenceChannelsView />}
       {section === 'posts' && <PresencePostsView />}
       {section === 'contacts' && <PresenceContactsView />}
+      {section === 'mentions' && <PresenceRedditMentionsView />}
     </Stack>
   );
 }
@@ -3228,6 +3230,147 @@ function PresencePostsView() {
           </Stack>
         );
       })}
+    </Stack>
+  );
+}
+
+interface RedditMention {
+  id: string;
+  title: string;
+  permalink: string;
+  subreddit: string;
+  author: string;
+  created_at: string;
+  score: number;
+  num_comments: number;
+  snippet?: string;
+}
+
+function PresenceRedditMentionsView() {
+  const [query, setQuery] = useState('The Role Room');
+  const [mentions, setMentions] = useState<RedditMention[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [oauthMode, setOauthMode] = useState<'oauth' | 'public-json' | 'unknown'>('unknown');
+
+  useEffect(() => {
+    fetch('/api/admin/community/reddit/status', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setOauthMode(d?.mode ?? 'unknown'))
+      .catch(() => setOauthMode('unknown'));
+  }, []);
+
+  const handleSearch = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/community/reddit/mentions?q=${encodeURIComponent(query)}`, {
+        credentials: 'same-origin',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMentions(Array.isArray(data?.mentions) ? data.mentions : []);
+    } catch (err) {
+      setError((err as Error).message);
+      setMentions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Box sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(2,6,23,0.34)' }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+          <Chip
+            size="small"
+            label={oauthMode === 'oauth' ? 'Reddit OAuth aktiv' : oauthMode === 'public-json' ? 'Public JSON (sett ENV for OAuth)' : 'Sjekker...'}
+            sx={{
+              bgcolor: oauthMode === 'oauth' ? 'rgba(34,197,94,0.16)' : 'rgba(249,115,22,0.16)',
+              color: oauthMode === 'oauth' ? '#86efac' : '#fdba74',
+              fontWeight: 700,
+            }}
+          />
+          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem' }}>
+            Søker Reddit for nye mentions av The Role Room. Last 30 dager, nyeste først.
+          </Typography>
+        </Stack>
+        <Stack direction="row" spacing={1}>
+          <TextField
+            size="small"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            placeholder="Søkeord (f.eks. The Role Room, StudioBinder alternative)"
+            sx={{
+              flex: 1,
+              '& .MuiInputBase-root': { bgcolor: 'rgba(2,6,23,0.62)', color: '#e2e8f0' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
+            }}
+          />
+          <Button
+            variant="contained"
+            onClick={handleSearch}
+            disabled={loading || !query.trim()}
+            sx={{ bgcolor: '#a78bfa', color: '#0b1120', '&:hover': { bgcolor: '#c4b5fd' }, textTransform: 'none' }}
+          >
+            {loading ? 'Søker …' : 'Søk'}
+          </Button>
+        </Stack>
+      </Box>
+
+      {error ? (
+        <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.10)', color: '#fca5a5' }}>
+          {error}
+        </Alert>
+      ) : null}
+
+      {mentions.length === 0 && !loading && !error ? (
+        <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+          Trykk "Søk" for å hente mentions. Hvis tomt: ingen Reddit-tråder nevner søkeordet siste 30 dager.
+        </Alert>
+      ) : null}
+
+      {mentions.length > 0 ? (
+        <Stack spacing={0.8}>
+          {mentions.map((m) => (
+            <Stack
+              key={m.id}
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ sm: 'flex-start' }}
+              sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.34)' }}
+            >
+              <Chip size="small" label={m.subreddit} sx={{ bgcolor: 'rgba(255,69,0,0.16)', color: '#ff6a33', fontWeight: 700, height: 22 }} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem' }}>
+                  {m.title}
+                </Typography>
+                <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem' }}>
+                  /u/{m.author} · {new Date(m.created_at).toLocaleDateString('nb-NO')} · ↑ {m.score} · 💬 {m.num_comments}
+                </Typography>
+                {m.snippet ? (
+                  <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', mt: 0.5 }}>
+                    {m.snippet}…
+                  </Typography>
+                ) : null}
+              </Box>
+              {m.permalink ? (
+                <Button
+                  href={m.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="small"
+                  endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                  sx={{ color: 'rgba(203,213,225,0.85)', textTransform: 'none', fontSize: '0.78rem' }}
+                >
+                  Åpne
+                </Button>
+              ) : null}
+            </Stack>
+          ))}
+        </Stack>
+      ) : null}
     </Stack>
   );
 }
