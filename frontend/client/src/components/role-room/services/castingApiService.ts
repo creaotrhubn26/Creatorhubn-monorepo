@@ -896,7 +896,7 @@ export const schedulesApi = {
     const result = await apiRequest<{ schedules: CastingSchedule[] }>(`/projects/${projectId}/schedules`);
     return result.schedules;
   },
-  
+
   save: async (schedule: Partial<CastingSchedule>): Promise<CastingSchedule> => {
     const result = await apiRequest<{ schedule: CastingSchedule }>('/schedules', {
       method: 'POST',
@@ -904,10 +904,94 @@ export const schedulesApi = {
     });
     return result.schedule;
   },
-  
+
   delete: async (scheduleId: string): Promise<boolean> => {
     await apiRequest(`/schedules/${scheduleId}`, { method: 'DELETE' });
     return true;
+  },
+};
+
+/**
+ * Audition-entitet API. Bygger på migrasjon 140 (auditions-tabell +
+ * schedules.audition_id FK).
+ *
+ * Backwards-compat: hvis backend ennå ikke har implementert endpoints,
+ * faller frontend tilbake til synthetisk grupperting i AuditionSchedulePanel
+ * (via `auditionGroupedView`-toggle). Endpoint-API skapes når backend
+ * route-modulen (`role-room-auditions-routes.ts`) wires inn i index.ts.
+ */
+export interface AuditionRecord {
+  id: string;
+  project_id: string;
+  title: string;
+  role_id?: string;
+  role_name?: string;
+  location_id?: string;
+  location_name?: string;
+  date: string;
+  start_time?: string;
+  end_time?: string;
+  status?: 'scheduled' | 'confirmed' | 'awaiting_callback' | 'completed' | 'cancelled';
+  team_members?: Array<{ crewId: string; role: string }>;
+  notes?: string;
+  candidate_count?: number;
+  completed_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const auditionsApi = {
+  getAll: async (projectId: string): Promise<AuditionRecord[]> => {
+    try {
+      const result = await apiRequest<{ auditions: AuditionRecord[] }>(`/projects/${projectId}/auditions`);
+      return result.auditions ?? [];
+    } catch {
+      // Backwards-compat: returner tom array hvis endpoint ikke wires opp ennå
+      return [];
+    }
+  },
+
+  create: async (audition: Partial<AuditionRecord>): Promise<AuditionRecord | null> => {
+    try {
+      const result = await apiRequest<{ audition: AuditionRecord }>('/auditions', {
+        method: 'POST',
+        body: JSON.stringify(audition),
+      });
+      return result.audition;
+    } catch {
+      return null;
+    }
+  },
+
+  update: async (auditionId: string, updates: Partial<AuditionRecord>): Promise<AuditionRecord | null> => {
+    try {
+      const result = await apiRequest<{ audition: AuditionRecord }>(`/auditions/${auditionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+      return result.audition;
+    } catch {
+      return null;
+    }
+  },
+
+  delete: async (auditionId: string): Promise<boolean> => {
+    try {
+      await apiRequest(`/auditions/${auditionId}`, { method: 'DELETE' });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  /** Knytt en eksisterende schedule til en audition. */
+  attachSchedule: async (auditionId: string, scheduleId: string): Promise<boolean> => {
+    try {
+      await apiRequest(`/auditions/${auditionId}/schedules/${scheduleId}`, { method: 'POST' });
+      return true;
+    } catch {
+      return false;
+    }
   },
 };
 
