@@ -18,8 +18,7 @@ import warehouseInventoryService from "../services/warehouseInventoryService";
 import QrCameraScanner from "./shared/QrCameraScanner";
 import globalTagService from "../services/globalTagService";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
-
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
 
 const focusVisibleStyles = {
   '&:focus-visible': {

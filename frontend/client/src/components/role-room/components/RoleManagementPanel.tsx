@@ -16,9 +16,7 @@ import { ROLE_WORKFLOW_ORDER, getRoleWorkflowMeta, type RoleWorkflowStatus } fro
 import { getRoleTypeMeta } from "../config/roleType";
 import { emitRoleSyncEvent, onRoleSyncEvent } from "../services/roleSyncEvents";
 import { roleQueryKeys } from "../services/roleQueryKeys";
-
-// WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {

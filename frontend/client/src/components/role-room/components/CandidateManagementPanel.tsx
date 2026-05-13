@@ -216,9 +216,7 @@ import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoi
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import kandidaterPng from './icons/Keep/roleroom_kandidater.png';
-
-// WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {

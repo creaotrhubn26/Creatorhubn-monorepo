@@ -13,9 +13,7 @@ import { AuditionGuide } from "./production/AuditionGuide";
 import { scheduleReducer, initialScheduleState, stateToApiFilters, hasActiveFilters as computeHasActiveFilters, type SortField as ReducerSortField, type StatusFilter as ReducerStatusFilter } from "../hooks/scheduleReducer";
 import { useAuditionSchedules } from "../hooks/useAuditionSchedules";
 import { ScheduleDetailsDrawer } from "./ScheduleDetailsDrawer";
-
-// WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
 
 /** Escape a string for safe embedding in an HTML template literal. */
 const escapeHtml = (s: string): string =>

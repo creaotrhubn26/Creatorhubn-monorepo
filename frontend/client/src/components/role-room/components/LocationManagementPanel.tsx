@@ -125,9 +125,7 @@ import { getRoleLabel, isTechnicalCrewMember as isTechnicalCrewMemberFromShared 
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { useAuth } from '../../../hooks/useAuth';
 import 'leaflet/dist/leaflet.css';
-
-// WCAG 2.2 - 2.5.5 Target Size (minimum 44x44px)
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // Focus visible styles for WCAG 2.4.7
 const focusVisibleStyles = {

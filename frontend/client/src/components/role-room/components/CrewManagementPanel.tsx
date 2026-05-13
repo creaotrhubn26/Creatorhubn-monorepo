@@ -195,8 +195,7 @@ interface CrewActivityLogEntry {
   timestamp: number;
 }
 
-// WCAG 2.2 minimum touch target size (44x44px)
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 // Shared focus styles for WCAG 2.4.7 Focus Visible
 const focusVisibleStyles = {
