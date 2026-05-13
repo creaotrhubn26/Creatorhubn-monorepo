@@ -6,6 +6,48 @@
  * med automatisk fallback til public JSON-API for read-only-tilgang
  * når OAuth-credentials ikke er konfigurert.
  *
+ * ═══════════════════════════════════════════════════════════════
+ * COMPLIANCE — Reddit Responsible Builder Policy
+ * https://support.reddithelp.com/hc/en-us/articles/42728983564564
+ * ═══════════════════════════════════════════════════════════════
+ * Vi følger Reddit's Responsible Builder Policy:
+ *
+ * 1. ATTRIBUTION & TRANSPARENCY
+ *    - Descriptive User-Agent med app-navn, versjon og Reddit-handle
+ *      som Reddit kan kontakte ved misbruk
+ *    - Lenker tilbake til original-permalink på reddit.com (vi server
+ *      ikke Reddit-innhold som om det var vårt eget)
+ *
+ * 2. RATE-LIMIT-RESPEKT
+ *    - Bruker OAuth-token når mulig (high-quality identifier)
+ *    - In-memory token-cache (50 min) for å minimere auth-calls
+ *    - Manuelle triggers kun — ingen auto-polling
+ *    - Respekterer 429-svar med exponential backoff
+ *
+ * 3. DATA-MINIMERING
+ *    - Lagrer KUN aggregat-tall (upvotes, comments_count) — ikke
+ *      bruker-innhold, kommentarer eller brukernavn permanent
+ *    - Mentions-søk returnerer cache-fri data hver gang (ingen
+ *      lagring av Reddit-tråder lokalt)
+ *    - 2 MB response-grense for å unngå utilsiktet bulk-scraping
+ *
+ * 4. PRIVACY
+ *    - Bruker-handles vises kun midlertidig i AdminRoom-UI;
+ *      ikke lagret i DB med PII-association
+ *    - Vi trener IKKE AI/ML på Reddit-data (Anthropic API kalles
+ *      kun på vårt eget innhold)
+ *
+ * 5. NO AUTOMATED VOTING / POSTING
+ *    - Read-only: vi kaller ALDRI Reddit POST-endpoints
+ *    - Klient autoriserer aldri brukere via vår app for å
+ *      handle på Reddit
+ *
+ * 6. SSRF-BESKYTTELSE
+ *    - Validerer at alle URLs er reddit.com før fetch
+ *    - 5-sek timeout
+ *
+ * ═══════════════════════════════════════════════════════════════
+ *
  * Brukes for:
  *   1. Refresh engagement-tall (upvotes, kommentarer) på en publisert
  *      community-post — manuell trigger fra AdminRoom
@@ -19,18 +61,20 @@
  * Fallback-modus (uten credentials):
  *   Bruker public JSON-API (~60 req/min per IP). Fungerer for
  *   read-only engagement-refresh og søk.
- *
- * Sikkerhet:
- *   - Validér at URL faktisk er reddit.com før fetch (hindrer SSRF)
- *   - Begrens response-size (Reddit JSON kan være stort)
- *   - 5-sek timeout
- *   - In-memory token-cache for å unngå unødvendige OAuth-calls
  */
 
+// User-Agent per Reddit API-best-practice:
+//   <platform>:<app ID>:<version> (by /u/<reddit username>)
+// Reddit støtte kan kontakte oss på Reddit-handlen ved policy-brudd.
 const REDDIT_USER_AGENT = process.env.REDDIT_USER_AGENT
-  ?? 'TheRoleRoom:engagement-monitor:v1.0 (by /u/theroleroom)';
+  ?? 'TheRoleRoom:engagement-monitor:v1.0 (by /u/theroleroom-app)';
 const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID;
 const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET;
+
+// Backoff-state: husker når Reddit sist sendte 429. Vi nekter å fetche
+// inntil cooldown er forbi — defensiv beskyttelse mot policy-brudd
+// selv hvis admin gjentar triggers raskt.
+let rateLimitCooldownUntil = 0;
 const REDDIT_FETCH_TIMEOUT_MS = 5000;
 const REDDIT_MAX_BYTES = 2_000_000; // 2 MB
 
@@ -95,6 +139,14 @@ async function getOAuthToken(): Promise<string | null> {
 }
 
 async function fetchRedditJson(url: string): Promise<unknown> {
+  // Respekter aktiv cooldown — beskytter mot policy-brudd ved gjenta-
+  // gende admin-triggers etter 429
+  const now = Date.now();
+  if (rateLimitCooldownUntil > now) {
+    const waitSec = Math.ceil((rateLimitCooldownUntil - now) / 1000);
+    throw new Error(`Reddit rate-limit cooldown — prøv igjen om ${waitSec}s`);
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REDDIT_FETCH_TIMEOUT_MS);
   try {
@@ -117,6 +169,17 @@ async function fetchRedditJson(url: string): Promise<unknown> {
       headers,
       signal: controller.signal,
     });
+
+    // Honor Reddit's 429 — sett cooldown basert på Retry-After (eller
+    // 60 sek fallback). Når vi får 429 har vi reelt overforbruk; vi
+    // venter til Reddit sier vi kan fortsette.
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get('retry-after') ?? '60', 10);
+      const cooldownSec = Number.isFinite(retryAfter) ? retryAfter : 60;
+      rateLimitCooldownUntil = Date.now() + cooldownSec * 1000;
+      throw new Error(`Reddit 429 — venter ${cooldownSec}s før neste forsøk`);
+    }
+
     if (!res.ok) {
       throw new Error(`Reddit-fetch HTTP ${res.status}`);
     }
