@@ -406,6 +406,7 @@ import {
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location, Candidate } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
@@ -3619,15 +3620,23 @@ Anna går raskt gjennom regnet.
   }
 
   return (
-    <Box sx={{ 
-      height: isMobile ? 'calc(100vh - 350px)' : 'calc(100vh - 300px)', 
-      minHeight: isMobile ? 350 : 500 
+    <Box sx={{
+      height: isMobile ? 'calc(100vh - 350px)' : 'calc(100vh - 300px)',
+      minHeight: isMobile ? 350 : 500,
+      // WCAG 2.2 - 2.5.5 Target Size: alle interaktive IconButton-er i
+      // manuskript-panelet får automatisk 44×44 touch-target. Eksisterende
+      // size="small"-IconButtons utvides via min-target uten å påvirke
+      // visuell ikon-størrelse (selve ikonet beholdes via fontSize-prop).
+      '& .MuiIconButton-root': {
+        minWidth: TOUCH_TARGET_SIZE,
+        minHeight: TOUCH_TARGET_SIZE,
+      },
     }}>
-      <Stack 
-        direction={isMobile ? 'column' : 'row'} 
-        spacing={isMobile ? 1 : responsive.spacing} 
-        sx={{ mb: responsive.spacing }} 
-        alignItems={isMobile ? 'stretch' : 'center'} 
+      <Stack
+        direction={isMobile ? 'column' : 'row'}
+        spacing={isMobile ? 1 : responsive.spacing}
+        sx={{ mb: responsive.spacing }}
+        alignItems={isMobile ? 'stretch' : 'center'}
         justifyContent="space-between"
       >
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
