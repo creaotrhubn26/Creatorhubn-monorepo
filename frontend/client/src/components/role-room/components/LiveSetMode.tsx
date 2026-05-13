@@ -1984,9 +1984,19 @@ interface TakeRowProps {
   isFocused: boolean;
   onFocus: () => void;
   onStatusChange: (id: string, s: TakeStatus) => void;
+  /** Backup-status snapshotter set-state ved take-tidspunkt. Når
+   *  per-take-backup-tracking implementeres, byttes denne ut med
+   *  take.backup. For nå viser vi current set-state som visuell
+   *  proxy — adminen ser om backup pågår eller er ferdig. */
+  backupStatus?: {
+    original: boolean;
+    primary: boolean;
+    secondary: boolean;
+    offsite: boolean;
+  };
 }
 
-const TakeRow: FC<TakeRowProps> = ({ take, touchUi, isFocused, onFocus, onStatusChange }) => {
+const TakeRow: FC<TakeRowProps> = ({ take, touchUi, isFocused, onFocus, onStatusChange, backupStatus }) => {
   const meta = TAKE_STATUS_META[take.status];
   const StatusIcon = meta.Icon;
 
@@ -2061,6 +2071,32 @@ const TakeRow: FC<TakeRowProps> = ({ take, touchUi, isFocused, onFocus, onStatus
             <Chip key={f} label={qa.emoji} size="small" sx={{ fontSize: 11, height: 16, bgcolor: `${qa.color}18`, border: `1px solid ${qa.color}44`, px: 0.25 }} />
           ) : null;
         })}
+        {backupStatus ? (
+          <Tooltip
+            title={`DIT-backup: Original ${backupStatus.original ? '✓' : '⏳'} · Primary ${backupStatus.primary ? '✓' : '⏳'} · Secondary ${backupStatus.secondary ? '✓' : '⏳'} · Offsite ${backupStatus.offsite ? '✓' : '⏳'}`}
+            placement="top"
+          >
+            <Box sx={{ display: 'flex', gap: 0.3, alignItems: 'center', ml: 0.5 }}>
+              {([
+                ['original', backupStatus.original],
+                ['primary', backupStatus.primary],
+                ['secondary', backupStatus.secondary],
+                ['offsite', backupStatus.offsite],
+              ] as const).map(([key, done]) => (
+                <Box
+                  key={key}
+                  sx={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    bgcolor: done ? '#10b981' : 'rgba(255,255,255,0.18)',
+                    border: done ? '1px solid #10b98180' : '1px solid rgba(255,255,255,0.22)',
+                  }}
+                />
+              ))}
+            </Box>
+          </Tooltip>
+        ) : null}
         <Tooltip title={`Logget av: ${take.loggedBy}`} placement="top">
           <Avatar
             sx={{
@@ -2097,6 +2133,8 @@ interface LiveSetActivityPanelProps {
   noteInput: string;
   noteTag: NoteTag;
   noteInputRef: React.RefObject<HTMLInputElement | null>;
+  /** Set-level DIT-backup-status — propagert til hver TakeRow */
+  backupStatus?: { original: boolean; primary: boolean; secondary: boolean; offsite: boolean };
   onTabChange: (t: 'takes' | 'notes') => void;
   onFocusTake: (i: number) => void;
   onStatusChange: (id: string, s: TakeStatus) => void;
@@ -2108,7 +2146,7 @@ interface LiveSetActivityPanelProps {
 
 const LiveSetActivityPanel: FC<LiveSetActivityPanelProps> = ({
   takes, notes, touchUi, globalMentionCandidates = [], activeTab, focusedTakeIndex,
-  noteInput, noteTag, noteInputRef,
+  noteInput, noteTag, noteInputRef, backupStatus,
   onTabChange, onFocusTake, onStatusChange,
   onNoteInput, onNoteTag, onAddNote, onDeleteNote,
 }) => {
@@ -2200,6 +2238,7 @@ const LiveSetActivityPanel: FC<LiveSetActivityPanelProps> = ({
                 isFocused={focusedTakeIndex === i}
                 onFocus={() => onFocusTake(i)}
                 onStatusChange={onStatusChange}
+                backupStatus={backupStatus}
               />
             ))
           )
@@ -3402,6 +3441,12 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               noteInput={state.noteInput}
               noteTag={state.noteTag}
               noteInputRef={noteInputRef}
+              backupStatus={{
+                original: setStatus.backupOriginal,
+                primary: setStatus.backupPrimary,
+                secondary: setStatus.backupSecondary,
+                offsite: setStatus.backupOffsite,
+              }}
               onTabChange={setActivityTab}
               onFocusTake={focusTake}
               onStatusChange={setTakeStatus}
@@ -3520,6 +3565,12 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               noteInput={state.noteInput}
               noteTag={state.noteTag}
               noteInputRef={noteInputRef}
+              backupStatus={{
+                original: setStatus.backupOriginal,
+                primary: setStatus.backupPrimary,
+                secondary: setStatus.backupSecondary,
+                offsite: setStatus.backupOffsite,
+              }}
               onTabChange={setActivityTab}
               onFocusTake={focusTake}
               onStatusChange={setTakeStatus}
