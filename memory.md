@@ -5,6 +5,38 @@
 
 ---
 
+## 🆕 MANUSKRIPT/STORYBOARD-PANELER MANGLER WCAG + RESPONSIVE (sesjon 2026-05-13)
+
+Etter design-konsistens-audit fant vi at de fleste manuskript/storyboard-
+relaterte panelene mangler både WCAG 2.5.5 touch-target og responsive
+design. Dette er en stor accessibility-gjeld:
+
+| Panel | Linjer | IconButtons | TOUCH_TARGET? | 5-tier responsive? |
+|---|---|---|---|---|
+| ManuscriptPanel.tsx | 5738 | 33 | ❌ | ❌ (14 2-tier) |
+| ScreenplayEditor.tsx | 2011 | 21 | ❌ | ❌ |
+| BeatBoard.tsx | 1422 | 41 | ❌ | ❌ |
+| StoryStructurePanel.tsx | 1093 | 5 | ❌ | ❌ |
+| ScriptAnalysisPanel.tsx | 526 | 7 | ❌ | ❌ |
+| ContinuityLogger.tsx | 705 | 7 | ❌ | ❌ (2 2-tier) |
+| **TOTALT** | **11,495** | **114** | **0 av 6** | **0 av 6** |
+
+**Estimert arbeid:**
+- Per panel: importer TOUCH_TARGET_SIZE + minWidth/minHeight på ~10-40 IconButtons + responsive font/padding på hovedseksjoner
+- Per panel: 30 min - 2 timer (BeatBoard og Manuscript er størst)
+- **Totalt: 6-12 timer fokusert arbeid**
+
+**Anbefalt prioritet:**
+1. ManuscriptPanel (5738 l, 33 buttons) — mest brukt, største panel
+2. BeatBoard (1422 l, 41 buttons) — flest interaktive elementer
+3. ScreenplayEditor (2011 l, 21 buttons) — kritisk for redigerings-flyt
+4. Resten i én batch (3 mindre paneler)
+
+**Strategi for robust migrasjon:**
+- ESLint-regel som forbyr `IconButton` uten `minWidth`/`minHeight` ville
+  forhindre fremtidig drift. Krever AST-baserte regler.
+- Per panel: ett commit per panel, tsc-grønn, manuell smoke-test.
+
 ## 🆕 ROLE ROOM UX GAP-ANALYSE (sesjon 2026-05-12)
 
 Audit av 7 paneler mot produkt-eiers design-screenshots. Hver fane har konkret gap-liste + filer + linjer + prioritert handlingsliste. Inkrementelt arbeid pågår.
