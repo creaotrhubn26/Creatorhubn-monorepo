@@ -1,0 +1,41 @@
+{
+  "name": "@theroleroom/dit-helper",
+  "version": "0.1.0",
+  "description": "Native CLI-helper for DIT-backup-tracking i The Role Room. Watcher kamera-kort-mounts, kopierer til N destinasjoner med xxHash64-verifisering, og rapporterer status til The Role Room backend.",
+  "type": "module",
+  "bin": {
+    "dit-helper": "./dist/cli.js",
+    "trr-dit": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=dist/cli.js",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "dit",
+    "backup",
+    "film-production",
+    "role-room",
+    "checksum",
+    "xxhash"
+  ],
+  "author": "The Role Room",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "xxhash-wasm": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}

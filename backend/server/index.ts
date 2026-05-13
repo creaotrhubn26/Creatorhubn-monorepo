@@ -371,6 +371,7 @@ import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-route
 import { setupRoleRoomAuditionsRoutes } from "./role-room-auditions-routes";
 import { setupCmsPagesRoutes } from "./cms-pages-routes";
 import { setupCommunityPresenceRoutes } from "./community-presence-routes";
+import { setupDitBackupRoutes } from "./dit-backup-routes";
 import { setupCastingPoolsRoutes } from "./casting-pools-routes";
 import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
@@ -37163,6 +37164,16 @@ setupCmsPagesRoutes({
 //   post-template-endpoint som The Role Room Agent kan kalle for å
 //   generere utkast per kanal-type.
 setupCommunityPresenceRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+
+// ── DIT-backup-tracking (migrasjon 144) ────────────────────────
+//   Ekte tracking av fil-kopier-jobs på set. Native CLI-helper
+//   (@theroleroom/dit-helper) POSTer status via Bearer-token-auth.
+//   LiveSetMode-UI viser per-take backup-status fra dit_take_backup_status-view.
+setupDitBackupRoutes({
   app,
   pool,
   requireAdminSession,
