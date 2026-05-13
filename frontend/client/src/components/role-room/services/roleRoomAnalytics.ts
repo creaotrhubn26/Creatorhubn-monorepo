@@ -88,12 +88,12 @@ interface StoryboardFrameCreatedParams {
 }
 
 interface SeoPageViewedParams {
-  page_type: 'competitor' | 'student' | 'alternatives-index';
+  page_type: 'competitor' | 'student' | 'alternatives-index' | 'press-kit';
   page_slug: string;
 }
 
 interface SeoCtaClickedParams {
-  page_type: 'competitor' | 'student' | 'alternatives-index';
+  page_type: 'competitor' | 'student' | 'alternatives-index' | 'press-kit';
   page_slug: string;
   cta_label: string;
   cta_destination: string;

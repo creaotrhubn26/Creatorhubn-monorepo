@@ -97,12 +97,80 @@
       ]
     }
   </script>
+  <!--
+    AggregateRating-placeholder — flipp på når ≥10 verifiserte reviews finnes.
+    Limes inn som ekstra felt i SoftwareApplication-schemaet (rett før "featureList").
+    Google krever ekte, verifiserbare reviews. Ikke ship fake data.
+
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "ratingCount": "42",
+      "bestRating": "5",
+      "worstRating": "1"
+    },
+  -->
   <script type="application/ld+json" data-seo-ld="breadcrumb">
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
         { "@type": "ListItem", "position": 1, "name": "Hjem", "item": "https://theroleroom.com/" }
+      ]
+    }
+  </script>
+  <script type="application/ld+json" data-seo-ld="howto">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "@id": "https://theroleroom.com/#howto-onboarding",
+      "name": "Slik kommer du i gang med The Role Room",
+      "description": "Fem steg for å sette opp et casting-prosjekt i The Role Room — fra konto-opprettelse til første audition-planlegging.",
+      "inLanguage": "no-NO",
+      "totalTime": "PT10M",
+      "supply": [
+        { "@type": "HowToSupply", "name": "E-postadresse" },
+        { "@type": "HowToSupply", "name": "Prosjektbeskrivelse (kort sammendrag av produksjonen)" }
+      ],
+      "tool": [
+        { "@type": "HowToTool", "name": "The Role Room-konto (gratis å opprette)" }
+      ],
+      "step": [
+        {
+          "@type": "HowToStep",
+          "position": 1,
+          "name": "Opprett konto",
+          "text": "Registrer deg med e-post på theroleroom.com og bekreft kontoen.",
+          "url": "https://theroleroom.com/#step-1-konto"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 2,
+          "name": "Opprett prosjekt",
+          "text": "Lag et nytt produksjons- eller casting-prosjekt fra dashboardet og fyll inn tittel, format og tidslinje.",
+          "url": "https://theroleroom.com/#step-2-prosjekt"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 3,
+          "name": "Definer roller",
+          "text": "Legg til roller du caster for — alder, type, beskrivelse og krav. Hver rolle får sitt eget kandidat-spor.",
+          "url": "https://theroleroom.com/#step-3-roller"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 4,
+          "name": "Inviter team og talenter",
+          "text": "Inviter castingansvarlig, regissør, produsent og talenter via lenke eller e-post. Sett rolletilganger.",
+          "url": "https://theroleroom.com/#step-4-team"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 5,
+          "name": "Planlegg auditions",
+          "text": "Opprett audition-økter, send invitasjoner med selvbetjent innspilling og samle alle opptak i én oversikt.",
+          "url": "https://theroleroom.com/#step-5-audition"
+        }
       ]
     }
   </script>

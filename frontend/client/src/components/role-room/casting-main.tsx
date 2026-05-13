@@ -9,6 +9,7 @@ import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPart
 import TalentPortalView from './components/TalentPortalView';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
+import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
 import { clientInvitesApi, googleWorkspaceApi } from './services/castingApiService';
@@ -76,6 +77,11 @@ function CastingStandaloneAppContent() {
     return parseStudentPageFromPath(window.location.pathname);
   }, []);
 
+  const isPressKitPath = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return parsePressKitFromPath(window.location.pathname);
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -87,7 +93,7 @@ function CastingStandaloneAppContent() {
     });
 
     trackMarketingPageView(window.location.pathname);
-  }, [isEducationPath, competitorKey, studentPageKey]);
+  }, [isEducationPath, competitorKey, studentPageKey, isPressKitPath]);
 
   if (competitorKey) {
     return <CompetitorComparisonPage competitor={competitorKey} />;
@@ -95,6 +101,10 @@ function CastingStandaloneAppContent() {
 
   if (studentPageKey) {
     return <StudentSEOPage pageKey={studentPageKey} />;
+  }
+
+  if (isPressKitPath) {
+    return <PressKitPage />;
   }
 
   if (isEducationPath) {

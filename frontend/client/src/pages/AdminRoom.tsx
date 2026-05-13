@@ -80,6 +80,11 @@ import {
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
+import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
+import BlockListEditor from '../components/role-room/cms/BlockListEditor';
+import RevisionsDrawer from '../components/role-room/cms/RevisionsDrawer';
+import { createBlock, isBlockArray, type Block, type BlocksContent } from '../components/role-room/cms/blockSchema';
+import HistoryIcon from '@mui/icons-material/History';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
@@ -2244,12 +2249,26 @@ function CmsTab() {
 
 function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
   const defaultEntries = useMemo(() => {
-    return Object.entries(STUDENT_PAGE_CONFIGS).map(([slug, config]) => ({
+    const studentEntries = Object.entries(STUDENT_PAGE_CONFIGS).map(([slug, config]) => ({
       slug,
       variant: 'student',
       h1: config.h1,
       audience: config.audience,
     }));
+    const competitorEntries = Object.entries(COMPETITOR_CONFIGS).map(([key, config]) => ({
+      slug: `vs-${key}`,
+      variant: 'competitor',
+      h1: `The Role Room vs ${config.name}`,
+      audience: config.tagline,
+    }));
+    const landingEntries = [
+      { slug: 'home', variant: 'landing', h1: 'The Role Room (forside)', audience: '/' },
+      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal', audience: 'For skuespillere og crew' },
+      { slug: 'utdanningsinstitusjon', variant: 'landing', h1: 'For utdanningsinstitusjoner', audience: 'Skoler og fagmiljø' },
+      { slug: 'alternatives', variant: 'competitor', h1: 'Casting-plattform alternativer', audience: 'Indeks-side' },
+      { slug: 'presse', variant: 'landing', h1: 'Pressepakke', audience: 'Journalister og partnere' },
+    ];
+    return [...studentEntries, ...competitorEntries, ...landingEntries];
   }, []);
 
   const [cmsPages, setCmsPages] = useState<CmsPageRow[]>([]);
@@ -2325,7 +2344,7 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
                       {e.h1}
                     </Typography>
                     <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', fontFamily: 'monospace' }}>
-                      /{e.slug} · {e.audience.split('·')[0].trim()}
+                      {e.slug === 'home' ? '/' : `/${e.slug}`} · {e.audience.split('·')[0].trim()}
                     </Typography>
                   </Box>
                 </Stack>
@@ -2333,7 +2352,7 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
                   <Button
                     size="small"
                     variant="outlined"
-                    href={`https://theroleroom.com/${e.slug}`}
+                    href={`https://theroleroom.com${e.slug === 'home' ? '/' : `/${e.slug}`}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
@@ -2371,6 +2390,17 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
   );
 }
 
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return '';
+  }
+}
+
 function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   const defaultConfig = useMemo(
     () => STUDENT_PAGE_CONFIGS[slug as keyof typeof STUDENT_PAGE_CONFIGS],
@@ -2386,11 +2416,17 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
     highlightedFeatures: defaultConfig?.highlightedFeatures ?? [],
     relatedStudies: defaultConfig?.relatedStudies,
   }));
+  // Block-CMS state. Når `blocks` er null bruker editoren legacy-skjema-felter.
+  const [blocks, setBlocks] = useState<Block[] | null>(null);
   const [published, setPublished] = useState(true);
+  const [publishAt, setPublishAt] = useState<string>('');
+  const [unpublishAt, setUnpublishAt] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const previewReadyRef = useRef(false);
 
@@ -2401,22 +2437,23 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     const raf = requestAnimationFrame(() => {
+      const previewContent = blocks ? { blocks } : content;
       win.postMessage(
-        { type: 'roleroom-cms-preview', pageKey: slug, content },
+        { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
         '*',
       );
     });
     return () => cancelAnimationFrame(raf);
-  }, [content, slug]);
+  }, [content, blocks, slug]);
 
   // Vent til iframe sender "preview-ready" så vi vet at den kan motta postMessage
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'roleroom-cms-preview-ready' && event.data?.pageKey === slug) {
         previewReadyRef.current = true;
-        // Send current state straks
+        const previewContent = blocks ? { blocks } : content;
         iframeRef.current?.contentWindow?.postMessage(
-          { type: 'roleroom-cms-preview', pageKey: slug, content },
+          { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
           '*',
         );
       }
@@ -2435,8 +2472,12 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled) return;
-        const c = data?.page?.content as Partial<CmsPageContent> | undefined;
+        const c = data?.page?.content as Partial<CmsPageContent & BlocksContent> | undefined;
         if (c && typeof c === 'object') {
+          // Hvis content har blocks[]: aktiver block-mode
+          if (isBlockArray(c.blocks)) {
+            setBlocks(c.blocks);
+          }
           setContent((prev) => ({
             ...prev,
             ...(typeof c.h1 === 'string' && c.h1 ? { h1: c.h1 } : {}),
@@ -2452,6 +2493,12 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
         if (typeof data?.page?.published === 'boolean') {
           setPublished(data.page.published);
         }
+        if (typeof data?.page?.publish_at === 'string') {
+          setPublishAt(toDatetimeLocal(data.page.publish_at));
+        }
+        if (typeof data?.page?.unpublish_at === 'string') {
+          setUnpublishAt(toDatetimeLocal(data.page.unpublish_at));
+        }
       })
       .catch(() => {
         // Ignore — defaults beholdes.
@@ -2462,21 +2509,25 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, reloadKey]);
 
   const handleSave = async () => {
     setSaving(true);
     setFeedback(null);
     try {
+      const basePayload = blocks
+        ? { variant: 'blocks', published, content: { blocks, schemaVersion: 1 } }
+        : { variant: 'student', published, content };
+      const payload = {
+        ...basePayload,
+        publish_at: publishAt ? new Date(publishAt).toISOString() : null,
+        unpublish_at: unpublishAt ? new Date(unpublishAt).toISOString() : null,
+      };
       const res = await fetch(`/api/admin/cms/pages/${slug}`, {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          variant: 'student',
-          published,
-          content,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setFeedback('Lagret ✓ (cache oppdateres innen 5 min)');
@@ -2489,6 +2540,46 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
 
   const updateField = <K extends keyof CmsPageContent>(key: K, value: CmsPageContent[K]) => {
     setContent((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Konverter legacy-content til block-CMS. Genererer fornuftige
+  // start-blokker fra eksisterende h1/intro/examples/features.
+  const convertToBlocks = () => {
+    const initial: Block[] = [];
+    const hero = createBlock('hero');
+    if (hero.type === 'hero') {
+      hero.audienceChip = content.audience;
+      hero.h1 = content.h1;
+      hero.subtitle = content.subtitle;
+      hero.intro = content.intro;
+      hero.primaryCtaLabel = content.ctaLabel;
+      hero.primaryCtaUrl = '/';
+      initial.push(hero);
+    }
+    if (content.highlightedFeatures?.length) {
+      const fl = createBlock('featureList');
+      if (fl.type === 'featureList') {
+        fl.heading = 'Hva du får';
+        fl.items = content.highlightedFeatures;
+        fl.style = 'chips';
+        initial.push(fl);
+      }
+    }
+    if (content.usageExamples?.length) {
+      const ue = createBlock('usageExamples');
+      if (ue.type === 'usageExamples') {
+        ue.items = content.usageExamples;
+        initial.push(ue);
+      }
+    }
+    if (content.relatedStudies?.length) {
+      const rs = createBlock('relatedStudies');
+      if (rs.type === 'relatedStudies') {
+        rs.items = content.relatedStudies;
+        initial.push(rs);
+      }
+    }
+    setBlocks(initial);
   };
 
   if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
@@ -2514,6 +2605,15 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
           <Button
             size="small"
             variant="outlined"
+            startIcon={<HistoryIcon sx={{ fontSize: 14 }} />}
+            onClick={() => setRevisionsOpen(true)}
+            sx={{ color: 'rgba(203,213,225,0.85)', borderColor: 'rgba(148,163,184,0.24)', textTransform: 'none', fontSize: '0.78rem' }}
+          >
+            Historikk
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
             href={`https://theroleroom.com/${slug}`}
             target="_blank"
             rel="noopener noreferrer"
@@ -2525,13 +2625,72 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
         </Stack>
 
         <Box sx={{ p: 2, bgcolor: 'rgba(2,6,23,0.42)', border: '1px solid rgba(148,163,184,0.16)', borderRadius: 1.5 }}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.5, fontSize: '1rem' }}>
-            /{slug}
-          </Typography>
-          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.82rem' }}>
-            Endringer i skjemaet vises i sanntid i preview-panelet. Lagre når du er fornøyd.
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Box sx={{ flex: 1 }}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.5, fontSize: '1rem' }}>
+                /{slug === 'home' ? '' : slug}
+              </Typography>
+              <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.82rem' }}>
+                {blocks
+                  ? `Block-CMS · ${blocks.length} blokk${blocks.length === 1 ? '' : 'er'}. Reorden, slett, og legg til via knappene under.`
+                  : 'Endringer i skjemaet vises i sanntid i preview-panelet. Lagre når du er fornøyd.'}
+              </Typography>
+            </Box>
+            <Chip
+              size="small"
+              label={blocks ? 'Block-CMS' : 'Legacy'}
+              sx={{
+                bgcolor: blocks ? 'rgba(167,139,250,0.16)' : 'rgba(148,163,184,0.16)',
+                color: blocks ? '#ddd6fe' : '#cbd5e1',
+                fontWeight: 700,
+              }}
+            />
+          </Stack>
         </Box>
+
+        {blocks ? (
+          <Stack spacing={2}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button
+                size="small"
+                onClick={() => {
+                  if (confirm('Bytte tilbake til legacy-skjema? Block-listen beholdes — du kan flippe tilbake.')) {
+                    setBlocks(null);
+                  }
+                }}
+                sx={{ color: 'rgba(203,213,225,0.78)', textTransform: 'none', fontSize: '0.78rem' }}
+              >
+                ← Tilbake til legacy-skjema
+              </Button>
+            </Stack>
+            <BlockListEditor blocks={blocks} onChange={setBlocks} />
+          </Stack>
+        ) : (
+          <>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          alignItems="center"
+          sx={{ p: 1.5, borderRadius: 1.5, border: '1px dashed rgba(167,139,250,0.32)', bgcolor: 'rgba(167,139,250,0.04)' }}
+        >
+          <Typography sx={{ color: 'rgba(203,213,225,0.86)', fontSize: '0.84rem', flex: 1 }}>
+            Vil du redigere med block-CMS (Webflow-stil)? Konverter dette legacy-innholdet til drag-droppable blokker.
+          </Typography>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={convertToBlocks}
+            sx={{
+              bgcolor: '#a78bfa',
+              color: '#0b1120',
+              textTransform: 'none',
+              fontWeight: 700,
+              '&:hover': { bgcolor: '#c4b5fd' },
+            }}
+          >
+            Konverter til blocks
+          </Button>
+        </Stack>
 
         <CmsTextField label="Tittel (H1)" value={content.h1} onChange={(v) => updateField('h1', v)} />
       <CmsTextField label="Undertittel" value={content.subtitle} onChange={(v) => updateField('subtitle', v)} multiline rows={2} />
@@ -2571,6 +2730,42 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
           </Stack>
         )}
       />
+          </>
+        )}
+
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1.5}
+        alignItems={{ sm: 'center' }}
+        sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(2,6,23,0.34)' }}
+      >
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', fontWeight: 600, mb: 0.5 }}>
+            Tidsstyrt publisering (valgfritt)
+          </Typography>
+          <Typography sx={{ color: 'rgba(148,163,184,0.65)', fontSize: '0.72rem' }}>
+            Publiserings-feltene er informative i UI-en. Backend lagrer dem, men cron-jobben som faktisk flipper published-state kjøres ikke ennå.
+          </Typography>
+        </Box>
+        <TextField
+          label="Publiser fra"
+          type="datetime-local"
+          value={publishAt}
+          onChange={(e) => setPublishAt(e.target.value)}
+          size="small"
+          InputLabelProps={{ shrink: true }}
+          sx={{ minWidth: 200, '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+        />
+        <TextField
+          label="Avpubliser etter"
+          type="datetime-local"
+          value={unpublishAt}
+          onChange={(e) => setUnpublishAt(e.target.value)}
+          size="small"
+          InputLabelProps={{ shrink: true }}
+          sx={{ minWidth: 200, '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+        />
+      </Stack>
 
       <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(2,6,23,0.34)' }}>
         <Chip
@@ -2707,6 +2902,15 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
           </Box>
         </Box>
       </Box>
+      <RevisionsDrawer
+        open={revisionsOpen}
+        onClose={() => setRevisionsOpen(false)}
+        slug={slug}
+        onRevert={() => {
+          setRevisionsOpen(false);
+          setReloadKey((k) => k + 1);
+        }}
+      />
     </Box>
   );
 }
@@ -3177,59 +3381,204 @@ function PresenceChannelsView() {
 
 function PresencePostsView() {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [channels, setChannels] = useState<CommunityChannel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [draft, setDraft] = useState<Partial<CommunityPost>>({
+    channel_id: '',
+    post_type: 'launch_post',
+    title: '',
+    body: '',
+    status: 'draft',
+    ai_generated: false,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
     setLoading(true);
-    fetch('/api/admin/community/posts', { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : { posts: [] }))
-      .then((data) => {
-        if (!cancelled) setPosts(Array.isArray(data?.posts) ? data.posts : []);
+    Promise.all([
+      fetch('/api/admin/community/posts', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : { posts: [] }))
+        .catch(() => ({ posts: [] })),
+      fetch('/api/admin/community/channels', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : { channels: [] }))
+        .catch(() => ({ channels: [] })),
+    ])
+      .then(([postsData, channelsData]) => {
+        setPosts(Array.isArray(postsData?.posts) ? postsData.posts : []);
+        setChannels(Array.isArray(channelsData?.channels) ? channelsData.channels : []);
       })
-      .catch(() => { if (!cancelled) setPosts([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleAdd = async () => {
+    if (!draft.channel_id || !draft.title) return;
+    try {
+      const res = await fetch('/api/admin/community/posts', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel_id: draft.channel_id,
+          post_type: draft.post_type,
+          title: draft.title,
+          body: draft.body || null,
+          status: draft.status,
+          scheduled_for: draft.scheduled_for || null,
+          ai_generated: false,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAddOpen(false);
+      setDraft({ channel_id: '', post_type: 'launch_post', title: '', body: '', status: 'draft', ai_generated: false });
+      load();
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   if (loading) return <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress /></Stack>;
 
-  return posts.length === 0 ? (
-    <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
-      Ingen posts ennå. Klikk "Generer utkast via Agent" på en kanal — eller opprett manuelt via API <code>/api/admin/community/posts</code>.
-    </Alert>
-  ) : (
-    <Stack spacing={0.8}>
-      {posts.map((p) => {
-        const statusMeta = STATUS_TONES[p.status] ?? STATUS_TONES.draft;
-        return (
-          <Stack
-            key={p.id}
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
-            alignItems={{ sm: 'center' }}
-            sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.34)' }}
-          >
-            <Chip size="small" label={statusMeta.label} sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }} />
-            {p.ai_generated ? (
-              <Chip size="small" label="AI" sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 700, height: 22 }} />
-            ) : null}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {p.title}
-              </Typography>
-              <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem' }}>
-                {p.post_type} {p.scheduled_for ? `· planlagt ${new Date(p.scheduled_for).toLocaleDateString('nb-NO')}` : ''}
-              </Typography>
-            </Box>
-            {p.published_url ? (
-              <Button href={p.published_url} target="_blank" rel="noopener noreferrer" size="small" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} sx={{ color: 'rgba(203,213,225,0.85)', textTransform: 'none', fontSize: '0.78rem' }}>
-                Åpne
-              </Button>
-            ) : null}
+  return (
+    <Stack spacing={1.5}>
+      <Stack direction="row" justifyContent="flex-end">
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => setAddOpen(true)}
+          sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+        >
+          Nytt utkast
+        </Button>
+      </Stack>
+      <Stack spacing={0.8}>
+        {posts.length === 0 ? (
+          <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+            Ingen posts ennå. Klikk "Nytt utkast" eller bruk Agent-generering på en kanal.
+          </Alert>
+        ) : posts.map((p) => {
+          const statusMeta = STATUS_TONES[p.status] ?? STATUS_TONES.draft;
+          return (
+            <Stack
+              key={p.id}
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ sm: 'center' }}
+              sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.34)' }}
+            >
+              <Chip size="small" label={statusMeta.label} sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }} />
+              {p.ai_generated ? (
+                <Chip size="small" label="AI" sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 700, height: 22 }} />
+              ) : null}
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {p.title}
+                </Typography>
+                <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem' }}>
+                  {p.post_type} {p.scheduled_for ? `· planlagt ${new Date(p.scheduled_for).toLocaleDateString('nb-NO')}` : ''}
+                </Typography>
+              </Box>
+              {p.published_url ? (
+                <Button href={p.published_url} target="_blank" rel="noopener noreferrer" size="small" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} sx={{ color: 'rgba(203,213,225,0.85)', textTransform: 'none', fontSize: '0.78rem' }}>
+                  Åpne
+                </Button>
+              ) : null}
+            </Stack>
+          );
+        })}
+      </Stack>
+
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'rgba(2,6,23,0.95)', color: '#f8fafc' }}>Nytt post-utkast</DialogTitle>
+        <DialogContent sx={{ bgcolor: 'rgba(2,6,23,0.95)', pt: '20px !important' }}>
+          <Stack spacing={2}>
+            <FormControl fullWidth size="small" required>
+              <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Kanal</InputLabel>
+              <Select
+                label="Kanal"
+                value={draft.channel_id ?? ''}
+                onChange={(e) => setDraft({ ...draft, channel_id: String(e.target.value) })}
+                sx={{ color: '#e2e8f0' }}
+              >
+                {channels.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {CHANNEL_TYPE_LABELS[c.channel_type]?.label ?? c.channel_type} — {c.display_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth size="small">
+              <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Type</InputLabel>
+              <Select
+                label="Type"
+                value={draft.post_type ?? 'launch_post'}
+                onChange={(e) => setDraft({ ...draft, post_type: String(e.target.value) })}
+                sx={{ color: '#e2e8f0' }}
+              >
+                {['launch_post', 'show_hn', 'product_hunt_launch', 'reddit_post', 'twitter_thread', 'blog_post', 'announcement'].map((t) => (
+                  <MenuItem key={t} value={t}>{t.replace(/_/g, ' ')}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Tittel"
+              value={draft.title ?? ''}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              size="small"
+              required
+              fullWidth
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
+            <TextField
+              label="Brødtekst"
+              value={draft.body ?? ''}
+              onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+              size="small"
+              multiline
+              minRows={4}
+              fullWidth
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
+            <Stack direction="row" spacing={2}>
+              <FormControl size="small" sx={{ flex: 1 }}>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Status</InputLabel>
+                <Select
+                  label="Status"
+                  value={draft.status ?? 'draft'}
+                  onChange={(e) => setDraft({ ...draft, status: String(e.target.value) })}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {['draft', 'review', 'scheduled', 'published', 'archived'].map((s) => (
+                    <MenuItem key={s} value={s}>{STATUS_TONES[s]?.label ?? s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Planlagt"
+                type="datetime-local"
+                value={draft.scheduled_for ?? ''}
+                onChange={(e) => setDraft({ ...draft, scheduled_for: e.target.value })}
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: 1, '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+              />
+            </Stack>
           </Stack>
-        );
-      })}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: 'rgba(2,6,23,0.95)' }}>
+          <Button onClick={() => setAddOpen(false)} sx={{ color: 'rgba(203,213,225,0.78)' }}>Avbryt</Button>
+          <Button
+            onClick={handleAdd}
+            disabled={!draft.channel_id || !draft.title}
+            variant="contained"
+            sx={{ bgcolor: '#a78bfa', color: '#121218', fontWeight: 600, '&:hover': { bgcolor: '#8b5cf6' } }}
+          >
+            Lagre utkast
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }
@@ -3378,59 +3727,197 @@ function PresenceRedditMentionsView() {
 function PresenceContactsView() {
   const [contacts, setContacts] = useState<OutreachContact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [draft, setDraft] = useState<Partial<OutreachContact>>({
+    name: '',
+    role: '',
+    organization: '',
+    email: '',
+    priority: 3,
+    status: 'not_contacted',
+    notes: '',
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
     setLoading(true);
     fetch('/api/admin/community/contacts', { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : { contacts: [] }))
-      .then((data) => {
-        if (!cancelled) setContacts(Array.isArray(data?.contacts) ? data.contacts : []);
-      })
-      .catch(() => { if (!cancelled) setContacts([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then((data) => setContacts(Array.isArray(data?.contacts) ? data.contacts : []))
+      .catch(() => setContacts([]))
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleAdd = async () => {
+    if (!draft.name) return;
+    try {
+      const res = await fetch('/api/admin/community/contacts', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: draft.name,
+          role: draft.role || null,
+          organization: draft.organization || null,
+          email: draft.email || null,
+          priority: draft.priority ?? 3,
+          status: draft.status ?? 'not_contacted',
+          notes: draft.notes || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAddOpen(false);
+      setDraft({ name: '', role: '', organization: '', email: '', priority: 3, status: 'not_contacted', notes: '' });
+      load();
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   if (loading) return <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress /></Stack>;
 
-  return contacts.length === 0 ? (
-    <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
-      Ingen outreach-kontakter ennå. Legg til journalister, community-managers og film-bloggere via API <code>POST /api/admin/community/contacts</code>.
-    </Alert>
-  ) : (
-    <Stack spacing={0.8}>
-      {contacts.map((c) => {
-        const statusMeta = STATUS_TONES[c.status] ?? STATUS_TONES.not_contacted;
-        return (
-          <Stack
-            key={c.id}
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
-            alignItems={{ sm: 'center' }}
-            sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.34)' }}
-          >
-            <Chip
-              label={`P${c.priority}`}
+  return (
+    <Stack spacing={1.5}>
+      <Stack direction="row" justifyContent="flex-end">
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => setAddOpen(true)}
+          sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+        >
+          Ny kontakt
+        </Button>
+      </Stack>
+      <Stack spacing={0.8}>
+        {contacts.length === 0 ? (
+          <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+            Ingen outreach-kontakter ennå. Legg til journalister, community-managers og film-bloggere via "Ny kontakt".
+          </Alert>
+        ) : contacts.map((c) => {
+          const statusMeta = STATUS_TONES[c.status] ?? STATUS_TONES.not_contacted;
+          return (
+            <Stack
+              key={c.id}
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ sm: 'center' }}
+              sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.34)' }}
+            >
+              <Chip
+                label={`P${c.priority}`}
+                size="small"
+                sx={{
+                  bgcolor: c.priority === 1 ? 'rgba(239,68,68,0.16)' : 'rgba(148,163,184,0.16)',
+                  color: c.priority === 1 ? '#fca5a5' : '#cbd5e1',
+                  fontWeight: 700, height: 22,
+                }}
+              />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem' }}>
+                  {c.name}
+                </Typography>
+                <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem' }}>
+                  {c.role ?? ''}{c.organization ? ` · ${c.organization}` : ''}{c.email ? ` · ${c.email}` : ''}
+                </Typography>
+              </Box>
+              <Chip size="small" label={statusMeta.label} sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }} />
+            </Stack>
+          );
+        })}
+      </Stack>
+
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'rgba(2,6,23,0.95)', color: '#f8fafc' }}>Ny outreach-kontakt</DialogTitle>
+        <DialogContent sx={{ bgcolor: 'rgba(2,6,23,0.95)', pt: '20px !important' }}>
+          <Stack spacing={2}>
+            <TextField
+              label="Navn"
+              value={draft.name ?? ''}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               size="small"
-              sx={{
-                bgcolor: c.priority === 1 ? 'rgba(239,68,68,0.16)' : 'rgba(148,163,184,0.16)',
-                color: c.priority === 1 ? '#fca5a5' : '#cbd5e1',
-                fontWeight: 700, height: 22,
-              }}
+              required
+              fullWidth
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
             />
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem' }}>
-                {c.name}
-              </Typography>
-              <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem' }}>
-                {c.role ?? ''}{c.organization ? ` · ${c.organization}` : ''}{c.email ? ` · ${c.email}` : ''}
-              </Typography>
-            </Box>
-            <Chip size="small" label={statusMeta.label} sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }} />
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Rolle"
+                value={draft.role ?? ''}
+                onChange={(e) => setDraft({ ...draft, role: e.target.value })}
+                size="small"
+                fullWidth
+                sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+              />
+              <TextField
+                label="Organisasjon"
+                value={draft.organization ?? ''}
+                onChange={(e) => setDraft({ ...draft, organization: e.target.value })}
+                size="small"
+                fullWidth
+                sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+              />
+            </Stack>
+            <TextField
+              label="E-post"
+              type="email"
+              value={draft.email ?? ''}
+              onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+              size="small"
+              fullWidth
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
+            <Stack direction="row" spacing={2}>
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Prioritet</InputLabel>
+                <Select
+                  label="Prioritet"
+                  value={draft.priority ?? 3}
+                  onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => <MenuItem key={n} value={n}>P{n}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ flex: 1 }}>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Status</InputLabel>
+                <Select
+                  label="Status"
+                  value={draft.status ?? 'not_contacted'}
+                  onChange={(e) => setDraft({ ...draft, status: String(e.target.value) })}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {['not_contacted', 'reached_out', 'responded', 'meeting_scheduled', 'covered', 'no_response', 'not_interested'].map((s) => (
+                    <MenuItem key={s} value={s}>{STATUS_TONES[s]?.label ?? s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+            <TextField
+              label="Notater"
+              value={draft.notes ?? ''}
+              onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+              size="small"
+              multiline
+              minRows={2}
+              fullWidth
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
+            />
           </Stack>
-        );
-      })}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: 'rgba(2,6,23,0.95)' }}>
+          <Button onClick={() => setAddOpen(false)} sx={{ color: 'rgba(203,213,225,0.78)' }}>Avbryt</Button>
+          <Button
+            onClick={handleAdd}
+            disabled={!draft.name}
+            variant="contained"
+            sx={{ bgcolor: '#a78bfa', color: '#121218', fontWeight: 600, '&:hover': { bgcolor: '#8b5cf6' } }}
+          >
+            Lagre kontakt
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

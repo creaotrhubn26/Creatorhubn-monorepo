@@ -105,6 +105,7 @@ const ROLE_ROOM_PUBLIC_PATHS = new Set([
   '/innholdsprodusenter',
   '/innholdsproduksjon-studie',
   '/dansestudio',
+  '/presse',
 ]);
 
 const ROLE_ROOM_NOINDEX_PATTERNS = [
@@ -267,6 +268,13 @@ function buildRoleRoomSeo(pathname: string): SeoMetadata {
         title: 'For utdanningsinstitusjoner | The Role Room',
         description:
           'The Role Room for utdanningsinstitusjoner kobler studenter, fagmiljø og produksjonsplanlegging i en strukturert arbeidsflate.',
+      };
+    case '/presse':
+      return {
+        ...base,
+        title: 'Pressepakke | The Role Room',
+        description:
+          'Pressepakke for The Role Room — logoer, boilerplate, fakta og pressekontakt. Bruk fritt i redaksjonell sammenheng.',
       };
     case '/':
     default:

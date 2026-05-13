@@ -136,12 +136,80 @@
         ]
       }
     </script>
+    <!--
+      AggregateRating-placeholder — flipp på når ≥10 verifiserte reviews finnes.
+      Limes inn som ekstra felt i SoftwareApplication-schemaet (rett før "featureList").
+      Google krever ekte, verifiserbare reviews. Ikke ship fake data.
+
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "42",
+        "bestRating": "5",
+        "worstRating": "1"
+      },
+    -->
     <script type="application/ld+json" data-seo-ld="breadcrumb">
       {
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
           { "@type": "ListItem", "position": 1, "name": "Hjem", "item": "https://creatorhubn.com/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json" data-seo-ld="howto">
+      {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "@id": "https://creatorhubn.com/#howto-onboarding",
+        "name": "Slik kommer du i gang med CreatorHub",
+        "description": "Fem steg for å sette opp CreatorHub-arbeidsrommet ditt — fra konto-opprettelse til første prosjekt med team og klient.",
+        "inLanguage": "nb-NO",
+        "totalTime": "PT10M",
+        "supply": [
+          { "@type": "HowToSupply", "name": "E-postadresse" },
+          { "@type": "HowToSupply", "name": "Beskrivelse av virksomheten/teamet" }
+        ],
+        "tool": [
+          { "@type": "HowToTool", "name": "CreatorHub-konto (gratis å opprette)" }
+        ],
+        "step": [
+          {
+            "@type": "HowToStep",
+            "position": 1,
+            "name": "Opprett konto",
+            "text": "Registrer deg på creatorhubn.com og bekreft e-postadressen.",
+            "url": "https://creatorhubn.com/#step-1-konto"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 2,
+            "name": "Velg abonnement",
+            "text": "Velg plan som matcher behovet ditt — Creator, Team eller Business.",
+            "url": "https://creatorhubn.com/pricing"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 3,
+            "name": "Opprett første prosjekt",
+            "text": "Sett opp prosjektrom med tittel, klient og tidslinje. Velg mal eller start tomt.",
+            "url": "https://creatorhubn.com/#step-3-prosjekt"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 4,
+            "name": "Inviter team og klient",
+            "text": "Inviter team-medlemmer og klient via lenke eller e-post. Sett rolletilganger per person.",
+            "url": "https://creatorhubn.com/#step-4-team"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 5,
+            "name": "Lever via klientportal",
+            "text": "Last opp leveranser og del med klient gjennom showcase eller leveransegalleri.",
+            "url": "https://creatorhubn.com/#step-5-lever"
+          }
         ]
       }
     </script>

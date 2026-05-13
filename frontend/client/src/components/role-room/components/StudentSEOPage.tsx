@@ -39,6 +39,8 @@ import {
 import SchoolIcon from '@mui/icons-material/School';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag, clarityEvent } from '@/lib/clarity';
+import BlockRenderer from '../cms/BlockRenderer';
+import { isBlockArray, type Block } from '../cms/blockSchema';
 import MovieFilterIcon from '@mui/icons-material/MovieFilter';
 import GroupsIcon from '@mui/icons-material/Groups';
 import VideoCameraFrontIcon from '@mui/icons-material/VideoCameraFront';
@@ -711,9 +713,15 @@ function mergeOverrides(defaults: StudentPageConfig, overrides: Partial<StudentP
   };
 }
 
-function useCmsContent(pageKey: StudentPageKey): StudentPageConfig {
+interface CmsRenderState {
+  blocks: Block[] | null;
+  config: StudentPageConfig;
+}
+
+function useCmsContent(pageKey: StudentPageKey): CmsRenderState {
   const defaults = STUDENT_PAGE_CONFIGS[pageKey] ?? STUDENT_PAGE_CONFIGS['for-studenter'];
   const [merged, setMerged] = useState<StudentPageConfig>(defaults);
+  const [blocks, setBlocks] = useState<Block[] | null>(null);
 
   // Server-content (cached, 5-min CDN)
   useEffect(() => {
@@ -722,7 +730,12 @@ function useCmsContent(pageKey: StudentPageKey): StudentPageConfig {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled || !data?.success || !data?.page?.content) return;
-        setMerged(mergeOverrides(defaults, data.page.content as Partial<StudentPageConfig>));
+        const content = data.page.content as Record<string, unknown>;
+        if (isBlockArray(content.blocks)) {
+          setBlocks(content.blocks);
+          return;
+        }
+        setMerged(mergeOverrides(defaults, content as Partial<StudentPageConfig>));
       })
       .catch(() => {
         // Stillegående fallback til defaults — vi viser fortsatt siden.
@@ -738,11 +751,16 @@ function useCmsContent(pageKey: StudentPageKey): StudentPageConfig {
     if (typeof window === 'undefined') return;
     const handler = (event: MessageEvent) => {
       if (!event.data || typeof event.data !== 'object') return;
-      const msg = event.data as { type?: string; pageKey?: string; content?: Partial<StudentPageConfig> };
+      const msg = event.data as { type?: string; pageKey?: string; content?: Record<string, unknown> };
       if (msg.type !== 'roleroom-cms-preview') return;
       if (msg.pageKey !== pageKey) return;
       if (!msg.content || typeof msg.content !== 'object') return;
-      setMerged(mergeOverrides(defaults, msg.content));
+      if (isBlockArray(msg.content.blocks)) {
+        setBlocks(msg.content.blocks);
+        return;
+      }
+      setBlocks(null);
+      setMerged(mergeOverrides(defaults, msg.content as Partial<StudentPageConfig>));
     };
     window.addEventListener('message', handler);
     // Annonsér at preview er klar — editoren sender da current state
@@ -750,7 +768,7 @@ function useCmsContent(pageKey: StudentPageKey): StudentPageConfig {
     return () => window.removeEventListener('message', handler);
   }, [pageKey, defaults]);
 
-  return merged;
+  return { blocks, config: merged };
 }
 
 export default function StudentSEOPage({ pageKey }: StudentSEOPageProps) {
@@ -778,11 +796,11 @@ export default function StudentSEOPage({ pageKey }: StudentSEOPageProps) {
     clarityEvent('seo_page_viewed');
   }, [pageKey]);
 
-  const config = useCmsContent(pageKey);
+  const { blocks, config } = useCmsContent(pageKey);
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0b1120', color: '#e2e8f0' }}>
-      <PageView config={config} />
+      {blocks ? <BlockRenderer blocks={blocks} /> : <PageView config={config} />}
     </Box>
   );
 }

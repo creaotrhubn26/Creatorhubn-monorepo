@@ -16,7 +16,7 @@
  * lenker til hver sammenligning.
  */
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -45,6 +45,8 @@ import ShieldIcon from '@mui/icons-material/Shield';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag, clarityEvent } from '@/lib/clarity';
+import BlockRenderer from '../cms/BlockRenderer';
+import { isBlockArray, type Block } from '../cms/blockSchema';
 
 export type CompetitorKey = 'studiobinder' | 'castingnetworks' | 'moviemagic' | 'yamdu' | 'setkeeper';
 
@@ -74,7 +76,7 @@ const SHARED_NORDIC_FEATURES: Pick<FeatureRow, 'feature' | 'roleRoom'>[] = [
   { feature: 'Utdanningsinstitusjon-partnerskap', roleRoom: 'yes' },
 ];
 
-const COMPETITOR_CONFIGS: Record<CompetitorKey, CompetitorConfig> = {
+export const COMPETITOR_CONFIGS: Record<CompetitorKey, CompetitorConfig> = {
   studiobinder: {
     key: 'studiobinder',
     name: 'StudioBinder',
@@ -508,8 +510,54 @@ function useFaqSchema(competitor: CompetitorKey | 'alternatives', config?: Compe
   }, [competitor, config]);
 }
 
+function useCompetitorCmsBlocks(slug: string): Block[] | null {
+  const [blocks, setBlocks] = useState<Block[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/cms/pages/${slug}`, { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.success || !data?.page?.content) return;
+        const content = data.page.content as Record<string, unknown>;
+        if (isBlockArray(content.blocks)) {
+          setBlocks(content.blocks);
+        }
+      })
+      .catch(() => {
+        // Stillegående fallback — hardkodet config rendres.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (event: MessageEvent) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      const msg = event.data as { type?: string; pageKey?: string; content?: Record<string, unknown> };
+      if (msg.type !== 'roleroom-cms-preview') return;
+      if (msg.pageKey !== slug) return;
+      if (!msg.content || typeof msg.content !== 'object') return;
+      if (isBlockArray(msg.content.blocks)) {
+        setBlocks(msg.content.blocks);
+      } else {
+        setBlocks(null);
+      }
+    };
+    window.addEventListener('message', handler);
+    window.parent?.postMessage({ type: 'roleroom-cms-preview-ready', pageKey: slug }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, [slug]);
+
+  return blocks;
+}
+
 export default function CompetitorComparisonPage({ competitor }: CompetitorComparisonPageProps) {
   const config = competitor !== 'alternatives' ? COMPETITOR_CONFIGS[competitor] : undefined;
+  const cmsSlug = competitor === 'alternatives' ? 'alternatives' : `vs-${competitor}`;
+  const cmsBlocks = useCompetitorCmsBlocks(cmsSlug);
   useFaqSchema(competitor, config);
 
   useEffect(() => {
@@ -519,7 +567,7 @@ export default function CompetitorComparisonPage({ competitor }: CompetitorCompa
       try {
         sessionStorage.setItem('roleroom_seo_referral', JSON.stringify({
           type: competitor === 'alternatives' ? 'alternatives-index' : 'competitor',
-          slug: competitor === 'alternatives' ? 'alternatives' : `vs-${competitor}`,
+          slug: cmsSlug,
           capturedAt: Date.now(),
         }));
       } catch {
@@ -527,23 +575,23 @@ export default function CompetitorComparisonPage({ competitor }: CompetitorCompa
       }
     }
     const pageType = competitor === 'alternatives' ? 'alternatives-index' : 'competitor';
-    const pageSlug = competitor === 'alternatives' ? 'alternatives' : `vs-${competitor}`;
     roleRoomAnalytics.seoPageViewed({
       page_type: pageType,
-      page_slug: pageSlug,
+      page_slug: cmsSlug,
     });
     clarityTag('page_type', pageType);
-    clarityTag('page_slug', pageSlug);
+    clarityTag('page_slug', cmsSlug);
     if (competitor !== 'alternatives') {
       clarityTag('competitor', competitor);
     }
     clarityEvent('seo_page_viewed');
-  }, [competitor]);
+  }, [competitor, cmsSlug]);
 
   const content = useMemo(() => {
+    if (cmsBlocks) return <BlockRenderer blocks={cmsBlocks} />;
     if (competitor === 'alternatives') return <AlternativesIndexView />;
     return <ComparisonView config={COMPETITOR_CONFIGS[competitor]} />;
-  }, [competitor]);
+  }, [competitor, cmsBlocks]);
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0b1120', color: '#e2e8f0' }}>

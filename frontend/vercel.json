@@ -242,6 +242,16 @@
       "destination": "/theroleroom.html"
     },
     {
+      "source": "/presse",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
       "source": "/theroleroom",
       "destination": "/theroleroom.html"
     },
