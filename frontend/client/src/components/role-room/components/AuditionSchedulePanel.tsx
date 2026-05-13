@@ -14,6 +14,7 @@ import { scheduleReducer, initialScheduleState, stateToApiFilters, hasActiveFilt
 import { useAuditionSchedules } from "../hooks/useAuditionSchedules";
 import { ScheduleDetailsDrawer } from "./ScheduleDetailsDrawer";
 import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
+import { RoleStatPillRow } from "./primitives";
 
 /** Escape a string for safe embedding in an HTML template literal. */
 const escapeHtml = (s: string): string =>
@@ -1878,57 +1879,18 @@ function AuditionSchedulePanelInner({
         </Box>
       )}
 
-      {/* Statistics Panel */}
+      {/* Statistics Panel — 5 stat-pills via shared RoleStatPillRow */}
       <Collapse in={showStats}>
-        <Box
-          id={statsId}
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(6, 1fr)' },
-            gap: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-            mb: 3,
-            p: { xs: 1.5, sm: 2 },
-            bgcolor: roleSurfaceMuted,
-            borderRadius: 2,
-            border: `1px solid ${roleBorder}`,
-          }}
-        >
-          {/* 5-kort-rad matcher audition-design: Totalt/Planlagt/Bekreftet/Callbacks/Fullført */}
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: roleTabAccent }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: roleTabAccent, fontWeight: 700 }}>{statistics.total}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Totalt</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9ca3af' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#9ca3af', fontWeight: 700 }}>{statistics.scheduled}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Planlagt</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#10b981' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700 }}>{statistics.confirmed}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Bekreftet</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#22d3ee' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#22d3ee', fontWeight: 700 }}>{statistics.awaitingCallback}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Callbacks</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <StarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffc107' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700 }}>{statistics.completed}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Fullført</Typography>
-          </Box>
+        <Box id={statsId} sx={{ mb: 3 }}>
+          <RoleStatPillRow
+            pills={[
+              { icon: <AuditionsIcon />, count: statistics.total, label: 'Totalt', color: roleTabAccent },
+              { icon: <CalendarIcon />, count: statistics.scheduled, label: 'Planlagt', color: '#9ca3af' },
+              { icon: <AuditionsIcon />, count: statistics.confirmed, label: 'Bekreftet', color: '#10b981' },
+              { icon: <AuditionsIcon />, count: statistics.awaitingCallback, label: 'Callbacks', color: '#22d3ee' },
+              { icon: <StarIcon />, count: statistics.completed, label: 'Fullført', color: '#ffc107' },
+            ]}
+          />
         </Box>
       </Collapse>
 
