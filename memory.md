@@ -127,8 +127,9 @@ Smoke-test: `bash scripts/smoke-production.sh` → forventer 41/41.
 - ✅ Full marketing-dekning: StudentSEOPage, CompetitorComparisonPage, CastingLandingPage (`/`, `/talentportal`), RoleRoomEducationPartnershipPage, PressKitPage konsumerer alle blocks fra CMS
 - ✅ AdminRoom CMS-tab-listing utvidet med konkurrent (vs-X + alternatives) + landing (home/talentportal/utdanningsinstitusjon/presse)
 
+- ✅ Media library (fase 3) — R2-opplasting via @aws-sdk/client-s3 (commit 1a4ff39a). Drag-drop + Velg-fil i ImageEditor, backend endpoint /api/admin/cms/media/upload. Krever env-vars i Render: CMS_R2_ENDPOINT, CMS_R2_BUCKET, CMS_R2_ACCESS_KEY_ID, CMS_R2_SECRET_ACCESS_KEY (faller tilbake til CLOUDFLARE_R2_* og R2_* hvis ikke satt). Optional: CMS_R2_PUBLIC_URL_BASE for custom CDN-domene (ellers signed URL med 7-dagers TTL).
+
 **GJENSTÅR:**
-- ⏸ **Media library** (fase 3) — krever Vercel Blob-token (anbefalt) eller S3/Cloudinary
 - ⏸ **Multi-lang** (fase 7) — krever URL-strategi-beslutning (path-prefix `/en/...` vs subdomene vs query-param)
 
 #### Heavy CMS (i18n for hele appen) — FREMTIDIG
