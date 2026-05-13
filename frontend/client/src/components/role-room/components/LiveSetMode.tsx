@@ -95,6 +95,7 @@ import {
 import { useLiveSet, type LiveSetCameraMetadata, type LiveSetNote, type LiveSetTake } from '../hooks/useLiveSet';
 import { useLiveSetContext, type ShotOption, type StoryboardTile } from '../hooks/useLiveSetContext';
 import { useLiveWeather, type LiveWeatherRiskLevel, type LiveWeatherState } from '../hooks/useLiveWeather';
+import LiveSetDitPanel from './LiveSetDitPanel';
 import { useShotListSync, type ShotListSyncState, type TakeCaptureForm } from '../hooks/useShotListSync';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
@@ -2391,6 +2392,7 @@ interface LiveSetFooterBarProps {
   unreadChatCount?: number;
   setupStartedAt?: string;
   takesCompletedToday?: number;
+  onOpenDitDrawer?: () => void;
 }
 
 const LiveSetFooterBar: FC<LiveSetFooterBarProps> = ({
@@ -2400,6 +2402,7 @@ const LiveSetFooterBar: FC<LiveSetFooterBarProps> = ({
   unreadChatCount = 0,
   setupStartedAt,
   takesCompletedToday = 0,
+  onOpenDitDrawer,
 }) => {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -2485,13 +2488,25 @@ const LiveSetFooterBar: FC<LiveSetFooterBarProps> = ({
         flexWrap: { xs: 'wrap', md: 'nowrap' },
       }}
     >
-      {/* SET STATUS */}
-      <Box sx={cellSx}>
+      {/* SET STATUS — klikkbar når onOpenDitDrawer er konfigurert */}
+      <Box
+        sx={{
+          ...cellSx,
+          cursor: onOpenDitDrawer ? 'pointer' : 'default',
+          transition: 'background-color 0.15s',
+          borderRadius: 1,
+          mx: -0.5,
+          px: 0.5,
+          '&:hover': onOpenDitDrawer ? { bgcolor: 'rgba(34,211,238,0.06)' } : {},
+        }}
+        onClick={onOpenDitDrawer}
+        title={onOpenDitDrawer ? 'Klikk for å åpne DIT-backup-panel' : undefined}
+      >
         <Typography sx={labelSx}>Set status</Typography>
         <Typography sx={{ ...valueSx, color: allReady ? '#86efac' : '#fdba74' }}>
           {allReady ? 'Alt klart' : 'Forbereder'}
         </Typography>
-        <Typography sx={subSx}>{checklistReady}/{checklistTotal} sjekklister · backup {backupCompleted}/4</Typography>
+        <Typography sx={subSx}>{checklistReady}/{checklistTotal} sjekklister · backup {backupCompleted}/4 {onOpenDitDrawer && '↗'}</Typography>
       </Box>
 
       {/* VÆR */}
@@ -2642,6 +2657,8 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
   // LIVE den fullt-implementerte modusen; EDIT og REVIEW viser
   // placeholder-content til scene-assembly-fundamentet er bygget.
   const [liveSetMode, setLiveSetMode] = useState<'live' | 'edit' | 'review'>('live');
+  // DIT-backup-drawer toggle
+  const [ditDrawerOpen, setDitDrawerOpen] = useState(false);
 
   const {
     state, roll, cut, setupComplete, advanceScene,
@@ -3590,6 +3607,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           weatherLive={weatherLive}
           shootingDay={shootingDay}
           takesCompletedToday={state.takes.filter((t) => t.status === 'circled' || t.status === 'print' || t.status === 'selected').length}
+          onOpenDitDrawer={() => setDitDrawerOpen(true)}
         />
       </Box>
 
@@ -3985,6 +4003,13 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           onDismiss={advanceScene}
         />
       )}
+
+      {/* ── DIT-backup-drawer (åpnes fra footer-bar SET STATUS-cellen) ── */}
+      <LiveSetDitPanel
+        open={ditDrawerOpen}
+        onClose={() => setDitDrawerOpen(false)}
+        projectId={projectId}
+      />
     </Box>
   );
 }
