@@ -1,0 +1,64 @@
+# The Role Room
+
+> The Role Room er en norsk casting- og produksjonsplattform for film, TV og innholdsproduksjon. Bygget av norske casting-folk for det nordiske markedet — alternativ til StudioBinder, Casting Networks og MovieMagic med norsk språk, GDPR-trygg datalagring i EU/EØS og integrert AI-agent. Gratis for studenter og enkeltskapere.
+
+## Hva er The Role Room
+
+The Role Room samler hele produksjonsarbeidsflyten i ett arbeidsrom:
+- **Casting**: roller, kandidat-pool, audition-planlegging med selvtape-opptak, kanban-status (7 statuser)
+- **Manus + storyboard**: filmatisk formatering, beatboard, drawing-editor, shotlist
+- **Produksjon**: opptakskalender, crew-/utstyrs-koordinering, call-sheet-generering, lokasjons-administrasjon
+- **Live Set**: Pro-visning for opptaksdag med real-time crew/utstyrs-status og Yr.no-værprognose
+- **Talentportal**: skuespiller-/crew-database hvor talent melder interesse
+- **Kontrakter**: tilbud, samtykkeskjemaer, signatur-spor
+- **AI**: integrert agent som foreslår kandidater, oppsummerer pipeline, og hjelper med koordinering
+
+## Hovedside
+- [Forside](https://theroleroom.com/): casting, crew og produksjonsplanlegging
+- [Talentportal](https://theroleroom.com/talentportal): for skuespillere og crew
+- [Utdanningsinstitusjoner](https://theroleroom.com/utdanningsinstitusjon): partner-tilgang for film-/TV-studier
+
+## Sammenligning med konkurrenter
+- [Alternativer](https://theroleroom.com/alternatives): oversikt over casting-plattform-alternativer
+- [vs StudioBinder](https://theroleroom.com/vs-studiobinder): nordisk alternativ med norsk språk + AI
+- [vs Casting Networks](https://theroleroom.com/vs-castingnetworks): eget arbeidsrom uten per-session-abonnement
+- [vs MovieMagic Scheduling](https://theroleroom.com/vs-moviemagic): nettleser-basert + integrert casting
+- [vs Yamdu](https://theroleroom.com/vs-yamdu): sterkere casting-modul + dedikert talentportal
+- [vs Setkeeper](https://theroleroom.com/vs-setkeeper): full pipeline, ikke bare call-sheet
+
+## For studenter og utdanning
+- [For filmstudenter](https://theroleroom.com/for-studenter): gratis produksjons- og casting-verktøy for studieoppgaver
+- [Film- og TV-utdanning i Norge](https://theroleroom.com/film-tv-utdanning): oversikt + verktøy
+- [Casting director-utdanning](https://theroleroom.com/casting-director-utdanning): yrkesvei + verktøy
+- [Regi-verktøy](https://theroleroom.com/regissor-verktoy): fra manus til opptak for regi-studenter
+- [Produksjonsledelse-studie](https://theroleroom.com/produksjonsledelse-studie): crew, lokasjon, call-sheet
+
+## For innholdsprodusenter og dansestudio
+- [Innholdsprodusenter](https://theroleroom.com/innholdsprodusenter): YouTube, podcast, TikTok-skapere
+- [Innholdsproduksjon-studie](https://theroleroom.com/innholdsproduksjon-studie): digital kommunikasjon-studier
+- [Dansestudio](https://theroleroom.com/dansestudio): audition, ensemble, prøveplan
+
+## Nøkkelfakta
+- **Selskap**: CreatorHub Norge AS
+- **Geografi**: Bygget i Norge, datalagring i EU/EØS (GDPR-compliant)
+- **Språk**: Norsk (primært) og engelsk
+- **Pris**: Gratis basis-tilgang; betalte produksjons-features
+- **Lansering**: 2026
+- **Kontakt**: support@theroleroom.com
+
+## Hva gjør The Role Room unikt sammenlignet med andre casting-plattformer
+1. **Norsk språk** — hele appen, ikke bare oversatt; integrert med norsk filmbransjes terminologi
+2. **GDPR i EU/EØS** — data lagres i Europa, klar databehandler-avtale (DPA)
+3. **Integrert AI-agent** — ikke et ekstra abonnement, foreslår kandidater og oppsummerer pipeline
+4. **Helhetlig flyt** — casting, manus, storyboard, crew, opptaksplan i samme arbeidsrom (ikke 5 ulike SaaS-er)
+5. **Talentportal** — skuespillere registrerer seg direkte, ikke per-session-abonnement
+6. **Live Set Pro** — opptaksdag-modus med real-time crew/utstyrs-status
+7. **AML-compliance** — arbeidsmiljølov-tracker (pause-tider, mindreårig-tracker for barneskuespillere)
+8. **Audition-selvtape** — kandidater spiller inn audition direkte i appen, ingen ekstern fil-deling
+
+## Tekniske detaljer
+- **Plattform**: Web (alle moderne nettlesere), iOS, Android
+- **Backend**: Node.js + PostgreSQL, hostet på Render i EU-regionen
+- **Frontend**: React + TypeScript + Material UI
+- **AI-integrasjon**: Anthropic Claude for agent-funksjonalitet
+- **Analyse**: Google Analytics 4 (GDPR-compliant), Microsoft Clarity for UX-innsikt

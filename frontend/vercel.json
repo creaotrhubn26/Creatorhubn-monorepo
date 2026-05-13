@@ -102,6 +102,16 @@
       "destination": "/creatorhubn-sitemap.xml"
     },
     {
+      "source": "/llms.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-llms.txt"
+    },
+    {
       "source": "/",
       "has": [
         {
