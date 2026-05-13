@@ -18,6 +18,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Menu,
+  ListItemIcon,
+  ListItemText,
   Table,
   TableBody,
   TableCell,
@@ -45,6 +48,7 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  MoreVert as MoreVertIcon,
   Search as SearchIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
@@ -321,6 +325,12 @@ function CandidateManagementPanelInner({
   const [showStats, setShowStats] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  // Per-rad ⋮-meny: holder anchor-element OG hvilken kandidat
+  // menyen gjelder. Lukkes ved menu-bytte (ny rad åpnes) eller
+  // explisitt onClose. Robust mot stale-state: når kandidaten
+  // slettes, settes til null automatisk via filter-update.
+  const [rowActionMenuAnchor, setRowActionMenuAnchor] = useState<null | HTMLElement>(null);
+  const [rowActionMenuCandidate, setRowActionMenuCandidate] = useState<Candidate | null>(null);
   const [localQuickContacts, setLocalQuickContacts] = useState<Set<string>>(new Set());
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -3485,44 +3495,26 @@ function CandidateManagementPanelInner({
                     </Typography>
                   </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <Tooltip title="Lagre til pool">
-                        <IconButton
-                          onClick={() => handleSaveToPool(candidate)}
-                          aria-label={`Lagre ${candidate.name} til pool`}
-                          sx={{ color: '#8b5cf6', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <UploadIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Dupliser">
-                        <IconButton
-                          onClick={() => handleDuplicate(candidate)}
-                          aria-label={`Dupliser ${candidate.name}`}
-                          sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <DuplicateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Rediger">
-                        <IconButton
-                          onClick={() => onEditCandidate(candidate)}
-                          aria-label={`Rediger ${candidate.name}`}
-                          sx={{ color: '#b86bff', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Slett">
-                        <IconButton
-                          onClick={() => handleDeleteWithUndo(candidate)}
-                          aria-label={`Slett ${candidate.name}`}
-                          sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                        >
-                          <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
+                    <Tooltip title="Handlinger">
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRowActionMenuAnchor(e.currentTarget);
+                          setRowActionMenuCandidate(candidate);
+                        }}
+                        aria-label={`Handlinger for ${candidate.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={rowActionMenuCandidate?.id === candidate.id ? 'true' : 'false'}
+                        sx={{
+                          color: 'rgba(255,255,255,0.78)',
+                          minWidth: TOUCH_TARGET_SIZE,
+                          minHeight: TOUCH_TARGET_SIZE,
+                          '&:hover': { color: '#b86bff', bgcolor: 'rgba(184,107,255,0.1)' },
+                        }}
+                      >
+                        <MoreVertIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
                 );
@@ -4564,6 +4556,83 @@ function CandidateManagementPanelInner({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Per-rad ⋮-action-menu — konsoliderer 4 IconButtons til én anchorPos-meny */}
+      <Menu
+        anchorEl={rowActionMenuAnchor}
+        open={Boolean(rowActionMenuAnchor && rowActionMenuCandidate)}
+        onClose={() => {
+          setRowActionMenuAnchor(null);
+          setRowActionMenuCandidate(null);
+        }}
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: 'rgba(15,23,42,0.98)',
+              border: '1px solid rgba(168,85,247,0.32)',
+              backdropFilter: 'blur(8px)',
+              color: '#fff',
+              minWidth: 200,
+            },
+          },
+        }}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) onEditCandidate(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(184,107,255,0.14)' } }}
+        >
+          <ListItemIcon sx={{ color: '#b86bff', minWidth: 36 }}>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Rediger</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) void handleSaveToPool(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(139,92,246,0.14)' } }}
+        >
+          <ListItemIcon sx={{ color: '#8b5cf6', minWidth: 36 }}>
+            <UploadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Lagre til pool</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) void handleDuplicate(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}
+        >
+          <ListItemIcon sx={{ color: 'rgba(255,255,255,0.78)', minWidth: 36 }}>
+            <DuplicateIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Dupliser</ListItemText>
+        </MenuItem>
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+        <MenuItem
+          onClick={() => {
+            if (rowActionMenuCandidate) void handleDeleteWithUndo(rowActionMenuCandidate);
+            setRowActionMenuAnchor(null);
+            setRowActionMenuCandidate(null);
+          }}
+          sx={{ color: '#fca5a5', '&:hover': { bgcolor: 'rgba(239,68,68,0.14)' } }}
+        >
+          <ListItemIcon sx={{ color: '#ef4444', minWidth: 36 }}>
+            <DeleteIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Slett</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }
