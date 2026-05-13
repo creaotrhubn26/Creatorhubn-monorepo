@@ -19,6 +19,7 @@ import QrCameraScanner from "./shared/QrCameraScanner";
 import globalTagService from "../services/globalTagService";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
+import { RoleStatPillRow } from "./primitives";
 
 const focusVisibleStyles = {
   '&:focus-visible': {
@@ -4440,85 +4441,24 @@ export function EquipmentManagementPanel({
         </Box>
       )}
 
-      {/* 5-stat-pill-rad — designet i screenshot */}
+      {/* 5-stat-pill-rad — bruker shared RoleStatPillRow-primitive */}
       {equipment.length > 0 && (() => {
         const totalItems = equipment.length;
         const availableCount = equipment.filter((eq) => eq.status === 'available').length;
         const reservedCount = equipment.filter((eq) => eq.status === 'in_use').length;
         const maintenanceCount = equipment.filter((eq) => eq.status === 'maintenance').length;
         const inStockCount = Math.max(0, totalItems - reservedCount - maintenanceCount);
-        const statPills: Array<{
-          icon: React.ReactNode;
-          count: number | string;
-          label: string;
-          color: string;
-          bg: string;
-        }> = [
-          { icon: <Inventory2Icon />, count: totalItems, label: 'Totalt utstyr', color: '#a78bfa', bg: 'rgba(167,139,250,0.14)' },
-          { icon: <CheckCircleIcon />, count: availableCount, label: 'Tilgjengelig nå', color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
-          { icon: <ScheduleIcon />, count: reservedCount, label: 'Reservert', color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
-          { icon: <MaintenanceIcon />, count: maintenanceCount, label: 'På vedlikehold', color: '#ef4444', bg: 'rgba(239,68,68,0.14)' },
-          { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#60a5fa', bg: 'rgba(96,165,250,0.14)' },
-        ];
         return (
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(5, 1fr)' },
-              gap: 1.25,
-              mb: 2,
-              px: 1,
-            }}
-          >
-            {statPills.map((pill) => (
-              <Box
-                key={pill.label}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.25,
-                  px: 1.5,
-                  py: 1.25,
-                  borderRadius: 1.5,
-                  bgcolor: pill.bg,
-                  border: `1px solid ${pill.color}33`,
-                }}
-              >
-                <Box
-                  sx={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 36,
-                    height: 36,
-                    borderRadius: 1,
-                    bgcolor: `${pill.color}22`,
-                    color: pill.color,
-                    flexShrink: 0,
-                    '& svg': { fontSize: 20 },
-                  }}
-                >
-                  {pill.icon}
-                </Box>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700, lineHeight: 1 }}>
-                    {pill.count}
-                  </Typography>
-                  <Typography
-                    sx={{
-                      color: 'rgba(255,255,255,0.65)',
-                      fontSize: '0.7rem',
-                      lineHeight: 1.3,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {pill.label}
-                  </Typography>
-                </Box>
-              </Box>
-            ))}
+          <Box sx={{ mb: 2, px: 1 }}>
+            <RoleStatPillRow
+              pills={[
+                { icon: <Inventory2Icon />, count: totalItems, label: 'Totalt utstyr', color: '#a78bfa' },
+                { icon: <CheckCircleIcon />, count: availableCount, label: 'Tilgjengelig nå', color: '#10b981' },
+                { icon: <ScheduleIcon />, count: reservedCount, label: 'Reservert', color: '#f59e0b' },
+                { icon: <MaintenanceIcon />, count: maintenanceCount, label: 'På vedlikehold', color: '#ef4444' },
+                { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#60a5fa' },
+              ]}
+            />
           </Box>
         );
       })()}
