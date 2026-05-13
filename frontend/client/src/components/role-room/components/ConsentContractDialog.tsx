@@ -112,8 +112,7 @@ const TikTokIcon = () => (
   </svg>
 );
 
-// WCAG 2.2 compliant touch target size
-const TOUCH_TARGET_SIZE = 44;
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 const CONSENT_DIALOG_ACCENT = '#b86bff';
 
 const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {

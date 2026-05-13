@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, startTransition, memo, type FC, type MouseEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
 import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck } from '../config/professionMode';
@@ -644,9 +645,6 @@ export function CastingPlannerPanel({
   const useDenseDesktopHeader = !useCompactHeaderLayout && isDenseDesktopViewport;
   const toast = useToast();
   const branding = useBrandingSettings();
-  
-  // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
-  const TOUCH_TARGET_SIZE = 44;
 
   // Projects loading state
   const [projectsLoading, setProjectsLoading] = useState(true);
