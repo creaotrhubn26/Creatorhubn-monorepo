@@ -16382,77 +16382,54 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         AND COALESCE(created_by, '') !~* $3
     )`;
 
-    const [kreativeRes, prodRes, rolesRes, kandidaterRes, auditionerRes, crewRes, lokasjonerRes] = await Promise.all([
-      pool.query(
-        `${liveProjectsCTE}
+    // Helper for fallback ved query-feil (manglende tabell, syntax, etc.)
+    const safeCount = async (sql: string): Promise<number> => {
+      try {
+        const r = await pool.query(sql, livePatternArgs);
+        return parseInt(r.rows[0]?.n ?? '0', 10);
+      } catch {
+        return 0;
+      }
+    };
+
+    const [kreative, produksjoner, rollerBesatt, kandidater, auditioner, crew, lokasjoner] = await Promise.all([
+      safeCount(`${liveProjectsCTE}
          SELECT COUNT(DISTINCT COALESCE(NULLIF(cur.email, ''), NULLIF(cur.user_id::text, ''))) AS n
          FROM casting_user_roles cur
          INNER JOIN live_projects lp ON lp.id = cur.project_id
-         WHERE COALESCE(cur.role, '') <> 'admin'`,
-        livePatternArgs,
-      ),
-      pool.query(
-        `SELECT COUNT(*) AS n
+         WHERE COALESCE(cur.role, '') <> 'admin'`),
+      safeCount(`SELECT COUNT(*) AS n
          FROM casting_projects
          WHERE COALESCE(name, '') !~* $1
            AND COALESCE(id, '') !~* $2
            AND COALESCE(created_by, '') <> ''
-           AND COALESCE(created_by, '') !~* $3`,
-        livePatternArgs,
-      ),
-      pool.query(
-        `${liveProjectsCTE}
+           AND COALESCE(created_by, '') !~* $3`),
+      safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM casting_roles
          INNER JOIN live_projects lp ON lp.id = casting_roles.project_id
          WHERE assigned_candidate_id IS NOT NULL
-            OR LOWER(COALESCE(status, '')) IN ('filled', 'cast', 'booked', 'assigned')`,
-        livePatternArgs,
-      ),
-      // Kandidater i live-prosjekter
-      pool.query(
-        `${liveProjectsCTE}
+            OR LOWER(COALESCE(status, '')) IN ('filled', 'cast', 'booked', 'assigned')`),
+      safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM casting_candidates
-         INNER JOIN live_projects lp ON lp.id = casting_candidates.project_id`,
-        livePatternArgs,
-      ),
-      // Auditioner gjennomført (status confirmed/completed på schedules)
-      pool.query(
-        `${liveProjectsCTE}
+         INNER JOIN live_projects lp ON lp.id = casting_candidates.project_id`),
+      safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM schedules
          INNER JOIN live_projects lp ON lp.id = schedules.project_id
-         WHERE LOWER(COALESCE(schedules.status, '')) IN ('confirmed', 'completed')`,
-        livePatternArgs,
-      ),
-      // Crew-medlemmer
-      pool.query(
-        `${liveProjectsCTE}
+         WHERE LOWER(COALESCE(schedules.status, '')) IN ('confirmed', 'completed')`),
+      safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM crew
-         INNER JOIN live_projects lp ON lp.id = crew.project_id`,
-        livePatternArgs,
-      ),
-      // Lokasjoner
-      pool.query(
-        `${liveProjectsCTE}
+         INNER JOIN live_projects lp ON lp.id = crew.project_id`),
+      safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM locations
-         INNER JOIN live_projects lp ON lp.id = locations.project_id`,
-        livePatternArgs,
-      ),
-    ].map((p) => p.catch(() => ({ rows: [{ n: '0' }] }))));
+         INNER JOIN live_projects lp ON lp.id = locations.project_id`),
+    ]);
 
-    return {
-      kreative: parseInt(kreativeRes.rows[0]?.n ?? '0', 10),
-      produksjoner: parseInt(prodRes.rows[0]?.n ?? '0', 10),
-      rollerBesatt: parseInt(rolesRes.rows[0]?.n ?? '0', 10),
-      kandidater: parseInt(kandidaterRes.rows[0]?.n ?? '0', 10),
-      auditioner: parseInt(auditionerRes.rows[0]?.n ?? '0', 10),
-      crew: parseInt(crewRes.rows[0]?.n ?? '0', 10),
-      lokasjoner: parseInt(lokasjonerRes.rows[0]?.n ?? '0', 10),
-    };
+    return { kreative, produksjoner, rollerBesatt, kandidater, auditioner, crew, lokasjoner };
   };
 
   router.get('/public/stats', async (_req: Request, res: Response) => {
