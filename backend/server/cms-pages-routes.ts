@@ -78,7 +78,11 @@ function serialize(row: CmsPageRow): Record<string, unknown> {
 export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
   const { app, pool, requireAdminSession } = deps;
 
-  // ── PUBLIC GET — kun published content ──────────────────────────
+  // ── PUBLIC GET — kun published content innenfor publish-vindu ───
+  // Schedule-publish er read-time-filtrert: en side er synlig hvis
+  // published = true OG publish_at er passert (eller null) OG
+  // unpublish_at er i fremtiden (eller null). Ingen cron-job
+  // nødvendig — SQL filtrerer dynamisk.
   app.get('/api/cms/pages/:slug', async (req, res) => {
     const slug = String(req.params.slug || '').trim().toLowerCase();
     if (!isValidSlug(slug)) {
@@ -87,7 +91,11 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
 
     try {
       const result = await pool.query<CmsPageRow>(
-        'SELECT * FROM cms_pages WHERE slug = $1 AND published = true',
+        `SELECT * FROM cms_pages
+         WHERE slug = $1
+           AND published = true
+           AND (publish_at IS NULL OR publish_at <= NOW())
+           AND (unpublish_at IS NULL OR unpublish_at > NOW())`,
         [slug],
       );
       if (result.rows.length === 0) {

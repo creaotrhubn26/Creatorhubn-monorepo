@@ -2744,7 +2744,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
             Tidsstyrt publisering (valgfritt)
           </Typography>
           <Typography sx={{ color: 'rgba(148,163,184,0.65)', fontSize: '0.72rem' }}>
-            Publiserings-feltene er informative i UI-en. Backend lagrer dem, men cron-jobben som faktisk flipper published-state kjøres ikke ennå.
+            Side er synlig kun innenfor vinduet [publiser fra, avpubliser etter]. Backend filtrerer ved lese-tid — opp til 5 min CDN-cache før endring blir synlig.
           </Typography>
         </Box>
         <TextField
