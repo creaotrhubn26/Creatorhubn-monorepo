@@ -23,6 +23,11 @@
 import type express from 'express';
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import {
+  fetchRedditPostEngagement,
+  searchRedditMentions,
+  isRedditOAuthConfigured,
+} from './reddit-engagement-service.js';
 
 interface AdminSession {
   userId: string;
@@ -458,6 +463,91 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
     } catch (error) {
       console.error('[community] delete contact failed:', error);
       return res.status(500).json({ success: false, error: 'Kunne ikke slette' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // REDDIT — engagement-refresh + mentions-søk
+  // ═══════════════════════════════════════════════════════════
+  // Bruker Reddit's offentlige JSON-API (ingen OAuth nødvendig).
+  // Krever bare manuell trigger; ingen auto-refresh ennå.
+
+  app.post('/api/admin/community/posts/:id/refresh-reddit', async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const postId = String(req.params.id || '').trim();
+    if (!postId) return res.status(400).json({ success: false, error: 'post-id påkrevd' });
+
+    try {
+      const postResult = await pool.query<CommunityPostRow>(
+        'SELECT * FROM community_posts WHERE id = $1',
+        [postId],
+      );
+      if (postResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Post ikke funnet' });
+      }
+      const post = postResult.rows[0];
+      if (!post.published_url) {
+        return res.status(400).json({ success: false, error: 'Post mangler published_url' });
+      }
+
+      const engagement = await fetchRedditPostEngagement(post.published_url);
+      if (!engagement) {
+        return res.status(400).json({
+          success: false,
+          error: 'Kunne ikke hente Reddit-data (er URL en gyldig Reddit-post?)',
+        });
+      }
+
+      const updated = await pool.query<CommunityPostRow>(
+        `UPDATE community_posts
+         SET upvotes = $1, comments_count = $2
+         WHERE id = $3
+         RETURNING *`,
+        [engagement.upvotes, engagement.comments_count, postId],
+      );
+
+      return res.json({
+        success: true,
+        post: serializePost(updated.rows[0]),
+        engagement,
+      });
+    } catch (error) {
+      console.error('[community] reddit-refresh failed:', error);
+      return res.status(500).json({
+        success: false,
+        error: `Reddit-refresh feilet: ${(error as Error).message}`,
+      });
+    }
+  });
+
+  // Status-endpoint: lar AdminRoom vise om OAuth er konfigurert
+  app.get('/api/admin/community/reddit/status', (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    res.json({
+      success: true,
+      oauth_configured: isRedditOAuthConfigured(),
+      mode: isRedditOAuthConfigured() ? 'oauth' : 'public-json',
+    });
+  });
+
+  app.get('/api/admin/community/reddit/mentions', async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const query = String(req.query.q || 'The Role Room').trim();
+    if (!query) return res.status(400).json({ success: false, error: 'q (søkeord) påkrevd' });
+
+    try {
+      const mentions = await searchRedditMentions(query);
+      return res.json({ success: true, query, mentions });
+    } catch (error) {
+      console.error('[community] reddit-mentions failed:', error);
+      return res.status(500).json({
+        success: false,
+        error: `Reddit-mentions feilet: ${(error as Error).message}`,
+        mentions: [],
+      });
     }
   });
 
