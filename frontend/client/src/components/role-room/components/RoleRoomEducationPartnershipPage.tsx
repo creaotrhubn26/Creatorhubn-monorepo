@@ -21,9 +21,12 @@ import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 import LoginDialog from './LoginDialog';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
+import BlockRenderer from '../cms/BlockRenderer';
+import { useCmsBlocks } from '../cms/useCmsBlocks';
 const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
 
 export default function RoleRoomEducationPartnershipPage() {
+  const cmsBlocks = useCmsBlocks('utdanningsinstitusjon');
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
   const backdropStillUrl = getRoleRoomVideoStillUrl(
@@ -43,6 +46,14 @@ export default function RoleRoomEducationPartnershipPage() {
     setLoginDialogOpen(false);
     setLoginDialogVariant('landing');
   };
+
+  if (cmsBlocks) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0f', color: '#e2e8f0' }}>
+        <BlockRenderer blocks={cmsBlocks} />
+      </Box>
+    );
+  }
 
   return (
     <Box

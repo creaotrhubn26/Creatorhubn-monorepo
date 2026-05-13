@@ -24,6 +24,8 @@ import EmailIcon from '@mui/icons-material/Email';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag } from '@/lib/clarity';
+import BlockRenderer from '../cms/BlockRenderer';
+import { useCmsBlocks } from '../cms/useCmsBlocks';
 
 const PRESS_CONTACT_EMAIL = 'presse@theroleroom.com';
 
@@ -111,6 +113,7 @@ export function parsePressKitFromPath(pathname: string): boolean {
 
 export default function PressKitPage() {
   useOrganizationPressSchema();
+  const cmsBlocks = useCmsBlocks('presse');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -123,6 +126,10 @@ export default function PressKitPage() {
     }
     clarityTag('page_type', 'press-kit');
   }, []);
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} />;
+  }
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 4, md: 8 } }}>

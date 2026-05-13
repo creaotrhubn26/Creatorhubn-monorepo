@@ -22,6 +22,8 @@ import {
 } from '@mui/icons-material';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
+import BlockRenderer from '../cms/BlockRenderer';
+import { useCmsBlocks } from '../cms/useCmsBlocks';
 import LoginDialog from './LoginDialog';
 import DeviceMockup from './DeviceMockup';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
@@ -52,6 +54,7 @@ const WHAT_FEATURES = [
 ];
 const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
 export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPageProps) {
+  const cmsBlocks = useCmsBlocks('home');
   const [showIntro, setShowIntro]       = useState(true);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
@@ -227,6 +230,14 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
       body.style.overflowY = prevBodyOverflowY;
     };
   }, []);
+
+  if (cmsBlocks) {
+    return (
+      <Box sx={{ width: '100%', minHeight: '100vh', bgcolor: '#0a0a0f', color: '#e2e8f0' }}>
+        <BlockRenderer blocks={cmsBlocks} />
+      </Box>
+    );
+  }
 
   return (
       <Box sx={{

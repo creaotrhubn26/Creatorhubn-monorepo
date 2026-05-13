@@ -16,7 +16,7 @@
  * lenker til hver sammenligning.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   Alert,
   Box,
@@ -46,7 +46,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag, clarityEvent } from '@/lib/clarity';
 import BlockRenderer from '../cms/BlockRenderer';
-import { isBlockArray, type Block } from '../cms/blockSchema';
+import { useCmsBlocks } from '../cms/useCmsBlocks';
 
 export type CompetitorKey = 'studiobinder' | 'castingnetworks' | 'moviemagic' | 'yamdu' | 'setkeeper';
 
@@ -510,54 +510,10 @@ function useFaqSchema(competitor: CompetitorKey | 'alternatives', config?: Compe
   }, [competitor, config]);
 }
 
-function useCompetitorCmsBlocks(slug: string): Block[] | null {
-  const [blocks, setBlocks] = useState<Block[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/cms/pages/${slug}`, { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.success || !data?.page?.content) return;
-        const content = data.page.content as Record<string, unknown>;
-        if (isBlockArray(content.blocks)) {
-          setBlocks(content.blocks);
-        }
-      })
-      .catch(() => {
-        // Stillegående fallback — hardkodet config rendres.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handler = (event: MessageEvent) => {
-      if (!event.data || typeof event.data !== 'object') return;
-      const msg = event.data as { type?: string; pageKey?: string; content?: Record<string, unknown> };
-      if (msg.type !== 'roleroom-cms-preview') return;
-      if (msg.pageKey !== slug) return;
-      if (!msg.content || typeof msg.content !== 'object') return;
-      if (isBlockArray(msg.content.blocks)) {
-        setBlocks(msg.content.blocks);
-      } else {
-        setBlocks(null);
-      }
-    };
-    window.addEventListener('message', handler);
-    window.parent?.postMessage({ type: 'roleroom-cms-preview-ready', pageKey: slug }, '*');
-    return () => window.removeEventListener('message', handler);
-  }, [slug]);
-
-  return blocks;
-}
-
 export default function CompetitorComparisonPage({ competitor }: CompetitorComparisonPageProps) {
   const config = competitor !== 'alternatives' ? COMPETITOR_CONFIGS[competitor] : undefined;
   const cmsSlug = competitor === 'alternatives' ? 'alternatives' : `vs-${competitor}`;
-  const cmsBlocks = useCompetitorCmsBlocks(cmsSlug);
+  const cmsBlocks = useCmsBlocks(cmsSlug);
   useFaqSchema(competitor, config);
 
   useEffect(() => {
