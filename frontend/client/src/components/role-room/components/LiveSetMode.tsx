@@ -2335,6 +2335,179 @@ const LiveSetActivityPanel: FC<LiveSetActivityPanelProps> = ({
   );
 };
 
+// ── Sub-component: LiveSetFooterBar ──────────────────────────────────────────
+//
+// Bunn-status-bar som matcher Pro-visning-mockupen. Viser:
+//   - SET STATUS (sjekklister-ready)
+//   - VÆR (live yr-data)
+//   - BATTERIER (kamera-batteri-status — placeholder til kameraer wires)
+//   - LAGRING (kort-kapasitet — placeholder)
+//   - TID (live klokke + opptaksdag-teller)
+//   - CREW KOMMUNIKASJON (ulest-chat-teller)
+
+interface LiveSetFooterBarProps {
+  status: SetStatusState;
+  weatherLive: LiveWeatherState;
+  shootingDay?: string;
+  unreadChatCount?: number;
+  setupStartedAt?: string;
+  takesCompletedToday?: number;
+}
+
+const LiveSetFooterBar: FC<LiveSetFooterBarProps> = ({
+  status,
+  weatherLive,
+  shootingDay,
+  unreadChatCount = 0,
+  setupStartedAt,
+  takesCompletedToday = 0,
+}) => {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Setup-timer: hvor lenge har current setup tatt
+  const setupElapsedSec = setupStartedAt
+    ? Math.max(0, Math.floor((now.getTime() - new Date(setupStartedAt).getTime()) / 1000))
+    : 0;
+  const setupTimerLabel = setupStartedAt ? formatTimer(setupElapsedSec) : '—';
+
+  // Wrap-projeksjon: enkel heuristikk. Hvis 1 take/15 min og 6 takes igjen → +90 min
+  const remainingTakes = Math.max(0, 8 - takesCompletedToday);
+  const projectedWrapMin = remainingTakes * 15;
+  const projectedWrapTime = new Date(now.getTime() + projectedWrapMin * 60 * 1000);
+  const projectedWrapLabel = projectedWrapMin > 0
+    ? projectedWrapTime.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
+    : '—';
+
+  // Opptaksdag X — beregner fra shootingDay (sammenligner mot 1. opptaksdag-startet sceneId)
+  const shootingDayLabel = shootingDay
+    ? `Opptaksdag ${new Date(shootingDay).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' })}`
+    : 'Opptaksdag —';
+
+  // Backup-status sammenlagt
+  const backupCompleted = [status.backupOriginal, status.backupPrimary, status.backupSecondary, status.backupOffsite]
+    .filter(Boolean).length;
+
+  // Sjekklister-ready
+  const crewReady = status.crewPresent >= status.crewTotal;
+  const equipmentReady = status.equipmentReady >= status.equipmentTotal;
+  const allReady = crewReady && equipmentReady;
+  const checklistReady = (crewReady ? 1 : 0) + (equipmentReady ? 1 : 0);
+  const checklistTotal = 2;
+
+  const cellSx = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 0.25,
+    minWidth: 0,
+    flex: '1 1 0',
+  } as const;
+  const labelSx = {
+    color: 'rgba(148,163,184,0.78)',
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.08em',
+  };
+  const valueSx = {
+    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: 700,
+    whiteSpace: 'nowrap' as const,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  };
+  const subSx = {
+    color: 'rgba(203,213,225,0.62)',
+    fontSize: 11,
+    whiteSpace: 'nowrap' as const,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  };
+
+  return (
+    <Box
+      sx={{
+        position: 'sticky',
+        bottom: 0,
+        zIndex: 5,
+        width: '100%',
+        bgcolor: 'rgba(7,10,20,0.96)',
+        backdropFilter: 'blur(12px)',
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        px: { xs: 1.5, md: 2.5 },
+        py: 1.2,
+        display: 'flex',
+        gap: { xs: 1.5, md: 2.5 },
+        alignItems: 'stretch',
+        flexWrap: { xs: 'wrap', md: 'nowrap' },
+      }}
+    >
+      {/* SET STATUS */}
+      <Box sx={cellSx}>
+        <Typography sx={labelSx}>Set status</Typography>
+        <Typography sx={{ ...valueSx, color: allReady ? '#86efac' : '#fdba74' }}>
+          {allReady ? 'Alt klart' : 'Forbereder'}
+        </Typography>
+        <Typography sx={subSx}>{checklistReady}/{checklistTotal} sjekklister · backup {backupCompleted}/4</Typography>
+      </Box>
+
+      {/* VÆR */}
+      <Box sx={cellSx}>
+        <Typography sx={labelSx}>Vær</Typography>
+        <Typography sx={valueSx}>
+          {typeof weatherLive?.temperature === 'number' ? `${Math.round(weatherLive.temperature)}°C` : '—'}
+        </Typography>
+        <Typography sx={subSx}>{weatherLive?.alerts?.[0] ?? weatherLive?.symbolCode ?? 'Yr.no'}</Typography>
+      </Box>
+
+      {/* BATTERIER (placeholder — wires til kamera-state senere) */}
+      <Box sx={cellSx}>
+        <Typography sx={labelSx}>Batterier</Typography>
+        <Typography sx={valueSx}>—</Typography>
+        <Typography sx={subSx}>Kobles til kamera-state</Typography>
+      </Box>
+
+      {/* LAGRING (placeholder) */}
+      <Box sx={cellSx}>
+        <Typography sx={labelSx}>Lagring</Typography>
+        <Typography sx={valueSx}>—</Typography>
+        <Typography sx={subSx}>Krever DIT-station</Typography>
+      </Box>
+
+      {/* SETUP-TIMER + WRAP-PROJEKSJON */}
+      <Box sx={cellSx}>
+        <Typography sx={labelSx}>Tempo</Typography>
+        <Typography sx={valueSx}>
+          Setup {setupTimerLabel}
+        </Typography>
+        <Typography sx={subSx}>ETA wrap {projectedWrapLabel}</Typography>
+      </Box>
+
+      {/* TID */}
+      <Box sx={cellSx}>
+        <Typography sx={labelSx}>Tid</Typography>
+        <Typography sx={valueSx}>
+          {now.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </Typography>
+        <Typography sx={subSx}>{shootingDayLabel}</Typography>
+      </Box>
+
+      {/* CREW KOMMUNIKASJON */}
+      <Box sx={cellSx}>
+        <Typography sx={labelSx}>Crew kommunikasjon</Typography>
+        <Typography sx={{ ...valueSx, color: unreadChatCount > 0 ? '#fbbf24' : '#f8fafc' }}>
+          {unreadChatCount > 0 ? `${unreadChatCount} nye` : 'Ingen nye'}
+        </Typography>
+        <Typography sx={subSx}>Åpne chat</Typography>
+      </Box>
+    </Box>
+  );
+};
+
 // ── Sub-component: SetupCompletePanel ────────────────────────────────────────
 
 interface SetupCompletePanelProps {
@@ -3245,6 +3418,16 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             />
           </Box>
         )}
+      </Box>
+
+      {/* ══ FOOTER STATUS BAR ════════════════════════════════════════════════ */}
+      <Box sx={{ width: '100%', maxWidth: liveSetShellMaxWidth, mx: 'auto' }}>
+        <LiveSetFooterBar
+          status={setStatus}
+          weatherLive={weatherLive}
+          shootingDay={shootingDay}
+          takesCompletedToday={state.takes.filter((t) => t.status === 'circled' || t.status === 'print' || t.status === 'selected').length}
+        />
       </Box>
 
       <Dialog
