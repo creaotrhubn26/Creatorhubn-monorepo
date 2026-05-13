@@ -351,9 +351,12 @@ interface DeptSidebarProps {
   filterDept: DeptKey | 'all';
   onDeptClick: (dept: DeptKey | 'all') => void;
   favorites: Set<string>;
+  /** Optional handler for "+ LEGG TIL ROLLE"-knappen i header — typisk
+   *  åpner ny-medlem-dialog. Hvis ikke gitt, vises ikke knappen. */
+  onAddRole?: () => void;
 }
 
-function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: DeptSidebarProps) {
+function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onAddRole }: DeptSidebarProps) {
   const grouped = useMemo(() => {
     const map = new Map<DeptKey, CrewMember[]>();
     DEPT_ORDER.forEach(d => map.set(d, []));
@@ -377,6 +380,59 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
       backdropFilter: 'blur(6px)',
       boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
     }}>
+      {/* "ROLLER & AVDELINGER"-header + "+ LEGG TIL ROLLE"-knapp (matcher team-design) */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          px: 2,
+          pt: 1.5,
+          pb: 1,
+          borderBottom: '1px solid rgba(184,107,255,0.18)',
+        }}
+      >
+        <Typography
+          sx={{
+            color: 'rgba(255,255,255,0.62)',
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+          }}
+        >
+          Roller & avdelinger
+        </Typography>
+        {onAddRole && (
+          <Box
+            component="button"
+            onClick={onAddRole}
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.4,
+              px: 1,
+              py: 0.4,
+              borderRadius: 1,
+              border: '1px solid rgba(184,107,255,0.42)',
+              bgcolor: 'rgba(184,107,255,0.14)',
+              color: '#c4b5fd',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: 0.3,
+              transition: 'background-color 160ms ease-out',
+              '&:hover': { bgcolor: 'rgba(184,107,255,0.24)', color: '#fff' },
+            }}
+          >
+            + Legg til rolle
+          </Box>
+        )}
+      </Box>
+
       {/* All crews */}
       <Box
         onClick={() => onDeptClick('all')}
@@ -398,11 +454,14 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
         <Chip label={crewMembers.length} size="small" sx={{ height: 28, fontSize: 14, fontWeight: 700, color: '#ffffff', bgcolor: 'rgba(184,107,255,0.36)', border: '1px solid rgba(255,255,255,0.26)' }} />
       </Box>
       <Divider sx={{ borderColor: 'rgba(184,107,255,0.2)' }} />
+      {/* Vis ALLE 10 avdelinger med count (også 0) — designet ber om
+          komplett oversikt slik at brukeren ser hele rolle-spekteret */}
       {DEPT_ORDER.map(dept => {
         const members = grouped.get(dept) ?? [];
-        if (members.length === 0) return null;
+        const count = members.length;
         const color = DEPT_COLORS[dept];
         const active = filterDept === dept;
+        const isEmpty = count === 0;
         const DeptIcon = DEPT_ICONS[dept];
         return (
           <Box
@@ -414,7 +473,9 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
               bgcolor: active ? `${color}18` : 'transparent',
               borderLeft: active ? `3px solid ${color}` : '3px solid transparent',
               borderBottom: '1px solid rgba(255,255,255,0.06)',
-              '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
+              opacity: isEmpty && !active ? 0.55 : 1,
+              transition: 'opacity 160ms ease-out',
+              '&:hover': { bgcolor: 'rgba(184,107,255,0.1)', opacity: 1 },
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -423,7 +484,22 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
                 {DEPT_LABELS[dept]}
               </Typography>
             </Box>
-            <Chip label={members.length} size="small" sx={{ height: 26, fontSize: 13, fontWeight: 700, color: '#ffffff', bgcolor: active ? `${color}66` : 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.22)' }} />
+            <Chip
+              label={count}
+              size="small"
+              sx={{
+                height: 26,
+                fontSize: 13,
+                fontWeight: 700,
+                color: isEmpty ? 'rgba(255,255,255,0.55)' : '#ffffff',
+                bgcolor: active
+                  ? `${color}66`
+                  : isEmpty
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(255,255,255,0.2)',
+                border: `1px solid ${isEmpty ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.22)'}`,
+              }}
+            />
           </Box>
         );
       })}
@@ -3872,7 +3948,13 @@ export function CrewManagementPanel({
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', gap: 1.25, px: 2, pb: 1.25 }}>
         {/* LEFT: department sidebar */}
         <Collapse in={showDeptSidebar && !isMobile} orientation="horizontal" sx={{ flexShrink: 0 }}>
-          <DeptSidebarPanel crewMembers={crewMembers} filterDept={filterDept} onDeptClick={setFilterDept} favorites={favorites} />
+          <DeptSidebarPanel
+            crewMembers={crewMembers}
+            filterDept={filterDept}
+            onDeptClick={setFilterDept}
+            favorites={favorites}
+            onAddRole={() => handleOpenDialog()}
+          />
         </Collapse>
 
         {/* CENTER: crew list */}
