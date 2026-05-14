@@ -1,36 +1,48 @@
 [
   {
     "id": "reh-1",
-    "teamOrganizationId": "team-oslo-elite",
-    "projectId": "proj-spring-2026",
     "choreographyId": "cho-1",
-    "date": "2026-05-12",
-    "startTime": "18:00",
-    "durationMin": 120,
+    "title": "Prøve 3 — Lift-fokus",
+    "scheduledAt": "2026-05-12T18:00:00Z",
+    "estimatedMinutes": 120,
+    "location": "Studio A",
+    "invitedDancerIds": ["dnc-1","dnc-2","dnc-3","dnc-4","dnc-6","dnc-11"],
+    "status": "completed",
     "focusAreas": [
-      { "id": "fa-1", "title": "Lift-sekvens cleanup", "segmentRef": "seg-3", "estimatedMinutes": 45, "preNote": "Sjekk høyde-løft + landing-koreo." },
-      { "id": "fa-2", "title": "Refreng B formation",  "segmentRef": "seg-6", "estimatedMinutes": 30, "preNote": "Ny formation skal læres." }
+      { "id": "fa-1", "title": "Lift-sekvens cleanup",   "segmentId": "seg-3", "estimatedMinutes": 45, "goal": "Sjekk høyde-løft + landing-koreo." },
+      { "id": "fa-2", "title": "Refreng B formation",    "segmentId": "seg-6", "estimatedMinutes": 30, "goal": "Ny formation skal læres." }
     ],
+    "videoReviewPlanned": true,
+    "preNotes": "Fokus på lift + refreng B i kveld.",
     "segmentReviews": [
-      { "segmentId": "seg-3", "status": "needs-repeat", "note": "Landing fortsatt for tung." },
-      { "segmentId": "seg-6", "status": "approved",     "note": "Formation funket på første gjennomkjøring." }
+      { "segmentId": "seg-3", "outcome": "needs_repeat", "note": "Landing fortsatt for tung." },
+      { "segmentId": "seg-6", "outcome": "approved",     "note": "Formation funket på første gjennomkjøring." }
     ],
-    "dancerFollowups": [
-      { "dancerId": "dnc-4", "note": "Følg opp skulder-rehab — sjekk med fysio før neste lift." }
+    "dancerFollowUps": [
+      { "dancerId": "dnc-4", "followUp": "Følg opp skulder-rehab — sjekk med fysio før neste lift." }
     ],
-    "postNotes": "Bra fokus i kveld. Neste gang: solo + refreng B-overgang."
+    "postNotes": "Bra fokus i kveld. Neste gang: solo + refreng B-overgang.",
+    "recordingUrl": null,
+    "createdAt": "2026-05-12T18:00:00Z",
+    "updatedAt": "2026-05-12T20:30:00Z"
   },
   {
     "id": "reh-2",
-    "teamOrganizationId": "team-oslo-elite",
-    "projectId": "proj-spring-2026",
     "choreographyId": "cho-1",
-    "date": "2026-05-13",
-    "startTime": "18:00",
-    "durationMin": 120,
+    "title": "Prøve 4",
+    "scheduledAt": "2026-05-13T18:00:00Z",
+    "estimatedMinutes": 120,
+    "location": "Studio A",
+    "invitedDancerIds": [],
+    "status": "planned",
     "focusAreas": [],
+    "videoReviewPlanned": false,
+    "preNotes": null,
     "segmentReviews": [],
-    "dancerFollowups": [],
-    "postNotes": null
+    "dancerFollowUps": [],
+    "postNotes": null,
+    "recordingUrl": null,
+    "createdAt": "2026-05-13T08:00:00Z",
+    "updatedAt": "2026-05-13T08:00:00Z"
   }
 ]

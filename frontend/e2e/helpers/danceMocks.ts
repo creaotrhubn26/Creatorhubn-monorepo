@@ -303,7 +303,22 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
 
     // ─── Choreography ─────────────────────────────────────────────────
     if (urlPath === '/api/dance/choreography' && method === 'GET') {
-      return route.fulfill(ok(fx.choreographies));
+      // List-endpoint returnerer ChoreographyHeader[] (uten segments).
+      const url = new URL(req.url());
+      const projId = url.searchParams.get('projectId');
+      let list = fx.choreographies as Array<Record<string, unknown> & { projectId: string | null }>;
+      if (projId) list = list.filter((c) => c.projectId === projId || c.projectId === null);
+      const headers = list.map((c) => ({
+        id: c.id,
+        ownerUserId: c.ownerUserId,
+        projectId: c.projectId,
+        title: c.title,
+        choreographer: c.choreographer ?? null,
+        totalDurationSec: c.totalDurationSec ?? 0,
+        segmentCount: Array.isArray((c as Record<string, unknown>).segments) ? (c as { segments: unknown[] }).segments.length : 0,
+        updatedAt: c.updatedAt,
+      }));
+      return route.fulfill(ok(headers));
     }
     if (urlPath === '/api/dance/choreography' && method === 'POST') {
       const body = req.postDataJSON?.() ?? {};
@@ -525,7 +540,11 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
 
     // ─── Rehearsals ────────────────────────────────────────────────────
     if (urlPath === '/api/dance/rehearsals' && method === 'GET') {
-      return route.fulfill(ok(fx.rehearsals));
+      const url = new URL(req.url());
+      let list = fx.rehearsals;
+      const choreoId = url.searchParams.get('choreographyId');
+      if (choreoId) list = list.filter((r) => r.choreographyId === choreoId);
+      return route.fulfill(ok(list));
     }
     if (urlPath === '/api/dance/rehearsals' && method === 'POST') {
       const body = req.postDataJSON?.() ?? {};
