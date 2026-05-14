@@ -212,7 +212,16 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
 
   if (!isDanceMode(mode) || tabs.length === 0) return null;
 
-  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  // Capability-gating: admin-tabs (admin_plans / admin_testers / admin_settings)
+  // er kun tilgjengelig for eier-roller. Andre tabs er åpne.
+  const ownerMembership = memberships.find(
+    (m) => m.role?.isOwnerRole === true && m.member.status === 'active',
+  );
+  const isOwner = !!ownerMembership;
+  const ADMIN_ONLY_TABS = new Set(['admin_plans', 'admin_testers', 'admin_settings']);
+  const visibleTabs = tabs.filter((t) => isOwner || !ADMIN_ONLY_TABS.has(t.id));
+
+  const activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0];
 
   const renderTabBody = (tab: TabConfig): React.ReactElement => {
     switch (tab.id) {
@@ -357,7 +366,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
             '& .MuiTabs-indicator': { bgcolor: '#8b5cf6', height: 3, borderRadius: 1.5 },
           }}
         >
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <Tab
               key={tab.id}
               value={tab.id}
