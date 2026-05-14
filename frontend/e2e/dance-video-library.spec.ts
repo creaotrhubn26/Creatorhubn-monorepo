@@ -11,9 +11,10 @@ test.describe('dance — video library', () => {
     await switchDanceTab(page, "video");
   });
 
-  test('viser 6 clips fra fixture, gruppert etter kind', async ({ page }) => {
+  test('viser clips fra fixture (project-scoped)', async ({ page }) => {
     await expect(page.getByTestId('video-library')).toBeVisible();
-    await expect(page.locator('[data-testid^="video-library-item-clip-"]')).toHaveCount(6);
+    // Fixture har 4 clips med projectId='proj-spring-2026' (default i harness)
+    await expect(page.locator('[data-testid^="video-library-item-clip-"]')).toHaveCount(4);
   });
 
   test('upload clip', async ({ page }) => {
