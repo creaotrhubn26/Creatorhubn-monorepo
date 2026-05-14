@@ -34,7 +34,9 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 
 const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'https://creatorhub-backend-rtbl.onrender.com';
+const FRONTEND_URL = process.env.E2E_BASE_URL ?? 'https://theroleroom.com';
 const ADMIN_COOKIE = process.env.E2E_ADMIN_SESSION_COOKIE ?? '';
+const R2_PUB_URL = 'https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev';
 
 // 1x1 transparent PNG (smallest valid PNG — 67 bytes)
 const TINY_PNG_BASE64 =
@@ -67,6 +69,20 @@ test.describe('CMS media R2 — endpoint smoke (uten auth)', () => {
     expect(typeof body.commit).toBe('string');
     expect(body.commit.length).toBeGreaterThanOrEqual(7);
     console.log(`Backend deployed commit: ${body.commit}`);
+  });
+
+  test('R2 pub-URL svarer (Public Development URL aktivert)', async ({ request }) => {
+    // Anonym request mot ikke-eksisterende key → forventer 404 (ikke 401/500)
+    // Dette bekrefter at bucket-en er publicly accessible
+    const res = await request.get(`${R2_PUB_URL}/__healthcheck-nonexistent`);
+    expect([404]).toContain(res.status());
+  });
+
+  test('Vercel /cdn/-proxy rewriter til R2 pub-URL', async ({ request }) => {
+    // Anonym request mot /cdn/ikke-eksisterende key — Vercel rewrites til R2
+    // Forventer 404 (R2 svarer på rewriten request)
+    const res = await request.get(`${FRONTEND_URL}/cdn/__healthcheck-nonexistent`);
+    expect([404]).toContain(res.status());
   });
 });
 

@@ -94,6 +94,10 @@
       "destination": "/theroleroom-sitemap.xml"
     },
     {
+      "source": "/cdn/(.*)",
+      "destination": "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev/$1"
+    },
+    {
       "source": "/robots.txt",
       "destination": "/creatorhubn-robots.txt"
     },
