@@ -2544,40 +2544,133 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
 
   // Konverter legacy-content til block-CMS. Genererer fornuftige
   // start-blokker fra eksisterende h1/intro/examples/features.
+  // Slug-variant-detektor — bestemmer hvilken seed-strategi som brukes
+  const slugVariant = useMemo(() => {
+    if (slug.startsWith('vs-')) return 'competitor' as const;
+    if (slug === 'alternatives') return 'alternatives-index' as const;
+    if (slug in STUDENT_PAGE_CONFIGS) return 'student' as const;
+    if (['home', 'talentportal', 'utdanningsinstitusjon', 'presse'].includes(slug)) return 'landing' as const;
+    return 'generic' as const;
+  }, [slug]);
+
   const convertToBlocks = () => {
     const initial: Block[] = [];
-    const hero = createBlock('hero');
-    if (hero.type === 'hero') {
-      hero.audienceChip = content.audience;
-      hero.h1 = content.h1;
-      hero.subtitle = content.subtitle;
-      hero.intro = content.intro;
-      hero.primaryCtaLabel = content.ctaLabel;
-      hero.primaryCtaUrl = '/';
-      initial.push(hero);
+
+    // Student-variant: bruk eksisterende STUDENT_PAGE_CONFIGS (h1, intro, etc.)
+    if (slugVariant === 'student') {
+      const hero = createBlock('hero');
+      if (hero.type === 'hero') {
+        hero.audienceChip = content.audience;
+        hero.h1 = content.h1;
+        hero.subtitle = content.subtitle;
+        hero.intro = content.intro;
+        hero.primaryCtaLabel = content.ctaLabel;
+        hero.primaryCtaUrl = '/';
+        initial.push(hero);
+      }
+      if (content.highlightedFeatures?.length) {
+        const fl = createBlock('featureList');
+        if (fl.type === 'featureList') {
+          fl.heading = 'Hva du får';
+          fl.items = content.highlightedFeatures;
+          fl.style = 'chips';
+          initial.push(fl);
+        }
+      }
+      if (content.usageExamples?.length) {
+        const ue = createBlock('usageExamples');
+        if (ue.type === 'usageExamples') {
+          ue.items = content.usageExamples;
+          initial.push(ue);
+        }
+      }
+      if (content.relatedStudies?.length) {
+        const rs = createBlock('relatedStudies');
+        if (rs.type === 'relatedStudies') {
+          rs.items = content.relatedStudies;
+          initial.push(rs);
+        }
+      }
+      setBlocks(initial);
+      return;
     }
-    if (content.highlightedFeatures?.length) {
+
+    // Competitor-variant: bruk COMPETITOR_CONFIGS for tagline/intro/features
+    if (slugVariant === 'competitor') {
+      const competitorKey = slug.replace(/^vs-/, '');
+      const competitorConfig = (COMPETITOR_CONFIGS as Record<string, { name: string; tagline: string; intro: string; features: Array<{ feature: string; roleRoom: string; competitor: string; note?: string }> }>)[competitorKey];
+      const hero = createBlock('hero');
+      if (hero.type === 'hero') {
+        hero.audienceChip = competitorConfig?.tagline ?? '';
+        hero.h1 = `The Role Room vs ${competitorConfig?.name ?? competitorKey}`;
+        hero.subtitle = competitorConfig?.tagline ?? '';
+        hero.intro = competitorConfig?.intro ?? '';
+        hero.primaryCtaLabel = 'Prøv The Role Room';
+        hero.primaryCtaUrl = '/';
+        hero.secondaryCtaLabel = 'Se andre alternativer';
+        hero.secondaryCtaUrl = '/alternatives';
+        initial.push(hero);
+      }
+      if (competitorConfig?.features?.length) {
+        const cmp = createBlock('comparison');
+        if (cmp.type === 'comparison') {
+          cmp.heading = `Funksjons-sammenligning`;
+          cmp.competitorLabel = competitorConfig.name;
+          cmp.rows = competitorConfig.features.map((f) => ({
+            feature: f.feature,
+            roleRoom: (f.roleRoom as 'yes' | 'no' | 'partial' | 'unknown') ?? 'unknown',
+            competitor: (f.competitor as 'yes' | 'no' | 'partial' | 'unknown') ?? 'unknown',
+            note: f.note,
+          }));
+          initial.push(cmp);
+        }
+      }
+      const cta = createBlock('cta');
+      if (cta.type === 'cta') {
+        cta.heading = 'Klar til å prøve The Role Room?';
+        cta.body = `Norsk språk, GDPR-trygg datalagring i EU/EØS, og integrert AI-agent — bygget for nordisk produksjon.`;
+        cta.buttonLabel = 'Kom i gang gratis';
+        cta.buttonUrl = '/';
+        cta.secondaryLabel = `Se ${competitorConfig?.name ?? 'konkurrent'}-detaljer`;
+        cta.secondaryUrl = '/alternatives';
+        initial.push(cta);
+      }
+      setBlocks(initial);
+      return;
+    }
+
+    // Alternatives-index: hero + featurelist over alle konkurrenter
+    if (slugVariant === 'alternatives-index') {
+      const hero = createBlock('hero');
+      if (hero.type === 'hero') {
+        hero.audienceChip = 'Casting-plattform-alternativer';
+        hero.h1 = 'Casting-plattform alternativer';
+        hero.subtitle = 'Sammenligning av populære casting-verktøy i 2026';
+        hero.intro = 'The Role Room er det nordiske alternativet til internasjonale casting-plattformer. Norsk språk, GDPR-compliance, integrert AI-agent og dedikert talentportal — alt i ett arbeidsrom.';
+        hero.primaryCtaLabel = 'Prøv gratis';
+        hero.primaryCtaUrl = '/';
+        initial.push(hero);
+      }
       const fl = createBlock('featureList');
       if (fl.type === 'featureList') {
-        fl.heading = 'Hva du får';
-        fl.items = content.highlightedFeatures;
+        fl.heading = 'Sammenligninger';
+        fl.items = ['StudioBinder', 'Casting Networks', 'MovieMagic', 'Yamdu', 'Setkeeper'];
         fl.style = 'chips';
         initial.push(fl);
       }
+      setBlocks(initial);
+      return;
     }
-    if (content.usageExamples?.length) {
-      const ue = createBlock('usageExamples');
-      if (ue.type === 'usageExamples') {
-        ue.items = content.usageExamples;
-        initial.push(ue);
-      }
-    }
-    if (content.relatedStudies?.length) {
-      const rs = createBlock('relatedStudies');
-      if (rs.type === 'relatedStudies') {
-        rs.items = content.relatedStudies;
-        initial.push(rs);
-      }
+
+    // Landing/generic: minimal hero — bruker fyller inn manuelt
+    const hero = createBlock('hero');
+    if (hero.type === 'hero') {
+      hero.h1 = content.h1 || 'Tittel';
+      hero.subtitle = content.subtitle || '';
+      hero.intro = content.intro || '';
+      hero.primaryCtaLabel = content.ctaLabel || 'Kom i gang';
+      hero.primaryCtaUrl = '/';
+      initial.push(hero);
     }
     setBlocks(initial);
   };
