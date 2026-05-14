@@ -411,7 +411,7 @@ export function ChoreographyBuilderConnected({
           data-testid="choreography-selector"
         >
           {headers.map((h) => (
-            <MenuItem key={h.id} value={h.id}>
+            <MenuItem key={h.id} value={h.id} data-testid={`piece-item-${h.id}`}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%' }}>
                 <span style={{ flex: 1 }}>{h.title}</span>
                 <Chip
