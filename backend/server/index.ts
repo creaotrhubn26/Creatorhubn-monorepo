@@ -461,6 +461,7 @@ import {
 // avbrytes prosessen med exit 1 og en human-readable feilmelding i logs.
 // Render restarter automatisk, og logs vil tydeligvise hva som mangler.
 import { validateEnvOrExit } from "./env-validator";
+import { respondWithError } from "./api-error";
 validateEnvOrExit();
 
 // Database connection
@@ -50233,9 +50234,10 @@ app.post(
 );
 
 // Prototype tester requests
+// Sprint B.3: Migrert til respondWithError så frontend kan skille "tom liste"
+// fra "DB nede" (503 retryable vs 200 []).
 app.get("/api/prototype-tester-requests", async (req, res) => {
   try {
-    // Check if table exists
     const tableCheck = await pool.query(
       `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'prototype_tester_requests')`,
     );
@@ -50264,8 +50266,9 @@ app.get("/api/prototype-tester-requests", async (req, res) => {
       })),
     );
   } catch (error) {
-    console.error("Error fetching prototype tester requests:", error);
-    res.json([]);
+    respondWithError(res, error, {
+      endpoint: "GET /api/prototype-tester-requests",
+    });
   }
 });
 
@@ -50273,26 +50276,27 @@ app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes } = req.body;
-    // Check if table exists
     const tableCheck = await pool.query(
       `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'prototype_tester_requests')`,
     );
     if (!tableCheck.rows[0].exists) {
       return res
         .status(404)
-        .json({ error: "Prototype tester requests table not found" });
+        .json({ error: "not_found", message: "Prototype tester requests table not found", retryable: false });
     }
     const result = await pool.query(
       `UPDATE prototype_tester_requests SET status = $1, admin_notes = $2, processed_at = NOW(), updated_at = NOW() WHERE id = $3 RETURNING *`,
       [status, notes || null, id],
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Request not found" });
+      return res.status(404).json({ error: "not_found", message: "Request not found", retryable: false });
     }
     res.json({ success: true, status, request: result.rows[0] });
   } catch (error) {
-    console.error("Error processing prototype tester request:", error);
-    res.status(500).json({ error: "Could not process request" });
+    respondWithError(res, error, {
+      endpoint: "POST /api/prototype-tester-requests/:id/process",
+      context: { id: req.params.id },
+    });
   }
 });
 
