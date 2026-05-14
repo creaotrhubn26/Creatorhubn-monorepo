@@ -79,6 +79,7 @@ import {
 } from '../services/adminRoomApi';
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
+import { RoleRoomTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
 import BlockListEditor from '../components/role-room/cms/BlockListEditor';
@@ -90,7 +91,7 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4121,6 +4122,78 @@ function PresenceContactsView() {
 }
 
 // ─────────────────────────────────────────────────────────
+// Prototype testers
+// ─────────────────────────────────────────────────────────
+
+function PrototypeTestersTab() {
+  const [inviteOpen, setInviteOpen] = useState(false);
+
+  return (
+    <Stack spacing={3}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+        <Box>
+          <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700 }}>
+            Prototype-testere
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.7)', mt: 0.5 }}>
+            Inviter testere direkte med NDA og system-krav, eller åpne den fulle
+            admin-flaten for å godkjenne søknader som kommer inn organisk.
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1.5}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setInviteOpen(true)}
+            sx={{ bgcolor: '#a78bfa', color: '#0b1120', fontWeight: 700, '&:hover': { bgcolor: '#8b5cf6' } }}
+          >
+            Inviter ny tester
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<OpenInNewIcon />}
+            href="/admin-invite-system"
+            sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)' }}
+          >
+            Full admin-flate
+          </Button>
+        </Stack>
+      </Box>
+
+      <Card sx={{ bgcolor: 'rgba(2,6,23,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <CardContent>
+          <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
+            Workflow
+          </Typography>
+          <Box component="ol" sx={{ pl: 2.5, color: 'rgba(203,213,225,0.86)', m: 0 }}>
+            <li><strong>Invitasjon:</strong> Du sender en one-time-link til tester. Den utløper om 14 dager.</li>
+            <li><strong>NDA-signering:</strong> Tester må lese gjennom og signere NDA før tilgang aktiveres.</li>
+            <li><strong>System-sjekk:</strong> Auto-test av nettleser/skjerm/storage/WebGL. Advarsler hvis miljø er undermåls.</li>
+            <li><strong>Tilgang:</strong> Tester får begrenset Role Room-tilgang (read+test-write, ingen produksjons-data).</li>
+            <li><strong>Feedback:</strong> Universal feedback-widget er aktiv på alle paneler.</li>
+            <li><strong>Avslutning:</strong> Etter test-periode trekkes tilgangen automatisk. NDA-perioden løper videre.</li>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Alert
+        severity="info"
+        variant="outlined"
+        sx={{ borderColor: 'rgba(167,139,250,0.4)', color: '#cbd5e1', '& .MuiAlert-icon': { color: '#a78bfa' } }}
+      >
+        Ventende søknader, godkjenninger og bedriftsprofilering finnes på den fulle
+        admin-flaten (<strong>/admin-invite-system</strong>) — denne fanen fokuserer på direkte invitasjoner.
+      </Alert>
+
+      <RoleRoomTesterInviteDialog
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+      />
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Page shell
 // ─────────────────────────────────────────────────────────
 
@@ -4149,6 +4222,7 @@ export default function AdminRoom() {
   else if (tab === 'cms') content = <CmsTab />;
   else if (tab === 'presence') content = <PresenceTab />;
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
+  else if (tab === 'prototype-testers') content = <PrototypeTestersTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4190,6 +4264,7 @@ export default function AdminRoom() {
           <Tab value="cms" label="CMS" />
           <Tab value="presence" label="Presence" />
           <Tab value="role-nav" label="Rolle-navigasjon" />
+          <Tab value="prototype-testers" label="Prototype-testere" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>
