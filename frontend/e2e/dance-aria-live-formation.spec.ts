@@ -10,6 +10,8 @@ import { setupDanceTest } from './helpers/danceSetup';
 test.describe('dance — formation aria-live', () => {
   test('canvas har minst én aria-live-region tilknyttet', async ({ page }) => {
     await setupDanceTest(page, { initialTab: 'formations' });
+    // Vent på at FormationView er ferdig lastet (canvas synlig)
+    await expect(page.getByTestId('formation-canvas')).toBeVisible({ timeout: 15_000 });
 
     const liveRegions = await page.locator('[aria-live="polite"], [aria-live="assertive"]').count();
     expect(liveRegions).toBeGreaterThan(0);
@@ -17,6 +19,7 @@ test.describe('dance — formation aria-live', () => {
 
   test('drag dancer → live-region innholdet oppdaterer', async ({ page }) => {
     await setupDanceTest(page, { initialTab: 'formations' });
+    await expect(page.getByTestId('formation-canvas')).toBeVisible({ timeout: 15_000 });
 
     const liveRegion = page.locator('[aria-live="polite"], [aria-live="assertive"]').first();
     const before = await liveRegion.textContent().catch(() => '');
