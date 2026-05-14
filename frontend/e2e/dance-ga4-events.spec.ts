@@ -47,16 +47,17 @@ test.describe('dance — GA4 events', () => {
 
   test('choreography-save fyrer dance_piece_saved', async ({ page }) => {
     await switchDanceTab(page, "pieces");
-    await page.getByText('Spring Showcase').first().click();
+    await expect(page.getByTestId('choreography-builder')).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Escape'); // lukk evt åpne menus
     const save = page.getByTestId('choreo-save');
-    if (await save.isVisible().catch(() => false)) {
-      await save.click();
-      await page.waitForTimeout(500);
+    if (!(await save.isVisible().catch(() => false))) {
+      test.skip(true, 'choreo-save knapp ikke synlig — kan være gated');
+      return;
     }
+    await save.click();
+    await page.waitForTimeout(500);
     const events = await page.evaluate(() => window.dataLayer ?? []);
     const hit = events.find((e) => e.event === 'dance_piece_saved' || e.event === 'piece_saved');
-    if (!hit) {
-      test.fixme(true, 'GA4-event for piece-save ikke implementert');
-    }
+    expect(hit, 'GA4 event dance_piece_saved should fire on save').toBeTruthy();
   });
 });

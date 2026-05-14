@@ -632,6 +632,7 @@ export function VideoReviewRoom({
               '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
             }}
             data-testid="review-composer"
+            inputProps={{ 'data-testid': 'review-composer-input' }}
           />
           {/* @-mention chips */}
           {mentionedDancerIds.size > 0 ? (

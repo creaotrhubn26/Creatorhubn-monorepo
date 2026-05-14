@@ -18,7 +18,7 @@ test.describe('dance — video review comments', () => {
   });
 
   test('legg til ny kommentar', async ({ page }) => {
-    await page.getByTestId('review-composer').fill('Mer bøyde knær her');
+    await page.getByTestId('review-composer-input').fill('Mer bøyde knær her');
     await page.getByTestId('review-send').click();
 
     await expect.poll(() =>
@@ -27,14 +27,14 @@ test.describe('dance — video review comments', () => {
   });
 
   test('@-mention autocomplete viser dancers fra fixture', async ({ page }) => {
-    await page.getByTestId('review-composer').fill('@ingr');
+    await page.getByTestId('review-composer-input').fill('@ingr');
     const suggestion = page.getByRole('option', { name: /Ingrid Nordahl/i });
     if (!(await suggestion.isVisible({ timeout: 3_000 }).catch(() => false))) {
       test.skip(true, '@-mention-autocomplete ikke implementert');
       return;
     }
     await suggestion.click();
-    await expect(page.getByTestId('review-composer')).toHaveValue(/Ingrid/);
+    await expect(page.getByTestId('review-composer-input')).toHaveValue(/Ingrid/);
   });
 
   test('pin-knapp toggler isDirectorPin', async ({ page }) => {
