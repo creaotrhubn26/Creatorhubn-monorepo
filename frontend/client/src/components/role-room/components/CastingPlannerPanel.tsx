@@ -188,6 +188,7 @@ import { useBeforeUnloadIfDirty } from '../hooks/useBeforeUnloadIfDirty';
 import { useAIRecommendation } from '../hooks/useAIRecommendation';
 import { usePlannerOnboardingTour } from '../hooks/usePlannerOnboardingTour';
 import { RoleRoomFeedbackFab } from './RoleRoomFeedbackFab';
+import { PreprodSubTabStrip, type PreprodSubTabItem } from './PreprodSubTabStrip';
 import {
   deriveActiveWorkflowStep,
   deriveCompletedWorkflowSteps,
@@ -436,6 +437,16 @@ const PRODUCER_ECONOMY_TAB_INDEX = 12;
 const PRODUCER_TIMELINE_TAB_INDEX = 13;
 const PRODUCER_REVIEWS_TAB_INDEX = 14;
 const PRODUCER_EXPORT_TAB_INDEX = 15;
+
+// Pre-prod-tabs som grupperes visuelt i sub-tab-strip-en. Ikke en endring
+// av faktisk tab-indeks-systemet — bare en kontekst-strip når en av disse
+// er aktiv så bruker ser at de fire er semantisk sammenkoblet.
+const PREPROD_GROUP_TABS: ReadonlyArray<PreprodSubTabItem> = [
+  { tabIndex: LOCATIONS_TAB_INDEX, label: 'Lokasjoner' },
+  { tabIndex: CALENDAR_TAB_INDEX, label: 'Produksjonsplan' },
+  { tabIndex: TEAM_TAB_INDEX, label: 'Team' },
+  { tabIndex: EQUIPMENT_TAB_INDEX, label: 'Rekvisitter' },
+];
 
 // Stabil tab-spec for Cmd+K command palette og breadcrumbs. Vi bruker ikke
 // `tabLabels`-arrayen som bygges inni render-callbacken (den er mode-avhengig)
@@ -9623,6 +9634,13 @@ type RoleRoomProjectWorkspaceState = {
           })}
         </Tabs>
       </Box>
+
+      <PreprodSubTabStrip
+        activeTab={activeTab}
+        preprodTabs={PREPROD_GROUP_TABS}
+        onSelectTab={(idx) => navigateToTab(idx)}
+        hidden={isLiveSetImmersive}
+      />
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
