@@ -1,0 +1,5 @@
+[
+  { "id": "rm-1", "ownerUserId": "user-owner-1", "projectId": "proj-spring-2026", "name": "Studio A", "roomKind": "mirror_studio", "capacity": 20, "hasSprungFloor": true,  "hasMirror": true,  "hasSoundSystem": true,  "address": "Plan 2 — vest", "notes": "Stort studio med fullt speilvegg.",        "createdAt": "2026-01-01T08:00:00Z", "updatedAt": "2026-01-01T08:00:00Z" },
+  { "id": "rm-2", "ownerUserId": "user-owner-1", "projectId": "proj-spring-2026", "name": "Studio B", "roomKind": "ballet",         "capacity": 14, "hasSprungFloor": true,  "hasMirror": true,  "hasSoundSystem": false, "address": "Plan 2 — øst",  "notes": "Klassisk studio med barre langs vegg.",     "createdAt": "2026-01-01T08:00:00Z", "updatedAt": "2026-01-01T08:00:00Z" },
+  { "id": "rm-3", "ownerUserId": "user-owner-1", "projectId": "proj-spring-2026", "name": "Studio C", "roomKind": "rehearsal",      "capacity": 24, "hasSprungFloor": false, "hasMirror": true,  "hasSoundSystem": true,  "address": "Plan 1",        "notes": "Største studio, brukes til hip-hop og produksjons-prøver.", "createdAt": "2026-01-01T08:00:00Z", "updatedAt": "2026-01-01T08:00:00Z" }
+]

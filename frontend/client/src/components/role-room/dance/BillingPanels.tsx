@@ -141,7 +141,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
   };
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 4 } }}>
+    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 4 } }} data-testid="dance-pricing-page">
       <Stack spacing={1} alignItems="center" sx={{ mb: 4, textAlign: 'center' }}>
         <Typography sx={{ fontSize: 11, letterSpacing: 3, color: PURPLE_LIGHT, fontWeight: 700 }}>
           PRISER
@@ -174,6 +174,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
               key={p}
               size="small"
               onClick={() => setBillingPeriod(p)}
+              data-testid={`pricing-period-${p}`}
               sx={{
                 px: 2, py: 0.5, textTransform: 'none', fontSize: 12, fontWeight: 700,
                 color: billingPeriod === p ? '#fff' : 'rgba(229,231,235,0.5)',
@@ -210,6 +211,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
           return (
             <Box
               key={plan.slug}
+              data-testid={`plan-card-${plan.slug}`}
               sx={{
                 p: 3,
                 bgcolor: CARD,
@@ -282,6 +284,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
                 variant={plan.isFeatured ? 'contained' : 'outlined'}
                 onClick={() => void handleSelect(plan)}
                 disabled={busyPlan === plan.slug || isCurrent}
+                data-testid={`plan-select-${plan.slug}`}
                 sx={{
                   textTransform: 'none', fontWeight: 700,
                   bgcolor: plan.isFeatured ? PURPLE : 'transparent',
@@ -323,7 +326,7 @@ export function PlanAdminPanel(): React.ReactElement {
   React.useEffect(() => { void refresh(); }, [refresh]);
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }}>
+    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="plan-admin-panel">
       <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontSize: 10, letterSpacing: 2, color: PURPLE_LIGHT, fontWeight: 700 }}>
@@ -337,6 +340,7 @@ export function PlanAdminPanel(): React.ReactElement {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setCreating(true)}
+          data-testid="plan-admin-create"
           sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}
         >
           Ny plan
@@ -348,6 +352,7 @@ export function PlanAdminPanel(): React.ReactElement {
         {plans.map((plan) => (
           <Box
             key={plan.slug}
+            data-testid={`plan-admin-row-${plan.slug}`}
             sx={{ p: 1.5, bgcolor: CARD, border: `1px solid ${BORDER}`, borderRadius: 1.5 }}
           >
             <Stack direction="row" spacing={1} alignItems="center">
@@ -367,11 +372,12 @@ export function PlanAdminPanel(): React.ReactElement {
                   Stripe: {plan.stripeMonthlyPriceId || '—'} / {plan.stripeYearlyPriceId || '—'}
                 </Typography>
               </Box>
-              <IconButton size="small" onClick={() => setEditing(plan)} sx={{ color: PURPLE_LIGHT }}>
+              <IconButton size="small" onClick={() => setEditing(plan)} data-testid={`plan-admin-edit-${plan.slug}`} sx={{ color: PURPLE_LIGHT }}>
                 <EditIcon sx={{ fontSize: 16 }} />
               </IconButton>
               <IconButton
                 size="small"
+                data-testid={`plan-admin-delete-${plan.slug}`}
                 onClick={async () => {
                   if (!window.confirm(`Slett planen "${plan.name}"? Vil feile hvis det finnes aktive abonnementer.`)) return;
                   try { await billing.deletePlan(plan.slug); await refresh(); }
@@ -549,6 +555,7 @@ const PlanFormDialog: React.FC<{
           variant="contained"
           onClick={() => void submit()}
           disabled={saving}
+          data-testid="plan-admin-save"
           sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
         >
           {saving ? 'Lagrer…' : (plan ? 'Lagre' : 'Opprett')}
@@ -615,7 +622,7 @@ export function TesterAdminPanel(): React.ReactElement {
   const inviteUrl = (token: string): string => `${window.location.origin}/invite/${token}`;
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }}>
+    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="tester-admin-panel">
       <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontSize: 10, letterSpacing: 2, color: PURPLE_LIGHT, fontWeight: 700 }}>
@@ -629,6 +636,7 @@ export function TesterAdminPanel(): React.ReactElement {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setOpen(true)}
+          data-testid="tester-invite-create"
           sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}
         >
           Ny invite
@@ -640,7 +648,7 @@ export function TesterAdminPanel(): React.ReactElement {
         {invites.map((inv) => {
           const url = inviteUrl(inv.token);
           return (
-            <Box key={inv.token} sx={{ p: 1.5, bgcolor: CARD, border: `1px solid ${BORDER}`, borderRadius: 1.5 }}>
+            <Box key={inv.token} data-testid={`tester-invite-row-${inv.token}`} sx={{ p: 1.5, bgcolor: CARD, border: `1px solid ${BORDER}`, borderRadius: 1.5 }}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Stack direction="row" spacing={1} alignItems="center">
@@ -741,6 +749,7 @@ export function TesterAdminPanel(): React.ReactElement {
             variant="contained"
             onClick={() => void submit()}
             disabled={submitting || !draft.planSlug}
+            data-testid="tester-invite-submit"
             sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
           >
             {submitting ? 'Oppretter…' : 'Opprett invite'}
@@ -805,7 +814,7 @@ export function AdminSettingsPanel(): React.ReactElement {
   };
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }}>
+    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="admin-settings-panel">
       <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
         <SettingsIcon sx={{ color: PURPLE_LIGHT, mr: 1 }} />
         <Typography sx={{ fontSize: 10, letterSpacing: 2, color: PURPLE_LIGHT, fontWeight: 700 }}>
@@ -817,7 +826,7 @@ export function AdminSettingsPanel(): React.ReactElement {
 
       <Stack spacing={2}>
         {settings.map((s) => (
-          <Box key={s.key} sx={{ p: 2, bgcolor: CARD, border: `1px solid ${BORDER}`, borderRadius: 1.5 }}>
+          <Box key={s.key} data-testid={`admin-setting-row-${s.key}`} sx={{ p: 2, bgcolor: CARD, border: `1px solid ${BORDER}`, borderRadius: 1.5 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
               <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#fff', fontFamily: 'monospace' }}>
                 {s.key}
@@ -888,7 +897,7 @@ export function TrialBanner(): React.ReactElement | null {
   const days = billing.daysUntil(expires);
   const isComp = sub.billingPeriod === 'comp' || sub.billingPeriod === 'tester';
   return (
-    <Box
+    <Box data-testid="trial-banner"
       sx={{
         bgcolor: isComp ? 'rgba(139,92,246,0.18)' : 'rgba(251,191,36,0.18)',
         color: isComp ? PURPLE_LIGHT : '#fbbf24',

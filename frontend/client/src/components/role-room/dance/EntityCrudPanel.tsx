@@ -84,6 +84,8 @@ export interface EntityCrudPanelProps<T extends { id: string } & object> {
   rowExpansion?: (row: T) => React.ReactNode;
   /** Tom-tilstand-melding. */
   emptyText?: string;
+  /** Eksplisitt testid for panel-root (default: undefined). Lar specs scope-e til ett panel. */
+  panelTestId?: string;
 }
 
 export function EntityCrudPanel<T extends { id: string } & object>({
@@ -99,6 +101,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
   newDefaults = {},
   rowExpansion,
   emptyText = 'Ingen oppføringer ennå.',
+  panelTestId,
 }: EntityCrudPanelProps<T>): React.ReactElement {
   const [items, setItems] = React.useState<T[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -206,7 +209,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
   };
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }}>
+    <Box data-testid={panelTestId} sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }}>
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         spacing={1.5}
@@ -322,12 +325,12 @@ export function EntityCrudPanel<T extends { id: string } & object>({
                   </Stack>
                 </Box>
                 <Tooltip title="Rediger">
-                  <IconButton size="small" onClick={() => openEdit(row)} sx={{ color: PURPLE_LIGHT }}>
+                  <IconButton size="small" onClick={() => openEdit(row)} data-testid={`crud-edit-${row.id}`} sx={{ color: PURPLE_LIGHT }}>
                     <EditIcon sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Slett">
-                  <IconButton size="small" onClick={() => void handleDelete(row)} sx={{ color: 'rgba(229,231,235,0.4)' }}>
+                  <IconButton size="small" onClick={() => void handleDelete(row)} data-testid={`crud-delete-${row.id}`} sx={{ color: 'rgba(229,231,235,0.4)' }}>
                     <DeleteIcon sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>

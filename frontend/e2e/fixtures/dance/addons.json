@@ -1,0 +1,7 @@
+[
+  { "slug": "ai-tagging",       "label": "AI Tagging",        "monthlyNok": 99,  "trialDays": 14, "description": "Auto-tag dansere i video-klipp."           , "active": false },
+  { "slug": "analytics-pro",    "label": "Analytics Pro",     "monthlyNok": 149, "trialDays": 14, "description": "Detaljert tilstedeværelse + framgangs-data.", "active": false },
+  { "slug": "white-label",      "label": "White-label",       "monthlyNok": 299, "trialDays":  0, "description": "Bytt logo + farger i elev-portal.",        "active": false },
+  { "slug": "ekstra-seter-10",  "label": "10 ekstra seter",   "monthlyNok":  99, "trialDays":  0, "description": "+10 medlemsplasser i teamet.",            "active": false },
+  { "slug": "sso",              "label": "SSO (Google)",      "monthlyNok":  79, "trialDays": 14, "description": "Single sign-on for hele teamet.",         "active": false }
+]

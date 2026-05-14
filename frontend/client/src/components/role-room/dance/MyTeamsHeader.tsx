@@ -65,6 +65,7 @@ export const MyTeamsHeader: React.FC<Props> = ({ memberships, activeTeamOrgId, o
         onClick={(e) => setAnchor(e.currentTarget)}
         endIcon={<ExpandIcon />}
         startIcon={<TeamIcon sx={{ color: PURPLE_LIGHT }} />}
+        data-testid="my-teams-header"
         sx={{
           textTransform: 'none',
           color: 'rgba(237,233,254,0.92)',
@@ -107,6 +108,7 @@ export const MyTeamsHeader: React.FC<Props> = ({ memberships, activeTeamOrgId, o
                 setAnchor(null);
                 if (!isActive) onSwitchTeam?.(m.team.teamOrganizationId);
               }}
+              data-testid={`my-teams-switch-${m.team.teamOrganizationId}`}
               sx={{ py: 1.25 }}
             >
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: '100%' }}>

@@ -1,0 +1,102 @@
+[
+  {
+    "id": "role-owner",
+    "teamOrganizationId": "team-oslo-elite",
+    "label": "Studio-eier",
+    "capabilities": {
+      "team.invite_members": true, "team.manage_roles": true, "team.remove_members": true,
+      "billing.view": true, "billing.manage": true,
+      "class.view_schedule": true, "class.manage_schedule": true, "class.manage_roster": true,
+      "choreography.view": true, "choreography.create": true, "choreography.edit_all": true,
+      "formation.use": true, "count_grid.use": true,
+      "video_review.view": true, "video_review.annotate": true,
+      "rehearsal.view_all": true, "rehearsal.manage": true,
+      "dancer_profile.view_team": true, "injury_log.view_all": true, "analytics.view": true
+    },
+    "isOwnerRole": true,
+    "isDefaultForInvite": false,
+    "displayOrder": 0,
+    "createdAt": "2026-01-01T08:00:00Z",
+    "updatedAt": "2026-01-01T08:00:00Z"
+  },
+  {
+    "id": "role-choreographer",
+    "teamOrganizationId": "team-oslo-elite",
+    "label": "Koreograf",
+    "capabilities": {
+      "team.invite_members": false, "team.manage_roles": false, "team.remove_members": false,
+      "billing.view": false, "billing.manage": false,
+      "class.view_schedule": true, "class.manage_schedule": false, "class.manage_roster": false,
+      "choreography.view": true, "choreography.create": true, "choreography.edit_own": true, "choreography.edit_all": false,
+      "formation.use": true, "count_grid.use": true,
+      "video_review.view": true, "video_review.annotate": true,
+      "rehearsal.view_all": true, "rehearsal.manage": true,
+      "dancer_profile.view_team": true, "injury_log.view_all": false, "analytics.view": false
+    },
+    "isOwnerRole": false,
+    "isDefaultForInvite": false,
+    "displayOrder": 1,
+    "createdAt": "2026-01-01T08:00:00Z",
+    "updatedAt": "2026-01-01T08:00:00Z"
+  },
+  {
+    "id": "role-instructor",
+    "teamOrganizationId": "team-oslo-elite",
+    "label": "Lærer",
+    "capabilities": {
+      "team.invite_members": false, "team.manage_roles": false, "team.remove_members": false,
+      "billing.view": false, "billing.manage": false,
+      "class.view_schedule": true, "class.manage_schedule": true, "class.manage_roster": true,
+      "choreography.view": true, "choreography.create": false, "choreography.edit_own": false, "choreography.edit_all": false,
+      "formation.use": false, "count_grid.use": false,
+      "video_review.view": true, "video_review.annotate": true,
+      "rehearsal.view_all": true, "rehearsal.manage": false,
+      "dancer_profile.view_team": true, "injury_log.view_all": true, "analytics.view": false
+    },
+    "isOwnerRole": false,
+    "isDefaultForInvite": false,
+    "displayOrder": 2,
+    "createdAt": "2026-01-01T08:00:00Z",
+    "updatedAt": "2026-01-01T08:00:00Z"
+  },
+  {
+    "id": "role-dancer",
+    "teamOrganizationId": "team-oslo-elite",
+    "label": "Danser",
+    "capabilities": {
+      "team.invite_members": false, "team.manage_roles": false, "team.remove_members": false,
+      "billing.view": false, "billing.manage": false,
+      "class.view_schedule": true, "class.manage_schedule": false, "class.manage_roster": false,
+      "choreography.view": true, "choreography.create": false, "choreography.edit_own": false, "choreography.edit_all": false,
+      "formation.use": false, "count_grid.use": false,
+      "video_review.view": true, "video_review.annotate": true,
+      "rehearsal.view_all": false, "rehearsal.manage": false,
+      "dancer_profile.view_team": false, "injury_log.view_all": false, "analytics.view": false
+    },
+    "isOwnerRole": false,
+    "isDefaultForInvite": true,
+    "displayOrder": 3,
+    "createdAt": "2026-01-01T08:00:00Z",
+    "updatedAt": "2026-01-01T08:00:00Z"
+  },
+  {
+    "id": "role-student",
+    "teamOrganizationId": "team-oslo-elite",
+    "label": "Elev",
+    "capabilities": {
+      "team.invite_members": false, "team.manage_roles": false, "team.remove_members": false,
+      "billing.view": false, "billing.manage": false,
+      "class.view_schedule": true, "class.manage_schedule": false, "class.manage_roster": false,
+      "choreography.view": false, "choreography.create": false, "choreography.edit_own": false, "choreography.edit_all": false,
+      "formation.use": false, "count_grid.use": false,
+      "video_review.view": false, "video_review.annotate": false,
+      "rehearsal.view_all": false, "rehearsal.manage": false,
+      "dancer_profile.view_team": false, "injury_log.view_all": false, "analytics.view": false
+    },
+    "isOwnerRole": false,
+    "isDefaultForInvite": false,
+    "displayOrder": 4,
+    "createdAt": "2026-01-01T08:00:00Z",
+    "updatedAt": "2026-01-01T08:00:00Z"
+  }
+]

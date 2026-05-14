@@ -31,6 +31,21 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 5'] },
+      grep: /@mobile/,
+    },
+    {
+      name: 'mobile-safari',
+      use: { ...devices['iPhone 13'] },
+      grep: /@mobile/,
+    },
+    {
+      name: 'tablet',
+      use: { ...devices['iPad Pro 11'] },
+      grep: /@tablet/,
+    },
   ],
   webServer: {
     command: 'npx vite --port 5001 --host',

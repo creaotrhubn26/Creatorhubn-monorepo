@@ -1,0 +1,10 @@
+{
+  "teamOrganizationId": "team-oslo-elite",
+  "planId": "plan-studio",
+  "stripeCustomerId": "cus_mock_studio",
+  "stripeSubscriptionId": "sub_mock_studio",
+  "status": "active",
+  "currentPeriodEnd": "2026-06-14T00:00:00Z",
+  "trialEnd": null,
+  "cancelAtPeriodEnd": false
+}

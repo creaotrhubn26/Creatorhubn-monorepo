@@ -52,6 +52,7 @@ export const ClassesPanel: React.FC<StudioPanelProps> = ({ projectId }) => {
       newDefaults={{ kind: 'semester' }}
       rowExpansion={(row) => <ClassEnrollments classId={row.id} />}
       emptyText="Ingen klasser ennå. Opprett din første for å begynne påmelding."
+      panelTestId="studio-ops-classes"
     />
   );
 };
@@ -193,6 +194,7 @@ export const InstructorsPanel: React.FC<StudioPanelProps> = ({ projectId }) => {
       remove={svc.deleteInstructor}
       newDefaults={{ contractKind: 'enk_freelance', styles: [] }}
       emptyText="Ingen instruktører ennå."
+      panelTestId="studio-ops-instructors"
     />
   );
 };
@@ -235,6 +237,7 @@ export const RoomsPanel: React.FC<StudioPanelProps> = ({ projectId }) => {
       newDefaults={{ roomKind: 'mirror_studio', hasMirror: true, hasSprungFloor: false, hasSoundSystem: false }}
       rowExpansion={(row) => <RoomBookings roomId={row.id} />}
       emptyText="Ingen saler ennå."
+      panelTestId="studio-ops-rooms"
     />
   );
 };
@@ -386,6 +389,7 @@ export const MovementVocabPanel: React.FC<StudioPanelProps> = ({ projectId }) =>
       remove={svc.deleteVocab}
       newDefaults={{ category: 'other', aliases: [] }}
       emptyText="Ingen termer ennå. Bygg ordboka når du møter terminologi som er uklar."
+      panelTestId="studio-ops-movement-vocab"
     />
   );
 };

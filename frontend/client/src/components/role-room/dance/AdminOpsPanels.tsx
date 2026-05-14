@@ -58,6 +58,7 @@ export const PerformancesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       remove={ops.deletePerformance}
       newDefaults={{ status: 'planned', ticketsSold: 0 }}
       emptyText="Ingen forestillinger lagt til ennå."
+      panelTestId="admin-ops-performances"
     />
   );
 };
@@ -109,6 +110,7 @@ export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       remove={ops.deleteMusicArchive}
       newDefaults={{ tonoStatus: 'unknown' }}
       emptyText="Ingen musikk i arkivet ennå."
+      panelTestId="admin-ops-music"
     />
   );
 };
@@ -150,6 +152,7 @@ export const ReelPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
         remove={ops.deleteReel}
         newDefaults={{ tags: [], featureOrder: 0 }}
         emptyText="Ingen klipp i porteføljen ennå."
+        panelTestId="admin-ops-reel"
         rowExpansion={(clip) => <ReelShareControls clip={clip} onToggle={() => void togglePublic(clip)} />}
       />
     </Box>
@@ -249,6 +252,7 @@ export const GrantsPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       remove={ops.deleteGrant}
       newDefaults={{ status: 'draft', fundName: 'kulturradet', attachments: [] }}
       emptyText="Ingen søknader registrert ennå."
+      panelTestId="admin-ops-grants"
     />
   );
 };
@@ -303,6 +307,7 @@ export const InvoicesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       remove={ops.deleteInvoice}
       newDefaults={{ status: 'draft', deliveryMethod: 'manual', amountKr: 0, vatKr: 0 }}
       emptyText="Ingen fakturaer ennå."
+      panelTestId="admin-ops-invoices"
     />
   );
 };
@@ -357,6 +362,7 @@ export const UnionPanel: React.FC<{ projectId: string | null }> = () => {
       remove={ops.deleteUnion}
       newDefaults={{ organization: 'skuda', status: 'active' }}
       emptyText="Ingen forbund-medlemskap registrert ennå."
+      panelTestId="admin-ops-union"
     />
   );
 };

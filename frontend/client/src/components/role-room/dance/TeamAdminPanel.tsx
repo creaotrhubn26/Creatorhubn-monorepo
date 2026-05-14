@@ -148,7 +148,7 @@ export const TeamAdminPanel: React.FC = () => {
   const isOwner = membership.role?.isOwnerRole === true;
 
   return (
-    <Stack spacing={3} sx={{ p: { xs: 1.5, md: 2.5 } }}>
+    <Stack spacing={3} sx={{ p: { xs: 1.5, md: 2.5 } }} data-testid="team-admin">
       {/* ── Header med team-summary ── */}
       <TeamHeader summary={team} canManage={isOwner} onInvite={() => setInviteOpen(true)} />
 
@@ -186,6 +186,7 @@ export const TeamAdminPanel: React.FC = () => {
             size="small"
             startIcon={<AddIcon />}
             onClick={() => setCreatingRole(true)}
+            data-testid="team-new-role"
             sx={{ color: PURPLE_LIGHT, textTransform: 'none' }}
           >
             Ny rolle
@@ -287,6 +288,7 @@ const TeamHeader: React.FC<{
           startIcon={<AddMemberIcon />}
           onClick={onInvite}
           disabled={summary.seatLimit != null && (summary.seatRemaining ?? 0) <= 0}
+          data-testid="team-invite-trigger"
           sx={{
             bgcolor: PURPLE_BRIGHT,
             '&:hover': { bgcolor: PURPLE_DEEP },
@@ -368,7 +370,7 @@ const MemberRow: React.FC<{
       : DeactivatedIcon;
 
   return (
-    <Stack direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }}>
+    <Stack direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }} data-testid={`team-member-row-${member.memberRowId}`}>
       <StatusIcon sx={{ fontSize: 18, color: member.status === 'active' ? '#22c55e' : TEXT_MUTED }} />
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Typography sx={{ fontSize: 13, color: 'rgba(237,233,254,0.92)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -397,6 +399,7 @@ const MemberRow: React.FC<{
                 alert(`Kunne ikke endre rolle: ${err instanceof Error ? err.message : err}`);
               }
             }}
+            inputProps={{ 'data-testid': `team-member-role-select-${member.memberRowId}` }}
             sx={{
               minWidth: 140,
               '& .MuiOutlinedInput-root': {
@@ -410,7 +413,7 @@ const MemberRow: React.FC<{
               <MenuItem key={r.id} value={r.id}>{r.label}</MenuItem>
             ))}
           </TextField>
-          <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)}>
+          <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)} data-testid={`team-member-menu-${member.memberRowId}`}>
             <MoreIcon sx={{ color: TEXT_DIM }} />
           </IconButton>
           <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
@@ -425,6 +428,7 @@ const MemberRow: React.FC<{
                   alert(`Kunne ikke fjerne: ${err instanceof Error ? err.message : err}`);
                 }
               }}
+              data-testid={`team-member-remove-${member.memberRowId}`}
               sx={{ color: '#f87171', fontSize: 13 }}
             >
               Fjern fra team
@@ -458,7 +462,7 @@ const InvitesList: React.FC<{
   return (
     <Stack divider={<Divider sx={{ borderColor: PANEL_BORDER }} />} spacing={0}>
       {pending.map((i) => (
-        <Stack key={i.token} direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }}>
+        <Stack key={i.token} direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }} data-testid={`team-invite-row-${i.token}`}>
           <PendingIcon sx={{ fontSize: 18, color: TEXT_MUTED }} />
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             <Typography sx={{ fontSize: 13, color: 'rgba(237,233,254,0.92)', fontWeight: 500 }}>
@@ -471,6 +475,7 @@ const InvitesList: React.FC<{
           <Tooltip title="Kopier invite-lenke">
             <IconButton
               size="small"
+              data-testid={`team-invite-copy-${i.token}`}
               onClick={async () => {
                 const link = `${window.location.origin}/dance/invite/${i.token}`;
                 try { await navigator.clipboard.writeText(link); } catch {}
@@ -482,6 +487,7 @@ const InvitesList: React.FC<{
           <Tooltip title="Trekk tilbake">
             <IconButton
               size="small"
+              data-testid={`team-invite-revoke-${i.token}`}
               onClick={async () => {
                 if (!window.confirm(`Trekke tilbake invitasjon til ${i.invitedEmail}?`)) return;
                 try {
@@ -515,7 +521,7 @@ const RolesList: React.FC<{
     {roles.map((r) => {
       const enabledCount = Object.values(r.capabilities).filter(Boolean).length;
       return (
-        <Stack key={r.id} direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }}>
+        <Stack key={r.id} direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }} data-testid={`team-role-row-${r.id}`}>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography sx={{ fontSize: 14, color: 'rgba(237,233,254,0.95)', fontWeight: 600 }}>
@@ -536,11 +542,11 @@ const RolesList: React.FC<{
           </Box>
           {canManage ? (
             <>
-              <IconButton size="small" onClick={() => onEdit(r)}>
+              <IconButton size="small" onClick={() => onEdit(r)} data-testid={`team-role-edit-${r.id}`}>
                 <EditIcon sx={{ color: TEXT_DIM, fontSize: 18 }} />
               </IconButton>
               {!r.isOwnerRole ? (
-                <IconButton size="small" onClick={() => onDelete(r)}>
+                <IconButton size="small" onClick={() => onDelete(r)} data-testid={`team-role-delete-${r.id}`}>
                   <DeleteIcon sx={{ color: '#f87171', fontSize: 18 }} />
                 </IconButton>
               ) : null}
@@ -588,7 +594,7 @@ const InviteDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` } }}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-invite-dialog' } as never}>
       <DialogTitle sx={{ color: 'rgba(237,233,254,0.95)' }}>Inviter medlem</DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ pt: 1 }}>
@@ -602,6 +608,7 @@ const InviteDialog: React.FC<{
             fullWidth
             variant="outlined"
             placeholder="navn@dansestudio.no"
+            inputProps={{ 'data-testid': 'team-invite-email' }}
             sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
           />
           <TextField
@@ -611,6 +618,7 @@ const InviteDialog: React.FC<{
             onChange={(e) => setRoleId(e.target.value)}
             fullWidth
             variant="outlined"
+            inputProps={{ 'data-testid': 'team-invite-role' }}
             sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
           >
             {inviteableRoles.map((r) => (
@@ -632,6 +640,7 @@ const InviteDialog: React.FC<{
           onClick={submit}
           disabled={submitting || !email.trim() || !roleId}
           variant="contained"
+          data-testid="team-invite-send"
           sx={{ bgcolor: PURPLE_BRIGHT, '&:hover': { bgcolor: PURPLE_DEEP }, textTransform: 'none', fontWeight: 600 }}
         >
           {submitting ? 'Sender…' : 'Send invitasjon'}
@@ -687,7 +696,7 @@ const RoleEditorDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` } }}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
       <DialogTitle sx={{ color: 'rgba(237,233,254,0.95)' }}>
         {role ? `Rediger rolle: ${role.label}` : 'Ny rolle'}
         {isOwner ? <Chip label="Eier — capabilities er låst til alt" size="small" sx={{ ml: 2, bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', fontWeight: 700 }} /> : null}
@@ -702,6 +711,7 @@ const RoleEditorDialog: React.FC<{
             fullWidth
             variant="outlined"
             disabled={isOwner}
+            inputProps={{ 'data-testid': 'team-role-label' }}
             sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
           />
           <FormControlLabel
@@ -737,6 +747,7 @@ const RoleEditorDialog: React.FC<{
                           checked={isOwner ? true : caps[key] === true}
                           disabled={isOwner}
                           onChange={(e) => setCaps((prev) => ({ ...prev, [key]: e.target.checked }))}
+                          inputProps={{ 'data-testid': `team-role-cap-${key}` } as React.InputHTMLAttributes<HTMLInputElement>}
                           sx={{ '& .Mui-checked': { color: PURPLE_BRIGHT } }}
                         />
                       }
@@ -760,6 +771,7 @@ const RoleEditorDialog: React.FC<{
             onClick={submit}
             disabled={submitting || !label.trim()}
             variant="contained"
+            data-testid="team-role-save"
             sx={{ bgcolor: PURPLE_BRIGHT, '&:hover': { bgcolor: PURPLE_DEEP }, textTransform: 'none', fontWeight: 600 }}
           >
             {submitting ? 'Lagrer…' : 'Lagre'}

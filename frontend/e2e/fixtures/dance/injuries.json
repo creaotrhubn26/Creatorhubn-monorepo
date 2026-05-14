@@ -1,0 +1,5 @@
+[
+  { "id": "inj-1", "teamOrganizationId": "team-oslo-elite", "dancerId": "dnc-4", "type": "shoulder",      "occurredAt": "2026-04-20", "note": "Skulder-strain i lift",                "restriction": "Ingen lifts før klarert",         "resolvedAt": null,         "outcome": null },
+  { "id": "inj-2", "teamOrganizationId": "team-oslo-elite", "dancerId": "dnc-8", "type": "ankle",         "occurredAt": "2026-03-15", "note": "Mild forstuing på landing fra grand jeté", "restriction": "Begrenset pointe-arbeid",         "resolvedAt": "2026-04-15", "outcome": "Tilbake i full trening" },
+  { "id": "inj-3", "teamOrganizationId": "team-oslo-elite", "dancerId": "dnc-1", "type": "lower-back",    "occurredAt": "2026-02-01", "note": "Stivhet etter intensiv øvelse",          "restriction": "Unngå dyp layback i 2 uker",      "resolvedAt": "2026-02-21", "outcome": "Tilbake i full trening" }
+]

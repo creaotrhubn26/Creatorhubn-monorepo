@@ -1,0 +1,51 @@
+[
+  {
+    "id": "cho-1",
+    "teamOrganizationId": "team-oslo-elite",
+    "title": "Spring Showcase — Hovedstykke",
+    "projectId": "proj-spring-2026",
+    "musicTitle": "Rezz — Edge",
+    "musicSignedUrl": "blob:mock-music-1",
+    "durationSec": 245,
+    "bpm": 128,
+    "segments": [
+      { "id": "seg-1", "kind": "intro",     "absoluteCount": 1,   "lengthCounts": 16, "title": "Åpning",          "energyLevel": 2, "approvalStatus": "approved",     "dancerIds": ["dnc-1","dnc-2","dnc-6"] },
+      { "id": "seg-2", "kind": "chorus",    "absoluteCount": 17,  "lengthCounts": 32, "title": "Refreng A",        "energyLevel": 4, "approvalStatus": "approved",     "dancerIds": ["dnc-1","dnc-2","dnc-3","dnc-6"] },
+      { "id": "seg-3", "kind": "lift",      "absoluteCount": 49,  "lengthCounts": 16, "title": "Lift-sekvens",     "energyLevel": 5, "approvalStatus": "needs-work",   "dancerIds": ["dnc-4","dnc-11"] },
+      { "id": "seg-4", "kind": "transition","absoluteCount": 65,  "lengthCounts": 8,  "title": "Overgang",         "energyLevel": 2, "approvalStatus": "approved",     "dancerIds": ["dnc-1","dnc-2","dnc-3","dnc-6"] },
+      { "id": "seg-5", "kind": "solo",      "absoluteCount": 73,  "lengthCounts": 24, "title": "Ingrid solo",      "energyLevel": 4, "approvalStatus": "approved",     "dancerIds": ["dnc-1"] },
+      { "id": "seg-6", "kind": "chorus",    "absoluteCount": 97,  "lengthCounts": 32, "title": "Refreng B",        "energyLevel": 5, "approvalStatus": "draft",        "dancerIds": ["dnc-1","dnc-2","dnc-3","dnc-6","dnc-11"] }
+    ],
+    "createdAt": "2026-04-01T10:00:00Z",
+    "updatedAt": "2026-05-12T14:30:00Z"
+  },
+  {
+    "id": "cho-2",
+    "teamOrganizationId": "team-oslo-elite",
+    "title": "Kids Recital — Lykke",
+    "projectId": "proj-recital-2026",
+    "musicTitle": null,
+    "musicSignedUrl": null,
+    "durationSec": 120,
+    "bpm": 110,
+    "segments": [
+      { "id": "seg-k-1", "kind": "intro",  "absoluteCount": 1,  "lengthCounts": 16, "title": "Inn-rekke",   "energyLevel": 2, "approvalStatus": "draft", "dancerIds": [] },
+      { "id": "seg-k-2", "kind": "chorus", "absoluteCount": 17, "lengthCounts": 32, "title": "Hovedrefreng","energyLevel": 4, "approvalStatus": "draft", "dancerIds": [] }
+    ],
+    "createdAt": "2026-04-20T10:00:00Z",
+    "updatedAt": "2026-05-13T11:00:00Z"
+  },
+  {
+    "id": "cho-3",
+    "teamOrganizationId": "team-oslo-elite",
+    "title": "Konkurranse — Quartet",
+    "projectId": null,
+    "musicTitle": "Max Richter — On The Nature of Daylight",
+    "musicSignedUrl": "blob:mock-music-3",
+    "durationSec": 180,
+    "bpm": 60,
+    "segments": [],
+    "createdAt": "2026-05-01T10:00:00Z",
+    "updatedAt": "2026-05-01T10:00:00Z"
+  }
+]

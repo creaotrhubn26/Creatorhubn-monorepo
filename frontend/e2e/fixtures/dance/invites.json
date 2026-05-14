@@ -1,0 +1,53 @@
+[
+  {
+    "token": "invite-token-pending-abc",
+    "teamOrganizationId": "team-oslo-elite",
+    "invitedEmail": "newdancer@example.com",
+    "invitedEmailMasked": "n***@example.com",
+    "invitedRoleId": "role-dancer",
+    "invitedRoleLabel": "Danser",
+    "invitedByUserId": "user-owner-1",
+    "expiresAt": "2026-06-14T00:00:00Z",
+    "acceptedAt": null,
+    "acceptedUserId": null,
+    "revokedAt": null,
+    "createdAt": "2026-05-14T08:00:00Z",
+    "status": "pending",
+    "pinSentAt": null,
+    "pinLockedAt": null
+  },
+  {
+    "token": "invite-token-expired-xyz",
+    "teamOrganizationId": "team-oslo-elite",
+    "invitedEmail": "lateny@example.com",
+    "invitedEmailMasked": "l***@example.com",
+    "invitedRoleId": "role-dancer",
+    "invitedRoleLabel": "Danser",
+    "invitedByUserId": "user-owner-1",
+    "expiresAt": "2026-04-01T00:00:00Z",
+    "acceptedAt": null,
+    "acceptedUserId": null,
+    "revokedAt": null,
+    "createdAt": "2026-03-15T08:00:00Z",
+    "status": "expired",
+    "pinSentAt": null,
+    "pinLockedAt": null
+  },
+  {
+    "token": "invite-token-choreo-cho",
+    "teamOrganizationId": "team-oslo-elite",
+    "invitedEmail": "newchoreo@example.com",
+    "invitedEmailMasked": "n***@example.com",
+    "invitedRoleId": "role-choreographer",
+    "invitedRoleLabel": "Koreograf",
+    "invitedByUserId": "user-owner-1",
+    "expiresAt": "2026-06-14T00:00:00Z",
+    "acceptedAt": null,
+    "acceptedUserId": null,
+    "revokedAt": null,
+    "createdAt": "2026-05-14T08:00:00Z",
+    "status": "pending",
+    "pinSentAt": null,
+    "pinLockedAt": null
+  }
+]

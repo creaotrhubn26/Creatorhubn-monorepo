@@ -1,0 +1,22 @@
+[
+  {
+    "teamOrganizationId": "team-oslo-elite",
+    "ownerUserId": "user-owner-1",
+    "memberCount": 12,
+    "activeMemberCount": 10,
+    "seatLimit": 25,
+    "seatRemaining": 13,
+    "defaultInviteRoleId": "role-dancer",
+    "label": "Oslo Elite Dance"
+  },
+  {
+    "teamOrganizationId": "team-bergen-collective",
+    "ownerUserId": "user-owner-2",
+    "memberCount": 6,
+    "activeMemberCount": 6,
+    "seatLimit": 10,
+    "seatRemaining": 4,
+    "defaultInviteRoleId": "role-dancer",
+    "label": "Bergen Collective"
+  }
+]

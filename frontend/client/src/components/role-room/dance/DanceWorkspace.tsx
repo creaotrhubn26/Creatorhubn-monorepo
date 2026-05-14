@@ -332,6 +332,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
               key={tab.id}
               value={tab.id}
               label={labels[tab.labelToken] ?? tab.id}
+              data-testid={`dance-tab-${tab.id}`}
             />
           ))}
         </Tabs>

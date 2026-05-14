@@ -1,0 +1,36 @@
+[
+  {
+    "id": "reh-1",
+    "teamOrganizationId": "team-oslo-elite",
+    "projectId": "proj-spring-2026",
+    "choreographyId": "cho-1",
+    "date": "2026-05-12",
+    "startTime": "18:00",
+    "durationMin": 120,
+    "focusAreas": [
+      { "id": "fa-1", "title": "Lift-sekvens cleanup", "segmentRef": "seg-3", "estimatedMinutes": 45, "preNote": "Sjekk høyde-løft + landing-koreo." },
+      { "id": "fa-2", "title": "Refreng B formation",  "segmentRef": "seg-6", "estimatedMinutes": 30, "preNote": "Ny formation skal læres." }
+    ],
+    "segmentReviews": [
+      { "segmentId": "seg-3", "status": "needs-repeat", "note": "Landing fortsatt for tung." },
+      { "segmentId": "seg-6", "status": "approved",     "note": "Formation funket på første gjennomkjøring." }
+    ],
+    "dancerFollowups": [
+      { "dancerId": "dnc-4", "note": "Følg opp skulder-rehab — sjekk med fysio før neste lift." }
+    ],
+    "postNotes": "Bra fokus i kveld. Neste gang: solo + refreng B-overgang."
+  },
+  {
+    "id": "reh-2",
+    "teamOrganizationId": "team-oslo-elite",
+    "projectId": "proj-spring-2026",
+    "choreographyId": "cho-1",
+    "date": "2026-05-13",
+    "startTime": "18:00",
+    "durationMin": 120,
+    "focusAreas": [],
+    "segmentReviews": [],
+    "dancerFollowups": [],
+    "postNotes": null
+  }
+]
