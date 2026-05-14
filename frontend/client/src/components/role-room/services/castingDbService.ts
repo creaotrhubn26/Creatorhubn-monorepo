@@ -83,8 +83,16 @@ export async function getCastingProjectsFromDb(): Promise<CastingProject[]> {
       throw new Error(`Failed to fetch projects: ${response.statusText}`);
     }
 
-    const projects = await response.json();
-    return projects;
+    const payload = await response.json();
+    // Backend kan returnere enten { projects: [...] } eller bare [...]
+    // Begge støttes for robust deserialisering.
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+    if (payload && Array.isArray(payload.projects)) {
+      return payload.projects;
+    }
+    return [];
   } catch (error) {
     console.error('Error fetching projects from database:', error);
     return [];

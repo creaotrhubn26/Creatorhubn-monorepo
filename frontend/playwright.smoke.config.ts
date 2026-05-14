@@ -20,6 +20,7 @@ export default defineConfig({
   testMatch: [
     '**/role-room-clarity-smoke.spec.ts',
     '**/role-room-cms-r2-upload.spec.ts',
+    '**/role-room-troll-demo-seed.spec.ts',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
