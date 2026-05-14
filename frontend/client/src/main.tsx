@@ -5,7 +5,18 @@ window.Buffer = Buffer;
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { initSentry } from './utils/sentry';
+import { runLegacyStorageMigration } from './components/role-room/utils/legacyStorageMigrator';
 import { bootstrapCreatorHubGoogleLoginRedirect } from './lib/creatorhubGoogleAuth';
+
+// Stabilitetsaudit § 7.2 — kjør idempotent migrasjon av sårbare
+// localStorage-keys FØR React rendrer. Etter første call markeres systemet
+// som migrert i localStorage selv, så denne er gratis ved hver subsequent
+// page-load.
+try {
+  runLegacyStorageMigration();
+} catch {
+  // Skal aldri kaste — defensive
+}
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
 import {
   isRoleRoomDedicatedHost,
