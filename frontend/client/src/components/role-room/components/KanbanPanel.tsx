@@ -565,7 +565,7 @@ function KanbanPanelInner({
   const roleConfig = (effectiveRole && ROLE_KANBAN_CONFIG[effectiveRole]) || DEFAULT_ROLE_CONFIG;
   const titleId = useId();
   // statsId removed (stats panel removed)
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess, showToast, removeToast } = useToast();
 
   // Realtime WebSocket
   const { connected: wsConnected } = useKanbanRealtime(project?.id, onCandidatesChange);
@@ -693,6 +693,10 @@ function KanbanPanelInner({
     const candidate = candidates.find(c => c.id === candidateId);
     if (!candidate || candidate.status === targetStatus) return;
 
+    const previousStatus = candidate.status as CandidateStatus;
+    const previousLabel = KANBAN_COLUMNS.find((c) => c.status === previousStatus)?.label ?? previousStatus;
+    const targetLabel = KANBAN_COLUMNS.find((c) => c.status === targetStatus)?.label ?? targetStatus;
+
     // Optimistic update — instantly reflect new status in UI
     setOptimisticStatuses(prev => ({ ...prev, [candidateId]: targetStatus }));
     try {
@@ -700,12 +704,55 @@ function KanbanPanelInner({
       await castingService.saveCandidate(project.id, updated);
       onCandidatesChange();
       setOptimisticStatuses(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
+
+      // Optimistic success-toast med Angre-knapp. Vi holder en ref til toast-id
+      // så Angre-handleren kan lukke den umiddelbart.
+      const undoableToastId = { current: '' };
+      const performUndo = async () => {
+        // Optimistisk revert
+        setOptimisticStatuses(prev => ({ ...prev, [candidateId]: previousStatus }));
+        if (undoableToastId.current) removeToast(undoableToastId.current);
+        try {
+          await castingService.saveCandidate(project.id, {
+            ...candidate,
+            status: previousStatus,
+            updatedAt: new Date().toISOString(),
+          });
+          onCandidatesChange();
+          setOptimisticStatuses(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
+          showSuccess(`Tilbakestilt til "${previousLabel}".`);
+        } catch (undoError) {
+          console.error('Failed to undo candidate status:', undoError);
+          setOptimisticStatuses(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
+          showError('Kunne ikke angre. Prøv igjen.');
+        }
+      };
+      undoableToastId.current = showToast({
+        severity: 'success',
+        message: `"${candidate.name}" flyttet til "${targetLabel}".`,
+        duration: 6000,
+        action: (
+          <Button
+            size="small"
+            variant="text"
+            onClick={performUndo}
+            sx={{
+              color: '#fff',
+              fontWeight: 700,
+              textTransform: 'none',
+              ml: 1,
+            }}
+          >
+            Angre
+          </Button>
+        ),
+      });
     } catch (error) {
       console.error('Failed to save candidate status:', error);
       setOptimisticStatuses(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
       showError('Kunne ikke oppdatere status. Prøv igjen.');
     }
-  }, [candidates, draggedCandidateId, project, onCandidatesChange, showError]);
+  }, [candidates, draggedCandidateId, project, onCandidatesChange, showError, showSuccess, showToast, removeToast]);
 
   // Bulk selection helpers
   const toggleSelect = useCallback((id: string) => {
