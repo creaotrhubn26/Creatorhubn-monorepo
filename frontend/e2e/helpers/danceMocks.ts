@@ -103,6 +103,18 @@ function matchInviteOverride(opts: DanceMockOptions | undefined, token: string) 
 // ─── Main installer ─────────────────────────────────────────────────────
 
 export async function installDanceMocks(page: Page, opts: DanceMockOptions = {}): Promise<void> {
+  // Backend-uavhengige stubs — vite-proxy kan ikke nå localhost:3000 i e2e,
+  // så vi fyller hullene før de blokkerer.
+  await page.route(/\/api\/branding\/.*/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: {} }) }),
+  );
+  await page.route(/\/api\/professions\/.*/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) }),
+  );
+  await page.route(/\/api\/auth\/.*/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: null }) }),
+  );
+
   // Fellesregel for hele /api/dance/* — vi forgrener internt.
   await page.route(/\/api\/dance\/.*/, async (route: Route) => {
     const req: PWRequest = route.request();
