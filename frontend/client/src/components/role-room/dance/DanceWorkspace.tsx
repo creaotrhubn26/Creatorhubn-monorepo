@@ -178,6 +178,18 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     window.history.replaceState({}, '', url.toString());
   }, [activeTabId]);
 
+  // GA4 dataLayer event ved tab-bytte. Kun client-side.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as Window & { dataLayer?: Array<Record<string, unknown>> };
+    if (!Array.isArray(w.dataLayer)) w.dataLayer = [];
+    w.dataLayer.push({
+      event: 'dance_tab_view',
+      tab_id: activeTabId,
+      profession_mode: mode,
+    });
+  }, [activeTabId, mode]);
+
   // Multi-team membership + active-team-bytter (URL ?team=<orgId>)
   const { memberships, refresh: refreshMemberships } = useMyMemberships();
   const initialActiveTeam = useMemo(() => {

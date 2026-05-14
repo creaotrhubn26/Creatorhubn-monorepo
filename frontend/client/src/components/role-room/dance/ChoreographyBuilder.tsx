@@ -311,6 +311,11 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
   }, []);
 
   const handleSave = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      const w = window as Window & { dataLayer?: Array<Record<string, unknown>> };
+      if (!Array.isArray(w.dataLayer)) w.dataLayer = [];
+      w.dataLayer.push({ event: 'dance_piece_saved', piece_id: choreography.id });
+    }
     onSave?.(choreography);
   }, [choreography, onSave]);
 
@@ -461,7 +466,15 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
                 <Box
                   key={seg.id}
                   data-testid={`choreo-segment-item-${seg.id}`}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedSegmentId(seg.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedSegmentId(seg.id);
+                    }
+                  }}
                   sx={{
                     p: 1,
                     borderRadius: 1,
@@ -502,10 +515,26 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
         {/* ─── Sentralt: timeline ──────────────────── */}
         <Box
           data-testid="choreo-timeline"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            // Arrow left/right flytter playhead 1 sek; Space toggler play/pause.
+            if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              setPlayheadSec((p) => Math.min(p + 1, choreography.totalDurationSec));
+            } else if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              setPlayheadSec((p) => Math.max(0, p - 1));
+            } else if (e.key === ' ') {
+              e.preventDefault();
+              setIsPlaying((v) => !v);
+            }
+          }}
           sx={{
             overflow: 'auto',
             bgcolor: '#0a0a0a',
             p: 2,
+            outline: 'none',
+            '&:focus-visible': { boxShadow: 'inset 0 0 0 2px rgba(167,139,250,0.4)' },
           }}
         >
           {choreography.segments.length === 0 ? (

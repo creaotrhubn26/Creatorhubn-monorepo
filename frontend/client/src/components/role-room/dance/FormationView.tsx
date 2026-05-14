@@ -162,6 +162,10 @@ export const FormationView: React.FC<FormationViewProps> = ({
   // Definert før useEffect som bruker den, slik at TS-strict ikke
   // klager på "used before declaration".
 
+  // ARIA live-region: kunngjør drag-flytt for skjermlesere siden Fabric.js-
+  // canvas ikke er screen-reader-tilgjengelig.
+  const [ariaAnnounce, setAriaAnnounce] = useState<string>('');
+
   const updateDancerPosition = useCallback((dancerId: string, x: number, y: number) => {
     setFormations((prev) =>
       prev.map((f) => {
@@ -174,7 +178,12 @@ export const FormationView: React.FC<FormationViewProps> = ({
         };
       }),
     );
-  }, [activeFormationId]);
+    const dancer = dancersById.get(dancerId);
+    const name = dancer?.name ?? dancerId;
+    setAriaAnnounce(
+      `${name} flyttet til posisjon ${(x * 100).toFixed(0)}% horisontalt, ${(y * 100).toFixed(0)}% vertikalt`,
+    );
+  }, [activeFormationId, dancersById]);
 
   // ─── Tegn aktiv formasjon når den endres ──────────
   // onDancerClick lagres i en ref slik at vi ikke trenger å re-tegne
@@ -327,6 +336,27 @@ export const FormationView: React.FC<FormationViewProps> = ({
         gap: 0,
       }}
     >
+      {/* ARIA live-region — usynlig, men kunngjort av skjermlesere ved
+          drag-flytt og andre formation-endringer. */}
+      <Box
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        sx={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: 'hidden',
+          clip: 'rect(0, 0, 0, 0)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+        data-testid="formation-aria-live"
+      >
+        {ariaAnnounce}
+      </Box>
       {/* ─── Roster (venstre) ───────────────────────── */}
       <Box
         data-testid="formation-roster"

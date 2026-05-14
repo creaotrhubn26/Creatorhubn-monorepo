@@ -220,6 +220,12 @@ export const TeamAdminPanel: React.FC = () => {
           onCreated={async (token) => {
             await refresh();
             setInviteOpen(false);
+            // GA4 dataLayer event — eksponert til analytics
+            if (typeof window !== 'undefined') {
+              const w = window as Window & { dataLayer?: Array<Record<string, unknown>> };
+              if (!Array.isArray(w.dataLayer)) w.dataLayer = [];
+              w.dataLayer.push({ event: 'dance_invite_created', invite_token: token });
+            }
             // Kopier invite-link til clipboard som UX-bonus
             const link = `${window.location.origin}/dance/invite/${token}`;
             try {
