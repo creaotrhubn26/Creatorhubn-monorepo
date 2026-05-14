@@ -175,6 +175,7 @@ import {
 import { evaluateProjectOwnership } from '../utils/projectOwnership';
 import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
 import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
+import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
 import {
   ContentProducerWorkflowStepper,
   type WorkflowStepKey,
@@ -6341,6 +6342,32 @@ type RoleRoomProjectWorkspaceState = {
     handleSelectProjectFromSelector,
   ]);
 
+  const currentWorkspaceMode = useMemo<WorkspaceMode>(() => {
+    if (isClientReviewerMode) return 'client_reviewer';
+    if (isContentProducerMode) return 'content_producer';
+    if (isDanceModeCheck(__activeProfessionMode)) return 'dance';
+    if (adminUser?.role === 'owner' || adminUser?.role === 'admin') {
+      // Admin defaults to production_team view, men identifier som admin for klarhet
+      return 'production_team';
+    }
+    return 'production_team';
+  }, [isClientReviewerMode, isContentProducerMode, __activeProfessionMode, adminUser?.role]);
+
+  const currentWorkspaceModeTooltip = useMemo(() => {
+    switch (currentWorkspaceMode) {
+      case 'content_producer':
+        return 'Du jobber som innholdsprodusent — tabs og verktøy er tilpasset content-pipeline.';
+      case 'production_team':
+        return 'Du jobber som produksjonsteam — full casting/crew/produksjon-flyt.';
+      case 'client_reviewer':
+        return 'Du ser et klient-godkjenningsperspektiv. Begrenset redigering.';
+      case 'dance':
+        return 'Du jobber i dansestudio-modus — koreografi og elever er primært fokus.';
+      case 'admin':
+        return 'Administrator-modus — full tilgang.';
+    }
+  }, [currentWorkspaceMode]);
+
   const breadcrumbSegments = useMemo<PlannerBreadcrumbSegment[]>(() => {
     const segments: PlannerBreadcrumbSegment[] = [
       {
@@ -9062,10 +9089,26 @@ type RoleRoomProjectWorkspaceState = {
         </Box>
       )}
 
-      <PlannerBreadcrumb
-        segments={breadcrumbSegments}
-        hidden={isLiveSetImmersive}
-      />
+      {!isLiveSetImmersive && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            px: { xs: 1.25, sm: 1.75 },
+            pt: 0.6,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <PlannerBreadcrumb segments={breadcrumbSegments} />
+          </Box>
+          <WorkspaceModeBadge
+            mode={currentWorkspaceMode}
+            tooltip={currentWorkspaceModeTooltip}
+          />
+        </Box>
+      )}
 
       {isContentProducerMode && currentProject && (
         <ContentProducerWorkflowStepper
@@ -11911,11 +11954,18 @@ type RoleRoomProjectWorkspaceState = {
                         // tilfeldig-fargede chips med enhetlig gruppering
                         // og tydelig active-state. Aksent kun på valgt
                         // verktøy slik at det blir én klar "hvor er jeg".
+                        // Rekkefølge tilpasset anbefalt narrativ-flyt:
+                        // 1. Story Logic (konsept/logline/theme)
+                        // 2. Story Writer (manus)
+                        // 3. Sceneliste (scene-oversikt)
+                        // 4. Storyboard (visualisering)
+                        // Tall-prefiks viser brukeren foreslått rekkefølge —
+                        // ingen hard lås, bare en pekepinn.
                         const storyTools = [
-                          { id: 'storyboard', label: 'Storyboard', isActive: contentProducerPlannerSurface === 'project_room' && producerMediaFocus?.workspace === 'storyboard' },
-                          { id: 'story-writer', label: 'Story Writer', isActive: storyArcView === 'story-writer' },
-                          { id: 'shot-list', label: 'Sceneliste', isActive: storyArcView === 'shot-list' },
-                          { id: 'story-logic', label: 'Story Logic', isActive: storyArcView === 'story-logic' },
+                          { id: 'story-logic', label: 'Story Logic', step: 1, isActive: storyArcView === 'story-logic' },
+                          { id: 'story-writer', label: 'Story Writer', step: 2, isActive: storyArcView === 'story-writer' },
+                          { id: 'shot-list', label: 'Sceneliste', step: 3, isActive: storyArcView === 'shot-list' },
+                          { id: 'storyboard', label: 'Storyboard', step: 4, isActive: contentProducerPlannerSurface === 'project_room' && producerMediaFocus?.workspace === 'storyboard' },
                         ] as const;
                         return (
                           <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" useFlexGap>
@@ -11944,7 +11994,11 @@ type RoleRoomProjectWorkspaceState = {
                                 <Box
                                   key={tool.id}
                                   onClick={() => openContentProducerCreativeTool(tool.id)}
+                                  aria-label={`Steg ${tool.step}: ${tool.label}`}
                                   sx={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 0.65,
                                     px: 1.6,
                                     py: 0.6,
                                     cursor: 'pointer',
@@ -11962,6 +12016,24 @@ type RoleRoomProjectWorkspaceState = {
                                     },
                                   }}
                                 >
+                                  <Box
+                                    component="span"
+                                    aria-hidden
+                                    sx={{
+                                      width: 18,
+                                      height: 18,
+                                      borderRadius: '50%',
+                                      bgcolor: tool.isActive ? 'rgba(11,17,32,0.18)' : 'rgba(167,139,250,0.18)',
+                                      color: tool.isActive ? '#0b1120' : '#c4b5fd',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '0.66rem',
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    {tool.step}
+                                  </Box>
                                   {tool.label}
                                 </Box>
                               ))}
@@ -12922,24 +12994,33 @@ type RoleRoomProjectWorkspaceState = {
           )}
           {isLiveSetImmersive && (
             <Button
-              size="small"
-              variant="outlined"
+              variant="contained"
               onClick={handleExitLiveSet}
+              startIcon={<CloseIcon />}
+              aria-label="Avslutt Live Set og gå tilbake til Planner (Esc)"
+              title="Esc lukker også Live Set"
               sx={{
                 position: 'fixed',
-                top: 12,
-                right: 12,
+                top: 16,
+                right: 16,
                 zIndex: 3000,
                 color: '#fff',
-                borderColor: 'rgba(255,255,255,0.4)',
-                bgcolor: 'rgba(7,10,20,0.72)',
-                backdropFilter: 'blur(6px)',
+                bgcolor: 'rgba(220,38,38,0.92)',
+                backdropFilter: 'blur(8px)',
                 textTransform: 'none',
-                fontWeight: 700,
+                fontWeight: 800,
+                fontSize: '0.95rem',
+                py: 1,
+                px: 2.5,
+                borderRadius: 2,
+                boxShadow: '0 4px 14px rgba(220,38,38,0.45)',
+                minHeight: 44,
                 '&:hover': {
-                  borderColor: '#ef4444',
-                  bgcolor: 'rgba(239,68,68,0.16)',
+                  bgcolor: 'rgba(239,68,68,1)',
+                  transform: 'translateY(-1px)',
+                  boxShadow: '0 6px 18px rgba(220,38,38,0.55)',
                 },
+                transition: 'all 0.16s',
               }}
             >
               Avslutt Live Set
