@@ -11,6 +11,9 @@ test.describe('dance — focus trap', () => {
 
   test('DancerProfileEditor: Tab loops innenfor dialog', async ({ page }) => {
     await switchDanceTab(page, "students");
+    // Vent på at danser-cards er rendret før vi prøver å klikke edit-knappen
+    await expect(page.getByTestId('dancer-profile-grid')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('dancer-profile-edit-dnc-1')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('dancer-profile-edit-dnc-1').click();
 
     const dialog = page.getByRole('dialog');
@@ -35,6 +38,7 @@ test.describe('dance — focus trap', () => {
 
   test('Esc lukker DancerProfileEditor', async ({ page }) => {
     await switchDanceTab(page, "students");
+    await expect(page.getByTestId('dancer-profile-edit-dnc-1')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('dancer-profile-edit-dnc-1').click();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 3_000 });
