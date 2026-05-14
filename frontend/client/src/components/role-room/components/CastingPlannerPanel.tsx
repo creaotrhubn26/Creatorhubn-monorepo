@@ -185,6 +185,8 @@ import { PanelSkeleton } from './PanelSkeleton';
 import { EmptyProjectsHero } from './EmptyProjectsHero';
 import { useBeforeUnloadIfDirty } from '../hooks/useBeforeUnloadIfDirty';
 import { useAIRecommendation } from '../hooks/useAIRecommendation';
+import { usePlannerOnboardingTour } from '../hooks/usePlannerOnboardingTour';
+import { RoleRoomFeedbackFab } from './RoleRoomFeedbackFab';
 import {
   deriveActiveWorkflowStep,
   deriveCompletedWorkflowSteps,
@@ -3475,38 +3477,46 @@ type RoleRoomProjectWorkspaceState = {
   // AI-anbefaling-nudges: discovery-hints som vises maks én gang per bruker.
   // Bruker brukerens email/id som dedup-nøkkel så hver konto ser hintene.
   const aiNudgeUserKey = adminUser?.email || (adminUser?.id != null ? String(adminUser.id) : null);
-  const aiNudges = useAIRecommendation({ userKey: aiNudgeUserKey });
 
-  // Cmd+K-tip vises første gang brukeren har åpnet et reelt prosjekt og
-  // landet på en av hoved-tabs (≥ 1 sek på siden). Bare ikke-demo-prosjekter.
-  useEffect(() => {
-    if (!currentProject) return;
+  // Onboarding-tour aktiveres når bruker er på et reelt (ikke-demo) prosjekt.
+  // Hvert steg er en uavhengig recommendation som vises max én gang per konto.
+  const onboardingEnabled = useMemo(() => {
+    if (!currentProject) return false;
     if (
       isProtectedDemoProject(currentProject)
       || isTemplateProject(currentProject)
       || isTrollProject(currentProject)
       || isContentProducerDemoProject(currentProject)
     ) {
-      return;
+      return false;
     }
-    const timer = window.setTimeout(() => {
-      aiNudges.recommend({
-        recommendationId: 'cmd-k-discovery',
-        message: 'Trykk Cmd+K (eller Ctrl+K) for hurtigsøk på prosjekter, kandidater og tabs.',
-        actionLabel: 'Vis meg',
-        onAction: () => setCommandPaletteOpen(true),
-        durationMs: 15000,
-      });
-    }, 4000);
-    return () => window.clearTimeout(timer);
+    return true;
   }, [
     currentProject,
     isProtectedDemoProject,
     isTemplateProject,
     isTrollProject,
     isContentProducerDemoProject,
-    aiNudges,
   ]);
+
+  usePlannerOnboardingTour({
+    enabled: onboardingEnabled,
+    userKey: aiNudgeUserKey,
+    onOpenCommandPalette: () => setCommandPaletteOpen(true),
+    onFocusWorkflowStepper: () => {
+      // Scroll til toppen så stepperen er synlig
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    },
+    onShowClientReview: () => {
+      if (isContentProducerMode) {
+        openContentProducerPlannerSurface('approval', { focusPanel: 'reviews' });
+      } else {
+        navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+      }
+    },
+  });
 
   const handleSelectProjectFromSelector = useCallback(async (project: CastingProject) => {
     if ((isClientReviewerMode || isClientReviewerSession) && isProtectedDemoProject(project)) {
@@ -17027,6 +17037,18 @@ type RoleRoomProjectWorkspaceState = {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         items={commandPaletteItems}
+      />
+
+      <RoleRoomFeedbackFab
+        user={adminUser ? {
+          id: adminUser.id,
+          email: adminUser.email,
+          name: adminUser.display_name || adminUser.name,
+        } : null}
+        currentTabLabel={COMMAND_PALETTE_TABS.find((t) => t.tabIndex === activeTab)?.label}
+        currentProjectId={currentProject?.id ?? null}
+        currentProjectName={currentProject?.name ?? null}
+        hidden={isLiveSetImmersive}
       />
     </>
     </ErrorBoundary>
