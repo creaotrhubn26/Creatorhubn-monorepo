@@ -7687,13 +7687,13 @@ type RoleRoomProjectWorkspaceState = {
         overflowX: 'hidden',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        // Tettere typografi for å gi mer skjerm-real-estate til innhold.
-        // Tidligere: 16px desktop/tablet. Nå: 13.5px desktop, 14px tablet,
-        // 14px mobil (sistnevnte forhindrer iOS-zoom på inputs). Bruker
-        // px og ikke rem så vi unngår root-html-font-size-overrides fra
-        // andre apper. Brukeren rapporterte "for zoomet inn" — denne
-        // gjorde 16→13.5 = ~16% smalere UI på desktop.
+        // Tettere base-font (16→13.5px desktop) PLUS proporsjonal CSS-zoom
+        // 0.88 på desktop som komprimerer hele UI-en — padding, spacing,
+        // ikoner, knapper, alt — uten å endre layout-strukturen. Total
+        // visuell reduksjon ~22% på desktop. Mobil/tablet beholder full
+        // skala for touch-tilgjengelighet.
         fontSize: isDesktop ? '13.5px' : isTablet ? '14px' : '14px',
+        zoom: isDesktop ? 0.88 : isTablet ? 0.94 : 1,
         touchAction: 'pan-y',
         WebkitTapHighlightColor: 'transparent',
       }}
