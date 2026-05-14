@@ -55,7 +55,9 @@ const CHECKPOINTS: ActCheckpoint[] = [
     id: 'act1-protagonist',
     act: 1,
     label: 'Act 1: Protagonist introdusert',
-    check: (s) => hasText(s.logline.protagonist) && hasText(s.logline.protagonistTrait),
+    // Protagonist-navn er ofte korte (Cobb, Eve, Max) — bruk min 2 tegn for
+    // navnet, men behold default 5 tegn for karaktertrekk.
+    check: (s) => hasText(s.logline.protagonist, 2) && hasText(s.logline.protagonistTrait),
     suggestion: 'Definer protagonist + en distinkt karaktertrekk. Publikum må forstå hvem hovedpersonen er før Act 2 starter.',
   },
   {
@@ -69,8 +71,10 @@ const CHECKPOINTS: ActCheckpoint[] = [
     id: 'pp1-catalyst',
     act: 1,
     label: 'Plot Point 1: Catalyst (~25%)',
-    check: (s) => hasText(s.logline.goal, 10) && hasText(s.logline.antagonisticForce),
-    suggestion: 'Tydeliggjør hva som tvinger protagonist ut av sin vanlige verden (goal + force som hindrer det). Uten dette har historien ingen drivkraft.',
+    // PP1 = inciting incident. Krever et tydelig mål protagonisten skal jakte.
+    // Antagonistisk kraft hører til Act 2 og valideres separat der.
+    check: (s) => hasText(s.logline.goal, 10),
+    suggestion: 'Tydeliggjør hva som tvinger protagonist ut av sin vanlige verden — beskriv målet (goal) konkret. Uten dette har historien ingen drivkraft.',
   },
   {
     id: 'act2-antagonist',

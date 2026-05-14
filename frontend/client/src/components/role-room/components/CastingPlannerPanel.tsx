@@ -181,6 +181,7 @@ import {
 } from './ContentProducerWorkflowStepper';
 import { KlientStatusBadge } from './KlientStatusBadge';
 import { PanelSkeleton } from './PanelSkeleton';
+import { useBeforeUnloadIfDirty } from '../hooks/useBeforeUnloadIfDirty';
 import {
   deriveActiveWorkflowStep,
   deriveCompletedWorkflowSteps,
@@ -1418,6 +1419,9 @@ type RoleRoomProjectWorkspaceState = {
     void reloadProducerInbox();
   }, [reloadProducerInbox]);
   const unsavedProjectSwitchStateRef = useRef<Record<string, string>>({});
+  // Speil av unsavedProjectSwitchStateRef-aktivitet i React-state så
+  // useBeforeUnloadIfDirty kan re-evaluere når noe blir dirty/clean.
+  const [hasAnyUnsavedChanges, setHasAnyUnsavedChanges] = useState(false);
 
   // Keep the UI fallback aligned with settingsService/castingService demo seeds.
   const getUserId = useCallback((): string => {
@@ -1441,10 +1445,17 @@ type RoleRoomProjectWorkspaceState = {
     }
     if (hasUnsaved) {
       unsavedProjectSwitchStateRef.current[source] = reason || source;
-      return;
+    } else {
+      delete unsavedProjectSwitchStateRef.current[source];
     }
-    delete unsavedProjectSwitchStateRef.current[source];
+    // Hold React-state synket så useBeforeUnloadIfDirty re-evaluerer.
+    setHasAnyUnsavedChanges(Object.keys(unsavedProjectSwitchStateRef.current).length > 0);
   }, []);
+
+  useBeforeUnloadIfDirty({
+    isDirty: hasAnyUnsavedChanges,
+    message: 'Du har endringer som ikke er lagret i Casting Planner. Forlate likevel?',
+  });
   const confirmProjectSwitchIfNeeded = useCallback((targetProject: CastingProject): boolean => {
     const activeUnsavedReasons = Array.from(new Set(
       Object.values(unsavedProjectSwitchStateRef.current)
@@ -7877,6 +7888,7 @@ type RoleRoomProjectWorkspaceState = {
   const isLiveSetImmersive = activeTab === LIVE_SET_TAB_INDEX && isBrowserFullscreen;
 
   return (
+    <ErrorBoundary>
     <>
       {canSwitchRoleRoomRole && professionDialogOpen && (
         <Suspense fallback={null}>
@@ -16891,5 +16903,6 @@ type RoleRoomProjectWorkspaceState = {
         items={commandPaletteItems}
       />
     </>
+    </ErrorBoundary>
   );
 }
