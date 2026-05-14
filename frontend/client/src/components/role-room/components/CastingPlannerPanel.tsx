@@ -181,7 +181,9 @@ import {
 } from './ContentProducerWorkflowStepper';
 import { KlientStatusBadge } from './KlientStatusBadge';
 import { PanelSkeleton } from './PanelSkeleton';
+import { EmptyProjectsHero } from './EmptyProjectsHero';
 import { useBeforeUnloadIfDirty } from '../hooks/useBeforeUnloadIfDirty';
+import { useAIRecommendation } from '../hooks/useAIRecommendation';
 import {
   deriveActiveWorkflowStep,
   deriveCompletedWorkflowSteps,
@@ -3467,6 +3469,42 @@ type RoleRoomProjectWorkspaceState = {
     isTrollProject,
     isContentProducerDemoProject,
     toast,
+  ]);
+
+  // AI-anbefaling-nudges: discovery-hints som vises maks én gang per bruker.
+  // Bruker brukerens email/id som dedup-nøkkel så hver konto ser hintene.
+  const aiNudgeUserKey = adminUser?.email || (adminUser?.id != null ? String(adminUser.id) : null);
+  const aiNudges = useAIRecommendation({ userKey: aiNudgeUserKey });
+
+  // Cmd+K-tip vises første gang brukeren har åpnet et reelt prosjekt og
+  // landet på en av hoved-tabs (≥ 1 sek på siden). Bare ikke-demo-prosjekter.
+  useEffect(() => {
+    if (!currentProject) return;
+    if (
+      isProtectedDemoProject(currentProject)
+      || isTemplateProject(currentProject)
+      || isTrollProject(currentProject)
+      || isContentProducerDemoProject(currentProject)
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      aiNudges.recommend({
+        recommendationId: 'cmd-k-discovery',
+        message: 'Trykk Cmd+K (eller Ctrl+K) for hurtigsøk på prosjekter, kandidater og tabs.',
+        actionLabel: 'Vis meg',
+        onAction: () => setCommandPaletteOpen(true),
+        durationMs: 15000,
+      });
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [
+    currentProject,
+    isProtectedDemoProject,
+    isTemplateProject,
+    isTrollProject,
+    isContentProducerDemoProject,
+    aiNudges,
   ]);
 
   const handleSelectProjectFromSelector = useCallback(async (project: CastingProject) => {
@@ -9499,6 +9537,12 @@ type RoleRoomProjectWorkspaceState = {
           <ErrorBoundary>
           <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
+          {!currentProject && projects.length === 0 ? (
+            <EmptyProjectsHero
+              workspaceName={branding.appName}
+              onCreateProject={() => setProjectCreationModalOpen(true)}
+            />
+          ) : (
           <DashboardPanel
             key={currentProject?.id ?? 'no-project'}
             project={currentProject}
@@ -9525,6 +9569,7 @@ type RoleRoomProjectWorkspaceState = {
             onCandidatesChange={loadProjects}
             profession={profession}
           />
+          )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={ROLES_TAB_INDEX}>

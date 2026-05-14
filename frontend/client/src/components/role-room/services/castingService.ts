@@ -42,6 +42,7 @@ import authSessionService from './authSessionService';
 import settingsService, { getCurrentUserId } from './settingsService';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { logRoleRoomDiagnostic } from '../utils/roleRoomDiagnostics';
+import { generateAvatarUrl } from '../utils/generateAvatarUrl';
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -3966,6 +3967,7 @@ export const castingService = {
           id: 'role-nora',
           name: 'Nora Tidemann',
           description: 'Paleontolog, tidlig 30-årene. Intelligent, besluttsom og empatisk. Hovedpersonen som må overbevise myndighetene om trollets eksistens.',
+          referenceImageUrl: generateAvatarUrl('Nora Tidemann role', { style: 'lorelei' }),
           requirements: {
             age: { min: 28, max: 38 },
             gender: ['female'],
@@ -3979,6 +3981,7 @@ export const castingService = {
           id: 'role-andreas',
           name: 'Andreas Isaksen',
           description: 'Rådgiver for Statsministerens kontor, 30-40 år. Pragmatisk og handlekraftig. Noras kontakt i myndighetene.',
+          referenceImageUrl: generateAvatarUrl('Andreas Isaksen role', { style: 'personas' }),
           requirements: {
             age: { min: 32, max: 42 },
             gender: ['male'],
@@ -3992,6 +3995,7 @@ export const castingService = {
           id: 'role-tobias',
           name: 'Tobias Tidemann',
           description: 'Noras far, 60-70 år. Tidligere forsker med hemmeligheter om trollene. Visdom og sårbarhet.',
+          referenceImageUrl: generateAvatarUrl('Tobias Tidemann role', { style: 'personas' }),
           requirements: {
             age: { min: 60, max: 72 },
             gender: ['male'],
@@ -4005,6 +4009,7 @@ export const castingService = {
           id: 'role-general',
           name: 'General Lund',
           description: 'Militær leder, 50-60 år. Autoritær og besluttsom. Vil bruke militær makt for å stoppe trollet.',
+          referenceImageUrl: generateAvatarUrl('General Lund role', { style: 'personas' }),
           requirements: {
             age: { min: 50, max: 62 },
             gender: ['male'],
@@ -4018,6 +4023,7 @@ export const castingService = {
           id: 'role-statsminister',
           name: 'Statsminister Berit Moberg',
           description: 'Norges statsminister, 50-55 år. Under enormt press. Må ta vanskelige beslutninger.',
+          referenceImageUrl: generateAvatarUrl('Statsminister Berit Moberg role', { style: 'lorelei' }),
           requirements: {
             age: { min: 48, max: 58 },
             gender: ['female'],
@@ -4031,6 +4037,7 @@ export const castingService = {
           id: 'role-arbeider1',
           name: 'Tunnelarbeider 1',
           description: 'Erfaren tunnelarbeider, 35-50 år. Oppdager hulen.',
+          referenceImageUrl: generateAvatarUrl('Tunnelarbeider 1 role', { style: 'personas' }),
           requirements: {
             age: { min: 35, max: 50 },
             gender: ['male'],
@@ -4043,6 +4050,7 @@ export const castingService = {
           id: 'role-arbeider2',
           name: 'Tunnelarbeider 2',
           description: 'Yngre tunnelarbeider, 25-35 år.',
+          referenceImageUrl: generateAvatarUrl('Tunnelarbeider 2 role', { style: 'personas' }),
           requirements: {
             age: { min: 25, max: 35 },
             gender: ['male'],
@@ -4055,6 +4063,7 @@ export const castingService = {
           id: 'role-bonde',
           name: 'Bonden i Østerdalen',
           description: 'Lokal bonde, 50-65 år. Ser trollet i skogen.',
+          referenceImageUrl: generateAvatarUrl('Bonden Østerdalen role', { style: 'personas' }),
           requirements: {
             age: { min: 50, max: 65 },
             gender: ['male'],
@@ -4074,7 +4083,7 @@ export const castingService = {
             phone: '+47 912 34 567',
             address: 'Oslo',
           },
-          photos: ['/attached_assets/generated_images/professional_female_headshot_portrait.png'],
+          photos: [generateAvatarUrl('Ine Marie Wilmann', { style: 'lorelei' })],
           videos: ['https://vimeo.com/demo-reel-ine'],
           auditionNotes: 'Perfekt for Nora. Sterk skuespiller med erfaring fra Wisting, Exit og internasjonale produksjoner. Fantastisk emosjonell rekkevidde.',
           status: 'confirmed',
@@ -4090,7 +4099,7 @@ export const castingService = {
             phone: '+47 923 45 678',
             address: 'Oslo',
           },
-          photos: ['/attached_assets/generated_images/professional_male_headshot_portrait.png'],
+          photos: [generateAvatarUrl('Kim Falck', { style: 'personas' })],
           videos: [],
           auditionNotes: 'Overbevisende som Andreas. God kjemi med Ine i prøvescener.',
           status: 'confirmed',
@@ -4106,7 +4115,7 @@ export const castingService = {
             phone: '+47 934 56 789',
             address: 'Oslo',
           },
-          photos: [],
+          photos: [generateAvatarUrl('Gard B. Eidsvold', { style: 'personas' })],
           videos: [],
           auditionNotes: 'Veteran skuespiller. Perfekt som Tobias med sin varme og dybde.',
           status: 'confirmed',
@@ -4122,7 +4131,7 @@ export const castingService = {
             phone: '+47 945 67 890',
             address: 'Lillehammer',
           },
-          photos: [],
+          photos: [generateAvatarUrl('Fridtjov Såheim', { style: 'personas' })],
           videos: [],
           auditionNotes: 'Sterk tilstedeværelse. Perfekt for militær autoritet.',
           status: 'confirmed',
@@ -4138,7 +4147,7 @@ export const castingService = {
             phone: '+47 956 78 901',
             address: 'Oslo',
           },
-          photos: [],
+          photos: [generateAvatarUrl('Anneke von der Lippe', { style: 'lorelei' })],
           videos: [],
           auditionNotes: 'Prisbelønt skuespiller. Troverdig og karismatisk som statsminister.',
           status: 'confirmed',
@@ -4153,7 +4162,7 @@ export const castingService = {
             email: 'mads.ousdal@email.no',
             phone: '+47 967 89 012',
           },
-          photos: [],
+          photos: [generateAvatarUrl('Mads Ousdal', { style: 'personas' })],
           videos: [],
           auditionNotes: 'Erfaren karakterskuespiller. Troverdig som tunnelarbeider.',
           status: 'selected',
@@ -4168,7 +4177,7 @@ export const castingService = {
             email: 'eric.v@actors.no',
             phone: '+47 978 90 123',
           },
-          photos: [],
+          photos: [generateAvatarUrl('Eric Vorenholt', { style: 'personas' })],
           videos: [],
           auditionNotes: 'Ung og fysisk. God for action-scener.',
           status: 'selected',
@@ -4183,7 +4192,7 @@ export const castingService = {
             email: 'bjorn.s@agent.no',
             phone: '+47 989 01 234',
           },
-          photos: [],
+          photos: [generateAvatarUrl('Bjørn Sundquist', { style: 'personas' })],
           videos: [],
           auditionNotes: 'Sterk kandidat for bonden. Autentisk dialekt.',
           status: 'shortlist',
@@ -4198,7 +4207,7 @@ export const castingService = {
             email: 'per.s@teater.no',
             phone: '+47 990 12 345',
           },
-          photos: [],
+          photos: [generateAvatarUrl('Per Schaanning', { style: 'personas' })],
           videos: [],
           auditionNotes: 'Alternativ for bonderollen. God karakterskuespiller.',
           status: 'requested',
@@ -4249,6 +4258,7 @@ export const castingService = {
             phone: '+47 901 23 456',
             address: 'Oslo',
           },
+          avatarUrl: generateAvatarUrl('Roar Uthaug', { style: 'personas' }),
           availability: {
             startDate: '2026-01-15',
             endDate: '2026-03-30',
@@ -4267,6 +4277,7 @@ export const castingService = {
             email: 'espen@motioncontent.no',
             phone: '+47 902 34 567',
           },
+          avatarUrl: generateAvatarUrl('Espen Sandberg', { style: 'personas' }),
           availability: {
             startDate: '2026-01-01',
             endDate: '2026-06-30',
@@ -4286,6 +4297,7 @@ export const castingService = {
             phone: '+45 123 45 678',
             address: 'København',
           },
+          avatarUrl: generateAvatarUrl('Jallo Faber', { style: 'personas' }),
           availability: {
             startDate: '2026-01-18',
             endDate: '2026-03-15',
@@ -4305,6 +4317,7 @@ export const castingService = {
             phone: '+47 903 45 678',
             address: 'Oslo',
           },
+          avatarUrl: generateAvatarUrl('Storm Studios VFX', { style: 'bottts' }),
           availability: {
             startDate: '2026-01-01',
             endDate: '2026-09-30',
@@ -4323,6 +4336,7 @@ export const castingService = {
             email: 'kai@stunts.no',
             phone: '+47 904 56 789',
           },
+          avatarUrl: generateAvatarUrl('Kai Kolstad Rødseth', { style: 'personas' }),
           availability: {
             startDate: '2026-01-20',
             endDate: '2026-02-28',
@@ -4341,6 +4355,7 @@ export const castingService = {
             email: 'karen@costumes.no',
             phone: '+47 905 67 890',
           },
+          avatarUrl: generateAvatarUrl('Karen Fabritius Gram', { style: 'lorelei' }),
           availability: {
             startDate: '2026-01-10',
             endDate: '2026-03-30',
@@ -4359,6 +4374,7 @@ export const castingService = {
             email: 'tormod@sound.no',
             phone: '+47 906 78 901',
           },
+          avatarUrl: generateAvatarUrl('Tormod Ringnes', { style: 'personas' }),
           availability: {
             startDate: '2026-01-20',
             endDate: '2026-05-30',
@@ -4377,6 +4393,7 @@ export const castingService = {
             email: 'nina@ad.no',
             phone: '+47 907 89 012',
           },
+          avatarUrl: generateAvatarUrl('Nina Widerberg', { style: 'lorelei' }),
           availability: {
             startDate: '2026-01-15',
             endDate: '2026-03-30',

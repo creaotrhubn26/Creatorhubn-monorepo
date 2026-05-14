@@ -9,6 +9,14 @@
  *   - AuthProvider (useAuth)
  *   - ToastProvider (useToast i flere children)
  *   - EnhancedMasterIntegrationProvider (useEnhancedMasterIntegration)
+ *
+ * URL-flagg (kun for e2e):
+ *   ?harness=dance_studio        Mounter DanceWorkspace direkte med en seedet
+ *                                projectId, slik at spec slipper å drive
+ *                                project-creation-modalen. Brukes av dance-*-
+ *                                specs. I produksjon lastes dance bare etter at
+ *                                project-creation-modalen har valgt et prosjekt.
+ *   ?harness-project=<id>        Override projectId (default: proj-spring-2026)
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -18,6 +26,7 @@ import RoleRoomDashboardPanel from './components/role-room/RoleRoomDashboardPane
 import { ToastProvider } from './components/role-room/components/ToastStack';
 import { AuthProvider } from './contexts/AuthContext';
 import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterIntegrationProvider';
+import { DanceWorkspace } from './components/role-room/dance';
 
 const theme = createTheme({
   palette: { mode: 'dark' },
@@ -29,7 +38,33 @@ const queryClient = new QueryClient({
   },
 });
 
+function readUrlFlag(name: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return new URLSearchParams(window.location.search).get(name);
+  } catch {
+    return null;
+  }
+}
+
 function TestHarness() {
+  const harnessMode = readUrlFlag('harness');
+  const seededProjectId = readUrlFlag('harness-project') ?? 'proj-spring-2026';
+
+  let panel: React.ReactNode;
+  if (harnessMode === 'dance_studio' || harnessMode === 'dance_freelance') {
+    panel = (
+      <DanceWorkspace
+        modeOverride={harnessMode}
+        projectId={seededProjectId}
+      />
+    );
+  } else {
+    panel = (
+      <RoleRoomDashboardPanel userId="e2e-test-user" profession="photographer" />
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
@@ -37,8 +72,8 @@ function TestHarness() {
         <AuthProvider>
           <ToastProvider>
             <EnhancedMasterIntegrationProvider>
-              <div style={{ padding: 16 }}>
-                <RoleRoomDashboardPanel userId="e2e-test-user" profession="photographer" />
+              <div data-testid="e2e-harness-root" style={{ padding: 16 }}>
+                {panel}
               </div>
             </EnhancedMasterIntegrationProvider>
           </ToastProvider>

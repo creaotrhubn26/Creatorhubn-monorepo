@@ -460,6 +460,9 @@ export interface Role {
   sceneIds?: string[];
   scene_ids?: string[];
   status?: string;
+  /** Visuell referanse for casting (avatar eller mood-image). */
+  referenceImageUrl?: string;
+  reference_image_url?: string;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -519,6 +522,9 @@ export interface CrewMember {
   status?: CrewStatus;
   contactInfo?: ContactInfo;
   contact_info?: ContactInfo;
+  /** Bilde-URL (avatar eller foto). Brukes i crew-listings og fane-headers. */
+  avatarUrl?: string;
+  avatar_url?: string;
   rate?: number;
   notes?: string;
   notesAuthorName?: string;
