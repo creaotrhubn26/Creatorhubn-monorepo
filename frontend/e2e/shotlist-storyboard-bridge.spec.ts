@@ -1,14 +1,17 @@
 import { stat } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { openCastingPlanner } from './helpers/role-room';
 
-const TEST_PAGE = '/e2e-casting-test.html?session=content-producer';
 const DEMO_PROJECT_NAME = 'Northwind Drilling - Sikker start';
 
+/**
+ * Sprint A.6: Migrert til felles helper. Bruker session=content-producer
+ * URL-flag som spec-en alltid trenger.
+ */
 async function openRoleRoom(page: Page) {
-  await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
-  await expect(
-    page.locator('text=/Role Room|Casting|produksjonsplanlegging|The Role Room/i').first(),
-  ).toBeVisible({ timeout: 30_000 });
+  await openCastingPlanner(page, {
+    urlFlags: { session: 'content-producer' },
+  });
 }
 
 async function dismissOnboardingIfPresent(page: Page) {

@@ -7993,6 +7993,7 @@ type RoleRoomProjectWorkspaceState = {
         ref={workspaceRootRef}
         role="main"
         aria-label={branding.appName}
+        data-testid="casting-planner-root"
         sx={{
         ...KEYFRAMES_STYLES,
         width: '100%',

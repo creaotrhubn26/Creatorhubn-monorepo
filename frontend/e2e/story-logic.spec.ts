@@ -1,43 +1,30 @@
 import { test, expect, type Page } from '@playwright/test';
+import {
+  openCastingPlanner,
+  selectFirstProject,
+  gotoStoryArcStudio as gotoStoryArcStudioHelper,
+} from './helpers/role-room';
 
 // ────────────────────────────────────────────────────────────
 // E2E: Story Logic Panel — Validates the Story Logic System
 // Uses the CastingPlannerPanel test harness (full 11-tab view)
+//
+// Sprint A.6: Migrert fra lokal gotoCastingPlanner-helper til felles
+// helpers/role-room.ts. Felles helper venter på
+// [data-testid="casting-planner-root"] i stedet for lokalisert tekst
+// som var gated bak viewport.isDesktop.
 // ────────────────────────────────────────────────────────────
-
-const TEST_PAGE = '/e2e-casting-test.html';
 
 /** Navigate to the CastingPlannerPanel test page and wait for render */
 async function gotoCastingPlanner(page: Page) {
-  await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
-
-  // Wait for the CastingPlannerPanel to render - it shows "The Role Room" header
-  await expect(
-    page.getByText('Casting, crew & produksjonsplanlegging')
-  ).toBeVisible({ timeout: 30_000 });
+  await openCastingPlanner(page);
 }
 
-/** Select the first project in the sidebar list */
-async function selectFirstProject(page: Page) {
-  // Wait for the project list to appear - CastingPlannerPanel has a project sidebar
-  const projectItem = page.locator('li').first();
-  await expect(projectItem).toBeVisible({ timeout: 10_000 });
-
-  // Click the first project entry (avoid clicking "Slett"/Delete button)
-  await projectItem.click();
-  await page.waitForTimeout(800);
-}
-
-/** Navigate to the Story Arc Studio tab */
+/** Navigate to the Story Arc Studio tab (wraps shared helper with project-select) */
 async function gotoStoryArcStudio(page: Page) {
   await gotoCastingPlanner(page);
   await selectFirstProject(page);
-
-  // Story Arc Studio tab has id="tab-story-arc-studio" at index 9
-  const storyArcTab = page.locator('#tab-story-arc-studio');
-  await storyArcTab.scrollIntoViewIfNeeded({ timeout: 10_000 });
-  await storyArcTab.click();
-  await page.waitForTimeout(500);
+  await gotoStoryArcStudioHelper(page);
 }
 
 // ═══════════════════════════════════════════════════════════

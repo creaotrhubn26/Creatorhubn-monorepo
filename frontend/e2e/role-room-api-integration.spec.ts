@@ -1,7 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openRoleRoomDashboard } from './helpers/role-room';
 
 // ────────────────────────────────────────────────────────────
 // E2E: Role Room API Integration Tests
+// Sprint A.6: Migrert til felles openRoleRoomDashboard-helper som venter
+// på .role-room-route (DOM-marker) i stedet for lokalisert tekst.
 // ────────────────────────────────────────────────────────────
 // Tests the full end-to-end flow with a real backend:
 //   - API key auto-bootstrap
@@ -53,26 +56,18 @@ async function cleanTestData() {
 /** Navigate to Role Room test page, clear localStorage first */
 async function gotoCleanRoleRoom(page: Page) {
   // Navigate to any page first to set localStorage (same-origin requirement)
-  await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
+  await openRoleRoomDashboard(page);
 
   // Clear the API key so bootstrap runs fresh
   await page.evaluate(() => localStorage.removeItem('roleRoomApiKey'));
 
   // Reload to trigger bootstrap
-  await page.reload({ waitUntil: 'load', timeout: 60_000 });
-
-  // Wait for Role Room panel
-  await expect(
-    page.getByText('Casting, crew & produksjonsplanlegging')
-  ).toBeVisible({ timeout: 30_000 });
+  await openRoleRoomDashboard(page);
 }
 
 /** Navigate preserving any existing localStorage */
 async function gotoRoleRoom(page: Page) {
-  await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
-  await expect(
-    page.getByText('Casting, crew & produksjonsplanlegging')
-  ).toBeVisible({ timeout: 30_000 });
+  await openRoleRoomDashboard(page);
 }
 
 // ═══════════════════════════════════════════════════════════

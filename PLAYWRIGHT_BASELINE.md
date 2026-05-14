@@ -42,21 +42,29 @@ Klassifisering per spec — oppdateres etter hvert som de kjøres:
 
 **Batch 1 totalt: 37 passed, 29 failed, 7 did not run, 10.7 min wall time.**
 
-#### 1.1.x Rot-årsak-analyse: 28 av 29 failures er ÉN bug-klasse
-Helperen `gotoCastingPlanner` i `role-room-api-integration.spec.ts:14` og
-`story-logic.spec.ts:14` venter på `getByText('Casting, crew & produksjonsplanlegging')`
+#### 1.1.x Rot-årsak-analyse: 28 av 29 failures var ÉN bug-klasse
+Helperen `gotoCastingPlanner` i `role-room-api-integration.spec.ts` og
+`story-logic.spec.ts` ventet på `getByText('Casting, crew & produksjonsplanlegging')`
 som er subtittelen i `RoleRoomDashboardPanel`. Subtittelen vises kun når
-`viewport.isDesktop` er true. Test-harness setter ikke nødvendige
-URL-flagger eller localStorage-state for å trigge dashboard-rendering.
+`viewport.isDesktop` er true.
 
-Sprint 5.2 fikset dette for `role-room-workflow.spec.ts` ved å:
-1. Legge til manglende providere i `test-harness.tsx`
-2. Endre 2 Responsive-tester til å vente på `.role-room-route` i stedet for subtittelen
+**Sprint A.6 fix:**
+- Ny felles `frontend/e2e/helpers/role-room.ts` med:
+  - `openRoleRoomDashboard(page)` — venter på `.role-room-route` (klasse)
+  - `openCastingPlanner(page)` — venter på `[data-testid="casting-planner-root"]`
+- Lagt til `data-testid="casting-planner-root"` i `CastingPlannerPanel.tsx`
+- Migrert: `story-logic`, `role-room-api-integration`, `shotlist-storyboard-bridge`, `client-media-workspaces`
 
-Foreslått fix (egen sprint, ikke i baseline):
-- Erstatt `gotoCastingPlanner`-helpers i alle 4 ramme-specs med en delt utility
-- Utility venter på `[data-testid="role-room-route"]` (skal alltid være DOM-tilstede)
-- Subtittel-verifisering blir et separat assert hvor det er meningsfullt
+**Resultat etter Sprint A.6 helper-fix:**
+- `.role-room-route`/casting-planner-root-venting fungerer nå ✓
+- 33 tester feiler fortsatt — men NY rot-årsak: `selectFirstProject` finner
+  ingen `<li>` i sidebar fordi harnessene ikke seeder demo-prosjekter.
+- Dette er en separat fix-klasse (data-seeding i test-harness).
+
+**Neste-steg-fix (egen sprint):**
+- `test-harness-casting.tsx` skal seede ETT demo-prosjekt så `selectFirstProject` funker
+- Eller spec-er må bruke API/`fetch` til å opprette prosjekt før test
+- API-baserte tester (`role-room-api-integration`) trenger backend tilgjengelig på `localhost:3001/api/role-room`
 
 ### 1.2 Producer / klient
 
