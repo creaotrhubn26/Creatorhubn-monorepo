@@ -180,6 +180,7 @@ import {
   type WorkflowStepKey,
 } from './ContentProducerWorkflowStepper';
 import { KlientStatusBadge } from './KlientStatusBadge';
+import { PanelSkeleton } from './PanelSkeleton';
 import {
   deriveActiveWorkflowStep,
   deriveCompletedWorkflowSteps,
@@ -9484,7 +9485,7 @@ type RoleRoomProjectWorkspaceState = {
             </Box>
           ) : (
           <ErrorBoundary>
-          <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
+          <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
           <DashboardPanel
             key={currentProject?.id ?? 'no-project'}
@@ -12276,11 +12277,7 @@ type RoleRoomProjectWorkspaceState = {
               </Box>
               {/* Story Logic Panel */}
               <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                <Suspense fallback={
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                    <CircularProgress size={32} sx={{ color: '#8b5cf6' }} />
-                  </Box>
-                }>
+                <Suspense fallback={<PanelSkeleton variant="form" count={5} />}>
                   <StoryLogicPanel
                     key={currentProject?.id ?? 'no-project'}
                     projectId={currentProject?.id}
@@ -12372,11 +12369,7 @@ type RoleRoomProjectWorkspaceState = {
               {/* Story Writer Content - ManuscriptPanel */}
               <Box sx={{ flex: 1, overflow: 'hidden' }}>
                 <ErrorBoundary>
-                  <Suspense fallback={
-                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                      <CircularProgress />
-                    </Box>
-                  }>
+                  <Suspense fallback={<PanelSkeleton variant="panel" count={4} />}>
                     <ManuscriptPanel
                       key={currentProject?.id ?? 'no-project'}
                       projectId={currentProject?.id}

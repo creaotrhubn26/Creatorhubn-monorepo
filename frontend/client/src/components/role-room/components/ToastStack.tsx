@@ -14,7 +14,8 @@ export interface Toast {
 }
 
 interface ToastContextType {
-  showToast: (toast: Omit<Toast, 'id'>) => void;
+  /** Show a toast and return its generated id so callers kan lukke det programmatisk. */
+  showToast: (toast: Omit<Toast, 'id'>) => string;
   showSuccess: (message: string, duration?: number) => void;
   showError: (message: string, duration?: number) => void;
   showWarning: (message: string, duration?: number) => void;
@@ -50,7 +51,7 @@ export const ToastProvider: FC<ToastProviderProps> = ({
   }, []);
 
   const showToast = useCallback(
-    (toast: Omit<Toast, 'id'>) => {
+    (toast: Omit<Toast, 'id'>): string => {
       const id = `toast-${Date.now()}-${Math.random()}`;
       const newToast: Toast = {
         id,
@@ -74,6 +75,8 @@ export const ToastProvider: FC<ToastProviderProps> = ({
           newToast.onClose?.();
         }, newToast.duration);
       }
+
+      return id;
     },
     [maxToasts, removeToast]
   );
