@@ -84,7 +84,9 @@ import { COMPETITOR_CONFIGS } from '../components/role-room/components/Competito
 import BlockListEditor from '../components/role-room/cms/BlockListEditor';
 import RevisionsDrawer from '../components/role-room/cms/RevisionsDrawer';
 import { createBlock, isBlockArray, type Block, type BlocksContent } from '../components/role-room/cms/blockSchema';
+import { PAGE_TEMPLATES, type TemplateKind } from '../components/role-room/cms/pageTemplates';
 import HistoryIcon from '@mui/icons-material/History';
+import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
@@ -2427,6 +2429,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const previewReadyRef = useRef(false);
 
@@ -2675,6 +2678,18 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
     setBlocks(initial);
   };
 
+  const applyTemplate = (key: TemplateKind) => {
+    const template = PAGE_TEMPLATES.find((t) => t.key === key);
+    if (!template) return;
+    if (blocks && blocks.length > 0) {
+      if (!confirm(`Erstatt eksisterende ${blocks.length} blokk(er) med mal "${template.label}"? Eksisterende innhold lagres som revisjon før overskriving.`)) {
+        return;
+      }
+    }
+    setBlocks(template.build());
+    setTemplatePickerOpen(false);
+  };
+
   if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
 
   const previewWidths = { desktop: '100%', tablet: 768, mobile: 390 };
@@ -2755,34 +2770,60 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
               >
                 ← Tilbake til legacy-skjema
               </Button>
+              <Box sx={{ flex: 1 }} />
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AutoAwesomeMosaicIcon sx={{ fontSize: 14 }} />}
+                onClick={() => setTemplatePickerOpen(true)}
+                sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none', fontSize: '0.78rem' }}
+              >
+                Bruk mal
+              </Button>
             </Stack>
             <BlockListEditor blocks={blocks} onChange={setBlocks} />
           </Stack>
         ) : (
           <>
         <Stack
-          direction="row"
+          direction={{ xs: 'column', sm: 'row' }}
           spacing={1.5}
-          alignItems="center"
+          alignItems={{ sm: 'center' }}
           sx={{ p: 1.5, borderRadius: 1.5, border: '1px dashed rgba(167,139,250,0.32)', bgcolor: 'rgba(167,139,250,0.04)' }}
         >
           <Typography sx={{ color: 'rgba(203,213,225,0.86)', fontSize: '0.84rem', flex: 1 }}>
-            Vil du redigere med block-CMS (Webflow-stil)? Konverter dette legacy-innholdet til drag-droppable blokker.
+            Vil du redigere med block-CMS (Webflow-stil)? Konverter eksisterende innhold eller start fra en mal.
           </Typography>
-          <Button
-            size="small"
-            variant="contained"
-            onClick={convertToBlocks}
-            sx={{
-              bgcolor: '#a78bfa',
-              color: '#0b1120',
-              textTransform: 'none',
-              fontWeight: 700,
-              '&:hover': { bgcolor: '#c4b5fd' },
-            }}
-          >
-            Konverter til blocks
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AutoAwesomeMosaicIcon sx={{ fontSize: 14 }} />}
+              onClick={() => setTemplatePickerOpen(true)}
+              sx={{
+                color: '#a78bfa',
+                borderColor: 'rgba(167,139,250,0.32)',
+                textTransform: 'none',
+                fontWeight: 600,
+              }}
+            >
+              Start fra mal
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={convertToBlocks}
+              sx={{
+                bgcolor: '#a78bfa',
+                color: '#0b1120',
+                textTransform: 'none',
+                fontWeight: 700,
+                '&:hover': { bgcolor: '#c4b5fd' },
+              }}
+            >
+              Konverter til blocks
+            </Button>
+          </Stack>
         </Stack>
 
         <CmsTextField label="Tittel (H1)" value={content.h1} onChange={(v) => updateField('h1', v)} />
@@ -3004,6 +3045,58 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
           setReloadKey((k) => k + 1);
         }}
       />
+
+      <Dialog
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.95)' } }}
+      >
+        <DialogTitle sx={{ color: '#f8fafc', borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <AutoAwesomeMosaicIcon sx={{ color: '#a78bfa' }} />
+            <Box>Velg mal</Box>
+          </Stack>
+        </DialogTitle>
+        <DialogContent sx={{ pt: '20px !important' }}>
+          <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.86rem', mb: 2 }}>
+            Maler erstatter eksisterende blokker. Forrige versjon lagres som revisjon før overskriving.
+          </Typography>
+          <Stack spacing={1.2}>
+            {PAGE_TEMPLATES.map((t) => (
+              <Box
+                key={t.key}
+                onClick={() => applyTemplate(t.key)}
+                sx={{
+                  p: 1.8,
+                  borderRadius: 1.5,
+                  cursor: 'pointer',
+                  border: '1px solid rgba(148,163,184,0.16)',
+                  bgcolor: 'rgba(2,6,23,0.34)',
+                  transition: 'all 0.18s ease',
+                  '&:hover': {
+                    border: '1px solid rgba(167,139,250,0.5)',
+                    bgcolor: 'rgba(167,139,250,0.06)',
+                  },
+                }}
+              >
+                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.96rem', mb: 0.4 }}>
+                  {t.label}
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem', lineHeight: 1.55 }}>
+                  {t.description}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTemplatePickerOpen(false)} sx={{ color: 'rgba(203,213,225,0.78)' }}>
+            Avbryt
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
