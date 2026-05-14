@@ -14,6 +14,12 @@ export interface UseKanbanRealtimeReturn {
 const HEARTBEAT_MS = 25_000;
 const INITIAL_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
+// Etter 5 raske feil gir vi opp og stopper reconnect-loopen. Hindrer
+// "WebSocket is closed before the connection is established"-spam i
+// console + UI-hang når backend ikke har WS-endepunkt (f.eks. om Render-
+// instansen sover på free-tier). Bruker kan refresh siden for å prøve igjen.
+const MAX_RAPID_FAILURES = 5;
+const RAPID_FAILURE_WINDOW_MS = 60_000;
 
 /**
  * Opens a WebSocket to `/ws?projectId=<id>` and calls
@@ -36,6 +42,10 @@ export function useKanbanRealtime(
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  // Sirkulærbuffer av timestamps for siste N feil. Brukes til å oppdage
+  // "WS er knust"-state og slutte å prøve reconnect i den browser-sesjonen.
+  const failureTimestampsRef = useRef<number[]>([]);
+  const givenUpRef = useRef(false);
   // Keep callback stable so the connect closure always calls the latest version
   const onChangeRef = useRef(onRemoteChange);
   useEffect(() => { onChangeRef.current = onRemoteChange; }, [onRemoteChange]);
@@ -49,6 +59,7 @@ export function useKanbanRealtime(
 
   const connect = useCallback(() => {
     if (!projectId || !mountedRef.current) return;
+    if (givenUpRef.current) return;
 
     // WebSockets can't go through Vercel's rewrite layer (HTTP-only),
     // so in production we dial the Render backend directly. In dev
@@ -104,9 +115,27 @@ export function useKanbanRealtime(
       if (!mountedRef.current) return;
       setConnected(false);
       clearTimers();
+
+      // Spor feilen og sjekk om vi er i en knust-state.
+      const now = Date.now();
+      const recent = failureTimestampsRef.current.filter(
+        (t) => now - t < RAPID_FAILURE_WINDOW_MS,
+      );
+      recent.push(now);
+      failureTimestampsRef.current = recent;
+      if (recent.length >= MAX_RAPID_FAILURES) {
+        givenUpRef.current = true;
+        console.warn(
+          '[useKanbanRealtime] gir opp WebSocket-reconnect etter ' +
+            `${MAX_RAPID_FAILURES} feil på under ${RAPID_FAILURE_WINDOW_MS / 1000}s. ` +
+            'Polling / manuell refresh anbefales.',
+        );
+        return;
+      }
+
       // Exponential-backoff reconnect
       reconnectTimerRef.current = setTimeout(() => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || givenUpRef.current) return;
         reconnectDelayRef.current = Math.min(
           reconnectDelayRef.current * 2,
           MAX_DELAY_MS,

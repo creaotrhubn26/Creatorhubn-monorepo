@@ -91,6 +91,7 @@ import ContractSigningPage from '@/pages/ContractSigningPage';
 import PriceAdministration from '@/pages/price-administration';
 import BusinessBrandingPage from '@/pages/BusinessBrandingPage';
 import AdminInviteSystem from '@/pages/admin-invite-system';
+import AcceptTesterInvite from '@/pages/AcceptTesterInvite';
 // import CompanyProfilesPage from '@/pages/company-profiles'; // File doesn't exist
 // import LogoIntegrationDemo from '@/pages/logo-integration-demo'; // Removed
 // import LogoTestSimple from '@/pages/logo-test-simple'; // Removed
@@ -805,6 +806,7 @@ function App() {
                   <Route path="/business-branding" component={BusinessBrandingPage} />
                   <Route path="/contracts/:contractId" component={ContractView} />
                   <Route path="/admin-invite-system" component={AdminInviteSystem as React.ComponentType<any>} />
+                  <Route path="/role-room/accept-invite" component={AcceptTesterInvite} />
                   {/* <Route path="/company-profiles" component={CompanyProfilesPage} /> */}
                   {/* <Route path="/logo-integration-demo" component={LogoIntegrationDemo} /> */}
                   {/* <Route path="/logo-test-simple" component={LogoTestSimple} /> */}

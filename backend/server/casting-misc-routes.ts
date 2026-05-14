@@ -64,8 +64,12 @@ export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
   });
 
   // ── Favorites (legacy compatibility for Role/Candidate panels) ────
+  // Frontend bruker /api/role-room/favorites/... (via castingApiService.API_BASE),
+  // mens backend opprinnelig kun registrerte /api/casting/favorites/... Vi
+  // registrerer begge så ingen returnerer 404 i prod. Begge prefikser
+  // peker til samme handler — én kilde for state.
 
-  app.get("/api/casting/favorites/:projectId/:favoriteType", async (req, res) => {
+  app.get(["/api/casting/favorites/:projectId/:favoriteType", "/api/role-room/favorites/:projectId/:favoriteType"], async (req, res) => {
     const { projectId, favoriteType } = req.params;
     const key = legacyFavoritesKey(projectId, favoriteType);
     const dbFavorites = await compatStoreGet<string[]>(
@@ -80,7 +84,7 @@ export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
   });
 
   app.post(
-    "/api/casting/favorites/:projectId/:favoriteType",
+    ["/api/casting/favorites/:projectId/:favoriteType", "/api/role-room/favorites/:projectId/:favoriteType"],
     async (req, res) => {
       const { projectId, favoriteType } = req.params;
       const itemIds = Array.isArray(req.body?.itemIds)
@@ -99,7 +103,7 @@ export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
   );
 
   app.post(
-    "/api/casting/favorites/:projectId/:favoriteType/add",
+    ["/api/casting/favorites/:projectId/:favoriteType/add", "/api/role-room/favorites/:projectId/:favoriteType/add"],
     async (req, res) => {
       const { projectId, favoriteType } = req.params;
       const itemId = typeof req.body?.itemId === "string" ? req.body.itemId : "";
@@ -127,7 +131,7 @@ export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
   );
 
   app.post(
-    "/api/casting/favorites/:projectId/:favoriteType/remove",
+    ["/api/casting/favorites/:projectId/:favoriteType/remove", "/api/role-room/favorites/:projectId/:favoriteType/remove"],
     async (req, res) => {
       const { projectId, favoriteType } = req.params;
       const itemId = typeof req.body?.itemId === "string" ? req.body.itemId : "";
