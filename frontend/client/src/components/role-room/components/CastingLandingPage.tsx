@@ -25,6 +25,7 @@ import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 import BlockRenderer from '../cms/BlockRenderer';
 import { useCmsBlocks } from '../cms/useCmsBlocks';
 import { useLocale } from '../cms/useLocale';
+import RoleRoomDashboardMockup from './RoleRoomDashboardMockup';
 import LoginDialog from './LoginDialog';
 import DeviceMockup from './DeviceMockup';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
@@ -543,6 +544,56 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               }}>
                 {howText}
               </Typography>
+            </motion.div>
+          </Box>
+
+          {/* ── PRODUCT-MOCKUP ── konkret prod-preview før CTA. Tydelig MOCK-merket. */}
+          <Box sx={{ mb: 8 }}>
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              whileInView={{ y: 0, opacity: 1 }}
+              viewport={{ once: true, margin: '-80px' }}
+              transition={{ duration: 0.8, ease: [0.22, 0.61, 0.36, 1] }}
+            >
+              <Box sx={{ textAlign: 'center', mb: 4 }}>
+                <Typography
+                  sx={{
+                    color: 'rgba(167,139,250,0.78)',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.18em',
+                    textTransform: 'uppercase',
+                    mb: 1,
+                  }}
+                >
+                  Slik ser arbeidet ut
+                </Typography>
+                <Typography
+                  sx={{
+                    color: '#f8fafc',
+                    fontSize: { xs: '1.4rem', md: '1.85rem' },
+                    fontWeight: 800,
+                    letterSpacing: '-0.02em',
+                    mb: 1,
+                  }}
+                >
+                  Casting-pipeline, agent og audition i ett rom
+                </Typography>
+                <Typography
+                  sx={{
+                    color: 'rgba(203,213,225,0.78)',
+                    fontSize: { xs: '0.94rem', md: '1.02rem' },
+                    maxWidth: 620,
+                    mx: 'auto',
+                    lineHeight: 1.65,
+                  }}
+                >
+                  Drag-and-drop kandidater gjennom audition, tilbakekalling og tilbud. Role Room Agent gir AI-anbefalinger basert på rolle-kriterier.
+                </Typography>
+              </Box>
+              <Box sx={{ maxWidth: 1080, mx: 'auto', px: { xs: 0, md: 2 } }}>
+                <RoleRoomDashboardMockup variant="hero" />
+              </Box>
             </motion.div>
           </Box>
 

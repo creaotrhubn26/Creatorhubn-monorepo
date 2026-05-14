@@ -129,3 +129,6 @@ Camera Agreement*.pdf
 decks/output/
 decks/screenshots/
 .vercel
+
+# Design mockup screenshots (regenerable via scripts/capture-design-mockups.mjs)
+mockups/*.png
