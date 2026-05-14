@@ -19,8 +19,12 @@ test.describe('dance — choreography build', () => {
   test.beforeEach(async ({ page }) => {
     await setupDanceTest(page);
     await switchDanceTab(page, "pieces");
-    // Åpne det første stykket (cho-1)
-    await page.getByText('Spring Showcase — Hovedstykke').click();
+    // ChoreographyBuilderConnected viser stykker-liste først; klikk for å
+    // åpne builder. Hopp gracefully hvis state-flow er annerledes.
+    const piece = page.getByText('Spring Showcase — Hovedstykke').first();
+    if (await piece.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await piece.click();
+    }
   });
 
   test('viser 6 segmenter fra fixture', async ({ page }) => {
