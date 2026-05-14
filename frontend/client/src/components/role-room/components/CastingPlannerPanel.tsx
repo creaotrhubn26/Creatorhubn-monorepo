@@ -173,6 +173,8 @@ import {
   type ClientPortalWorkspaceFocus,
 } from '../utils/clientPortal';
 import { evaluateProjectOwnership } from '../utils/projectOwnership';
+import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
+import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
 import {
   normalizeStoryArcNavigationFocus,
   type StoryArcNavigationFocus,
@@ -417,6 +419,32 @@ const PRODUCER_ECONOMY_TAB_INDEX = 12;
 const PRODUCER_TIMELINE_TAB_INDEX = 13;
 const PRODUCER_REVIEWS_TAB_INDEX = 14;
 const PRODUCER_EXPORT_TAB_INDEX = 15;
+
+// Stabil tab-spec for Cmd+K command palette og breadcrumbs. Vi bruker ikke
+// `tabLabels`-arrayen som bygges inni render-callbacken (den er mode-avhengig)
+// — for paletten holder vi oss til faste, generelle norske labels.
+const COMMAND_PALETTE_TABS: ReadonlyArray<{
+  tabIndex: number;
+  label: string;
+  keywords: string[];
+}> = [
+  { tabIndex: 0, label: 'Oversikt', keywords: ['oversikt', 'dashboard', 'home'] },
+  { tabIndex: STORY_ARC_TAB_INDEX, label: 'Story Arc Studio', keywords: ['story', 'manus', 'storyboard', 'planner'] },
+  { tabIndex: ROLES_TAB_INDEX, label: 'Roller', keywords: ['roller', 'roles'] },
+  { tabIndex: CANDIDATES_TAB_INDEX, label: 'Kandidater', keywords: ['kandidater', 'candidates', 'medvirkende'] },
+  { tabIndex: AUDITIONS_TAB_INDEX, label: 'Auditions', keywords: ['audition', 'casting-call'] },
+  { tabIndex: SELECTION_TAB_INDEX, label: 'Utvelgelse', keywords: ['utvelgelse', 'selection'] },
+  { tabIndex: LOCATIONS_TAB_INDEX, label: 'Lokasjoner', keywords: ['lokasjon', 'location', 'sted'] },
+  { tabIndex: CALENDAR_TAB_INDEX, label: 'Produksjonsplan', keywords: ['kalender', 'schedule', 'plan'] },
+  { tabIndex: TEAM_TAB_INDEX, label: 'Team', keywords: ['team', 'crew', 'mannskap'] },
+  { tabIndex: EQUIPMENT_TAB_INDEX, label: 'Rekvisitter', keywords: ['rekvisitter', 'props', 'utstyr', 'equipment'] },
+  { tabIndex: LIVE_SET_TAB_INDEX, label: 'Live Set', keywords: ['live', 'set', 'opptak'] },
+  { tabIndex: PRODUCER_MEDIA_TAB_INDEX, label: 'Prosjektrom', keywords: ['prosjektrom', 'media', 'workspace'] },
+  { tabIndex: PRODUCER_ECONOMY_TAB_INDEX, label: 'Økonomi', keywords: ['økonomi', 'budget', 'fakturering'] },
+  { tabIndex: PRODUCER_TIMELINE_TAB_INDEX, label: 'Planner', keywords: ['planner', 'timeline', 'tidslinje'] },
+  { tabIndex: PRODUCER_REVIEWS_TAB_INDEX, label: 'Godkjenning', keywords: ['godkjenning', 'klient', 'review'] },
+  { tabIndex: PRODUCER_EXPORT_TAB_INDEX, label: 'Levering', keywords: ['levering', 'eksport', 'export'] },
+];
 
 const PRODUCER_PROJECT_STATUS_LABELS: Record<NonNullable<CastingProject['producerWorkflowStatus']>, string> = {
   planning: 'Planlegging',
@@ -1096,6 +1124,7 @@ type RoleRoomProjectWorkspaceState = {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showTutorialEditor, setShowTutorialEditor] = useState(false);
   const [previewTutorial, setPreviewTutorial] = useState<Tutorial | null>(null);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   const [availableScenes, setAvailableScenes] = useState<Array<{ id: string; name: string; thumbnail?: string }>>([]);
   const [candidateStatusFilter, setCandidateStatusFilter] = useState<string>('all');
@@ -6181,6 +6210,99 @@ type RoleRoomProjectWorkspaceState = {
   );
   const allSchedules = currentProject?.schedules || [];
 
+  // Cmd+K / Ctrl+K åpner command palette. Vi lytter på window-level så det
+  // funker uansett hvor fokus ligger (med unntak av input/textarea/contentEditable,
+  // for å unngå å hijacke vanlige tekstredigerings-snarveier).
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'k' && event.key !== 'K') return;
+      if (!(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      setCommandPaletteOpen((prev) => !prev);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const commandPaletteItems = useMemo<CommandPaletteItem[]>(() => {
+    const items: CommandPaletteItem[] = [];
+
+    for (const tab of COMMAND_PALETTE_TABS) {
+      items.push({
+        id: `tab:${tab.tabIndex}`,
+        label: tab.label,
+        category: 'Tab',
+        keywords: tab.keywords,
+        onSelect: () => navigateToTab(tab.tabIndex),
+      });
+    }
+
+    for (const project of projects) {
+      const isCurrent = currentProject?.id === project.id;
+      items.push({
+        id: `project:${project.id}`,
+        label: project.name || 'Uten navn',
+        description: isCurrent ? 'Åpent nå' : project.clientCompanyName || project.clientName || undefined,
+        category: 'Prosjekt',
+        keywords: [
+          project.id,
+          project.clientName ?? '',
+          project.clientCompanyName ?? '',
+          project.genre ?? '',
+        ].filter((value): value is string => Boolean(value && value.length > 0)),
+        onSelect: () => {
+          if (isCurrent) return;
+          void handleSelectProjectFromSelector(project);
+        },
+      });
+    }
+
+    for (const candidate of allCandidates) {
+      items.push({
+        id: `candidate:${candidate.id}`,
+        label: candidate.name,
+        description: candidate.email || candidate.agency || undefined,
+        category: 'Kandidat',
+        keywords: [
+          candidate.email ?? '',
+          candidate.phone ?? '',
+          candidate.agency ?? '',
+          candidate.status ?? '',
+        ].filter((value): value is string => Boolean(value && value.length > 0)),
+        onSelect: () => navigateToTab(CANDIDATES_TAB_INDEX),
+      });
+    }
+
+    return items;
+  }, [
+    projects,
+    currentProject?.id,
+    allCandidates,
+    navigateToTab,
+    handleSelectProjectFromSelector,
+  ]);
+
+  const breadcrumbSegments = useMemo<PlannerBreadcrumbSegment[]>(() => {
+    const segments: PlannerBreadcrumbSegment[] = [
+      {
+        label: 'Casting Planner',
+        onClick: () => navigateToTab(0),
+      },
+    ];
+    if (currentProject) {
+      segments.push({
+        label: currentProject.name || 'Uten navn',
+        onClick: () => setProjectSelectorOpen(true),
+        ariaLabel: `Bytt prosjekt (nåværende: ${currentProject.name || 'Uten navn'})`,
+      });
+    }
+    const tabSpec = COMMAND_PALETTE_TABS.find((tab) => tab.tabIndex === activeTab);
+    if (tabSpec) {
+      segments.push({ label: tabSpec.label });
+    }
+    return segments;
+  }, [activeTab, currentProject, navigateToTab]);
+
   const globalTagSeedList = useMemo(() => {
     const deduped = new Set<string>();
     [
@@ -8841,8 +8963,13 @@ type RoleRoomProjectWorkspaceState = {
         </Box>
       )}
 
+      <PlannerBreadcrumb
+        segments={breadcrumbSegments}
+        hidden={isLiveSetImmersive}
+      />
+
       {/* Tabs */}
-      <Box 
+      <Box
         role="navigation"
         aria-label={`${branding.appName} navigasjon`}
         sx={{
@@ -16693,6 +16820,12 @@ type RoleRoomProjectWorkspaceState = {
           />
         </Suspense>
       )}
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        items={commandPaletteItems}
+      />
     </>
   );
 }
