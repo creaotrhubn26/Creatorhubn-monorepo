@@ -684,7 +684,11 @@ export function CastingPlannerPanel({
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const useCompactHeaderLayout = isTablet;
-  const isDenseDesktopViewport = useMediaQuery('(min-width: 1024px) and (max-width: 1720px)');
+  // Utvidet fra max-width 1720 til 1920 i Sprint 6.7 — dense-header
+  // (Flere handlinger-meny i stedet for individuelle ikoner) gjelder nå
+  // på alle vanlige desktop-størrelser inkludert 1080p og 1440p. Kun
+  // ultra-wide (1921+) får spread-out-knapper for power-brukere.
+  const isDenseDesktopViewport = useMediaQuery('(min-width: 1024px) and (max-width: 1920px)');
   // Responsive quick-contact tiers (7-level layout scaling)
   const quickTier2 = useMediaQuery('(min-width:480px)');
   const quickTier3 = useMediaQuery('(min-width:768px)');
@@ -8082,30 +8086,36 @@ type RoleRoomProjectWorkspaceState = {
               order: useCompactHeaderLayout ? 1 : 2,
             }}
           >
-            {/* Add new project button */}
-            <IconButton
-              size="small"
-              onClick={openNewProjectCreationModal}
-              aria-label={branding.tokens.labels.newProjectTitle}
-              data-tutorial-target="create-project-button"
-              sx={{
-                width: safeHeaderActionButtonSizePx,
-                height: safeHeaderActionButtonSizePx,
-                minWidth: safeHeaderActionButtonSizePx,
-                border: '1px dashed rgba(255,255,255,0.2)',
-                borderRadius: { xs: 1.5, sm: 2 },
-                color: 'rgba(255,255,255,0.87)',
-                flexShrink: 0,
-                p: 0,
-                '&:hover, &:active': {
-                  borderColor: '#00d4ff',
-                  color: '#00d4ff',
-                  bgcolor: 'rgba(0, 212, 255, 0.1)',
-                },
-              }}
-            >
-              <AddIcon sx={{ fontSize: navIconSizePx }} />
-            </IconButton>
+            {/* Add new project button. Sprint 6.7: skjult når brukeren
+              allerede har prosjekter (Cmd+K eller prosjekt-velgeren har egen
+              "Nytt prosjekt"-knapp som er enklere å finne enn dette diskret
+              ikonet). Vises fortsatt for nye brukere så onboarding-veien er
+              tydelig. */}
+            {projects.length === 0 && (
+              <IconButton
+                size="small"
+                onClick={openNewProjectCreationModal}
+                aria-label={branding.tokens.labels.newProjectTitle}
+                data-tutorial-target="create-project-button"
+                sx={{
+                  width: safeHeaderActionButtonSizePx,
+                  height: safeHeaderActionButtonSizePx,
+                  minWidth: safeHeaderActionButtonSizePx,
+                  border: '1px dashed rgba(255,255,255,0.2)',
+                  borderRadius: { xs: 1.5, sm: 2 },
+                  color: 'rgba(255,255,255,0.87)',
+                  flexShrink: 0,
+                  p: 0,
+                  '&:hover, &:active': {
+                    borderColor: '#00d4ff',
+                    color: '#00d4ff',
+                    bgcolor: 'rgba(0, 212, 255, 0.1)',
+                  },
+                }}
+              >
+                <AddIcon sx={{ fontSize: navIconSizePx }} />
+              </IconButton>
+            )}
 
             <IconButton
               size="small"
