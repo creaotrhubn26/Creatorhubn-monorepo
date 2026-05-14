@@ -185,17 +185,65 @@ som er subtittelen i `RoleRoomDashboardPanel`. Subtittelen vises kun når
 
 Resultater: ⏳ Pågår
 
-### Batch 2 — Producer/storyboard
-Planlagt: producer-client-review-overview, producer-export-handoff, production-manuscript-view, production-team-demo-isolation, client-media-workspaces, shotlist-storyboard-bridge, role-room-live-set, role-room-troll-demo-seed.
+### Batch 2 — Producer/storyboard (ferdig)
+Specs: producer-client-review-overview, producer-export-handoff, production-manuscript-view, production-team-demo-isolation, client-media-workspaces, shotlist-storyboard-bridge, role-room-live-set, role-room-troll-demo-seed.
 
-### Batch 3 — Story Arc + cross-cutting
-Planlagt: story-arc-regression, story-arc-edit-tools-isolated, professional-timeline-*, universal-dashboard, universal-showcase-sync, role-room-ga4-events, role-room-cms-r2-upload.
+**Resultater: 55 passed, 16 failed, 4 skipped (6.3 min).**
+
+| Spec | Pass/Fail | Rot-årsak |
+|---|---|---|
+| `producer-client-review-overview.spec.ts` | ✅ | — |
+| `producer-export-handoff.spec.ts` | ✅ | — |
+| `production-manuscript-view.spec.ts` | ✅ | — |
+| `production-team-demo-isolation.spec.ts` | ✅ | — |
+| `client-media-workspaces.spec.ts` | ⚠️ (1 fail) | Mangler seedet prosjekt — A.6-helper løste mount, men test trenger data |
+| `shotlist-storyboard-bridge.spec.ts` | ❌ (4 fail) | Samme seedet-data-mangel |
+| `role-room-live-set.spec.ts` | ❌ (9 fail) | SEO landingssider (`/vs-studiobinder`, `/vs-castingnetworks`, etc.) + `robots.txt`/`llms.txt`/`sitemap.xml` mangler i dev-server. **Ikke role-room-koden — SEO-infra.** |
+| `role-room-troll-demo-seed.spec.ts` | ❌ (1 fail) | Krever prod-backend (treffer DB) |
+
+### Batch 3 — Story Arc + cross-cutting (ferdig)
+Specs: story-arc-regression, story-arc-edit-tools-isolated, professional-timeline-render-budget, universal-dashboard, universal-showcase-sync, role-room-ga4-events, role-room-cms-r2-upload, crew-team-dashboard-flow.
+
+**Resultater: 106 passed, 8 failed, 6 skipped (6.4 min). 🏆 Beste batch.**
+
+| Spec | Pass/Fail | Rot-årsak |
+|---|---|---|
+| `story-arc-regression.spec.ts` | ⚠️ (2 fail) | 1: ffmpeg-fixture-video mangler (extern dep). 1: `getByText('Story Arc Studio')` timeout |
+| `story-arc-edit-tools-isolated.spec.ts` | ⚠️ (1 fail) | ffmpeg-fixture mangler |
+| `professional-timeline-render-budget.spec.ts` | ⚠️ (3 fail) | **Reelle perf-issues!** playhead/hover/drag overskrider frame-budget |
+| `universal-dashboard.spec.ts` | ✅ | — |
+| `universal-showcase-sync.spec.ts` | ✅ | — |
+| `role-room-ga4-events.spec.ts` | ⚠️ (1 fail) | `role_room_project_created` event fires ikke ved "Nytt prosjekt" submit |
+| `role-room-cms-r2-upload.spec.ts` | ✅ | — |
+| `crew-team-dashboard-flow.spec.ts` | ⚠️ (1 fail) | Mangler seedet data — A.7-arbeid |
 
 ### Egne sprinter (excluded fra baseline)
 - `role-room-comprehensive.spec.ts` (97 tester) — egen workflow-trigger
 - `role-room-full.spec.ts` (51 tester) — egen workflow-trigger
 - `storyboard-drawing-editor.spec.ts` (75 visual baselines) — etter snapshot-rebaseline
 - Academy + Dance verticals — egne owner-teams
+
+## SLUTT-SUMMARY: 24 specs av 79 baselinet
+
+**Totale resultater på tvers av batch 1-3:**
+
+| Batch | Specs | Tester | Pass | Fail | Skipped | Wall-tid |
+|---|---|---|---|---|---|---|
+| 1 (core) | 8 | 73 | 37 | 29 | 7 | 10.7 min |
+| 2 (producer/storyboard) | 8 | 75 | 55 | 16 | 4 | 6.3 min |
+| 3 (story-arc/cross) | 8 | 120 | 106 | 8 | 6 | 6.4 min |
+| **Totalt** | **24** | **268** | **198** | **53** | **17** | **23.4 min** |
+
+**Pass-rate: 74%** (198 av 268 tester).
+
+### Top fail-kategorier
+1. **`gotoCastingPlanner`-helper venter på subtittel** (28 tester) — FIKSET i Sprint A.6 (mount-fasen). Underliggende data-seed-issue krever Sprint A.7.
+2. **Manglende seedet data i test-harness** (~10 tester) — `selectFirstProject` finner ingen `<li>`.
+3. **SEO landingssider mangler i dev-server** (9 tester) — `/vs-*` URLer + robots.txt/llms.txt/sitemap.xml ikke konfigurert. Ikke role-room-bug.
+4. **Externe deps (ffmpeg-fixture)** (2 tester) — story-arc trenger video-fil generert.
+5. **Reelle perf-issues** (3 tester) — `professional-timeline-render-budget` overskrider frame-budget. **Verdt å adressere.**
+6. **GA4 event-fyring** (1 test) — `role_room_project_created` fyrer ikke.
+7. **Krever prod-backend** (1 test) — `troll-demo-seed` treffer DB.
 
 ## 3. Vedlikehold
 

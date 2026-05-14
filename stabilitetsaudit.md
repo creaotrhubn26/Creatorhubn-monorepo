@@ -442,31 +442,46 @@ try {
 
 ## 8. Test / CI stabilitet (K-TEST)
 
-### 8.1 Pre-eksisterende failing tests — `(S1, P1, K-TEST)` ⚠️ PARTIELLT
-**Status:** Sprint 5 fikset 2 spesifikke specs (workflow + threeActs). Sprint A.5
-har nå startet baseline av alle 79 specs (se `PLAYWRIGHT_BASELINE.md`).
+### 8.1 Pre-eksisterende failing tests — `(S1, P1, K-TEST)` ⚠️ BASELINE LANDET
+**Status:** Sprint A.5 baseline ferdig — 24 av 79 specs kjørt (de andre 55 er
+større / krever ekstern setup og dokumenteres i `PLAYWRIGHT_BASELINE.md`).
 
-**Resultater så langt — Batch 1 av 3 (8 core role-room-specs):**
+**Endelig baseline-resultat (24 specs, 268 tester, 23.4 min wall-time):**
 
-| Resultat | Antall | Detaljer |
-|---|---|---|
-| ✅ PASS | 5 specs (37 tester) | smoke, casting-persist, login-flow, role-room-workflow, story-logic-secure-sync |
-| ❌ FAIL | 2 specs (28 tester) | role-room-api-integration (18) + story-logic (10) — **samme bug-klasse** |
-| ⚠️ PARTIAL | 1 spec (1 av ~10) | role-room-clarity-smoke |
-| Ikke kjørt | 70 specs | Pågår i batch 2-3 |
+| Batch | Specs | Pass | Fail | Pass-rate |
+|---|---|---|---|---|
+| 1 — Core role-room | 8 | 37 | 29 | 51% |
+| 2 — Producer/storyboard | 8 | 55 | 16 | 77% |
+| 3 — Story-arc/cross-cutting | 8 | 106 | 8 | 93% |
+| **Totalt** | **24** | **198** | **53** | **74%** |
 
-**Rot-årsak for 28 av 29 fail:** Helperen `gotoCastingPlanner` venter på
-`'Casting, crew & produksjonsplanlegging'`-subtittelen som er gated bak
-`viewport.isDesktop`. Samme bug-klasse som Sprint 5.2-fiksen, men i andre
-specs med egne helpers. Trenger felles utility med data-testid-marker.
+**Top fail-kategorier:**
 
-**Fix-resept:**
-1. **Akutt:** Erstatt `gotoCastingPlanner`-helpers med felles utility som
-   venter på `[data-testid="role-room-route"]` i stedet for subtittel-tekst.
-2. **CI-step:** Kjør Batch 1-suite på hver PR til main.
-3. **Quarantine:** Spec med > 2 fail i en uke flagges som flaky.
-4. **Egen sprint:** Fikse role-room-api-integration + story-logic via
-   fellesnevner-helperen.
+| # | Kategori | Antall | Status |
+|---|---|---|---|
+| 1 | `gotoCastingPlanner`-helper venter på subtittel | 28 | **Mount-fasen FIKSET i Sprint A.6.** Data-seeding gjenstår. |
+| 2 | Manglende seedet data i test-harness (`selectFirstProject` ingen `<li>`) | 10 | A.7 — seed minimal demo-prosjekt i `test-harness-casting.tsx` |
+| 3 | SEO landingssider mangler i dev-server (`/vs-*`, robots.txt, llms.txt) | 9 | Ikke role-room-bug — egen SEO-sprint |
+| 4 | Externe deps (ffmpeg-fixture-video) | 2 | Trenger ffmpeg installert i CI |
+| 5 | **Reelle perf-issues (frame-budget overskredet)** | 3 | **Verdig egen sprint** — `professional-timeline-render-budget` |
+| 6 | GA4 event-fyring (role_room_project_created) | 1 | Sjekk om event-emit fungerer korrekt |
+| 7 | Krever prod-backend (treffer DB) | 1 | Skip i CI |
+
+**Sprint A.6 leveranse:**
+- Ny `frontend/e2e/helpers/role-room.ts` med `openRoleRoomDashboard` +
+  `openCastingPlanner` som venter på stabile DOM-markører
+- Lagt til `data-testid="casting-planner-root"` på CastingPlannerPanel
+- Migrert 4 specs til ny helper
+- **Mount-fasen: 100% pass** (var 0% for de migrerte specs før)
+
+**Fix-resept (gjenstående lag):**
+1. **Sprint A.7 — data-seeding:** `test-harness-casting.tsx` seeder ett minimalt
+   demo-prosjekt når URL-flag `?seed=basic` settes. Lar specs bypass
+   selectFirstProject-feilen.
+2. **Sprint A.8 — perf-issues:** Adresser `professional-timeline-render-budget`-
+   fail (real perf-regresjon).
+3. **CI-step:** Kjør Batch 1+2+3 (24 specs, 23 min) på hver main-merge.
+4. **Quarantine:** Spec med > 2 fail i en uke flagges som flaky.
 
 ---
 
