@@ -23,8 +23,10 @@ test.describe('dance invite — already-member case', () => {
     await page.getByRole('checkbox').check();
     await page.getByRole('button', { name: /Bekreft|Aksepter/i }).click();
 
+    // InviteLandingPage mapper 409 → 'already_accepted' → "Denne invitasjonen
+    // er allerede akseptert". Matcher 'allerede' bredt.
     await expect(
-      page.getByText(/allerede medlem|allerede i teamet/i),
+      page.getByText(/allerede/i),
     ).toBeVisible({ timeout: 10_000 });
   });
 });

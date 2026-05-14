@@ -96,6 +96,16 @@ function matchForce(opts: DanceMockOptions | undefined, method: string, url: str
   return null;
 }
 
+// Standard error-reasons som InviteLandingPage og andre UI-er kjenner igjen.
+// Når mock returnerer en av disse i `error`-feltet får brukeren en pen melding.
+const ERROR_REASON_BY_STATUS: Record<number, string> = {
+  401: 'wrong_pin',
+  409: 'already_accepted',
+  410: 'expired',
+  423: 'pin_locked',
+  503: 'mailer_not_configured',
+};
+
 function matchInviteOverride(opts: DanceMockOptions | undefined, token: string) {
   return opts?.overrides?.invites?.[token];
 }
@@ -124,7 +134,8 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
 
     const forced = matchForce(opts, method, urlPath);
     if (forced !== null) {
-      return route.fulfill(err(forced, `Forced status ${forced}`));
+      const reason = ERROR_REASON_BY_STATUS[forced] ?? `forced_${forced}`;
+      return route.fulfill(err(forced, reason, `Forced status ${forced}`));
     }
 
     // ─── Teams ────────────────────────────────────────────────────────

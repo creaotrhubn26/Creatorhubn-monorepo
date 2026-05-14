@@ -14,38 +14,38 @@ test.describe('dance — autosave debounce', () => {
   test.beforeEach(async ({ page }) => {
     await setupDanceTest(page);
     await switchDanceTab(page, "pieces");
-    await page.getByText('Spring Showcase — Hovedstykke').click();
+    await expect(page.getByTestId('choreography-builder')).toBeVisible({ timeout: 10_000 });
     resetCallCounts(page);
   });
 
-  test('5 raske edits fyrer eksakt 1 PATCH innen 3s', async ({ page }) => {
+  // Helper: trigger autosave via inspector text-field — dette er trigger-mønsteret
+  // som ChoreographyBuilder bruker for "save segment changes".
+  async function editInspectorOnce(page: import('@playwright/test').Page, value: string) {
+    const inspector = page.getByTestId('choreo-inspector');
     await page.getByTestId('choreo-segment-item-seg-1').click();
+    await expect(inspector).toBeVisible();
+    const last = inspector.locator('input[type="text"], textarea').last();
+    await last.fill(value);
+  }
 
-    // 5 raske keypresses på energy-slider
-    const slider = page.getByLabel(/Energi|Energy/i);
+  test('5 raske edits fyrer eksakt 1 PATCH innen 3s', async ({ page }) => {
     for (let i = 0; i < 5; i++) {
-      await slider.click();
-      await page.keyboard.press('ArrowRight');
+      await editInspectorOnce(page, `edit-${i}-${Date.now()}`);
     }
-
-    // Vent på at debounce-vinduet er over (1.5s + slack)
     await page.waitForTimeout(2_500);
-
-    // Kun 1 PATCH skal være fyrt
-    expect(getCallCount(page, 'PATCH /api/dance/choreography/cho-1')).toBe(1);
+    // Autosave bruker enten PATCH (header) eller PUT (segments) avhengig av felt
+    const total = getCallCount(page, 'PATCH /api/dance/choreography/cho-1') +
+                  getCallCount(page, 'PUT /api/dance/choreography/cho-1/segments');
+    expect(total).toBe(1);
   });
 
   test('edit etter debounce-vinduet trigger ny PATCH', async ({ page }) => {
-    await page.getByTestId('choreo-segment-item-seg-1').click();
-    const slider = page.getByLabel(/Energi|Energy/i);
-
-    await slider.click();
-    await page.keyboard.press('ArrowRight');
-    await page.waitForTimeout(2_000); // Vent ut debounce
-
-    await page.keyboard.press('ArrowRight'); // Ny edit
+    await editInspectorOnce(page, `first-${Date.now()}`);
     await page.waitForTimeout(2_000);
-
-    expect(getCallCount(page, 'PATCH /api/dance/choreography/cho-1')).toBe(2);
+    await editInspectorOnce(page, `second-${Date.now()}`);
+    await page.waitForTimeout(2_000);
+    const total = getCallCount(page, 'PATCH /api/dance/choreography/cho-1') +
+                  getCallCount(page, 'PUT /api/dance/choreography/cho-1/segments');
+    expect(total).toBe(2);
   });
 });

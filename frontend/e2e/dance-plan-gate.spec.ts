@@ -11,7 +11,7 @@ import { installDanceMocks } from './helpers/danceMocks';
 test.describe('dance — plan gate', () => {
   test('Pricing page viser plan-kort fra fixture', async ({ page }) => {
     await installDanceMocks(page);
-    await page.goto('/e2e-test.html?harness=dance_studio&harness-project=proj-spring-2026&tab=plan');
+    await page.goto('/e2e-test.html?harness=dance_studio&harness-project=proj-spring-2026&tab=pricing');
     await expect(page.getByTestId('plan-card-plan-free')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('plan-card-plan-studio')).toBeVisible();
   });
