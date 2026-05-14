@@ -1,0 +1,210 @@
+# Playwright Baseline — The Role Room
+
+> **Baseline-dato:** 2026-05-15 (Sprint A.5 fra stabilitetsaudit § 8)
+> **Total spec-filer:** 79
+> **Total tester (estimat):** ~400+ (mange specs har 10-75 tester hver)
+> **Konfigurasjon:** chromium, workers:1 (sequential), timeout 20s/test
+> **Sist oppdatert:** under utfylling
+
+## 0. Hvorfor dette dokumentet
+
+Stabilitetsaudit § 8.1 krevde at vi fikk en baseline på hvilke e2e-specs som
+faktisk passerer/feiler. Sprint 5 oppdaget at 20/20 `role-room-workflow`-
+tester hadde vært knust i månedsvis uten at noen visste det. Vi trenger en
+sannhets-kilde for å fange regresjoner per PR.
+
+## 1. Spec-katalog
+
+Klassifisering per spec — oppdateres etter hvert som de kjøres:
+
+| Status | Betydning |
+|---|---|
+| ✅ PASS | Alle tester i specen passerer |
+| ⚠️ PARTIAL | Noen passerer, noen feiler — flaky eller delvis brutt |
+| ❌ FAIL | Alle / nesten alle feiler — knust spec |
+| ⏳ TODO | Ikke kjørt enda i denne baseline-runden |
+| 🚫 SKIP | Bevisst hoppet over (visual snapshots, heavy, etc.) |
+
+### 1.1 Core Role Room (kritiske)
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `smoke.spec.ts` | 1 | ✅ | Smoke-test av homepage — PASS |
+| `casting-project-sync-persistence.spec.ts` | 7 | ✅ | DB-persist + sync — PASS |
+| `creatorhub-login-flow.spec.ts` | ~7 | ✅ | Login-flyt — PASS |
+| `role-room-api-integration.spec.ts` | 18 | ❌ | **ALLE 18 fail** — `gotoCastingPlanner`-helper venter på `'Casting, crew & produksjonsplanlegging'`-subtittel som ikke vises. Samme rot-årsak som Sprint 5.2 men annen helper. Krever oppdatert test-harness eller spec-helper. |
+| `role-room-clarity-smoke.spec.ts` | ~9 | ⚠️ | 1 fail: `/vs-castingnetworks`-side timeout. Resten passerer. |
+| `role-room-workflow.spec.ts` | 20 | ✅ | Fikset Sprint 5.2 — fortsatt PASS |
+| `story-logic-secure-sync.spec.ts` | 2 | ✅ | Verifisert Sprint 1.1 — PASS |
+| `story-logic.spec.ts` | 10 | ❌ | **ALLE 10 fail** — samme `gotoCastingPlanner`-helper-pattern. Subtittel-venting timer ut. |
+| `role-room-comprehensive.spec.ts` | 97 | 🚫 | Ikke kjørt i baseline (for stor) |
+| `role-room-full.spec.ts` | 51 | 🚫 | Ikke kjørt i baseline (for stor) |
+
+**Batch 1 totalt: 37 passed, 29 failed, 7 did not run, 10.7 min wall time.**
+
+#### 1.1.x Rot-årsak-analyse: 28 av 29 failures er ÉN bug-klasse
+Helperen `gotoCastingPlanner` i `role-room-api-integration.spec.ts:14` og
+`story-logic.spec.ts:14` venter på `getByText('Casting, crew & produksjonsplanlegging')`
+som er subtittelen i `RoleRoomDashboardPanel`. Subtittelen vises kun når
+`viewport.isDesktop` er true. Test-harness setter ikke nødvendige
+URL-flagger eller localStorage-state for å trigge dashboard-rendering.
+
+Sprint 5.2 fikset dette for `role-room-workflow.spec.ts` ved å:
+1. Legge til manglende providere i `test-harness.tsx`
+2. Endre 2 Responsive-tester til å vente på `.role-room-route` i stedet for subtittelen
+
+Foreslått fix (egen sprint, ikke i baseline):
+- Erstatt `gotoCastingPlanner`-helpers i alle 4 ramme-specs med en delt utility
+- Utility venter på `[data-testid="role-room-route"]` (skal alltid være DOM-tilstede)
+- Subtittel-verifisering blir et separat assert hvor det er meningsfullt
+
+### 1.2 Producer / klient
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `producer-client-review-overview.spec.ts` | ? | ⏳ | |
+| `producer-export-handoff.spec.ts` | ? | ⏳ | |
+| `production-manuscript-view.spec.ts` | ? | ⏳ | |
+| `production-team-demo-isolation.spec.ts` | ? | ⏳ | Demo-isolation |
+| `client-media-workspaces.spec.ts` | ? | ⏳ | Klient-portal |
+
+### 1.3 Storyboard / drawing
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `storyboard-drawing-editor.spec.ts` | 75 | 🚫 | Visual baselines — kjør etter snapshot-rebaseline |
+| `shotlist-storyboard-bridge.spec.ts` | ? | ⏳ | |
+
+### 1.4 Live Set / production day
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `role-room-live-set.spec.ts` | ? | ⏳ | |
+| `role-room-troll-demo-seed.spec.ts` | ? | ⏳ | Troll demo-seed |
+
+### 1.5 Story Arc Studio
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `story-arc-regression.spec.ts` | ? | ⏳ | |
+| `story-arc-edit-tools-isolated.spec.ts` | ? | ⏳ | |
+| `professional-timeline-render-budget.spec.ts` | ? | ⏳ | |
+| `professional-timeline-hardpass.spec.ts` | ? | ⏳ | |
+
+### 1.6 Crew / Team
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `crew-team-dashboard-flow.spec.ts` | ? | ⏳ | |
+
+### 1.7 Universal / cross-cutting
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `universal-dashboard.spec.ts` | ? | ⏳ | |
+| `universal-showcase-sync.spec.ts` | ? | ⏳ | |
+| `admin-chat.spec.ts` | ? | ⏳ | |
+| `component-sync.spec.ts` | ? | ⏳ | |
+| `evendi-bridge.spec.ts` | ? | ⏳ | |
+| `debug-harness.spec.ts` | ? | ⏳ | |
+| `debug-tabs2.spec.ts` | ? | ⏳ | |
+| `frequency-sep.spec.ts` | ? | ⏳ | |
+
+### 1.8 Role Room — undervurderte (smaller)
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `role-room-cms-r2-upload.spec.ts` | ? | ⏳ | |
+| `role-room-ga4-events.spec.ts` | ? | ⏳ | |
+
+### 1.9 Academy (own vertical)
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `academy-a-to-z-e2e.spec.ts` | ? | ⏳ | Stor academy-test |
+| `academy-full-smoke.spec.ts` | ? | ⏳ | |
+| `academy-presentation-e2e.spec.ts` | ? | ⏳ | |
+| `academy-user-center-header.spec.ts` | ? | ⏳ | |
+| `academy-ux-psych-audit.spec.ts` | ? | ⏳ | |
+
+### 1.10 Dance vertical (parallell modul)
+
+| Spec | Tester | Status | Notater |
+|---|---:|---|---|
+| `dance-a11y-axe.spec.ts` | ? | ⏳ | |
+| `dance-admin-gate.spec.ts` | ? | ⏳ | |
+| `dance-admin-ops-smoke.spec.ts` | ? | ⏳ | |
+| `dance-aria-live-formation.spec.ts` | ? | ⏳ | |
+| `dance-autosave-debounce.spec.ts` | ? | ⏳ | |
+| `dance-capability-gate.spec.ts` | ? | ⏳ | |
+| `dance-choreography-build.spec.ts` | ? | ⏳ | |
+| `dance-drawing-overlay.spec.ts` | ? | ⏳ | |
+| `dance-empty-state.spec.ts` | ? | ⏳ | |
+| `dance-focus-trap.spec.ts` | ? | ⏳ | |
+| `dance-formation-canvas.spec.ts` | ? | ⏳ | |
+| `dance-ga4-events.spec.ts` | ? | ⏳ | |
+| `dance-instructors-rooms-crud.spec.ts` | ? | ⏳ | |
+| `dance-invite-already-member.spec.ts` | ? | ⏳ | |
+| `dance-invite-deeplink.spec.ts` | ? | ⏳ | |
+| `dance-invite-generation.spec.ts` | ? | ⏳ | |
+| `dance-invite-lifecycle.spec.ts` | ? | ⏳ | |
+| `dance-invite-mobile.spec.ts` | ? | ⏳ | |
+| `dance-invite-role-assignment.spec.ts` | ? | ⏳ | |
+| `dance-keyboard-nav.spec.ts` | ? | ⏳ | |
+| `dance-member-management.spec.ts` | ? | ⏳ | |
+| `dance-mobile-shell.spec.ts` | ? | ⏳ | |
+| `dance-movement-vocab.spec.ts` | ? | ⏳ | |
+| `dance-multi-team-switch.spec.ts` | ? | ⏳ | |
+| `dance-music-upload.spec.ts` | ? | ⏳ | |
+| `dance-plan-gate.spec.ts` | ? | ⏳ | |
+| `dance-profession-mode-routing.spec.ts` | ? | ⏳ | |
+| `dance-rehearsal-flow.spec.ts` | ? | ⏳ | |
+| `dance-render-budget.spec.ts` | ? | ⏳ | |
+| `dance-studio-ops-crud.spec.ts` | ? | ⏳ | |
+| `dance-tab-persistence.spec.ts` | ? | ⏳ | |
+| `dance-team-roles.spec.ts` | ? | ⏳ | |
+| `dance-video-library.spec.ts` | ? | ⏳ | |
+| `dance-video-mobile.spec.ts` | ? | ⏳ | |
+| `dance-video-realtime.spec.ts` | ? | ⏳ | |
+| `dance-video-review-comments.spec.ts` | ? | ⏳ | |
+| `dance-video-virtualization.spec.ts` | ? | ⏳ | |
+| `dance-team-invite-flow.spec.ts` | ? | ⏳ | |
+
+## 2. Batch-kjøringer
+
+### Batch 1 — Core Role Room (kjører nå, ~10 min)
+8 specs: smoke, story-logic-secure-sync, role-room-workflow, casting-project-sync-persistence, creatorhub-login-flow, role-room-clarity-smoke, role-room-api-integration, story-logic.
+
+Resultater: ⏳ Pågår
+
+### Batch 2 — Producer/storyboard
+Planlagt: producer-client-review-overview, producer-export-handoff, production-manuscript-view, production-team-demo-isolation, client-media-workspaces, shotlist-storyboard-bridge, role-room-live-set, role-room-troll-demo-seed.
+
+### Batch 3 — Story Arc + cross-cutting
+Planlagt: story-arc-regression, story-arc-edit-tools-isolated, professional-timeline-*, universal-dashboard, universal-showcase-sync, role-room-ga4-events, role-room-cms-r2-upload.
+
+### Egne sprinter (excluded fra baseline)
+- `role-room-comprehensive.spec.ts` (97 tester) — egen workflow-trigger
+- `role-room-full.spec.ts` (51 tester) — egen workflow-trigger
+- `storyboard-drawing-editor.spec.ts` (75 visual baselines) — etter snapshot-rebaseline
+- Academy + Dance verticals — egne owner-teams
+
+## 3. Vedlikehold
+
+Per PR:
+- [ ] Kjør "core" batch-en (8 specs) hvis PR berører role-room-koden
+- [ ] Hvis spec endrer status → oppdater denne fila
+
+Ukentlig:
+- [ ] Kjør full liste-batch (~30 specs)
+- [ ] Hvis tester begynner å flakke → flytt til "PARTIAL"-kategorien
+- [ ] Hvis ny spec er PASS i 3 uker → graduerer til ✅
+
+## 4. Connection til audit
+
+Denne fila er den konkrete realiseringen av:
+- `stabilitetsaudit.md § 8.1` — Pre-existing failing tests baseline
+- `stabilitetsaudit.md § 8.2` — Test-harnesser audit
+- `stabilitetsaudit.md § 8.4` — Coverage på state-overgang-grenser
+
+Når en ny e2e blir lagt til skal den legges i denne fila samme dag.
