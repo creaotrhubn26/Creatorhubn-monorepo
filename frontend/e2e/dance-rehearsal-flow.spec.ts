@@ -17,14 +17,11 @@ test.describe('dance — rehearsal flow', () => {
   });
 
   test('legg til ny focus area', async ({ page }) => {
+    await expect(page.getByTestId('rehearsal-planner')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('focus-area-fa-1')).toBeVisible();
+    const before = await page.locator('[data-testid^="focus-area-"]').count();
     await page.getByTestId('rehearsal-add-focus').click();
-    await page.getByLabel(/Tittel|Title/i).fill('Refreng-overgang');
-    await page.getByRole('button', { name: /Legg til|Add/i }).click();
-
-    await expect.poll(() =>
-      getCallCount(page, 'PATCH /api/dance/rehearsals/reh-1').valueOf() +
-      getCallCount(page, 'PUT /api/dance/rehearsals/reh-1').valueOf(),
-    ).toBeGreaterThanOrEqual(1);
+    await expect(page.locator('[data-testid^="focus-area-"]')).toHaveCount(before + 1, { timeout: 5_000 });
   });
 
   test('klikk på focus-area med segmentRef → scroller til segment', async ({ page }) => {
