@@ -7687,8 +7687,13 @@ type RoleRoomProjectWorkspaceState = {
         overflowX: 'hidden',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        // Responsive base font size: larger on desktop for better readability
-        fontSize: isDesktop ? '16px' : isTablet ? '16px' : '14px', // Prevent zoom on iOS for tablet/mobile
+        // Tettere typografi for å gi mer skjerm-real-estate til innhold.
+        // Tidligere: 16px desktop/tablet. Nå: 13.5px desktop, 14px tablet,
+        // 14px mobil (sistnevnte forhindrer iOS-zoom på inputs). Bruker
+        // px og ikke rem så vi unngår root-html-font-size-overrides fra
+        // andre apper. Brukeren rapporterte "for zoomet inn" — denne
+        // gjorde 16→13.5 = ~16% smalere UI på desktop.
+        fontSize: isDesktop ? '13.5px' : isTablet ? '14px' : '14px',
         touchAction: 'pan-y',
         WebkitTapHighlightColor: 'transparent',
       }}
@@ -14913,13 +14918,20 @@ type RoleRoomProjectWorkspaceState = {
                     mt: 1.1,
                     display: 'flex',
                     gap: 1,
-                    rowGap: { xs: 1, md: 1.25 },
-                    flexWrap: { xs: 'nowrap', md: 'wrap' },
-                    overflowX: { xs: 'auto', md: 'visible' },
-                    pb: 0.35,
+                    flexWrap: 'nowrap',
+                    overflowX: 'auto',
+                    overflowY: 'hidden',
+                    pb: 0.5,
                     scrollbarWidth: 'thin',
-                    '&::-webkit-scrollbar': { height: 4 },
-                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 2 },
+                    scrollSnapType: 'x proximity',
+                    '&::-webkit-scrollbar': { height: 6 },
+                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(167,139,250,0.32)', borderRadius: 3 },
+                    '&::-webkit-scrollbar-thumb:hover': { backgroundColor: 'rgba(167,139,250,0.5)' },
+                    '&::-webkit-scrollbar-track': { backgroundColor: 'rgba(255,255,255,0.02)' },
+                    // Subtil scroll-shadow på sidene for å antyde at det er mer
+                    maskImage: 'linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)',
+                    WebkitMaskImage: 'linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)',
+                    '& > *': { scrollSnapAlign: 'start', flexShrink: 0 },
                   }}
                 >
                   {filteredPinnedProjectSelectorItems.map((project) => {
