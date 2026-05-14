@@ -78,9 +78,9 @@ async function installStoryLogicApiMock(page: Page) {
     if (request.method() === 'GET') {
       if (!storyLogic) {
         await route.fulfill({
-          status: 404,
+          status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ error: 'story_logic_not_found', projectId }),
+          body: JSON.stringify({ success: true, projectId, storyLogic: null, version: 0 }),
         });
         return;
       }

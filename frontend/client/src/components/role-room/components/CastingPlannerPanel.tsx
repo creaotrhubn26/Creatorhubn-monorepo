@@ -172,6 +172,7 @@ import {
   parseClientPortalIntentFromWindow,
   type ClientPortalWorkspaceFocus,
 } from '../utils/clientPortal';
+import { evaluateProjectOwnership } from '../utils/projectOwnership';
 import {
   normalizeStoryArcNavigationFocus,
   type StoryArcNavigationFocus,
@@ -1135,6 +1136,9 @@ type RoleRoomProjectWorkspaceState = {
   // Ref to track current project ID for stale response detection
   const currentProjectIdRef = useRef<string | null>(null);
   const currentProjectRef = useRef<CastingProject | null>(null);
+  // Prosjekt-id-er vi allerede har varslet brukeren om eierskap-mismatch for.
+  // Hindrer toast-spam når samme prosjekt re-renderes.
+  const projectAccessNotifiedRef = useRef<Set<string>>(new Set());
   const persistedWorkspaceStateRef = useRef<RoleRoomWorkspaceState | null>(null);
   const workspaceRootRef = useRef<HTMLDivElement | null>(null);
   const workspaceRestoreProjectIdRef = useRef<string | null>(null);
@@ -3375,6 +3379,45 @@ type RoleRoomProjectWorkspaceState = {
       }
     })();
   }), [filterProjectsForSession]);
+
+  // Ownership-feedback: når en innlogget bruker åpner et prosjekt som er eid
+  // av noen andre, kan paneler virke tomme uten forklaring (backend filtrerer
+  // sub-data per user). Vi viser en advarsel-toast (én gang per prosjekt) så
+  // bruker forstår at det er en tilgangs-mismatch og ikke en feil.
+  useEffect(() => {
+    const project = currentProject;
+    if (!project) return;
+    if (
+      isProtectedDemoProject(project)
+      || isTemplateProject(project)
+      || isTrollProject(project)
+      || isContentProducerDemoProject(project)
+    ) {
+      return;
+    }
+    if (projectAccessNotifiedRef.current.has(project.id)) return;
+
+    const result = evaluateProjectOwnership(
+      project as unknown as Parameters<typeof evaluateProjectOwnership>[0],
+      { id: adminUser?.id ?? null, email: adminUser?.email ?? null },
+    );
+    if (!result.warn) return;
+
+    toast.showWarning(
+      `Prosjektet er eid av ${result.ownerLabel}. Du er logget inn som ${result.currentLabel} — paneler kan være tomme hvis du ikke har tilgang.`,
+      8000,
+    );
+    projectAccessNotifiedRef.current.add(project.id);
+  }, [
+    currentProject,
+    adminUser?.id,
+    adminUser?.email,
+    isProtectedDemoProject,
+    isTemplateProject,
+    isTrollProject,
+    isContentProducerDemoProject,
+    toast,
+  ]);
 
   const handleSelectProjectFromSelector = useCallback(async (project: CastingProject) => {
     if ((isClientReviewerMode || isClientReviewerSession) && isProtectedDemoProject(project)) {

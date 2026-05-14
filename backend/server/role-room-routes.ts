@@ -11433,10 +11433,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return;
     }
 
+    // "Tom state" for GET: prosjekt finnes ikke ennå (fresh frontend-state),
+    // eller prosjektet finnes men har ingen story-logic-rad. Begge er gyldige
+    // tilstander for klient — vi returnerer 200 med null storyLogic i stedet
+    // for 404 så DevTools-konsollen ikke fylles med falske feilmeldinger.
+    // Skrivetilgang (POST) returnerer fortsatt 404 ved manglende prosjekt.
     try {
       const context = await resolveStoryLogicProjectContext(req, projectId);
       if (!context) {
-        res.status(404).json({ error: 'project_not_found' });
+        res.json({ success: true, projectId, storyLogic: null, version: 0 });
         return;
       }
       if (!canReadStoryLogic(req, context.roleRecord)) {
@@ -11450,7 +11455,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       );
       const row = result.rows[0];
       if (!row) {
-        res.status(404).json({ error: 'story_logic_not_found', projectId });
+        res.json({ success: true, projectId, storyLogic: null, version: 0 });
         return;
       }
 

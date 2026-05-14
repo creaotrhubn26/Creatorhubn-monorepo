@@ -68,6 +68,8 @@ import {
   loadRawStoryboardLibraryPayloadForProject,
   saveStoryboardLibraryPayloadForProject,
 } from '../services/storyboardLibraryService';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import storyboardEmptyPng from './icons/Keep/roleroom_storyboard.png';
 
 interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
@@ -2185,11 +2187,16 @@ const StoryboardView: React.FC<{
         }}
       >
         {frames.length === 0 && (
-          <Paper sx={{ p: 3, gridColumn: '1 / -1' }}>
-            <Alert severity="info">
-              Ingen storyboard-frames enda. Klikk <strong>Ny Storyboard</strong> for å starte.
-            </Alert>
-          </Paper>
+          <Box sx={{ gridColumn: '1 / -1' }}>
+            <RoleRoomEmptyState
+              iconSrc={storyboardEmptyPng}
+              title="Bygg storyboardet ditt"
+              subtitle="Hver frame representerer ett shot. Start med å legge til det første — du kan tegne, importere bilder og koble frames til manus."
+              color="#b86bff"
+              buttonLabel="Opprett første frame"
+              onAction={handleAddFrame}
+            />
+          </Box>
         )}
 
         {frames.map((frame, index) => (
