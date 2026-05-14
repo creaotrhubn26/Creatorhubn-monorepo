@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, startTransition, memo, type FC, type MouseEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
+import { lazyWithRetry } from '@/utils/lazyWithRetry';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
@@ -182,19 +183,23 @@ import {
 import type { Tutorial } from '../services/tutorialService';
 
 // Lazy load heavy panels for better performance
-const CrewManagementPanel = lazy(() => import('./CrewManagementPanel').then(m => ({ default: m.CrewManagementPanel })));
-const LocationManagementPanel = lazy(() => import('./LocationManagementPanel').then(m => ({ default: m.LocationManagementPanel })));
-const PropManagementPanel = lazy(() => import('./PropManagementPanel').then(m => ({ default: m.PropManagementPanel })));
-const EquipmentManagementPanel = lazy(() => import('./EquipmentManagementPanel').then(m => ({ default: m.EquipmentManagementPanel })));
-const ProductionDayView = lazy(() => import('./ProductionDayView').then(m => ({ default: m.ProductionDayView })));
-const CastingShotListPanel = lazy(() => import('./CastingShotListPanel').then(m => ({ default: m.CastingShotListPanel })));
-const ManuscriptPanel = lazy(() => import('./ManuscriptPanel').then(m => ({ default: m.ManuscriptPanel })));
-const StoryLogicPanel = lazy(() => import('./screenplay/StoryLogicPanel').then(m => ({ default: m.StoryLogicPanel })));
-const RoleManagementPanel = lazy(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
-const CandidateManagementPanel = lazy(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
-const DashboardPanel = lazy(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
-const SharingPanel = lazy(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
-const LiveSetMode = lazy(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
+// lazyWithRetry: håndterer "Failed to fetch dynamically imported module"-
+// feil (typisk stale chunk-hash etter en ny deploy mens brukeren har
+// gammel HTML åpen) ved å prøve igjen og reloade siden hvis det fortsatt
+// feiler.
+const CrewManagementPanel = lazyWithRetry(() => import('./CrewManagementPanel').then(m => ({ default: m.CrewManagementPanel })));
+const LocationManagementPanel = lazyWithRetry(() => import('./LocationManagementPanel').then(m => ({ default: m.LocationManagementPanel })));
+const PropManagementPanel = lazyWithRetry(() => import('./PropManagementPanel').then(m => ({ default: m.PropManagementPanel })));
+const EquipmentManagementPanel = lazyWithRetry(() => import('./EquipmentManagementPanel').then(m => ({ default: m.EquipmentManagementPanel })));
+const ProductionDayView = lazyWithRetry(() => import('./ProductionDayView').then(m => ({ default: m.ProductionDayView })));
+const CastingShotListPanel = lazyWithRetry(() => import('./CastingShotListPanel').then(m => ({ default: m.CastingShotListPanel })));
+const ManuscriptPanel = lazyWithRetry(() => import('./ManuscriptPanel').then(m => ({ default: m.ManuscriptPanel })));
+const StoryLogicPanel = lazyWithRetry(() => import('./screenplay/StoryLogicPanel').then(m => ({ default: m.StoryLogicPanel })));
+const RoleManagementPanel = lazyWithRetry(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
+const CandidateManagementPanel = lazyWithRetry(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
+const DashboardPanel = lazyWithRetry(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
+const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
+const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
 // Dance vertical opt-in — full workspace replacement when professionMode = dance_*.
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
@@ -11597,72 +11602,69 @@ type RoleRoomProjectWorkspaceState = {
                           ))}
                         </Tabs>
                       </Box>
-                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                        <Chip
-                          size="small"
-                          label="Storyboard"
-                          onClick={() => {
-                            openContentProducerCreativeTool('storyboard');
-                          }}
-                          sx={{
-                            bgcolor: contentProducerPlannerSurface === 'project_room' && producerMediaFocus?.workspace === 'storyboard'
-                              ? 'rgba(244,114,182,0.22)'
-                              : 'rgba(15,23,42,0.42)',
-                            color: '#fce7f3',
-                            border: '1px solid rgba(244,114,182,0.32)',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        />
-                        <Chip
-                          size="small"
-                          label="Story Writer"
-                          onClick={() => {
-                            openContentProducerCreativeTool('story-writer');
-                          }}
-                          sx={{
-                            bgcolor: storyArcView === 'story-writer'
-                              ? 'rgba(129,140,248,0.22)'
-                              : 'rgba(15,23,42,0.42)',
-                            color: '#e0e7ff',
-                            border: '1px solid rgba(129,140,248,0.32)',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        />
-                        <Chip
-                          size="small"
-                          label="Sceneliste"
-                          onClick={() => {
-                            openContentProducerCreativeTool('shot-list');
-                          }}
-                          sx={{
-                            bgcolor: storyArcView === 'shot-list'
-                              ? 'rgba(56,189,248,0.22)'
-                              : 'rgba(15,23,42,0.42)',
-                            color: '#bae6fd',
-                            border: '1px solid rgba(56,189,248,0.32)',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        />
-                        <Chip
-                          size="small"
-                          label="Story Logic"
-                          onClick={() => {
-                            openContentProducerCreativeTool('story-logic');
-                          }}
-                          sx={{
-                            bgcolor: storyArcView === 'story-logic'
-                              ? 'rgba(167,139,250,0.22)'
-                              : 'rgba(15,23,42,0.42)',
-                            color: '#ede9fe',
-                            border: '1px solid rgba(167,139,250,0.32)',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        />
-                      </Stack>
+                      {(() => {
+                        // Segmentert kontroll for Story-verktøy. Erstattet
+                        // tilfeldig-fargede chips med enhetlig gruppering
+                        // og tydelig active-state. Aksent kun på valgt
+                        // verktøy slik at det blir én klar "hvor er jeg".
+                        const storyTools = [
+                          { id: 'storyboard', label: 'Storyboard', isActive: contentProducerPlannerSurface === 'project_room' && producerMediaFocus?.workspace === 'storyboard' },
+                          { id: 'story-writer', label: 'Story Writer', isActive: storyArcView === 'story-writer' },
+                          { id: 'shot-list', label: 'Sceneliste', isActive: storyArcView === 'shot-list' },
+                          { id: 'story-logic', label: 'Story Logic', isActive: storyArcView === 'story-logic' },
+                        ] as const;
+                        return (
+                          <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Typography
+                              sx={{
+                                color: 'rgba(203,213,225,0.65)',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.12em',
+                                textTransform: 'uppercase',
+                                pl: 0.4,
+                              }}
+                            >
+                              Story
+                            </Typography>
+                            <Box
+                              sx={{
+                                display: 'inline-flex',
+                                borderRadius: 1.2,
+                                p: 0.4,
+                                bgcolor: 'rgba(15,23,42,0.58)',
+                                border: '1px solid rgba(148,163,184,0.18)',
+                              }}
+                            >
+                              {storyTools.map((tool) => (
+                                <Box
+                                  key={tool.id}
+                                  onClick={() => openContentProducerCreativeTool(tool.id)}
+                                  sx={{
+                                    px: 1.6,
+                                    py: 0.6,
+                                    cursor: 'pointer',
+                                    borderRadius: 0.9,
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    color: tool.isActive ? '#0b1120' : 'rgba(203,213,225,0.75)',
+                                    bgcolor: tool.isActive ? '#a78bfa' : 'transparent',
+                                    transition: 'background 0.18s ease, color 0.18s ease',
+                                    userSelect: 'none',
+                                    whiteSpace: 'nowrap',
+                                    '&:hover': {
+                                      bgcolor: tool.isActive ? '#a78bfa' : 'rgba(167,139,250,0.08)',
+                                      color: tool.isActive ? '#0b1120' : '#ddd6fe',
+                                    },
+                                  }}
+                                >
+                                  {tool.label}
+                                </Box>
+                              ))}
+                            </Box>
+                          </Stack>
+                        );
+                      })()}
                     </Box>
                   ) : (
                     <>
