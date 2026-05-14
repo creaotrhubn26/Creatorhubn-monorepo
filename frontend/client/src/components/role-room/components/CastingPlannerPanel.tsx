@@ -176,6 +176,15 @@ import { evaluateProjectOwnership } from '../utils/projectOwnership';
 import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
 import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
 import {
+  ContentProducerWorkflowStepper,
+  type WorkflowStepKey,
+} from './ContentProducerWorkflowStepper';
+import { KlientStatusBadge } from './KlientStatusBadge';
+import {
+  deriveActiveWorkflowStep,
+  deriveCompletedWorkflowSteps,
+} from '../utils/contentProducerWorkflow';
+import {
   normalizeStoryArcNavigationFocus,
   type StoryArcNavigationFocus,
 } from '../utils/storyArcFocus';
@@ -6303,6 +6312,45 @@ type RoleRoomProjectWorkspaceState = {
     return segments;
   }, [activeTab, currentProject, navigateToTab]);
 
+  const activeWorkflowStep = useMemo(
+    () => deriveActiveWorkflowStep(contentProducerPlannerSurface, producerMediaFocus?.workspace),
+    [contentProducerPlannerSurface, producerMediaFocus?.workspace],
+  );
+
+  const completedWorkflowSteps = useMemo(
+    () => deriveCompletedWorkflowSteps(currentProject?.producerWorkflowStatus),
+    [currentProject?.producerWorkflowStatus],
+  );
+
+  const handleSelectWorkflowStep = useCallback((step: WorkflowStepKey) => {
+    switch (step) {
+      case 'brief':
+        openContentProducerPlannerSurface('project_room', {
+          mediaFocus: { workspace: 'brief' },
+        });
+        return;
+      case 'story':
+        openContentProducerPlannerSurface('project_room', {
+          mediaFocus: { workspace: 'manuscript' },
+        });
+        return;
+      case 'storyboard':
+        openContentProducerPlannerSurface('project_room', {
+          mediaFocus: { workspace: 'storyboard' },
+        });
+        return;
+      case 'approval':
+        openContentProducerPlannerSurface('approval', { focusPanel: 'reviews' });
+        return;
+      case 'delivery':
+        openContentProducerPlannerSurface('delivery');
+        return;
+      case 'economy':
+        openContentProducerPlannerSurface('economy', { focusPanel: 'economy' });
+        return;
+    }
+  }, [openContentProducerPlannerSurface]);
+
   const globalTagSeedList = useMemo(() => {
     const deduped = new Set<string>();
     [
@@ -8968,6 +9016,16 @@ type RoleRoomProjectWorkspaceState = {
         hidden={isLiveSetImmersive}
       />
 
+      {isContentProducerMode && currentProject && (
+        <ContentProducerWorkflowStepper
+          activeStep={activeWorkflowStep}
+          completedSteps={completedWorkflowSteps}
+          approvalStatus={currentProject.producerWorkflowStatus ?? null}
+          onSelectStep={handleSelectWorkflowStep}
+          hidden={isLiveSetImmersive}
+        />
+      )}
+
       {/* Tabs */}
       <Box
         role="navigation"
@@ -9069,6 +9127,14 @@ type RoleRoomProjectWorkspaceState = {
             const isLiveSetTab = tabValue === LIVE_SET_TAB_INDEX;
             const isProducerCoreTab =
               tabValue >= PRODUCER_MEDIA_TAB_INDEX && tabValue <= PRODUCER_EXPORT_TAB_INDEX;
+            // Klient-status-badge skal vises på producer-tabs som direkte
+            // reflekterer klient-godkjenningsstatus. Økonomi-tab utelukkes
+            // siden den ikke handler om klient-flyten.
+            const isClientRelevantProducerTab =
+              tabValue === PRODUCER_MEDIA_TAB_INDEX
+              || tabValue === PRODUCER_TIMELINE_TAB_INDEX
+              || tabValue === PRODUCER_REVIEWS_TAB_INDEX
+              || tabValue === PRODUCER_EXPORT_TAB_INDEX;
             const useCompactProducerTab = (isContentProducerMode || isClientReviewerMode) && !isMobile;
             const showTabMeta = !isMobile && (!useCompactProducerTab || quickTier6 || isSelected);
             const effectiveTabMinWidth = isMobile
@@ -9335,6 +9401,11 @@ type RoleRoomProjectWorkspaceState = {
                           }}
                         />
                         {producerCoreTabMetaLabel}
+                      </Box>
+                    )}
+                    {showTabMeta && isClientRelevantProducerTab && currentProject?.producerWorkflowStatus && (
+                      <Box sx={{ mt: 0.35 }}>
+                        <KlientStatusBadge status={currentProject.producerWorkflowStatus} />
                       </Box>
                     )}
                   </Box>
