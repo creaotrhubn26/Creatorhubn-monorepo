@@ -456,6 +456,13 @@ import {
   type AcademyPresentationVisualNeed as SharedAcademyPresentationVisualNeed,
 } from "../../frontend/shared/academy-presentation-design-system.ts";
 
+// Boot-validering av kritiske env-variabler (stabilitetsaudit § 9.3).
+// Hvis DATABASE_URL eller andre påkrevde verdier mangler eller er ugyldige
+// avbrytes prosessen med exit 1 og en human-readable feilmelding i logs.
+// Render restarter automatisk, og logs vil tydeligvise hva som mangler.
+import { validateEnvOrExit } from "./env-validator";
+validateEnvOrExit();
+
 // Database connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
