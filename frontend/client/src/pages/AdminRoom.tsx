@@ -215,11 +215,23 @@ function formatCurrency(value: number | null | undefined, currency = 'NOK'): str
 
 function getCurrentUserEmail(): string {
   try {
-    // Match how andre komponenter leser logged-in user
-    const raw = localStorage.getItem('user') || localStorage.getItem('creatorhub_user');
-    if (raw) {
-      const parsed = JSON.parse(raw) as { email?: string };
-      if (typeof parsed?.email === 'string') return parsed.email.toLowerCase();
+    // Auth-systemet (useAuth.ts + LoginModal.tsx) lagrer som
+    // 'creatorhub_auth_user' (full user-objekt) og 'userEmail' (string).
+    // Vi prøver i prioritert rekkefølge for å unngå å miste admin-status
+    // når man logger inn med Google.
+    const userObjRaw = localStorage.getItem('creatorhub_auth_user')
+      || localStorage.getItem('user')
+      || localStorage.getItem('creatorhub_user');
+    if (userObjRaw) {
+      const parsed = JSON.parse(userObjRaw) as { email?: string };
+      if (typeof parsed?.email === 'string' && parsed.email) {
+        return parsed.email.toLowerCase();
+      }
+    }
+    // Fallback: direkte userEmail-string
+    const directEmail = localStorage.getItem('userEmail');
+    if (typeof directEmail === 'string' && directEmail.includes('@')) {
+      return directEmail.toLowerCase();
     }
   } catch {
     /* ignore */

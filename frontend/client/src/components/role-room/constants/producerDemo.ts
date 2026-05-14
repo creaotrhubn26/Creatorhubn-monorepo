@@ -73,7 +73,32 @@ export function isRoleRoomDemoSeedAllowed(): boolean {
   }
 
   const params = new URLSearchParams(window.location.search);
-  return params.get('roleRoomDemoSeed') === '1' || params.get('demoSeed') === '1';
+  if (params.get('roleRoomDemoSeed') === '1' || params.get('demoSeed') === '1') {
+    return true;
+  }
+
+  // Tillat produkt-eier (daniel@creatorhubn.com) å se demo-prosjektene
+  // i prod uten å måtte legge på query-param. Sjekker auth-storage
+  // for å unngå å koble inn auth-modul her.
+  try {
+    const userObjRaw = window.localStorage.getItem('creatorhub_auth_user')
+      || window.localStorage.getItem('user')
+      || window.localStorage.getItem('creatorhub_user');
+    if (userObjRaw) {
+      const parsed = JSON.parse(userObjRaw) as { email?: string };
+      if (typeof parsed?.email === 'string' && parsed.email.toLowerCase() === 'daniel@creatorhubn.com') {
+        return true;
+      }
+    }
+    const directEmail = window.localStorage.getItem('userEmail');
+    if (typeof directEmail === 'string' && directEmail.toLowerCase() === 'daniel@creatorhubn.com') {
+      return true;
+    }
+  } catch {
+    /* ignore — storage-tilgang kan feile i private-mode */
+  }
+
+  return false;
 }
 
 export const PRODUCER_DEMO_TIMELINE_SEED = [

@@ -4042,6 +4042,10 @@ type RoleRoomProjectWorkspaceState = {
     };
   }, [persistWorkspaceScrollState]);
 
+  // Tracking restored-once-per-surface for å unngå at scroll-restore
+  // kjører hver gang storyArcView/plannerSurface endres (årsak til
+  // synlig "shake" når man klikker tab-chips).
+  const restoredSurfacesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (typeof window === 'undefined' || !currentProject?.id) {
       return;
@@ -4053,8 +4057,25 @@ type RoleRoomProjectWorkspaceState = {
     }
 
     const surfaceKey = getWorkspaceSurfaceKey(displayedActiveTab, storyArcView, contentProducerPlannerSurface);
+    const restoredKey = `${currentProject.id}::${surfaceKey}`;
+
+    // Restorer scroll bare første gang vi besøker denne surfacen
+    // i denne sesjonen. Påfølgende klikk skal ikke flytte scroll.
+    if (restoredSurfacesRef.current.has(restoredKey)) {
+      return;
+    }
+
     const scrollState = projectWorkspaceState.scrollBySurface?.[surfaceKey] ?? null;
     if (!scrollState) {
+      restoredSurfacesRef.current.add(restoredKey);
+      return;
+    }
+
+    // Skip restore hvis target er innenfor 80px av nåværende scroll —
+    // unngår synlig hopp ved minimale forskjeller.
+    const currentY = window.scrollY;
+    if (Math.abs(currentY - scrollState.top) < 80) {
+      restoredSurfacesRef.current.add(restoredKey);
       return;
     }
 
@@ -4062,12 +4083,16 @@ type RoleRoomProjectWorkspaceState = {
       window.scrollTo({
         top: scrollState.top,
         left: scrollState.left,
-        behavior: 'auto',
+        behavior: 'smooth',
       });
       if (workspaceRootRef.current) {
-        workspaceRootRef.current.scrollTop = scrollState.top;
-        workspaceRootRef.current.scrollLeft = scrollState.left;
+        workspaceRootRef.current.scrollTo({
+          top: scrollState.top,
+          left: scrollState.left,
+          behavior: 'smooth',
+        });
       }
+      restoredSurfacesRef.current.add(restoredKey);
     }, 80);
 
     return () => {
