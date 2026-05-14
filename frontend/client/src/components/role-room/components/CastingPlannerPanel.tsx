@@ -51,6 +51,7 @@ import {
   Delete as DeleteIcon,
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
+  Send as KlientSendIcon,
   Cancel as CancelIcon,
   Schedule as ScheduleIcon,
   PhotoCamera as PhotoCameraIcon,
@@ -9113,6 +9114,62 @@ type RoleRoomProjectWorkspaceState = {
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <PlannerBreadcrumb segments={breadcrumbSegments} />
           </Box>
+          {currentProject && !isClientReviewerMode && (
+            currentProject.producerWorkflowStatus === 'awaiting_client'
+            || currentProject.producerWorkflowStatus === 'approved'
+          ) ? (
+            <Chip
+              size="small"
+              icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
+              label={currentProject.producerWorkflowStatus === 'approved'
+                ? 'Godkjent av klient'
+                : 'Venter på klient-godkjenning'}
+              onClick={() => {
+                if (isContentProducerMode) {
+                  openContentProducerPlannerSurface('approval', { focusPanel: 'reviews' });
+                } else {
+                  navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+                }
+              }}
+              sx={{
+                height: 28,
+                fontWeight: 700,
+                bgcolor: currentProject.producerWorkflowStatus === 'approved'
+                  ? 'rgba(34,197,94,0.18)'
+                  : 'rgba(59,130,246,0.18)',
+                color: currentProject.producerWorkflowStatus === 'approved' ? '#bbf7d0' : '#bfdbfe',
+                cursor: 'pointer',
+                '&:hover': { filter: 'brightness(1.1)' },
+              }}
+            />
+          ) : currentProject && !isClientReviewerMode ? (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<KlientSendIcon sx={{ fontSize: 16 }} />}
+              onClick={() => {
+                if (isContentProducerMode) {
+                  openContentProducerPlannerSurface('approval', { focusPanel: 'reviews' });
+                } else {
+                  navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+                }
+              }}
+              sx={{
+                height: 30,
+                px: 1.4,
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                textTransform: 'none',
+                bgcolor: 'rgba(59,130,246,0.92)',
+                color: '#fff',
+                '&:hover': { bgcolor: 'rgba(37,99,235,1)' },
+                whiteSpace: 'nowrap',
+                display: { xs: 'none', sm: 'inline-flex' },
+              }}
+            >
+              Send til klient
+            </Button>
+          ) : null}
           <WorkspaceModeBadge
             mode={currentWorkspaceMode}
             tooltip={currentWorkspaceModeTooltip}
@@ -11787,6 +11844,72 @@ type RoleRoomProjectWorkspaceState = {
                     />
                   </CardContent>
                 </Card>
+
+                {/* Økonomi-kort — vises i Story Arc Studio for produksjonsteam
+                  så bruker ikke trenger å lete etter en separat tab.
+                  For content-producer er Økonomi allerede en planner-surface. */}
+                {!isContentProducerMode && !isClientReviewerMode && canViewProducerEconomy && (
+                  <Card
+                    sx={{
+                      flex: '1 1 320px',
+                      minWidth: { xs: '100%', sm: 320 },
+                      maxWidth: 460,
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      background: 'linear-gradient(160deg, rgba(34,197,94,0.16) 0%, rgba(15,23,42,0.88) 100%)',
+                      border: '1px solid rgba(74,222,128,0.36)',
+                      boxShadow: '0 12px 32px rgba(22,101,52,0.28)',
+                      transition: 'all 0.28s ease',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        borderColor: 'rgba(134,239,172,0.84)',
+                        boxShadow: '0 18px 36px rgba(22,101,52,0.32)',
+                      },
+                    }}
+                    onClick={() => {
+                      navigateToTab(PRODUCER_ECONOMY_TAB_INDEX);
+                    }}
+                    role="button"
+                    aria-label="Åpne Økonomi"
+                  >
+                    <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                      <Box
+                        sx={{
+                          width: 76,
+                          height: 76,
+                          borderRadius: '50%',
+                          bgcolor: 'rgba(34,197,94,0.2)',
+                          border: '1px solid rgba(74,222,128,0.46)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mx: 'auto',
+                          mb: 2,
+                          fontSize: 32,
+                        }}
+                      >
+                        💰
+                      </Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                        Økonomi
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
+                        Budsjett, fakturering og kommersielle godkjenninger for prosjektet.
+                      </Typography>
+                      <Chip
+                        label="ØKONOMI"
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(34,197,94,0.22)',
+                          color: '#bbf7d0',
+                          border: '1px solid rgba(74,222,128,0.5)',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
               </Box>
             </Box>
           ) : effectiveStoryArcView === 'planning' ? (
