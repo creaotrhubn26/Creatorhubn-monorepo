@@ -389,6 +389,14 @@ import {
   breakdownCostumeApplier,
   breakdownVfxFlagApplier,
 } from "./ai-breakdown-agent.js";
+import {
+  castingStubAgent,
+  castingRoleStubApplier,
+} from "./ai-casting-stub-agent.js";
+import {
+  storyLogicAgent,
+  storyContinuityIssueApplier,
+} from "./ai-story-logic-agent.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
 import { setupAdminRefundRequestsRoutes } from "./admin-refund-requests-routes";
 import { setupAdminStatsRoutes } from "./admin-stats-routes";
@@ -15579,11 +15587,15 @@ const manuscriptRevisionsService = createCastingManuscriptRevisionsService({
 // registreres her. Se ai-suggestion-architecture.md.
 const aiSuggestionService = createAISuggestionService({ pool });
 aiSuggestionService.registerAgent(breakdownAgent);
+aiSuggestionService.registerAgent(castingStubAgent);
+aiSuggestionService.registerAgent(storyLogicAgent);
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
 aiSuggestionService.registerApplier(breakdownCostumeApplier);
 aiSuggestionService.registerApplier(breakdownVfxFlagApplier);
+aiSuggestionService.registerApplier(castingRoleStubApplier);
+aiSuggestionService.registerApplier(storyContinuityIssueApplier);
 
 function dbLegacyStoryLogicKey(projectId: string): string {
   return `project:story-logic:${projectId}`;

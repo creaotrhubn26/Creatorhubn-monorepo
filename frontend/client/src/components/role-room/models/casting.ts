@@ -2346,6 +2346,7 @@ export const SUGGESTION_TYPES = {
   STORY_LOGLINE: 'story.logline',
   STORY_SYNOPSIS: 'story.synopsis',
   STORY_BEAT_OUTLINE: 'story.beat-outline',
+  STORY_CONTINUITY_ISSUE: 'story.continuity-issue',
 
   // Shot list-agent
   SHOT_LIST_DRAFT: 'shot-list.draft',
@@ -2418,6 +2419,25 @@ export interface CastingAuditionSidesPayload {
 export interface StoryLoglinePayload {
   logline: string;
   alternatives?: string[];
+}
+
+export type StoryContinuityIssueType =
+  | 'character-no-introduction'
+  | 'prop-disappears'
+  | 'contradicting-fact'
+  | 'setup-without-payoff'
+  | 'payoff-without-setup'
+  | 'time-jump-unclear'
+  | string;
+
+export interface StoryContinuityIssuePayload {
+  issueType: StoryContinuityIssueType;
+  description: string;
+  affectedSceneIds: string[];
+  /** 'minor' = stilistisk notat, 'major' = handlingsbrytende */
+  severity: 'minor' | 'major';
+  /** Konkret forslag til hvordan fikse */
+  suggestion?: string;
 }
 
 export interface StoryBeatOutlinePayload {

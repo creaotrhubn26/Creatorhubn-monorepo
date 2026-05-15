@@ -2591,16 +2591,77 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
             {/* Characters Tab */}
             {activeTab === 'characters' && (
-              <CharactersTab
-                characters={characterList}
-                dialogueLines={dialogueLines}
-                manuscriptId={selectedManuscript?.id}
-                scenes={scenes}
-                onCharactersChange={(chars) => {
-                  // Character updates would need backend support
-                  console.log('Character update:', chars);
-                }}
-              />
+              <Stack spacing={2}>
+                {activeProjectId && scenes.length > 0 && (
+                  <AISuggestionsPanel
+                    projectId={activeProjectId}
+                    filter={{
+                      sourceType: 'project',
+                      sourceId: activeProjectId,
+                      suggestionType: 'casting.role-stub',
+                    }}
+                    title="AI-foreslåtte roller"
+                    onGenerate={async () => {
+                      if (!activeProjectId) return;
+                      await generateSuggestions(activeProjectId, {
+                        agentName: 'casting-stub-agent',
+                        sourceType: 'project',
+                        sourceId: activeProjectId,
+                        payload: {
+                          scenes: scenes
+                            .filter((s) => s.description && s.description.trim())
+                            .map((s) => ({
+                              id: s.id,
+                              sceneNumber: s.sceneNumber,
+                              sceneText: s.description ?? '',
+                            })),
+                          existingRoles: castingRoles.map((r) => ({ id: r.id, name: r.name })),
+                        },
+                      });
+                    }}
+                  />
+                )}
+                {activeProjectId && scenes.length >= 2 && (
+                  <AISuggestionsPanel
+                    projectId={activeProjectId}
+                    filter={{
+                      sourceType: 'project',
+                      sourceId: activeProjectId,
+                      suggestionType: 'story.continuity-issue',
+                    }}
+                    title="Continuity-feil"
+                    onGenerate={async () => {
+                      if (!activeProjectId) return;
+                      await generateSuggestions(activeProjectId, {
+                        agentName: 'story-logic-agent',
+                        sourceType: 'project',
+                        sourceId: activeProjectId,
+                        payload: {
+                          scenes: scenes
+                            .filter((s) => s.description && s.description.trim())
+                            .map((s) => ({
+                              id: s.id,
+                              sceneNumber: s.sceneNumber,
+                              sceneText: s.description ?? '',
+                              sceneHeading: s.sceneHeading ?? s.heading,
+                            })),
+                          existingRoles: castingRoles.map((r) => ({ id: r.id, name: r.name })),
+                        },
+                      });
+                    }}
+                  />
+                )}
+                <CharactersTab
+                  characters={characterList}
+                  dialogueLines={dialogueLines}
+                  manuscriptId={selectedManuscript?.id}
+                  scenes={scenes}
+                  onCharactersChange={(chars) => {
+                    // Character updates would need backend support
+                    console.log('Character update:', chars);
+                  }}
+                />
+              </Stack>
             )}
 
             {/* Dialogue Tab */}

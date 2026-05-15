@@ -56,8 +56,10 @@ import type {
   BreakdownRiskFlagPayload,
   CastingRoleStubPayload,
   StoryLoglinePayload,
+  StoryContinuityIssuePayload,
   ShotListDraftPayload,
 } from '../models/casting';
+import RuleIcon from '@mui/icons-material/Rule';
 
 // ─────────────────────────────────────────────────────────────────────
 // Confidence-bånd-håndtering
@@ -264,6 +266,41 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
         <Typography variant="body2">
           {p.shots.length} foreslåtte shots
         </Typography>
+      );
+    },
+  },
+
+  'story.continuity-issue': {
+    icon: RuleIcon,
+    label: 'Continuity',
+    highlight: true,
+    render: (s) => {
+      const p = s.payload as StoryContinuityIssuePayload;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Chip
+              label={p.severity === 'major' ? 'Alvorlig' : 'Liten'}
+              size="small"
+              color={p.severity === 'major' ? 'error' : 'warning'}
+              variant="outlined"
+            />
+            <Typography variant="caption" color="text.secondary">
+              {p.issueType}
+            </Typography>
+          </Stack>
+          <Typography variant="body2">{p.description}</Typography>
+          {p.suggestion && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+              Forslag: {p.suggestion}
+            </Typography>
+          )}
+          {p.affectedSceneIds.length > 0 && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+              Berører {p.affectedSceneIds.length} {p.affectedSceneIds.length === 1 ? 'scene' : 'scener'}
+            </Typography>
+          )}
+        </Box>
       );
     },
   },
