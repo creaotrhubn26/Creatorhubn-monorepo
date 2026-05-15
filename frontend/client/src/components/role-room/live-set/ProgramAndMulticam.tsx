@@ -22,6 +22,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import VideoFeed from './VideoFeed';
 import type { CameraId, CameraSlot, CameraSettings } from './types';
 
 interface ProgramAndMulticamProps {
@@ -81,25 +82,30 @@ function CamThumbnail({
         '&:hover': { borderColor: selected ? '#dc2626' : 'rgba(255,255,255,0.25)' },
       }}
     >
-      {/* Placeholder for live-feed — bytt med NDI-/RTMP-/WebRTC-receiver */}
-      <Box
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          background: cam.online
-            ? 'linear-gradient(135deg, rgba(60,40,30,0.5), rgba(30,20,15,0.8))'
-            : 'rgba(20,20,20,1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+      {/* VideoFeed velger transport: webrtc → hls → mjpeg → poll → mock */}
+      <VideoFeed
+        source={{
+          ccapiCameraIp: cam.ccapi?.ipAddress,
+          // hlsUrl/webrtcUrl populeres når MediaMTX-server er konfigurert
         }}
-      >
-        {!cam.online && (
+      />
+      {!cam.online && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            bgcolor: 'rgba(20,20,20,0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1,
+          }}
+        >
           <Typography sx={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
             OFFLINE
           </Typography>
-        )}
-      </Box>
+        </Box>
+      )}
 
       {/* Cam-label */}
       <Box
@@ -194,12 +200,10 @@ export const ProgramAndMulticam: React.FC<ProgramAndMulticamProps> = ({
               overflow: 'hidden',
             }}
           >
-            {/* Placeholder live-feed */}
-            <Box
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                background: 'linear-gradient(135deg, rgba(60,40,30,0.6), rgba(20,15,10,0.95))',
+            {/* VideoFeed: webrtc → hls → mjpeg → poll → mock-fallback */}
+            <VideoFeed
+              source={{
+                ccapiCameraIp: programCam?.ccapi?.ipAddress,
               }}
             />
             {/* Cam-info row */}

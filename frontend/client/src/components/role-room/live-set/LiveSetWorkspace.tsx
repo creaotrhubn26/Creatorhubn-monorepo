@@ -16,6 +16,8 @@ import ProgramAndMulticam from './ProgramAndMulticam';
 import CameraControlsPanel from './CameraControlsPanel';
 import SceneInfoColumn from './SceneInfoColumn';
 import AudioColumn from './AudioColumn';
+import EditModeWorkspace from './EditModeWorkspace';
+import ReviewModeWorkspace from './ReviewModeWorkspace';
 import { useLiveSetHardware } from './useLiveSetHardware';
 import type {
   CameraId,
@@ -243,29 +245,11 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
         )}
 
         {mode === 'edit' && (
-          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography sx={{ fontSize: 18, color: 'rgba(255,255,255,0.5)' }}>
-                EDIT MODE — scene-assembly med node-graf + timeline
-              </Typography>
-              <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', mt: 1 }}>
-                Speiler livesetmode.md §16.13-§16.17 — kommer i neste sprint
-              </Typography>
-            </Box>
-          </Box>
+          <EditModeWorkspace projectId={projectId} sceneId={scene.id} />
         )}
 
         {mode === 'review' && (
-          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography sx={{ fontSize: 18, color: 'rgba(255,255,255,0.5)' }}>
-                REVIEW MODE — versjon-sammenligning + klient-approval
-              </Typography>
-              <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', mt: 1 }}>
-                Speiler livesetmode.md §16.18 — kommer i neste sprint
-              </Typography>
-            </Box>
-          </Box>
+          <ReviewModeWorkspace projectId={projectId} sceneId={scene.id} />
         )}
       </Box>
     </Dialog>
