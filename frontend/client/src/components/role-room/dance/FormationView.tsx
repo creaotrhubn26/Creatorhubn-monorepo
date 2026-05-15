@@ -32,6 +32,7 @@ import {
   TextField,
   Avatar,
   Chip,
+  Checkbox,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -45,6 +46,10 @@ import {
   Sync as SymmetryIcon,
   ViewColumn as DistributeXIcon,
   ViewStream as DistributeYIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Undo as UndoIcon,
+  Redo as RedoIcon,
 } from '@mui/icons-material';
 import { ToggleButton, ToggleButtonGroup, MenuItem } from '@mui/material';
 import { Canvas, Circle, Rect, Textbox, Line, Group, FabricImage } from 'fabric';
@@ -57,6 +62,7 @@ import {
 } from './formationTypes';
 import { FormationTimeline } from './FormationTimeline';
 import { DancerPathsView } from './DancerPathsView';
+import { DancerPathPreview } from './DancerPathPreview';
 
 // ─── Stage-dimensjoner (interne canvas-piksler — uavhengig av render-størrelse) ─
 
@@ -110,10 +116,86 @@ export const FormationView: React.FC<FormationViewProps> = ({
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
 
-  const [formations, setFormations] = useState<Formation[]>(() => [...initialFormations]);
+  const [formations, _setFormations] = useState<Formation[]>(() => [...initialFormations]);
   const [activeFormationId, setActiveFormationId] = useState<string | null>(
     () => initialFormations[0]?.id ?? null,
   );
+
+  // F5-14: Undo/Redo-stacks. Vi snapshotter formations-state ved hver
+  // mutasjon. setFormations wrappes slik at history-stack vedlikeholdes.
+  const undoStackRef = useRef<Formation[][]>([]);
+  const redoStackRef = useRef<Formation[][]>([]);
+  const skipHistoryRef = useRef(false);
+  const setFormations = useCallback((
+    next: Formation[] | ((prev: Formation[]) => Formation[]),
+  ): void => {
+    _setFormations((prev) => {
+      const computed = typeof next === 'function' ? (next as (p: Formation[]) => Formation[])(prev) : next;
+      if (!skipHistoryRef.current) {
+        undoStackRef.current.push(prev);
+        if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+        redoStackRef.current = [];
+      }
+      return computed;
+    });
+  }, []);
+  const undo = useCallback((): void => {
+    const prev = undoStackRef.current.pop();
+    if (!prev) return;
+    skipHistoryRef.current = true;
+    _setFormations((cur) => {
+      redoStackRef.current.push(cur);
+      return prev;
+    });
+    setTimeout(() => { skipHistoryRef.current = false; }, 0);
+  }, []);
+  const redo = useCallback((): void => {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    skipHistoryRef.current = true;
+    _setFormations((cur) => {
+      undoStackRef.current.push(cur);
+      return next;
+    });
+    setTimeout(() => { skipHistoryRef.current = false; }, 0);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+
+  // F5-15: Video + stage-map sync. Hør på 'dance:video-time'-CustomEvent
+  // som video-spilleren dispatcher når playheaden flytter seg. Velg
+  // formasjonen hvis tidsrom inneholder gjeldende currentTime.
+  useEffect(() => {
+    const onVideoTime = (e: Event): void => {
+      const detail = (e as CustomEvent<{ currentTime?: number }>).detail;
+      if (!detail || typeof detail.currentTime !== 'number') return;
+      const t = detail.currentTime;
+      const match = formations.find((f) => {
+        if (f.startSec == null || f.endSec == null) return false;
+        return t >= f.startSec && t <= f.endSec;
+      });
+      if (match && match.id !== activeFormationId) {
+        setActiveFormationId(match.id);
+      }
+    };
+    window.addEventListener('dance:video-time', onVideoTime as EventListener);
+    return () => window.removeEventListener('dance:video-time', onVideoTime as EventListener);
+  }, [formations, activeFormationId]);
   const [newFormationName, setNewFormationName] = useState('');
   const [animationProgress, setAnimationProgress] = useState<{ from: string; to: string } | null>(null);
 
@@ -121,6 +203,15 @@ export const FormationView: React.FC<FormationViewProps> = ({
   const [stageType, setStageType] = useState<StageType>('proscenium');
   const [snapStep, setSnapStep] = useState<number>(SNAP_OFF);
   const [symmetry, setSymmetry] = useState<boolean>(false);
+
+  // DanceFlow-paritet (F5)
+  const [hiddenDancerIds, setHiddenDancerIds] = useState<Set<string>>(() => new Set());
+  const [showPaths, setShowPaths] = useState<boolean>(false);
+  const [showIds, setShowIds] = useState<boolean>(false);
+  const [stageOpacity, setStageOpacity] = useState<number>(1);
+  const [stageMode, setStageMode] = useState<'2d' | '3d'>('2d');
+  const [zoomPct, setZoomPct] = useState<number>(100);
+  const [curveMode, setCurveMode] = useState<boolean>(false);
 
   const dancersById = useMemo(
     () => new Map(dancers.map((d) => [d.id, d])),
@@ -198,22 +289,26 @@ export const FormationView: React.FC<FormationViewProps> = ({
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas || !activeFormation) return;
+    const idx = formations.findIndex((f) => f.id === activeFormation.id);
+    const prev = idx > 0 ? formations[idx - 1] : null;
+    const next = idx >= 0 && idx < formations.length - 1 ? formations[idx + 1] : null;
     drawFormation(
       canvas,
       activeFormation,
       dancersById,
       (dancerId, x, y) => {
-        // Persistert posisjons-endring fra drag — oppdater state
         updateDancerPosition(dancerId, x, y);
       },
       (dancerId) => {
-        // Dobbeltklikk på en puck — bruk ref slik at den alltid har
-        // siste callback uten å trigge re-tegning.
         onDancerClickRef.current?.(dancerId);
       },
-      { snapStep, symmetry },
+      {
+        snapStep, symmetry,
+        hiddenDancerIds, showPaths, showIds,
+        prevFormation: prev, nextFormation: next,
+      },
     );
-  }, [activeFormation, dancersById, updateDancerPosition, snapStep, symmetry]);
+  }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds]);
 
   // Persister via callback når formations endres
   useEffect(() => {
@@ -570,6 +665,47 @@ export const FormationView: React.FC<FormationViewProps> = ({
               </IconButton>
             </span>
           </Tooltip>
+          <Tooltip title={curveMode ? 'Slå av kurve-modus' : 'Tegn kurve mellom dansere'}>
+            <ToggleButton
+              size="small"
+              value="curve"
+              selected={curveMode}
+              onChange={() => setCurveMode((v) => !v)}
+              data-testid="formation-curve-tool"
+              sx={{
+                color: curveMode ? '#fff' : '#9ca3af',
+                borderColor: '#2a3142',
+                bgcolor: curveMode ? 'rgba(96,165,250,0.18)' : 'transparent',
+                fontSize: 11, px: 1,
+              }}
+            >
+              ⌒
+            </ToggleButton>
+          </Tooltip>
+          <Tooltip title="Angre (⌘Z)">
+            <span>
+              <IconButton
+                size="small"
+                onClick={undo}
+                data-testid="formation-undo"
+                sx={{ color: '#a78bfa' }}
+              >
+                <UndoIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Gjør om (⌘⇧Z)">
+            <span>
+              <IconButton
+                size="small"
+                onClick={redo}
+                data-testid="formation-redo"
+                sx={{ color: '#a78bfa' }}
+              >
+                <RedoIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Stack>
 
         <Box
@@ -623,10 +759,29 @@ export const FormationView: React.FC<FormationViewProps> = ({
           overflowY: 'auto',
         }}
       >
+        {activeFormation && formations.length >= 1 ? (
+          <DancerPathPreview formations={formations} dancers={dancers} />
+        ) : null}
         {activeFormation ? (
           <FormationDetailsPanel
             key={activeFormation.id}
             formation={activeFormation}
+            formations={formations}
+            dancers={dancers}
+            hiddenDancerIds={hiddenDancerIds}
+            onToggleHidden={(id) => setHiddenDancerIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id); else next.add(id);
+              return next;
+            })}
+            showPaths={showPaths}
+            onToggleShowPaths={() => setShowPaths((v) => !v)}
+            showIds={showIds}
+            onToggleShowIds={() => setShowIds((v) => !v)}
+            stageOpacity={stageOpacity}
+            onStageOpacityChange={setStageOpacity}
+            stageMode={stageMode}
+            onStageModeChange={setStageMode}
             onChange={updateActiveFormation}
           />
         ) : null}
@@ -736,15 +891,67 @@ export const FormationView: React.FC<FormationViewProps> = ({
   );
 };
 
+// ═══════════════════════ FORMATION TEMPLATES (F5-6) ═══════════════════════
+
+const FORMATION_TEMPLATES: ReadonlyArray<{
+  id: string;
+  label: string;
+  /** Returnerer normaliserte (x,y)-posisjoner for `count` dansere. */
+  generate: (count: number) => Array<{ x: number; y: number }>;
+}> = [
+  { id: 'horizontal_line', label: 'Horizontal Line', generate: (n) => Array.from({ length: n }, (_, i) => ({ x: n > 1 ? i / (n - 1) : 0.5, y: 0.5 })) },
+  { id: 'v_shape',         label: 'V-Shape',         generate: (n) => Array.from({ length: n }, (_, i) => {
+    const half = (n - 1) / 2;
+    const offset = i - half;
+    return { x: 0.5 + offset / Math.max(1, half) * 0.45, y: 0.3 + Math.abs(offset) / Math.max(1, half) * 0.5 };
+  }) },
+  { id: 'circle',          label: 'Circle',          generate: (n) => Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    return { x: 0.5 + Math.cos(a) * 0.35, y: 0.5 + Math.sin(a) * 0.35 };
+  }) },
+  { id: 'diamond',         label: 'Diamond',         generate: (n) => Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    const r = Math.abs(Math.cos(a)) + Math.abs(Math.sin(a));
+    return { x: 0.5 + (Math.cos(a) / r) * 0.4, y: 0.5 + (Math.sin(a) / r) * 0.4 };
+  }) },
+  { id: 'split_groups',    label: 'Split Groups',    generate: (n) => Array.from({ length: n }, (_, i) => {
+    const group = i < n / 2 ? 0 : 1;
+    const idxInGroup = group === 0 ? i : i - Math.floor(n / 2);
+    const groupSize = group === 0 ? Math.floor(n / 2) : Math.ceil(n / 2);
+    return { x: group === 0 ? 0.25 : 0.75, y: groupSize > 1 ? idxInGroup / (groupSize - 1) * 0.6 + 0.2 : 0.5 };
+  }) },
+];
+
 // ═══════════════════════ FORMATION DETAILS PANEL ═══════════════════════
-// DanceFlow-paritet: per-formation editor med tags, notes og time-felt.
+// DanceFlow-paritet: per-formation editor med tags, notes, time-felt,
+// dancers-list, transition-editor og stage-overlay-kontroller (F5).
 
 interface FormationDetailsPanelProps {
   formation: Formation;
+  formations: Formation[];
+  dancers: readonly Dancer[];
+  hiddenDancerIds: ReadonlySet<string>;
+  onToggleHidden: (dancerId: string) => void;
+  showPaths: boolean;
+  onToggleShowPaths: () => void;
+  showIds: boolean;
+  onToggleShowIds: () => void;
+  stageOpacity: number;
+  onStageOpacityChange: (v: number) => void;
+  stageMode: '2d' | '3d';
+  onStageModeChange: (m: '2d' | '3d') => void;
   onChange: (patch: Partial<Formation>) => void;
 }
 
-const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({ formation, onChange }) => {
+const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
+  formation, formations, dancers,
+  hiddenDancerIds, onToggleHidden,
+  showPaths, onToggleShowPaths,
+  showIds, onToggleShowIds,
+  stageOpacity, onStageOpacityChange,
+  stageMode, onStageModeChange,
+  onChange,
+}) => {
   const [tagDraft, setTagDraft] = useState('');
   const tags = formation.tags ?? [];
 
@@ -759,6 +966,27 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({ formation
   };
   const removeTag = (t: string): void => onChange({ tags: tags.filter((x) => x !== t) });
 
+  // F5-6: anvend template på aktiv formasjon (overskriver posisjoner).
+  const applyTemplate = (templateId: string): void => {
+    const tpl = FORMATION_TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl) return;
+    const positions = formation.positions.map((p, i) => {
+      const target = tpl.generate(formation.positions.length)[i];
+      return { ...p, x: target.x, y: target.y };
+    });
+    onChange({ positions });
+  };
+
+  // F5-5: transition target er "neste formasjon i sekvensen"
+  const idx = formations.findIndex((f) => f.id === formation.id);
+  const transitionFromOptions = formations.filter((f) => f.id !== formation.id);
+  const transitionToFormation = idx >= 0 && idx < formations.length - 1 ? formations[idx + 1] : null;
+
+  // Dancers i denne formasjonen (mapper positions → Dancer-record).
+  const dancersInFormation = formation.positions
+    .map((p) => dancers.find((d) => d.id === p.dancerId))
+    .filter((d): d is Dancer => !!d);
+
   return (
     <Box
       data-testid="formation-details-panel"
@@ -767,6 +995,50 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({ formation
       <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700, mb: 0.75 }}>
         AKTIV FORMASJON
       </Typography>
+
+      {/* F5-12: 2D/3D stage-mode toggle */}
+      <Stack direction="row" spacing={0.5} sx={{ mb: 1 }} data-testid="formation-stage-mode-toggle">
+        {(['2d', '3d'] as const).map((m) => (
+          <Box
+            key={m}
+            role="tab"
+            tabIndex={0}
+            aria-selected={stageMode === m}
+            onClick={() => onStageModeChange(m)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStageModeChange(m); } }}
+            data-testid={`formation-stage-mode-${m}`}
+            sx={{
+              flex: 1, textAlign: 'center', cursor: 'pointer',
+              py: 0.5, fontSize: 10, fontWeight: 700, letterSpacing: 1,
+              color: stageMode === m ? '#fff' : 'rgba(229,231,235,0.45)',
+              bgcolor: stageMode === m ? 'rgba(167,139,250,0.22)' : 'transparent',
+              border: `1px solid ${stageMode === m ? '#a78bfa' : 'rgba(255,255,255,0.12)'}`,
+              borderRadius: 0.5,
+              textTransform: 'uppercase',
+            }}
+          >
+            {m}
+          </Box>
+        ))}
+      </Stack>
+
+      {/* F5-6: Template-dropdown */}
+      <TextField
+        select
+        size="small"
+        fullWidth
+        label="Template"
+        value=""
+        onChange={(e) => applyTemplate(e.target.value)}
+        SelectProps={{ displayEmpty: true }}
+        inputProps={{ 'data-testid': 'formation-template-select' }}
+        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+      >
+        <MenuItem value="" sx={{ fontSize: 11, color: '#6b7280' }}>— velg template —</MenuItem>
+        {FORMATION_TEMPLATES.map((t) => (
+          <MenuItem key={t.id} value={t.id} sx={{ fontSize: 11 }}>{t.label}</MenuItem>
+        ))}
+      </TextField>
       <TextField
         size="small"
         fullWidth
@@ -832,7 +1104,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({ formation
           </Typography>
         ) : null}
       </Stack>
-      <Stack direction="row" spacing={0.5}>
+      <Stack direction="row" spacing={0.5} sx={{ mb: 1.5 }}>
         <TextField
           size="small"
           fullWidth
@@ -853,6 +1125,131 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({ formation
           <AddIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Stack>
+
+      {/* F5-1: Dancers-liste med visibility-toggles */}
+      {dancersInFormation.length > 0 ? (
+        <>
+          <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+            DANCERS ({dancersInFormation.length})
+          </Typography>
+          <Stack spacing={0.25} sx={{ mb: 1 }} data-testid="formation-dancers-list">
+            {dancersInFormation.map((d) => {
+              const hidden = hiddenDancerIds.has(d.id);
+              return (
+                <Stack
+                  key={d.id}
+                  direction="row"
+                  alignItems="center"
+                  spacing={0.5}
+                  sx={{ opacity: hidden ? 0.45 : 1 }}
+                >
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: d.color ?? '#a78bfa', flexShrink: 0 }} />
+                  <Typography sx={{ fontSize: 10.5, color: '#e5e7eb', flex: 1, fontWeight: 600 }}>
+                    {d.initials || d.id.slice(0, 2).toUpperCase()}{' · '}{d.name}
+                  </Typography>
+                  <IconButton
+                    size="small"
+                    onClick={() => onToggleHidden(d.id)}
+                    data-testid={`formation-dancer-toggle-${d.id}`}
+                    aria-pressed={!hidden}
+                    aria-label={hidden ? `Vis ${d.name}` : `Skjul ${d.name}`}
+                    sx={{ p: 0.25, color: hidden ? 'rgba(229,231,235,0.4)' : '#a78bfa' }}
+                  >
+                    {hidden ? <VisibilityOffIcon sx={{ fontSize: 14 }} /> : <VisibilityIcon sx={{ fontSize: 14 }} />}
+                  </IconButton>
+                </Stack>
+              );
+            })}
+          </Stack>
+        </>
+      ) : null}
+
+      {/* F5-2 + F5-4: Stage-overlay controls */}
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5, mt: 1 }}>
+        STAGE
+      </Typography>
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.75 }}>
+        <Box
+          component="label"
+          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 10.5, color: '#e5e7eb', cursor: 'pointer' }}
+        >
+          <Checkbox
+            size="small"
+            checked={showPaths}
+            onChange={onToggleShowPaths}
+            inputProps={{ 'data-testid': 'formation-show-paths' } as React.InputHTMLAttributes<HTMLInputElement>}
+            sx={{ p: 0.25, color: '#a78bfa', '&.Mui-checked': { color: '#a78bfa' } }}
+          />
+          Show Paths
+        </Box>
+        <Box
+          component="label"
+          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 10.5, color: '#e5e7eb', cursor: 'pointer' }}
+        >
+          <Checkbox
+            size="small"
+            checked={showIds}
+            onChange={onToggleShowIds}
+            inputProps={{ 'data-testid': 'formation-show-ids' } as React.InputHTMLAttributes<HTMLInputElement>}
+            sx={{ p: 0.25, color: '#a78bfa', '&.Mui-checked': { color: '#a78bfa' } }}
+          />
+          Show IDs
+        </Box>
+      </Stack>
+      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.5 }}>
+        <Typography sx={{ fontSize: 10, color: 'rgba(229,231,235,0.55)', minWidth: 48 }}>Opacity</Typography>
+        <input
+          type="range"
+          min={20}
+          max={100}
+          value={Math.round(stageOpacity * 100)}
+          onChange={(e) => onStageOpacityChange(Number(e.target.value) / 100)}
+          data-testid="formation-stage-opacity"
+          style={{ flex: 1 }}
+        />
+        <Typography sx={{ fontSize: 10, color: '#a78bfa', minWidth: 32, textAlign: 'right' }}>
+          {Math.round(stageOpacity * 100)}%
+        </Typography>
+      </Stack>
+
+      {/* F5-5: TRANSITION editor */}
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+        TRANSITION
+      </Typography>
+      <Stack direction="row" spacing={0.5} sx={{ mb: 0.75 }}>
+        <TextField
+          select
+          size="small"
+          label="From"
+          value={formation.transitionFromId ?? ''}
+          onChange={(e) => onChange({ transitionFromId: e.target.value || null })}
+          SelectProps={{ displayEmpty: true }}
+          inputProps={{ 'data-testid': 'formation-transition-from' }}
+          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 10.5 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        >
+          <MenuItem value="" sx={{ fontSize: 11 }}>— start —</MenuItem>
+          {transitionFromOptions.map((f) => (
+            <MenuItem key={f.id} value={f.id} sx={{ fontSize: 11 }}>{f.name}</MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          size="small"
+          label="To"
+          value={transitionToFormation?.name ?? '—'}
+          disabled
+          inputProps={{ 'data-testid': 'formation-transition-to' }}
+          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 10.5 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        />
+      </Stack>
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Transition note (f.eks. 'D2 og D4 krysser')"
+        value={formation.transitionNote ?? ''}
+        onChange={(e) => onChange({ transitionNote: e.target.value || null })}
+        inputProps={{ 'data-testid': 'formation-transition-note' }}
+        sx={{ mb: 0.5, '& .MuiInputBase-input': { fontSize: 10.5, color: '#e5e7eb' } }}
+      />
     </Box>
   );
 };
@@ -1014,6 +1411,15 @@ interface DrawFormationOptions {
   snapStep?: number;
   /** When true, dragging a dancer also mirrors the closest opposite dancer. */
   symmetry?: boolean;
+  /** F5-1: dancer-ids that should NOT render on stage. */
+  hiddenDancerIds?: ReadonlySet<string>;
+  /** F5-2: render dancer-id label på hver puck. */
+  showIds?: boolean;
+  /** F5-2: render historiske paths som dashed-linje for hver dancer. */
+  showPaths?: boolean;
+  /** Forrige + neste formasjon brukes til path-rendering. */
+  prevFormation?: Formation | null;
+  nextFormation?: Formation | null;
 }
 
 function drawFormation(
@@ -1030,8 +1436,39 @@ function drawFormation(
 
   const innerWidth = STAGE_WIDTH - 2 * STAGE_PADDING;
   const innerHeight = STAGE_HEIGHT - 2 * STAGE_PADDING;
+  const hidden = options.hiddenDancerIds ?? new Set<string>();
+
+  // F5-2: tegn path-linjer FØRST slik at pucker rendres oppå
+  if (options.showPaths && (options.prevFormation || options.nextFormation)) {
+    const drawPath = (from: Formation | null | undefined, to: Formation, color: (id: string) => string): void => {
+      if (!from) return;
+      for (const pTo of to.positions) {
+        if (hidden.has(pTo.dancerId)) continue;
+        const pFrom = from.positions.find((p) => p.dancerId === pTo.dancerId);
+        if (!pFrom) continue;
+        const x1 = STAGE_PADDING + pFrom.x * innerWidth;
+        const y1 = STAGE_PADDING + pFrom.y * innerHeight;
+        const x2 = STAGE_PADDING + pTo.x * innerWidth;
+        const y2 = STAGE_PADDING + pTo.y * innerHeight;
+        const line = new Line([x1, y1, x2, y2], {
+          stroke: color(pTo.dancerId),
+          strokeWidth: 1.2,
+          strokeDashArray: [4, 4],
+          selectable: false,
+          evented: false,
+          opacity: 0.55,
+        });
+        (line as unknown as { dancerId?: string }).dancerId = `__path__${pTo.dancerId}`;
+        canvas.add(line);
+      }
+    };
+    const colorFor = (id: string): string => dancersById.get(id)?.color ?? '#a78bfa';
+    drawPath(options.prevFormation, formation, colorFor);
+    drawPath(formation, options.nextFormation as Formation | null | undefined ?? null!, colorFor);
+  }
 
   formation.positions.forEach((pos) => {
+    if (hidden.has(pos.dancerId)) return;
     const dancer = dancersById.get(pos.dancerId);
     if (!dancer) return;
 
@@ -1112,6 +1549,21 @@ function drawFormation(
 
     const groupChildren = [arrow, circle, initials, nameLabel];
     if (leadStar) groupChildren.push(leadStar);
+    if (options.showIds) {
+      const idLabel = new Textbox(pos.dancerId, {
+        fontSize: 9,
+        fontFamily: '-apple-system, sans-serif',
+        fill: 'rgba(255,255,255,0.55)',
+        width: 80,
+        textAlign: 'center',
+        originX: 'center',
+        originY: 'center',
+        top: PUCK_RADIUS + 22,
+        selectable: false,
+        evented: false,
+      });
+      groupChildren.push(idLabel);
+    }
 
     const group = new Group(groupChildren, {
       left: cx,

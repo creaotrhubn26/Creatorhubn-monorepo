@@ -275,7 +275,13 @@ export function VideoReviewRoom({
   // ─── Video event handlers ─────────────────────────────────────
   const handleTimeUpdate = (): void => {
     const v = videoRef.current;
-    if (v) setPlayheadSec(v.currentTime);
+    if (v) {
+      setPlayheadSec(v.currentTime);
+      // F5-15: Notifiser FormationView (eller andre lyttere) om playhead.
+      window.dispatchEvent(new CustomEvent('dance:video-time', {
+        detail: { clipId: clip.id, currentTime: v.currentTime },
+      }));
+    }
   };
   const handleLoadedMeta = (): void => {
     const v = videoRef.current;
