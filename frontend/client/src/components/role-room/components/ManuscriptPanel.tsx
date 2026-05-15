@@ -443,6 +443,7 @@ import ResumeBanner from './ResumeBanner';
 import AISuggestionsPanel from './AISuggestionsPanel';
 import TakesPanel from './TakesPanel';
 import SceneReadinessCard from './SceneReadinessCard';
+import LiveSetWorkspace from '../live-set/LiveSetWorkspace';
 import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
@@ -577,6 +578,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const [_isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNewManuscriptDialog, setShowNewManuscriptDialog] = useState(false);
   const [showSceneDialog, setShowSceneDialog] = useState(false);
+  const [showLiveSetPro, setShowLiveSetPro] = useState(false);
 
   useEffect(() => {
     onUnsavedStateChange?.(
@@ -3511,6 +3513,20 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             )}
           </Box>
           <Stack direction="row" spacing={1}>
+            {editingScene?.id && activeProjectId && (
+              <Button
+                onClick={() => setShowLiveSetPro(true)}
+                sx={{
+                  bgcolor: '#dc2626',
+                  color: '#fff',
+                  fontWeight: 700,
+                  letterSpacing: 0.5,
+                  '&:hover': { bgcolor: '#b91c1c' },
+                }}
+              >
+                ● LIVE SET PRO
+              </Button>
+            )}
             <Button onClick={closeSceneDialog}>Avbryt</Button>
             <Button onClick={handleSaveScene} variant="contained">
               {editingScene ? 'Lagre scene' : 'Begynn å skrive'}
@@ -3518,6 +3534,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           </Stack>
         </DialogActions>
       </Dialog>
+
+      {/* LIVE SET PRO fullscreen-workspace */}
+      {editingScene && activeProjectId && (
+        <LiveSetWorkspace
+          projectId={activeProjectId}
+          projectName={selectedManuscript?.title ?? 'Prosjekt'}
+          scene={editingScene}
+          open={showLiveSetPro}
+          onClose={() => setShowLiveSetPro(false)}
+        />
+      )}
 
       {/* Example Project Disclaimer Dialog */}
       <Dialog
