@@ -443,6 +443,10 @@ import {
   createSfxSuggestionAgent,
   sfxSuggestionApplier,
 } from "./ai-sfx-suggestion-agent.js";
+import {
+  createSceneReadinessAgent,
+  sceneReadinessApplier,
+} from "./ai-scene-readiness-agent.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
 import { createCoverageJobWorker } from "./coverage-job-queue.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
@@ -15648,6 +15652,7 @@ aiSuggestionService.registerAgent(createAudioMixIssueAgent(pool));
 aiSuggestionService.registerAgent(createDialogPacingAgent(pool));
 aiSuggestionService.registerAgent(createMusicBedAgent(pool));
 aiSuggestionService.registerAgent(createSfxSuggestionAgent(pool));
+aiSuggestionService.registerAgent(createSceneReadinessAgent(pool));
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
@@ -15668,6 +15673,7 @@ aiSuggestionService.registerApplier(audioMixIssueApplier);
 aiSuggestionService.registerApplier(dialogPacingApplier);
 aiSuggestionService.registerApplier(musicBedApplier);
 aiSuggestionService.registerApplier(sfxSuggestionApplier);
+aiSuggestionService.registerApplier(sceneReadinessApplier);
 
 // Coverage take-routes (upload, list, etc.)
 setupCoverageTakeRoutes({ app, pool });

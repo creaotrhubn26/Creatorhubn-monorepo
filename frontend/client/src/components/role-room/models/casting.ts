@@ -2364,6 +2364,9 @@ export const SUGGESTION_TYPES = {
   DIALOG_PACING_ISSUE: 'post.dialog-pacing-issue',
   MUSIC_BED_SUGGESTION: 'post.music-bed-suggestion',
   SFX_SUGGESTION: 'post.sfx-suggestion',
+
+  // Workflow-aggregator
+  SCENE_READINESS_REPORT: 'scene.readiness-report',
 } as const;
 
 export type SuggestionType = typeof SUGGESTION_TYPES[keyof typeof SUGGESTION_TYPES];
@@ -2606,6 +2609,37 @@ export type SfxCategory =
   | string;
 
 export type SfxImportance = 'critical' | 'enhances' | 'optional';
+
+export type ScenePhase = 'pre' | 'live' | 'post';
+export type ScenePhaseStatus = 'unstarted' | 'in-progress' | 'needs-attention' | 'ready';
+
+export interface ScenePhaseSummary {
+  status: ScenePhaseStatus;
+  /** Antall pending suggestions i denne fasen */
+  pendingCount: number;
+  /** Antall accepted/applied */
+  acceptedCount: number;
+  /** Antall rejected — info-only */
+  rejectedCount: number;
+  /** Major-severity issues som blokkerer 'ready' */
+  blockers: string[];
+}
+
+export interface SceneReadinessReportPayload {
+  sceneId: string;
+  /** Per-phase oppsummering */
+  phases: Record<ScenePhase, ScenePhaseSummary>;
+  /** Aggregert ready-score 0..1 */
+  readyScore: number;
+  /** Top-level vurdering */
+  overallStatus: ScenePhaseStatus;
+  /** 1-3 setninger som forklarer ready-score */
+  rationale: string;
+  /** Konkrete blockers — vises som checklist i UI */
+  blockers: string[];
+  /** Ting brukeren burde gjøre neste */
+  nextActions?: string[];
+}
 
 export interface SfxSuggestionPayload {
   sceneId: string;

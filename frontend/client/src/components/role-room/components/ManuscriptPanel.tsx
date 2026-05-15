@@ -42,7 +42,11 @@ import {
   Slider,
   CircularProgress,
   Autocomplete,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 // Keep lazy component identities stable across renders.
 const LazyScreenplayEditorWithNavigator = React.lazy(() => import('./ScreenplayEditorWithNavigator'));
@@ -438,6 +442,7 @@ import {
 import ResumeBanner from './ResumeBanner';
 import AISuggestionsPanel from './AISuggestionsPanel';
 import TakesPanel from './TakesPanel';
+import SceneReadinessCard from './SceneReadinessCard';
 import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
@@ -3308,195 +3313,191 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             {editingScene?.id && activeProjectId && (
               <>
                 <Divider />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{ sourceType: 'scene', sourceId: editingScene.id }}
-                  title="AI-forslag (breakdown)"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'breakdown-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: {
-                        sceneText: sceneForm.description,
-                        existingRoles: castingRoles.map((r) => ({ id: r.id, name: r.name })),
-                        existingProps: [],
-                        existingLocations: castingLocations.map((l) => ({ id: l.id, name: l.name })),
-                      },
-                    });
-                  }}
-                />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'shot-list.draft',
-                  }}
-                  title="Shot-list-forslag"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'shot-list-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: {
-                        sceneText: sceneForm.description,
-                        sceneHeading: sceneForm.sceneHeading,
-                        intExt: sceneForm.intExt,
-                        characters: sceneForm.characters,
-                      },
-                    });
-                  }}
-                />
-                <Divider />
-                <TakesPanel
+
+                {/* Scene-readiness top-card — aggregert status fra alle agenter */}
+                <SceneReadinessCard
                   projectId={activeProjectId}
                   sceneId={editingScene.id}
                 />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'coverage.gap',
-                  }}
-                  title="Coverage-gap"
-                />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'coverage.best-take',
-                  }}
-                  title="Best take-anbefaling"
-                />
-                <Divider />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'edit.rough-cut-draft',
-                  }}
-                  title="Rough-cut-draft"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    // Agent auto-loader shot-list fra DB hvis ikke gitt eksplisitt
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'rough-cut-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: { sceneId: editingScene.id },
-                    });
-                  }}
-                />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'post.color-consistency-issue',
-                  }}
-                  title="Color-konsistens"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'color-consistency-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: { sceneId: editingScene.id },
-                    });
-                  }}
-                />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'post.audio-mix-issue',
-                  }}
-                  title="Audio-mix-issues"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'audio-mix-issue-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: { sceneId: editingScene.id },
-                    });
-                  }}
-                />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'post.dialog-pacing-issue',
-                  }}
-                  title="Dialog-pacing"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'dialog-pacing-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: { sceneId: editingScene.id },
-                    });
-                  }}
-                />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'post.music-bed-suggestion',
-                  }}
-                  title="Musikk-bed"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'music-bed-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: {
-                        sceneId: editingScene.id,
-                        sceneText: sceneForm.description,
-                        sceneHeading: sceneForm.sceneHeading,
-                        intExt: sceneForm.intExt,
-                        timeOfDay: sceneForm.timeOfDay,
-                        sceneIntent: sceneForm.sceneIntent,
-                        protagonistGoal: sceneForm.protagonistGoal,
-                      },
-                    });
-                  }}
-                />
-                <AISuggestionsPanel
-                  projectId={activeProjectId}
-                  filter={{
-                    sourceType: 'scene',
-                    sourceId: editingScene.id,
-                    suggestionType: 'post.sfx-suggestion',
-                  }}
-                  title="SFX-cue-list"
-                  onGenerate={async () => {
-                    if (!editingScene?.id || !activeProjectId) return;
-                    await generateSuggestions(activeProjectId, {
-                      agentName: 'sfx-suggestion-agent',
-                      sourceType: 'scene',
-                      sourceId: editingScene.id,
-                      payload: {
-                        sceneId: editingScene.id,
-                        sceneText: sceneForm.description,
-                        sceneHeading: sceneForm.sceneHeading,
-                        intExt: sceneForm.intExt,
-                        // props/locations auto-loades fra production_breakdown
-                      },
-                    });
-                  }}
-                />
+
+                {/* ── Fase 1: Pre-produksjon ──────────────────────────── */}
+                <Accordion defaultExpanded={false}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">📝 Pre-produksjon</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Stack spacing={1.5}>
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'breakdown.prop' }}
+                        title="Breakdown — props/locations/kostymer/VFX/risk"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'breakdown-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: {
+                              sceneText: sceneForm.description,
+                              existingRoles: castingRoles.map((r) => ({ id: r.id, name: r.name })),
+                              existingProps: [],
+                              existingLocations: castingLocations.map((l) => ({ id: l.id, name: l.name })),
+                            },
+                          });
+                        }}
+                      />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'shot-list.draft' }}
+                        title="Shot-list"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'shot-list-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: {
+                              sceneText: sceneForm.description,
+                              sceneHeading: sceneForm.sceneHeading,
+                              intExt: sceneForm.intExt,
+                              characters: sceneForm.characters,
+                            },
+                          });
+                        }}
+                      />
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+
+                {/* ── Fase 2: Live set ──────────────────────────────── */}
+                <Accordion defaultExpanded={false}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">🎬 Live set</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Stack spacing={1.5}>
+                      <TakesPanel projectId={activeProjectId} sceneId={editingScene.id} />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'coverage.gap' }}
+                        title="Coverage-gap"
+                      />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'coverage.best-take' }}
+                        title="Best take-anbefaling"
+                      />
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+
+                {/* ── Fase 3: Post-produksjon ──────────────────────── */}
+                <Accordion defaultExpanded={false}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">✂️ Post-produksjon</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Stack spacing={1.5}>
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'edit.rough-cut-draft' }}
+                        title="Rough-cut-draft"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'rough-cut-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: { sceneId: editingScene.id },
+                          });
+                        }}
+                      />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.color-consistency-issue' }}
+                        title="Color-konsistens"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'color-consistency-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: { sceneId: editingScene.id },
+                          });
+                        }}
+                      />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.audio-mix-issue' }}
+                        title="Audio-mix-issues"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'audio-mix-issue-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: { sceneId: editingScene.id },
+                          });
+                        }}
+                      />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.dialog-pacing-issue' }}
+                        title="Dialog-pacing"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'dialog-pacing-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: { sceneId: editingScene.id },
+                          });
+                        }}
+                      />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.music-bed-suggestion' }}
+                        title="Musikk-bed"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'music-bed-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: {
+                              sceneId: editingScene.id,
+                              sceneText: sceneForm.description,
+                              sceneHeading: sceneForm.sceneHeading,
+                              intExt: sceneForm.intExt,
+                              timeOfDay: sceneForm.timeOfDay,
+                              sceneIntent: sceneForm.sceneIntent,
+                              protagonistGoal: sceneForm.protagonistGoal,
+                            },
+                          });
+                        }}
+                      />
+                      <AISuggestionsPanel
+                        projectId={activeProjectId}
+                        filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.sfx-suggestion' }}
+                        title="SFX-cue-list"
+                        onGenerate={async () => {
+                          if (!editingScene?.id || !activeProjectId) return;
+                          await generateSuggestions(activeProjectId, {
+                            agentName: 'sfx-suggestion-agent',
+                            sourceType: 'scene',
+                            sourceId: editingScene.id,
+                            payload: {
+                              sceneId: editingScene.id,
+                              sceneText: sceneForm.description,
+                              sceneHeading: sceneForm.sceneHeading,
+                              intExt: sceneForm.intExt,
+                            },
+                          });
+                        }}
+                      />
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
               </>
             )}
           </Stack>
