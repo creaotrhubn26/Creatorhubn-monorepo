@@ -429,6 +429,13 @@ import { castingService } from '../services/castingService';
 import { characterProfileService, type CharacterProfile as StoredCharacterProfile } from '../services/characterProfileService';
 import type { Template } from '../data/manuscriptTemplates';
 import { MANUSCRIPT_SCAFFOLD_TEMPLATES } from '../data/manuscriptTemplates';
+import {
+  analyzeManuscriptForResume,
+  isResumeBannerDismissed,
+  dismissResumeBanner,
+  type ResumeThread,
+} from '../services/resumeAnalysisService';
+import ResumeBanner from './ResumeBanner';
 import AISuggestionsPanel from './AISuggestionsPanel';
 import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
@@ -604,6 +611,86 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const [productionWorkspaceMode, setProductionWorkspaceMode] = useState<'storyboard' | 'split'>('storyboard');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+
+  // Resume banner — cold-start pattern #6. Dismissal is sticky per browser
+  // session (sessionStorage) and keyed by manuscript id.
+  const [resumeDismissedMap, setResumeDismissedMap] = useState<Record<string, boolean>>({});
+  // Scene-IDer som er markert via en resume-thread-action. Brukes til å
+  // tegne en visuell ramme i scenes/production-listen så brukeren faktisk
+  // ser hvilke scener threaden refererer til. Tømmes når brukeren bytter
+  // manuskript eller åpner en scene (klikket = beskjed mottatt).
+  const [highlightedSceneIds, setHighlightedSceneIds] = useState<Set<string>>(() => new Set());
+  const highlightClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!selectedManuscript) return;
+    if (resumeDismissedMap[selectedManuscript.id] === undefined) {
+      setResumeDismissedMap((prev) => ({
+        ...prev,
+        [selectedManuscript.id]: isResumeBannerDismissed(selectedManuscript.id),
+      }));
+    }
+  }, [selectedManuscript, resumeDismissedMap]);
+
+  const resumeAnalysis = useMemo(() => {
+    if (!selectedManuscript || scenes.length === 0) return null;
+    return analyzeManuscriptForResume(selectedManuscript, scenes);
+  }, [selectedManuscript, scenes]);
+
+  const handleResumeAction = useCallback(
+    (thread: ResumeThread) => {
+      // Marker alle scenene threaden refererer til. Sletter ramme automatisk
+      // etter 8 sekunder så den ikke blir permanent støy.
+      const idsToHighlight = thread.sceneIds && thread.sceneIds.length > 0
+        ? new Set(thread.sceneIds)
+        : thread.sceneId
+          ? new Set([thread.sceneId])
+          : new Set<string>();
+      if (idsToHighlight.size > 0) {
+        setHighlightedSceneIds(idsToHighlight);
+        if (highlightClearTimerRef.current) {
+          clearTimeout(highlightClearTimerRef.current);
+        }
+        highlightClearTimerRef.current = setTimeout(() => {
+          setHighlightedSceneIds(new Set());
+        }, 8000);
+      }
+
+      const targetSceneId = thread.sceneId;
+      if (targetSceneId) {
+        const scene = scenes.find((s) => s.id === targetSceneId);
+        if (scene) setSelectedScene(scene);
+      }
+      if (thread.type === 'unscheduled') {
+        setActiveTab('production');
+      } else {
+        setActiveTab('scenes');
+      }
+    },
+    [scenes],
+  );
+
+  const handleResumeDismiss = useCallback(() => {
+    if (!selectedManuscript) return;
+    dismissResumeBanner(selectedManuscript.id);
+    setResumeDismissedMap((prev) => ({ ...prev, [selectedManuscript.id]: true }));
+  }, [selectedManuscript]);
+
+  // Rydd highlight når brukeren skifter manuskript — kontekst er ny.
+  useEffect(() => {
+    setHighlightedSceneIds(new Set());
+    if (highlightClearTimerRef.current) {
+      clearTimeout(highlightClearTimerRef.current);
+      highlightClearTimerRef.current = null;
+    }
+  }, [selectedManuscript?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightClearTimerRef.current) {
+        clearTimeout(highlightClearTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!initialSceneId || scenes.length === 0) {
@@ -2537,6 +2624,16 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             {/* Editor Tab */}
             {activeTab === 'editor' && (
               <>
+                {resumeAnalysis &&
+                  resumeAnalysis.threads.length > 0 &&
+                  selectedManuscript &&
+                  !resumeDismissedMap[selectedManuscript.id] && (
+                    <ResumeBanner
+                      analysis={resumeAnalysis}
+                      onAction={handleResumeAction}
+                      onDismiss={handleResumeDismiss}
+                    />
+                  )}
                 <EditorTab
                   manuscript={selectedManuscript}
                   scenes={scenes}
@@ -2586,6 +2683,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   ));
                 }}
                 selectedScene={selectedScene || undefined}
+                highlightedSceneIds={highlightedSceneIds}
               />
             )}
 
@@ -2800,6 +2898,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       >
                         {productionSceneOptions.map((scene) => (
                           <MenuItem key={scene.id} value={scene.id}>
+                            {highlightedSceneIds.has(scene.id) && (
+                              <Box component="span" sx={{ color: 'warning.main', mr: 0.5, fontWeight: 700 }}>
+                                ★
+                              </Box>
+                            )}
                             Scene {scene.sceneNumber || '?'} · {scene.sceneHeading || scene.heading || scene.locationName || 'Uten tittel'}
                           </MenuItem>
                         ))}
@@ -4537,11 +4640,29 @@ const ScenesTab: React.FC<{
   onSelectScene: (scene: SceneBreakdown) => void;
   onReorderScenes: (scenes: SceneBreakdown[]) => void;
   selectedScene?: SceneBreakdown;
-}> = ({ scenes, viewMode, onViewModeChange, onAddScene, onEditScene, onSelectScene, onReorderScenes, selectedScene }) => {
+  highlightedSceneIds?: Set<string>;
+}> = ({ scenes, viewMode, onViewModeChange, onAddScene, onEditScene, onSelectScene, onReorderScenes, selectedScene, highlightedSceneIds }) => {
   // 7-tier responsive system
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   const sceneHeadingMaxWidth = isTablet ? 150 : is4K ? 420 : 300;
+
+  // Auto-scroll til første highlightede scene når sett endres. Brukes av
+  // resume-banner-actions (stale-draft / unscheduled / empty-scaffold) så
+  // brukeren faktisk ser hvilke scener threaden gjelder.
+  const firstHighlightedId = useMemo(() => {
+    if (!highlightedSceneIds || highlightedSceneIds.size === 0) return null;
+    return scenes.find((scene) => highlightedSceneIds.has(scene.id))?.id ?? null;
+  }, [highlightedSceneIds, scenes]);
+  const firstHighlightedRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (firstHighlightedId && firstHighlightedRef.current) {
+      firstHighlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [firstHighlightedId]);
+
+  const isHighlighted = (sceneId: string): boolean =>
+    !!highlightedSceneIds && highlightedSceneIds.has(sceneId);
 
   return (
     <Box>
@@ -4624,11 +4745,15 @@ const ScenesTab: React.FC<{
           {scenes.map((scene) => (
             <Card
               key={scene.id}
+              ref={scene.id === firstHighlightedId ? (firstHighlightedRef as React.RefObject<HTMLDivElement>) : undefined}
               onClick={() => onSelectScene(scene)}
               sx={{
                 cursor: 'pointer',
                 bgcolor: selectedScene?.id === scene.id ? 'action.selected' : undefined,
                 p: 1.5,
+                borderLeft: isHighlighted(scene.id) ? '4px solid' : undefined,
+                borderLeftColor: isHighlighted(scene.id) ? 'warning.main' : undefined,
+                transition: 'border-color 200ms',
               }}
             >
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
@@ -4678,10 +4803,15 @@ const ScenesTab: React.FC<{
               {scenes.map((scene) => (
                 <TableRow
                   key={scene.id}
+                  ref={scene.id === firstHighlightedId ? (firstHighlightedRef as React.RefObject<HTMLTableRowElement>) : undefined}
                   hover
                   selected={selectedScene?.id === scene.id}
                   onClick={() => onSelectScene(scene)}
-                  sx={{ cursor: 'pointer' }}
+                  sx={{
+                    cursor: 'pointer',
+                    borderLeft: isHighlighted(scene.id) ? '4px solid' : undefined,
+                    borderLeftColor: isHighlighted(scene.id) ? 'warning.main' : undefined,
+                  }}
                 >
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.sceneNumber}</TableCell>
                   <TableCell sx={{ fontSize: responsive.bodyFontSize, maxWidth: sceneHeadingMaxWidth, overflow: 'hidden', textOverflow: 'ellipsis' }}>{scene.sceneHeading}</TableCell>
