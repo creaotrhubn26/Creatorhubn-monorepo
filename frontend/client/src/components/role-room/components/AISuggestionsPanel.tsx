@@ -66,6 +66,9 @@ import type {
   RoughCutPayload,
   ColorConsistencyIssuePayload,
   AudioMixIssuePayload,
+  DialogPacingPayload,
+  MusicBedSuggestionPayload,
+  SfxSuggestionPayload,
 } from '../models/casting';
 import RuleIcon from '@mui/icons-material/Rule';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
@@ -76,6 +79,9 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MovieIcon from '@mui/icons-material/Movie';
 import PaletteIcon from '@mui/icons-material/Palette';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
+import SpeedIcon from '@mui/icons-material/Speed';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import SurroundSoundIcon from '@mui/icons-material/SurroundSound';
 
 // ─────────────────────────────────────────────────────────────────────
 // Confidence-bånd-håndtering
@@ -549,6 +555,134 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           {p.suggestion && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
               {p.suggestion}
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'post.dialog-pacing-issue': {
+    icon: SpeedIcon,
+    label: 'Pacing',
+    highlight: true,
+    render: (s) => {
+      const p = s.payload as DialogPacingPayload;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Chip
+              label={p.severity === 'major' ? 'Alvorlig' : 'Mindre'}
+              size="small"
+              color={p.severity === 'major' ? 'error' : 'warning'}
+              variant="outlined"
+            />
+            <Typography variant="caption" color="text.secondary">{p.pacingIssueType}</Typography>
+          </Stack>
+          <Typography variant="body2">{p.description}</Typography>
+          {(p.avgSegmentSec !== undefined || p.maxPauseSec !== undefined) && (
+            <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+              {p.avgSegmentSec !== undefined && (
+                <Chip
+                  label={`avg ${p.avgSegmentSec.toFixed(1)}s`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.65rem', height: 18 }}
+                />
+              )}
+              {p.maxPauseSec !== undefined && (
+                <Chip
+                  label={`pause ${p.maxPauseSec.toFixed(1)}s`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.65rem', height: 18 }}
+                />
+              )}
+            </Stack>
+          )}
+          {p.suggestion && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+              {p.suggestion}
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'post.music-bed-suggestion': {
+    icon: MusicNoteIcon,
+    label: 'Musikk',
+    render: (s) => {
+      const p = s.payload as MusicBedSuggestionPayload;
+      return (
+        <Box>
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mb: 0.5, gap: 0.5 }}>
+            {p.genres.slice(0, 3).map((g) => (
+              <Chip key={g} label={g} size="small" color="primary" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />
+            ))}
+            {p.moods.slice(0, 3).map((m) => (
+              <Chip key={m} label={m} size="small" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />
+            ))}
+          </Stack>
+          {p.bpmRange && (
+            <Typography variant="caption" color="text.secondary" display="block">
+              BPM: {p.bpmRange.min}-{p.bpmRange.max}{p.key ? ` · ${p.key}` : ''}
+            </Typography>
+          )}
+          {p.instrumentation && p.instrumentation.length > 0 && (
+            <Typography variant="caption" color="text.secondary" display="block">
+              {p.instrumentation.join(', ')}
+            </Typography>
+          )}
+          {p.references && p.references.length > 0 && (
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+              Ref: {p.references.join(' · ')}
+            </Typography>
+          )}
+          {p.rationale && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+              {p.rationale}
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'post.sfx-suggestion': {
+    icon: SurroundSoundIcon,
+    label: 'SFX',
+    render: (s) => {
+      const p = s.payload as SfxSuggestionPayload;
+      const criticalCount = p.sfxItems.filter((i) => i.importance === 'critical').length;
+      const enhancesCount = p.sfxItems.filter((i) => i.importance === 'enhances').length;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Typography variant="body2">
+              <strong>{p.sfxItems.length}</strong> {p.sfxItems.length === 1 ? 'cue' : 'cues'}
+            </Typography>
+            {criticalCount > 0 && (
+              <Chip label={`${criticalCount} critical`} size="small" color="error" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />
+            )}
+            {enhancesCount > 0 && (
+              <Chip label={`${enhancesCount} enhances`} size="small" color="warning" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />
+            )}
+          </Stack>
+          {p.vibe && (
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontStyle: 'italic' }}>
+              Vibe: {p.vibe}
+            </Typography>
+          )}
+          {p.sfxItems.slice(0, 3).map((item, idx) => (
+            <Typography key={idx} variant="caption" display="block" color="text.secondary">
+              <strong>{item.category}</strong>: {item.description}
+            </Typography>
+          ))}
+          {p.sfxItems.length > 3 && (
+            <Typography variant="caption" color="text.secondary">
+              +{p.sfxItems.length - 3} flere
             </Typography>
           )}
         </Box>

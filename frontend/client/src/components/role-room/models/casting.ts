@@ -2359,6 +2359,11 @@ export const SUGGESTION_TYPES = {
   EDIT_ROUGH_CUT_DRAFT: 'edit.rough-cut-draft',
   COLOR_CONSISTENCY_ISSUE: 'post.color-consistency-issue',
   AUDIO_MIX_ISSUE: 'post.audio-mix-issue',
+
+  // Sound design + editorial (Fase D)
+  DIALOG_PACING_ISSUE: 'post.dialog-pacing-issue',
+  MUSIC_BED_SUGGESTION: 'post.music-bed-suggestion',
+  SFX_SUGGESTION: 'post.sfx-suggestion',
 } as const;
 
 export type SuggestionType = typeof SUGGESTION_TYPES[keyof typeof SUGGESTION_TYPES];
@@ -2544,6 +2549,77 @@ export type AudioMixIssueType =
   | 'missing-room-tone'    // ingen wild-track for backup
   | 'level-mismatch'       // store volumforskjeller mellom takes
   | string;
+
+export type DialogPacingIssueType =
+  | 'monotonic-rhythm'   // alle segmenter samme lengde
+  | 'long-pauses'        // pauser > 5s
+  | 'rushed'             // gjennomsnitt < 1.5s/segment
+  | 'uneven'             // høy stdev
+  | string;
+
+export interface DialogPacingPayload {
+  sceneId: string;
+  /** Hvilket take ble analysert (mest sannsynlig circled eller best-take) */
+  takeId?: string;
+  takeNumber?: number;
+  pacingIssueType: DialogPacingIssueType;
+  description: string;
+  /** Målte verdier */
+  avgSegmentSec?: number;
+  maxPauseSec?: number;
+  stdevSegmentSec?: number;
+  speechDensityRatio?: number;
+  /** Spesifikke transcript-rekkevidder som er problematiske */
+  flaggedRanges?: Array<{ start: number; end: number; reason: string }>;
+  severity: 'minor' | 'major';
+  suggestion?: string;
+}
+
+export interface MusicBedSuggestionPayload {
+  sceneId: string;
+  /** Genre-tags i prioritert rekkefølge (best først) */
+  genres: string[];
+  /** Mood-tags som beskriver musikkens emosjonelle farge */
+  moods: string[];
+  /** BPM-område */
+  bpmRange?: { min: number; max: number };
+  /** Tonalitet/key */
+  key?: string;
+  /** Instrumentering-hints */
+  instrumentation?: string[];
+  /** Referansespor (artist - track) */
+  references?: string[];
+  /** Hvor i scenen musikken bør entre — sekunder fra scenestart */
+  entryPointSec?: number;
+  /** Begrunnelse for valgene */
+  rationale?: string;
+}
+
+export type SfxCategory =
+  | 'footsteps'
+  | 'doors'
+  | 'ambience'
+  | 'foley'
+  | 'impact'
+  | 'wildtrack'
+  | 'designed'      // syntetiske/designet SFX
+  | string;
+
+export type SfxImportance = 'critical' | 'enhances' | 'optional';
+
+export interface SfxSuggestionPayload {
+  sceneId: string;
+  sfxItems: Array<{
+    category: SfxCategory;
+    description: string;
+    /** Tidspunkt i scenen (sekunder) hvis spesifikt */
+    timestampSec?: number;
+    importance: SfxImportance;
+  }>;
+  /** Overordnet sound-design-vibe */
+  vibe?: string;
+  rationale?: string;
+}
 
 export interface AudioMixIssuePayload {
   sceneId: string;

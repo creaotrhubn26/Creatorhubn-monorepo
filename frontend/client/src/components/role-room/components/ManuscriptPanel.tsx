@@ -3429,6 +3429,74 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     });
                   }}
                 />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'post.dialog-pacing-issue',
+                  }}
+                  title="Dialog-pacing"
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'dialog-pacing-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: { sceneId: editingScene.id },
+                    });
+                  }}
+                />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'post.music-bed-suggestion',
+                  }}
+                  title="Musikk-bed"
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'music-bed-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: {
+                        sceneId: editingScene.id,
+                        sceneText: sceneForm.description,
+                        sceneHeading: sceneForm.sceneHeading,
+                        intExt: sceneForm.intExt,
+                        timeOfDay: sceneForm.timeOfDay,
+                        sceneIntent: sceneForm.sceneIntent,
+                        protagonistGoal: sceneForm.protagonistGoal,
+                      },
+                    });
+                  }}
+                />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'post.sfx-suggestion',
+                  }}
+                  title="SFX-cue-list"
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'sfx-suggestion-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: {
+                        sceneId: editingScene.id,
+                        sceneText: sceneForm.description,
+                        sceneHeading: sceneForm.sceneHeading,
+                        intExt: sceneForm.intExt,
+                        // props/locations auto-loades fra production_breakdown
+                      },
+                    });
+                  }}
+                />
               </>
             )}
           </Stack>
