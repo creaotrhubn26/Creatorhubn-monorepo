@@ -44,6 +44,18 @@ test.describe('dance — F6 tab polish', () => {
     await expect(rows.first()).toBeVisible({ timeout: 10_000 });
   });
 
+  test('F6-1: "Se alle" på rehearsals navigerer til rehearsal_log-tab', async ({ page }) => {
+    await expect(page.getByTestId('dance-dashboard')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('dashboard-section-rehearsals-action').click();
+    await expect(page.getByTestId('dance-tab-rehearsal_log')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+  });
+
+  test('F6-1: "Se sesong" på performances navigerer til season-tab', async ({ page }) => {
+    await expect(page.getByTestId('dance-dashboard')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('dashboard-section-performances-action').click();
+    await expect(page.getByTestId('dance-tab-season')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+  });
+
   test('F6-3: Analysis-tab rendres med stat-kort', async ({ page }) => {
     await switchDanceTab(page, 'analysis');
     await expect(page.getByTestId('dance-analysis-panel')).toBeVisible({ timeout: 15_000 });

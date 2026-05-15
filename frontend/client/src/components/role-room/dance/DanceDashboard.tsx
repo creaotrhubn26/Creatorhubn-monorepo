@@ -354,6 +354,8 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           <SectionCard
             title={`Kommende ${labels.danceTermRehearsalPlural.toLowerCase()}`}
             actionLabel="Se alle"
+            actionTabId="rehearsal_log"
+            testId="dashboard-section-rehearsals"
             icon={<ListIcon sx={{ fontSize: 18, color: '#a78bfa' }} />}
           >
             <Stack spacing={1}>
@@ -422,6 +424,8 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           <SectionCard
             title={`Kommende ${labels.danceTermPerformancePlural.toLowerCase()}`}
             actionLabel="Se sesong"
+            actionTabId="season"
+            testId="dashboard-section-performances"
             icon={<TheaterIcon sx={{ fontSize: 18, color: '#fbbf24' }} />}
           >
             <Stack spacing={1.25}>
@@ -496,6 +500,8 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             <SectionCard
               title="Åpne auditions"
               actionLabel="Se alle"
+              actionTabId="reel"
+              testId="dashboard-section-auditions"
               icon={<AuditionIcon sx={{ fontSize: 18, color: '#34d399' }} />}
             >
               <Stack spacing={1}>
@@ -541,6 +547,8 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             <SectionCard
               title={`Aktive ${labels.danceTermClassPlural.toLowerCase()}`}
               actionLabel={`Se ${labels.danceTermStudentPlural.toLowerCase()}`}
+              actionTabId="students"
+              testId="dashboard-section-classes"
               icon={<PlayIcon sx={{ fontSize: 18, color: '#34d399' }} />}
             >
               <Stack spacing={1}>
@@ -668,12 +676,17 @@ interface SectionCardProps {
   title: string;
   icon?: React.ReactNode;
   actionLabel?: string;
+  /** F7+ : når satt, dispatches en CustomEvent som DanceWorkspace fanger
+   *  og bytter til target-taben. */
+  actionTabId?: string;
   tinted?: boolean;
   children: React.ReactNode;
+  testId?: string;
 }
 
-const SectionCard: React.FC<SectionCardProps> = ({ title, icon, actionLabel, tinted, children }) => (
+const SectionCard: React.FC<SectionCardProps> = ({ title, icon, actionLabel, actionTabId, tinted, children, testId }) => (
   <Card
+    data-testid={testId}
     sx={{
       bgcolor: tinted ? 'rgba(139,92,246,0.06)' : '#0f1318',
       border: `1px solid ${tinted ? 'rgba(139,92,246,0.25)' : '#1e2536'}`,
@@ -690,7 +703,15 @@ const SectionCard: React.FC<SectionCardProps> = ({ title, icon, actionLabel, tin
           </Typography>
         </Stack>
         {actionLabel && (
-          <Button size="small" sx={{ textTransform: 'none', fontSize: 11, color: '#a78bfa', minWidth: 0, p: 0.5 }}>
+          <Button
+            size="small"
+            onClick={() => {
+              if (!actionTabId) return;
+              window.dispatchEvent(new CustomEvent('dance:set-tab', { detail: { tabId: actionTabId } }));
+            }}
+            data-testid={testId ? `${testId}-action` : undefined}
+            sx={{ textTransform: 'none', fontSize: 11, color: '#a78bfa', minWidth: 0, p: 0.5 }}
+          >
             {actionLabel}
           </Button>
         )}

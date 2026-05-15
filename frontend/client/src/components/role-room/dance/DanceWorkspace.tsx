@@ -179,6 +179,19 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     window.history.replaceState({}, '', url.toString());
   }, [activeTabId]);
 
+  // Cross-component navigation via CustomEvent.
+  // Bruk: window.dispatchEvent(new CustomEvent('dance:set-tab', { detail: { tabId: 'season' } }))
+  React.useEffect(() => {
+    const onSetTab = (e: Event): void => {
+      const detail = (e as CustomEvent<{ tabId?: string }>).detail;
+      if (detail && typeof detail.tabId === 'string') {
+        setActiveTabId(detail.tabId);
+      }
+    };
+    window.addEventListener('dance:set-tab', onSetTab as EventListener);
+    return () => window.removeEventListener('dance:set-tab', onSetTab as EventListener);
+  }, []);
+
   // GA4 dataLayer event ved tab-bytte. Kun client-side.
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
