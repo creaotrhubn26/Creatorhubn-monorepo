@@ -2261,3 +2261,199 @@ export function inheritAssignmentsFromShotList(
 
   return Array.from(deduped.values());
 }
+
+// =============================================================================
+// AI Suggestion System
+// =============================================================================
+//
+// Substrate-typer for AI-genererte forslag. Se
+// `ai-suggestion-architecture.md` for arkitekturbeslutninger og rasjonale.
+//
+// Designkontrakt:
+//  - Alle AI-output i Role Room går gjennom denne typen
+//  - Suggestion er immutable bortsett fra status/review/apply-felter (AD-002)
+//  - Payload-typen er parametrisert per suggestion_type (se SuggestionPayloads)
+// =============================================================================
+
+export type AISuggestionStatus =
+  | 'pending'
+  | 'accepted'
+  | 'rejected'
+  | 'superseded'
+  | 'applied';
+
+export type AISuggestionSourceType =
+  | 'scene'
+  | 'role'
+  | 'manuscript'
+  | 'project';
+
+export interface AISuggestion<TPayload = unknown> {
+  id: string;
+  projectId: string;
+
+  // Klassifisering
+  suggestionType: string;
+  payload: TPayload;
+
+  // Polymorf kilde
+  sourceType: AISuggestionSourceType;
+  sourceId: string;
+
+  // Lineage
+  agentName: string;
+  modelVersion: string;
+  parentSuggestionId?: string;
+
+  // Confidence (0.0 - 1.0)
+  confidence: number;
+
+  // Lifecycle
+  status: AISuggestionStatus;
+
+  // Review-audit
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+
+  // Apply-audit
+  appliedAt?: string;
+  appliedResult?: Record<string, unknown>;
+
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Kanoniske suggestion_type-konstanter. Hver agent eier sitt navnerom
+ * (`breakdown.*`, `casting.*`, `story.*`, etc.) så filtrering på navnerom
+ * er trivielt. Se ai-suggestion-architecture.md §5.
+ */
+export const SUGGESTION_TYPES = {
+  // Breakdown-agent
+  BREAKDOWN_PROP: 'breakdown.prop',
+  BREAKDOWN_LOCATION: 'breakdown.location',
+  BREAKDOWN_COSTUME: 'breakdown.costume',
+  BREAKDOWN_VFX_FLAG: 'breakdown.vfx-flag',
+  BREAKDOWN_RISK_FLAG: 'breakdown.risk-flag',
+
+  // Casting stub-agent
+  CASTING_ROLE_STUB: 'casting.role-stub',
+  CASTING_AUDITION_SIDES: 'casting.audition-sides',
+
+  // Story / idea-agent
+  STORY_LOGLINE: 'story.logline',
+  STORY_SYNOPSIS: 'story.synopsis',
+  STORY_BEAT_OUTLINE: 'story.beat-outline',
+
+  // Shot list-agent
+  SHOT_LIST_DRAFT: 'shot-list.draft',
+
+  // Live set (Fase B)
+  COVERAGE_GAP: 'coverage.gap',
+  COVERAGE_BEST_TAKE: 'coverage.best-take',
+
+  // Editor (Fase B/C)
+  EDIT_ROUGH_CUT_DRAFT: 'edit.rough-cut-draft',
+} as const;
+
+export type SuggestionType = typeof SUGGESTION_TYPES[keyof typeof SUGGESTION_TYPES];
+
+// =============================================================================
+// Type-spesifikke payloads
+// =============================================================================
+// Hver suggestion_type har en typed payload. Konsumenter kan smale
+// AISuggestion<unknown> til AISuggestion<BreakdownPropPayload> basert på
+// suggestionType-feltet.
+// =============================================================================
+
+export interface BreakdownPropPayload {
+  /** Forslag til prop-navn, evt. eksisterende prop-ID hvis match funnet */
+  name: string;
+  existingPropId?: string;
+  category?: string;
+  quantity?: number;
+  note?: string;
+}
+
+export interface BreakdownLocationPayload {
+  name: string;
+  existingLocationId?: string;
+  intExt?: 'INT' | 'EXT' | 'INT/EXT';
+  note?: string;
+}
+
+export interface BreakdownCostumePayload {
+  characterName: string;
+  description: string;
+  note?: string;
+}
+
+export interface BreakdownRiskFlagPayload {
+  /** F.eks. 'weapon', 'stunt', 'minor-on-set', 'animal', 'weather-dependent' */
+  riskType: string;
+  description: string;
+  recommendedAction?: string;
+}
+
+export interface CastingRoleStubPayload {
+  characterName: string;
+  /** Antall scener karakteren forekommer i */
+  sceneCount: number;
+  sceneIds: string[];
+  ageRange?: string;
+  gender?: string;
+  shortDescription?: string;
+}
+
+export interface CastingAuditionSidesPayload {
+  roleId?: string;
+  characterName: string;
+  /** Foreslåtte sider/replikker for audition */
+  excerptSceneIds: string[];
+  note?: string;
+}
+
+export interface StoryLoglinePayload {
+  logline: string;
+  alternatives?: string[];
+}
+
+export interface StoryBeatOutlinePayload {
+  format: 'kortfilm' | 'reklame-30s' | 'reklame-60s' | 'musikkvideo' | 'spillefilm' | string;
+  beats: Array<{
+    beatName: string;
+    sceneIntent: string;
+  }>;
+}
+
+export interface ShotListDraftPayload {
+  sceneId: string;
+  shots: Array<{
+    type: string;        // 'wide' | 'medium' | 'close' | 'insert' | 'over-shoulder' | ...
+    description: string;
+    durationSec?: number;
+  }>;
+}
+
+export interface CoverageGapPayload {
+  sceneId: string;
+  /** F.eks. 'missing-close-up-character-X', 'missing-establishing-shot' */
+  gapType: string;
+  description: string;
+}
+
+// =============================================================================
+// Filter for å hente forslag
+// =============================================================================
+
+export interface AISuggestionFilter {
+  sourceType?: AISuggestionSourceType;
+  sourceId?: string;
+  agentName?: string;
+  suggestionType?: string;
+  status?: AISuggestionStatus | AISuggestionStatus[];
+  minConfidence?: number;
+}
+

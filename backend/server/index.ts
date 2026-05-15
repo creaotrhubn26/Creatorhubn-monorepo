@@ -379,6 +379,16 @@ import { createCastingManuscriptsService } from "./casting-manuscripts-service";
 import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
+import { createAISuggestionService } from "./ai-suggestion-service.js";
+import { setupAISuggestionRoutes } from "./ai-suggestion-routes.js";
+import {
+  breakdownAgent,
+  breakdownPropApplier,
+  breakdownRiskFlagApplier,
+  breakdownLocationApplier,
+  breakdownCostumeApplier,
+  breakdownVfxFlagApplier,
+} from "./ai-breakdown-agent.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
 import { setupAdminRefundRequestsRoutes } from "./admin-refund-requests-routes";
 import { setupAdminStatsRoutes } from "./admin-stats-routes";
@@ -15563,6 +15573,17 @@ const manuscriptsService = createCastingManuscriptsService({
 const manuscriptRevisionsService = createCastingManuscriptRevisionsService({
   manuscriptsService,
 });
+
+// AI Suggestion System — substratet for alle AI-genererte forslag.
+// Agenter (breakdown, casting-stub, idea-structure, shot-list, ...)
+// registreres her. Se ai-suggestion-architecture.md.
+const aiSuggestionService = createAISuggestionService({ pool });
+aiSuggestionService.registerAgent(breakdownAgent);
+aiSuggestionService.registerApplier(breakdownPropApplier);
+aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
+aiSuggestionService.registerApplier(breakdownLocationApplier);
+aiSuggestionService.registerApplier(breakdownCostumeApplier);
+aiSuggestionService.registerApplier(breakdownVfxFlagApplier);
 
 function dbLegacyStoryLogicKey(projectId: string): string {
   return `project:story-logic:${projectId}`;
@@ -37271,6 +37292,13 @@ setupCastingManuscriptsRoutes({
   app,
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
+});
+
+// ── AI Suggestion System — substrate-routes for forslag generert av
+//   registrerte agenter. 4 endpoints: list / generate / accept / reject.
+setupAISuggestionRoutes({
+  app,
+  aiSuggestionService,
 });
 
 // ── Casting projects — flyttet til ./casting-projects-routes.ts

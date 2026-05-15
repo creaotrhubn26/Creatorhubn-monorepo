@@ -41,6 +41,7 @@ import {
   ToggleButton,
   Slider,
   CircularProgress,
+  Autocomplete,
 } from '@mui/material';
 
 // Keep lazy component identities stable across renders.
@@ -427,6 +428,9 @@ import { manuscriptTemplateService } from '../services/manuscriptTemplateService
 import { castingService } from '../services/castingService';
 import { characterProfileService, type CharacterProfile as StoredCharacterProfile } from '../services/characterProfileService';
 import type { Template } from '../data/manuscriptTemplates';
+import { MANUSCRIPT_SCAFFOLD_TEMPLATES } from '../data/manuscriptTemplates';
+import AISuggestionsPanel from './AISuggestionsPanel';
+import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
@@ -508,6 +512,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const castingDataLoadTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingCastingDataLoadRef = useRef(false);
   const autoCreatedRoleNamesRef = useRef<Set<string>>(new Set());
+  // Per-scene tidsstempel for siste AI-breakdown-trigger. Brukes til å
+  // throttle auto-generering så raske scene-save'r ikke fyrer Claude i kø.
+  const lastSuggestionTriggerRef = useRef<Map<string, number>>(new Map());
   const autoCreatedLocationNamesRef = useRef<Set<string>>(new Set());
   const autoCreatedToastTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -578,6 +585,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     pageLength: '',
     description: '',
     status: 'not-scheduled',
+    characters: [] as string[],
+    sceneIntent: '',
+    protagonistGoal: '',
   });
   const [autoBreakdownEnabled, setAutoBreakdownEnabled] = useState(true);
   
@@ -621,6 +631,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     subtitle: '',
     author: '',
     format: 'fountain' as 'fountain' | 'final-draft' | 'markdown',
+    scaffoldTemplateId: 'blank' as string,
   });
 
   // Edit manuscript state
@@ -981,13 +992,60 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
       // Create manuscript via API
       const createdManuscript = await manuscriptService.createManuscript(manuscript);
-      
+
       setManuscripts([...manuscripts, createdManuscript]);
       setSelectedManuscript(createdManuscript);
+
+      // Apply scaffold template — creates empty scene slots with structural
+      // intent pre-filled, never content. See ai-prinsipper.md cold-start #2.
+      const selectedTemplate = MANUSCRIPT_SCAFFOLD_TEMPLATES.find(
+        (t) => t.id === newManuscript.scaffoldTemplateId,
+      );
+      if (selectedTemplate && selectedTemplate.beats.length > 0) {
+        const now = new Date().toISOString();
+        const scaffoldScenes: SceneBreakdown[] = selectedTemplate.beats.map((beat, index) => ({
+          id: `scene-${createdManuscript.id}-${index + 1}-${Date.now()}`,
+          manuscriptId: createdManuscript.id,
+          projectId: activeProjectId,
+          sceneNumber: index + 1,
+          sceneHeading: '',
+          heading: '',
+          intExt: beat.suggestedIntExt,
+          locationName: '',
+          timeOfDay: beat.suggestedTimeOfDay,
+          description: '',
+          status: 'not-scheduled',
+          characters: [],
+          propsNeeded: [],
+          metadata: {
+            beatName: beat.beatName,
+            sceneIntent: beat.sceneIntent,
+            scaffoldTemplateId: selectedTemplate.id,
+          },
+          createdAt: now,
+          updatedAt: now,
+        }));
+        setScenes(scaffoldScenes);
+        // Best-effort persist; UI already shows scaffold optimistically.
+        Promise.allSettled(
+          scaffoldScenes.map((scene) => manuscriptService.saveScene(scene)),
+        ).catch((err) => console.error('Scaffold-scene-persistering feilet delvis', err));
+      }
+
       setShowNewManuscriptDialog(false);
-      setNewManuscript({ title: '', subtitle: '', author: '', format: 'fountain' });
-      showSuccess('Manuskript opprettet');
-      
+      setNewManuscript({
+        title: '',
+        subtitle: '',
+        author: '',
+        format: 'fountain',
+        scaffoldTemplateId: 'blank',
+      });
+      showSuccess(
+        selectedTemplate && selectedTemplate.beats.length > 0
+          ? `Manuskript opprettet med ${selectedTemplate.beats.length} scene-slot fra "${selectedTemplate.name}"`
+          : 'Manuskript opprettet',
+      );
+
       if (onManuscriptChange) {
         onManuscriptChange(createdManuscript);
       }
@@ -1587,6 +1645,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     if (!showSceneDialog) return;
 
     if (editingScene) {
+      const meta = editingScene.metadata as Record<string, unknown> | undefined;
       setSceneForm({
         sceneNumber: String(editingScene.sceneNumber ?? ''),
         sceneHeading: String(editingScene.sceneHeading ?? editingScene.heading ?? ''),
@@ -1596,6 +1655,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         pageLength: typeof editingScene.pageLength === 'number' ? String(editingScene.pageLength) : '',
         description: String(editingScene.description ?? ''),
         status: String(editingScene.status ?? 'not-scheduled'),
+        characters: Array.isArray(editingScene.characters) ? editingScene.characters : [],
+        sceneIntent: typeof meta?.sceneIntent === 'string' ? meta.sceneIntent : '',
+        protagonistGoal: typeof meta?.protagonistGoal === 'string' ? meta.protagonistGoal : '',
       });
       return;
     }
@@ -1609,6 +1671,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       pageLength: '',
       description: '',
       status: 'not-scheduled',
+      characters: [],
+      sceneIntent: '',
+      protagonistGoal: '',
     });
   }, [editingScene, nextSceneNumber, showSceneDialog]);
 
@@ -1628,6 +1693,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     const parsedPageLength = Number.parseFloat(sceneForm.pageLength);
     const pageLength = Number.isFinite(parsedPageLength) ? parsedPageLength : undefined;
 
+    const trimmedIntent = sceneForm.sceneIntent.trim();
+    const trimmedGoal = sceneForm.protagonistGoal.trim();
+    const baseMetadata = (editingScene?.metadata ?? {}) as Record<string, unknown>;
+    const nextMetadata: Record<string, unknown> = { ...baseMetadata };
+    if (trimmedIntent) nextMetadata.sceneIntent = trimmedIntent;
+    else delete nextMetadata.sceneIntent;
+    if (trimmedGoal) nextMetadata.protagonistGoal = trimmedGoal;
+    else delete nextMetadata.protagonistGoal;
+
     const sceneToSave: SceneBreakdown = {
       ...(editingScene || {}),
       id: editingScene?.id ?? `scene-${Date.now()}`,
@@ -1642,8 +1716,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       pageLength,
       description: sceneForm.description.trim(),
       status: sceneForm.status,
-      characters: Array.isArray(editingScene?.characters) ? editingScene.characters : [],
+      characters: sceneForm.characters,
       propsNeeded: Array.isArray(editingScene?.propsNeeded) ? editingScene.propsNeeded : [],
+      metadata: nextMetadata,
       createdAt: editingScene?.createdAt ?? now,
       updatedAt: now,
     };
@@ -1672,6 +1747,46 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         setSelectedScene({ ...sceneToSave, ...persistedScene });
       }
       showSuccess(editingScene ? 'Scene oppdatert' : 'Scene opprettet');
+
+      // Auto-trigger breakdown-agent når scene-tekst endres. Krav:
+      //  - eksisterende scene (ikke første gang den opprettes)
+      //  - beskrivelse er ikke tom
+      //  - beskrivelsen har faktisk endret seg
+      //  - sist trigger var > 30s siden (throttle per scene)
+      // Fire-and-forget: brukeren ser forslag neste gang scenen åpnes.
+      const persistedSceneId =
+        (persistedScene as { id?: string } | undefined)?.id ?? sceneToSave.id;
+      const prevDescription =
+        typeof editingScene?.description === 'string' ? editingScene.description : '';
+      const newDescription = sceneToSave.description ?? '';
+      const descriptionChanged =
+        prevDescription.trim() !== newDescription.trim() && newDescription.trim().length > 0;
+      const lastTriggerAt =
+        lastSuggestionTriggerRef.current.get(persistedSceneId) ?? 0;
+      const throttleMs = 30_000;
+
+      if (
+        editingScene
+        && activeProjectId
+        && descriptionChanged
+        && Date.now() - lastTriggerAt > throttleMs
+      ) {
+        lastSuggestionTriggerRef.current.set(persistedSceneId, Date.now());
+        void generateSuggestions(activeProjectId, {
+          agentName: 'breakdown-agent',
+          sourceType: 'scene',
+          sourceId: persistedSceneId,
+          payload: {
+            sceneText: newDescription,
+            existingRoles: castingRoles.map((r) => ({ id: r.id, name: r.name })),
+            existingProps: [],
+            existingLocations: castingLocations.map((l) => ({ id: l.id, name: l.name })),
+          },
+        }).catch((err) => {
+          // Stille feil — auto-trigger skal aldri forstyrre brukerflyten
+          console.warn('[breakdown auto-trigger] feilet:', err);
+        });
+      }
     } catch (error) {
       console.error('Failed to save scene:', error);
       setScenes(previousScenes);
@@ -2421,21 +2536,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           >
             {/* Editor Tab */}
             {activeTab === 'editor' && (
-              <EditorTab
-                manuscript={selectedManuscript}
-                scenes={scenes}
-                onContentChange={handleEditorContentChange}
-                onParseToScenes={handleParseToScenes}
-                manuscriptSaveStatus={manuscriptSaveStatus}
-                lastManuscriptSaved={lastManuscriptSaved}
-                characters={sceneCharactersMemo}
-                locations={sceneLocationsMemo}
-                castingRoles={castingRoles}
-                castingLocations={castingLocations}
-                castingCandidates={castingCandidates}
-                onCharacterAdd={handleCharacterAdd}
-                onLocationAdd={handleLocationAdd}
-              />
+              <>
+                <EditorTab
+                  manuscript={selectedManuscript}
+                  scenes={scenes}
+                  onContentChange={handleEditorContentChange}
+                  onParseToScenes={handleParseToScenes}
+                  manuscriptSaveStatus={manuscriptSaveStatus}
+                  lastManuscriptSaved={lastManuscriptSaved}
+                  characters={sceneCharactersMemo}
+                  locations={sceneLocationsMemo}
+                  castingRoles={castingRoles}
+                  castingLocations={castingLocations}
+                  castingCandidates={castingCandidates}
+                  onCharacterAdd={handleCharacterAdd}
+                  onLocationAdd={handleLocationAdd}
+                />
+              </>
             )}
 
             {/* Acts Tab */}
@@ -2474,8 +2591,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
             {/* Characters Tab */}
             {activeTab === 'characters' && (
-              <CharactersTab 
-                characters={characterList} 
+              <CharactersTab
+                characters={characterList}
                 dialogueLines={dialogueLines}
                 manuscriptId={selectedManuscript?.id}
                 scenes={scenes}
@@ -2942,6 +3059,29 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               </FormControl>
             </Stack>
 
+            <Autocomplete
+              multiple
+              freeSolo
+              options={castingRoles.map((role) => role.name)}
+              value={sceneForm.characters}
+              onChange={(_event, value) =>
+                setSceneForm((prev) => ({ ...prev, characters: value.map((v) => String(v).trim()).filter(Boolean) }))
+              }
+              renderTags={(value: readonly string[], getTagProps) =>
+                value.map((option, index) => {
+                  const { key, ...tagProps } = getTagProps({ index });
+                  return <Chip key={key} variant="outlined" label={option} size="small" {...tagProps} />;
+                })
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Hvem er i scenen?"
+                  placeholder={castingRoles.length ? 'Velg fra eksisterende roller eller skriv nytt navn' : 'Skriv karakter-navn'}
+                />
+              )}
+            />
+
             <TextField
               label="Beskrivelse"
               fullWidth
@@ -2950,6 +3090,51 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               value={sceneForm.description}
               onChange={(event) => setSceneForm((prev) => ({ ...prev, description: event.target.value }))}
             />
+
+            <Divider>
+              <Typography variant="caption" color="text.secondary">
+                Valgfritt — hjelper å fokusere
+              </Typography>
+            </Divider>
+
+            <TextField
+              label="Hva endrer seg fra start til slutt av scenen?"
+              fullWidth
+              value={sceneForm.sceneIntent}
+              onChange={(event) => setSceneForm((prev) => ({ ...prev, sceneIntent: event.target.value }))}
+              placeholder="Én setning"
+            />
+            <TextField
+              label="Hva vil hovedpersonen her?"
+              fullWidth
+              value={sceneForm.protagonistGoal}
+              onChange={(event) => setSceneForm((prev) => ({ ...prev, protagonistGoal: event.target.value }))}
+              placeholder="Én setning"
+            />
+
+            {editingScene?.id && activeProjectId && (
+              <>
+                <Divider />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{ sourceType: 'scene', sourceId: editingScene.id }}
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'breakdown-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: {
+                        sceneText: sceneForm.description,
+                        existingRoles: castingRoles.map((r) => ({ id: r.id, name: r.name })),
+                        existingProps: [],
+                        existingLocations: castingLocations.map((l) => ({ id: l.id, name: l.name })),
+                      },
+                    });
+                  }}
+                />
+              </>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'space-between' }}>
@@ -2963,7 +3148,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           <Stack direction="row" spacing={1}>
             <Button onClick={closeSceneDialog}>Avbryt</Button>
             <Button onClick={handleSaveScene} variant="contained">
-              Lagre scene
+              {editingScene ? 'Lagre scene' : 'Begynn å skrive'}
             </Button>
           </Stack>
         </DialogActions>
@@ -3058,6 +3243,41 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 <MenuItem value="fountain">Fountain (anbefalt)</MenuItem>
                 <MenuItem value="markdown">Markdown</MenuItem>
                 <MenuItem value="final-draft">Final Draft</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Divider>
+              <Typography variant="caption" color="text.secondary">
+                Struktur — gir deg scene-slot å skrive inn i
+              </Typography>
+            </Divider>
+
+            <FormControl fullWidth>
+              <InputLabel>Struktur-mal</InputLabel>
+              <Select
+                value={newManuscript.scaffoldTemplateId}
+                onChange={(e) =>
+                  setNewManuscript({ ...newManuscript, scaffoldTemplateId: String(e.target.value) })
+                }
+                label="Struktur-mal"
+              >
+                {MANUSCRIPT_SCAFFOLD_TEMPLATES.map((template) => (
+                  <MenuItem key={template.id} value={template.id}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {template.name}
+                        {template.beats.length > 0 && (
+                          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            ({template.beats.length} scener)
+                          </Typography>
+                        )}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {template.description}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Stack>
@@ -4341,10 +4561,10 @@ const ScenesTab: React.FC<{
         // Mobile: Card-based layout
         <Stack spacing={1}>
           {scenes.map((scene) => (
-            <Card 
+            <Card
               key={scene.id}
               onClick={() => onSelectScene(scene)}
-              sx={{ 
+              sx={{
                 cursor: 'pointer',
                 bgcolor: selectedScene?.id === scene.id ? 'action.selected' : undefined,
                 p: 1.5,

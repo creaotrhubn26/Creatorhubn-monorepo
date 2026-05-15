@@ -88,7 +88,7 @@ function resolveApiEndpoint(endpoint: string): string {
   return `${API_BASE}${endpoint}`;
 }
 
-async function apiRequest<T>(
+export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
