@@ -447,6 +447,7 @@ import {
   createSceneReadinessAgent,
   sceneReadinessApplier,
 } from "./ai-scene-readiness-agent.js";
+import { setupCcapiRoutes } from "./ccapi-routes.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
 import { createCoverageJobWorker } from "./coverage-job-queue.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
@@ -15677,6 +15678,9 @@ aiSuggestionService.registerApplier(sceneReadinessApplier);
 
 // Coverage take-routes (upload, list, etc.)
 setupCoverageTakeRoutes({ app, pool });
+
+// Canon CCAPI-proxy — frontend snakker hit, vi snakker direkte mot kamera-AP
+setupCcapiRoutes({ app, pool });
 
 // Coverage job-worker — bakgrunns-prosessering av analyse-jobber.
 // Starter automatisk; stoppes ved server-shutdown via SIGTERM-håndtering
