@@ -38,10 +38,10 @@ import {
 } from '../config/professionTabs';
 import { DanceDashboard } from './DanceDashboard';
 import { DanceAnalysisPanel } from './DanceAnalysisPanel';
+import { DanceProductionCalendar } from './DanceProductionCalendar';
 import { ChoreographyBuilderConnected } from './ChoreographyBuilderConnected';
 import { RehearsalPlannerConnected } from './RehearsalPlannerConnected';
 import { DancerProfileGridConnected } from './DancerProfileGridConnected';
-import { DanceProjectCalendar } from './DanceProjectCalendar';
 import { DancerInjuryLogPanel } from './DancerInjuryLogPanel';
 import { FormationViewConnected } from './FormationViewConnected';
 import { VideoLibrary } from './VideoLibrary';
@@ -293,7 +293,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
       case 'season':
         return (
           <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-            <DanceProjectCalendar projectId={projectId ?? null} professionMode={mode} />
+            <DanceProductionCalendar projectId={projectId ?? null} professionMode={mode} />
           </Box>
         );
       case 'injuries':
