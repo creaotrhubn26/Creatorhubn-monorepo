@@ -37,6 +37,7 @@ import {
   type TabConfig,
 } from '../config/professionTabs';
 import { DanceDashboard } from './DanceDashboard';
+import { DanceAnalysisPanel } from './DanceAnalysisPanel';
 import { ChoreographyBuilderConnected } from './ChoreographyBuilderConnected';
 import { RehearsalPlannerConnected } from './RehearsalPlannerConnected';
 import { DancerProfileGridConnected } from './DancerProfileGridConnected';
@@ -251,7 +252,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
   const renderTabBody = (tab: TabConfig): React.ReactElement => {
     switch (tab.id) {
       case 'dashboard':
-        return <DanceDashboard modeOverride={mode} />;
+        return <DanceDashboard modeOverride={mode} projectId={projectId ?? null} />;
       case 'pieces':
         return (
           <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
@@ -304,6 +305,8 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         return <MusicArchivePanel projectId={projectId ?? null} />;
       case 'reel':
         return <ReelPanel projectId={projectId ?? null} />;
+      case 'analysis':
+        return <DanceAnalysisPanel projectId={projectId ?? null} />;
       case 'grants':
         return <GrantsPanel projectId={projectId ?? null} />;
       case 'billing':

@@ -7,12 +7,15 @@
 
 import React from 'react';
 import { Stack, CircularProgress, Alert, Button, Box } from '@mui/material';
-import { DancerProfileGrid } from './DancerProfileGrid';
+import { DancerProfileGrid, type DancerStatsSnapshot } from './DancerProfileGrid';
 import { DancerProfileEditor } from './DancerProfileEditor';
 import {
   listDancerProfiles,
   type DancerProfile,
 } from './dancerProfileService';
+import { listFormations } from './danceFormationService';
+import { listRehearsals } from './danceRehearsalService';
+import { listClips, listAnnotations } from './danceVideoService';
 import type { Dancer } from './formationTypes';
 import { getInitials } from './dancerProfile';
 
@@ -41,6 +44,9 @@ export function DancerProfileGridConnected({
   projectId,
 }: DancerProfileGridConnectedProps): React.ReactElement {
   const [dancers, setDancers] = React.useState<Dancer[]>([]);
+  const [statsByDancerId, setStatsByDancerId] = React.useState<Map<string, DancerStatsSnapshot>>(
+    () => new Map(),
+  );
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -54,6 +60,43 @@ export function DancerProfileGridConnected({
     try {
       const profiles = await listDancerProfiles(projectId ?? undefined);
       setDancers(profiles.map(profileToDancer));
+
+      // F6-2: stats per danser (formasjons-count, rehearsal-count, annotation-count)
+      void (async () => {
+        try {
+          const [formations, rehearsals, clips] = await Promise.all([
+            listFormations(projectId ?? undefined),
+            listRehearsals({ projectId: projectId ?? undefined, limit: 200 }),
+            listClips({ projectId: projectId ?? undefined }),
+          ]);
+          // Annotation-count: bare for opp til 10 clips for å unngå N+1-fyrverkeri.
+          const annotationsByDancer = new Map<string, number>();
+          const clipSubset = clips.slice(0, 10);
+          await Promise.all(clipSubset.map(async (c) => {
+            try {
+              const anns = await listAnnotations(c.id);
+              for (const a of anns) {
+                for (const id of a.targetDancerIds) {
+                  annotationsByDancer.set(id, (annotationsByDancer.get(id) ?? 0) + 1);
+                }
+              }
+            } catch { /* ignore */ }
+          }));
+
+          const map = new Map<string, DancerStatsSnapshot>();
+          for (const p of profiles) {
+            const formCount = formations.filter((f) => f.positions.some((pos) => pos.dancerId === p.dancerId)).length;
+            const rehCount = rehearsals.filter((r) => r.invitedDancerIds.includes(p.dancerId)).length;
+            const annCount = annotationsByDancer.get(p.dancerId) ?? 0;
+            map.set(p.dancerId, {
+              formationsCount: formCount,
+              rehearsalsCount: rehCount,
+              annotationsCount: annCount,
+            });
+          }
+          setStatsByDancerId(map);
+        } catch { /* stats er best-effort — la kort stå uten chips ved feil */ }
+      })();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kunne ikke laste dansere');
     } finally {
@@ -116,6 +159,7 @@ export function DancerProfileGridConnected({
         dancers={dancers}
         projectId={projectId ?? undefined}
         onAddDancer={handleAdd}
+        statsByDancerId={statsByDancerId}
       />
       {creatingDancerId ? (
         <DancerProfileEditor

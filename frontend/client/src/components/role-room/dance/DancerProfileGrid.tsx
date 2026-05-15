@@ -34,6 +34,12 @@ type SortMode = 'name' | 'updated' | 'style';
 
 // ─── Props ──────────────────────────────────────────────────────────────
 
+export interface DancerStatsSnapshot {
+  formationsCount: number;
+  rehearsalsCount: number;
+  annotationsCount: number;
+}
+
 export interface DancerProfileGridProps {
   /** Liste av dansere som skal vises (typisk DEMO_DANCERS eller fra crew). */
   dancers: readonly Dancer[];
@@ -41,6 +47,8 @@ export interface DancerProfileGridProps {
   projectId?: string;
   /** Kalles når brukeren trykker "Legg til danser" (åpner ekstern modal). */
   onAddDancer?: () => void;
+  /** F6-2: per-danser-statistikk. Hvis satt, rendres stats-chips på hvert kort. */
+  statsByDancerId?: ReadonlyMap<string, DancerStatsSnapshot>;
 }
 
 // ─── Komponent ──────────────────────────────────────────────────────────
@@ -49,6 +57,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
   dancers,
   projectId,
   onAddDancer,
+  statsByDancerId,
 }) => {
   const [profiles, setProfiles] = useState<Map<string, DancerProfile>>(() => new Map());
   const [loading, setLoading] = useState<boolean>(false);
@@ -286,6 +295,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
               key={d.id}
               dancer={d}
               profile={profiles.get(d.id) ?? null}
+              stats={statsByDancerId?.get(d.id)}
               onEdit={() => openEditorFor(d.id)}
             />
           ))}

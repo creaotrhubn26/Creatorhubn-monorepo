@@ -1324,6 +1324,7 @@ export type BrandingTextTokenKey =
   | 'danceTabAdminSettings'       // 'Admin · Innstillinger'
   | 'danceTabPerformances'        // 'Forestillinger'
   | 'danceTabReel'                // 'Reel-portefølje' (frilans)
+  | 'danceTabAnalysis'            // 'Analyse' (DanceAnnotate-/DanceFlow-paritet)
   | 'danceTabClasses'             // 'Klasser' (studio)
   | 'danceTabStudents'            // 'Elever' (studio)
   | 'danceTabInstructors'         // 'Instruktører' (studio)
@@ -2962,6 +2963,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabAdminSettings: 'Admin · Innstillinger',
     danceTabPerformances: 'Forestillinger',
     danceTabReel: 'Reel-portefølje',
+    danceTabAnalysis: 'Analyse',
     danceTabClasses: 'Klasser',
     danceTabStudents: 'Elever',
     danceTabInstructors: 'Instruktører',

@@ -101,6 +101,8 @@ export interface DancerProfileCardProps {
   onEdit?: () => void;
   /** Tighter layout for sidebars. */
   compact?: boolean;
+  /** F6-2: aggregerte tall (formasjoner / prøver / annotasjoner). */
+  stats?: { formationsCount: number; rehearsalsCount: number; annotationsCount: number };
 }
 
 // ─── Komponent ──────────────────────────────────────────────────────────
@@ -110,6 +112,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
   profile,
   onEdit,
   compact,
+  stats,
 }) => {
   const initials = dancer.initials || getInitials(dancer.name);
   const top = useMemo(
@@ -174,6 +177,27 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
             )}
           </Box>
         </Stack>
+
+        {/* F6-2: stats-chips */}
+        {stats && (stats.formationsCount > 0 || stats.rehearsalsCount > 0 || stats.annotationsCount > 0) ? (
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 1 }} data-testid={`dancer-stats-${dancer.id}`}>
+            <Chip
+              size="small"
+              label={`${stats.formationsCount} form.`}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(167,139,250,0.15)', color: '#c4b5fd' }}
+            />
+            <Chip
+              size="small"
+              label={`${stats.rehearsalsCount} prøver`}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.15)', color: '#93c5fd' }}
+            />
+            <Chip
+              size="small"
+              label={`${stats.annotationsCount} kommentarer`}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}
+            />
+          </Stack>
+        ) : null}
 
         {profile === null ? (
           <Box sx={{ mt: 1.5, textAlign: 'center' }}>

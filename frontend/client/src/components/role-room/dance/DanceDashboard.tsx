@@ -158,12 +158,63 @@ export interface DanceDashboardProps {
   /** Override mode i stedet for å lese fra URL/storage. Brukes i tester og
    *  i Storybook-style preview hvis det legges til senere. */
   modeOverride?: ProfessionMode;
+  /** F6-1: når satt, henter dashboardet ekte data fra services i stedet
+   *  for demo-data. Null = freelancer-bruker uten prosjekt-scope. */
+  projectId?: string | null;
 }
 
-export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride }) => {
+export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, projectId }) => {
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
   const mode = modeOverride ?? getActiveProfessionMode();
+
+  // F6-1: ekte data fra services. Holder demo-data som fallback hvis
+  // listene er tomme (typisk i tester med sparse fixtures).
+  const [liveData, setLiveData] = React.useState<{
+    rehearsals: UpcomingRehearsal[];
+    counts: { choreographies: number; formations: number; dancers: number; clips: number };
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (!isDanceMode(modeOverride ?? getActiveProfessionMode())) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [rehearsalsRaw, choreos, formations, dancers] = await Promise.all([
+          import('./danceRehearsalService').then((m) => m.listRehearsals({ projectId: projectId ?? undefined, limit: 10 })),
+          import('./choreographyService').then((m) => m.listChoreographies(projectId ?? undefined)),
+          import('./danceFormationService').then((m) => m.listFormations(projectId ?? undefined)),
+          import('./dancerProfileService').then((m) => m.listDancerProfiles(projectId ?? undefined)),
+        ]);
+        if (cancelled) return;
+        const now = Date.now();
+        const upcoming: UpcomingRehearsal[] = rehearsalsRaw
+          .filter((r) => new Date(r.scheduledAt).getTime() >= now - 86_400_000)
+          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+          .slice(0, 5)
+          .map((r) => ({
+            id: r.id,
+            pieceTitle: r.title,
+            date: r.scheduledAt,
+            durationMin: r.estimatedMinutes,
+            room: r.location ?? '—',
+            dancers: r.invitedDancerIds.slice(0, 6),
+          }));
+        setLiveData({
+          rehearsals: upcoming,
+          counts: {
+            choreographies: choreos.length,
+            formations: formations.length,
+            dancers: dancers.length,
+            clips: 0, // VideoLibrary mounter sin egen list — vi viser ikke clips her
+          },
+        });
+      } catch {
+        // Ignorer feil — beholder fallback til demo-data.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, modeOverride]);
 
   // Defensiv: hvis denne komponenten av en eller annen grunn rendres
   // utenfor en dans-mode, vis ingenting fremfor å forvirre brukeren.
@@ -171,6 +222,10 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride }) 
 
   const isStudio = mode === 'dance_studio';
   const stats = isStudio ? DEMO_STUDIO_STATS : DEMO_FREELANCE_STATS;
+  // Bruk live rehearsals hvis de finnes (≥1), ellers fall tilbake til demo.
+  const rehearsalsToShow = liveData && liveData.rehearsals.length > 0
+    ? liveData.rehearsals
+    : DEMO_REHEARSALS;
   const heading = isStudio
     ? labels.danceProfessionStudioName
     : labels.danceProfessionFreelanceName;
@@ -211,7 +266,12 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride }) 
             God morgen{isStudio ? ', studio' : ''}.
           </Typography>
           <Typography sx={{ fontSize: 13, color: '#9ca3af', mt: 0.5 }}>
-            {DEMO_REHEARSALS.length} {labels.danceTermRehearsalPlural.toLowerCase()} de neste 7 dagene · {DEMO_PERFORMANCES.length} {labels.danceTermPerformancePlural.toLowerCase()} planlagt
+            {rehearsalsToShow.length} {labels.danceTermRehearsalPlural.toLowerCase()} de neste 7 dagene · {DEMO_PERFORMANCES.length} {labels.danceTermPerformancePlural.toLowerCase()} planlagt
+            {liveData ? (
+              <Box component="span" sx={{ color: '#a78bfa', ml: 1 }}>
+                · {liveData.counts.choreographies} stykker · {liveData.counts.formations} formasjoner · {liveData.counts.dancers} dansere
+              </Box>
+            ) : null}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -279,7 +339,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride }) 
             icon={<ListIcon sx={{ fontSize: 18, color: '#a78bfa' }} />}
           >
             <Stack spacing={1}>
-              {DEMO_REHEARSALS.map((r) => (
+              {rehearsalsToShow.map((r) => (
                 <Box
                   key={r.id}
                   data-testid={`dance-rehearsal-row-${r.id}`}
