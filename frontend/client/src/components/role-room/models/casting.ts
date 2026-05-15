@@ -2413,12 +2413,24 @@ export interface CastingAuditionSidesPayload {
   characterName: string;
   /** Foreslåtte sider/replikker for audition */
   excerptSceneIds: string[];
+  /** Begrunnelse per scene — hvorfor denne er god audition-materiale */
+  rationalePerScene?: Record<string, string>;
+  /** Overordnet begrunnelse for utvalget */
+  overallRationale?: string;
   note?: string;
 }
 
 export interface StoryLoglinePayload {
   logline: string;
   alternatives?: string[];
+}
+
+export interface StorySynopsisPayload {
+  synopsis: string;
+  /** Antall ord i synopsis (for å vise målgruppe-info i UI) */
+  wordCount?: number;
+  /** Sjanger-tag(s) som synopsis impliserer */
+  genres?: string[];
 }
 
 export type StoryContinuityIssueType =

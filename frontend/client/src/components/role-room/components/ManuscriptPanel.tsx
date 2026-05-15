@@ -2749,6 +2749,34 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     }}
                   />
                 )}
+                {activeProjectId && scenes.length >= 3 && (
+                  <AISuggestionsPanel
+                    projectId={activeProjectId}
+                    filter={{
+                      sourceType: 'project',
+                      sourceId: activeProjectId,
+                    }}
+                    title="Story-utvikling (logline · synopsis · beats)"
+                    onGenerate={async () => {
+                      if (!activeProjectId) return;
+                      await generateSuggestions(activeProjectId, {
+                        agentName: 'story-development-agent',
+                        sourceType: 'project',
+                        sourceId: activeProjectId,
+                        payload: {
+                          scenes: scenes
+                            .filter((s) => s.description && s.description.trim())
+                            .map((s) => ({
+                              id: s.id,
+                              sceneNumber: s.sceneNumber,
+                              sceneText: s.description ?? '',
+                              sceneHeading: s.sceneHeading ?? s.heading,
+                            })),
+                        },
+                      });
+                    }}
+                  />
+                )}
                 <CharactersTab
                   characters={characterList}
                   dialogueLines={dialogueLines}

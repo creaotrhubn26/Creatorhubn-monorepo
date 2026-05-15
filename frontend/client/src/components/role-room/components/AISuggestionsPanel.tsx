@@ -55,11 +55,17 @@ import type {
   BreakdownCostumePayload,
   BreakdownRiskFlagPayload,
   CastingRoleStubPayload,
+  CastingAuditionSidesPayload,
   StoryLoglinePayload,
+  StorySynopsisPayload,
+  StoryBeatOutlinePayload,
   StoryContinuityIssuePayload,
   ShotListDraftPayload,
 } from '../models/casting';
 import RuleIcon from '@mui/icons-material/Rule';
+import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
+import SubjectIcon from '@mui/icons-material/Subject';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 
 // ─────────────────────────────────────────────────────────────────────
 // Confidence-bånd-håndtering
@@ -288,6 +294,83 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
               </Typography>
             )}
           </Stack>
+        </Box>
+      );
+    },
+  },
+
+  'casting.audition-sides': {
+    icon: RecordVoiceOverIcon,
+    label: 'Audition-sides',
+    render: (s) => {
+      const p = s.payload as CastingAuditionSidesPayload;
+      return (
+        <Box>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            <strong>{p.characterName}</strong> — {p.excerptSceneIds.length} {p.excerptSceneIds.length === 1 ? 'scene' : 'scener'}
+          </Typography>
+          {p.overallRationale && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              {p.overallRationale}
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'story.synopsis': {
+    icon: SubjectIcon,
+    label: 'Synopsis',
+    render: (s) => {
+      const p = s.payload as StorySynopsisPayload;
+      return (
+        <Box>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            {p.synopsis.length > 200 ? `${p.synopsis.slice(0, 200)}…` : p.synopsis}
+          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+            {p.wordCount && (
+              <Typography variant="caption" color="text.secondary">
+                {p.wordCount} ord
+              </Typography>
+            )}
+            {p.genres && p.genres.length > 0 && (
+              <Stack direction="row" spacing={0.5}>
+                {p.genres.map((g) => (
+                  <Chip key={g} label={g} size="small" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        </Box>
+      );
+    },
+  },
+
+  'story.beat-outline': {
+    icon: FormatListBulletedIcon,
+    label: 'Beat-outline',
+    render: (s) => {
+      const p = s.payload as StoryBeatOutlinePayload;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Chip label={p.format} size="small" variant="outlined" />
+            <Typography variant="caption" color="text.secondary">
+              {p.beats.length} beats
+            </Typography>
+          </Stack>
+          {p.beats.slice(0, 3).map((beat, idx) => (
+            <Typography key={idx} variant="caption" display="block" color="text.secondary">
+              <strong>{beat.beatName}</strong>: {beat.sceneIntent.length > 60 ? `${beat.sceneIntent.slice(0, 60)}…` : beat.sceneIntent}
+            </Typography>
+          ))}
+          {p.beats.length > 3 && (
+            <Typography variant="caption" color="text.secondary">
+              +{p.beats.length - 3} flere
+            </Typography>
+          )}
         </Box>
       );
     },

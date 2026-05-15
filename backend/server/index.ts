@@ -401,6 +401,16 @@ import {
   shotListAgent,
   shotListDraftApplier,
 } from "./ai-shot-list-agent.js";
+import {
+  auditionSidesAgent,
+  auditionSidesApplier,
+} from "./ai-audition-sides-agent.js";
+import {
+  storyDevelopmentAgent,
+  storyLoglineApplier,
+  storySynopsisApplier,
+  storyBeatOutlineApplier,
+} from "./ai-story-development-agent.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
 import { setupAdminRefundRequestsRoutes } from "./admin-refund-requests-routes";
 import { setupAdminStatsRoutes } from "./admin-stats-routes";
@@ -15594,6 +15604,8 @@ aiSuggestionService.registerAgent(breakdownAgent);
 aiSuggestionService.registerAgent(castingStubAgent);
 aiSuggestionService.registerAgent(storyLogicAgent);
 aiSuggestionService.registerAgent(shotListAgent);
+aiSuggestionService.registerAgent(auditionSidesAgent);
+aiSuggestionService.registerAgent(storyDevelopmentAgent);
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
@@ -15602,6 +15614,10 @@ aiSuggestionService.registerApplier(breakdownVfxFlagApplier);
 aiSuggestionService.registerApplier(castingRoleStubApplier);
 aiSuggestionService.registerApplier(storyContinuityIssueApplier);
 aiSuggestionService.registerApplier(shotListDraftApplier);
+aiSuggestionService.registerApplier(auditionSidesApplier);
+aiSuggestionService.registerApplier(storyLoglineApplier);
+aiSuggestionService.registerApplier(storySynopsisApplier);
+aiSuggestionService.registerApplier(storyBeatOutlineApplier);
 
 function dbLegacyStoryLogicKey(projectId: string): string {
   return `project:story-logic:${projectId}`;
