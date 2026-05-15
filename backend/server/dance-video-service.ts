@@ -547,6 +547,8 @@ export interface PatchAnnotationInput {
   drawing?: unknown;
   drawingKeyframes?: unknown;
   category?: string | null;
+  timestampSec?: number;
+  endSec?: number | null;
 }
 
 export async function patchAnnotation(
@@ -576,6 +578,8 @@ export async function patchAnnotation(
   if (patch.category !== undefined) {
     push('category', normalizeCategory(patch.category));
   }
+  if (patch.timestampSec !== undefined) push('timestamp_sec', patch.timestampSec);
+  if (patch.endSec !== undefined) push('end_sec', patch.endSec);
   if (sets.length === 0) {
     const { rows } = await pool.query(
       `SELECT * FROM dance_video_annotation WHERE owner_user_id = $1 AND id = $2`,

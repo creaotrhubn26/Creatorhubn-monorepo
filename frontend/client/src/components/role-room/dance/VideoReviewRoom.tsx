@@ -71,8 +71,9 @@ import {
 import { DrawingOverlay, type DrawingPath } from './DrawingOverlay';
 import { SideBySidePlayer } from './SideBySidePlayer';
 import { useDancePlanGate } from './useDancePlanGate';
-import { DANCE_MOVEMENT_CATEGORIES, categoryById, categoryByShortcut, type MovementCategory } from './danceMovementCategories';
+import { DANCE_MOVEMENT_CATEGORIES, categoryById, categoryByShortcut, commonLabelsFor, type MovementCategory } from './danceMovementCategories';
 import { AnnotationTimeline } from './AnnotationTimeline';
+import { AnnotationDetailsPanel } from './AnnotationDetailsPanel';
 
 const PURPLE = '#8b5cf6';
 const PURPLE_LIGHT = '#a78bfa';
@@ -149,30 +150,16 @@ export function VideoReviewRoom({
   const [drawingMode, setDrawingMode] = React.useState(false);
   const [upgradeDrawingOpen, setUpgradeDrawingOpen] = React.useState(false);
   const [composerCategory, setComposerCategory] = React.useState<string | null>(null);
+  const [customLabelsByCat, setCustomLabelsByCat] = React.useState<Record<string, string[]>>({});
+  const [labelFilter, setLabelFilter] = React.useState<string>('');
+  const [selectedAnnotationId, setSelectedAnnotationId] = React.useState<string | null>(null);
+  const [rightPanelMode, setRightPanelMode] = React.useState<'annotate' | 'review'>('annotate');
   const composerInputRef = React.useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
+  const selectedAnnotation = React.useMemo(
+    () => annotations.find((a) => a.id === selectedAnnotationId) ?? null,
+    [annotations, selectedAnnotationId],
+  );
 
-  // Keyboard-shortcuts à la DanceAnnotate: 1-5 = velg kategori, A = fokuser
-  // composer for å skrive ny annotation ved playhead. Hopper over hvis bruker
-  // skriver i et tekstfelt (la default-binding vinne).
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const cat = categoryByShortcut(e.key);
-      if (cat) {
-        e.preventDefault();
-        setComposerCategory((cur) => (cur === cat.id ? null : cat.id));
-        return;
-      }
-      if (e.key === 'a' || e.key === 'A') {
-        e.preventDefault();
-        composerInputRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
   const planGate = useDancePlanGate();
   // Tegne-overlay er video_review_pro-feature: gratis-planer åpner upgrade-
   // dialogen ved klikk i stedet for å aktivere tegne-modus.
@@ -213,6 +200,62 @@ export function VideoReviewRoom({
   }, [clip.id, clip.projectId]);
 
   React.useEffect(() => { void refresh(); }, [refresh]);
+
+  // Keyboard-shortcuts à la DanceAnnotate: 1-5 velger kategori, A fokuserer
+  // composer, D sletter valgt annotation, S splitter den ved playhead.
+  // Hopper over hvis bruker skriver i et tekstfelt.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const cat = categoryByShortcut(e.key);
+      if (cat) {
+        e.preventDefault();
+        setComposerCategory((cur) => (cur === cat.id ? null : cat.id));
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === 'a') {
+        e.preventDefault();
+        composerInputRef.current?.focus();
+        return;
+      }
+      if (k === 'd') {
+        if (!selectedAnnotationId) return;
+        e.preventDefault();
+        const id = selectedAnnotationId;
+        setSelectedAnnotationId(null);
+        void (async () => {
+          await deleteAnnotation(id).catch(() => undefined);
+          void refresh();
+        })();
+        return;
+      }
+      if (k === 's') {
+        if (!selectedAnnotation) return;
+        e.preventDefault();
+        const orig = selectedAnnotation;
+        const playhead = videoRef.current?.currentTime ?? 0;
+        const origEnd = orig.endSec ?? orig.timestampSec + 2;
+        if (playhead <= orig.timestampSec || playhead >= origEnd) return;
+        void (async () => {
+          await patchAnnotation(orig.id, { endSec: playhead }).catch(() => undefined);
+          await createAnnotation(orig.clipId, {
+            body: orig.body,
+            timestampSec: playhead,
+            endSec: origEnd,
+            category: orig.category,
+            targetDancerIds: orig.targetDancerIds,
+            segmentId: orig.segmentId,
+          }).catch(() => undefined);
+          void refresh();
+        })();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedAnnotationId, selectedAnnotation, refresh]);
 
   // ─── V4: SSE subscription ─────────────────────────────────────
   React.useEffect(() => {
@@ -605,8 +648,61 @@ export function VideoReviewRoom({
             durationSec={duration}
             playheadSec={playheadSec}
             onSeek={seekTo}
+            onSelectAnnotation={(a) => setSelectedAnnotationId(a.id)}
+            onResize={(a, newStart, newEnd) => {
+              void patchAnnotation(a.id, {
+                timestampSec: Math.round(newStart * 100) / 100,
+                endSec: Math.round(newEnd * 100) / 100,
+              }).catch(() => undefined).then(() => refresh());
+            }}
           />
         </Box>
+        {/* Shortcuts-cheatsheet — DanceAnnotate-paritet */}
+        <Box
+          data-testid="review-shortcuts-panel"
+          sx={{ px: 1.5, pb: 1.5 }}
+        >
+          <Box
+            sx={{
+              p: 1,
+              borderRadius: 1,
+              bgcolor: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(139,92,246,0.12)',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+              gap: 0.5,
+              fontSize: 10.5,
+              color: 'rgba(229,231,235,0.7)',
+            }}
+          >
+            <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700, gridColumn: '1 / -1', mb: 0.25 }}>
+              SHORTCUTS
+            </Typography>
+            <Box><Box component="kbd" sx={{ bgcolor: 'rgba(255,255,255,0.08)', px: 0.5, borderRadius: 0.5, mr: 0.5 }}>Space</Box>Play / Pause</Box>
+            <Box><Box component="kbd" sx={{ bgcolor: 'rgba(255,255,255,0.08)', px: 0.5, borderRadius: 0.5, mr: 0.5 }}>← →</Box>Seek</Box>
+            <Box><Box component="kbd" sx={{ bgcolor: 'rgba(255,255,255,0.08)', px: 0.5, borderRadius: 0.5, mr: 0.5 }}>A</Box>Add</Box>
+            <Box><Box component="kbd" sx={{ bgcolor: 'rgba(255,255,255,0.08)', px: 0.5, borderRadius: 0.5, mr: 0.5 }}>D</Box>Delete</Box>
+            <Box><Box component="kbd" sx={{ bgcolor: 'rgba(255,255,255,0.08)', px: 0.5, borderRadius: 0.5, mr: 0.5 }}>S</Box>Split</Box>
+            <Box><Box component="kbd" sx={{ bgcolor: 'rgba(255,255,255,0.08)', px: 0.5, borderRadius: 0.5, mr: 0.5 }}>1-5</Box>Category</Box>
+          </Box>
+        </Box>
+        {selectedAnnotation ? (
+          <AnnotationDetailsPanel
+            annotation={selectedAnnotation}
+            dancerOptions={profiles.map((p) => ({ id: p.dancerId, label: p.displayName ?? p.dancerId }))}
+            onClose={() => setSelectedAnnotationId(null)}
+            onDelete={async () => {
+              const id = selectedAnnotation.id;
+              setSelectedAnnotationId(null);
+              await deleteAnnotation(id).catch(() => undefined);
+              void refresh();
+            }}
+            onPatch={async (patch) => {
+              await patchAnnotation(selectedAnnotation.id, patch).catch(() => undefined);
+              void refresh();
+            }}
+          />
+        ) : null}
       </Box>
 
       {/* ─── Right: thread ───────────────────────────────── */}
@@ -620,9 +716,37 @@ export function VideoReviewRoom({
           maxHeight: { lg: '100%' },
         }}
       >
-        <Box sx={{ p: 2, borderBottom: `1px solid ${BORDER}` }}>
+        <Box sx={{ p: 1.5, borderBottom: `1px solid ${BORDER}` }}>
+          {/* Annotate/Review tab-toggle — DanceAnnotate-paritet */}
+          <Stack direction="row" spacing={0.5} sx={{ mb: 1 }} data-testid="review-mode-toggle">
+            {(['annotate', 'review'] as const).map((m) => (
+              <Box
+                key={m}
+                role="tab"
+                tabIndex={0}
+                aria-selected={rightPanelMode === m}
+                onClick={() => setRightPanelMode(m)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRightPanelMode(m); } }}
+                data-testid={`review-mode-${m}`}
+                sx={{
+                  flex: 1,
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  py: 0.75,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: 1,
+                  color: rightPanelMode === m ? PURPLE_LIGHT : 'rgba(229,231,235,0.45)',
+                  borderBottom: `2px solid ${rightPanelMode === m ? PURPLE_LIGHT : 'transparent'}`,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {m === 'annotate' ? 'Annotate' : 'Review'}
+              </Box>
+            ))}
+          </Stack>
           <Typography sx={{ fontSize: 10, letterSpacing: 2, color: PURPLE_LIGHT, fontWeight: 700 }}>
-            REVIEW · {annotations.length} {annotations.length === 1 ? 'kommentar' : 'kommentarer'}
+            {rightPanelMode === 'annotate' ? 'TAGGE BEVEGELSER' : `${annotations.length} ${annotations.length === 1 ? 'kommentar' : 'kommentarer'}`}
           </Typography>
         </Box>
 
@@ -717,6 +841,7 @@ export function VideoReviewRoom({
             <Typography sx={{ fontSize: 10, color: 'rgba(229,231,235,0.55)', letterSpacing: 1, mr: 0.5 }}>
               KATEGORI
             </Typography>
+            {/* Add Category-knapp — DanceAnnotate-paritet (UI-affordance, ny kategori er per-økt) */}
             {DANCE_MOVEMENT_CATEGORIES.map((cat: MovementCategory) => {
               const selected = composerCategory === cat.id;
               return (
@@ -740,7 +865,94 @@ export function VideoReviewRoom({
                 />
               );
             })}
+            <Chip
+              size="small"
+              label="+ Add Category"
+              onClick={() => {
+                const name = prompt('Egendefinert kategori er ikke persistert ennå — kontakt admin for å legge til ny i DANCE_MOVEMENT_CATEGORIES.');
+                if (name) void name; // No-op for nå
+              }}
+              data-testid="review-add-category"
+              sx={{
+                height: 22,
+                fontSize: 10.5,
+                cursor: 'pointer',
+                bgcolor: 'transparent',
+                color: PURPLE_LIGHT,
+                border: '1px dashed rgba(167,139,250,0.45)',
+              }}
+            />
           </Stack>
+          {composerCategory ? (
+            <Stack
+              direction="row"
+              spacing={0.5}
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ mt: 0.75 }}
+              data-testid="review-common-labels"
+            >
+              <Typography sx={{ fontSize: 10, color: 'rgba(229,231,235,0.55)', letterSpacing: 1, mr: 0.5, alignSelf: 'center' }}>
+                LABELS
+              </Typography>
+              <input
+                type="search"
+                placeholder="Søk labels…"
+                value={labelFilter}
+                onChange={(e) => setLabelFilter(e.target.value)}
+                data-testid="review-label-search"
+                style={{
+                  flexBasis: 100, minWidth: 80,
+                  padding: '2px 6px', fontSize: 10, borderRadius: 3,
+                  border: '1px solid rgba(167,139,250,0.25)',
+                  background: 'transparent', color: '#e5e7eb', outline: 'none',
+                }}
+              />
+              {[...commonLabelsFor(composerCategory), ...(customLabelsByCat[composerCategory] ?? [])]
+                .filter((l) => labelFilter.trim().length === 0 || l.toLowerCase().includes(labelFilter.trim().toLowerCase()))
+                .map((label) => (
+                <Chip
+                  key={label}
+                  size="small"
+                  label={label}
+                  onClick={() => setComposer((cur) => cur.trim().length > 0 ? cur : label)}
+                  data-testid={`review-label-${label.toLowerCase().replace(/\s+/g, '-')}`}
+                  sx={{
+                    height: 20,
+                    fontSize: 10,
+                    cursor: 'pointer',
+                    bgcolor: 'rgba(167,139,250,0.08)',
+                    color: '#c4b5fd',
+                    border: '1px solid rgba(167,139,250,0.25)',
+                    '&:hover': { bgcolor: 'rgba(167,139,250,0.18)' },
+                  }}
+                />
+              ))}
+              <Chip
+                size="small"
+                label="+ Add Label"
+                onClick={() => {
+                  const txt = prompt('Ny label for kategori ' + composerCategory + ':');
+                  if (!txt || !txt.trim()) return;
+                  const t = txt.trim();
+                  setCustomLabelsByCat((prev) => ({
+                    ...prev,
+                    [composerCategory]: [...(prev[composerCategory] ?? []), t],
+                  }));
+                }}
+                data-testid="review-add-label"
+                sx={{
+                  height: 20,
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  bgcolor: 'transparent',
+                  color: PURPLE_LIGHT,
+                  border: '1px dashed rgba(167,139,250,0.45)',
+                  '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+                }}
+              />
+            </Stack>
+          ) : null}
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 1 }}>
             <Tooltip title="@-mention danser">
               <IconButton

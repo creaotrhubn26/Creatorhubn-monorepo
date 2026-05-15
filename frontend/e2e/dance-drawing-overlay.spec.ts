@@ -13,12 +13,17 @@ test.describe('dance — drawing overlay', () => {
 
     const canvas = page.getByTestId('drawing-overlay-canvas');
     await expect(canvas).toBeVisible();
+    // Sticky tab-bar kan dekke topp av canvas — scroll inn først.
+    await canvas.scrollIntoViewIfNeeded();
 
     const box = await canvas.boundingBox();
     if (!box) throw new Error('canvas not measurable');
-    await page.mouse.move(box.x + 50, box.y + 50);
+    // Sentrer drag-rekken i canvas så vi unngår sticky headere i randsonene.
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx - 80, cy - 40);
     await page.mouse.down();
-    await page.mouse.move(box.x + 200, box.y + 200);
+    await page.mouse.move(cx + 80, cy + 40, { steps: 10 });
     await page.mouse.up();
 
     // Skriv en kommentar slik at composeren ikke avvises på tom body, fang

@@ -11,6 +11,7 @@
  *   ├── Spor: Body   ...
  *
  * Klikk på blokk → onSeek(timestampSec) + onSelect(annotation).
+ * Dra venstre/høyre kant → onResize(annotation, newStart, newEnd).
  * Playhead-linje følger playheadSec.
  */
 
@@ -23,6 +24,7 @@ const TRACK_HEIGHT = 22;
 const TRACK_GAP = 4;
 const LABEL_WIDTH = 64;
 const UNCAT_COLOR = '#6b7280';
+const HANDLE_WIDTH = 6;
 
 export interface AnnotationTimelineProps {
   annotations: VideoAnnotation[];
@@ -30,6 +32,7 @@ export interface AnnotationTimelineProps {
   playheadSec: number;
   onSeek?: (sec: number) => void;
   onSelectAnnotation?: (annotation: VideoAnnotation) => void;
+  onResize?: (annotation: VideoAnnotation, newStartSec: number, newEndSec: number) => void;
 }
 
 export function AnnotationTimeline({
@@ -38,6 +41,7 @@ export function AnnotationTimeline({
   playheadSec,
   onSeek,
   onSelectAnnotation,
+  onResize,
 }: AnnotationTimelineProps): React.ReactElement {
   const safeDuration = Math.max(durationSec, 1);
   const tracks = React.useMemo(() => {
@@ -61,6 +65,49 @@ export function AnnotationTimeline({
   }, [annotations, tracks]);
 
   const playheadPct = Math.min(100, Math.max(0, (playheadSec / safeDuration) * 100));
+
+  // ─── Drag-to-resize state ──────────────────────────────────────
+  // Vi tracker en aktiv drag-økt slik at vi kan oppdatere lokalt under
+  // bevegelse + sende patch på mouseup. Bredder kommer fra track-elementet.
+  const [drag, setDrag] = React.useState<{
+    annotationId: string;
+    edge: 'start' | 'end';
+    initialStart: number;
+    initialEnd: number;
+    trackWidthPx: number;
+    pointerStartX: number;
+    currentStart: number;
+    currentEnd: number;
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (!drag) return;
+    const onMove = (e: PointerEvent): void => {
+      const dxPx = e.clientX - drag.pointerStartX;
+      const dxSec = (dxPx / drag.trackWidthPx) * safeDuration;
+      let newStart = drag.initialStart;
+      let newEnd = drag.initialEnd;
+      if (drag.edge === 'start') {
+        newStart = Math.max(0, Math.min(drag.initialEnd - 0.2, drag.initialStart + dxSec));
+      } else {
+        newEnd = Math.max(drag.initialStart + 0.2, Math.min(safeDuration, drag.initialEnd + dxSec));
+      }
+      setDrag({ ...drag, currentStart: newStart, currentEnd: newEnd });
+    };
+    const onUp = (): void => {
+      const a = annotations.find((x) => x.id === drag.annotationId);
+      if (a && onResize) {
+        onResize(a, drag.currentStart, drag.currentEnd);
+      }
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [drag, annotations, onResize, safeDuration]);
 
   return (
     <Box
@@ -104,12 +151,35 @@ export function AnnotationTimeline({
                   borderRadius: 0.5,
                   overflow: 'hidden',
                 }}
+                ref={(el: HTMLDivElement | null) => {
+                  if (el) (el as HTMLDivElement & { __trackRef?: true }).__trackRef = true;
+                }}
               >
                 {blocks.map((a) => {
-                  const startPct = Math.max(0, Math.min(100, (a.timestampSec / safeDuration) * 100));
-                  const endSec = a.endSec ?? a.timestampSec + 2; // 2s default-bredde for punkt-annot
-                  const endPct = Math.max(startPct + 1, Math.min(100, (endSec / safeDuration) * 100));
+                  const isDragged = drag?.annotationId === a.id;
+                  const liveStart = isDragged ? drag!.currentStart : a.timestampSec;
+                  const liveEnd = isDragged ? drag!.currentEnd : (a.endSec ?? a.timestampSec + 2);
+                  const startPct = Math.max(0, Math.min(100, (liveStart / safeDuration) * 100));
+                  const endPct = Math.max(startPct + 1, Math.min(100, (liveEnd / safeDuration) * 100));
                   const widthPct = Math.max(0.6, endPct - startPct);
+                  const beginResize = (edge: 'start' | 'end') => (e: React.PointerEvent<HTMLDivElement>): void => {
+                    if (!onResize) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const trackEl = e.currentTarget.parentElement?.parentElement;
+                    if (!trackEl) return;
+                    const rect = trackEl.getBoundingClientRect();
+                    setDrag({
+                      annotationId: a.id,
+                      edge,
+                      initialStart: a.timestampSec,
+                      initialEnd: a.endSec ?? a.timestampSec + 2,
+                      trackWidthPx: rect.width,
+                      pointerStartX: e.clientX,
+                      currentStart: a.timestampSec,
+                      currentEnd: a.endSec ?? a.timestampSec + 2,
+                    });
+                  };
                   return (
                     <Tooltip key={a.id} title={a.body || '(uten tekst)'}>
                       <Box
@@ -118,6 +188,7 @@ export function AnnotationTimeline({
                         tabIndex={0}
                         aria-label={a.body || 'kommentar'}
                         onClick={() => {
+                          if (isDragged) return;
                           onSeek?.(a.timestampSec);
                           onSelectAnnotation?.(a);
                         }}
@@ -142,7 +213,36 @@ export function AnnotationTimeline({
                           '&:hover': { bgcolor: `${track.color}99` },
                           '&:focus-visible': { outline: `2px solid ${track.color}` },
                         }}
-                      />
+                      >
+                        {/* Drag-handle: venstre kant */}
+                        {onResize ? (
+                          <Box
+                            data-testid={`annotation-resize-start-${a.id}`}
+                            onPointerDown={beginResize('start')}
+                            sx={{
+                              position: 'absolute',
+                              left: 0, top: 0, bottom: 0,
+                              width: HANDLE_WIDTH,
+                              cursor: 'ew-resize',
+                              bgcolor: 'rgba(255,255,255,0.18)',
+                            }}
+                          />
+                        ) : null}
+                        {/* Drag-handle: høyre kant */}
+                        {onResize ? (
+                          <Box
+                            data-testid={`annotation-resize-end-${a.id}`}
+                            onPointerDown={beginResize('end')}
+                            sx={{
+                              position: 'absolute',
+                              right: 0, top: 0, bottom: 0,
+                              width: HANDLE_WIDTH,
+                              cursor: 'ew-resize',
+                              bgcolor: 'rgba(255,255,255,0.18)',
+                            }}
+                          />
+                        ) : null}
+                      </Box>
                     </Tooltip>
                   );
                 })}

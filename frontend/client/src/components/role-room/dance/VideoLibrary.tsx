@@ -78,6 +78,7 @@ export function VideoLibrary({
   currentUserId,
 }: VideoLibraryProps): React.ReactElement {
   const [clips, setClips] = React.useState<VideoClip[]>([]);
+  const [clipFilter, setClipFilter] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [activeClipId, setActiveClipId] = React.useState<string | null>(null);
@@ -185,14 +186,18 @@ export function VideoLibrary({
     ? Math.round((uploadState.loaded / uploadState.total) * 100)
     : 0;
 
-  // Group clips by kind for the sidebar.
+  // Group clips by kind for the sidebar — filter på søketekst hvis satt.
   const clipsByKind = React.useMemo(() => {
     const map: Record<VideoClipKind, VideoClip[]> = {
       rehearsal: [], reference: [], performance: [],
     };
-    for (const c of clips) map[c.kind].push(c);
+    const q = clipFilter.trim().toLowerCase();
+    const filtered = q.length > 0
+      ? clips.filter((c) => c.title.toLowerCase().includes(q))
+      : clips;
+    for (const c of filtered) map[c.kind].push(c);
     return map;
-  }, [clips]);
+  }, [clips, clipFilter]);
 
   return (
     <Box
@@ -302,6 +307,28 @@ export function VideoLibrary({
         </Box>
 
         {error ? <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert> : null}
+
+        {/* Søk i klippene — DanceAnnotate-paritet */}
+        <Box sx={{ mb: 1 }}>
+          <input
+            type="search"
+            placeholder="Søk klipp…"
+            value={clipFilter}
+            onChange={(e) => setClipFilter(e.target.value)}
+            data-testid="video-library-search"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '6px 8px',
+              borderRadius: 4,
+              border: '1px solid rgba(139,92,246,0.25)',
+              background: '#0a0a0a',
+              color: '#e5e7eb',
+              fontSize: 12,
+              outline: 'none',
+            }}
+          />
+        </Box>
 
         {loading && clips.length === 0 ? (
           <Stack alignItems="center" sx={{ py: 4 }}>

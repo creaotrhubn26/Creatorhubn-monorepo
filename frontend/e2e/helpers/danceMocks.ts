@@ -488,7 +488,13 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
       const body = req.postDataJSON?.() ?? {};
       const a = fx.annotations.find((a) => a.id === id);
       if (!a) return route.fulfill(err(404, 'annotation_not_found'));
-      return route.fulfill(ok({ ...a, ...body, updatedAt: new Date().toISOString() }));
+      return route.fulfill(ok({
+        category: null,
+        confidence: null,
+        ...a,
+        ...body,
+        updatedAt: new Date().toISOString(),
+      }));
     }
     if (annIdMatch && method === 'DELETE') {
       return route.fulfill(ok({}, 200));

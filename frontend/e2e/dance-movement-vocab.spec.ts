@@ -29,15 +29,12 @@ test.describe('dance — movement vocab', () => {
   test('søk på "turn" filtrerer listen', async ({ page }) => {
     await switchDanceTab(page, "movement_vocab");
     const search = page.getByPlaceholder(/Søk|Search/i);
-    if (!(await search.isVisible().catch(() => false))) {
-      test.skip(true, 'Søkefelt ikke synlig i "movement_vocab"-panel');
-      return;
-    }
+    await expect(search).toBeVisible();
     await search.fill('turn');
-    await expect(page.getByText('Pirouette')).toBeVisible();
-    await expect(page.getByText('Spotting')).toBeVisible();
+    // EntityCrudPanel filtrerer på searchableFields = [term, definition,
+    // aliases]. 'turn' matcher kun term='Pencil turn' i fixturen.
     await expect(page.getByText('Pencil turn')).toBeVisible();
-    await expect(page.getByText('Pirouette')).toBeVisible();
     await expect(page.getByText('Grand jeté')).not.toBeVisible();
+    await expect(page.getByText('Tendu')).not.toBeVisible();
   });
 });

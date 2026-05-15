@@ -14,9 +14,10 @@ test.describe('dance — member management', () => {
   });
 
   test('endre rolle på medlem', async ({ page }) => {
-    // role-select TextField — fyll med ny value (MUI Select interagerer via input)
-    const select = page.getByTestId('team-member-role-select-mem-4');
-    await select.click();
+    // MUI Select rendres som combobox — klikk på combobox-elementet inne
+    // i TextField-wrapperen for å åpne dropdown.
+    const wrapper = page.getByTestId('team-member-role-select-mem-4');
+    await wrapper.locator('[role="combobox"]').click();
     await page.getByRole('option', { name: /Koreograf/i }).first().click();
 
     await expect.poll(() =>

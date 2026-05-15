@@ -153,6 +153,8 @@ const patchAnnotationBodySchema = z.object({
   drawing: drawingSchema.optional(),
   drawingKeyframes: keyframesSchema.optional(),
   category: categorySchema.optional(),
+  timestampSec: z.number().nonnegative().optional(),
+  endSec: z.number().nonnegative().nullable().optional(),
 });
 
 // ─── Router ─────────────────────────────────────────────────────────────

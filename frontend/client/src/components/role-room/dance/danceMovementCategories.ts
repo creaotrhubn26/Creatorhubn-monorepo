@@ -36,6 +36,24 @@ const BY_ID: Record<string, MovementCategory> = Object.fromEntries(
   DANCE_MOVEMENT_CATEGORIES.map((c) => [c.id, c]),
 );
 
+/**
+ * Predefinerte bevegelses-etiketter per kategori (Common Labels-bibliotek).
+ * Klikk i UI fyller composer-body med teksten. Listen er en startseed —
+ * brukerne kan legge til egne via "Add Label"-knappen.
+ */
+export const COMMON_LABELS_BY_CATEGORY: Record<string, readonly string[]> = {
+  steps: ['Walk', 'Chassé', 'Step', 'Slide', 'Run', 'Kick', 'Stomp'],
+  arms:  ['Reach Up', 'Sweep', 'Open', 'Cross', 'Frame', 'Port de Bras'],
+  body:  ['Body Roll', 'Contract', 'Arch', 'Body Wave', 'Spiral', 'Tilt'],
+  jumps: ['Small Jump', 'Leap', 'Jump', 'Sissone', 'Grand Jeté', 'Sauté'],
+  turns: ['Half Turn', 'Full Turn', 'Pirouette', 'Chaîné', 'Fouetté', 'Spotting'],
+} as const;
+
+export function commonLabelsFor(categoryId: string | null | undefined): readonly string[] {
+  if (!categoryId) return [];
+  return COMMON_LABELS_BY_CATEGORY[categoryId] ?? [];
+}
+
 const BY_SHORTCUT: Record<string, MovementCategory> = Object.fromEntries(
   DANCE_MOVEMENT_CATEGORIES.map((c) => [c.shortcut, c]),
 );

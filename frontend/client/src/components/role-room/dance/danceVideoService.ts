@@ -219,6 +219,8 @@ export interface PatchAnnotationInput {
   drawing?: unknown;
   drawingKeyframes?: unknown;
   category?: string | null;
+  timestampSec?: number;
+  endSec?: number | null;
 }
 
 export async function patchAnnotation(
