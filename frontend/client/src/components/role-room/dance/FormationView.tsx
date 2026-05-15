@@ -55,6 +55,8 @@ import {
   type DancerPosition,
   type Formation,
 } from './formationTypes';
+import { FormationTimeline } from './FormationTimeline';
+import { DancerPathsView } from './DancerPathsView';
 
 // ─── Stage-dimensjoner (interne canvas-piksler — uavhengig av render-størrelse) ─
 
@@ -259,11 +261,22 @@ export const FormationView: React.FC<FormationViewProps> = ({
       name: newFormationName.trim(),
       positions: activeFormation.positions.map((p) => ({ ...p })),
       createdAt: new Date().toISOString(),
+      tags: [],
     };
     setFormations((prev) => [...prev, snapshot]);
     setActiveFormationId(snapshot.id);
     setNewFormationName('');
   }, [activeFormation, newFormationName]);
+
+  const updateActiveFormation = useCallback(
+    (patch: Partial<Formation>): void => {
+      if (!activeFormationId) return;
+      setFormations((prev) =>
+        prev.map((f) => (f.id === activeFormationId ? { ...f, ...patch } : f)),
+      );
+    },
+    [activeFormationId],
+  );
 
   const deleteFormation = useCallback((id: string) => {
     setFormations((prev) => {
@@ -325,11 +338,15 @@ export const FormationView: React.FC<FormationViewProps> = ({
 
   return (
     <Box
+      data-testid="formation-view-wrapper"
+      sx={{ bgcolor: '#0a0a0a', color: '#e5e7eb', display: 'flex', flexDirection: 'column' }}
+    >
+    <Box
       data-testid="formation-view"
       sx={{
         bgcolor: '#0a0a0a',
         color: '#e5e7eb',
-        minHeight: '100%',
+        flex: 1,
         fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         display: 'grid',
         gridTemplateColumns: { xs: '1fr', lg: '200px 1fr 260px' },
@@ -606,7 +623,14 @@ export const FormationView: React.FC<FormationViewProps> = ({
           overflowY: 'auto',
         }}
       >
-        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1 }}>
+        {activeFormation ? (
+          <FormationDetailsPanel
+            key={activeFormation.id}
+            formation={activeFormation}
+            onChange={updateActiveFormation}
+          />
+        ) : null}
+        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1, mt: activeFormation ? 1.5 : 0 }}>
           FORMASJONER ({formations.length})
         </Typography>
 
@@ -698,6 +722,137 @@ export const FormationView: React.FC<FormationViewProps> = ({
           </Stack>
         </Box>
       </Box>
+    </Box>
+    {/* DanceFlow-paritet: tids-akse for formasjons-rekkefølge */}
+    <Box sx={{ p: 1.5, borderTop: '1px solid #1e2536', display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <FormationTimeline
+        formations={formations}
+        activeFormationId={activeFormationId}
+        onSelect={setActiveFormationId}
+      />
+      <DancerPathsView formations={formations} dancers={dancers} />
+    </Box>
+    </Box>
+  );
+};
+
+// ═══════════════════════ FORMATION DETAILS PANEL ═══════════════════════
+// DanceFlow-paritet: per-formation editor med tags, notes og time-felt.
+
+interface FormationDetailsPanelProps {
+  formation: Formation;
+  onChange: (patch: Partial<Formation>) => void;
+}
+
+const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({ formation, onChange }) => {
+  const [tagDraft, setTagDraft] = useState('');
+  const tags = formation.tags ?? [];
+
+  const addTag = (): void => {
+    const t = tagDraft.trim();
+    if (!t || tags.includes(t)) {
+      setTagDraft('');
+      return;
+    }
+    onChange({ tags: [...tags, t] });
+    setTagDraft('');
+  };
+  const removeTag = (t: string): void => onChange({ tags: tags.filter((x) => x !== t) });
+
+  return (
+    <Box
+      data-testid="formation-details-panel"
+      sx={{ pb: 1.5, mb: 1.5, borderBottom: '1px solid #1e2536' }}
+    >
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700, mb: 0.75 }}>
+        AKTIV FORMASJON
+      </Typography>
+      <TextField
+        size="small"
+        fullWidth
+        value={formation.name}
+        onChange={(e) => onChange({ name: e.target.value })}
+        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 12, color: '#fff', fontWeight: 600 } }}
+        data-testid="formation-details-name"
+      />
+      <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+        <TextField
+          size="small"
+          type="number"
+          label="Start (s)"
+          value={formation.startSec ?? ''}
+          onChange={(e) => {
+            const v = e.target.value === '' ? null : Number(e.target.value);
+            onChange({ startSec: Number.isFinite(v as number) ? (v as number) : null });
+          }}
+          inputProps={{ min: 0, step: 0.5, 'data-testid': 'formation-details-start-sec' }}
+          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        />
+        <TextField
+          size="small"
+          type="number"
+          label="Slutt (s)"
+          value={formation.endSec ?? ''}
+          onChange={(e) => {
+            const v = e.target.value === '' ? null : Number(e.target.value);
+            onChange({ endSec: Number.isFinite(v as number) ? (v as number) : null });
+          }}
+          inputProps={{ min: 0, step: 0.5, 'data-testid': 'formation-details-end-sec' }}
+          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        />
+      </Stack>
+      <TextField
+        size="small"
+        fullWidth
+        multiline
+        minRows={2}
+        maxRows={4}
+        placeholder="Notater for denne formasjonen"
+        value={formation.notes ?? ''}
+        onChange={(e) => onChange({ notes: e.target.value || undefined })}
+        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 11, color: '#e5e7eb' } }}
+        data-testid="formation-details-notes"
+      />
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+        TAGS
+      </Typography>
+      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 0.75 }} data-testid="formation-details-tags">
+        {tags.map((t) => (
+          <Chip
+            key={t}
+            size="small"
+            label={t}
+            onDelete={() => removeTag(t)}
+            sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+          />
+        ))}
+        {tags.length === 0 ? (
+          <Typography sx={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>
+            Ingen tagger ennå
+          </Typography>
+        ) : null}
+      </Stack>
+      <Stack direction="row" spacing={0.5}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Legg til tag…"
+          value={tagDraft}
+          onChange={(e) => setTagDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+          inputProps={{ 'data-testid': 'formation-details-tag-input' }}
+          sx={{ '& .MuiInputBase-input': { fontSize: 10.5, color: '#e5e7eb' } }}
+        />
+        <IconButton
+          size="small"
+          onClick={addTag}
+          disabled={!tagDraft.trim()}
+          sx={{ color: '#a78bfa' }}
+          data-testid="formation-details-tag-add"
+        >
+          <AddIcon sx={{ fontSize: 16 }} />
+        </IconButton>
+      </Stack>
     </Box>
   );
 };

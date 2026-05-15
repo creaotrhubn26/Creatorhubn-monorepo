@@ -88,6 +88,10 @@ const positionSchema = z.object({
 const idSchema = z.string().min(1).max(200);
 const projectIdSchema = z.string().min(1).max(200);
 
+const tagsSchema = z.array(z.string().min(1).max(40)).max(20);
+const secSchema = z.number().min(0).max(36000).nullable();
+const transitionNoteSchema = z.string().max(500).nullable();
+
 const createBodySchema = z.object({
   label: z.string().min(1).max(200),
   notes: z.string().max(2000).nullable().optional(),
@@ -97,6 +101,10 @@ const createBodySchema = z.object({
   transitionFromId: z.string().min(1).max(200).nullable().optional(),
   displayOrder: z.number().int().optional(),
   projectId: z.string().min(1).max(200).nullable().optional(),
+  startSec: secSchema.optional(),
+  endSec: secSchema.optional(),
+  transitionNote: transitionNoteSchema.optional(),
+  tags: tagsSchema.optional(),
 });
 
 const patchBodySchema = z.object({
@@ -108,6 +116,10 @@ const patchBodySchema = z.object({
   transitionFromId: z.string().min(1).max(200).nullable().optional(),
   displayOrder: z.number().int().optional(),
   projectId: z.string().min(1).max(200).nullable().optional(),
+  startSec: secSchema.optional(),
+  endSec: secSchema.optional(),
+  transitionNote: transitionNoteSchema.optional(),
+  tags: tagsSchema.optional(),
 });
 
 const replaceItemSchema = z.object({
@@ -119,6 +131,10 @@ const replaceItemSchema = z.object({
   positions: z.array(positionSchema).max(100).default([]),
   transitionFromId: z.string().min(1).max(200).nullable().optional(),
   displayOrder: z.number().int().optional(),
+  startSec: secSchema.optional(),
+  endSec: secSchema.optional(),
+  transitionNote: transitionNoteSchema.optional(),
+  tags: tagsSchema.optional(),
 });
 
 const replaceBodySchema = z.object({

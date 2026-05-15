@@ -149,6 +149,10 @@ export function FormationViewConnected({
               notes: f.notes ?? null,
               positions: f.positions.map((p) => ({ ...p })),
               displayOrder: i,
+              startSec: f.startSec ?? null,
+              endSec: f.endSec ?? null,
+              transitionNote: f.transitionNote ?? null,
+              tags: f.tags ?? [],
             })),
           });
           // Note: we don't replace local state with the server response

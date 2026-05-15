@@ -223,6 +223,31 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
 
   const activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0];
 
+  // Mobile swipe-gesture for tab-bytte. Krever ≥80px horisontal bevegelse
+  // og <60px vertikal, slik at vi ikke kommer i veien for normal scroll.
+  const touchStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent): void => {
+    const t = e.touches[0];
+    if (!t) return;
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e: React.TouchEvent): void => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dy) > 60) return;
+    if (Math.abs(dx) < 80) return;
+    const idx = visibleTabs.findIndex((tt) => tt.id === activeTab?.id);
+    if (idx < 0) return;
+    const nextIdx = dx < 0 ? idx + 1 : idx - 1;
+    if (nextIdx < 0 || nextIdx >= visibleTabs.length) return;
+    setActiveTabId(visibleTabs[nextIdx].id);
+  };
+
   const renderTabBody = (tab: TabConfig): React.ReactElement => {
     switch (tab.id) {
       case 'dashboard':
@@ -376,7 +401,14 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           ))}
         </Tabs>
       </Box>
-      <Box sx={{ flex: 1, minHeight: 0 }}>{renderTabBody(activeTab)}</Box>
+      <Box
+        role="tabpanel"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        sx={{ flex: 1, minHeight: 0 }}
+      >
+        {renderTabBody(activeTab)}
+      </Box>
     </Box>
   );
 };

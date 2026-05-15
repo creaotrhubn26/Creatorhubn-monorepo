@@ -26,6 +26,10 @@ export interface FormationInput {
   transitionFromId?: string | null;
   displayOrder?: number;
   projectId?: string | null;
+  startSec?: number | null;
+  endSec?: number | null;
+  transitionNote?: string | null;
+  tags?: string[];
 }
 
 export interface FormationPatch extends Partial<FormationInput> {}
@@ -41,6 +45,10 @@ export interface FormationRecord {
   positions: DancerPosition[];
   transitionFromId: string | null;
   displayOrder: number;
+  startSec: number | null;
+  endSec: number | null;
+  transitionNote: string | null;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -83,6 +91,17 @@ function asPositions(value: unknown): DancerPosition[] {
   return out;
 }
 
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string' && v.length > 0);
+}
+
+function asNumberOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function mapRow(row: Record<string, unknown>): FormationRecord {
   return {
     id: String(row.id),
@@ -95,6 +114,10 @@ function mapRow(row: Record<string, unknown>): FormationRecord {
     positions: asPositions(row.dancer_positions),
     transitionFromId: row.transition_from_id == null ? null : String(row.transition_from_id),
     displayOrder: asNumberOr(row.display_order, 0),
+    startSec: asNumberOrNull(row.start_sec),
+    endSec: asNumberOrNull(row.end_sec),
+    transitionNote: row.transition_note == null ? null : String(row.transition_note),
+    tags: asStringArray(row.tags),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -171,9 +194,10 @@ export async function createFormation(
     `INSERT INTO dance_formation (
        id, owner_user_id, project_id, label, notes,
        stage_width_m, stage_depth_m, dancer_positions,
-       transition_from_id, display_order
+       transition_from_id, display_order,
+       start_sec, end_sec, transition_note, tags
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING *`,
     [
       id,
@@ -186,6 +210,10 @@ export async function createFormation(
       JSON.stringify(input.positions ?? []),
       input.transitionFromId ?? null,
       input.displayOrder ?? 0,
+      input.startSec ?? null,
+      input.endSec ?? null,
+      input.transitionNote ?? null,
+      JSON.stringify(input.tags ?? []),
     ],
   );
   return mapRow(rows[0]);
@@ -213,6 +241,10 @@ export async function patchFormation(
   if (patch.transitionFromId !== undefined) push('transition_from_id', patch.transitionFromId);
   if (patch.displayOrder !== undefined) push('display_order', patch.displayOrder);
   if (patch.projectId !== undefined) push('project_id', patch.projectId);
+  if (patch.startSec !== undefined) push('start_sec', patch.startSec);
+  if (patch.endSec !== undefined) push('end_sec', patch.endSec);
+  if (patch.transitionNote !== undefined) push('transition_note', patch.transitionNote);
+  if (patch.tags !== undefined) push('tags', JSON.stringify(patch.tags));
 
   if (sets.length === 0) return getFormation(pool, ownerUserId, id);
 
@@ -309,6 +341,10 @@ export async function replaceFormations(
              transition_from_id = $8,
              display_order = $9,
              project_id = $10,
+             start_sec = $11,
+             end_sec = $12,
+             transition_note = $13,
+             tags = $14,
              updated_at = now()
            WHERE owner_user_id = $1 AND id = $2
            RETURNING *`,
@@ -322,6 +358,10 @@ export async function replaceFormations(
             f.transitionFromId ?? null,
             order,
             projectId,
+            f.startSec ?? null,
+            f.endSec ?? null,
+            f.transitionNote ?? null,
+            JSON.stringify(f.tags ?? []),
           ],
         );
         written.push(mapRow(rows[0]));
@@ -330,9 +370,10 @@ export async function replaceFormations(
           `INSERT INTO dance_formation (
              id, owner_user_id, project_id, label, notes,
              stage_width_m, stage_depth_m, dancer_positions,
-             transition_from_id, display_order
+             transition_from_id, display_order,
+             start_sec, end_sec, transition_note, tags
            )
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
            RETURNING *`,
           [
             id, ownerUserId, projectId,
@@ -343,6 +384,10 @@ export async function replaceFormations(
             JSON.stringify(f.positions ?? []),
             f.transitionFromId ?? null,
             order,
+            f.startSec ?? null,
+            f.endSec ?? null,
+            f.transitionNote ?? null,
+            JSON.stringify(f.tags ?? []),
           ],
         );
         written.push(mapRow(rows[0]));

@@ -44,6 +44,13 @@ export interface Formation {
   notes?: string;
   /** Når formasjonen ble lagret. */
   createdAt?: string;
+  /** DanceFlow-paritet: når på koreografi-timeline formasjonen er aktiv. */
+  startSec?: number | null;
+  endSec?: number | null;
+  /** Kort tekst om overgang fra forrige formasjon. */
+  transitionNote?: string | null;
+  /** Frie tagger ("Opening", "V-Shape", "Group"). */
+  tags?: string[];
 }
 
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────

@@ -54,6 +54,10 @@ export interface VideoAnnotation {
   drawing: unknown | null;
   voiceNoteSignedUrl: string | null;
   drawingKeyframes: unknown | null;
+  /** Movement-kategori for multi-track timeline (migrasjon 150). */
+  category: string | null;
+  /** AI-confidence-score 0-1 for foreslåtte annotasjoner (migrasjon 150). */
+  confidence: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,6 +128,8 @@ function mapAnnotationRow(row: Record<string, unknown>): VideoAnnotation {
     drawing: row.drawing ?? null,
     voiceNoteSignedUrl: row.voice_note_signed_url == null ? null : String(row.voice_note_signed_url),
     drawingKeyframes: row.drawing_keyframes ?? null,
+    category: row.category == null ? null : String(row.category),
+    confidence: asNumberOrNull(row.confidence),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -434,6 +440,23 @@ export interface CreateAnnotationInput {
   drawingKeyframes?: unknown;
   voiceNoteStorageKey?: string | null;
   voiceNoteSignedUrl?: string | null;
+  category?: string | null;
+  confidence?: number | null;
+}
+
+const ALLOWED_CATEGORIES = new Set(['steps', 'arms', 'body', 'jumps', 'turns']);
+
+function normalizeCategory(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value).toLowerCase();
+  return ALLOWED_CATEGORIES.has(s) ? s : null;
+}
+
+function normalizeConfidence(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(1, n));
 }
 
 export async function createAnnotation(
@@ -450,9 +473,10 @@ export async function createAnnotation(
        timestamp_sec, end_sec, count_number, segment_id,
        target_dancer_ids, is_director_pin,
        drawing, voice_note_storage_key, voice_note_signed_url,
-       voice_note_signed_url_expires_at, drawing_keyframes
+       voice_note_signed_url_expires_at, drawing_keyframes,
+       category, confidence
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      RETURNING *`,
     [
       id,
@@ -472,6 +496,8 @@ export async function createAnnotation(
       input.voiceNoteSignedUrl ?? null,
       voiceExpires,
       input.drawingKeyframes == null ? null : JSON.stringify(input.drawingKeyframes),
+      normalizeCategory(input.category),
+      normalizeConfidence(input.confidence),
     ],
   );
   return mapAnnotationRow(rows[0]);
@@ -520,6 +546,7 @@ export interface PatchAnnotationInput {
   targetDancerIds?: string[];
   drawing?: unknown;
   drawingKeyframes?: unknown;
+  category?: string | null;
 }
 
 export async function patchAnnotation(
@@ -545,6 +572,9 @@ export async function patchAnnotation(
   }
   if (patch.drawingKeyframes !== undefined) {
     push('drawing_keyframes', patch.drawingKeyframes == null ? null : JSON.stringify(patch.drawingKeyframes));
+  }
+  if (patch.category !== undefined) {
+    push('category', normalizeCategory(patch.category));
   }
   if (sets.length === 0) {
     const { rows } = await pool.query(

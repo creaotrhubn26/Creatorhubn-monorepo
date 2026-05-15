@@ -353,7 +353,14 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
     if (choMatch && method === 'GET') {
       const id = decodeURIComponent(choMatch[1]);
       const c = fx.choreographies.find((c) => c.id === id);
-      return c ? route.fulfill(ok(c)) : route.fulfill(err(404, 'choreography_not_found'));
+      if (!c) return route.fulfill(err(404, 'choreography_not_found'));
+      // Fixturer har musicTitle uten en signedUrl; gi tilbake en blob-stub
+      // slik at <audio>-elementet i ChoreographyBuilder får et src og
+      // play-toggle ikke blir disabled i e2e.
+      const withAudio = (c as Record<string, unknown>).musicTitle && !(c as Record<string, unknown>).musicSignedUrl
+        ? { ...c, musicSignedUrl: `blob:mock-music-${c.id}` }
+        : c;
+      return route.fulfill(ok(withAudio));
     }
     if (choMatch && method === 'PATCH') {
       const id = decodeURIComponent(choMatch[1]);
@@ -437,7 +444,15 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
     const clipAnnMatch = urlPath.match(/^\/api\/dance\/video-clips\/([^/]+)\/annotations$/);
     if (clipAnnMatch && method === 'GET') {
       const clipId = decodeURIComponent(clipAnnMatch[1]);
-      return route.fulfill(ok(fx.annotations.filter((a) => a.clipId === clipId)));
+      const list = fx.annotations
+        .filter((a) => a.clipId === clipId)
+        .map((a) => ({
+          // Legacy fixtures mangler category/confidence; inject defaults.
+          category: null,
+          confidence: null,
+          ...a,
+        }));
+      return route.fulfill(ok(list));
     }
     if (clipAnnMatch && method === 'POST') {
       const clipId = decodeURIComponent(clipAnnMatch[1]);
@@ -459,6 +474,8 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
         drawing: body.drawing ?? null,
         voiceNoteSignedUrl: null,
         drawingKeyframes: body.drawingKeyframes ?? null,
+        category: body.category ?? null,
+        confidence: body.confidence ?? null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -598,7 +615,13 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
       return route.fulfill(ok(fx.plans));
     }
     if (urlPath === '/api/dance/billing/subscription' && method === 'GET') {
-      return route.fulfill(ok({ ...fx.subscription, ...(opts.overrides?.subscription ?? {}) }));
+      const merged = { ...fx.subscription, ...(opts.overrides?.subscription ?? {}) };
+      // Fixture lagrer plan-referansen som `planId`; service-laget bruker
+      // `planSlug`. Aliaser slik at useDancePlanGate kan resolve planen.
+      const planRef = (merged as { planId?: string; planSlug?: string }).planSlug
+        ?? (merged as { planId?: string }).planId
+        ?? null;
+      return route.fulfill(ok({ ...merged, planId: planRef, planSlug: planRef }));
     }
     if (urlPath === '/api/dance/billing/checkout' && method === 'POST') {
       return route.fulfill(ok({ url: 'https://checkout.stripe.com/mock-session' }));
@@ -617,9 +640,54 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
     if (urlPath.startsWith('/api/dance/formations') && method === 'GET') {
       return route.fulfill(ok([]));
     }
-    if (urlPath.startsWith('/api/dance/formations') && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+    if (urlPath.startsWith('/api/dance/formations') && method === 'PUT') {
       const body = req.postDataJSON?.() ?? {};
-      return route.fulfill(ok({ id: `fmt-${Date.now()}`, ...body }));
+      const arr = Array.isArray((body as { formations?: unknown }).formations)
+        ? (body as { formations: Array<Record<string, unknown>> }).formations
+        : [];
+      const now = new Date().toISOString();
+      const records = arr.map((f, i) => ({
+        id: typeof f.id === 'string' && f.id.length > 0 ? f.id : `fmt-${Date.now()}-${i}`,
+        ownerUserId: 'user-owner-1',
+        projectId: (body as { projectId?: string | null }).projectId ?? null,
+        label: typeof f.label === 'string' ? f.label : 'Formasjon',
+        notes: (f.notes as string | null | undefined) ?? null,
+        stageWidthM: (f.stageWidthM as number | undefined) ?? 12,
+        stageDepthM: (f.stageDepthM as number | undefined) ?? 8,
+        positions: Array.isArray(f.positions) ? f.positions : [],
+        transitionFromId: (f.transitionFromId as string | null | undefined) ?? null,
+        displayOrder: (f.displayOrder as number | undefined) ?? i,
+        startSec: (f.startSec as number | null | undefined) ?? null,
+        endSec: (f.endSec as number | null | undefined) ?? null,
+        transitionNote: (f.transitionNote as string | null | undefined) ?? null,
+        tags: Array.isArray(f.tags) ? f.tags : [],
+        createdAt: now,
+        updatedAt: now,
+      }));
+      return route.fulfill(ok(records));
+    }
+    if (urlPath.startsWith('/api/dance/formations') && (method === 'POST' || method === 'PATCH')) {
+      const body = req.postDataJSON?.() ?? {};
+      const now = new Date().toISOString();
+      return route.fulfill(ok({
+        id: `fmt-${Date.now()}`,
+        ownerUserId: 'user-owner-1',
+        projectId: null,
+        label: 'Formasjon',
+        notes: null,
+        stageWidthM: 12,
+        stageDepthM: 8,
+        positions: [],
+        transitionFromId: null,
+        displayOrder: 0,
+        startSec: null,
+        endSec: null,
+        transitionNote: null,
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+        ...body,
+      }));
     }
 
     // ─── Studio (legacy alias) ─────────────────────────────────────────

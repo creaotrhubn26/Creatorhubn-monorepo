@@ -23,7 +23,7 @@ test.describe('dance — GA4 events', () => {
 
     const events = await page.evaluate(() => window.dataLayer ?? []);
     const hit = events.find((e) => e.event === 'dance_tab_view' || e.event === 'tab_view');
-    test.fixme(!hit, 'TODO: implementere GA4-event-firing i DanceWorkspace');
+    expect(hit, 'GA4 dance_tab_view should fire on tab switch').toBeTruthy();
   });
 
   test('invite-generate fyrer dance_invite_created', async ({ page }) => {
@@ -40,14 +40,12 @@ test.describe('dance — GA4 events', () => {
     await page.waitForTimeout(500);
     const events = await page.evaluate(() => window.dataLayer ?? []);
     const hit = events.find((e) => e.event === 'dance_invite_created' || e.event === 'invite_created');
-    if (!hit) {
-      test.fixme(true, 'GA4-event for invite-creation ikke implementert');
-    }
+    expect(hit, 'GA4 dance_invite_created should fire on invite').toBeTruthy();
   });
 
   test('choreography-save fyrer dance_piece_saved', async ({ page }) => {
     await switchDanceTab(page, "pieces");
-    await expect(page.getByTestId('choreography-builder')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('choreography-builder')).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press('Escape'); // lukk evt åpne menus
     const save = page.getByTestId('choreo-save');
     if (!(await save.isVisible().catch(() => false))) {

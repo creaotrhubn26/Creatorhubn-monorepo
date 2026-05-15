@@ -131,7 +131,6 @@ export function RehearsalPlannerConnected({
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatchRef = React.useRef<Rehearsal | null>(null);
-  const isFirstChangeRef = React.useRef(true);
 
   const initialLoad = React.useCallback(async (): Promise<void> => {
     setState({ phase: 'loading' });
@@ -184,7 +183,6 @@ export function RehearsalPlannerConnected({
         });
       }
 
-      isFirstChangeRef.current = true;
       setState({
         phase: 'ready',
         choreography,
@@ -245,11 +243,6 @@ export function RehearsalPlannerConnected({
   const handleRehearsalChange = React.useCallback(
     (next: Rehearsal): void => {
       if (state.phase !== 'ready') return;
-      // Skip the very first onChange after mount (planner fires it on init).
-      if (isFirstChangeRef.current) {
-        isFirstChangeRef.current = false;
-        return;
-      }
       // Update local state optimistically so the UI feels snappy.
       setState((prev) => {
         if (prev.phase !== 'ready') return prev;

@@ -405,7 +405,8 @@ const MemberRow: React.FC<{
                 alert(`Kunne ikke endre rolle: ${err instanceof Error ? err.message : err}`);
               }
             }}
-            inputProps={{ 'data-testid': `team-member-role-select-${member.memberRowId}` }}
+            data-testid={`team-member-role-select-${member.memberRowId}`}
+            SelectProps={{ 'data-testid': `team-member-role-trigger-${member.memberRowId}` } as never}
             sx={{
               minWidth: 140,
               '& .MuiOutlinedInput-root': {
@@ -588,6 +589,15 @@ const InviteDialog: React.FC<{
     setSubmitting(true);
     try {
       const r = await svc.createInvite(teamOrgId, { invitedEmail: email.trim(), invitedRoleId: roleId });
+      if (typeof window !== 'undefined') {
+        const w = window as Window & { dataLayer?: Array<Record<string, unknown>> };
+        if (!Array.isArray(w.dataLayer)) w.dataLayer = [];
+        w.dataLayer.push({
+          event: 'dance_invite_created',
+          team_id: teamOrgId,
+          invited_role_id: roleId,
+        });
+      }
       await onCreated(r.invite.token);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

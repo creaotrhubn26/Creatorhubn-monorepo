@@ -127,6 +127,9 @@ const patchClipSchema = z.object({
 const drawingSchema = z.unknown(); // accepted as opaque JSON
 const keyframesSchema = z.unknown();
 
+const categorySchema = z.enum(['steps', 'arms', 'body', 'jumps', 'turns']).nullable();
+const confidenceSchema = z.number().min(0).max(1).nullable();
+
 const createAnnotationBodySchema = z.object({
   parentId: z.string().min(1).max(200).nullable().optional(),
   body: z.string().min(1).max(5000),
@@ -138,6 +141,8 @@ const createAnnotationBodySchema = z.object({
   isDirectorPin: z.boolean().optional(),
   drawing: drawingSchema.optional(),
   drawingKeyframes: keyframesSchema.optional(),
+  category: categorySchema.optional(),
+  confidence: confidenceSchema.optional(),
 });
 
 const patchAnnotationBodySchema = z.object({
@@ -147,6 +152,7 @@ const patchAnnotationBodySchema = z.object({
   targetDancerIds: z.array(z.string().max(200)).max(50).optional(),
   drawing: drawingSchema.optional(),
   drawingKeyframes: keyframesSchema.optional(),
+  category: categorySchema.optional(),
 });
 
 // ─── Router ─────────────────────────────────────────────────────────────

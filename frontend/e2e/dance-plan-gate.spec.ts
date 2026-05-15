@@ -22,16 +22,14 @@ test.describe('dance — plan gate', () => {
     });
     await page.goto('/e2e-test.html?harness=dance_studio&harness-project=proj-spring-2026');
     await page.getByRole('tab', { name: /Video/i }).click();
-
-    // Åpne en clip (clip-1)
     await page.getByTestId('video-library-item-clip-1').click();
 
     const drawingToggle = page.getByTestId('review-drawing-toggle');
     await expect(drawingToggle).toBeVisible();
+    await expect(drawingToggle).toHaveAttribute('data-locked', 'plan');
     await drawingToggle.click();
-
-    // Upgrade-dialog vises
-    await expect(page.getByText(/oppgrader|upgrade/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('drawing-upgrade-dialog')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('drawing-upgrade-cta')).toBeVisible();
   });
 
   test('Studio-plan: drawing-toggle aktiv + ingen dialog', async ({ page }) => {

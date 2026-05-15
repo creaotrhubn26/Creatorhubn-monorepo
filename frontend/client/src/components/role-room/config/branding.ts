@@ -1462,8 +1462,8 @@ export type BrandingTextTokenKey =
   | 'choreographyApprovalLocked'
 
   // ─── Booking / crew-gjenbruk for dans (PR #5, lagt til 2026-04-25) ───────
-  // Brukes av DanceProjectCalendar + DancerAvailabilityPanel som wrapper
-  // den eksisterende crew/booking-infrastrukturen for dans.
+  // Brukes av DanceProjectCalendar; danser-availability håndteres direkte
+  // via CrewAvailabilityDrawer (components/CrewAvailabilityDrawer.tsx).
   | 'danceBookingHeader'
   | 'danceBookingCalendarLabel'
   | 'danceBookingAvailabilityLabel'

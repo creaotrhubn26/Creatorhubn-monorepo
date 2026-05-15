@@ -17,6 +17,13 @@ export interface FormationRecord {
   positions: DancerPosition[];
   transitionFromId: string | null;
   displayOrder: number;
+  /** DanceFlow-paritet: når på koreografi-timelinen formasjonen er aktiv. */
+  startSec: number | null;
+  endSec: number | null;
+  /** Kort tekst om overgang fra forrige formasjon. */
+  transitionNote: string | null;
+  /** Frie tagger ("Opening", "V-Shape", "Group"). */
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +37,10 @@ export interface FormationInput {
   transitionFromId?: string | null;
   displayOrder?: number;
   projectId?: string | null;
+  startSec?: number | null;
+  endSec?: number | null;
+  transitionNote?: string | null;
+  tags?: string[];
 }
 
 export type FormationPatch = Partial<FormationInput>;
@@ -101,6 +112,10 @@ export async function replaceFormations(input: {
     positions: DancerPosition[];
     transitionFromId?: string | null;
     displayOrder?: number;
+    startSec?: number | null;
+    endSec?: number | null;
+    transitionNote?: string | null;
+    tags?: string[];
   }>;
 }): Promise<FormationRecord[]> {
   const res = await fetch(BASE, {
@@ -122,6 +137,10 @@ export function recordToFormation(r: FormationRecord): Formation {
     notes: r.notes ?? undefined,
     positions: r.positions.map((p) => ({ ...p })),
     createdAt: r.createdAt,
+    startSec: r.startSec ?? null,
+    endSec: r.endSec ?? null,
+    transitionNote: r.transitionNote ?? null,
+    tags: r.tags ?? [],
   };
 }
 
@@ -144,5 +163,9 @@ export function formationToInput(
     stageDepthM: options.stageDepthM,
     transitionFromId: options.transitionFromId ?? null,
     displayOrder: options.displayOrder ?? 0,
+    startSec: f.startSec ?? null,
+    endSec: f.endSec ?? null,
+    transitionNote: f.transitionNote ?? null,
+    tags: f.tags ?? [],
   };
 }

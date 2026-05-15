@@ -63,11 +63,6 @@ export {
   DanceProjectCalendar,
   type DanceProjectCalendarProps,
 } from './DanceProjectCalendar';
-export {
-  DancerAvailabilityPanel,
-  type DancerAvailabilityPanelProps,
-} from './DancerAvailabilityPanel';
-
 // ─── PR #6: Dancer Profiles (lagt til 2026-04-25) ─────────────────────────
 export {
   DancerProfileCard,

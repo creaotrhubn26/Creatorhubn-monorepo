@@ -24,26 +24,25 @@ test.describe('dance shell — mobile @mobile', () => {
     await setupDanceTest(page);
     const startTab = await page.locator('[role="tab"][aria-selected="true"]').first().textContent();
 
-    const content = page.locator('[role="tabpanel"]').first();
-    const box = await content.boundingBox();
-    if (!box) test.skip(true, 'tabpanel ikke målbar');
-    if (!box) return;
+    const tabpanel = page.locator('[role="tabpanel"]').first();
+    await expect(tabpanel).toBeVisible();
+    // Dispatch touchstart + touchend direkte på tabpanel-elementet
+    // (bypass viewport-visibility-sjekken som elementFromPoint krever).
+    await tabpanel.evaluate((el) => {
+      const mkTouch = (x: number, y: number) => new Touch({ identifier: 0, target: el, clientX: x, clientY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', {
+        bubbles: true, cancelable: true,
+        touches: [mkTouch(300, 200)], targetTouches: [mkTouch(300, 200)], changedTouches: [mkTouch(300, 200)],
+      }));
+      el.dispatchEvent(new TouchEvent('touchend', {
+        bubbles: true, cancelable: true,
+        touches: [], targetTouches: [], changedTouches: [mkTouch(80, 200)],
+      }));
+    });
 
-    await page.touchscreen.tap(box.x + box.width * 0.8, box.y + box.height / 2);
-    // Simulate swipe left
-    await page.evaluate((b) => {
-      const el = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
-      const touch = (x: number, y: number) => new Touch({ identifier: 0, target: el!, clientX: x, clientY: y });
-      el!.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(b.x + b.width * 0.8, b.y + b.height / 2)] }));
-      el!.dispatchEvent(new TouchEvent('touchmove',  { touches: [touch(b.x + b.width * 0.2, b.y + b.height / 2)] }));
-      el!.dispatchEvent(new TouchEvent('touchend',   { touches: [] }));
-    }, box);
-
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
     const endTab = await page.locator('[role="tab"][aria-selected="true"]').first().textContent();
-    if (startTab === endTab) {
-      test.fixme(true, 'Swipe-gesture for tab-bytte ikke implementert');
-    }
+    expect(endTab).not.toBe(startTab);
   });
 
   test('MyTeamsHeader blir bottom-sheet på mobil', async ({ page }) => {

@@ -196,6 +196,21 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
     };
   }, [localBlobUrl]);
 
+  // Esc lukker inspector. Capture-fase på document slik at MUI ikke
+  // kan stoppe propageringen før vi får sjekket.
+  useEffect(() => {
+    const onKeyDownCapture = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        active.blur();
+      }
+      setSelectedSegmentId(null);
+    };
+    document.addEventListener('keydown', onKeyDownCapture, true);
+    return () => document.removeEventListener('keydown', onKeyDownCapture, true);
+  }, []);
+
   const handleAudioFile = useCallback(
     async (file: File) => {
       // 1) Show the file immediately via blob URL so the user gets instant
@@ -386,6 +401,8 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
                 data-testid="choreo-play-toggle"
                 disabled={!audioUrl}
                 onClick={() => setIsPlaying((v) => !v)}
+                aria-pressed={isPlaying}
+                aria-label={isPlaying ? 'Pause' : 'Spill'}
                 sx={{
                   bgcolor: isPlaying ? 'rgba(52,211,153,0.15)' : 'rgba(139,92,246,0.12)',
                   color: isPlaying ? '#34d399' : '#c4b5fd',

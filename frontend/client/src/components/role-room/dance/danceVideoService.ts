@@ -40,6 +40,17 @@ export interface VideoAnnotation {
   drawing: unknown | null;
   voiceNoteSignedUrl: string | null;
   drawingKeyframes: unknown | null;
+  /**
+   * Movement-kategori (steps / arms / body / jumps / turns).
+   * Brukes til timeline-spor + farge-koding. Optional inntil backend-
+   * migrasjon 150 har rullet ut.
+   */
+  category: string | null;
+  /**
+   * AI-confidence-score (0-1) for auto-foreslåtte annotasjoner.
+   * Null for manuelt opprettede.
+   */
+  confidence: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -182,6 +193,8 @@ export interface CreateAnnotationInput {
   isDirectorPin?: boolean;
   drawing?: unknown;
   drawingKeyframes?: unknown;
+  category?: string | null;
+  confidence?: number | null;
 }
 
 export async function createAnnotation(
@@ -205,6 +218,7 @@ export interface PatchAnnotationInput {
   targetDancerIds?: string[];
   drawing?: unknown;
   drawingKeyframes?: unknown;
+  category?: string | null;
 }
 
 export async function patchAnnotation(

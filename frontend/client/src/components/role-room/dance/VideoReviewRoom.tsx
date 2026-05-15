@@ -35,6 +35,10 @@ import {
   MenuItem,
   Checkbox,
   ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -66,6 +70,9 @@ import {
 } from './dancerProfileService';
 import { DrawingOverlay, type DrawingPath } from './DrawingOverlay';
 import { SideBySidePlayer } from './SideBySidePlayer';
+import { useDancePlanGate } from './useDancePlanGate';
+import { DANCE_MOVEMENT_CATEGORIES, categoryById, categoryByShortcut, type MovementCategory } from './danceMovementCategories';
+import { AnnotationTimeline } from './AnnotationTimeline';
 
 const PURPLE = '#8b5cf6';
 const PURPLE_LIGHT = '#a78bfa';
@@ -140,6 +147,36 @@ export function VideoReviewRoom({
   const [segmentTagId, setSegmentTagId] = React.useState<string | null>(null);
   const [drawingForComposer, setDrawingForComposer] = React.useState<DrawingPath[]>([]);
   const [drawingMode, setDrawingMode] = React.useState(false);
+  const [upgradeDrawingOpen, setUpgradeDrawingOpen] = React.useState(false);
+  const [composerCategory, setComposerCategory] = React.useState<string | null>(null);
+  const composerInputRef = React.useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
+
+  // Keyboard-shortcuts à la DanceAnnotate: 1-5 = velg kategori, A = fokuser
+  // composer for å skrive ny annotation ved playhead. Hopper over hvis bruker
+  // skriver i et tekstfelt (la default-binding vinne).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const cat = categoryByShortcut(e.key);
+      if (cat) {
+        e.preventDefault();
+        setComposerCategory((cur) => (cur === cat.id ? null : cat.id));
+        return;
+      }
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        composerInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const planGate = useDancePlanGate();
+  // Tegne-overlay er video_review_pro-feature: gratis-planer åpner upgrade-
+  // dialogen ved klikk i stedet for å aktivere tegne-modus.
+  const drawingAllowed = planGate.loading || planGate.has('video_review_pro');
   const [playbackRate, setPlaybackRate] = React.useState<number>(1);
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
@@ -241,6 +278,7 @@ export function VideoReviewRoom({
         isDirectorPin: pinFlag,
         segmentId: segmentTagId,
         drawing: drawingForComposer.length > 0 ? drawingForComposer : undefined,
+        category: composerCategory,
       });
       setComposer('');
       setReplyTo(null);
@@ -249,6 +287,7 @@ export function VideoReviewRoom({
       setPinFlag(false);
       setDrawingForComposer([]);
       setDrawingMode(false);
+      setComposerCategory(null);
       // No need to refresh — SSE event will trigger it. But also do a local
       // optimistic refresh in case SSE is slow.
       await refresh();
@@ -559,6 +598,15 @@ export function VideoReviewRoom({
             ))}
           </Stack>
         </Stack>
+        {/* DanceAnnotate-paritet: kategori-spor under hovedtimelinen */}
+        <Box sx={{ px: 1.5, pb: 1.5 }}>
+          <AnnotationTimeline
+            annotations={annotations}
+            durationSec={duration}
+            playheadSec={playheadSec}
+            onSeek={seekTo}
+          />
+        </Box>
       </Box>
 
       {/* ─── Right: thread ───────────────────────────────── */}
@@ -627,6 +675,7 @@ export function VideoReviewRoom({
             placeholder="Skriv en kommentar — peker på sekund i klippet"
             value={composer}
             onChange={(e) => setComposer(e.target.value)}
+            inputRef={composerInputRef}
             sx={{
               '& .MuiInputBase-root': { bgcolor: BG, color: '#e5e7eb', fontSize: 13 },
               '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
@@ -655,6 +704,43 @@ export function VideoReviewRoom({
               })}
             </Stack>
           ) : null}
+          {/* Movement-kategori — DanceAnnotate-paritet */}
+          <Stack
+            direction="row"
+            spacing={0.5}
+            alignItems="center"
+            flexWrap="wrap"
+            useFlexGap
+            sx={{ mt: 1 }}
+            data-testid="review-category-picker"
+          >
+            <Typography sx={{ fontSize: 10, color: 'rgba(229,231,235,0.55)', letterSpacing: 1, mr: 0.5 }}>
+              KATEGORI
+            </Typography>
+            {DANCE_MOVEMENT_CATEGORIES.map((cat: MovementCategory) => {
+              const selected = composerCategory === cat.id;
+              return (
+                <Chip
+                  key={cat.id}
+                  size="small"
+                  label={`${cat.label} · ${cat.shortcut}`}
+                  onClick={() => setComposerCategory(selected ? null : cat.id)}
+                  data-testid={`review-category-${cat.id}`}
+                  aria-pressed={selected}
+                  sx={{
+                    height: 22,
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    bgcolor: selected ? `${cat.color}33` : 'transparent',
+                    color: selected ? cat.color : 'rgba(229,231,235,0.6)',
+                    border: `1px solid ${selected ? cat.color : 'rgba(229,231,235,0.18)'}`,
+                    '&:hover': { bgcolor: `${cat.color}22`, color: cat.color },
+                  }}
+                />
+              );
+            })}
+          </Stack>
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 1 }}>
             <Tooltip title="@-mention danser">
               <IconButton
@@ -692,22 +778,37 @@ export function VideoReviewRoom({
                 ))}
               </TextField>
             ) : null}
-            <ToggleButton
-              size="small"
-              value="draw"
-              selected={drawingMode}
-              onChange={() => setDrawingMode((v) => !v)}
-              sx={{
-                color: drawingMode ? '#fff' : PURPLE_LIGHT,
-                borderColor: BORDER,
-                bgcolor: drawingMode ? 'rgba(167,139,250,0.18)' : 'transparent',
-                fontSize: 11,
-                px: 1, py: 0.25,
-              }}
-              data-testid="review-drawing-toggle"
+            <Tooltip
+              title={drawingAllowed
+                ? (drawingMode ? 'Slå av tegning' : 'Tegn på videoen')
+                : 'Tegne-overlay krever Studio- eller Creator-plan — klikk for å oppgradere'
+              }
             >
-              <DrawIcon sx={{ fontSize: 14, mr: 0.5 }} /> Tegn
-            </ToggleButton>
+              <ToggleButton
+                size="small"
+                value="draw"
+                selected={drawingMode && drawingAllowed}
+                onChange={() => {
+                  if (!drawingAllowed) {
+                    setUpgradeDrawingOpen(true);
+                    return;
+                  }
+                  setDrawingMode((v) => !v);
+                }}
+                sx={{
+                  color: drawingMode && drawingAllowed ? '#fff' : PURPLE_LIGHT,
+                  borderColor: BORDER,
+                  bgcolor: drawingMode && drawingAllowed ? 'rgba(167,139,250,0.18)' : 'transparent',
+                  fontSize: 11,
+                  px: 1, py: 0.25,
+                  opacity: drawingAllowed ? 1 : 0.55,
+                }}
+                data-testid="review-drawing-toggle"
+                data-locked={drawingAllowed ? undefined : 'plan'}
+              >
+                <DrawIcon sx={{ fontSize: 14, mr: 0.5 }} /> Tegn
+              </ToggleButton>
+            </Tooltip>
             <Tooltip title={isRecording ? 'Stopp opptak' : 'Voice + sync-recorder'}>
               <IconButton
                 size="small"
@@ -771,6 +872,41 @@ export function VideoReviewRoom({
           })
         )}
       </Menu>
+      <Dialog
+        open={upgradeDrawingOpen}
+        onClose={() => setUpgradeDrawingOpen(false)}
+        PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${BORDER}`, color: '#e5e7eb' } }}
+        data-testid="drawing-upgrade-dialog"
+      >
+        <DialogTitle sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>Oppgrader for å tegne</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 13, color: 'rgba(229,231,235,0.85)' }}>
+            Tegne-overlay er en del av Creator- og Studio-planene. Oppgrader for å markere
+            korrigeringer rett på videoen og dele dem med teamet ditt.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUpgradeDrawingOpen(false)} sx={{ color: PURPLE_LIGHT }}>
+            Ikke nå
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setUpgradeDrawingOpen(false);
+              if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'pricing');
+                window.history.pushState({}, '', url.toString());
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }
+            }}
+            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}
+            data-testid="drawing-upgrade-cta"
+          >
+            Se planer
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -842,6 +978,25 @@ const CommentNode: React.FC<CommentNodeProps> = ({
           <Typography sx={{ fontSize: 13, color: 'rgba(229,231,235,0.92)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {annotation.body}
           </Typography>
+          {(() => {
+            const cat = categoryById(annotation.category);
+            return cat ? (
+              <Chip
+                size="small"
+                label={cat.label}
+                data-testid={`review-comment-category-${annotation.id}`}
+                sx={{
+                  mt: 0.5,
+                  height: 18,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  bgcolor: `${cat.color}22`,
+                  color: cat.color,
+                  border: `1px solid ${cat.color}55`,
+                }}
+              />
+            ) : null;
+          })()}
           {annotation.targetDancerIds.length > 0 ? (
             <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
               {annotation.targetDancerIds.map((id) => {

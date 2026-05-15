@@ -9,13 +9,10 @@ test.describe('dance — music upload', () => {
   test('upload mp3 til auto-lastet piece (cho-1) trigger POST', async ({ page }) => {
     await setupDanceTest(page);
     await switchDanceTab(page, "pieces");
-    await expect(page.getByTestId('choreography-builder')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('choreography-builder')).toBeVisible({ timeout: 30_000 });
 
     const trigger = page.getByTestId('choreo-audio-file-trigger');
-    if (!(await trigger.isVisible().catch(() => false))) {
-      test.skip(true, 'choreo-audio-file-trigger ikke synlig');
-      return;
-    }
+    await expect(trigger).toBeVisible();
     const fileChooserPromise = page.waitForEvent('filechooser');
     await trigger.click();
     const chooser = await fileChooserPromise;

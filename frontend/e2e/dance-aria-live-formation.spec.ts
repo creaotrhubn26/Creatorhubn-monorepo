@@ -21,8 +21,12 @@ test.describe('dance — formation aria-live', () => {
     await setupDanceTest(page, { initialTab: 'formations' });
     await expect(page.getByTestId('formation-canvas')).toBeVisible({ timeout: 15_000 });
 
-    const liveRegion = page.locator('[aria-live="polite"], [aria-live="assertive"]').first();
-    const before = await liveRegion.textContent().catch(() => '');
+    // Plasser en danser på scenen først — tom starter-formasjon har ingen
+    // pucker å dra, så aria-live oppdaterer aldri.
+    await page.getByTestId('roster-item-dnc-1').click();
+
+    const liveRegion = page.getByTestId('formation-aria-live');
+    const before = (await liveRegion.textContent().catch(() => '')) ?? '';
 
     const canvas = page.getByTestId('formation-canvas');
     const box = await canvas.boundingBox();
@@ -30,15 +34,17 @@ test.describe('dance — formation aria-live', () => {
       test.skip(true, 'canvas ikke målbar');
       return;
     }
-    await page.mouse.move(box.x + 100, box.y + 100);
+    // addDancerToFormation plasserer puck ca. midt på scenen (0.5, 0.5).
+    const startX = box.x + box.width * 0.5;
+    const startY = box.y + box.height * 0.5;
+    await page.mouse.move(startX, startY);
     await page.mouse.down();
-    await page.mouse.move(box.x + 300, box.y + 200, { steps: 10 });
+    await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.3, { steps: 10 });
     await page.mouse.up();
 
     await page.waitForTimeout(500);
-    const after = await liveRegion.textContent().catch(() => '');
-    if (before === after) {
-      test.fixme(true, 'aria-live oppdaterer ikke ved drag — implementer announce i FormationView');
-    }
+    const after = (await liveRegion.textContent().catch(() => '')) ?? '';
+    expect(after).not.toBe(before);
+    expect(after).toMatch(/flyttet/i);
   });
 });

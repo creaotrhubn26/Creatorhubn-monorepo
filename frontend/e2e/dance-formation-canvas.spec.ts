@@ -7,6 +7,9 @@ import { setupDanceTest } from './helpers/danceSetup';
 test.describe('dance — formation canvas', () => {
   test.beforeEach(async ({ page }) => {
     await setupDanceTest(page, { initialTab: 'formations' });
+    // FormationViewConnected starter i loading-state; vent på at toolbaren
+    // er rendret før vi går videre.
+    await expect(page.getByTestId('formation-toolbar')).toBeVisible({ timeout: 10_000 });
   });
 
   test('roster + canvas vises', async ({ page }) => {
@@ -39,31 +42,24 @@ test.describe('dance — formation canvas', () => {
 
   test('symmetry-toggle endrer canvas-tilstand', async ({ page }) => {
     const toggle = page.getByTestId('formation-symmetry-toggle');
-    if (!(await toggle.isVisible().catch(() => false))) {
-      test.skip(true, 'symmetry-toggle ikke i UI');
-      return;
-    }
+    await expect(toggle).toBeVisible();
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', /true/, { timeout: 2_000 });
   });
 
-  test('distribute-x knapp synlig + klikkbar', async ({ page }) => {
-    const btn = page.getByTestId('formation-distribute-x');
-    if (!(await btn.isVisible().catch(() => false))) {
-      test.skip(true, 'distribute-x ikke i UI');
-      return;
-    }
-    await btn.click();
+  test('distribute-x knapp er rendret', async ({ page }) => {
+    // Knappen er disabled inntil aktiv formasjon har ≥2 posisjoner; vi krever
+    // bare at den er rendret i toolbaren slik at flowen er testbar når
+    // posisjoner finnes.
+    await expect(page.getByTestId('formation-distribute-x')).toBeVisible();
+    await expect(page.getByTestId('formation-distribute-y')).toBeVisible();
   });
 
   test('snap-mode bytter mellom off/coarse/fine', async ({ page }) => {
     const off = page.getByTestId('formation-snap-off');
     const coarse = page.getByTestId('formation-snap-coarse');
     const fine = page.getByTestId('formation-snap-fine');
-    if (!(await off.isVisible().catch(() => false))) {
-      test.skip(true, 'snap-toggle-knapper ikke i UI');
-      return;
-    }
+    await expect(off).toBeVisible();
     await coarse.click();
     await expect(coarse).toHaveAttribute('aria-pressed', /true/);
     await fine.click();

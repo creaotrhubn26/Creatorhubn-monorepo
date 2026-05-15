@@ -1,32 +1,40 @@
 /**
- * C3 — Medlem med team.manage_roles=false ser disabled role-buttons med tooltip.
+ * C3 — Medlem uten team.manage_roles ser ingen "Ny rolle"-knapp.
+ *
+ * TeamAdminPanel sjekker membership.role.isOwnerRole — non-owner får
+ * skjult knappen istedenfor disabled.
  */
 import { test, expect } from '@playwright/test';
 import { installDanceMocks } from './helpers/danceMocks';
+import { fx } from './fixtures/dance/index';
 
 test.describe('dance — capability gate UI', () => {
-  test('danser ser disabled "Ny rolle"-knapp med tooltip', async ({ page }) => {
+  test('danser ser ingen "Ny rolle"-knapp', async ({ page }) => {
+    const nonOwnerMembership = {
+      team: fx.teams[0],
+      member: { ...fx.members[3] }, // mem-4: danser
+      role: fx.roles[3],            // role-dancer
+      upgradeOfferSeenAt: null,
+    };
     await installDanceMocks(page);
-    // Override capabilities til kun danser-rolle (ingen team.manage_roles)
-    await page.route('**/api/dance/teams/me/capabilities', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: { capabilities: ['video_review.view'] } }),
-      }),
+    await page.route('**/api/dance/teams/me', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: nonOwnerMembership }) }),
     );
-    await page.goto('/e2e-test.html?harness=dance_studio&harness-project=proj-spring-2026');
+    await page.route('**/api/dance/teams/me/all', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: [nonOwnerMembership] }) }),
+    );
+    await page.route('**/api/dance/teams/me/capabilities', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { capabilities: ['video_review.view'] } }) }),
+    );
+    await page.goto('/e2e-test.html?harness=dance_studio&harness-project=proj-spring-2026&tab=team');
 
-    await page.getByRole('tab', { name: /Team/i }).click().catch(() => {
-      // Team-tab kan være helt skjult for danser — det er også gyldig
-    });
-
-    const newRoleBtn = page.getByRole('button', { name: /Ny rolle|Create role/i });
-    if (await newRoleBtn.isVisible()) {
-      await expect(newRoleBtn).toBeDisabled();
-    } else {
-      // Implementasjonen valgte å skjule i stedet for å disable — også OK.
-      await expect(newRoleBtn).toHaveCount(0);
-    }
+    await expect(page.getByTestId('team-admin')).toBeVisible({ timeout: 10_000 });
+    // Owner-only "Ny rolle"-knapp skal ikke være rendret for non-owner
+    await expect(page.getByTestId('team-new-role')).toHaveCount(0);
+    // Owner-only "Inviter medlem"-knapp likedan
+    await expect(page.getByTestId('team-invite-trigger')).toHaveCount(0);
   });
 });

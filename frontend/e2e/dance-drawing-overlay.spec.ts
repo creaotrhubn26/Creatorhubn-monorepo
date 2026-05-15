@@ -21,7 +21,17 @@ test.describe('dance — drawing overlay', () => {
     await page.mouse.move(box.x + 200, box.y + 200);
     await page.mouse.up();
 
-    test.fixme(true, 'TODO: verifiser at neste POST /annotations inkluderer drawing-payload');
+    // Skriv en kommentar slik at composeren ikke avvises på tom body, fang
+    // payloaden i neste POST /annotations og verifiser at drawing er med.
+    await page.getByTestId('review-composer-input').fill('Se markeringen');
+    const postRequest = page.waitForRequest(
+      (req) => req.method() === 'POST' && /\/annotations$/.test(req.url()),
+      { timeout: 5_000 },
+    );
+    await page.getByTestId('review-send').click();
+    const req = await postRequest;
+    const payload = req.postDataJSON?.() as { drawing?: unknown } | undefined;
+    expect(payload?.drawing, 'drawing-payload skal være med i POST').toBeTruthy();
   });
 
   test('Free-plan: drawing-toggle disabled — referanse til C4', async ({ page }) => {
@@ -29,18 +39,7 @@ test.describe('dance — drawing overlay', () => {
     await page.goto('/e2e-test.html?harness=dance_studio&harness-project=proj-spring-2026&tab=video');
     await page.getByTestId('video-library-item-clip-1').click();
     const toggle = page.getByTestId('review-drawing-toggle');
-    // Toggle skal være disabled ELLER skjult ELLER åpne Upgrade-dialog ved klikk
-    if (await toggle.isVisible().catch(() => false)) {
-      const disabled = await toggle.isDisabled().catch(() => false);
-      if (!disabled) {
-        await toggle.click();
-        await expect(page.getByText(/oppgrader|upgrade/i)).toBeVisible({ timeout: 5_000 });
-      } else {
-        expect(disabled).toBe(true);
-      }
-    } else {
-      // skjult er også OK
-      await expect(toggle).toHaveCount(0);
-    }
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute('data-locked', 'plan');
   });
 });

@@ -560,6 +560,7 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
             size="small"
             label={`${segment.label ?? meta.kind} · ${formatTime(segment.startSec)}–${formatTime(segment.endSec)}`}
             onClick={() => onJumpToSegment?.(segment.id, area.startSec ?? segment.startSec)}
+            aria-label={`Hopp til segment ${segment.label ?? meta.kind}`}
             sx={{
               height: 20, fontSize: 9.5, cursor: 'pointer',
               bgcolor: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}55`,
@@ -657,6 +658,7 @@ const OutcomeButton: React.FC<{ outcome: RehearsalOutcome; active: boolean; onCl
       <IconButton
         size="small"
         onClick={onClick}
+        aria-label={cfg.tip}
         sx={{
           p: 0.4,
           color: active ? cfg.color : '#4b5563',
