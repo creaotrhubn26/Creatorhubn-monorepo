@@ -91,6 +91,13 @@ const projectIdSchema = z.string().min(1).max(200);
 const tagsSchema = z.array(z.string().min(1).max(40)).max(20);
 const secSchema = z.number().min(0).max(36000).nullable();
 const transitionNoteSchema = z.string().max(500).nullable();
+const transitionPathsSchema = z.array(z.object({
+  dancerId: z.string().min(1).max(200),
+  controlPoints: z.array(z.object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+  })).max(8),
+})).max(100);
 
 const createBodySchema = z.object({
   label: z.string().min(1).max(200),
@@ -105,6 +112,7 @@ const createBodySchema = z.object({
   endSec: secSchema.optional(),
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
+  transitionPaths: transitionPathsSchema.optional(),
 });
 
 const patchBodySchema = z.object({
@@ -120,6 +128,7 @@ const patchBodySchema = z.object({
   endSec: secSchema.optional(),
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
+  transitionPaths: transitionPathsSchema.optional(),
 });
 
 const replaceItemSchema = z.object({
@@ -135,6 +144,7 @@ const replaceItemSchema = z.object({
   endSec: secSchema.optional(),
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
+  transitionPaths: transitionPathsSchema.optional(),
 });
 
 const replaceBodySchema = z.object({

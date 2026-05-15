@@ -34,6 +34,21 @@ export interface DancerPosition {
   isLead?: boolean;
 }
 
+/**
+ * Bezier-kurve mellom denne formasjonen og neste, eksplisitt tegnet for én
+ * danser. Når satt: overstyrer den auto-interpolerte rette linjen i path-
+ * visualisering. Hvis ikke satt: bruk lineær interpolasjon mellom
+ * (start.x, start.y) og neste-formasjons posisjon.
+ *
+ * Punkter er normaliserte stage-koordinater (0..1, x = horisontal,
+ * y = downstage→upstage). Inkluderer start- og slutt-anker automatisk,
+ * så `controlPoints` er bare de TO bezier-kontrollene mellom dem.
+ */
+export interface DancerTransitionPath {
+  dancerId: string;
+  controlPoints: ReadonlyArray<{ x: number; y: number }>;
+}
+
 export interface Formation {
   id: string;
   /** Beskrivende navn — "Formation A", "V-form ensemble", "Pas de deux center" */
@@ -51,6 +66,8 @@ export interface Formation {
   transitionNote?: string | null;
   /** Frie tagger ("Opening", "V-Shape", "Group"). */
   tags?: string[];
+  /** F5-13B: eksplisitte bezier-baner FRA denne formasjonen TIL neste, én per danser. */
+  transitionPaths?: DancerTransitionPath[];
 }
 
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────

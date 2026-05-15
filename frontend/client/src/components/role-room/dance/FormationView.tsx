@@ -63,6 +63,8 @@ import {
 import { FormationTimeline } from './FormationTimeline';
 import { DancerPathsView } from './DancerPathsView';
 import { DancerPathPreview } from './DancerPathPreview';
+import { StageMap3D } from './StageMap3D';
+import { CurveOverlay } from './CurveOverlay';
 
 // ─── Stage-dimensjoner (interne canvas-piksler — uavhengig av render-størrelse) ─
 
@@ -715,33 +717,66 @@ export const FormationView: React.FC<FormationViewProps> = ({
             overflow: 'hidden',
             border: '1px solid #2a3142',
             boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            opacity: stageOpacity,
+            transition: 'opacity 0.2s',
+            minHeight: STAGE_HEIGHT,
           }}
         >
+          {/* 2D canvas — alltid mountert (Fabric.js krever det), men skjult
+              i 3D-modus slik at vi ikke mister state ved bytte. */}
           <canvas
             ref={canvasElRef}
             width={STAGE_WIDTH}
             height={STAGE_HEIGHT}
             data-testid="formation-canvas"
-            style={{ display: 'block' }}
+            style={{ display: stageMode === '2d' ? 'block' : 'none' }}
           />
-          {/* Overlay: scene-orientering */}
-          <Typography
-            sx={{
-              position: 'absolute', top: 6, left: 0, right: 0, textAlign: 'center',
-              fontSize: 9, color: '#6b7280', letterSpacing: 1.5, pointerEvents: 'none',
-            }}
-          >
-            ↑ MIRROR · BACK WALL
-          </Typography>
-          <Typography
-            sx={{
-              position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center',
-              fontSize: 9, color: '#fbbf24', letterSpacing: 1.5, pointerEvents: 'none',
-              fontWeight: 700,
-            }}
-          >
-            ↓ AUDIENCE · FRONT
-          </Typography>
+          {/* 3D-stage (Three.js) — kun mountet i 3D-modus så vi unngår å
+              betale GPU/ress på 2D-bruk. */}
+          {stageMode === '3d' && activeFormation ? (
+            <StageMap3D
+              formation={activeFormation}
+              dancers={dancers}
+              hiddenDancerIds={hiddenDancerIds}
+              showIds={showIds}
+              onDancerSelect={(id) => onDancerClickRef.current?.(id)}
+            />
+          ) : null}
+          {stageMode === '2d' ? (
+            <>
+              <Typography
+                sx={{
+                  position: 'absolute', top: 6, left: 0, right: 0, textAlign: 'center',
+                  fontSize: 9, color: '#6b7280', letterSpacing: 1.5, pointerEvents: 'none',
+                }}
+              >
+                ↑ MIRROR · BACK WALL
+              </Typography>
+              <Typography
+                sx={{
+                  position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center',
+                  fontSize: 9, color: '#fbbf24', letterSpacing: 1.5, pointerEvents: 'none',
+                  fontWeight: 700,
+                }}
+              >
+                ↓ AUDIENCE · FRONT
+              </Typography>
+              {/* F5-13B: bezier-curve-overlay i 2D-modus. */}
+              {activeFormation ? (() => {
+                const idxAF = formations.findIndex((f) => f.id === activeFormation.id);
+                const nextAF = idxAF >= 0 && idxAF < formations.length - 1 ? formations[idxAF + 1] : null;
+                return (
+                  <CurveOverlay
+                    formation={activeFormation}
+                    nextFormation={nextAF}
+                    dancers={dancers}
+                    enabled={curveMode}
+                    onChange={(paths) => updateActiveFormation({ transitionPaths: paths })}
+                  />
+                );
+              })() : null}
+            </>
+          ) : null}
         </Box>
 
         <Typography sx={{ fontSize: 10, color: '#6b7280', textAlign: 'center', mt: -0.5 }}>

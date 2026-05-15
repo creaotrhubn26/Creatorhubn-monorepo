@@ -17,6 +17,11 @@ export interface DancerPosition {
   isLead?: boolean;
 }
 
+export interface DancerTransitionPath {
+  dancerId: string;
+  controlPoints: Array<{ x: number; y: number }>;
+}
+
 export interface FormationInput {
   label: string;
   notes?: string | null;
@@ -30,6 +35,7 @@ export interface FormationInput {
   endSec?: number | null;
   transitionNote?: string | null;
   tags?: string[];
+  transitionPaths?: DancerTransitionPath[];
 }
 
 export interface FormationPatch extends Partial<FormationInput> {}
@@ -49,6 +55,7 @@ export interface FormationRecord {
   endSec: number | null;
   transitionNote: string | null;
   tags: string[];
+  transitionPaths: DancerTransitionPath[];
   createdAt: string;
   updatedAt: string;
 }
@@ -96,6 +103,28 @@ function asStringArray(value: unknown): string[] {
   return value.filter((v): v is string => typeof v === 'string' && v.length > 0);
 }
 
+function asTransitionPaths(value: unknown): DancerTransitionPath[] {
+  if (!Array.isArray(value)) return [];
+  const out: DancerTransitionPath[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.dancerId !== 'string') continue;
+    if (!Array.isArray(r.controlPoints)) continue;
+    const cps: Array<{ x: number; y: number }> = [];
+    for (const c of r.controlPoints) {
+      if (!c || typeof c !== 'object') continue;
+      const cr = c as Record<string, unknown>;
+      const x = Number(cr.x); const y = Number(cr.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      cps.push({ x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) });
+    }
+    if (cps.length === 0) continue;
+    out.push({ dancerId: r.dancerId, controlPoints: cps });
+  }
+  return out;
+}
+
 function asNumberOrNull(value: unknown): number | null {
   if (value == null) return null;
   const n = Number(value);
@@ -118,6 +147,7 @@ function mapRow(row: Record<string, unknown>): FormationRecord {
     endSec: asNumberOrNull(row.end_sec),
     transitionNote: row.transition_note == null ? null : String(row.transition_note),
     tags: asStringArray(row.tags),
+    transitionPaths: asTransitionPaths(row.transition_paths),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -195,9 +225,9 @@ export async function createFormation(
        id, owner_user_id, project_id, label, notes,
        stage_width_m, stage_depth_m, dancer_positions,
        transition_from_id, display_order,
-       start_sec, end_sec, transition_note, tags
+       start_sec, end_sec, transition_note, tags, transition_paths
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       id,
@@ -214,6 +244,7 @@ export async function createFormation(
       input.endSec ?? null,
       input.transitionNote ?? null,
       JSON.stringify(input.tags ?? []),
+      JSON.stringify(input.transitionPaths ?? []),
     ],
   );
   return mapRow(rows[0]);
@@ -245,6 +276,7 @@ export async function patchFormation(
   if (patch.endSec !== undefined) push('end_sec', patch.endSec);
   if (patch.transitionNote !== undefined) push('transition_note', patch.transitionNote);
   if (patch.tags !== undefined) push('tags', JSON.stringify(patch.tags));
+  if (patch.transitionPaths !== undefined) push('transition_paths', JSON.stringify(patch.transitionPaths));
 
   if (sets.length === 0) return getFormation(pool, ownerUserId, id);
 
@@ -345,6 +377,7 @@ export async function replaceFormations(
              end_sec = $12,
              transition_note = $13,
              tags = $14,
+             transition_paths = $15,
              updated_at = now()
            WHERE owner_user_id = $1 AND id = $2
            RETURNING *`,
@@ -362,6 +395,7 @@ export async function replaceFormations(
             f.endSec ?? null,
             f.transitionNote ?? null,
             JSON.stringify(f.tags ?? []),
+            JSON.stringify(f.transitionPaths ?? []),
           ],
         );
         written.push(mapRow(rows[0]));
@@ -371,9 +405,9 @@ export async function replaceFormations(
              id, owner_user_id, project_id, label, notes,
              stage_width_m, stage_depth_m, dancer_positions,
              transition_from_id, display_order,
-             start_sec, end_sec, transition_note, tags
+             start_sec, end_sec, transition_note, tags, transition_paths
            )
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
            RETURNING *`,
           [
             id, ownerUserId, projectId,
@@ -388,6 +422,7 @@ export async function replaceFormations(
             f.endSec ?? null,
             f.transitionNote ?? null,
             JSON.stringify(f.tags ?? []),
+            JSON.stringify(f.transitionPaths ?? []),
           ],
         );
         written.push(mapRow(rows[0]));

@@ -16,6 +16,7 @@ import { Box, Stack, Typography, Tooltip, Button } from '@mui/material';
 import { CenterFocusStrong as FitIcon } from '@mui/icons-material';
 import type { Formation } from './formationTypes';
 import { formatTimecode } from './timecode';
+import { MusicWaveformTrack } from './MusicWaveformTrack';
 
 const TRACK_HEIGHT = 32;
 const SMALL_TRACK_HEIGHT = 22;
@@ -201,7 +202,7 @@ export function FormationTimeline({
             {/* MOVEMENT-spor (F5-8) */}
             {movements.length > 0 ? renderBlockTrack('MOVEMENT', '#34d399', movements, 'formation-timeline-movement') : null}
 
-            {/* MUSIC waveform-spor (F5-10) */}
+            {/* MUSIC waveform-spor (F5-10) — wavesurfer.js-basert */}
             {musicUrl ? (
               <Stack direction="row" alignItems="center" spacing={1}>
                 <Typography sx={{ width: LABEL_WIDTH, fontSize: 10, fontWeight: 700, color: '#fbbf24', letterSpacing: 1, flexShrink: 0 }}>
@@ -209,31 +210,9 @@ export function FormationTimeline({
                 </Typography>
                 <Box
                   data-testid="formation-timeline-music-track"
-                  sx={{
-                    position: 'relative', flex: 1, height: SMALL_TRACK_HEIGHT,
-                    bgcolor: 'rgba(255,255,255,0.02)', borderRadius: 0.5, overflow: 'hidden',
-                  }}
+                  sx={{ flex: 1 }}
                 >
-                  {/* Forenklet waveform-stub: 40 vertikale streker med rand-amplitude. */}
-                  <svg width="100%" height={SMALL_TRACK_HEIGHT} viewBox={`0 0 100 ${SMALL_TRACK_HEIGHT}`} preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
-                    {Array.from({ length: 60 }, (_, i) => {
-                      // Pseudo-tilfeldig amplitude basert på i (stabil per render).
-                      const h = (Math.sin(i * 1.7) + Math.sin(i * 0.5) + 2) * 4;
-                      const cx = (i / 59) * 100;
-                      return (
-                        <line
-                          key={i}
-                          x1={cx} x2={cx}
-                          y1={SMALL_TRACK_HEIGHT / 2 - h}
-                          y2={SMALL_TRACK_HEIGHT / 2 + h}
-                          stroke="#fbbf24"
-                          strokeWidth={1.2}
-                          opacity={0.6}
-                          vectorEffect="non-scaling-stroke"
-                        />
-                      );
-                    })}
-                  </svg>
+                  <MusicWaveformTrack musicUrl={musicUrl} />
                 </Box>
               </Stack>
             ) : null}

@@ -153,6 +153,7 @@ export function FormationViewConnected({
               endSec: f.endSec ?? null,
               transitionNote: f.transitionNote ?? null,
               tags: f.tags ?? [],
+              transitionPaths: f.transitionPaths ?? [],
             })),
           });
           // Note: we don't replace local state with the server response

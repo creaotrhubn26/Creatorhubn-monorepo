@@ -24,6 +24,8 @@ export interface FormationRecord {
   transitionNote: string | null;
   /** Frie tagger ("Opening", "V-Shape", "Group"). */
   tags: string[];
+  /** F5-13B: bezier-baner mellom denne formasjonen og neste, én per danser. */
+  transitionPaths: Array<{ dancerId: string; controlPoints: Array<{ x: number; y: number }> }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +43,7 @@ export interface FormationInput {
   endSec?: number | null;
   transitionNote?: string | null;
   tags?: string[];
+  transitionPaths?: Array<{ dancerId: string; controlPoints: Array<{ x: number; y: number }> }>;
 }
 
 export type FormationPatch = Partial<FormationInput>;
@@ -116,6 +119,7 @@ export async function replaceFormations(input: {
     endSec?: number | null;
     transitionNote?: string | null;
     tags?: string[];
+    transitionPaths?: Array<{ dancerId: string; controlPoints: Array<{ x: number; y: number }> }>;
   }>;
 }): Promise<FormationRecord[]> {
   const res = await fetch(BASE, {
@@ -141,6 +145,7 @@ export function recordToFormation(r: FormationRecord): Formation {
     endSec: r.endSec ?? null,
     transitionNote: r.transitionNote ?? null,
     tags: r.tags ?? [],
+    transitionPaths: r.transitionPaths ?? [],
   };
 }
 
@@ -167,5 +172,6 @@ export function formationToInput(
     endSec: f.endSec ?? null,
     transitionNote: f.transitionNote ?? null,
     tags: f.tags ?? [],
+    transitionPaths: f.transitionPaths ?? [],
   };
 }

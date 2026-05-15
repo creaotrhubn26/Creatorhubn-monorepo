@@ -667,6 +667,7 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
         endSec: (f.endSec as number | null | undefined) ?? null,
         transitionNote: (f.transitionNote as string | null | undefined) ?? null,
         tags: Array.isArray(f.tags) ? f.tags : [],
+        transitionPaths: Array.isArray(f.transitionPaths) ? f.transitionPaths : [],
         createdAt: now,
         updatedAt: now,
       }));
@@ -690,6 +691,7 @@ export async function installDanceMocks(page: Page, opts: DanceMockOptions = {})
         endSec: null,
         transitionNote: null,
         tags: [],
+        transitionPaths: [],
         createdAt: now,
         updatedAt: now,
         ...body,
