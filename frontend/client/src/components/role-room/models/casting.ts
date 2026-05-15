@@ -2355,8 +2355,10 @@ export const SUGGESTION_TYPES = {
   COVERAGE_GAP: 'coverage.gap',
   COVERAGE_BEST_TAKE: 'coverage.best-take',
 
-  // Editor (Fase B/C)
+  // Editor + post-prod (Fase C)
   EDIT_ROUGH_CUT_DRAFT: 'edit.rough-cut-draft',
+  COLOR_CONSISTENCY_ISSUE: 'post.color-consistency-issue',
+  AUDIO_MIX_ISSUE: 'post.audio-mix-issue',
 } as const;
 
 export type SuggestionType = typeof SUGGESTION_TYPES[keyof typeof SUGGESTION_TYPES];
@@ -2482,6 +2484,78 @@ export interface CoverageGapPayload {
   plannedShotDescription?: string;
   /** Hvor mange takes ble fanget av denne shoten (0 hvis ingen) */
   takesCount?: number;
+}
+
+export interface RoughCutClip {
+  /** ID til take som spilles av */
+  takeId: string;
+  takeNumber: number;
+  /** Hvilken planlagt shot i shot-listen */
+  shotIndex: number;
+  /** Beskrivelse fra shot-list for kontekst */
+  shotType?: string;
+  shotDescription?: string;
+  /** Lengde i sekunder — fra take.durationSec */
+  durationSec?: number;
+  /** Foreslått in/out-trim i sekunder fra take-start */
+  inSec?: number;
+  outSec?: number;
+  /** Kvalitet-score for valgt take (0..1) */
+  score?: number;
+}
+
+export interface RoughCutPayload {
+  sceneId: string;
+  shotListId: string;
+  /** Ordered list med clips i den rekkefølgen de skal vises */
+  clips: RoughCutClip[];
+  /** Total durasjon i sekunder */
+  totalDurationSec?: number;
+  /** Antall planlagte shots som ikke har take ennå (gap-flagg) */
+  missingShotsCount?: number;
+  /** Begrunnelse for valgene */
+  rationale?: string;
+}
+
+export type ColorConsistencyIssueType =
+  | 'exposure-mismatch'
+  | 'white-balance-shift'
+  | 'tonal-outlier'
+  | string;
+
+export interface ColorConsistencyIssuePayload {
+  sceneId: string;
+  issueType: ColorConsistencyIssueType;
+  description: string;
+  /** Takes som har avviket — for visuell highlighting i UI */
+  affectedTakeIds: string[];
+  /** Score-bredde (max - min) på exposure/framing/focus */
+  exposureRange?: number;
+  /** Hvor alvorlig: 'minor' = stilistisk OK, 'major' = krever grading */
+  severity: 'minor' | 'major';
+  /** Konkret forslag */
+  suggestion?: string;
+}
+
+export type AudioMixIssueType =
+  | 'adr-candidate'        // dårlig SNR — kandidat for replacement
+  | 'clipping'             // peak over 0 dBFS
+  | 'low-signal'           // RMS for lavt
+  | 'missing-room-tone'    // ingen wild-track for backup
+  | 'level-mismatch'       // store volumforskjeller mellom takes
+  | string;
+
+export interface AudioMixIssuePayload {
+  sceneId: string;
+  takeId: string;
+  takeNumber: number;
+  issueType: AudioMixIssueType;
+  description: string;
+  /** Hvor alvorlig — 'minor' kan fikses med EQ, 'major' krever ADR/reshoot */
+  severity: 'minor' | 'major';
+  /** Konkret målt verdi som trigget flagget (f.eks. clipping-score) */
+  measuredValue?: number;
+  suggestion?: string;
 }
 
 export interface CoverageBestTakePayload {

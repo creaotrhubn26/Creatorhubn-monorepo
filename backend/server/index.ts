@@ -419,6 +419,18 @@ import {
   createCoverageBestTakeAgent,
   coverageBestTakeApplier,
 } from "./ai-coverage-best-take-agent.js";
+import {
+  createRoughCutAgent,
+  roughCutApplier,
+} from "./ai-rough-cut-agent.js";
+import {
+  createColorConsistencyAgent,
+  colorConsistencyApplier,
+} from "./ai-color-consistency-agent.js";
+import {
+  createAudioMixIssueAgent,
+  audioMixIssueApplier,
+} from "./ai-audio-mix-issue-agent.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
 import { createCoverageJobWorker } from "./coverage-job-queue.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
@@ -15618,6 +15630,9 @@ aiSuggestionService.registerAgent(auditionSidesAgent);
 aiSuggestionService.registerAgent(storyDevelopmentAgent);
 aiSuggestionService.registerAgent(createCoverageGapAgent(pool));
 aiSuggestionService.registerAgent(createCoverageBestTakeAgent(pool));
+aiSuggestionService.registerAgent(createRoughCutAgent(pool));
+aiSuggestionService.registerAgent(createColorConsistencyAgent(pool));
+aiSuggestionService.registerAgent(createAudioMixIssueAgent(pool));
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
@@ -15632,6 +15647,9 @@ aiSuggestionService.registerApplier(storySynopsisApplier);
 aiSuggestionService.registerApplier(storyBeatOutlineApplier);
 aiSuggestionService.registerApplier(coverageGapApplier);
 aiSuggestionService.registerApplier(coverageBestTakeApplier);
+aiSuggestionService.registerApplier(roughCutApplier);
+aiSuggestionService.registerApplier(colorConsistencyApplier);
+aiSuggestionService.registerApplier(audioMixIssueApplier);
 
 // Coverage take-routes (upload, list, etc.)
 setupCoverageTakeRoutes({ app, pool });

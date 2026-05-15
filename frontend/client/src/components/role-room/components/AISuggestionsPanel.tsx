@@ -63,6 +63,9 @@ import type {
   ShotListDraftPayload,
   CoverageGapPayload,
   CoverageBestTakePayload,
+  RoughCutPayload,
+  ColorConsistencyIssuePayload,
+  AudioMixIssuePayload,
 } from '../models/casting';
 import RuleIcon from '@mui/icons-material/Rule';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
@@ -70,6 +73,9 @@ import SubjectIcon from '@mui/icons-material/Subject';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import MovieIcon from '@mui/icons-material/Movie';
+import PaletteIcon from '@mui/icons-material/Palette';
+import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 
 // ─────────────────────────────────────────────────────────────────────
 // Confidence-bånd-håndtering
@@ -431,6 +437,118 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           {p.ranking.length > 1 && (
             <Typography variant="caption" color="text.secondary">
               {p.ranking.length} takes vurdert
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'edit.rough-cut-draft': {
+    icon: MovieIcon,
+    label: 'Rough cut',
+    render: (s) => {
+      const p = s.payload as RoughCutPayload;
+      const totalMin = p.totalDurationSec ? Math.floor(p.totalDurationSec / 60) : 0;
+      const totalSec = p.totalDurationSec ? Math.round(p.totalDurationSec % 60) : 0;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Typography variant="body2">
+              <strong>{p.clips.length}</strong> {p.clips.length === 1 ? 'clip' : 'clips'}
+            </Typography>
+            {p.totalDurationSec && (
+              <Chip
+                label={`${totalMin}:${totalSec.toString().padStart(2, '0')}`}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: '0.65rem', height: 18 }}
+              />
+            )}
+            {p.missingShotsCount && p.missingShotsCount > 0 && (
+              <Chip
+                label={`${p.missingShotsCount} mangler`}
+                size="small"
+                color="warning"
+                variant="outlined"
+                sx={{ fontSize: '0.65rem', height: 18 }}
+              />
+            )}
+          </Stack>
+          {p.rationale && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              {p.rationale}
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'post.color-consistency-issue': {
+    icon: PaletteIcon,
+    label: 'Color',
+    highlight: true,
+    render: (s) => {
+      const p = s.payload as ColorConsistencyIssuePayload;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Chip
+              label={p.severity === 'major' ? 'Alvorlig' : 'Mindre'}
+              size="small"
+              color={p.severity === 'major' ? 'error' : 'warning'}
+              variant="outlined"
+            />
+            <Typography variant="caption" color="text.secondary">
+              {p.issueType}
+            </Typography>
+          </Stack>
+          <Typography variant="body2">{p.description}</Typography>
+          {p.suggestion && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+              {p.suggestion}
+            </Typography>
+          )}
+          {p.affectedTakeIds.length > 0 && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+              Berører {p.affectedTakeIds.length} {p.affectedTakeIds.length === 1 ? 'take' : 'takes'}
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'post.audio-mix-issue': {
+    icon: GraphicEqIcon,
+    label: 'Audio',
+    highlight: true,
+    render: (s) => {
+      const p = s.payload as AudioMixIssuePayload;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Chip
+              label={p.severity === 'major' ? 'Alvorlig' : 'Mindre'}
+              size="small"
+              color={p.severity === 'major' ? 'error' : 'warning'}
+              variant="outlined"
+            />
+            <Typography variant="caption" color="text.secondary">
+              {p.issueType}
+            </Typography>
+            <Chip
+              label={`Take ${p.takeNumber}`}
+              size="small"
+              variant="outlined"
+              sx={{ fontSize: '0.65rem', height: 18 }}
+            />
+          </Stack>
+          <Typography variant="body2">{p.description}</Typography>
+          {p.suggestion && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+              {p.suggestion}
             </Typography>
           )}
         </Box>

@@ -3373,6 +3373,62 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   }}
                   title="Best take-anbefaling"
                 />
+                <Divider />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'edit.rough-cut-draft',
+                  }}
+                  title="Rough-cut-draft"
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    // Agent auto-loader shot-list fra DB hvis ikke gitt eksplisitt
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'rough-cut-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: { sceneId: editingScene.id },
+                    });
+                  }}
+                />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'post.color-consistency-issue',
+                  }}
+                  title="Color-konsistens"
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'color-consistency-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: { sceneId: editingScene.id },
+                    });
+                  }}
+                />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'post.audio-mix-issue',
+                  }}
+                  title="Audio-mix-issues"
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'audio-mix-issue-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: { sceneId: editingScene.id },
+                    });
+                  }}
+                />
               </>
             )}
           </Stack>
