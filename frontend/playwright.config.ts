@@ -30,6 +30,9 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      // @mobile-/@tablet-merkede tester krever respektive viewports +
+      // touch-support, så de skal ikke kjøre under desktop-chromium.
+      grepInvert: /@mobile|@tablet/,
     },
     {
       name: 'mobile-chrome',

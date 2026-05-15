@@ -19,9 +19,17 @@ ALTER TABLE dance_formation
   ADD COLUMN IF NOT EXISTS tags             JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS transition_note  TEXT;
 
-ALTER TABLE dance_formation
-  ADD CONSTRAINT IF NOT EXISTS dance_formation_time_bounds_order
-  CHECK (start_sec IS NULL OR end_sec IS NULL OR end_sec >= start_sec);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'dance_formation_time_bounds_order'
+  ) THEN
+    ALTER TABLE dance_formation
+      ADD CONSTRAINT dance_formation_time_bounds_order
+      CHECK (start_sec IS NULL OR end_sec IS NULL OR end_sec >= start_sec);
+  END IF;
+END $$;
 
 -- Hot path: list per (owner, project) sortert etter start_sec for
 -- timeline-rendering. NULLS LAST slik at u-plasserte formasjoner

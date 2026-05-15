@@ -15,13 +15,28 @@ ALTER TABLE dance_video_annotation
   ADD COLUMN IF NOT EXISTS category   VARCHAR(40),
   ADD COLUMN IF NOT EXISTS confidence NUMERIC(4,3);
 
-ALTER TABLE dance_video_annotation
-  ADD CONSTRAINT IF NOT EXISTS dance_video_annotation_category_values
-  CHECK (category IS NULL OR category IN ('steps','arms','body','jumps','turns'));
+-- Postgres støtter ikke ADD CONSTRAINT IF NOT EXISTS, så vi bruker DO-block
+-- som er idempotent og trygt re-kjørbart.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'dance_video_annotation_category_values'
+  ) THEN
+    ALTER TABLE dance_video_annotation
+      ADD CONSTRAINT dance_video_annotation_category_values
+      CHECK (category IS NULL OR category IN ('steps','arms','body','jumps','turns'));
+  END IF;
 
-ALTER TABLE dance_video_annotation
-  ADD CONSTRAINT IF NOT EXISTS dance_video_annotation_confidence_range
-  CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1));
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'dance_video_annotation_confidence_range'
+  ) THEN
+    ALTER TABLE dance_video_annotation
+      ADD CONSTRAINT dance_video_annotation_confidence_range
+      CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1));
+  END IF;
+END $$;
 
 -- Indeks for kategori-filtrering på timeline (clip + kategori + tid).
 CREATE INDEX IF NOT EXISTS dance_video_annotation_clip_category_time_idx
