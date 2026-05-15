@@ -28,9 +28,11 @@ const TABS = {
 
 async function openRoleRoom(page: Page) {
   await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
-  await expect(
-    page.locator('text=/Role Room|Casting|produksjonsplanlegging/i').first()
-  ).toBeVisible({ timeout: 30_000 });
+  // Sprint A.7: bytt fra fragil tekst-locator (matchet "The Role Room" i
+  // skjult element) til stabil DOM-marker.
+  await expect(page.locator('[data-testid="casting-planner-root"]')).toBeAttached({
+    timeout: 30_000,
+  });
 }
 
 async function ensureProject(page: Page) {

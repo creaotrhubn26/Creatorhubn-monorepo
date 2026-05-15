@@ -48,7 +48,12 @@ test.describe('LiveSetMode — rendering + interactions', () => {
   });
 });
 
+// Sprint A.7: Disse er prod-smoke-tester — SEO-rutene (/vs-studiobinder,
+// /dansestudio etc.) eksisterer ikke i e2e-harness-en på localhost:5001.
+// Kjøres bare når E2E_BASE_URL peker mot ekte prod-server.
+const IS_PROD_E2E = Boolean(process.env.E2E_BASE_URL);
 test.describe('SEO landingssider — rendring', () => {
+  test.skip(!IS_PROD_E2E, 'SEO-ruter eksisterer kun på prod');
   for (const path of [
     '/vs-studiobinder',
     '/vs-castingnetworks',
@@ -70,7 +75,10 @@ test.describe('SEO landingssider — rendring', () => {
   }
 });
 
+// Sprint A.7: GEO-assets serveres bare av prod (robots.txt, llms.txt,
+// sitemap.xml). Vite-dev har ikke statiske filer for disse. Skipper lokalt.
 test.describe('GEO assets', () => {
+  test.skip(!IS_PROD_E2E, 'GEO-assets serveres kun av prod');
   test('robots.txt har AI-crawler-tillatelse', async ({ request }) => {
     const res = await request.get('/robots.txt');
     expect(res.status()).toBe(200);

@@ -8464,6 +8464,8 @@ type RoleRoomProjectWorkspaceState = {
               return (
                 <Box
                   key={project.id}
+                  data-testid={isActive ? 'role-room-current-project-chip' : 'role-room-project-chip'}
+                  data-project-id={project.id}
                   sx={{
                     width: useSlimProjectCard
                       ? { xs: 252, sm: 284, md: 308, lg: 328, xl: 344 }
@@ -15742,6 +15744,8 @@ type RoleRoomProjectWorkspaceState = {
                       return (
                         <Box
                           key={project.id}
+                          data-testid="role-room-project-selector-row"
+                          data-project-id={project.id}
                           onClick={() => { void handleSelectProjectFromSelector(project); }}
                           sx={{
                             mx: 1.5,
@@ -16525,6 +16529,8 @@ type RoleRoomProjectWorkspaceState = {
                   return (
                     <Box
                       key={`project-modal-existing-${project.id}`}
+                      data-testid="role-room-project-modal-row"
+                      data-project-id={project.id}
                       sx={{
                         display: 'grid',
                         gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(0, 1fr) auto' },

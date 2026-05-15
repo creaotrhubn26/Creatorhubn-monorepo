@@ -97,15 +97,12 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     return () => ro.disconnect();
   }, [redraw]);
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
-    if (!enabled || readOnly) return;
-    e.preventDefault();
+  const startStrokeAt = (clientX: number, clientY: number): void => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.setPointerCapture(e.pointerId);
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const x = (clientX - rect.left) / rect.width;
+    const y = (clientY - rect.top) / rect.height;
     isDrawingRef.current = true;
     currentPathRef.current = {
       tool: 'pen',
@@ -116,15 +113,48 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     redraw();
   };
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+  const extendStrokeAt = (clientX: number, clientY: number): void => {
     if (!isDrawingRef.current || !currentPathRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const x = (clientX - rect.left) / rect.width;
+    const y = (clientY - rect.top) / rect.height;
     currentPathRef.current.points.push({ x, y });
     redraw();
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!enabled || readOnly) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (canvas) {
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // setPointerCapture kan kaste i e2e med syntetiske events — ignorer
+      }
+    }
+    startStrokeAt(e.clientX, e.clientY);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    extendStrokeAt(e.clientX, e.clientY);
+  };
+
+  // Sprint A.7: Playwright `page.mouse`-events oversetter ikke pålitelig til
+  // pointer events i CDP-driven Chromium. Vi lytter også på mouse-eventene
+  // direkte slik at både ekte touch/stylus (via pointer) og e2e-tester
+  // (via mouse) trigger samme tegne-logikk.
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>): void => {
+    if (!enabled || readOnly) return;
+    if (isDrawingRef.current) return; // pointer event tok turen først
+    e.preventDefault();
+    startStrokeAt(e.clientX, e.clientY);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>): void => {
+    extendStrokeAt(e.clientX, e.clientY);
   };
 
   const finishStroke = (): void => {
@@ -153,6 +183,10 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         onPointerUp={finishStroke}
         onPointerLeave={finishStroke}
         onPointerCancel={finishStroke}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={finishStroke}
+        onMouseLeave={finishStroke}
         style={{
           width: '100%',
           height: '100%',

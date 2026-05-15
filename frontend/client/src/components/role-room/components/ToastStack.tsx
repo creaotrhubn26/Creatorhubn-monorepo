@@ -1,8 +1,18 @@
-import { createContext, useContext, useState, useCallback, useEffect, type FC, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type FC, type ReactNode } from "react";
 import { Alert, IconButton, Box } from "@mui/material";
 import type { AlertColor } from "@mui/material/Alert";
 import { Close as CloseIcon } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
+
+// Default auto-dismiss varighet pr severity. `null` = persistent.
+// success/info dempes raskt så de ikke blokkerer UI, mens error/warning
+// står lenger fordi de krever lesing.
+const DEFAULT_DURATION_MS: Record<AlertColor, number | null> = {
+  success: 5000,
+  info: 5000,
+  warning: 8000,
+  error: 10000,
+};
 
 export interface Toast {
   id: string;
@@ -45,19 +55,93 @@ export const ToastProvider: FC<ToastProviderProps> = ({
   position = 'bottom-right',
 }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // Timer-håndtak pr toast så vi kan pause/resume ved hover.
+  const dismissTimersRef = useRef<Map<string, {
+    timeoutId: ReturnType<typeof setTimeout> | null;
+    remainingMs: number;
+    pausedAt: number | null;
+    startedAt: number;
+    onClose?: () => void;
+  }>>(new Map());
 
   const removeToast = useCallback((id: string) => {
+    const handle = dismissTimersRef.current.get(id);
+    if (handle?.timeoutId !== null && handle?.timeoutId !== undefined) {
+      clearTimeout(handle.timeoutId);
+    }
+    dismissTimersRef.current.delete(id);
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
+
+  const scheduleDismiss = useCallback((id: string, durationMs: number, onClose?: () => void) => {
+    const startedAt = Date.now();
+    const timeoutId = setTimeout(() => {
+      onClose?.();
+      removeToast(id);
+    }, durationMs);
+    dismissTimersRef.current.set(id, {
+      timeoutId,
+      remainingMs: durationMs,
+      pausedAt: null,
+      startedAt,
+      onClose,
+    });
+  }, [removeToast]);
+
+  const pauseDismiss = useCallback((id: string) => {
+    const handle = dismissTimersRef.current.get(id);
+    if (!handle || handle.timeoutId === null || handle.pausedAt !== null) {
+      return;
+    }
+    clearTimeout(handle.timeoutId);
+    const elapsed = Date.now() - handle.startedAt;
+    handle.remainingMs = Math.max(0, handle.remainingMs - elapsed);
+    handle.timeoutId = null;
+    handle.pausedAt = Date.now();
+  }, []);
+
+  const resumeDismiss = useCallback((id: string) => {
+    const handle = dismissTimersRef.current.get(id);
+    if (!handle || handle.timeoutId !== null || handle.pausedAt === null) {
+      return;
+    }
+    handle.pausedAt = null;
+    handle.startedAt = Date.now();
+    if (handle.remainingMs <= 0) {
+      handle.onClose?.();
+      removeToast(id);
+      return;
+    }
+    handle.timeoutId = setTimeout(() => {
+      handle.onClose?.();
+      removeToast(id);
+    }, handle.remainingMs);
+  }, [removeToast]);
+
+  useEffect(() => {
+    const timers = dismissTimersRef.current;
+    return () => {
+      timers.forEach((handle) => {
+        if (handle.timeoutId !== null) {
+          clearTimeout(handle.timeoutId);
+        }
+      });
+      timers.clear();
+    };
   }, []);
 
   const showToast = useCallback(
     (toast: Omit<Toast, 'id'>): string => {
       const id = `toast-${Date.now()}-${Math.random()}`;
+      const severity = toast.severity ?? 'info';
+      const resolvedDuration = toast.duration === undefined
+        ? DEFAULT_DURATION_MS[severity]
+        : toast.duration;
       const newToast: Toast = {
         id,
-        duration: null,  // Default to persistent (no auto-dismiss)
-        severity: 'info',
+        severity,
         ...toast,
+        duration: resolvedDuration,
       };
 
       setToasts((prev) => {
@@ -68,43 +152,39 @@ export const ToastProvider: FC<ToastProviderProps> = ({
         return updated;
       });
 
-      // Only set timeout if duration is explicitly specified and > 0
       if (typeof newToast.duration === 'number' && newToast.duration > 0) {
-        setTimeout(() => {
-          removeToast(id);
-          newToast.onClose?.();
-        }, newToast.duration);
+        scheduleDismiss(id, newToast.duration, newToast.onClose);
       }
 
       return id;
     },
-    [maxToasts, removeToast]
+    [maxToasts, scheduleDismiss]
   );
 
   const showSuccess = useCallback(
     (message: string, duration?: number) => {
-      showToast({ message, severity: 'success', duration: duration ?? null });
+      showToast({ message, severity: 'success', duration });
     },
     [showToast]
   );
 
   const showError = useCallback(
     (message: string, duration?: number) => {
-      showToast({ message, severity: 'error', duration: duration ?? null });
+      showToast({ message, severity: 'error', duration });
     },
     [showToast]
   );
 
   const showWarning = useCallback(
     (message: string, duration?: number) => {
-      showToast({ message, severity: 'warning', duration: duration ?? null });
+      showToast({ message, severity: 'warning', duration });
     },
     [showToast]
   );
 
   const showInfo = useCallback(
     (message: string, duration?: number) => {
-      showToast({ message, severity: 'info', duration: duration ?? null });
+      showToast({ message, severity: 'info', duration });
     },
     [showToast]
   );
@@ -200,6 +280,10 @@ export const ToastProvider: FC<ToastProviderProps> = ({
               initial="initial"
               animate="animate"
               exit="exit"
+              onMouseEnter={() => pauseDismiss(toast.id)}
+              onMouseLeave={() => resumeDismiss(toast.id)}
+              onFocus={() => pauseDismiss(toast.id)}
+              onBlur={() => resumeDismiss(toast.id)}
               style={{
                 pointerEvents: 'auto',
                 maxWidth: 'min(calc(100vw - 32px), 500px)',

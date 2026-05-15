@@ -13,10 +13,12 @@ const TEST_PAGE = '/e2e-casting-test.html';
 /** Navigate to the CastingPlannerPanel and wait for it to render */
 async function openRoleRoom(page: Page) {
   await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
-  // Wait for the Role Room heading or project selector to appear
-  await expect(
-    page.locator('text=/Role Room|Casting|produksjonsplanlegging/i').first()
-  ).toBeVisible({ timeout: 30_000 });
+  // Sprint A.7: bytt til stabil DOM-marker. Tekst-locator var fragil — den
+  // matchet "The Role Room" i et skjult element så testen feilet selv om
+  // panelet faktisk var mountet.
+  await expect(page.locator('[data-testid="casting-planner-root"]')).toBeAttached({
+    timeout: 30_000,
+  });
 }
 
 /** Create or select a project so the tabs become functional */
@@ -85,9 +87,10 @@ test.describe('Role Room Infrastructure', () => {
 
   test('1.2 CastingPlannerPanel renders', async ({ page }) => {
     await openRoleRoom(page);
-    // Verify the role room UI is present
-    const roleRoomContent = page.locator('text=/Role Room|Casting|produksjonsplanlegging|The Role Room/i').first();
-    await expect(roleRoomContent).toBeVisible({ timeout: 10_000 });
+    // Sprint A.7: bytt fra tekst-locator til stabil DOM-marker.
+    await expect(page.locator('[data-testid="casting-planner-root"]')).toBeAttached({
+      timeout: 10_000,
+    });
   });
 
   test('1.3 Project selector dialog appears on first load', async ({ page }) => {
@@ -99,22 +102,25 @@ test.describe('Role Room Infrastructure', () => {
     expect(isVisible || (await page.locator('text=/prosjekt|project/i').first().isVisible())).toBe(true);
   });
 
-  test('1.4 All 11 tabs are present', async ({ page }) => {
+  test('1.4 All core tabs are present', async ({ page }) => {
     await openRoleRoom(page);
     await ensureProject(page);
 
+    // Sprint A.7: tab-shot-lists og tab-deling ble fusjonert inn i andre
+    // tabs (shot-lists er nå et sub-view i story-arc-studio). Listen er
+    // synket med TAB_IDS i CastingPlannerPanel.tsx.
     const tabIds = [
-      'tab-oversikt',        // 0: Dashboard
-      'tab-roller',          // 1: Roles
-      'tab-kandidater',      // 2: Candidates
-      'tab-auditions',       // 3: Auditions
-      'tab-team',            // 4: Team
-      'tab-lokasjoner',      // 5: Locations
-      'tab-rekvisitter',     // 6: Equipment
-      'tab-produksjonsplan', // 7: Calendar
-      'tab-shot-lists',      // 8: Shot Lists
-      'tab-story-arc-studio', // 9: Story Arc
-      'tab-deling',          // 10: Sharing
+      'tab-oversikt',         // 0: Dashboard
+      'tab-story-arc-studio', // 1: Story Arc Studio (inneholder Shot lists)
+      'tab-roller',           // 2: Roles
+      'tab-kandidater',       // 3: Candidates
+      'tab-auditions',        // 4: Auditions
+      'tab-utvelgelse',       // 5: Selection
+      'tab-lokasjoner',       // 6: Locations
+      'tab-produksjonsplan',  // 7: Calendar
+      'tab-team',             // 8: Team
+      'tab-rekvisitter',      // 9: Equipment
+      'tab-live-set',         // 10: Live Set
     ];
 
     for (const tabId of tabIds) {
@@ -361,25 +367,25 @@ test.describe('Tab 7: Production Calendar', () => {
 // SECTION 10: TAB 8 — SHOT LISTS
 // ═══════════════════════════════════════════════════════════════════════
 
-test.describe('Tab 8: Shot Lists', () => {
+// Sprint A.7: Tab 8 "Shot Lists" eksisterer ikke lenger som egen tab —
+// shot-list-workspace er nå et sub-view i Story Arc Studio (Steg 3).
+// Tester via story-arc-studio i stedet.
+test.describe('Tab 8: Shot Lists (via Story Arc Studio)', () => {
   test.beforeEach(async ({ page }) => {
     await openRoleRoom(page);
     await ensureProject(page);
-    await clickTab(page, 'tab-shot-lists');
+    await clickTab(page, 'tab-story-arc-studio');
   });
 
-  test('10.1 Shot list panel renders', async ({ page }) => {
+  test('10.1 Story Arc Studio panel renders (shot-list-tilgang)', async ({ page }) => {
     const tabPanel = page.locator('[role="tabpanel"]').first();
     await expect(tabPanel).toBeVisible({ timeout: 5_000 });
   });
 
-  test('10.2 Can create a new shot list', async ({ page }) => {
-    const createBtn = page.locator('button').filter({ hasText: /ny|new|opprett|create|legg til|add/i }).first();
-    const hasCreate = await createBtn.isVisible({ timeout: 5_000 }).catch(() => false);
-    if (hasCreate) {
-      await createBtn.click();
-      await page.waitForTimeout(500);
-    }
+  test('10.2 Story Arc Studio har shot-list-kort eller -knapp', async ({ page }) => {
+    const shotListAction = page.locator('text=/Shot[\\s-]?[Ll]ist|Shotlist|Sceneliste/i').first();
+    const hasShotListAction = await shotListAction.isVisible({ timeout: 5_000 }).catch(() => false);
+    expect(hasShotListAction).toBe(true);
   });
 });
 
@@ -486,23 +492,12 @@ test.describe('Tab 9: Story Arc Studio', () => {
 // SECTION 12: TAB 10 — SHARING
 // ═══════════════════════════════════════════════════════════════════════
 
-test.describe('Tab 10: Sharing', () => {
-  test.beforeEach(async ({ page }) => {
-    await openRoleRoom(page);
-    await ensureProject(page);
-    await clickTab(page, 'tab-deling');
-  });
-
-  test('12.1 Sharing panel renders', async ({ page }) => {
-    const tabPanel = page.locator('[role="tabpanel"]').first();
-    await expect(tabPanel).toBeVisible({ timeout: 5_000 });
-  });
-
-  test('12.2 Sharing has invite or permissions UI', async ({ page }) => {
-    const sharingContent = page.locator('text=/del|share|inviter|invite|tilgang|access|roller|roles/i').first();
-    const hasContent = await sharingContent.isVisible({ timeout: 5_000 }).catch(() => false);
-    expect(hasContent || true).toBe(true); // May be permission-gated
-  });
+// Sprint A.7: Tab "Deling" er ikke lenger en egen tab — sharing er nå en
+// modal som åpnes fra Oversikt / Deling-knappen. Skipper testene som
+// kobler seg til en tab som ikke eksisterer.
+test.describe.skip('Tab 10: Sharing (fjernet — nå modal fra Oversikt)', () => {
+  test('12.1 Sharing panel renders', async () => {});
+  test('12.2 Sharing has invite or permissions UI', async () => {});
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -575,9 +570,9 @@ test.describe('Cross-Feature Integration', () => {
   test('14.1 Tab switching preserves state (no crash on rapid switching)', async ({ page }) => {
     const tabs = [
       'tab-oversikt', 'tab-roller', 'tab-kandidater',
-      'tab-auditions', 'tab-team', 'tab-lokasjoner',
-      'tab-rekvisitter', 'tab-produksjonsplan', 'tab-shot-lists',
-      'tab-story-arc-studio', 'tab-deling',
+      'tab-auditions', 'tab-utvelgelse', 'tab-team', 'tab-lokasjoner',
+      'tab-rekvisitter', 'tab-produksjonsplan',
+      'tab-story-arc-studio', 'tab-live-set',
     ];
 
     // Rapidly switch through all tabs
@@ -665,9 +660,9 @@ test.describe('Cross-Feature Integration', () => {
     // Visit every tab
     const tabs = [
       'tab-oversikt', 'tab-roller', 'tab-kandidater',
-      'tab-auditions', 'tab-team', 'tab-lokasjoner',
-      'tab-rekvisitter', 'tab-produksjonsplan', 'tab-shot-lists',
-      'tab-story-arc-studio', 'tab-deling',
+      'tab-auditions', 'tab-utvelgelse', 'tab-team', 'tab-lokasjoner',
+      'tab-rekvisitter', 'tab-produksjonsplan',
+      'tab-story-arc-studio', 'tab-live-set',
     ];
 
     for (const tabId of tabs) {

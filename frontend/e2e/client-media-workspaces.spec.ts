@@ -1,10 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openCastingPlanner } from './helpers/role-room';
 
-/** Sprint A.6: Migrert til felles helper med session=content-producer. */
+/** Sprint A.6+A.7: Migrert til felles helper. seed=basic gir et demo-prosjekt
+ * fra harness så `selectProject` har data å treffe. */
 async function openRoleRoom(page: Page) {
   await openCastingPlanner(page, {
-    urlFlags: { session: 'content-producer' },
+    urlFlags: { session: 'content-producer', seed: 'producer-demo' },
   });
 }
 
@@ -25,7 +26,7 @@ async function dismissOnboardingIfPresent(page: Page) {
 async function selectProject(page: Page, projectName: string) {
   const projectNamePattern = new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   if (
-    await page.getByText(projectNamePattern).first().waitFor({ state: 'visible', timeout: 10_000 }).then(
+    await page.getByText(projectNamePattern).first().waitFor({ state: 'visible', timeout: 4_000 }).then(
       () => true,
       () => false,
     )
@@ -33,18 +34,28 @@ async function selectProject(page: Page, projectName: string) {
     return;
   }
 
-  const projectSelectorButton = page.getByRole('button', { name: /Alle prosjekter|Prosjekter/i }).first();
-  await projectSelectorButton.click();
+  const projectChip = page.locator('[data-testid="role-room-active-project"]').first();
+  if (await projectChip.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await projectChip.click();
+  } else {
+    const fallbackButton = page
+      .getByRole('button', { name: /Prosjekter|Velg aktivt prosjekt/i })
+      .first();
+    await fallbackButton.click();
+  }
 
-  const projectDialog = page.locator('[role="dialog"]').filter({ hasText: /prosjekter|project/i }).first();
+  const projectDialog = page.locator('[role="dialog"]').filter({ hasText: /prosjekt|project/i }).first();
   await expect(projectDialog).toBeVisible({ timeout: 10_000 });
 
   const searchField = projectDialog.getByPlaceholder(/Søk på prosjektnavn, ID eller klient/i);
   await searchField.fill(projectName);
 
-  const projectOption = projectDialog.getByText(projectNamePattern).first();
-  await expect(projectOption).toBeVisible({ timeout: 10_000 });
-  await projectOption.click();
+  const projectRow = projectDialog
+    .locator('[data-testid="role-room-project-modal-row"]')
+    .filter({ hasText: projectNamePattern })
+    .first();
+  await expect(projectRow).toBeVisible({ timeout: 10_000 });
+  await projectRow.getByRole('button', { name: /^Åpne$|^Åpent$/ }).click();
 
   await expect(projectDialog).toBeHidden({ timeout: 15_000 });
   await expect(page.getByText(projectNamePattern).first()).toBeVisible({ timeout: 15_000 });
@@ -58,10 +69,13 @@ async function openProducerMediaWorkspace(page: Page) {
   await expect(page.getByTestId('producer-media-page-brief')).toBeVisible({ timeout: 20_000 });
 }
 
+const DEMO_PROJECT_NAME = 'Northwind Drilling - Sikker start';
+
 test.describe('Client media workspaces', () => {
   test.beforeEach(async ({ page }) => {
     await openRoleRoom(page);
     await dismissOnboardingIfPresent(page);
+    await selectProject(page, DEMO_PROJECT_NAME);
     await openProducerMediaWorkspace(page);
   });
 

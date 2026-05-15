@@ -16,6 +16,27 @@ import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterI
 import { AuthProvider } from './contexts/AuthContext';
 import { authSessionService } from './components/role-room/services/authSessionService';
 import { settingsService } from './components/role-room/services/settingsService';
+import { castingService } from './components/role-room/services/castingService';
+import type { CastingProject } from './components/role-room/models/casting';
+
+// Sprint A.7: Lås `getCurrentUserId()` MED EN GANG (før React-tre mounter)
+// så all settings/casting-IO bruker samme nøkkel som vår pre-seed.
+// settingsService.getCurrentUserId leser fra window.__currentUserId.
+if (typeof window !== 'undefined') {
+  (window as Window & { __currentUserId?: string }).__currentUserId = 'e2e-test-user';
+
+  // Sprint A.7: La e2e-tester velge protected-demo-prosjekter (Northwind,
+  // TROLL) som aktivt prosjekt uten å først lage kopi. Patcher metoden
+  // som styrer "Lag kopi vs Åpne"-knappen i project-modal.
+  (castingService as unknown as { canCurrentSessionMutateProtectedDemo: () => boolean })
+    .canCurrentSessionMutateProtectedDemo = () => true;
+
+  // Sprint A.7: La e2e-tester også mutere protected-demo-data (shotlists, frames).
+  // `assertDemoProjectCanMutate` sjekker `isProtectedDemoSeedWriteActive` som
+  // respekterer dette flagget.
+  (window as Window & { __roleRoomE2eBypassProtectedDemo?: boolean })
+    .__roleRoomE2eBypassProtectedDemo = true;
+}
 
 const theme = createTheme({
   palette: { mode: 'dark' },
@@ -47,9 +68,44 @@ class TestErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
 }
 
 /**
+ * Bygger et minimalt valid demo-prosjekt som låser opp e2e-tester som
+ * trenger `selectFirstProject` (Sprint A.7). Holder shapen minimal — bare
+ * det `CastingPlannerPanel` MUST har for å rendre uten å krasje.
+ */
+function buildBasicSeedProject(): CastingProject {
+  const now = new Date().toISOString();
+  return {
+    id: 'e2e-seed-project-basic',
+    name: 'E2E Basic Test Project',
+    description: 'Seeded by test-harness-casting.tsx for e2e-tester.',
+    status: 'casting',
+    ownerId: 'e2e-test-user',
+    ownerEmail: 'e2e@test.local',
+    ownerLabel: 'E2E Tester',
+    createdBy: 'e2e-test-user',
+    createdByEmail: 'e2e@test.local',
+    createdByLabel: 'E2E Tester',
+    createdAt: now,
+    updatedAt: now,
+    // Minimale, tomme arrays — ingen seed-data nødvendig
+    roles: [],
+    candidates: [],
+    schedules: [],
+    crew: [],
+    locations: [],
+    props: [],
+    shotLists: [],
+  } as unknown as CastingProject;
+}
+
+/**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
  * when isStandalone=true and the backend is unavailable.
+ *
+ * Sprint A.7: Når URL inneholder ?seed=basic seedes ett minimalt demo-prosjekt
+ * så `selectFirstProject` i e2e-specs har en `<li>` å klikke på. Holder hele
+ * test-harness uavhengig av backend.
  */
 function SessionSeeder({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -58,6 +114,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
     const seedSession = async () => {
       const searchParams = new URLSearchParams(window.location.search);
       const sessionMode = searchParams.get('session');
+      const seedFlag = searchParams.get('seed');
       const isContentProducerSession = sessionMode === 'content-producer';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
@@ -73,6 +130,65 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       await settingsService.setSetting('virtualStudio_castingProfession', 'photographer', {
         userId: 'e2e-test-user',
       });
+      // Sprint A.7: pre-seed onboarding-completed for alle aktuelle professions
+      // så ProfessionOnboardingDialog ikke åpner og blokkerer pointer-events.
+      // getOnboardingProfession() returnerer 'producer' i content-producer-mode,
+      // 'photographer' ellers — vi setter begge for å være trygge.
+      await settingsService.setSetting(
+        'roleRoom_onboardingCompleted',
+        { photographer: true, producer: true, director: true, general: true },
+        { userId: 'e2e-test-user' },
+      );
+
+      // Sprint A.7: opt-in seed av et basic demo-prosjekt
+      const workspaceStateNamespace = isContentProducerSession
+        ? 'roleRoom_workspaceState_content_producer'
+        : 'roleRoom_workspaceState_production_team';
+
+      if (seedFlag === 'basic' || seedFlag === 'demo') {
+        try {
+          const seedProject = buildBasicSeedProject();
+          await castingService.saveProject(seedProject);
+
+          // Pre-seed workspace-state så panelet auto-restorer prosjektet
+          // som currentProject on mount.
+          await settingsService.setSetting(
+            workspaceStateNamespace,
+            {
+              projectId: seedProject.id,
+              lastRealProjectId: seedProject.id,
+              activeTab: 0,
+              storyArcView: 'main',
+              updatedAt: new Date().toISOString(),
+            },
+            { userId: 'e2e-test-user' },
+          );
+        } catch (err) {
+          console.warn('[test-harness] Failed to seed basic project:', err);
+        }
+      } else if (seedFlag === 'producer-demo') {
+        // Sprint A.7: Producer-demo seeder full Northwind-data via samme
+        // produksjonsbane som NewProjectCreationModal. Gir e2e-tester den
+        // konkrete `cp-shotlist-2`/`cp-shot-2A`-strukturen og scene-data
+        // de assertes mot.
+        try {
+          await castingService.initializeContentProducerDemoData();
+          await settingsService.setSetting(
+            workspaceStateNamespace,
+            {
+              projectId: 'content-producer-demo-2026',
+              lastRealProjectId: 'content-producer-demo-2026',
+              activeTab: 0,
+              storyArcView: 'main',
+              updatedAt: new Date().toISOString(),
+            },
+            { userId: 'e2e-test-user' },
+          );
+        } catch (err) {
+          console.warn('[test-harness] Failed to seed producer-demo project:', err);
+        }
+      }
+
       setReady(true);
     };
     seedSession();

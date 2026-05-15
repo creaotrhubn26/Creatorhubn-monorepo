@@ -126,15 +126,36 @@ async function seedAuthLocalStorage(
 }
 
 /**
- * Velg det første prosjektet i sidebar-listen og vent på at panelet rendrer
- * det aktive prosjektet. Brukes etter `openCastingPlanner`.
+ * Sørg for at et prosjekt er valgt som aktivt prosjekt før resten av testen
+ * fortsetter. Brukes etter `openCastingPlanner`.
+ *
+ * Sprint A.7: Når harness åpnes med `seed=basic` pre-seedes workspace-state
+ * med et demo-prosjekt, så panelet auto-restorer det som currentProject ved
+ * mount. I så fall er denne helperen en no-op — vi venter bare på at
+ * indikator-chippen for currentProject vises.
+ *
+ * Hvis ingen indikator dukker opp innen 4s, faller vi tilbake til å klikke
+ * første ledige prosjekt-chip (default-mode) eller åpne project-selector
+ * (content-producer-mode).
  */
 export async function selectFirstProject(page: Page): Promise<void> {
-  // Sidebar-list-element. Klikk første ikke-aksjon-knapp.
-  const projectItem = page.locator("li").first();
-  await expect(projectItem).toBeVisible({ timeout: 10_000 });
-  await projectItem.click();
-  // Liten venting så React-state propagerer
+  const currentProjectChip = page
+    .locator('[data-testid="role-room-current-project-chip"], [data-testid="role-room-active-project"]')
+    .first();
+
+  // Fast-path: prosjektet er allerede aktivt (workspace-state auto-restore).
+  try {
+    await currentProjectChip.waitFor({ state: 'visible', timeout: 4_000 });
+    await page.waitForTimeout(300);
+    return;
+  } catch {
+    // Fallback under
+  }
+
+  // Fallback: klikk første ledige prosjekt-chip i header.
+  const projectChip = page.locator('[data-testid="role-room-project-chip"]').first();
+  await expect(projectChip).toBeVisible({ timeout: 10_000 });
+  await projectChip.click();
   await page.waitForTimeout(800);
 }
 

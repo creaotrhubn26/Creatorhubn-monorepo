@@ -15,9 +15,15 @@ import {
 // som var gated bak viewport.isDesktop.
 // ────────────────────────────────────────────────────────────
 
-/** Navigate to the CastingPlannerPanel test page and wait for render */
+/** Navigate to the CastingPlannerPanel test page and wait for render.
+ * Sprint A.7: bruker `seed=basic` URL-flag for å få test-harness til å
+ * seede ett minimalt demo-prosjekt så `selectFirstProject` har en <li>
+ * å klikke på.
+ */
 async function gotoCastingPlanner(page: Page) {
-  await openCastingPlanner(page);
+  await openCastingPlanner(page, {
+    urlFlags: { seed: 'basic' },
+  });
 }
 
 /** Navigate to the Story Arc Studio tab (wraps shared helper with project-select) */
@@ -68,7 +74,7 @@ test.describe('Story Logic Panel', () => {
     await page.waitForTimeout(1000);
 
     // The StoryLogicPanel should render - look for "Story Logic System" header
-    const header = page.locator('text=/Story Logic System/i');
+    const header = page.locator('text=/Story Logic System|Storylogikk-system/i');
     await expect(header).toBeVisible({ timeout: 10_000 });
 
     // No JS errors (the critical fix - previously this would crash)
@@ -87,9 +93,9 @@ test.describe('Story Logic Panel', () => {
     await page.waitForTimeout(1000);
 
     // Check for the three phases
-    await expect(page.locator('text=/Phase 1.*Concept/i').first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('text=/Phase 2.*Logline/i').first()).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('text=/Phase 3.*Theme/i').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('text=/Phase 1.*Concept|Fase 1.*Konsept/i').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('text=/Phase 2.*Logline|Fase 2.*Logline/i').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('text=/Phase 3.*Theme|Fase 3.*Tema/i').first()).toBeVisible({ timeout: 5_000 });
   });
 
   test('Story Logic panel shows overall progress', async ({ page }) => {
@@ -101,12 +107,12 @@ test.describe('Story Logic Panel', () => {
     await page.waitForTimeout(1000);
 
     // Should show overall progress section
-    await expect(page.locator('text=/Overall Story Foundation/i').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('text=/Overall Story Foundation|Historie-selvtillit|Historiefundament/i').first()).toBeVisible({ timeout: 10_000 });
     
     // Should show phase chips
-    await expect(page.locator('text=/Concept:/i').first()).toBeVisible();
+    await expect(page.locator('text=/Concept:|Konsept:/i').first()).toBeVisible();
     await expect(page.locator('text=/Logline:/i').first()).toBeVisible();
-    await expect(page.locator('text=/Theme:/i').first()).toBeVisible();
+    await expect(page.locator('text=/Theme:|Tema:/i').first()).toBeVisible();
   });
 
   test('Story Logic panel has Save button', async ({ page }) => {
@@ -117,7 +123,7 @@ test.describe('Story Logic Panel', () => {
     await storyLogicCard.click();
     await page.waitForTimeout(1000);
 
-    await expect(page.getByRole('button', { name: /Save/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /^(Save|Lagre)$/i })).toBeVisible({ timeout: 10_000 });
   });
 
   test('Concept phase expandable with form fields', async ({ page }) => {
@@ -130,11 +136,11 @@ test.describe('Story Logic Panel', () => {
 
     // Phase 1 should be expanded by default
     // Look for Core Premise field
-    const corePremise = page.locator('label:has-text("Core Premise")').first();
+    const corePremise = page.locator('label').filter({ hasText: /Core Premise|Kjernepremiss/i }).first();
     await expect(corePremise).toBeVisible({ timeout: 10_000 });
 
     // Look for Primary Genre select
-    const genre = page.locator('label:has-text("Primary Genre")').first();
+    const genre = page.locator('label').filter({ hasText: /Primary Genre|Hovedsjanger/i }).first();
     await expect(genre).toBeVisible();
   });
 
@@ -147,7 +153,7 @@ test.describe('Story Logic Panel', () => {
     await page.waitForTimeout(1000);
 
     // Find the Core Premise textarea via its label
-    const corePremiseLabel = page.locator('label:has-text("Core Premise")');
+    const corePremiseLabel = page.locator('label').filter({ hasText: /Core Premise|Kjernepremiss/i });
     await expect(corePremiseLabel).toBeVisible({ timeout: 10_000 });
 
     // Find the textarea within the same form group
@@ -168,7 +174,7 @@ test.describe('Story Logic Panel', () => {
     await page.waitForTimeout(1000);
 
     // Should see Story Logic System
-    await expect(page.locator('text=/Story Logic System/i').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('text=/Story Logic System|Storylogikk-system/i').first()).toBeVisible({ timeout: 10_000 });
 
     // Click back button
     const backButton = page.locator('button').filter({ hasText: /Tilbake|Back/i }).first();

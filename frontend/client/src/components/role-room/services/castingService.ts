@@ -274,8 +274,21 @@ async function runProtectedDemoSeedWrite<T>(callback: () => Promise<T>): Promise
   }
 }
 
-const isProtectedDemoSeedWriteActive = (): boolean =>
-  protectedDemoSeedWriteDepth > 0 && isRoleRoomDemoSeedAllowed();
+const isProtectedDemoSeedWriteActive = (): boolean => {
+  if (protectedDemoSeedWriteDepth > 0 && isRoleRoomDemoSeedAllowed()) {
+    return true;
+  }
+  // E2e-escape-hatch: test-harness setter __roleRoomE2eBypassProtectedDemo
+  // for å la e2e-tester mutere protected-demo-prosjekter (Northwind / TROLL)
+  // uten å gå via "Lag kopi"-flyten. Settes kun i test-harness, ikke i prod.
+  if (
+    typeof window !== 'undefined'
+    && (window as Window & { __roleRoomE2eBypassProtectedDemo?: boolean }).__roleRoomE2eBypassProtectedDemo === true
+  ) {
+    return true;
+  }
+  return false;
+};
 
 const canCurrentSessionMutateProtectedDemo = (): boolean => {
   return isProtectedDemoSeedWriteActive();

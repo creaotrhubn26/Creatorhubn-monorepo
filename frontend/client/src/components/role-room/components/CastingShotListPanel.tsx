@@ -1727,7 +1727,17 @@ export function CastingShotListPanel({
       try {
         await castingService.saveShotList(projectId, updatedShotList);
         const lists = await castingService.getShotLists(projectId);
-        setShotLists(Array.isArray(lists) ? lists : []);
+        // Sprint A.7 / fix: `castingService.saveShotList` muterer
+        // `project.shotLists` in-place i offline-fallback-pathen, så
+        // `getShotLists` kan returnere SAMME array-referanse som forrige
+        // `setShotLists`-kall — React bailouter på Object.is og hopper over
+        // re-render. Klon arrayet (og hver liste) så React faktisk
+        // commiter den nye state-en.
+        setShotLists(
+          Array.isArray(lists)
+            ? lists.map((list) => ({ ...list, shots: [...list.shots] }))
+            : [],
+        );
         if (successMessage) {
           toast.showSuccess(successMessage);
         }
@@ -1773,6 +1783,8 @@ export function CastingShotListPanel({
           toast.showSuccess(successMessage);
         } else if (syncedCount > 0) {
           toast.showSuccess(`Storyboard lagret og ${syncedCount} shot oppdatert`);
+        } else {
+          toast.showSuccess('Storyboard lagret');
         }
 
         if (onUpdate) onUpdate();

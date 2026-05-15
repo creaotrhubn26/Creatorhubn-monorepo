@@ -36,6 +36,7 @@ const API_BASE = '/api/role-room';
 const TIMELINE_NAMESPACE = 'role-room-producer-timeline';
 const ECONOMY_NAMESPACE = 'role-room-producer-economy';
 const REVIEWS_NAMESPACE = 'role-room-producer-reviews';
+const CLIENT_MATERIALS_NAMESPACE = 'role-room-producer-client-materials';
 const SYNTHETIC_REVIEW_SOURCES = new Set(['codex-smoke', 'cli-smoke', 'smoke-test']);
 const SYNTHETIC_REVIEW_TITLE_PATTERN = /^(auto review|smoke review|rbac review|qa review(?:\s+\d+)?|qa budget sync|budget package \d+|codex-review-)/i;
 const CLIENT_INTAKE_TIMELINE_ENTITY_ID = 'client-intake';
@@ -1418,12 +1419,33 @@ async function fetchClientIntake(projectId: string): Promise<ProducerClientIntak
   return normalizeClientIntake(response.intake ?? {});
 }
 
-async function fetchClientMaterials(projectId: string): Promise<ProducerClientMaterial[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/client-materials`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return items
+async function readClientMaterialsFromStorage(projectId: string): Promise<ProducerClientMaterial[]> {
+  const stored = await settingsService.getSetting<ProducerClientMaterial[]>(CLIENT_MATERIALS_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) {
+    return [];
+  }
+  return stored
     .map((item) => normalizeClientMaterial(item, projectId))
     .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+}
+
+async function writeClientMaterialsToStorage(projectId: string, items: ProducerClientMaterial[]): Promise<void> {
+  await settingsService.setSetting(CLIENT_MATERIALS_NAMESPACE, items, { projectId });
+}
+
+async function fetchClientMaterials(projectId: string): Promise<ProducerClientMaterial[]> {
+  try {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/client-materials`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return items
+      .map((item) => normalizeClientMaterial(item, projectId))
+      .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+  } catch (error) {
+    // Backend ikke tilgjengelig (offline / e2e-harness uten server) — bruk
+    // localStorage som fallback. Skriver/leser samme namespace som createClientMaterial.
+    console.warn('[producerWorkflowService] fetchClientMaterials falt tilbake til localStorage:', error);
+    return readClientMaterialsFromStorage(projectId);
+  }
 }
 
 const CLIENT_INPUT_READ_CACHE_TTL_MS = 3_000;
@@ -2799,20 +2821,46 @@ export const producerWorkflowService = {
     projectId: string,
     payload: CreateProducerClientMaterialInput,
   ): Promise<ProducerClientMaterial> {
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/client-materials`, {
-      method: 'POST',
-      body: JSON.stringify({
-        entryType: payload.entryType,
+    let item: ProducerClientMaterial;
+    try {
+      const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/client-materials`, {
+        method: 'POST',
+        body: JSON.stringify({
+          entryType: payload.entryType,
+          title: payload.title,
+          description: payload.description ?? null,
+          externalUrl: payload.externalUrl ?? null,
+          phase: payload.phase ?? null,
+          linkedShotListId: payload.linkedShotListId ?? null,
+          status: payload.status ?? 'provided',
+          metadata: payload.metadata ?? {},
+        }),
+      });
+      item = normalizeClientMaterial(response.item, projectId);
+    } catch (error) {
+      // Backend ikke tilgjengelig — lag item lokalt og lagre i localStorage.
+      // Matcher mønsteret fra castingService.saveProject så offline-flyten
+      // er konsistent på tvers av services.
+      console.warn('[producerWorkflowService] createClientMaterial falt tilbake til localStorage:', error);
+      item = normalizeClientMaterial({
+        id: generateId('producer-client-material'),
+        project_id: projectId,
+        entry_type: payload.entryType,
         title: payload.title,
         description: payload.description ?? null,
-        externalUrl: payload.externalUrl ?? null,
+        external_url: payload.externalUrl ?? null,
         phase: payload.phase ?? null,
-        linkedShotListId: payload.linkedShotListId ?? null,
+        linked_shot_list_id: payload.linkedShotListId ?? null,
         status: payload.status ?? 'provided',
         metadata: payload.metadata ?? {},
-      }),
-    });
-    const item = normalizeClientMaterial(response.item, projectId);
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      }, projectId);
+    }
+
+    const existing = await readClientMaterialsFromStorage(projectId);
+    await writeClientMaterialsToStorage(projectId, [item, ...existing.filter((entry) => entry.id !== item.id)]);
+
     clearClientInputReadCache(projectId);
     clearProducerWorkflowReadCache(projectId);
     emitProducerWorkflowEvent({

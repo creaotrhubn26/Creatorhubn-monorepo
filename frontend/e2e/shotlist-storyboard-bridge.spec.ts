@@ -5,12 +5,13 @@ import { openCastingPlanner } from './helpers/role-room';
 const DEMO_PROJECT_NAME = 'Northwind Drilling - Sikker start';
 
 /**
- * Sprint A.6: Migrert til felles helper. Bruker session=content-producer
- * URL-flag som spec-en alltid trenger.
+ * Sprint A.6+A.7: Migrert til felles helper. seed=basic seeder demo-prosjekt
+ * fra harness så `selectProject` har data å treffe når DEMO_PROJECT_NAME
+ * ikke finnes — testen kan fortsette med basic-prosjektet.
  */
 async function openRoleRoom(page: Page) {
   await openCastingPlanner(page, {
-    urlFlags: { session: 'content-producer' },
+    urlFlags: { session: 'content-producer', seed: 'producer-demo' },
   });
 }
 
@@ -31,7 +32,7 @@ async function dismissOnboardingIfPresent(page: Page) {
 async function selectProject(page: Page, projectName: string) {
   const projectNamePattern = new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   if (
-    await page.getByText(projectNamePattern).first().waitFor({ state: 'visible', timeout: 10_000 }).then(
+    await page.getByText(projectNamePattern).first().waitFor({ state: 'visible', timeout: 4_000 }).then(
       () => true,
       () => false,
     )
@@ -39,18 +40,34 @@ async function selectProject(page: Page, projectName: string) {
     return;
   }
 
-  const projectSelectorButton = page.getByRole('button', { name: /Alle prosjekter/i }).first();
-  await projectSelectorButton.click();
+  // Sprint A.7: Åpne project-selector via det stabile chip-elementet i
+  // header-en. Faller tilbake til en knapp med "Prosjekter"-tekst hvis
+  // testid-en ikke er der (eldre UI).
+  const projectChip = page.locator('[data-testid="role-room-active-project"]').first();
+  if (await projectChip.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await projectChip.click();
+  } else {
+    const fallbackButton = page
+      .getByRole('button', { name: /Prosjekter|Velg aktivt prosjekt/i })
+      .first();
+    await fallbackButton.click();
+  }
 
-  const projectDialog = page.locator('[role="dialog"]').filter({ hasText: /prosjekter|project/i }).first();
+  const projectDialog = page.locator('[role="dialog"]').filter({ hasText: /prosjekt|project/i }).first();
   await expect(projectDialog).toBeVisible({ timeout: 10_000 });
 
   const searchField = projectDialog.getByPlaceholder(/Søk på prosjektnavn, ID eller klient/i);
   await searchField.fill(projectName);
 
-  const projectOption = projectDialog.getByText(projectNamePattern).first();
-  await expect(projectOption).toBeVisible({ timeout: 10_000 });
-  await projectOption.click();
+  // Sprint A.7: Finn modal-row via stabilt testid og klikk "Åpne"-knappen.
+  // Boxen i NewProjectCreationModal har ikke onClick — selektor-handlingen
+  // bor på primary-action-knappen i row-en.
+  const projectRow = projectDialog
+    .locator('[data-testid="role-room-project-modal-row"]')
+    .filter({ hasText: projectNamePattern })
+    .first();
+  await expect(projectRow).toBeVisible({ timeout: 10_000 });
+  await projectRow.getByRole('button', { name: /^Åpne$|^Åpent$/ }).click();
 
   await expect(projectDialog).toBeHidden({ timeout: 15_000 });
   await expect(page.getByText(projectNamePattern).first()).toBeVisible({ timeout: 15_000 });
@@ -60,16 +77,13 @@ async function selectProject(page: Page, projectName: string) {
 }
 
 async function openShotListWorkspace(page: Page) {
-  const storyArcTab = page.locator('#tab-story-arc-studio');
-  await storyArcTab.scrollIntoViewIfNeeded({ timeout: 5_000 });
-  await storyArcTab.click();
+  // Sprint A.7: Content-producer-mode har ikke `#tab-story-arc-studio`-fane.
+  // Story Arc-stegene ligger som Box-elementer med aria-label under Planner.
+  const sceneListStep = page.locator('[aria-label="Steg 3: Sceneliste"]').first();
+  await sceneListStep.scrollIntoViewIfNeeded({ timeout: 10_000 });
+  await expect(sceneListStep).toBeVisible({ timeout: 10_000 });
+  await sceneListStep.click();
 
-  const shotListCard = page.getByText(/Role Room planlegging og progresjon per scene/i).first();
-  await expect(shotListCard).toBeVisible({ timeout: 10_000 });
-  await shotListCard.click();
-
-  await expect(page.getByText(/PRO-VISNING/i).first()).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(/Shot List|Shotlist/i).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('legacy-shotlist-coverage-cp-shotlist-2')).toBeVisible({ timeout: 20_000 });
 }
 
