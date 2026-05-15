@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Box, Stack, Typography, Chip, IconButton, Tooltip } from '@mui/material';
-import { ContentCopy as CopyIcon, Public as PublicIcon } from '@mui/icons-material';
+import { ContentCopy as CopyIcon, Public as PublicIcon, Warning as WarningIcon } from '@mui/icons-material';
 import { EntityCrudPanel, type EntityField } from './EntityCrudPanel';
 import * as ops from './danceAdminOpsService';
 import { MusicWaveformTrack } from './MusicWaveformTrack';
@@ -430,7 +430,107 @@ const ReelShareControls: React.FC<{ clip: ops.DanceReelClip; onToggle: () => voi
 
 // ─── Grants ────────────────────────────────────────────────────────────
 
+// F9-1: norske stipend-templates
+const GRANT_TEMPLATES: ReadonlyArray<{
+  id: string;
+  label: string;
+  fundName: string;
+  defaults: { title?: string; applicationText?: string };
+}> = [
+  {
+    id: 'kulturradet_fri_scenekunst',
+    label: 'Kulturrådet · Fri scenekunst — dans',
+    fundName: 'kulturradet',
+    defaults: {
+      title: 'Fri scenekunst — dans 2026',
+      applicationText: 'Prosjektbeskrivelse:\n\nKunstnerisk forankring:\n\nMålgruppe:\n\nBudsjett-oversikt:\n',
+    },
+  },
+  {
+    id: 'fond_lyd_bilde',
+    label: 'Fond for lyd og bilde',
+    fundName: 'fond_lyd_bilde',
+    defaults: {
+      title: 'Fond for lyd og bilde — produksjon',
+      applicationText: 'Produksjonsbeskrivelse:\n\nLeveranseplan:\n\nMedvirkende:\n',
+    },
+  },
+  {
+    id: 'skuda_residens',
+    label: 'Skuda · Sommer-residens',
+    fundName: 'other',
+    defaults: { title: 'Skuda sommer-residens', applicationText: 'Residensplan:\n' },
+  },
+  {
+    id: 'kommunal',
+    label: 'Kommunalt tilskudd',
+    fundName: 'kommunal',
+    defaults: { title: 'Kommunalt prosjekttilskudd', applicationText: '' },
+  },
+];
+
+interface GrantsStatProps {
+  list: ops.DanceGrantApplication[];
+}
+
+const GrantsStatStrip: React.FC<GrantsStatProps> = ({ list }) => {
+  const stats = React.useMemo(() => {
+    let drafts = 0, submitted = 0, awarded = 0, rejected = 0;
+    let totalAwardedKr = 0;
+    for (const g of list) {
+      if (g.status === 'draft') drafts += 1;
+      else if (g.status === 'submitted' || g.status === 'in_review') submitted += 1;
+      else if (g.status === 'awarded') { awarded += 1; totalAwardedKr += g.amountAwardedKr ?? 0; }
+      else if (g.status === 'rejected') rejected += 1;
+    }
+    return { drafts, submitted, awarded, rejected, totalAwardedKr };
+  }, [list]);
+  const formatNok = (n: number): string =>
+    new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n);
+  return (
+    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="grants-stat-strip">
+      <Chip size="small" label={`Utkast: ${stats.drafts}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: '#9ca3af' }} />
+      <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa' }} />
+      <Chip size="small" label={`Innvilget: ${stats.awarded}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399' }} />
+      <Chip size="small" label={`Avslått: ${stats.rejected}`} sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#f87171' }} />
+      {stats.totalAwardedKr > 0 ? (
+        <Chip
+          size="small"
+          label={`Tildelt totalt: ${formatNok(stats.totalAwardedKr)}`}
+          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700 }}
+        />
+      ) : null}
+    </Stack>
+  );
+};
+
 export const GrantsPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
+  const [grants, setGrants] = React.useState<ops.DanceGrantApplication[]>([]);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void ops.listGrants(projectId).then((rows) => {
+      if (!cancelled) setGrants(rows);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [projectId, refreshKey]);
+
+  const applyTemplate = async (templateId: string): Promise<void> => {
+    const t = GRANT_TEMPLATES.find((x) => x.id === templateId);
+    if (!t) return;
+    try {
+      await ops.createGrant({
+        projectId,
+        title: t.defaults.title ?? 'Ny søknad',
+        fundName: t.fundName as ops.GrantFundName,
+        status: 'draft',
+        applicationText: t.defaults.applicationText ?? null,
+      });
+      setRefreshKey((k) => k + 1);
+    } catch { /* silent */ }
+  };
+
   const fields: EntityField[] = [
     { key: 'title', label: 'Tittel', type: { kind: 'text', required: true } },
     {
@@ -467,26 +567,103 @@ export const GrantsPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
     { key: 'attachments', label: 'Vedlegg-URLer', type: { kind: 'string-array' } },
   ];
   return (
-    <EntityCrudPanel<ops.DanceGrantApplication>
-      title="Tilskudd"
-      description="Søknader til Kulturrådet, Fond for lyd og bilde, kommunale midler. Følg statusen fra utkast til vedtak."
-      fields={fields}
-      primaryField="title"
-      searchableFields={['title', 'fundName']}
-      list={() => ops.listGrants(projectId)}
-      create={(input) => ops.createGrant({ ...input, projectId, title: input.title ?? 'Ny søknad' })}
-      patch={ops.patchGrant}
-      remove={ops.deleteGrant}
-      newDefaults={{ status: 'draft', fundName: 'kulturradet', attachments: [] }}
-      emptyText="Ingen søknader registrert ennå."
-      panelTestId="admin-ops-grants"
-    />
+    <Box data-testid="admin-ops-grants-shell">
+      <GrantsStatStrip list={grants} />
+      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="grants-templates">
+        <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700, alignSelf: 'center', mr: 0.5 }}>
+          MAL
+        </Typography>
+        {GRANT_TEMPLATES.map((t) => (
+          <Chip
+            key={t.id}
+            size="small"
+            label={t.label}
+            onClick={() => void applyTemplate(t.id)}
+            data-testid={`grants-template-${t.id}`}
+            sx={{
+              height: 22, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
+              bgcolor: 'rgba(167,139,250,0.12)',
+              color: '#c4b5fd',
+              border: '1px solid rgba(167,139,250,0.35)',
+              '&:hover': { bgcolor: 'rgba(167,139,250,0.22)' },
+            }}
+          />
+        ))}
+      </Stack>
+      <EntityCrudPanel<ops.DanceGrantApplication>
+        key={refreshKey}
+        title="Tilskudd"
+        description="Søknader til Kulturrådet, Fond for lyd og bilde, kommunale midler. Følg statusen fra utkast til vedtak."
+        fields={fields}
+        primaryField="title"
+        searchableFields={['title', 'fundName']}
+        list={() => ops.listGrants(projectId)}
+        create={(input) => ops.createGrant({ ...input, projectId, title: input.title ?? 'Ny søknad' })}
+        patch={ops.patchGrant}
+        remove={ops.deleteGrant}
+        newDefaults={{ status: 'draft', fundName: 'kulturradet', attachments: [] }}
+        emptyText="Ingen søknader registrert ennå."
+        panelTestId="admin-ops-grants"
+      />
+    </Box>
   );
 };
 
 // ─── Invoices ──────────────────────────────────────────────────────────
 
+const InvoicesStatStrip: React.FC<{ list: ops.DanceInvoice[] }> = ({ list }) => {
+  const stats = React.useMemo(() => {
+    let draft = 0, sent = 0, paid = 0, overdue = 0;
+    let totalSent = 0, totalPaid = 0, totalOutstanding = 0;
+    for (const i of list) {
+      const total = (i.amountKr ?? 0) + (i.vatKr ?? 0);
+      if (i.status === 'draft') draft += 1;
+      else if (i.status === 'sent') { sent += 1; totalSent += total; totalOutstanding += total; }
+      else if (i.status === 'paid') { paid += 1; totalPaid += total; }
+      else if (i.status === 'overdue') { overdue += 1; totalOutstanding += total; }
+    }
+    return { draft, sent, paid, overdue, totalSent, totalPaid, totalOutstanding };
+  }, [list]);
+  const formatNok = (n: number): string =>
+    new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n);
+  return (
+    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="invoices-stat-strip">
+      <Chip size="small" label={`Utkast: ${stats.draft}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: '#9ca3af' }} />
+      <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa' }} />
+      <Chip size="small" label={`Betalt: ${stats.paid}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399' }} />
+      {stats.overdue > 0 ? (
+        <Chip
+          size="small"
+          icon={<WarningIcon sx={{ fontSize: 14 }} />}
+          label={`Forfalt: ${stats.overdue}`}
+          sx={{ bgcolor: 'rgba(239,68,68,0.22)', color: '#fca5a5', fontWeight: 700, border: '1px solid rgba(239,68,68,0.45)' }}
+        />
+      ) : null}
+      <Chip
+        size="small"
+        label={`Betalt totalt: ${formatNok(stats.totalPaid)}`}
+        sx={{ bgcolor: 'rgba(52,211,153,0.12)', color: '#86efac' }}
+      />
+      {stats.totalOutstanding > 0 ? (
+        <Chip
+          size="small"
+          label={`Utestående: ${formatNok(stats.totalOutstanding)}`}
+          sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontWeight: 700 }}
+        />
+      ) : null}
+    </Stack>
+  );
+};
+
 export const InvoicesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
+  const [invoices, setInvoices] = React.useState<ops.DanceInvoice[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    void ops.listInvoices(projectId).then((rows) => {
+      if (!cancelled) setInvoices(rows);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [projectId]);
   const fields: EntityField[] = [
     { key: 'customerName', label: 'Kundenavn', type: { kind: 'text', required: true } },
     { key: 'invoiceNumber', label: 'Fakturanr', type: { kind: 'text' } },
@@ -522,26 +699,88 @@ export const InvoicesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
     { key: 'notes', label: 'Notater', type: { kind: 'text', multiline: true } },
   ];
   return (
-    <EntityCrudPanel<ops.DanceInvoice>
-      title="Fakturering (kunde)"
-      description="Manuelle fakturaer mot kunder (kommune-avtaler, leie-betalinger osv). Stripe-abonnement til CreatorHub er separat — se betalings-panelet."
-      fields={fields}
-      primaryField="customerName"
-      searchableFields={['customerName', 'invoiceNumber', 'customerOrgNo']}
-      list={() => ops.listInvoices(projectId)}
-      create={(input) => ops.createInvoice({ ...input, projectId, customerName: input.customerName ?? 'Ny kunde' })}
-      patch={ops.patchInvoice}
-      remove={ops.deleteInvoice}
-      newDefaults={{ status: 'draft', deliveryMethod: 'manual', amountKr: 0, vatKr: 0 }}
-      emptyText="Ingen fakturaer ennå."
-      panelTestId="admin-ops-invoices"
-    />
+    <Box data-testid="admin-ops-invoices-shell">
+      <InvoicesStatStrip list={invoices} />
+      <EntityCrudPanel<ops.DanceInvoice>
+        title="Fakturering (kunde)"
+        description="Manuelle fakturaer mot kunder (kommune-avtaler, leie-betalinger osv). Stripe-abonnement til CreatorHub er separat — se betalings-panelet."
+        fields={fields}
+        primaryField="customerName"
+        searchableFields={['customerName', 'invoiceNumber', 'customerOrgNo']}
+        list={() => ops.listInvoices(projectId)}
+        create={(input) => ops.createInvoice({ ...input, projectId, customerName: input.customerName ?? 'Ny kunde' })}
+        patch={ops.patchInvoice}
+        remove={ops.deleteInvoice}
+        newDefaults={{ status: 'draft', deliveryMethod: 'manual', amountKr: 0, vatKr: 0 }}
+        emptyText="Ingen fakturaer ennå."
+        panelTestId="admin-ops-invoices"
+      />
+    </Box>
   );
 };
 
 // ─── Union ─────────────────────────────────────────────────────────────
 
+const UnionWorkDaysStrip: React.FC<{ memberships: ops.DanceUnionMembership[] }> = ({ memberships }) => {
+  const stats = React.useMemo(() => {
+    const now = new Date();
+    const yyyy = String(now.getFullYear());
+    const quarters: Record<string, number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+    let totalThisYear = 0;
+    for (const m of memberships) {
+      for (const d of (m.workDays ?? []) as ops.UnionWorkDay[]) {
+        if (!d.ymd.startsWith(yyyy)) continue;
+        totalThisYear += 1;
+        const mm = parseInt(d.ymd.slice(5, 7), 10);
+        const q = mm <= 3 ? 'Q1' : mm <= 6 ? 'Q2' : mm <= 9 ? 'Q3' : 'Q4';
+        quarters[q] += 1;
+      }
+    }
+    return { totalThisYear, quarters };
+  }, [memberships]);
+  const max = Math.max(1, ...Object.values(stats.quarters));
+  return (
+    <Box data-testid="union-workdays-strip" sx={{ p: 1.5, pb: 0 }}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+        <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700 }}>
+          ARBEIDSDAGER {new Date().getFullYear()}
+        </Typography>
+        <Chip
+          size="small"
+          label={`${stats.totalThisYear} dager`}
+          sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+        />
+      </Stack>
+      <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+        {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((q) => {
+          const count = stats.quarters[q];
+          const pct = (count / max) * 100;
+          return (
+            <Box key={q} sx={{ flex: 1 }} data-testid={`union-quarter-${q}`}>
+              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.25 }}>
+                <Typography sx={{ fontSize: 9.5, color: '#9ca3af', fontWeight: 700 }}>{q}</Typography>
+                <Typography sx={{ fontSize: 10, color: '#e5e7eb' }}>{count}</Typography>
+              </Stack>
+              <Box sx={{ height: 4, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
+                <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: '#a78bfa' }} />
+              </Box>
+            </Box>
+          );
+        })}
+      </Stack>
+    </Box>
+  );
+};
+
 export const UnionPanel: React.FC<{ projectId: string | null }> = () => {
+  const [memberships, setMemberships] = React.useState<ops.DanceUnionMembership[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    void ops.listUnion().then((rows) => {
+      if (!cancelled) setMemberships(rows);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   const fields: EntityField[] = [
     {
       key: 'organization', label: 'Organisasjon', type: {
@@ -577,20 +816,23 @@ export const UnionPanel: React.FC<{ projectId: string | null }> = () => {
     },
   ];
   return (
-    <EntityCrudPanel<ops.DanceUnionMembership>
-      title="Forbund"
-      description="Skuda/NoDa/Sko-medlemstatus. Loggfør arbeidsdager for tariff-statistikk og sykepenge-grunnlag."
-      fields={fields}
-      primaryField="organization"
-      searchableFields={['memberId']}
-      list={ops.listUnion}
-      create={(input) => ops.createUnion(input)}
-      patch={ops.patchUnion}
-      remove={ops.deleteUnion}
-      newDefaults={{ organization: 'skuda', status: 'active' }}
-      emptyText="Ingen forbund-medlemskap registrert ennå."
-      panelTestId="admin-ops-union"
-    />
+    <Box data-testid="admin-ops-union-shell">
+      <UnionWorkDaysStrip memberships={memberships} />
+      <EntityCrudPanel<ops.DanceUnionMembership>
+        title="Forbund"
+        description="Skuda/NoDa/Sko-medlemstatus. Loggfør arbeidsdager for tariff-statistikk og sykepenge-grunnlag."
+        fields={fields}
+        primaryField="organization"
+        searchableFields={['memberId']}
+        list={ops.listUnion}
+        create={(input) => ops.createUnion(input)}
+        patch={ops.patchUnion}
+        remove={ops.deleteUnion}
+        newDefaults={{ organization: 'skuda', status: 'active' }}
+        emptyText="Ingen forbund-medlemskap registrert ennå."
+        panelTestId="admin-ops-union"
+      />
+    </Box>
   );
 };
 
