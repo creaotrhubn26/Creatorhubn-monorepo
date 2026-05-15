@@ -897,14 +897,14 @@ export function TrialBanner(): React.ReactElement | null {
   const days = billing.daysUntil(expires);
   const isComp = sub.billingPeriod === 'comp' || sub.billingPeriod === 'tester';
   return (
-    <Box data-testid="trial-banner"
+    <Box
+      data-testid="dance-trial-banner"
       sx={{
         bgcolor: isComp ? 'rgba(139,92,246,0.18)' : 'rgba(251,191,36,0.18)',
         color: isComp ? PURPLE_LIGHT : '#fbbf24',
         px: 2, py: 0.75, borderRadius: 1, fontSize: 12, fontWeight: 700,
         display: 'flex', alignItems: 'center', gap: 1,
       }}
-      data-testid="dance-trial-banner"
     >
       <StarIcon sx={{ fontSize: 16 }} />
       <Typography sx={{ fontSize: 12, fontWeight: 700, color: 'inherit' }}>

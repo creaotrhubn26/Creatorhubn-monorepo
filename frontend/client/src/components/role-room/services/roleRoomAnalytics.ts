@@ -109,51 +109,51 @@ interface SeoCrossLinkClickedParams {
 export const roleRoomAnalytics = {
   // P0 — Core conversion funnel
   projectCreated: (p: ProjectCreatedParams) =>
-    trackEvent('role_room_project_created', p as Record<string, unknown>),
+    trackEvent('role_room_project_created', { ...p }),
 
   roleCreated: (p: RoleCreatedParams) =>
-    trackEvent('role_room_role_created', p as Record<string, unknown>),
+    trackEvent('role_room_role_created', { ...p }),
 
   candidateAdded: (p: CandidateAddedParams) =>
-    trackEvent('role_room_candidate_added', p as Record<string, unknown>),
+    trackEvent('role_room_candidate_added', { ...p }),
 
   auditionCreated: (p: AuditionCreatedParams) =>
-    trackEvent('role_room_audition_created', p as Record<string, unknown>),
+    trackEvent('role_room_audition_created', { ...p }),
 
   scheduleConfirmed: (p: ScheduleConfirmedParams) =>
-    trackEvent('role_room_schedule_confirmed', p as Record<string, unknown>),
+    trackEvent('role_room_schedule_confirmed', { ...p }),
 
   // P1 — Engagement & feature usage
   tabChanged: (p: TabChangedParams) =>
-    trackEvent('role_room_tab_changed', p as Record<string, unknown>),
+    trackEvent('role_room_tab_changed', { ...p }),
 
   auditionViewToggled: (p: AuditionViewToggledParams) =>
-    trackEvent('role_room_audition_view_toggled', p as Record<string, unknown>),
+    trackEvent('role_room_audition_view_toggled', { ...p }),
 
   locationAdded: (p: LocationAddedParams) =>
-    trackEvent('role_room_location_added', p as Record<string, unknown>),
+    trackEvent('role_room_location_added', { ...p }),
 
   locationAnalyzed: (p: LocationAnalyzedParams) =>
-    trackEvent('role_room_location_analyzed', p as Record<string, unknown>),
+    trackEvent('role_room_location_analyzed', { ...p }),
 
   equipmentAdded: (p: EquipmentAddedParams) =>
-    trackEvent('role_room_equipment_added', p as Record<string, unknown>),
+    trackEvent('role_room_equipment_added', { ...p }),
 
   crewAssigned: (p: CrewAssignedParams) =>
-    trackEvent('role_room_crew_assigned', p as Record<string, unknown>),
+    trackEvent('role_room_crew_assigned', { ...p }),
 
   storyboardFrameCreated: (p: StoryboardFrameCreatedParams) =>
-    trackEvent('role_room_storyboard_frame_created', p as Record<string, unknown>),
+    trackEvent('role_room_storyboard_frame_created', { ...p }),
 
   // SEO landing pages — viktige for å måle organisk-trafikk-funnel
   seoPageViewed: (p: SeoPageViewedParams) =>
-    trackEvent('role_room_seo_page_viewed', p as Record<string, unknown>),
+    trackEvent('role_room_seo_page_viewed', { ...p }),
 
   seoCtaClicked: (p: SeoCtaClickedParams) =>
-    trackEvent('role_room_seo_cta_clicked', p as Record<string, unknown>),
+    trackEvent('role_room_seo_cta_clicked', { ...p }),
 
   seoCrossLinkClicked: (p: SeoCrossLinkClickedParams) =>
-    trackEvent('role_room_seo_cross_link_clicked', p as Record<string, unknown>),
+    trackEvent('role_room_seo_cross_link_clicked', { ...p }),
 };
 
 export type RoleRoomAnalytics = typeof roleRoomAnalytics;

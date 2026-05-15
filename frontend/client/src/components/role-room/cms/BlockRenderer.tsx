@@ -241,15 +241,19 @@ function HeroView({ block }: { block: HeroBlock }) {
   );
 }
 
-const PURIFY_CONFIG: DOMPurify.Config = {
+// RETURN_DOM_FRAGMENT/RETURN_DOM eksplisitt false → TS plukker overloaden
+// som returnerer string (ikke string | HTMLElement | DocumentFragment).
+const PURIFY_CONFIG = {
   ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 's', 'u', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'hr', 'code', 'blockquote'],
   ALLOWED_ATTR: ['href', 'target', 'rel'],
   FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick'],
+  RETURN_DOM_FRAGMENT: false as const,
+  RETURN_DOM: false as const,
 };
 
 function sanitizeHtml(html: string): string {
   if (typeof window === 'undefined') return '';
-  return DOMPurify.sanitize(html, PURIFY_CONFIG) as string;
+  return DOMPurify.sanitize(html, PURIFY_CONFIG);
 }
 
 function RichTextView({ block }: { block: RichTextBlock }) {

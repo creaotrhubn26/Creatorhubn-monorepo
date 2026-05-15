@@ -25,7 +25,7 @@ export type BlockKind =
 
 export type Locale = 'no' | 'en';
 export const SUPPORTED_LOCALES: Locale[] = ['no', 'en'];
-export const DEFAULT_LOCALE: Locale = 'no';
+export const DEFAULT_LOCALE = 'no' as const satisfies Locale;
 
 interface BlockBase {
   id: string;

@@ -1,5 +1,6 @@
 import React, { useState, useReducer, useId, useMemo, useEffect, useCallback, useRef, memo } from "react";
 import { Box, Typography, Button, Card, CardContent, TextField, IconButton, Chip, Grid, Tooltip, Collapse, Snackbar, FormControl, Select, MenuItem, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, Checkbox, Stack, useTheme, useMediaQuery, LinearProgress, Slide, Menu, Divider, Avatar, AvatarGroup, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Skeleton, Alert } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Search as SearchIcon, Star as StarIcon, StarBorder as StarBorderIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, FileDownload as ExportIcon, ContentCopy as DuplicateIcon, GridView as GridViewIcon, TableRows as TableViewIcon, ViewList as CompactViewIcon, Schedule as ScheduleIcon, Person as PersonIcon, Movie as MovieIcon, Clear as ClearIcon, InterpreterMode as InterpreterModeIcon, Note as NoteIcon, Inventory as InventoryIcon, Sort as SortIcon, Today as TodayIcon, SwapVert as BulkStatusIcon, AccessTime as TimeIcon, MoreVert as MoreVertIcon, BookmarkBorder as PoolIcon, HelpOutline as HelpIcon, ViewTimeline as TimelineViewIcon, ViewKanban as PipelineViewIcon, Keyboard as KeyboardIcon, WarningAmber as WarningIcon, Share as ShareIcon, CompareArrows as CompareIcon, Save as SaveIcon, PlaylistAdd as PlaylistAddIcon, ContentPaste as PasteIcon, Groups as GroupsIcon } from "@mui/icons-material";
 import { RolesIcon as TheaterComedyIcon, AuditionsIcon, CandidatesIcon, CalendarCustomIcon as CalendarIcon, LocationsIcon as LocationIcon, StatsIcon } from "./icons/CastingIcons";
 import type { Schedule, Role, Candidate } from "../models/casting";
@@ -128,6 +129,23 @@ interface AuditionSchedulePanelProps {
   /** Disable role-room API usage (guest/demo mode) */
   enableRoleRoomApi?: boolean;
 }
+
+// AvatarGroup's polymorfe prop-typer i denne MUI-versjonen produserer
+// en union TS ikke klarer å representere (TS2590) selv uten sx-prop.
+// Vi caster én gang til en narrow interface med kun de props vi bruker.
+// Praktisk type-sikkerhet beholdes — vi bruker bare max/sx/children.
+const AvatarGroupSafe = AvatarGroup as unknown as React.FC<{
+  max?: number;
+  sx?: SxProps<Theme>;
+  children?: React.ReactNode;
+}>;
+
+const AVATAR_DIMENSIONS_SX = {
+  width: 28,
+  height: 28,
+  fontSize: '0.68rem',
+  border: '2px solid rgba(15,23,42,1)',
+} as const;
 
 function AuditionSchedulePanelInner({
   projectId,
@@ -3162,18 +3180,8 @@ function AuditionSchedulePanelInner({
                       />
                     </TableCell>
                     <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                      <AvatarGroup
-                        max={4}
-                        sx={{
-                          justifyContent: 'flex-start',
-                          '& .MuiAvatar-root': {
-                            width: 28,
-                            height: 28,
-                            fontSize: '0.68rem',
-                            border: '2px solid rgba(15,23,42,1)',
-                          },
-                        }}
-                      >
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+                      <AvatarGroupSafe max={4}>
                         {group.schedules.map((s) => {
                           const candidateId = String(s.candidateId ?? s.candidate_id ?? '');
                           const candidateName = s.candidateName ?? s.candidate_name ?? getCandidateName(candidateId);
@@ -3184,13 +3192,14 @@ function AuditionSchedulePanelInner({
                               key={s.id}
                               src={photo}
                               alt={candidateName}
-                              sx={{ bgcolor: `${roleTabAccent}40`, color: '#fff' }}
+                              sx={{ ...AVATAR_DIMENSIONS_SX, bgcolor: `${roleTabAccent}40`, color: '#fff' }}
                             >
                               {candidateName.charAt(0).toUpperCase()}
                             </Avatar>
                           );
                         })}
-                      </AvatarGroup>
+                      </AvatarGroupSafe>
+                      </Box>
                     </TableCell>
                     <TableCell align="right" sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                       <Typography sx={{ color: '#fff', fontSize: '0.92rem', fontWeight: 600 }}>
