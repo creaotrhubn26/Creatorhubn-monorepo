@@ -397,6 +397,10 @@ import {
   storyLogicAgent,
   storyContinuityIssueApplier,
 } from "./ai-story-logic-agent.js";
+import {
+  shotListAgent,
+  shotListDraftApplier,
+} from "./ai-shot-list-agent.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
 import { setupAdminRefundRequestsRoutes } from "./admin-refund-requests-routes";
 import { setupAdminStatsRoutes } from "./admin-stats-routes";
@@ -15589,6 +15593,7 @@ const aiSuggestionService = createAISuggestionService({ pool });
 aiSuggestionService.registerAgent(breakdownAgent);
 aiSuggestionService.registerAgent(castingStubAgent);
 aiSuggestionService.registerAgent(storyLogicAgent);
+aiSuggestionService.registerAgent(shotListAgent);
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
@@ -15596,6 +15601,7 @@ aiSuggestionService.registerApplier(breakdownCostumeApplier);
 aiSuggestionService.registerApplier(breakdownVfxFlagApplier);
 aiSuggestionService.registerApplier(castingRoleStubApplier);
 aiSuggestionService.registerApplier(storyContinuityIssueApplier);
+aiSuggestionService.registerApplier(shotListDraftApplier);
 
 function dbLegacyStoryLogicKey(projectId: string): string {
   return `project:story-logic:${projectId}`;

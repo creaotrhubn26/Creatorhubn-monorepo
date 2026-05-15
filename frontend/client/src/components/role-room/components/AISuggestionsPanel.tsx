@@ -261,11 +261,34 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
     icon: VideocamIcon,
     label: 'Shot list',
     render: (s) => {
-      const p = s.payload as ShotListDraftPayload;
+      const p = s.payload as ShotListDraftPayload & { coverageRationale?: string };
       return (
-        <Typography variant="body2">
-          {p.shots.length} foreslåtte shots
-        </Typography>
+        <Box>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            <strong>{p.shots.length}</strong> {p.shots.length === 1 ? 'shot' : 'shots'} foreslått
+          </Typography>
+          {p.coverageRationale && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ fontStyle: 'italic', mb: 0.5 }}>
+              {p.coverageRationale}
+            </Typography>
+          )}
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
+            {p.shots.slice(0, 6).map((shot, idx) => (
+              <Chip
+                key={idx}
+                label={shot.type}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: '0.65rem', height: 18 }}
+              />
+            ))}
+            {p.shots.length > 6 && (
+              <Typography variant="caption" color="text.secondary">
+                +{p.shots.length - 6}
+              </Typography>
+            )}
+          </Stack>
+        </Box>
       );
     },
   },

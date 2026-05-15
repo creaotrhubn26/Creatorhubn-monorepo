@@ -3282,6 +3282,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 <AISuggestionsPanel
                   projectId={activeProjectId}
                   filter={{ sourceType: 'scene', sourceId: editingScene.id }}
+                  title="AI-forslag (breakdown)"
                   onGenerate={async () => {
                     if (!editingScene?.id || !activeProjectId) return;
                     await generateSuggestions(activeProjectId, {
@@ -3293,6 +3294,29 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         existingRoles: castingRoles.map((r) => ({ id: r.id, name: r.name })),
                         existingProps: [],
                         existingLocations: castingLocations.map((l) => ({ id: l.id, name: l.name })),
+                      },
+                    });
+                  }}
+                />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'shot-list.draft',
+                  }}
+                  title="Shot-list-forslag"
+                  onGenerate={async () => {
+                    if (!editingScene?.id || !activeProjectId) return;
+                    await generateSuggestions(activeProjectId, {
+                      agentName: 'shot-list-agent',
+                      sourceType: 'scene',
+                      sourceId: editingScene.id,
+                      payload: {
+                        sceneText: sceneForm.description,
+                        sceneHeading: sceneForm.sceneHeading,
+                        intExt: sceneForm.intExt,
+                        characters: sceneForm.characters,
                       },
                     });
                   }}
