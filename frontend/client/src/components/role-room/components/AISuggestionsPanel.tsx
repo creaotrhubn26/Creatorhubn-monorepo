@@ -61,11 +61,15 @@ import type {
   StoryBeatOutlinePayload,
   StoryContinuityIssuePayload,
   ShotListDraftPayload,
+  CoverageGapPayload,
+  CoverageBestTakePayload,
 } from '../models/casting';
 import RuleIcon from '@mui/icons-material/Rule';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import SubjectIcon from '@mui/icons-material/Subject';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 
 // ─────────────────────────────────────────────────────────────────────
 // Confidence-bånd-håndtering
@@ -369,6 +373,64 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           {p.beats.length > 3 && (
             <Typography variant="caption" color="text.secondary">
               +{p.beats.length - 3} flere
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'coverage.gap': {
+    icon: ReportProblemIcon,
+    label: 'Coverage-gap',
+    highlight: true,
+    render: (s) => {
+      const p = s.payload as CoverageGapPayload;
+      return (
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Chip label={p.gapType} size="small" color="warning" variant="outlined" />
+            {p.plannedShotType && (
+              <Chip label={p.plannedShotType} size="small" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />
+            )}
+          </Stack>
+          <Typography variant="body2">{p.description}</Typography>
+          {p.plannedShotDescription && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+              Planlagt: {p.plannedShotDescription}
+            </Typography>
+          )}
+        </Box>
+      );
+    },
+  },
+
+  'coverage.best-take': {
+    icon: EmojiEventsIcon,
+    label: 'Best take',
+    render: (s) => {
+      const p = s.payload as CoverageBestTakePayload;
+      return (
+        <Box>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            Anbefalt: <strong>Take {p.recommendedTakeNumber}</strong>
+            {p.recommendedScore != null && (
+              <Chip
+                label={`${Math.round(p.recommendedScore * 100)}%`}
+                size="small"
+                color="success"
+                sx={{ ml: 1, fontSize: '0.65rem', height: 18 }}
+              />
+            )}
+          </Typography>
+          {p.rationale && (
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ fontStyle: 'italic', mb: 0.5 }}>
+              {p.rationale}
+            </Typography>
+          )}
+          {p.ranking.length > 1 && (
+            <Typography variant="caption" color="text.secondary">
+              {p.ranking.length} takes vurdert
             </Typography>
           )}
         </Box>

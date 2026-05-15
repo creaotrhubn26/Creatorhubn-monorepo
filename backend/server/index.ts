@@ -411,6 +411,16 @@ import {
   storySynopsisApplier,
   storyBeatOutlineApplier,
 } from "./ai-story-development-agent.js";
+import {
+  coverageGapAgent,
+  coverageGapApplier,
+} from "./ai-coverage-gap-agent.js";
+import {
+  coverageBestTakeAgent,
+  coverageBestTakeApplier,
+} from "./ai-coverage-best-take-agent.js";
+import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
+import { createCoverageJobWorker } from "./coverage-job-queue.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
 import { setupAdminRefundRequestsRoutes } from "./admin-refund-requests-routes";
 import { setupAdminStatsRoutes } from "./admin-stats-routes";
@@ -15606,6 +15616,8 @@ aiSuggestionService.registerAgent(storyLogicAgent);
 aiSuggestionService.registerAgent(shotListAgent);
 aiSuggestionService.registerAgent(auditionSidesAgent);
 aiSuggestionService.registerAgent(storyDevelopmentAgent);
+aiSuggestionService.registerAgent(coverageGapAgent);
+aiSuggestionService.registerAgent(coverageBestTakeAgent);
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
@@ -15618,6 +15630,20 @@ aiSuggestionService.registerApplier(auditionSidesApplier);
 aiSuggestionService.registerApplier(storyLoglineApplier);
 aiSuggestionService.registerApplier(storySynopsisApplier);
 aiSuggestionService.registerApplier(storyBeatOutlineApplier);
+aiSuggestionService.registerApplier(coverageGapApplier);
+aiSuggestionService.registerApplier(coverageBestTakeApplier);
+
+// Coverage take-routes (upload, list, etc.)
+setupCoverageTakeRoutes({ app, pool });
+
+// Coverage job-worker — bakgrunns-prosessering av analyse-jobber.
+// Starter automatisk; stoppes ved server-shutdown via SIGTERM-håndtering
+// hvis appen har det wired.
+const coverageJobWorker = createCoverageJobWorker(pool);
+if (process.env.COVERAGE_WORKER_ENABLED !== "false") {
+  coverageJobWorker.start();
+}
+void coverageJobWorker; // skjul TS unused-warning hvis ENV disabler
 
 function dbLegacyStoryLogicKey(projectId: string): string {
   return `project:story-logic:${projectId}`;

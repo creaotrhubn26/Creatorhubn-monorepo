@@ -2471,9 +2471,38 @@ export interface ShotListDraftPayload {
 
 export interface CoverageGapPayload {
   sceneId: string;
-  /** F.eks. 'missing-close-up-character-X', 'missing-establishing-shot' */
+  /** F.eks. 'missing-shot', 'no-takes-marked-circled', 'incomplete-coverage' */
   gapType: string;
   description: string;
+  /** ID + index på den planlagte shoten som mangler dekning */
+  shotListId?: string;
+  shotIndex?: number;
+  /** Beskrivelse av shoten fra shot-list (for kontekst i UI) */
+  plannedShotType?: string;
+  plannedShotDescription?: string;
+  /** Hvor mange takes ble fanget av denne shoten (0 hvis ingen) */
+  takesCount?: number;
+}
+
+export interface CoverageBestTakePayload {
+  sceneId: string;
+  shotListId: string;
+  shotIndex: number;
+  /** Anbefalt take */
+  recommendedTakeId: string;
+  recommendedTakeNumber: number;
+  /** Composite score for valgt take (0..1) */
+  recommendedScore?: number;
+  /** Alle takes vurdert, rangert (inkluderer den anbefalte) */
+  ranking: Array<{
+    takeId: string;
+    takeNumber: number;
+    overallScore?: number;
+    breakdown?: { audio?: number; visual?: number; performance?: number };
+    notes?: string;
+  }>;
+  /** Claude's kvalitative begrunnelse for valget */
+  rationale?: string;
 }
 
 // =============================================================================
