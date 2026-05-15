@@ -9,6 +9,7 @@ import { Box, Stack, Typography, Chip, IconButton, Tooltip } from '@mui/material
 import { ContentCopy as CopyIcon, Public as PublicIcon } from '@mui/icons-material';
 import { EntityCrudPanel, type EntityField } from './EntityCrudPanel';
 import * as ops from './danceAdminOpsService';
+import { MusicWaveformTrack } from './MusicWaveformTrack';
 
 const PURPLE_LIGHT = '#a78bfa';
 
@@ -18,7 +19,131 @@ export interface AdminPanelProps {
 
 // ─── Performances ──────────────────────────────────────────────────────
 
+const PERFORMANCE_STATUS_META: Record<string, { label: string; color: string }> = {
+  planned:       { label: 'Planlagt',     color: '#9ca3af' },
+  rehearsing:    { label: 'Prøver',       color: '#a78bfa' },
+  tickets_open:  { label: 'Billettsalg',  color: '#60a5fa' },
+  sold_out:      { label: 'Utsolgt',      color: '#10b981' },
+  completed:     { label: 'Avsluttet',    color: '#34d399' },
+  cancelled:     { label: 'Avlyst',       color: '#ef4444' },
+};
+
+interface PerformanceStripboardProps {
+  performances: ops.DancePerformance[];
+}
+
+const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performances }) => {
+  const sorted = React.useMemo(
+    () => [...performances].sort(
+      (a, b) => new Date(a.performanceDate ?? 0).getTime() - new Date(b.performanceDate ?? 0).getTime(),
+    ),
+    [performances],
+  );
+  if (sorted.length === 0) {
+    return (
+      <Typography
+        sx={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic', textAlign: 'center', py: 6 }}
+        data-testid="performance-stripboard-empty"
+      >
+        Ingen forestillinger lagt til ennå.
+      </Typography>
+    );
+  }
+  return (
+    <Stack spacing={1} data-testid="performance-stripboard">
+      {sorted.map((p) => {
+        const meta = PERFORMANCE_STATUS_META[p.status ?? 'planned'] ?? PERFORMANCE_STATUS_META.planned;
+        const cap = p.capacity ?? 0;
+        const sold = p.ticketsSold ?? 0;
+        const fillPct = cap > 0 ? Math.min(100, Math.round((sold / cap) * 100)) : 0;
+        return (
+          <Box
+            key={p.id}
+            data-testid={`performance-stripboard-row-${p.id}`}
+            sx={{
+              p: 1.25,
+              borderRadius: 1,
+              border: '1px solid #1e2536',
+              borderLeft: `4px solid ${meta.color}`,
+              bgcolor: '#0f1318',
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1.6fr 1fr 1fr 0.7fr' },
+              gap: 1,
+              alignItems: 'center',
+            }}
+          >
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#fff' }} noWrap>
+                {p.title}
+              </Typography>
+              {p.venue ? (
+                <Typography sx={{ fontSize: 11, color: '#9ca3af' }} noWrap>{p.venue}</Typography>
+              ) : null}
+            </Box>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Chip
+                size="small"
+                label={p.performanceDate ? new Date(p.performanceDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—'}
+                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+              />
+              <Chip
+                size="small"
+                label={meta.label}
+                sx={{ height: 20, fontSize: 10, bgcolor: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}55` }}
+              />
+            </Stack>
+            <Box>
+              {cap > 0 ? (
+                <>
+                  <Typography sx={{ fontSize: 10, color: '#6b7280', mb: 0.25 }}>
+                    {sold} / {cap} billetter ({fillPct}%)
+                  </Typography>
+                  <Box sx={{ height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
+                    <Box sx={{
+                      width: `${fillPct}%`,
+                      height: '100%',
+                      bgcolor: fillPct >= 90 ? '#10b981' : fillPct >= 50 ? '#fbbf24' : '#60a5fa',
+                    }} />
+                  </Box>
+                </>
+              ) : (
+                <Typography sx={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>
+                  Kapasitet ikke satt
+                </Typography>
+              )}
+            </Box>
+            <Box sx={{ textAlign: 'right' }}>
+              {p.ticketUrl ? (
+                <Tooltip title="Åpne billett-URL">
+                  <IconButton
+                    size="small"
+                    onClick={() => window.open(p.ticketUrl ?? '#', '_blank', 'noopener')}
+                    sx={{ color: PURPLE_LIGHT }}
+                  >
+                    <PublicIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
+            </Box>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+};
+
 export const PerformancesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
+  const [mode, setMode] = React.useState<'table' | 'stripboard'>('stripboard');
+  const [performances, setPerformances] = React.useState<ops.DancePerformance[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void ops.listPerformances(projectId).then((list) => {
+      if (!cancelled) setPerformances(list);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   const fields: EntityField[] = [
     { key: 'title', label: 'Tittel', type: { kind: 'text', required: true } },
     { key: 'performanceDate', label: 'Forestillingsdato', type: { kind: 'datetime' } },
@@ -40,30 +165,131 @@ export const PerformancesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
     { key: 'ticketUrl', label: 'Billett-URL', type: { kind: 'text', placeholder: 'https://…' } },
     { key: 'notes', label: 'Notater', type: { kind: 'text', multiline: true } },
   ];
+
   return (
-    <EntityCrudPanel<ops.DancePerformance>
-      title="Forestillinger"
-      description="Forestillings-kalender med status, billettsalg og program."
-      fields={fields}
-      primaryField="title"
-      searchableFields={['title', 'venue']}
-      list={() => ops.listPerformances(projectId)}
-      create={(input) => ops.createPerformance({
-        ...input,
-        projectId,
-        title: input.title ?? 'Ny forestilling',
-        performanceDate: input.performanceDate ?? new Date().toISOString(),
-      })}
-      patch={ops.patchPerformance}
-      remove={ops.deletePerformance}
-      newDefaults={{ status: 'planned', ticketsSold: 0 }}
-      emptyText="Ingen forestillinger lagt til ennå."
-      panelTestId="admin-ops-performances"
-    />
+    <Box data-testid="admin-ops-performances-shell" sx={{ p: 0 }}>
+      <Stack direction="row" spacing={0.5} sx={{ px: 2, pt: 2, pb: 1 }} data-testid="performance-view-toggle">
+        {(['stripboard', 'table'] as const).map((m) => (
+          <Box
+            key={m}
+            role="tab"
+            tabIndex={0}
+            aria-selected={mode === m}
+            onClick={() => setMode(m)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMode(m); } }}
+            data-testid={`performance-view-${m}`}
+            sx={{
+              cursor: 'pointer', px: 1.5, py: 0.5, fontSize: 11, fontWeight: 700, letterSpacing: 1,
+              color: mode === m ? '#fff' : 'rgba(229,231,235,0.5)',
+              bgcolor: mode === m ? 'rgba(167,139,250,0.22)' : 'transparent',
+              border: `1px solid ${mode === m ? '#a78bfa' : 'rgba(255,255,255,0.12)'}`,
+              borderRadius: 0.5,
+              textTransform: 'uppercase',
+            }}
+          >
+            {m === 'stripboard' ? 'Stripboard' : 'Tabell'}
+          </Box>
+        ))}
+      </Stack>
+      {mode === 'stripboard' ? (
+        <Box sx={{ px: 2, pb: 2 }}>
+          <PerformanceStripboard performances={performances} />
+        </Box>
+      ) : (
+        <EntityCrudPanel<ops.DancePerformance>
+          title="Forestillinger"
+          description="Forestillings-kalender med status, billettsalg og program."
+          fields={fields}
+          primaryField="title"
+          searchableFields={['title', 'venue']}
+          list={() => ops.listPerformances(projectId)}
+          create={(input) => ops.createPerformance({
+            ...input,
+            projectId,
+            title: input.title ?? 'Ny forestilling',
+            performanceDate: input.performanceDate ?? new Date().toISOString(),
+          })}
+          patch={ops.patchPerformance}
+          remove={ops.deletePerformance}
+          newDefaults={{ status: 'planned', ticketsSold: 0 }}
+          emptyText="Ingen forestillinger lagt til ennå."
+          panelTestId="admin-ops-performances"
+        />
+      )}
+    </Box>
   );
 };
 
 // ─── Music archive ─────────────────────────────────────────────────────
+
+interface MusicRowExpansionProps {
+  item: ops.DanceMusicArchiveItem;
+}
+
+const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
+  const audioUrl = item.signedUrl;
+  const tonoMeta: Record<string, { label: string; color: string }> = {
+    cleared: { label: 'Cleared', color: '#10b981' },
+    pending: { label: 'Venter på TONO', color: '#fbbf24' },
+    blocked: { label: 'Blokkert', color: '#ef4444' },
+    unknown: { label: 'Ukjent', color: '#9ca3af' },
+  };
+  const meta = tonoMeta[item.tonoStatus] ?? tonoMeta.unknown;
+  return (
+    <Box
+      data-testid={`music-archive-expansion-${item.id}`}
+      sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid #1e2536' }}
+    >
+      <Stack spacing={1.5}>
+        {audioUrl ? (
+          <Box>
+            <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: '#fbbf24', fontWeight: 700, mb: 0.5 }}>
+              WAVEFORM
+            </Typography>
+            <MusicWaveformTrack musicUrl={audioUrl} />
+          </Box>
+        ) : item.sourceUrl ? (
+          <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>
+            Ekstern lenke: <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{item.sourceUrl}</a>
+            {' · '}<em>Last opp lydfil for waveform-preview</em>
+          </Typography>
+        ) : (
+          <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
+            Ingen lydfil eller lenke ennå.
+          </Typography>
+        )}
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+          <Chip
+            size="small"
+            label={meta.label}
+            sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}55` }}
+          />
+          {item.bpm ? (
+            <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }} />
+          ) : null}
+          {item.musicalKey ? (
+            <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(96,165,250,0.18)', color: '#93c5fd' }} />
+          ) : null}
+          {item.durationSec ? (
+            <Chip
+              size="small"
+              label={`${Math.floor(item.durationSec / 60)}:${String(Math.round(item.durationSec % 60)).padStart(2, '0')}`}
+              sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(255,255,255,0.08)', color: '#e5e7eb', fontFamily: 'monospace' }}
+            />
+          ) : null}
+          {(item.tags ?? []).map((t) => (
+            <Chip key={t} size="small" label={t} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(251,191,36,0.12)', color: '#fbbf24' }} />
+          ))}
+        </Stack>
+        {item.notes ? (
+          <Typography sx={{ fontSize: 11, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
+            {item.notes}
+          </Typography>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+};
 
 export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
   const fields: EntityField[] = [
@@ -111,6 +337,7 @@ export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       newDefaults={{ tonoStatus: 'unknown' }}
       emptyText="Ingen musikk i arkivet ennå."
       panelTestId="admin-ops-music"
+      rowExpansion={(row) => <MusicRowExpansion item={row} />}
     />
   );
 };

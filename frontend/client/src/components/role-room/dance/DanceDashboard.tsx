@@ -172,6 +172,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
   // listene er tomme (typisk i tester med sparse fixtures).
   const [liveData, setLiveData] = React.useState<{
     rehearsals: UpcomingRehearsal[];
+    performances: UpcomingPerformance[];
     counts: { choreographies: number; formations: number; dancers: number; clips: number };
   } | null>(null);
 
@@ -180,8 +181,9 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
     let cancelled = false;
     void (async () => {
       try {
-        const [rehearsalsRaw, choreos, formations, dancers] = await Promise.all([
+        const [rehearsalsRaw, performancesRaw, choreos, formations, dancers] = await Promise.all([
           import('./danceRehearsalService').then((m) => m.listRehearsals({ projectId: projectId ?? undefined, limit: 10 })),
+          import('./danceAdminOpsService').then((m) => m.listPerformances(projectId ?? null)),
           import('./choreographyService').then((m) => m.listChoreographies(projectId ?? undefined)),
           import('./danceFormationService').then((m) => m.listFormations(projectId ?? undefined)),
           import('./dancerProfileService').then((m) => m.listDancerProfiles(projectId ?? undefined)),
@@ -200,8 +202,21 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             room: r.location ?? '—',
             dancers: r.invitedDancerIds.slice(0, 6),
           }));
+        const upcomingPerf: UpcomingPerformance[] = performancesRaw
+          .filter((p) => new Date(p.performanceDate ?? 0).getTime() >= now - 86_400_000)
+          .sort((a, b) => new Date(a.performanceDate ?? 0).getTime() - new Date(b.performanceDate ?? 0).getTime())
+          .slice(0, 5)
+          .map((p) => ({
+            id: p.id,
+            title: p.title,
+            date: p.performanceDate ?? new Date().toISOString(),
+            venue: p.venue ?? '—',
+            ticketsSold: p.ticketsSold ?? undefined,
+            ticketsTotal: p.capacity ?? undefined,
+          }));
         setLiveData({
           rehearsals: upcoming,
+          performances: upcomingPerf,
           counts: {
             choreographies: choreos.length,
             formations: formations.length,
@@ -226,6 +241,9 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
   const rehearsalsToShow = liveData && liveData.rehearsals.length > 0
     ? liveData.rehearsals
     : DEMO_REHEARSALS;
+  const performancesToShow = liveData && liveData.performances.length > 0
+    ? liveData.performances
+    : DEMO_PERFORMANCES;
   const heading = isStudio
     ? labels.danceProfessionStudioName
     : labels.danceProfessionFreelanceName;
@@ -266,7 +284,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             God morgen{isStudio ? ', studio' : ''}.
           </Typography>
           <Typography sx={{ fontSize: 13, color: '#9ca3af', mt: 0.5 }}>
-            {rehearsalsToShow.length} {labels.danceTermRehearsalPlural.toLowerCase()} de neste 7 dagene · {DEMO_PERFORMANCES.length} {labels.danceTermPerformancePlural.toLowerCase()} planlagt
+            {rehearsalsToShow.length} {labels.danceTermRehearsalPlural.toLowerCase()} de neste 7 dagene · {performancesToShow.length} {labels.danceTermPerformancePlural.toLowerCase()} planlagt
             {liveData ? (
               <Box component="span" sx={{ color: '#a78bfa', ml: 1 }}>
                 · {liveData.counts.choreographies} stykker · {liveData.counts.formations} formasjoner · {liveData.counts.dancers} dansere
@@ -407,7 +425,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             icon={<TheaterIcon sx={{ fontSize: 18, color: '#fbbf24' }} />}
           >
             <Stack spacing={1.25}>
-              {DEMO_PERFORMANCES.map((p) => {
+              {performancesToShow.map((p) => {
                 const sold = p.ticketsSold ?? 0;
                 const total = p.ticketsTotal ?? 0;
                 const pct = total > 0 ? Math.round((sold / total) * 100) : null;
