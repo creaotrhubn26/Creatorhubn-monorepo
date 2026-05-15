@@ -412,11 +412,11 @@ import {
   storyBeatOutlineApplier,
 } from "./ai-story-development-agent.js";
 import {
-  coverageGapAgent,
+  createCoverageGapAgent,
   coverageGapApplier,
 } from "./ai-coverage-gap-agent.js";
 import {
-  coverageBestTakeAgent,
+  createCoverageBestTakeAgent,
   coverageBestTakeApplier,
 } from "./ai-coverage-best-take-agent.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
@@ -15616,8 +15616,8 @@ aiSuggestionService.registerAgent(storyLogicAgent);
 aiSuggestionService.registerAgent(shotListAgent);
 aiSuggestionService.registerAgent(auditionSidesAgent);
 aiSuggestionService.registerAgent(storyDevelopmentAgent);
-aiSuggestionService.registerAgent(coverageGapAgent);
-aiSuggestionService.registerAgent(coverageBestTakeAgent);
+aiSuggestionService.registerAgent(createCoverageGapAgent(pool));
+aiSuggestionService.registerAgent(createCoverageBestTakeAgent(pool));
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);

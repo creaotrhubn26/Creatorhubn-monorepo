@@ -30,14 +30,13 @@ import type {
   ApplyContext,
   SuggestionApplier,
 } from "./ai-suggestion-service.js";
-import { listTakesForShot, type CastingTake } from "./coverage-take-service.js";
-import { listAnalysesForTakes, type TakeAnalysisRow } from "./coverage-analysis-pipeline.js";
+import { listTakesForShot } from "./coverage-take-service.js";
+import { listAnalysesForTakes } from "./coverage-analysis-pipeline.js";
 import type { Pool } from "pg";
 
 const SUGGESTION_TYPE_BEST_TAKE = "coverage.best-take";
 
 interface BestTakeAgentInput {
-  pool: Pool;
   sceneId: string;
   shotListId: string;
   shotIndex: number;
@@ -139,7 +138,12 @@ function formatScore(v: number | undefined): string {
 // Agent
 // ─────────────────────────────────────────────────────────────────────
 
-export const coverageBestTakeAgent: AIAgent = {
+/**
+ * Factory som lager agenten med pool i closure (samme mønster som
+ * createCoverageGapAgent).
+ */
+export function createCoverageBestTakeAgent(pool: Pool): AIAgent {
+  return {
   name: "coverage-best-take-agent",
   modelVersion: "v1.0.0",
 
@@ -147,11 +151,10 @@ export const coverageBestTakeAgent: AIAgent = {
     if (input.sourceType !== "scene") return [];
 
     const agentInput = input.payload as BestTakeAgentInput | undefined;
-    if (!agentInput?.pool || !agentInput?.shotListId || agentInput?.shotIndex === undefined) {
+    if (!agentInput?.shotListId || agentInput?.shotIndex === undefined) {
       return [];
     }
 
-    const { pool } = agentInput;
     const takes = await listTakesForShot(pool, agentInput.shotListId, agentInput.shotIndex);
     if (takes.length === 0) return [];
 
@@ -259,7 +262,8 @@ export const coverageBestTakeAgent: AIAgent = {
       sourceId: agentInput.sceneId,
     }];
   },
-};
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Applier — markerer det anbefalte taket som circled

@@ -437,6 +437,7 @@ import {
 } from '../services/resumeAnalysisService';
 import ResumeBanner from './ResumeBanner';
 import AISuggestionsPanel from './AISuggestionsPanel';
+import TakesPanel from './TakesPanel';
 import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
@@ -3348,6 +3349,29 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       },
                     });
                   }}
+                />
+                <Divider />
+                <TakesPanel
+                  projectId={activeProjectId}
+                  sceneId={editingScene.id}
+                />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'coverage.gap',
+                  }}
+                  title="Coverage-gap"
+                />
+                <AISuggestionsPanel
+                  projectId={activeProjectId}
+                  filter={{
+                    sourceType: 'scene',
+                    sourceId: editingScene.id,
+                    suggestionType: 'coverage.best-take',
+                  }}
+                  title="Best take-anbefaling"
                 />
               </>
             )}

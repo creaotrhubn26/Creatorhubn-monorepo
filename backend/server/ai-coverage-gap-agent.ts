@@ -23,7 +23,6 @@
  *   low-quality-coverage  — Alle takes har overall_score < 0.5
  */
 
-import crypto from "crypto";
 import type {
   AIAgent,
   AIAgentInput,
@@ -32,17 +31,19 @@ import type {
   ApplyContext,
   SuggestionApplier,
 } from "./ai-suggestion-service.js";
-import { listTakesForScene, listTakesForShot, type CastingTake } from "./coverage-take-service.js";
+import { listTakesForScene } from "./coverage-take-service.js";
 import { listAnalysesForTakes } from "./coverage-analysis-pipeline.js";
 import type { Pool } from "pg";
 
 const SUGGESTION_TYPE_COVERAGE_GAP = "coverage.gap";
 
+/**
+ * Frontend-serialisert input. Agenten loader resten fra DB via closure-
+ * captured pool (factory-pattern under).
+ */
 interface CoverageGapAgentInput {
-  pool: Pool;
   sceneId: string;
   shotListId: string;
-  /** Planlagte shots fra shot-list (samme format som casting_shot_lists.shots JSONB) */
   plannedShots: Array<{
     type: string;
     description: string;
@@ -63,7 +64,12 @@ interface GapPayload {
 
 const LOW_QUALITY_THRESHOLD = 0.5;
 
-export const coverageGapAgent: AIAgent = {
+/**
+ * Factory som lager agenten med pool captured i closure. Agenten kan dermed
+ * laste takes/analyses uten at pool må serialiseres gjennom payload.
+ */
+export function createCoverageGapAgent(pool: Pool): AIAgent {
+  return {
   name: "coverage-gap-agent",
   modelVersion: "v1.0.0",
 
@@ -71,12 +77,10 @@ export const coverageGapAgent: AIAgent = {
     if (input.sourceType !== "scene") return [];
 
     const agentInput = input.payload as CoverageGapAgentInput | undefined;
-    if (!agentInput?.pool || !agentInput?.shotListId || !Array.isArray(agentInput?.plannedShots)) {
+    if (!agentInput?.shotListId || !Array.isArray(agentInput?.plannedShots)) {
       return [];
     }
     if (agentInput.plannedShots.length === 0) return [];
-
-    const { pool } = agentInput;
 
     // Last alle takes for scenen — vi sammenligner per planlagt shot
     const allTakes = await listTakesForScene(pool, agentInput.sceneId);
@@ -187,7 +191,8 @@ export const coverageGapAgent: AIAgent = {
 
     return outputs;
   },
-};
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Applier — registrerer at brukeren har sett gapet
@@ -216,27 +221,9 @@ export const coverageGapApplier: SuggestionApplier<GapPayload> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// Helpers for å invokere agenten med data-loading
+// Helper: last shot-list for en scene (brukes av routes/frontend-trigger)
 // ─────────────────────────────────────────────────────────────────────
-//
-// Routes-laget får disse hjelperne så det ikke trenger å vite om de
-// interne data-strukturene. Følger samme grensesnitt-mønster som
-// breakdown-agent.
 
-interface GenerateCoverageGapsForSceneInput {
-  pool: Pool;
-  projectId: string;
-  userId: string;
-  sceneId: string;
-}
-
-/**
- * Gjør all data-loading + invokerer agenten via AISuggestionService.
- * Returnerer rå-listen av suggestions (eller [] hvis no shot-list).
- *
- * Krever en service-instans for å lagre forslag — passes inn av
- * eksisterende routes-wiring.
- */
 export async function loadCoverageGapInputForScene(
   pool: Pool,
   sceneId: string,
@@ -256,6 +243,3 @@ export async function loadCoverageGapInputForScene(
     );
   return { shotListId: row.id, plannedShots };
 }
-
-// Unused but kept for symmetry with other agents
-void crypto;
