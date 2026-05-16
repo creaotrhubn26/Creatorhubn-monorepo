@@ -40,6 +40,10 @@ import {
   Deselect,
   GroupWork,
   CallSplit,
+  // Sprint A.7: nye selection-modi
+  Polyline,
+  AutoFixNormal,
+  Hub,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import type { PencilPoint, PencilStroke } from '../../hooks/useApplePencil';
@@ -48,7 +52,19 @@ import type { PencilPoint, PencilStroke } from '../../hooks/useApplePencil';
 // Types
 // =============================================================================
 
-export type SelectionMode = 'none' | 'rectangle' | 'ellipse' | 'lasso' | 'move' | 'scale' | 'rotate';
+// Sprint A.7: `polygonLasso` = klikk-å-bygg polygon (presisjon over freehand).
+// `quickSelectSameColor` / `quickSelectConnected` = magic-wand-modus.
+export type SelectionMode =
+  | 'none'
+  | 'rectangle'
+  | 'ellipse'
+  | 'lasso'
+  | 'polygonLasso'
+  | 'quickSelectSameColor'
+  | 'quickSelectConnected'
+  | 'move'
+  | 'scale'
+  | 'rotate';
 
 export interface SelectionBounds {
   x: number;
@@ -464,6 +480,163 @@ export function isStrokeInLasso(stroke: PencilStroke, lassoPoints: PencilPoint[]
   return stroke.points.some(p => isPointInLasso(p, lassoPoints));
 }
 
+// =============================================================================
+// Sprint A.7 — Polygon lasso + quick-select helpers
+// =============================================================================
+
+/**
+ * Polygon lasso: klikk-bygde punkter. Selve point-in-polygon-testen er
+ * identisk med freehand-lasso (begge er bare en sekvens av punkter), så
+ * vi gjenbruker `isPointInLasso`. Egen helper for symmetri/lesbarhet.
+ */
+export function isPointInPolygon(
+  point: { x: number; y: number },
+  polygonPoints: Array<{ x: number; y: number }>,
+): boolean {
+  if (polygonPoints.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygonPoints.length - 1; i < polygonPoints.length; j = i++) {
+    const xi = polygonPoints[i].x;
+    const yi = polygonPoints[i].y;
+    const xj = polygonPoints[j].x;
+    const yj = polygonPoints[j].y;
+    if (((yi > point.y) !== (yj > point.y))
+      && (point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+export function isStrokeInPolygon(
+  stroke: PencilStroke,
+  polygonPoints: Array<{ x: number; y: number }>,
+): boolean {
+  return stroke.points.some((p) => isPointInPolygon(p, polygonPoints));
+}
+
+/**
+ * Quick-select: same-color. Normaliserer hex (kort #abc → lang #aabbcc),
+ * sammenligner RGB-distanse mot toleranse. tolerance=0 betyr eksakt match;
+ * default 12 (av 255) tar høyde for små shading-variasjoner.
+ */
+export function getStrokesWithSameColor(
+  strokes: PencilStroke[],
+  targetColor: string,
+  tolerance = 12,
+): string[] {
+  const target = parseHexToRgb(targetColor);
+  if (!target) return [];
+  return strokes
+    .filter((stroke) => {
+      const rgb = parseHexToRgb((stroke as { color?: string }).color ?? '');
+      if (!rgb) return false;
+      const dr = rgb.r - target.r;
+      const dg = rgb.g - target.g;
+      const db = rgb.b - target.b;
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+      return dist <= tolerance;
+    })
+    .map((stroke) => stroke.id);
+}
+
+/**
+ * Quick-select: connected strokes. Starter med en seed-stroke og inkluderer
+ * alle strokes som ligger innenfor `distanceThreshold` (i pixels) fra
+ * noen av de allerede valgte. Itererer til ingen flere strokes møter
+ * kriteriet — slik at en hel kontur ("alle strokes som hører til hodet")
+ * selekteres av ett klikk.
+ */
+export function getConnectedStrokes(
+  strokes: PencilStroke[],
+  seedId: string,
+  distanceThreshold = 12,
+): string[] {
+  const byId = new Map(strokes.map((s) => [s.id, s]));
+  const seed = byId.get(seedId);
+  if (!seed) return [];
+
+  const selected = new Set<string>([seedId]);
+  let frontier: PencilStroke[] = [seed];
+
+  while (frontier.length > 0) {
+    const nextFrontier: PencilStroke[] = [];
+    for (const candidate of strokes) {
+      if (selected.has(candidate.id)) continue;
+      for (const f of frontier) {
+        if (strokesAreNear(candidate, f, distanceThreshold)) {
+          selected.add(candidate.id);
+          nextFrontier.push(candidate);
+          break;
+        }
+      }
+    }
+    frontier = nextFrontier;
+  }
+
+  return Array.from(selected);
+}
+
+function strokesAreNear(a: PencilStroke, b: PencilStroke, threshold: number): boolean {
+  // Sjekker bbox-overlap først (rask reject), så punkt-punkt-distanse for
+  // strokes som er nær eller overlapper. Bra balanse for storyboard-skala.
+  const boxA = strokeBoundingBox(a);
+  const boxB = strokeBoundingBox(b);
+  if (
+    boxA.maxX + threshold < boxB.minX
+    || boxB.maxX + threshold < boxA.minX
+    || boxA.maxY + threshold < boxB.minY
+    || boxB.maxY + threshold < boxA.minY
+  ) {
+    return false;
+  }
+  const t2 = threshold * threshold;
+  // Subsample for ytelse — sjekker hver 4. punkt-kombinasjon på lange strokes.
+  const stepA = Math.max(1, Math.floor(a.points.length / 24));
+  const stepB = Math.max(1, Math.floor(b.points.length / 24));
+  for (let i = 0; i < a.points.length; i += stepA) {
+    const pa = a.points[i];
+    for (let j = 0; j < b.points.length; j += stepB) {
+      const pb = b.points[j];
+      const dx = pa.x - pb.x;
+      const dy = pa.y - pb.y;
+      if ((dx * dx + dy * dy) <= t2) return true;
+    }
+  }
+  return false;
+}
+
+function strokeBoundingBox(stroke: PencilStroke): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of stroke.points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function parseHexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  if (!hex || typeof hex !== 'string') return null;
+  let value = hex.trim();
+  if (value.startsWith('#')) value = value.slice(1);
+  if (value.length === 3) {
+    value = value.split('').map((c) => c + c).join('');
+  }
+  if (value.length !== 6) return null;
+  const match = /^([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(value);
+  if (!match) return null;
+  return {
+    r: parseInt(match[1], 16),
+    g: parseInt(match[2], 16),
+    b: parseInt(match[3], 16),
+  };
+}
+
 export function transformStroke(
   stroke: PencilStroke,
   transform: Transform,
@@ -588,12 +761,24 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
         </ToolButton>
       </Tooltip>
 
-      <Tooltip title="Lasso Select" placement="top">
+      <Tooltip title="Lasso Select (freehand)" placement="top">
         <ToolButton
           active={mode === 'lasso'}
           onClick={() => onModeChange(mode === 'lasso' ? 'none' : 'lasso')}
         >
           <HighlightAlt sx={{ fontSize: 18 }} />
+        </ToolButton>
+      </Tooltip>
+
+      {/* Sprint A.7: Polygon lasso — klikk for å bygge punkter, mer presist
+          enn freehand-lasso når man trenger rette kanter. */}
+      <Tooltip title="Polygon Lasso (click points)" placement="top">
+        <ToolButton
+          active={mode === 'polygonLasso'}
+          onClick={() => onModeChange(mode === 'polygonLasso' ? 'none' : 'polygonLasso')}
+          data-testid="selection-mode-polygon-lasso"
+        >
+          <Polyline sx={{ fontSize: 18 }} />
         </ToolButton>
       </Tooltip>
 
@@ -603,6 +788,28 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
           onClick={() => onModeChange(mode === 'ellipse' ? 'none' : 'ellipse')}
         >
           <PanoramaFishEye sx={{ fontSize: 18 }} />
+        </ToolButton>
+      </Tooltip>
+
+      {/* Sprint A.7: Quick-select (magic-wand). Same-color = velg alle strokes
+          med samme farge. Connected = velg sammenhengende strokes (kontur). */}
+      <Tooltip title="Quick Select — same color" placement="top">
+        <ToolButton
+          active={mode === 'quickSelectSameColor'}
+          onClick={() => onModeChange(mode === 'quickSelectSameColor' ? 'none' : 'quickSelectSameColor')}
+          data-testid="selection-mode-quick-same-color"
+        >
+          <AutoFixNormal sx={{ fontSize: 18 }} />
+        </ToolButton>
+      </Tooltip>
+
+      <Tooltip title="Quick Select — connected strokes" placement="top">
+        <ToolButton
+          active={mode === 'quickSelectConnected'}
+          onClick={() => onModeChange(mode === 'quickSelectConnected' ? 'none' : 'quickSelectConnected')}
+          data-testid="selection-mode-quick-connected"
+        >
+          <Hub sx={{ fontSize: 18 }} />
         </ToolButton>
       </Tooltip>
 

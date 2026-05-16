@@ -46,6 +46,8 @@ import {
   Layers as LayersIcon,
   ExpandMore,
   ExpandLess,
+  // Sprint A.7: clipping mask-toggle
+  VerticalAlignBottom,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import type { PencilStroke } from '../../hooks/useApplePencil';
@@ -77,6 +79,38 @@ export interface DrawingLayer {
   blendMode: BlendMode;
   strokes: PencilStroke[];
   thumbnail?: string;
+  /**
+   * Sprint A.7 — Clipping mask. Når true, fungerer dette laget som en
+   * maske: lag som ligger RETT OVER (samme stack uten andre clipping-flagg
+   * imellom) renderes kun innenfor de ikke-transparente pikslene i dette
+   * laget. Brukes f.eks. til å shade kun inni en karakter-kontur.
+   *
+   * Renderern må respektere flagget via canvas-compositing (typisk
+   * `globalCompositeOperation = 'source-atop'` etter å ha tegnet maske-
+   * laget først).
+   */
+  clippingMask?: boolean;
+}
+
+/**
+ * Sprint A.7 — Beregner hvilke lag som er "clipped by" hvilken maske.
+ * Iterer gjennom layers oppovenfra (laveste index først), når et lag har
+ * clippingMask=true blir alle påfølgende lag knyttet til den til neste
+ * clippingMask eller break (samme som Procreate/Photoshop semantics).
+ */
+export function buildClippingGroups(layers: DrawingLayer[]): Map<string, string> {
+  const result = new Map<string, string>();
+  let activeMaskId: string | null = null;
+  for (const layer of layers) {
+    if (layer.clippingMask) {
+      activeMaskId = layer.id;
+      continue;
+    }
+    if (activeMaskId) {
+      result.set(layer.id, activeMaskId);
+    }
+  }
+  return result;
 }
 
 export interface LayersPanelProps {
@@ -277,8 +311,17 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
 
   // Toggle lock
   const handleToggleLock = useCallback((layerId: string) => {
-    const newLayers = layers.map(l => 
+    const newLayers = layers.map(l =>
       l.id === layerId ? { ...l, locked: !l.locked } : l
+    );
+    onLayersChange(newLayers);
+  }, [layers, onLayersChange]);
+
+  // Sprint A.7: Toggle clipping mask. Når laget markeres som mask, vil
+  // påfølgende ikke-mask-lag bli klippet til denne maskens piksel-coverage.
+  const handleToggleClippingMask = useCallback((layerId: string) => {
+    const newLayers = layers.map(l =>
+      l.id === layerId ? { ...l, clippingMask: !l.clippingMask } : l
     );
     onLayersChange(newLayers);
   }, [layers, onLayersChange]);
@@ -535,6 +578,20 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
                     ) : (
                       <LockOpen sx={{ fontSize: 16, opacity: 0.5 }} />
                     )}
+                  </IconButton>
+                </Tooltip>
+                {/* Sprint A.7: Clipping mask-toggle. Aktivt lag (oransje
+                    border) klipper alle lag rett over til sin coverage. */}
+                <Tooltip title={layer.clippingMask ? 'Disable clipping mask' : 'Use as clipping mask'}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); handleToggleClippingMask(layer.id); }}
+                    data-testid={`layer-clipping-mask-${layer.id}`}
+                    sx={{
+                      color: layer.clippingMask ? '#f59e0b' : 'inherit',
+                    }}
+                  >
+                    <VerticalAlignBottom sx={{ fontSize: 16, opacity: layer.clippingMask ? 1 : 0.5 }} />
                   </IconButton>
                 </Tooltip>
                 <IconButton
