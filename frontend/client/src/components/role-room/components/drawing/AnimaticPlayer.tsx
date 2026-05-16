@@ -31,8 +31,11 @@ import {
   Replay,
   Loop,
   Movie,
+  MicNone,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
+import { useAnimaticAudio } from './useAnimaticAudio';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -70,6 +73,10 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
 }) => {
   const [speed, setSpeed] = React.useState(1);
   const [loop, setLoop] = React.useState(false);
+  const [audioUrl, setAudioUrl] = React.useState<string | null>(null);
+  const [audioName, setAudioName] = React.useState<string | null>(null);
+  const [audioElement, setAudioElement] = React.useState<HTMLAudioElement | null>(null);
+  const audioFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const handleActiveFrameChange = React.useCallback(
     (segment) => {
@@ -84,6 +91,38 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     loop,
     onActiveFrameChange: handleActiveFrameChange,
   });
+
+  // Synk audio med playback-state.
+  useAnimaticAudio({
+    audioElement,
+    isPlaying: player.isPlaying,
+    currentTime: player.currentTime,
+    playbackSpeed: speed,
+  });
+
+  const handleAudioPick = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('audio/')) return;
+    // Revoker forrige object-URL hvis den finnes — vi vil ikke lekke.
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    const url = URL.createObjectURL(file);
+    setAudioUrl(url);
+    setAudioName(file.name);
+  }, [audioUrl]);
+
+  const clearAudio = React.useCallback(() => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioUrl(null);
+    setAudioName(null);
+    setAudioElement(null);
+  }, [audioUrl]);
+
+  // Cleanup object-URL ved unmount.
+  React.useEffect(() => () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
 
   const activeFrame = player.activeFrameIndex >= 0 ? frames[player.activeFrameIndex] : null;
   const hasFrames = frames.length > 0 && player.totalDuration > 0;
@@ -128,7 +167,20 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           Animatic-avspilling
         </Typography>
         <Box sx={{ flex: 1 }} />
-        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 10 }}>
+        {audioName && (
+          <Stack direction="row" spacing={0.25} alignItems="center">
+            <MicNone sx={{ fontSize: 12, color: '#86efac' }} />
+            <Typography variant="caption" sx={{ color: '#86efac', fontSize: 10, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {audioName}
+            </Typography>
+            <Tooltip title="Fjern lyd">
+              <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.5)', p: 0.25 }} onClick={clearAudio} data-testid="animatic-audio-clear">
+                <CloseIcon sx={{ fontSize: 12 }} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        )}
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 10, ml: audioName ? 1 : 0 }}>
           Frame {player.activeFrameIndex + 1} / {frames.length}
         </Typography>
       </Stack>
@@ -221,6 +273,33 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             <Loop fontSize="small" />
           </ToggleButton>
         </Tooltip>
+        <Tooltip title={audioUrl ? 'Bytt lydspor' : 'Legg til voiceover / midlertidig musikk'}>
+          <IconButton
+            size="small"
+            onClick={() => audioFileInputRef.current?.click()}
+            sx={{ color: audioUrl ? '#86efac' : 'rgba(255,255,255,0.7)' }}
+            data-testid="animatic-audio-upload"
+          >
+            <MicNone fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <input
+          ref={audioFileInputRef}
+          type="file"
+          accept="audio/*"
+          onChange={handleAudioPick}
+          style={{ display: 'none' }}
+          data-testid="animatic-audio-input"
+        />
+        {audioUrl && (
+          <audio
+            ref={setAudioElement}
+            src={audioUrl}
+            preload="auto"
+            style={{ display: 'none' }}
+            data-testid="animatic-audio-element"
+          />
+        )}
 
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, ml: 0.5, fontFamily: 'monospace' }}>
           {formatTime(player.currentTime)} / {formatTime(player.totalDuration)}
