@@ -25,6 +25,7 @@ import {
   EditOutlined,
   Save as SaveIcon,
   Close as CloseIcon,
+  WallpaperOutlined,
 } from '@mui/icons-material';
 import {
   listMoodBoardImages,
@@ -38,9 +39,15 @@ import {
 export interface MoodBoardPanelProps {
   sceneId: string;
   compact?: boolean;
+  /** Brukes som referansebilde (tracing-bakgrunn) i drawing-editor. */
+  onUseAsReference?: (image: MoodBoardImage) => void;
 }
 
-export const MoodBoardPanel: React.FC<MoodBoardPanelProps> = ({ sceneId, compact = false }) => {
+export const MoodBoardPanel: React.FC<MoodBoardPanelProps> = ({
+  sceneId,
+  compact = false,
+  onUseAsReference,
+}) => {
   const [images, setImages] = useState<MoodBoardImage[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCaption, setEditCaption] = useState('');
@@ -243,6 +250,18 @@ export const MoodBoardPanel: React.FC<MoodBoardPanelProps> = ({ sceneId, compact
                 borderRadius: 1,
               }}
             >
+              {onUseAsReference && (
+                <Tooltip title="Bruk som referanse-bakgrunn">
+                  <IconButton
+                    size="small"
+                    sx={{ color: 'white', p: 0.25 }}
+                    onClick={() => onUseAsReference(image)}
+                    data-testid={`moodboard-use-ref-${image.id}`}
+                  >
+                    <WallpaperOutlined fontSize="inherit" />
+                  </IconButton>
+                </Tooltip>
+              )}
               <IconButton size="small" sx={{ color: 'white', p: 0.25 }} onClick={() => onStartEdit(image)}>
                 <EditOutlined fontSize="inherit" />
               </IconButton>

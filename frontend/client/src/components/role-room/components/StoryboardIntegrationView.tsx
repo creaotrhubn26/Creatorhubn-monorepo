@@ -1325,6 +1325,7 @@ const StoryboardView: React.FC<{
   const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
   const [pendingPoseStrokes, setPendingPoseStrokes] = useState<PencilStroke[] | null>(null);
+  const [pendingReferenceSrc, setPendingReferenceSrc] = useState<string | null>(null);
   const [quickViewFrameId, setQuickViewFrameId] = useState<string | null>(null);
   const [editingFrameId, setEditingFrameId] = useState<string | null>(null);
   const [deletingFrameId, setDeletingFrameId] = useState<string | null>(null);
@@ -1990,6 +1991,18 @@ const StoryboardView: React.FC<{
       : drawingFrame.imageUrl;
   }, [drawingFrame, drawingFrameInitialStrokes]);
   const drawingFrameReferenceImage = useMemo(() => {
+    if (pendingReferenceSrc) {
+      return {
+        src: pendingReferenceSrc,
+        opacity: 0.5,
+        visible: true,
+        x: 0,
+        y: 0,
+        width: 1280,
+        height: 720,
+        fitMode: 'contain' as const,
+      };
+    }
     const reference = drawingFrameDocument
       ? getPrimaryStoryboardDocumentReferenceImage(drawingFrameDocument)
       : undefined;
@@ -2003,7 +2016,7 @@ const StoryboardView: React.FC<{
       width: reference.width,
       height: reference.height,
     };
-  }, [drawingFrameDocument]);
+  }, [drawingFrameDocument, pendingReferenceSrc]);
   const cameraAngles = Array.from(STORYBOARD_LANGUAGE_OPTIONS);
 
   return (
@@ -2344,7 +2357,16 @@ const StoryboardView: React.FC<{
             dialogue={sceneDialogue ?? []}
             compact
           />
-          <MoodBoardPanel sceneId={scene.id} compact />
+          <MoodBoardPanel
+            sceneId={scene.id}
+            compact
+            onUseAsReference={(image) => {
+              const targetFrame = frames[activeFrameIndex] ?? frames[0];
+              if (!targetFrame) return;
+              setPendingReferenceSrc(image.dataUrl);
+              setDrawingFrameId(targetFrame.id);
+            }}
+          />
           <Box sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}>
             <PoseLibraryPanel
               canvasWidth={1280}
@@ -2400,6 +2422,7 @@ const StoryboardView: React.FC<{
             onFrameDrawingComplete(drawingFrame.id, drawingData, imageUrl);
             setDrawingFrameId(null);
             setPendingPoseStrokes(null);
+            setPendingReferenceSrc(null);
 
             // Persistens til backend — "fire and forget", logger feil men
             // blokkerer ikke UI. Bruker upsert via frame_id slik at samme
@@ -2426,6 +2449,7 @@ const StoryboardView: React.FC<{
           onCancel={() => {
             setDrawingFrameId(null);
             setPendingPoseStrokes(null);
+            setPendingReferenceSrc(null);
           }}
         />
       )}
