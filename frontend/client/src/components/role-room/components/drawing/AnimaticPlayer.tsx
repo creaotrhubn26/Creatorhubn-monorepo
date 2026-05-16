@@ -33,9 +33,13 @@ import {
   Movie,
   MicNone,
   Close as CloseIcon,
+  FiberManualRecord,
+  Stop as StopIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
+import { useAnimaticRecorder } from './useAnimaticRecorder';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -64,6 +68,9 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const STAGE_CANVAS_WIDTH = 1280;
+const STAGE_CANVAS_HEIGHT = 720;
+
 export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   frames,
   speeds = [0.5, 1, 1.5, 2],
@@ -77,6 +84,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const [audioName, setAudioName] = React.useState<string | null>(null);
   const [audioElement, setAudioElement] = React.useState<HTMLAudioElement | null>(null);
   const audioFileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
   const handleActiveFrameChange = React.useCallback(
     (segment) => {
@@ -99,6 +107,38 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     currentTime: player.currentTime,
     playbackSpeed: speed,
   });
+
+  // Opptak-controller — kobler canvas (video) + audio (valgfritt) til
+  // en MediaRecorder som dumper til WebM.
+  const recorder = useAnimaticRecorder({
+    canvas: canvasRef.current,
+    audioElement,
+  });
+
+  // Når opptak er aktivt og playback når slutt: stopp opptaket.
+  // Vi spotter dette via player.isPlaying som blir false ved slutt.
+  const wasRecordingRef = React.useRef(false);
+  React.useEffect(() => {
+    if (recorder.state === 'recording' && !player.isPlaying && wasRecordingRef.current) {
+      recorder.stop();
+    }
+    wasRecordingRef.current = recorder.state === 'recording';
+  }, [recorder, player.isPlaying]);
+
+  const handleRecord = React.useCallback(() => {
+    if (recorder.state === 'recording') {
+      recorder.stop();
+      player.pause();
+      return;
+    }
+    // Start fra null + start opptak først, så playback.
+    player.seek(0);
+    const started = recorder.start();
+    if (started) {
+      // Liten timeout slik at recorderen rekker å gå til 'recording' før vi spiller.
+      setTimeout(() => player.play(), 50);
+    }
+  }, [recorder, player]);
 
   const handleAudioPick = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -127,6 +167,72 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const activeFrame = player.activeFrameIndex >= 0 ? frames[player.activeFrameIndex] : null;
   const hasFrames = frames.length > 0 && player.totalDuration > 0;
 
+  // Tegn aktivt frame til canvas. Canvas brukes som rendering-target
+  // (kan capture-streames for opptak), og <img> trengs ikke i DOM.
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Sørg for canvas-størrelse er satt (i piksler, ikke CSS-piksler).
+    if (canvas.width !== STAGE_CANVAS_WIDTH) canvas.width = STAGE_CANVAS_WIDTH;
+    if (canvas.height !== STAGE_CANVAS_HEIGHT) canvas.height = STAGE_CANVAS_HEIGHT;
+
+    // Bakgrunn.
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, STAGE_CANVAS_WIDTH, STAGE_CANVAS_HEIGHT);
+
+    const drawPlaceholder = () => {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.font = '24px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = activeFrame?.shotNumber
+        ? `Shot ${activeFrame.shotNumber}`
+        : `Frame ${player.activeFrameIndex + 1}`;
+      ctx.fillText(label, STAGE_CANVAS_WIDTH / 2, STAGE_CANVAS_HEIGHT / 2 - 16);
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillText('Ingen tegning enda', STAGE_CANVAS_WIDTH / 2, STAGE_CANVAS_HEIGHT / 2 + 16);
+    };
+
+    const src = activeFrame?.imageUrl || activeFrame?.thumbnailUrl;
+    if (!src) {
+      drawPlaceholder();
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (cancelled) return;
+      // Contain-fit: ikke beskjær, behold aspect.
+      const imgRatio = img.width / img.height;
+      const canvasRatio = STAGE_CANVAS_WIDTH / STAGE_CANVAS_HEIGHT;
+      let drawW: number;
+      let drawH: number;
+      if (imgRatio > canvasRatio) {
+        drawW = STAGE_CANVAS_WIDTH;
+        drawH = drawW / imgRatio;
+      } else {
+        drawH = STAGE_CANVAS_HEIGHT;
+        drawW = drawH * imgRatio;
+      }
+      const x = (STAGE_CANVAS_WIDTH - drawW) / 2;
+      const y = (STAGE_CANVAS_HEIGHT - drawH) / 2;
+      ctx.drawImage(img, x, y, drawW, drawH);
+    };
+    img.onerror = () => {
+      if (cancelled) return;
+      drawPlaceholder();
+    };
+    img.src = src;
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFrame, player.activeFrameIndex]);
+
   if (!hasFrames) {
     return (
       <Box
@@ -148,7 +254,6 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     );
   }
 
-  const imageSrc = activeFrame?.imageUrl || activeFrame?.thumbnailUrl;
   const stageMaxWidth = compact ? 280 : 420;
 
   return (
@@ -166,6 +271,14 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         <Typography variant="overline" sx={{ fontSize: 10, letterSpacing: '0.08em', color: '#a5b4fc', fontWeight: 800 }}>
           Animatic-avspilling
         </Typography>
+        {recorder.state === 'recording' && (
+          <Stack direction="row" spacing={0.25} alignItems="center" sx={{ ml: 0.5 }}>
+            <FiberManualRecord sx={{ fontSize: 10, color: '#f87171', animation: 'pulse 1.2s ease-in-out infinite' }} />
+            <Typography variant="caption" sx={{ color: '#fca5a5', fontSize: 10, fontWeight: 600 }}>
+              REC
+            </Typography>
+          </Stack>
+        )}
         <Box sx={{ flex: 1 }} />
         {audioName && (
           <Stack direction="row" spacing={0.25} alignItems="center">
@@ -185,7 +298,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         </Typography>
       </Stack>
 
-      {/* Stage: aktivt bilde */}
+      {/* Stage: canvas — tegner aktivt frame og er capture-stream-kilde for opptak. */}
       <Box
         sx={{
           width: '100%',
@@ -196,29 +309,17 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           borderRadius: 1,
           border: '1px solid rgba(255,255,255,0.08)',
           overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           mb: 1,
         }}
         data-testid="animatic-stage"
       >
-        {imageSrc ? (
-          <img
-            src={imageSrc}
-            alt={activeFrame?.description || `Frame ${player.activeFrameIndex + 1}`}
-            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-          />
-        ) : (
-          <Stack alignItems="center" spacing={0.5} sx={{ color: 'rgba(255,255,255,0.4)' }}>
-            <Typography variant="caption" sx={{ fontSize: 11 }}>
-              {activeFrame?.shotNumber ? `Shot ${activeFrame.shotNumber}` : `Frame ${player.activeFrameIndex + 1}`}
-            </Typography>
-            <Typography variant="caption" sx={{ fontSize: 10 }}>
-              Ingen tegning enda
-            </Typography>
-          </Stack>
-        )}
+        <canvas
+          ref={canvasRef}
+          width={STAGE_CANVAS_WIDTH}
+          height={STAGE_CANVAS_HEIGHT}
+          style={{ width: '100%', height: '100%', display: 'block' }}
+          data-testid="animatic-stage-canvas"
+        />
       </Box>
 
       {/* Scrubber */}
@@ -283,6 +384,38 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             <MicNone fontSize="small" />
           </IconButton>
         </Tooltip>
+        {recorder.isSupported && (
+          <Tooltip
+            title={
+              recorder.state === 'recording'
+                ? 'Stopp opptak'
+                : `Spill inn animatic til WebM${audioUrl ? ' (med lyd)' : ''}`
+            }
+          >
+            <IconButton
+              size="small"
+              onClick={handleRecord}
+              sx={{ color: recorder.state === 'recording' ? '#fca5a5' : 'rgba(255,255,255,0.7)' }}
+              data-testid="animatic-record"
+            >
+              {recorder.state === 'recording'
+                ? <StopIcon fontSize="small" />
+                : <FiberManualRecord fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        )}
+        {recorder.lastBlob && recorder.state === 'idle' && (
+          <Tooltip title="Last ned siste opptak (.webm)">
+            <IconButton
+              size="small"
+              onClick={() => recorder.downloadLastBlob()}
+              sx={{ color: '#86efac' }}
+              data-testid="animatic-download"
+            >
+              <DownloadIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
         <input
           ref={audioFileInputRef}
           type="file"
