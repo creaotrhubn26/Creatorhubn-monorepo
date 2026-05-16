@@ -21,6 +21,22 @@ export type { DrawingLayer, BlendMode, LayersPanelProps } from './LayersPanel';
 export { renderLayersWithClipping, planClippingPasses } from './clippingMaskRenderer';
 export type { ClippingRenderOptions } from './clippingMaskRenderer';
 
+// Sprint A.7: Creative suggestions (shot-forslag, coverage-analyse, refs)
+export {
+  suggestShotsForScene,
+  analyzeCoverage,
+  suggestReferences,
+} from './creativeSuggestions';
+export type {
+  ShotType,
+  ShotSuggestion,
+  SceneCoverageReport,
+  CoverageGap,
+  ReferenceInspiration,
+} from './creativeSuggestions';
+export { CreativeSuggestionsPanel } from './CreativeSuggestionsPanel';
+export type { CreativeSuggestionsPanelProps } from './CreativeSuggestionsPanel';
+
 // Shape tools
 export { ShapeTools, drawShape } from './ShapeTools';
 export type { ShapeType, ShapeStyle, ShapeToolsProps } from './ShapeTools';

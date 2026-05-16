@@ -52,6 +52,8 @@ import {
 } from '@mui/icons-material';
 import type { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '../models/casting';
 import { FrameDrawingEditor } from './FrameDrawingEditor';
+// Sprint A.7: Creative Studio-panel — shot-forslag, coverage-gaps, refs
+import { CreativeSuggestionsPanel } from './drawing/CreativeSuggestionsPanel';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import type { PencilStroke } from '../hooks/useApplePencil';
 import type { FrameDrawingData } from '../state/storyboardStore';
@@ -81,6 +83,12 @@ interface StoryboardIntegrationViewProps {
    * tidligere var dette hardkodet til 16:9.
    */
   projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
+  /** Alle scener — for cross-scene coverage-sammenligning i Creative Studio. */
+  allScenes?: SceneBreakdown[];
+  /** Dialog-linjer — for shot-suggestions (2-shot, OTS, reaction). */
+  sceneDialogue?: import('../models/casting').DialogueLine[];
+  /** Vis Creative Studio-panelet ved siden av storyboard. Default true. */
+  showCreativeStudio?: boolean;
   // Script integration
   scriptContent?: string;
   onScriptChange?: (content: string) => void;
@@ -834,6 +842,9 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   onUpdate,
   projectId,
   projectCinemaFormat,
+  allScenes,
+  sceneDialogue,
+  showCreativeStudio = true,
   scriptContent,
   onScriptChange,
   showScriptPanel = false,
@@ -2288,6 +2299,19 @@ const StoryboardView: React.FC<{
           </Box>
         ))}
       </Box>
+
+      {/* Sprint A.7: Creative Studio — shot-forslag, coverage, refs.
+          Vises som sticky-sidepanel når showCreativeStudio er på. */}
+      {showCreativeStudio && (
+        <Box sx={{ mt: 2 }} data-testid="creative-studio-mount">
+          <CreativeSuggestionsPanel
+            activeScene={scene}
+            allScenes={allScenes ?? [scene]}
+            dialogue={sceneDialogue ?? []}
+            compact
+          />
+        </Box>
+      )}
 
       {/* iPad Drawing Editor Dialog */}
       {drawingFrame && (
