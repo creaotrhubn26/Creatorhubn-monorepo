@@ -42,6 +42,8 @@ import {
   UploadFile,
   VolumeUp,
   VolumeOff,
+  AutoAwesome,
+  PlayCircleOutline,
 } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
@@ -60,6 +62,7 @@ import {
 import { detectSequenceSfx, groupEventsByFrame, type SfxEvent } from './sfxDetector';
 import { scheduleSfx } from './sfxScheduler';
 import { useSfxPlayback } from './useSfxPlayback';
+import { matchSfx, type SfxMatchHit } from '../../services/sfxMatchClient';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -129,6 +132,14 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const [sfxEnabled, setSfxEnabled] = React.useState(true);
   // Bruker kan også fjerne en auto-detektert event (skjul den).
   const [hiddenSfxEventIds, setHiddenSfxEventIds] = React.useState<Set<string>>(new Set());
+  // Forslag fra CLAP-match per event-id.
+  const [sfxSuggestions, setSfxSuggestions] = React.useState<Record<string, {
+    loading: boolean;
+    error?: string;
+    hits?: SfxMatchHit[];
+  }>>({});
+  // Preview-audio for forslag (lazy laget per suggestion-url).
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const audioFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const stageContainerRef = React.useRef<HTMLDivElement | null>(null);
@@ -454,6 +465,81 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       try { URL.revokeObjectURL(url); } catch {}
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Bygg en engelsk prompt fra event-metadata. CLAP er trent på engelsk,
+  // og kategori-ID-ene våre er allerede kebab-case-engelsk.
+  const buildSfxPrompt = React.useCallback((ev: SfxEvent): string => {
+    const base = ev.category.id.replace(/-/g, ' ');
+    const intensity =
+      ev.intensity === 'high' ? 'loud' :
+      ev.intensity === 'low' ? 'soft, distant' :
+      '';
+    return intensity ? `sound of ${base}, ${intensity}` : `sound of ${base}`;
+  }, []);
+
+  const suggestSfxForEvent = React.useCallback(async (ev: SfxEvent) => {
+    setSfxSuggestions((prev) => ({
+      ...prev,
+      [ev.id]: { loading: true },
+    }));
+    try {
+      const prompt = buildSfxPrompt(ev);
+      const result = await matchSfx({
+        prompt,
+        topK: 3,
+        categoryId: ev.categoryId,
+      });
+      setSfxSuggestions((prev) => ({
+        ...prev,
+        [ev.id]: {
+          loading: false,
+          hits: result.matches,
+          error: result.warning === 'library_empty' ? 'Sample-bibliotek er tomt. Bygg det først (se README).' : undefined,
+        },
+      }));
+    } catch (err: any) {
+      setSfxSuggestions((prev) => ({
+        ...prev,
+        [ev.id]: {
+          loading: false,
+          error: err?.message ?? 'Kunne ikke hente forslag',
+        },
+      }));
+    }
+  }, [buildSfxPrompt]);
+
+  const playPreview = React.useCallback((url: string) => {
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+    }
+    const audio = new Audio(url);
+    audio.volume = 0.7;
+    previewAudioRef.current = audio;
+    audio.play().catch(() => {});
+  }, []);
+
+  const useSuggestion = React.useCallback((eventId: string, hit: SfxMatchHit) => {
+    setSfxClipUrls((prev) => {
+      // Hvis det allerede er en bruker-uploadet URL: revoke og erstatt.
+      if (prev[eventId] && prev[eventId].startsWith('blob:')) {
+        URL.revokeObjectURL(prev[eventId]);
+      }
+      return { ...prev, [eventId]: hit.url };
+    });
+    // Lukk suggestion-listen for dette eventet.
+    setSfxSuggestions((prev) => {
+      const next = { ...prev };
+      delete next[eventId];
+      return next;
+    });
+  }, []);
+
+  // Cleanup preview-audio ved unmount.
+  React.useEffect(() => () => {
+    if (previewAudioRef.current) {
+      try { previewAudioRef.current.pause(); } catch {}
+    }
   }, []);
 
   // SFX-upload-handlers.
@@ -970,6 +1056,19 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
                       ({ev.matchedKeyword})
                     </Typography>
                   </Typography>
+                  {!hasClip && (
+                    <Tooltip title="Foreslå lyd fra CLAP-bibliotek">
+                      <IconButton
+                        size="small"
+                        onClick={() => suggestSfxForEvent(ev)}
+                        sx={{ p: 0.25, color: '#a5b4fc' }}
+                        data-testid={`animatic-sfx-suggest-${ev.id}`}
+                        disabled={sfxSuggestions[ev.id]?.loading}
+                      >
+                        <AutoAwesome sx={{ fontSize: 12 }} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   {hasClip ? (
                     <Tooltip title="Bytt lydfil">
                       <IconButton
@@ -981,7 +1080,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
                       </IconButton>
                     </Tooltip>
                   ) : (
-                    <Tooltip title="Last opp lydfil for denne SFX'en">
+                    <Tooltip title="Last opp egen lydfil">
                       <IconButton
                         size="small"
                         onClick={() => openSfxPickerForEvent(ev.id)}
@@ -1010,6 +1109,88 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
                     <CloseIcon sx={{ fontSize: 9 }} />
                   </IconButton>
                 </Stack>
+              );
+            })}
+            {/* Suggestion-list per event */}
+            {(sfxByFrame.get(activeFrame.id) ?? []).map((ev) => {
+              const suggestion = sfxSuggestions[ev.id];
+              if (!suggestion) return null;
+              return (
+                <Box
+                  key={`sugg-${ev.id}`}
+                  sx={{
+                    pl: 1.5,
+                    py: 0.5,
+                    borderLeft: '2px solid rgba(165,180,252,0.3)',
+                    bgcolor: 'rgba(165,180,252,0.05)',
+                  }}
+                  data-testid={`animatic-sfx-suggestions-${ev.id}`}
+                >
+                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
+                    <AutoAwesome sx={{ fontSize: 10, color: '#a5b4fc' }} />
+                    <Typography variant="caption" sx={{ fontSize: 9, color: '#a5b4fc', flex: 1 }}>
+                      Forslag for: {ev.category.label}
+                    </Typography>
+                  </Stack>
+                  {suggestion.loading && (
+                    <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.5)' }}>
+                      Søker i CLAP-bibliotek…
+                    </Typography>
+                  )}
+                  {suggestion.error && (
+                    <Typography variant="caption" sx={{ fontSize: 9, color: '#fca5a5' }}>
+                      {suggestion.error}
+                    </Typography>
+                  )}
+                  {!suggestion.loading && !suggestion.error && suggestion.hits && suggestion.hits.length === 0 && (
+                    <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.5)' }}>
+                      Ingen treff. Last opp en egen lyd i stedet.
+                    </Typography>
+                  )}
+                  {!suggestion.loading && suggestion.hits && suggestion.hits.length > 0 && (
+                    <Stack spacing={0.25}>
+                      {suggestion.hits.map((hit) => (
+                        <Stack
+                          key={hit.id}
+                          direction="row"
+                          alignItems="center"
+                          spacing={0.5}
+                          sx={{ py: 0.15 }}
+                          data-testid={`animatic-sfx-hit-${hit.id}`}
+                        >
+                          <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {hit.title}
+                            <Typography component="span" variant="caption" sx={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', ml: 0.5 }}>
+                              ({Math.round(hit.score * 100)}%)
+                            </Typography>
+                          </Typography>
+                          <Typography variant="caption" sx={{ fontSize: 8, color: 'rgba(255,255,255,0.35)' }}>
+                            {hit.license}
+                          </Typography>
+                          <Tooltip title="Forhåndsvis">
+                            <IconButton
+                              size="small"
+                              onClick={() => playPreview(hit.url)}
+                              sx={{ p: 0.15, color: 'rgba(255,255,255,0.55)' }}
+                            >
+                              <PlayCircleOutline sx={{ fontSize: 12 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Bruk denne">
+                            <IconButton
+                              size="small"
+                              onClick={() => useSuggestion(ev.id, hit)}
+                              sx={{ p: 0.15, color: '#86efac' }}
+                              data-testid={`animatic-sfx-use-${hit.id}`}
+                            >
+                              <PlayArrow sx={{ fontSize: 12 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
               );
             })}
           </Stack>
