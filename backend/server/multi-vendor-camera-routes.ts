@@ -17,6 +17,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { getSonyClient, clearSonyClient } from "./sony-wifi-client.js";
 import { getArriClient } from "./arri-web-client.js";
+import { getZcamClient, clearZcamClient } from "./zcam-http-client.js";
 
 const HEADER_USER = "x-role-room-user-id";
 
@@ -218,5 +219,86 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
     } catch (err) {
       res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // ── Z CAM ─────────────────────────────────────────────────────────
+
+  app.post("/api/zcam/connect", async (req, res) => {
+    if (!requireUser(req, res)) return;
+    const body = (req.body ?? {}) as { ipAddress?: string; port?: number };
+    if (!body.ipAddress || !ipAddressValid(body.ipAddress)) {
+      res.status(400).json({ error: "Ugyldig ipAddress" });
+      return;
+    }
+    try {
+      const client = getZcamClient(body.ipAddress, body.port ?? 80);
+      await client.openSession();
+      const info = await client.getInfo();
+      res.json({
+        success: true,
+        camera: { ipAddress: body.ipAddress, port: body.port ?? 80, info },
+      });
+    } catch (err) {
+      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/api/zcam/cameras/:ip/state", async (req, res) => {
+    if (!requireUser(req, res)) return;
+    try {
+      const client = getZcamClient(req.params.ip);
+      const [info, state] = await Promise.all([client.getInfo(), client.getState()]);
+      res.json({ success: true, info, state });
+    } catch (err) {
+      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post("/api/zcam/cameras/:ip/record/start", async (req, res) => {
+    if (!requireUser(req, res)) return;
+    try {
+      await getZcamClient(req.params.ip).startRecording();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post("/api/zcam/cameras/:ip/record/stop", async (req, res) => {
+    if (!requireUser(req, res)) return;
+    try {
+      await getZcamClient(req.params.ip).stopRecording();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post("/api/zcam/cameras/:ip/settings", async (req, res) => {
+    if (!requireUser(req, res)) return;
+    const body = (req.body ?? {}) as {
+      iso?: number;
+      shutterSpeed?: string;
+      iris?: string;
+      fps?: number;
+      whiteBalanceK?: number;
+    };
+    try {
+      const client = getZcamClient(req.params.ip);
+      if (body.iso !== undefined) await client.setIso(body.iso);
+      if (body.shutterSpeed) await client.setShutterSpeed(body.shutterSpeed);
+      if (body.iris) await client.setIris(body.iris);
+      if (body.fps !== undefined) await client.setFps(body.fps);
+      if (body.whiteBalanceK !== undefined) await client.setWhiteBalance(body.whiteBalanceK);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.delete("/api/zcam/cameras/:ip", async (req, res) => {
+    if (!requireUser(req, res)) return;
+    clearZcamClient(req.params.ip);
+    res.json({ success: true });
   });
 }

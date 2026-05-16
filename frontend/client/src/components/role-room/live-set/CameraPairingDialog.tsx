@@ -41,6 +41,7 @@ import {
 import { CanonCcapiAdapter } from "./cameras/canon-adapter";
 import { SonyWifiAdapter } from "./cameras/sony-adapter";
 import { ArriWebAdapter } from "./cameras/arri-adapter";
+import { ZcamAdapter } from "./cameras/zcam-adapter";
 import type { CameraAdapter, CameraVendor } from "./cameras/types";
 
 interface CameraPairingDialogProps {
@@ -49,11 +50,12 @@ interface CameraPairingDialogProps {
   onPaired: (adapter: CameraAdapter) => void;
 }
 
-const VENDOR_LABELS: Record<Exclude<CameraVendor, "mock" | "red" | "zcam" | "gopro" | "dji">, string> = {
+const VENDOR_LABELS: Record<Exclude<CameraVendor, "mock" | "red" | "gopro" | "dji">, string> = {
   canon: "Canon",
   blackmagic: "Blackmagic",
   sony: "Sony",
   arri: "ARRI",
+  zcam: "Z CAM",
 };
 
 type SupportedVendor = keyof typeof VENDOR_LABELS;
@@ -302,6 +304,70 @@ function ArriForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Z CAM-form
+// ─────────────────────────────────────────────────────────────────────
+
+function ZcamForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const [ipAddress, setIpAddress] = React.useState("");
+  const [port, setPort] = React.useState("80");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const handleConnect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const adapter = new ZcamAdapter(ipAddress, parseInt(port, 10) || 80);
+      await adapter.connect();
+      onPaired(adapter);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connect feilet");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Typography variant="body2" color="text.secondary">
+        Z CAM-modeller (E2, E2-M4, F8, F6, ZF) eksponerer et åpent HTTP-API på
+        port 80. Kameraet må være i Wi-Fi STA- eller AP-modus. Sjekk
+        kamerameny → Network for IP-adresse.
+      </Typography>
+
+      <Stack direction="row" spacing={1}>
+        <TextField
+          fullWidth
+          size="small"
+          label="IP-adresse"
+          value={ipAddress}
+          onChange={(e) => setIpAddress(e.target.value)}
+          placeholder="10.98.32.1"
+        />
+        <TextField
+          size="small"
+          label="Port"
+          value={port}
+          onChange={(e) => setPort(e.target.value)}
+          sx={{ width: 100 }}
+        />
+      </Stack>
+
+      <Button
+        variant="contained"
+        startIcon={busy ? <CircularProgress size={14} /> : <LinkIcon />}
+        onClick={handleConnect}
+        disabled={busy || !ipAddress}
+      >
+        Koble til Z CAM
+      </Button>
+
+      {error && <Alert severity="error">{error}</Alert>}
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Blackmagic-form: Web Bluetooth
 // ─────────────────────────────────────────────────────────────────────
 
@@ -401,6 +467,7 @@ export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, 
         {vendor === "canon" && <CanonForm onPaired={handlePaired} />}
         {vendor === "sony" && <SonyForm onPaired={handlePaired} />}
         {vendor === "arri" && <ArriForm onPaired={handlePaired} />}
+        {vendor === "zcam" && <ZcamForm onPaired={handlePaired} />}
         {vendor === "blackmagic" && <BlackmagicForm onPaired={handlePaired} />}
       </DialogContent>
       <DialogActions>
