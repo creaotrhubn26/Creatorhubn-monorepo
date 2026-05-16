@@ -38,6 +38,10 @@ import {
   Download as DownloadIcon,
   Fullscreen,
   FullscreenExit,
+  GraphicEq,
+  UploadFile,
+  VolumeUp,
+  VolumeOff,
 } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
@@ -53,6 +57,9 @@ import {
   fadeOutRecording,
   type RecordingAudioGraph,
 } from './recordingAudioGraph';
+import { detectSequenceSfx, groupEventsByFrame, type SfxEvent } from './sfxDetector';
+import { scheduleSfx } from './sfxScheduler';
+import { useSfxPlayback } from './useSfxPlayback';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -115,6 +122,13 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const [voiceoverUrls, setVoiceoverUrls] = React.useState<Record<string, string>>({});
   const voiceoverFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const voiceoverTargetFrameRef = React.useRef<string | null>(null);
+  // SFX: bruker-leverte audio-clips per event-id (eventId → objectURL).
+  const [sfxClipUrls, setSfxClipUrls] = React.useState<Record<string, string>>({});
+  const sfxFileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const sfxTargetEventRef = React.useRef<string | null>(null);
+  const [sfxEnabled, setSfxEnabled] = React.useState(true);
+  // Bruker kan også fjerne en auto-detektert event (skjul den).
+  const [hiddenSfxEventIds, setHiddenSfxEventIds] = React.useState<Set<string>>(new Set());
   const audioFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const stageContainerRef = React.useRef<HTMLDivElement | null>(null);
@@ -178,6 +192,44 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     voiceoverElement.playbackRate = speed;
   }, [voiceoverElement, speed]);
 
+  // Auto-detekter SFX-events fra frame-tekst (description + caption).
+  const detectedSfxEvents = React.useMemo<SfxEvent[]>(() => {
+    if (!sfxEnabled) return [];
+    return detectSequenceSfx(
+      frames.map((f) => ({
+        id: f.id,
+        description: f.description,
+        caption: f.caption,
+      })),
+    );
+  }, [frames, sfxEnabled]);
+
+  // Filtrer bort skjulte events.
+  const visibleSfxEvents = React.useMemo(
+    () => detectedSfxEvents.filter((e) => !hiddenSfxEventIds.has(e.id)),
+    [detectedSfxEvents, hiddenSfxEventIds],
+  );
+
+  // Schedule til absolutt tid.
+  const scheduledSfx = React.useMemo(
+    () => scheduleSfx(visibleSfxEvents, player.timeline),
+    [visibleSfxEvents, player.timeline],
+  );
+
+  // Spill av SFX i takt med timeline (auto-miks).
+  const sfxPlayback = useSfxPlayback({
+    scheduled: scheduledSfx,
+    clipUrls: sfxClipUrls,
+    isPlaying: player.isPlaying,
+    currentTime: player.currentTime,
+    playbackSpeed: speed,
+  });
+
+  const sfxByFrame = React.useMemo(
+    () => groupEventsByFrame(visibleSfxEvents),
+    [visibleSfxEvents],
+  );
+
   // Opptak-controller — kobler canvas (video) + audio (valgfritt) til
   // en MediaRecorder som dumper til WebM. Hvis vi har en Web Audio-
   // graf for fade, brukes dens stream som override.
@@ -231,12 +283,17 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     }
 
     // Bygg Web Audio-graf med alle aktive audio-kilder (scene-track
-    // + per-frame voiceover) for å miksing under opptak + fade.
+    // + per-frame voiceover + SFX-clips) for miksing under opptak + fade.
     let pendingStream: MediaStream | null = null;
     const elementsForRecording: HTMLAudioElement[] = [];
     if (audioElement) elementsForRecording.push(audioElement);
     if (voiceoverElement && Object.keys(voiceoverUrls).length > 0) {
       elementsForRecording.push(voiceoverElement);
+    }
+    // SFX-elementer: hver event med last opp clip har sin egen <audio>
+    // via useSfxPlayback. Vi inkluderer dem i grafen.
+    for (const el of sfxPlayback.audioElements) {
+      if (el) elementsForRecording.push(el);
     }
     if (elementsForRecording.length > 0) {
       const graph = createRecordingAudioGraph(elementsForRecording);
@@ -261,7 +318,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         setAudioStreamOverride(null);
       }
     }, pendingStream ? 30 : 0);
-  }, [recorder, player, audioElement, voiceoverElement, voiceoverUrls]);
+  }, [recorder, player, audioElement, voiceoverElement, voiceoverUrls, sfxPlayback.audioElements]);
 
   // Auto-fade-out + cleanup når opptaket avsluttes via naturlig
   // playback-slutt (recorder.stop() trigget av effect over).
@@ -394,6 +451,52 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   // Cleanup ALLE per-frame voiceover-URLs ved unmount.
   React.useEffect(() => () => {
     Object.values(voiceoverUrls).forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch {}
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // SFX-upload-handlers.
+  const openSfxPickerForEvent = React.useCallback((eventId: string) => {
+    sfxTargetEventRef.current = eventId;
+    sfxFileInputRef.current?.click();
+  }, []);
+
+  const handleSfxPick = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const eventId = sfxTargetEventRef.current;
+    sfxTargetEventRef.current = null;
+    if (!file || !eventId) return;
+    if (!file.type.startsWith('audio/')) return;
+    setSfxClipUrls((prev) => {
+      if (prev[eventId]) URL.revokeObjectURL(prev[eventId]);
+      return { ...prev, [eventId]: URL.createObjectURL(file) };
+    });
+  }, []);
+
+  const clearSfxClip = React.useCallback((eventId: string) => {
+    setSfxClipUrls((prev) => {
+      if (!prev[eventId]) return prev;
+      URL.revokeObjectURL(prev[eventId]);
+      const next = { ...prev };
+      delete next[eventId];
+      return next;
+    });
+  }, []);
+
+  const hideSfxEvent = React.useCallback((eventId: string) => {
+    setHiddenSfxEventIds((prev) => {
+      const next = new Set(prev);
+      next.add(eventId);
+      return next;
+    });
+    clearSfxClip(eventId);
+  }, [clearSfxClip]);
+
+  // Cleanup ALLE SFX-URLs ved unmount.
+  React.useEffect(() => () => {
+    Object.values(sfxClipUrls).forEach((url) => {
       try { URL.revokeObjectURL(url); } catch {}
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -800,6 +903,126 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           })}
         </Box>
       )}
+
+      {/* SFX-panel for aktiv frame: viser auto-detekterte events +
+          lar bruker laste opp egne lyder. Auto-mikset i playback. */}
+      {sfxEnabled && activeFrame && (sfxByFrame.get(activeFrame.id)?.length ?? 0) > 0 && (
+        <Box
+          sx={{
+            maxWidth: isFullscreen ? '70%' : stageMaxWidth,
+            mx: 'auto',
+            mb: 0.75,
+            p: 0.75,
+            borderRadius: 1,
+            bgcolor: 'rgba(0,0,0,0.4)',
+            border: '1px solid rgba(165,180,252,0.15)',
+          }}
+          data-testid="animatic-sfx-panel"
+        >
+          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
+            <GraphicEq sx={{ fontSize: 12, color: '#a5b4fc' }} />
+            <Typography variant="caption" sx={{ fontSize: 10, color: '#a5b4fc', fontWeight: 700, letterSpacing: '0.05em' }}>
+              SFX
+            </Typography>
+            <Tooltip title={sfxEnabled ? 'Skru av auto-SFX' : 'Skru på auto-SFX'}>
+              <IconButton
+                size="small"
+                onClick={() => setSfxEnabled((v) => !v)}
+                sx={{ p: 0.25, ml: 'auto', color: sfxEnabled ? '#86efac' : 'rgba(255,255,255,0.4)' }}
+                data-testid="animatic-sfx-toggle"
+              >
+                {sfxEnabled ? <VolumeUp sx={{ fontSize: 12 }} /> : <VolumeOff sx={{ fontSize: 12 }} />}
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <Stack spacing={0.25}>
+            {(sfxByFrame.get(activeFrame.id) ?? []).map((ev) => {
+              const hasClip = !!sfxClipUrls[ev.id];
+              const isActiveNow = sfxPlayback.activeIds.includes(ev.id);
+              return (
+                <Stack
+                  key={ev.id}
+                  direction="row"
+                  alignItems="center"
+                  spacing={0.5}
+                  sx={{
+                    px: 0.5,
+                    py: 0.25,
+                    borderRadius: 0.5,
+                    bgcolor: isActiveNow ? 'rgba(134,239,172,0.12)' : 'transparent',
+                  }}
+                  data-testid={`animatic-sfx-event-${ev.id}`}
+                >
+                  <Box
+                    sx={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      bgcolor:
+                        ev.layer === 'event' ? '#fcd34d'
+                        : ev.layer === 'ambient' ? '#a7f3d0'
+                        : '#c4b5fd',
+                    }}
+                  />
+                  <Typography variant="caption" sx={{ fontSize: 10, color: 'rgba(255,255,255,0.85)', flex: 1 }}>
+                    {ev.category.label}
+                    <Typography component="span" variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', ml: 0.5 }}>
+                      ({ev.matchedKeyword})
+                    </Typography>
+                  </Typography>
+                  {hasClip ? (
+                    <Tooltip title="Bytt lydfil">
+                      <IconButton
+                        size="small"
+                        onClick={() => openSfxPickerForEvent(ev.id)}
+                        sx={{ p: 0.25, color: '#86efac' }}
+                      >
+                        <MicNone sx={{ fontSize: 12 }} />
+                      </IconButton>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Last opp lydfil for denne SFX'en">
+                      <IconButton
+                        size="small"
+                        onClick={() => openSfxPickerForEvent(ev.id)}
+                        sx={{ p: 0.25, color: 'rgba(255,255,255,0.55)' }}
+                        data-testid={`animatic-sfx-upload-${ev.id}`}
+                      >
+                        <UploadFile sx={{ fontSize: 12 }} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  {hasClip && (
+                    <IconButton
+                      size="small"
+                      onClick={() => clearSfxClip(ev.id)}
+                      sx={{ p: 0.15, color: 'rgba(255,255,255,0.4)' }}
+                    >
+                      <CloseIcon sx={{ fontSize: 10 }} />
+                    </IconButton>
+                  )}
+                  <IconButton
+                    size="small"
+                    onClick={() => hideSfxEvent(ev.id)}
+                    sx={{ p: 0.15, color: 'rgba(255,255,255,0.3)' }}
+                    title="Skjul denne SFX'en"
+                  >
+                    <CloseIcon sx={{ fontSize: 9 }} />
+                  </IconButton>
+                </Stack>
+              );
+            })}
+          </Stack>
+        </Box>
+      )}
+      <input
+        ref={sfxFileInputRef}
+        type="file"
+        accept="audio/*"
+        onChange={handleSfxPick}
+        style={{ display: 'none' }}
+        data-testid="animatic-sfx-input"
+      />
 
       {/* Scrubber med frame-grenser som marker */}
       <Box sx={{ px: 1, mb: 0.5 }}>
