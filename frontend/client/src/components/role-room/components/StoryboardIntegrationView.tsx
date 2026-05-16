@@ -61,6 +61,8 @@ import { StyleConsistencyIndicator } from './drawing/StyleConsistencyIndicator';
 import { MoodBoardPanel } from './drawing/MoodBoardPanel';
 import { PoseLibraryPanel } from './drawing/PoseLibraryPanel';
 import { useMoodBoardPalette } from './drawing/useMoodBoardPalette';
+// Sprint A.7: Animatic-avspilling
+import { AnimaticPlayer } from './drawing/AnimaticPlayer';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import type { PencilStroke } from '../hooks/useApplePencil';
 import type { FrameDrawingData } from '../state/storyboardStore';
@@ -2361,6 +2363,27 @@ const StoryboardView: React.FC<{
             frames={storyboardFrames}
             activeFrameId={storyboardFrames[activeFrameIdx]?.id}
             targetPalette={moodBoardPalette.palette.length > 0 ? moodBoardPalette.palette : undefined}
+            compact
+          />
+        </Box>
+      )}
+
+      {/* Sprint A.7: Animatic-avspilling — spiller frame-sekvensen som
+          enkel video for å teste pacing. */}
+      {storyboardFrames.length > 0 && (
+        <Box sx={{ mt: 2 }} data-testid="animatic-mount">
+          <AnimaticPlayer
+            frames={storyboardFrames.map((f) => ({
+              id: f.id,
+              duration: f.duration,
+              imageUrl: f.imageUrl,
+              thumbnailUrl: f.thumbnailUrl,
+              shotNumber: f.shotNumber,
+              description: f.description,
+            }))}
+            onActiveFrameChange={(_id, index) => {
+              if (index !== activeFrameIndex) onSelectFrame(index);
+            }}
             compact
           />
         </Box>
