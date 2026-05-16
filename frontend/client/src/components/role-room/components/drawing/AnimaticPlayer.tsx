@@ -42,6 +42,11 @@ import {
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
 import { useAnimaticRecorder } from './useAnimaticRecorder';
+import {
+  saveScratchTrack,
+  loadScratchTrack,
+  deleteScratchTrack,
+} from './animaticAudioStore';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -66,6 +71,8 @@ export interface AnimaticPlayerProps {
   onActiveFrameChange?: (frameId: string, index: number) => void;
   /** Sekunder med cross-fade mellom frames. 0 = hard cut. Default 0.3. */
   transitionDuration?: number;
+  /** Hvis satt: scratch-track persisteres i IndexedDB per scene. */
+  sceneId?: string;
 }
 
 function formatTime(seconds: number): string {
@@ -85,6 +92,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   compact = false,
   onActiveFrameChange,
   transitionDuration = 0.3,
+  sceneId,
 }) => {
   const [speed, setSpeed] = React.useState(1);
   const [loop, setLoop] = React.useState(false);
@@ -216,14 +224,39 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
     setAudioName(file.name);
-  }, [audioUrl]);
+    // Persistens i IndexedDB om sceneId er satt — fire and forget.
+    if (sceneId) {
+      saveScratchTrack(sceneId, file).catch(() => {});
+    }
+  }, [audioUrl, sceneId]);
 
   const clearAudio = React.useCallback(() => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     setAudioName(null);
     setAudioElement(null);
-  }, [audioUrl]);
+    if (sceneId) {
+      deleteScratchTrack(sceneId).catch(() => {});
+    }
+  }, [audioUrl, sceneId]);
+
+  // Last persistert scratch-track ved scene-bytte.
+  React.useEffect(() => {
+    if (!sceneId) return;
+    let cancelled = false;
+    loadScratchTrack(sceneId).then((stored) => {
+      if (cancelled || !stored) return;
+      const url = URL.createObjectURL(stored.blob);
+      setAudioUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setAudioName(stored.fileName);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sceneId]);
 
   // Cleanup object-URL ved unmount.
   React.useEffect(() => () => {

@@ -2410,6 +2410,7 @@ const StoryboardView: React.FC<{
             onActiveFrameChange={(_id, index) => {
               if (index !== activeFrameIndex) onSelectFrame(index);
             }}
+            sceneId={sceneId}
             compact
           />
         </Box>
