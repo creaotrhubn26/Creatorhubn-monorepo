@@ -19,6 +19,7 @@ import AudioColumn from './AudioColumn';
 import EditModeWorkspace from './EditModeWorkspace';
 import ReviewModeWorkspace from './ReviewModeWorkspace';
 import CameraPairingDialog from './CameraPairingDialog';
+import CameraDetailDrawer from './CameraDetailDrawer';
 import { useLiveSetHardware } from './useLiveSetHardware';
 import { useMultiVendorCameras } from './cameras/useMultiVendorCameras';
 import type {
@@ -96,11 +97,10 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
   const [recordingElapsed, setRecordingElapsed] = React.useState(0);
   const [selectedTakeId, setSelectedTakeId] = React.useState<string | null>(null);
   const [pairingOpen, setPairingOpen] = React.useState(false);
+  const [detailDrawerOpen, setDetailDrawerOpen] = React.useState(false);
 
   const { cameras: mockCameras, masterAudioDb, syncStatus, crewCount } = useLiveSetHardware();
-  // removeCamera kommer i kamera-detail-panel — wires senere
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { cameras: pairedCameras, addCamera, removeCamera: _removeCamera } = useMultiVendorCameras();
+  const { cameras: pairedCameras, addCamera, removeCamera, refreshAll } = useMultiVendorCameras();
 
   // Bruk real paired-kameraer hvis noen finnes, ellers fall tilbake til mock
   // så bruker fortsatt ser noe i UI før de har paret noe.
@@ -209,7 +209,9 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
           isRecording={isRecording}
           syncStatus={syncStatus}
           crewCount={crewCount}
+          cameraCount={pairedCameras.length}
           onSettingsOpen={() => setPairingOpen(true)}
+          onCamerasOpen={() => setDetailDrawerOpen(true)}
           onClose={onClose}
         />
 
@@ -220,6 +222,14 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
             addCamera(adapter);
             setPairingOpen(false);
           }}
+        />
+
+        <CameraDetailDrawer
+          open={detailDrawerOpen}
+          onClose={() => setDetailDrawerOpen(false)}
+          cameras={pairedCameras}
+          onRemove={removeCamera}
+          onRefresh={refreshAll}
         />
 
         {mode === 'live' && (

@@ -40,10 +40,14 @@ interface LiveSetTopBarProps {
   isRecording: boolean;
   syncStatus: SyncStatus;
   crewCount: number;
+  /** Antall paired kameraer (vises i camera-button-badge) */
+  cameraCount?: number;
   lastSavedAt?: string;
   onClose?: () => void;
   onChatOpen?: () => void;
   onSettingsOpen?: () => void;
+  /** Åpner CameraDetailDrawer */
+  onCamerasOpen?: () => void;
 }
 
 const SYNC_META: Record<SyncStatus, { label: string; color: 'success' | 'warning' | 'error' }> = {
@@ -61,9 +65,11 @@ export const LiveSetTopBar: React.FC<LiveSetTopBarProps> = ({
   isRecording,
   syncStatus,
   crewCount,
+  cameraCount = 0,
   onClose,
   onChatOpen,
   onSettingsOpen,
+  onCamerasOpen,
 }) => {
   const sync = SYNC_META[syncStatus];
 
@@ -201,6 +207,35 @@ export const LiveSetTopBar: React.FC<LiveSetTopBarProps> = ({
 
         {/* Trailing actions */}
         <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0, ml: 1 }}>
+          {onCamerasOpen && (
+            <Tooltip title={`Tilkoblede kameraer (${cameraCount})`}>
+              <IconButton size="small" onClick={onCamerasOpen} sx={{ color: 'rgba(255,255,255,0.7)', position: 'relative' }}>
+                <VideocamIcon fontSize="small" />
+                {cameraCount > 0 && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 2,
+                      right: 2,
+                      bgcolor: '#dc2626',
+                      color: '#fff',
+                      fontSize: 9,
+                      fontWeight: 700,
+                      minWidth: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      px: 0.5,
+                    }}
+                  >
+                    {cameraCount}
+                  </Box>
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
           {onChatOpen && (
             <Tooltip title="Crew chat">
               <IconButton size="small" onClick={onChatOpen} sx={{ color: 'rgba(255,255,255,0.7)' }}>
@@ -209,7 +244,7 @@ export const LiveSetTopBar: React.FC<LiveSetTopBarProps> = ({
             </Tooltip>
           )}
           {onSettingsOpen && (
-            <Tooltip title="Innstillinger">
+            <Tooltip title="Koble til kamera">
               <IconButton size="small" onClick={onSettingsOpen} sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 <SettingsIcon fontSize="small" />
               </IconButton>
