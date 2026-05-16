@@ -20,6 +20,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { CcapiError, getCcapiClient, clearCcapiClient } from "./ccapi-client.js";
+import { discoverCcapiCameras } from "./ccapi-discovery.js";
 
 const HEADER_USER = "x-role-room-user-id";
 
@@ -54,13 +55,19 @@ export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
 
   // ── Discover: returner kameraer registrert i DB ──────────────────
   //
-  // Real mDNS-discovery er nice-to-have men ikke i MVP. Frontend kan
-  // legge til kameraer manuelt via /connect; vi viser de registrerte her.
+  // Default: rask DB-lookup. ?scan=true trigger en aktiv subnet-skann
+  // som tar ~5 sek og oppdager nye kameraer på samme nett som serveren.
+  // Auto-merger funn med eksisterende DB-rad så frontend ser komplett liste.
   app.get("/api/ccapi/discover", async (req, res) => {
     const userId = requireUser(req, res);
     if (!userId) return;
+    const wantScan = req.query.scan === "true" || req.query.scan === "1";
+    const scanDurationParam = req.query.scanDuration as string | undefined;
+    const probeTimeoutMs = scanDurationParam ? Math.max(500, Math.min(10000, parseInt(scanDurationParam, 10))) : 2000;
+
     try {
-      const r = await pool.query<{
+      // 1. Hent eksisterende fra DB
+      const dbResult = await pool.query<{
         id: string;
         ip_address: string;
         camera_name: string;
@@ -74,23 +81,125 @@ export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
          WHERE user_id = $1
          ORDER BY last_seen_at DESC NULLS LAST`,
         [userId],
-      );
-      res.json({
-        success: true,
-        cameras: r.rows.map((row) => ({
-          id: row.id,
-          name: row.camera_name,
-          modelName: row.model,
-          ipAddress: row.ip_address,
-          port: 443,
-          signalStrength: row.is_online ? 90 : 0,
-          isConnected: row.is_online,
-          lastSeen: row.last_seen_at?.toISOString() ?? null,
-        })),
-      });
+      ).catch(() => ({ rows: [] }));
+
+      const existingByIp = new Map(dbResult.rows.map((row) => [row.ip_address, row]));
+
+      // 2. Hvis scan=true, kjør aktiv subnet-scanner
+      if (wantScan) {
+        try {
+          const discovered = await discoverCcapiCameras({ probeTimeoutMs });
+          for (const cam of discovered) {
+            // Upsert til DB best-effort
+            try {
+              await pool.query(
+                `INSERT INTO ccapi_cameras
+                   (user_id, camera_name, model, serial_number, firmware_version,
+                    ip_address, supported_features, is_online, last_seen_at,
+                    created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW(), NOW())
+                 ON CONFLICT (user_id, ip_address) DO UPDATE SET
+                   model = COALESCE(EXCLUDED.model, ccapi_cameras.model),
+                   serial_number = COALESCE(EXCLUDED.serial_number, ccapi_cameras.serial_number),
+                   firmware_version = COALESCE(EXCLUDED.firmware_version, ccapi_cameras.firmware_version),
+                   supported_features = EXCLUDED.supported_features,
+                   is_online = true,
+                   last_seen_at = NOW(),
+                   updated_at = NOW()`,
+                [
+                  userId,
+                  cam.model ?? "Canon Camera",
+                  cam.model ?? "Unknown",
+                  cam.serialNumber ?? null,
+                  cam.firmwareVersion ?? null,
+                  cam.ipAddress,
+                  JSON.stringify(cam.supportedVersions),
+                ],
+              );
+            } catch (err) {
+              console.warn("[ccapi-routes] DB upsert skipped:", err);
+            }
+
+            // Merge inn i in-memory map så frontend får svaret straks
+            if (!existingByIp.has(cam.ipAddress)) {
+              existingByIp.set(cam.ipAddress, {
+                id: `discovered-${cam.ipAddress}`,
+                ip_address: cam.ipAddress,
+                camera_name: cam.model ?? "Canon Camera",
+                model: cam.model ?? "Unknown",
+                firmware_version: cam.firmwareVersion ?? null,
+                is_online: true,
+                last_seen_at: new Date(cam.discoveredAt),
+              });
+            }
+          }
+        } catch (scanErr) {
+          console.warn("[ccapi-routes] scan failed:", scanErr);
+        }
+      }
+
+      const cameras = Array.from(existingByIp.values()).map((row) => ({
+        id: row.id,
+        name: row.camera_name,
+        modelName: row.model,
+        ipAddress: row.ip_address,
+        port: 443,
+        signalStrength: row.is_online ? 90 : 0,
+        isConnected: row.is_online,
+        lastSeen: row.last_seen_at?.toISOString() ?? null,
+      }));
+
+      res.json({ success: true, cameras, scanned: wantScan });
     } catch (err) {
       console.error("[ccapi-routes] discover error:", err);
-      res.json({ success: true, cameras: [] }); // tabellen kan mangle
+      res.json({ success: true, cameras: [], scanned: false });
+    }
+  });
+
+  // ── Eksplisitt scan-endpoint — alltid aktiv skannning ────────────
+  app.post("/api/ccapi/scan", async (req, res) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const body = (req.body ?? {}) as { subnet?: string; probeTimeoutMs?: number };
+    try {
+      const discovered = await discoverCcapiCameras({
+        subnet: typeof body.subnet === "string" ? body.subnet : undefined,
+        probeTimeoutMs: typeof body.probeTimeoutMs === "number" ? body.probeTimeoutMs : 2000,
+      });
+
+      // Upsert alle funne kameraer
+      for (const cam of discovered) {
+        try {
+          await pool.query(
+            `INSERT INTO ccapi_cameras
+               (user_id, camera_name, model, serial_number, firmware_version,
+                ip_address, supported_features, is_online, last_seen_at,
+                created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW(), NOW())
+             ON CONFLICT (user_id, ip_address) DO UPDATE SET
+               supported_features = EXCLUDED.supported_features,
+               is_online = true,
+               last_seen_at = NOW(),
+               updated_at = NOW()`,
+            [
+              userId,
+              cam.model ?? "Canon Camera",
+              cam.model ?? "Unknown",
+              cam.serialNumber ?? null,
+              cam.firmwareVersion ?? null,
+              cam.ipAddress,
+              JSON.stringify(cam.supportedVersions),
+            ],
+          );
+        } catch (err) {
+          console.warn("[ccapi-routes] scan-upsert skipped:", err);
+        }
+      }
+
+      res.json({ success: true, cameras: discovered, count: discovered.length });
+    } catch (err) {
+      console.error("[ccapi-routes] scan error:", err);
+      res.status(500).json({ success: false, error: "Scan failed" });
     }
   });
 
