@@ -14,8 +14,12 @@ export { ProBrushToolbar } from './ProBrushToolbar';
 export type { ProBrushToolbarProps } from './ProBrushToolbar';
 
 // Layers system
-export { LayersPanel, DEFAULT_LAYER } from './LayersPanel';
+export { LayersPanel, DEFAULT_LAYER, buildClippingGroups } from './LayersPanel';
 export type { DrawingLayer, BlendMode, LayersPanelProps } from './LayersPanel';
+
+// Sprint A.7: Clipping mask-rendering (Procreate/Photoshop-semantics)
+export { renderLayersWithClipping, planClippingPasses } from './clippingMaskRenderer';
+export type { ClippingRenderOptions } from './clippingMaskRenderer';
 
 // Shape tools
 export { ShapeTools, drawShape } from './ShapeTools';

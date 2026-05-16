@@ -128,6 +128,8 @@ import {
   renderOnionSkins,
   type OnionSkinSettings,
 } from './drawing/OnionSkinning';
+// Sprint A.7: Clipping mask compositing for underlay-layers.
+import { planClippingPasses } from './drawing/clippingMaskRenderer';
 import {
   drawShape,
   type Shape,
@@ -242,6 +244,12 @@ export interface RenderableLayerOverlay {
   opacity: number;
   blendMode: DrawingLayer['blendMode'];
   strokes: PencilStroke[];
+  /**
+   * Sprint A.7 — Clipping mask. Når true, klippes alle påfølgende
+   * ikke-mask overlay-lag i samme stack til denne maskens piksel-
+   * coverage. Brukes typisk til å begrense shading til en figur-kontur.
+   */
+  clippingMask?: boolean;
 }
 
 export interface StrokeTransform {
@@ -2737,15 +2745,69 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     if (backgroundImageRef.current) {
       ctx.drawImage(backgroundImageRef.current, 0, 0, width, height);
     }
-    underlayLayers.forEach((layer) => {
-      if (!layer.strokes.length || layer.opacity <= 0) return;
+    // Sprint A.7: Clipping mask compositing. Lag i underlayLayers kan
+    // markeres med clippingMask=true; alle påfølgende ikke-mask-lag
+    // klippes til denne maskens piksel-coverage via en offscreen-canvas
+    // og source-atop. Lag før første mask tegnes direkte, samme som før.
+    const { preMaskLayers, groups } = planClippingPasses(
+      underlayLayers.map((layer) => ({
+        id: layer.id,
+        name: layer.id,
+        visible: true,
+        locked: false,
+        opacity: layer.opacity,
+        blendMode: layer.blendMode,
+        strokes: layer.strokes,
+        clippingMask: layer.clippingMask,
+      })),
+    );
+
+    const renderOverlayStrokes = (targetCtx: CanvasRenderingContext2D, overlay: { strokes: PencilStroke[]; blendMode: string }) => {
+      if (!overlay.strokes.length) return;
+      renderLayerStrokeSet(
+        targetCtx,
+        overlay.strokes,
+        1, // opacity allerede satt av wrapping save/alpha
+        (overlay.blendMode === 'normal' ? 'source-over' : overlay.blendMode) as GlobalCompositeOperation,
+      );
+    };
+
+    for (const layer of preMaskLayers) {
+      if (!layer.strokes.length || layer.opacity <= 0) continue;
       renderLayerStrokeSet(
         ctx,
         layer.strokes,
         layer.opacity,
         (layer.blendMode === 'normal' ? 'source-over' : layer.blendMode) as GlobalCompositeOperation,
       );
-    });
+    }
+
+    for (const group of groups) {
+      if (!group.maskLayer.strokes.length || group.maskLayer.opacity <= 0) continue;
+      const offscreen = document.createElement('canvas');
+      offscreen.width = width;
+      offscreen.height = height;
+      const offCtx = offscreen.getContext('2d');
+      if (!offCtx) continue;
+
+      // Maska selv etablerer klipperegionen.
+      renderOverlayStrokes(offCtx, group.maskLayer);
+
+      // Hvert clipped lag tegnes med source-atop så det bare havner inni maska.
+      for (const clipped of group.clippedLayers) {
+        if (!clipped.strokes.length || clipped.opacity <= 0) continue;
+        offCtx.save();
+        offCtx.globalCompositeOperation = 'source-atop';
+        offCtx.globalAlpha = clipped.opacity;
+        renderOverlayStrokes(offCtx, clipped);
+        offCtx.restore();
+      }
+
+      ctx.save();
+      ctx.globalAlpha = group.maskLayer.opacity;
+      ctx.drawImage(offscreen, 0, 0);
+      ctx.restore();
+    }
     renderLayerStrokeSet(ctx, strokes, 1, 'source-over', activeStrokeTransforms);
     const shouldShowTextSelection = drawingState.activeTool === 'text';
     drawingState.textAnnotations.forEach((annotation) => {

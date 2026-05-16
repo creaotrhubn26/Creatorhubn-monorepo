@@ -157,6 +157,12 @@ interface StoryboardDocumentLayerBase {
   blendMode: StoryboardDocumentBlendMode;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Sprint A.7 — Clipping mask. Når true, klippes alle påfølgende
+   * ikke-mask-lag i samme stack til denne maskens piksel-coverage,
+   * stoppes ved neste clippingMask=true eller stack-slutt.
+   */
+  clippingMask?: boolean;
 }
 
 export interface StoryboardDocumentDrawingLayer extends StoryboardDocumentLayerBase {
@@ -466,6 +472,14 @@ export interface StoryboardDocumentRenderableLayer {
   blendMode: StoryboardDocumentBlendMode;
   strokes: PencilStroke[];
   appliedTransforms: StoryboardDocumentAppliedTransform[];
+  /**
+   * Sprint A.7 — Clipping mask. Når true, brukes dette laget som
+   * piksel-maske for påfølgende ikke-mask-lag i samme stack til neste
+   * clippingMask=true eller stack-slutt. Renderern må bruke
+   * source-atop-compositing på en offscreen-canvas for å implementere
+   * dette riktig.
+   */
+  clippingMask?: boolean;
 }
 
 export type StoryboardDocumentLayerStackEntry = StoryboardDocumentRenderableLayer;
@@ -1626,6 +1640,9 @@ const getLayerStackEntries = (
       opacity: layer.opacity,
       effectiveOpacity,
       blendMode: layer.blendMode,
+      // Sprint A.7: propager clipping-mask-flagget til renderable så
+      // editoren kan klippe påfølgende lag til denne maskens coverage.
+      clippingMask: (layer as { clippingMask?: boolean }).clippingMask,
       appliedTransforms: nextAppliedTransforms,
       strokes:
         layer.type === 'drawing'

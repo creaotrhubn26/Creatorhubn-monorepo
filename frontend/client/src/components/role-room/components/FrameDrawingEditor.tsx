@@ -3977,6 +3977,10 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       opacity: layer.opacity,
       blendMode: layer.blendMode,
       strokes: layer.strokes,
+      // Sprint A.7: clippingMask propageres fra document-laget. Renderern
+      // bruker buildClippingGroups + offscreen-compositing for å klippe
+      // påfølgende lag til denne maskens piksel-coverage.
+      clippingMask: layer.clippingMask,
     })),
     [activeSheetRenderableLayers]
   );
