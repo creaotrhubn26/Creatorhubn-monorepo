@@ -42,6 +42,7 @@ import { CanonCcapiAdapter } from "./cameras/canon-adapter";
 import { SonyWifiAdapter } from "./cameras/sony-adapter";
 import { ArriWebAdapter } from "./cameras/arri-adapter";
 import { ZcamAdapter } from "./cameras/zcam-adapter";
+import { GoProAdapter, requestGoProDevice, isWebBluetoothAvailable as isWebBluetoothAvailableForGoPro } from "./cameras/gopro-adapter";
 import type { CameraAdapter, CameraVendor } from "./cameras/types";
 
 interface CameraPairingDialogProps {
@@ -50,12 +51,13 @@ interface CameraPairingDialogProps {
   onPaired: (adapter: CameraAdapter) => void;
 }
 
-const VENDOR_LABELS: Record<Exclude<CameraVendor, "mock" | "red" | "gopro" | "dji">, string> = {
+const VENDOR_LABELS: Record<Exclude<CameraVendor, "mock" | "red" | "dji">, string> = {
   canon: "Canon",
   blackmagic: "Blackmagic",
   sony: "Sony",
   arri: "ARRI",
   zcam: "Z CAM",
+  gopro: "GoPro",
 };
 
 type SupportedVendor = keyof typeof VENDOR_LABELS;
@@ -432,6 +434,71 @@ function BlackmagicForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// GoPro-form: Web Bluetooth (Open GoPro)
+// ─────────────────────────────────────────────────────────────────────
+
+function GoProForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const available = isWebBluetoothAvailableForGoPro();
+
+  const handlePair = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const device = await requestGoProDevice();
+      const adapter = new GoProAdapter(device);
+      await adapter.connect();
+      onPaired(adapter);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Web Bluetooth pairing avbrutt");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Typography variant="body2" color="text.secondary">
+        GoPro HERO9, HERO10, HERO11, HERO12, HERO13, MAX og senere modeller med
+        Open GoPro firmware støttes via Bluetooth LE. Aktiver Bluetooth-paring
+        i kameramenyen → Connections → Connect Device → GoPro App → Pair Device.
+      </Typography>
+
+      {!available && (
+        <Alert severity="warning">
+          Web Bluetooth API er ikke tilgjengelig. Bruk Chrome/Edge på desktop,
+          eller åpne LIVE SET PRO i iPad CaptureApp (native Bluetooth).
+        </Alert>
+      )}
+
+      <Button
+        variant="contained"
+        size="large"
+        startIcon={busy ? <CircularProgress size={14} /> : <BluetoothIcon />}
+        onClick={handlePair}
+        disabled={busy || !available}
+        sx={{
+          bgcolor: "#212121",
+          color: "#fff",
+          "&:hover": { bgcolor: "#424242" },
+        }}
+      >
+        {busy ? "Søker..." : "Søk etter GoPro"}
+      </Button>
+
+      <Typography variant="caption" color="text.secondary">
+        Open GoPro BLE-protokollen lar deg starte/stoppe opptak og endre
+        FPS/WB/ISO. For media-overføring trengs Wi-Fi (kommer som
+        oppfølgings-feature).
+      </Typography>
+
+      {error && <Alert severity="error">{error}</Alert>}
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Main dialog
 // ─────────────────────────────────────────────────────────────────────
 
@@ -469,6 +536,7 @@ export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, 
         {vendor === "arri" && <ArriForm onPaired={handlePaired} />}
         {vendor === "zcam" && <ZcamForm onPaired={handlePaired} />}
         {vendor === "blackmagic" && <BlackmagicForm onPaired={handlePaired} />}
+        {vendor === "gopro" && <GoProForm onPaired={handlePaired} />}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Lukk</Button>
