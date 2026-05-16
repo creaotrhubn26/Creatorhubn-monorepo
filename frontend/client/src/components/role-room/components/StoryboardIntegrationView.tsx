@@ -57,6 +57,9 @@ import { CreativeSuggestionsPanel } from './drawing/CreativeSuggestionsPanel';
 // Sprint A.7: Continuity strip + style consistency
 import { ContinuityStrip } from './drawing/ContinuityStrip';
 import { StyleConsistencyIndicator } from './drawing/StyleConsistencyIndicator';
+// Sprint A.7: Mood-board + pose-library
+import { MoodBoardPanel } from './drawing/MoodBoardPanel';
+import { PoseLibraryPanel } from './drawing/PoseLibraryPanel';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import type { PencilStroke } from '../hooks/useApplePencil';
 import type { FrameDrawingData } from '../state/storyboardStore';
@@ -2326,16 +2329,24 @@ const StoryboardView: React.FC<{
         </Box>
       )}
 
-      {/* Sprint A.7: Creative Studio — shot-forslag, coverage, refs.
-          Vises som sticky-sidepanel når showCreativeStudio er på. */}
+      {/* Sprint A.7: Creative Studio — shot-forslag, coverage, refs,
+          mood-board, pose-bibliotek. Vises som sticky-sidepanel når
+          showCreativeStudio er på. */}
       {showCreativeStudio && (
-        <Box sx={{ mt: 2 }} data-testid="creative-studio-mount">
+        <Box
+          sx={{ mt: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 1.5 }}
+          data-testid="creative-studio-mount"
+        >
           <CreativeSuggestionsPanel
             activeScene={scene}
             allScenes={allScenes ?? [scene]}
             dialogue={sceneDialogue ?? []}
             compact
           />
+          <MoodBoardPanel sceneId={scene.id} compact />
+          <Box sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}>
+            <PoseLibraryPanel canvasWidth={1280} canvasHeight={720} compact />
+          </Box>
         </Box>
       )}
 
