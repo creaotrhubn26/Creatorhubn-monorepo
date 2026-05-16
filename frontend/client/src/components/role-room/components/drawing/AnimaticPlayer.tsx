@@ -36,6 +36,8 @@ import {
   FiberManualRecord,
   Stop as StopIcon,
   Download as DownloadIcon,
+  Fullscreen,
+  FullscreenExit,
 } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
@@ -85,6 +87,11 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const [audioElement, setAudioElement] = React.useState<HTMLAudioElement | null>(null);
   const audioFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const stageContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const playerRootRef = React.useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [recordingElapsed, setRecordingElapsed] = React.useState(0);
+  const recordingStartRef = React.useRef<number | null>(null);
 
   const handleActiveFrameChange = React.useCallback(
     (segment) => {
@@ -125,6 +132,21 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     wasRecordingRef.current = recorder.state === 'recording';
   }, [recorder, player.isPlaying]);
 
+  // Tell opptak-tid i sanntid mens recorder er aktiv.
+  React.useEffect(() => {
+    if (recorder.state !== 'recording') {
+      recordingStartRef.current = null;
+      setRecordingElapsed(0);
+      return;
+    }
+    recordingStartRef.current = performance.now();
+    const interval = setInterval(() => {
+      if (recordingStartRef.current === null) return;
+      setRecordingElapsed((performance.now() - recordingStartRef.current) / 1000);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [recorder.state]);
+
   const handleRecord = React.useCallback(() => {
     if (recorder.state === 'recording') {
       recorder.stop();
@@ -139,6 +161,44 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       setTimeout(() => player.play(), 50);
     }
   }, [recorder, player]);
+
+  // Keyboard shortcuts: Space=toggle, ←/→=frame-nav, R=record. Aktive
+  // bare når player-root har fokus (eller fullscreen), så vi ikke
+  // hijacker tastatur når brukeren skriver et annet sted i appen.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // Hopp over når et input-element har fokus.
+      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      // Krev at fokus er på player-root eller fullscreen-stage.
+      const root = playerRootRef.current;
+      const isOurFocus =
+        root && (root.contains(event.target as Node) || document.activeElement === document.body);
+      if (!isOurFocus && !isFullscreen) return;
+
+      if (event.code === 'Space') {
+        event.preventDefault();
+        player.toggle();
+      } else if (event.code === 'ArrowRight') {
+        event.preventDefault();
+        const next = Math.min(frames.length - 1, player.activeFrameIndex + 1);
+        if (next !== player.activeFrameIndex) player.seekToFrame(next);
+      } else if (event.code === 'ArrowLeft') {
+        event.preventDefault();
+        const prev = Math.max(0, player.activeFrameIndex - 1);
+        if (prev !== player.activeFrameIndex) player.seekToFrame(prev);
+      } else if (event.code === 'KeyR' && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        if (recorder.isSupported) handleRecord();
+      } else if (event.code === 'KeyF' && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [player, frames.length, recorder.isSupported, handleRecord, isFullscreen, toggleFullscreen]);
 
   const handleAudioPick = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -166,6 +226,45 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
 
   const activeFrame = player.activeFrameIndex >= 0 ? frames[player.activeFrameIndex] : null;
   const hasFrames = frames.length > 0 && player.totalDuration > 0;
+
+  // Preload bilder for de neste 2 frames så switch ikke flimrer.
+  React.useEffect(() => {
+    if (!hasFrames || player.activeFrameIndex < 0) return;
+    const upcoming = [1, 2]
+      .map((offset) => frames[player.activeFrameIndex + offset])
+      .filter((f) => f && (f.imageUrl || f.thumbnailUrl));
+    const preloaders: HTMLImageElement[] = [];
+    for (const f of upcoming) {
+      const img = new Image();
+      img.src = (f.imageUrl || f.thumbnailUrl) as string;
+      preloaders.push(img);
+    }
+    return () => {
+      // GC tar seg av img-objektene; bare slipp referansene.
+      preloaders.length = 0;
+    };
+  }, [frames, player.activeFrameIndex, hasFrames]);
+
+  // Fullscreen: lytt på endringer i browser-state.
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onChange = () => {
+      setIsFullscreen(document.fullscreenElement === stageContainerRef.current);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  const toggleFullscreen = React.useCallback(async () => {
+    if (typeof document === 'undefined') return;
+    const el = stageContainerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch {}
+    } else {
+      try { await el.requestFullscreen(); } catch {}
+    }
+  }, []);
 
   // Tegn aktivt frame til canvas. Canvas brukes som rendering-target
   // (kan capture-streames for opptak), og <img> trengs ikke i DOM.
@@ -259,11 +358,15 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   return (
     <Box
       data-testid="animatic-player"
+      ref={playerRootRef}
+      tabIndex={0}
       sx={{
         p: compact ? 1 : 1.5,
         borderRadius: 1.5,
         bgcolor: 'rgba(15,15,25,0.92)',
         border: '1px solid rgba(255,255,255,0.06)',
+        outline: 'none',
+        '&:focus-visible': { boxShadow: '0 0 0 2px rgba(165,180,252,0.4)' },
       }}
     >
       <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.75 }}>
@@ -272,10 +375,10 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           Animatic-avspilling
         </Typography>
         {recorder.state === 'recording' && (
-          <Stack direction="row" spacing={0.25} alignItems="center" sx={{ ml: 0.5 }}>
+          <Stack direction="row" spacing={0.25} alignItems="center" sx={{ ml: 0.5 }} data-testid="animatic-rec-badge">
             <FiberManualRecord sx={{ fontSize: 10, color: '#f87171', animation: 'pulse 1.2s ease-in-out infinite' }} />
-            <Typography variant="caption" sx={{ color: '#fca5a5', fontSize: 10, fontWeight: 600 }}>
-              REC
+            <Typography variant="caption" sx={{ color: '#fca5a5', fontSize: 10, fontWeight: 600, fontFamily: 'monospace' }}>
+              REC {formatTime(recordingElapsed)} / {formatTime(player.totalDuration)}
             </Typography>
           </Stack>
         )}
@@ -300,16 +403,22 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
 
       {/* Stage: canvas — tegner aktivt frame og er capture-stream-kilde for opptak. */}
       <Box
+        ref={stageContainerRef}
         sx={{
+          position: 'relative',
           width: '100%',
-          maxWidth: stageMaxWidth,
+          maxWidth: isFullscreen ? 'none' : stageMaxWidth,
           mx: 'auto',
-          aspectRatio: String(aspectRatio),
-          bgcolor: 'rgba(0,0,0,0.5)',
-          borderRadius: 1,
-          border: '1px solid rgba(255,255,255,0.08)',
+          aspectRatio: isFullscreen ? 'auto' : String(aspectRatio),
+          height: isFullscreen ? '100vh' : 'auto',
+          bgcolor: '#000',
+          borderRadius: isFullscreen ? 0 : 1,
+          border: isFullscreen ? 'none' : '1px solid rgba(255,255,255,0.08)',
           overflow: 'hidden',
           mb: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
         data-testid="animatic-stage"
       >
@@ -317,12 +426,37 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           ref={canvasRef}
           width={STAGE_CANVAS_WIDTH}
           height={STAGE_CANVAS_HEIGHT}
-          style={{ width: '100%', height: '100%', display: 'block' }}
+          style={{
+            width: isFullscreen ? 'auto' : '100%',
+            height: isFullscreen ? '100%' : 'auto',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            display: 'block',
+          }}
           data-testid="animatic-stage-canvas"
         />
+        {/* Fullscreen-toggle: synlig på hover av stage. */}
+        <Tooltip title={isFullscreen ? 'Lukk fullskjerm (F)' : 'Fullskjerm (F)'}>
+          <IconButton
+            size="small"
+            onClick={toggleFullscreen}
+            sx={{
+              position: 'absolute',
+              top: 4,
+              right: 4,
+              color: 'rgba(255,255,255,0.8)',
+              bgcolor: 'rgba(0,0,0,0.4)',
+              opacity: 0.6,
+              '&:hover': { opacity: 1, bgcolor: 'rgba(0,0,0,0.6)' },
+            }}
+            data-testid="animatic-fullscreen"
+          >
+            {isFullscreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}
+          </IconButton>
+        </Tooltip>
       </Box>
 
-      {/* Scrubber */}
+      {/* Scrubber med frame-grenser som marker */}
       <Box sx={{ px: 1, mb: 0.5 }}>
         <Slider
           size="small"
@@ -331,7 +465,22 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           step={0.05}
           value={player.currentTime}
           onChange={(_, value) => player.seek(Array.isArray(value) ? value[0] : value)}
-          sx={{ color: '#a5b4fc' }}
+          marks={
+            // Marks for hver frame-grense (utelater 0 og slutten for å unngå
+            // dobbel-rendring med slider-endene).
+            player.timeline.segments.slice(1).map((s) => ({ value: s.start }))
+          }
+          sx={{
+            color: '#a5b4fc',
+            '& .MuiSlider-mark': {
+              height: 8,
+              width: 1.5,
+              bgcolor: 'rgba(255,255,255,0.35)',
+            },
+            '& .MuiSlider-markActive': {
+              bgcolor: 'rgba(165,180,252,0.7)',
+            },
+          }}
           data-testid="animatic-scrubber"
         />
       </Box>
