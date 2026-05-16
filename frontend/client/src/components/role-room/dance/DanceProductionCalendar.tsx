@@ -376,12 +376,18 @@ export function DanceProductionCalendar({
       sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', bgcolor: '#0a0a0a' }}
       className="dance-calendar-root"
     >
-      {/* Toolbar */}
+      {/* Toolbar — horizontal-scroll på mobil slik at alle knapper er nåbar
+          uten å bli klippet. */}
       <Stack
         direction="row"
         spacing={1}
         alignItems="center"
-        sx={{ p: 2, borderBottom: `1px solid ${PURPLE_SOFT}` }}
+        sx={{
+          p: { xs: 1, md: 2 },
+          borderBottom: `1px solid ${PURPLE_SOFT}`,
+          overflowX: 'auto',
+          flexShrink: 0,
+        }}
         className="dance-calendar-toolbar"
       >
         <CalendarIcon sx={{ color: PURPLE_LIGHT }} />
@@ -804,8 +810,12 @@ const MonthGrid: React.FC<MonthGridProps> = ({ anchorDate, events, allEvents, on
                 if (ev) onDropEvent(ev, d);
               }}
               sx={{
-                minHeight: 96,
-                p: 0.5,
+                // Compact på mobil — celler kan bli 40-50px brede når 7
+                // celler deler 350px-viewport. Sett minHeight responsiv
+                // og skjul event-tekster til ren prikk-indikator på små
+                // viewports (klikk åpner mobil-drawer som viser detaljene).
+                minHeight: { xs: 48, sm: 72, md: 96 },
+                p: { xs: 0.25, md: 0.5 },
                 borderRadius: 0.5,
                 border: `1px solid ${isToday ? PURPLE_LIGHT : 'rgba(255,255,255,0.06)'}`,
                 bgcolor: inMonth ? '#0f1318' : 'rgba(255,255,255,0.01)',
@@ -826,34 +836,50 @@ const MonthGrid: React.FC<MonthGridProps> = ({ anchorDate, events, allEvents, on
                 ) : null}
               </Stack>
               <Stack spacing={0.25}>
-                {dayEvents.slice(0, 3).map((ev) => {
-                  const meta = KIND_META[ev.kind];
-                  return (
-                    <Box
-                      key={ev.id}
-                      data-testid={`calendar-event-${ev.id}`}
-                      data-event-id={ev.id}
-                      draggable
-                      onDragStart={(e) => { e.dataTransfer.setData('text/event-id', ev.id); }}
-                      onClick={(e) => { e.stopPropagation(); onClickEvent(ev); }}
-                      sx={{
-                        px: 0.5, py: 0.1, borderRadius: 0.5,
-                        bgcolor: meta.bg, color: meta.color,
-                        fontSize: 9.5, fontWeight: 700,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        '&:hover': { filter: 'brightness(1.2)' },
-                      }}
-                    >
-                      {formatTimeShort(ev.startSec)} {ev.title}
-                    </Box>
-                  );
-                })}
-                {dayEvents.length > 3 ? (
-                  <Typography sx={{ fontSize: 9, color: '#9ca3af', pl: 0.5 }}>
-                    + {dayEvents.length - 3} flere
-                  </Typography>
-                ) : null}
+                {/* På mobil: bare farge-prikker (klikk åpner drawer).
+                    På desktop: full event-tekst. */}
+                <Box sx={{ display: { xs: 'flex', sm: 'none' }, gap: 0.25, flexWrap: 'wrap' }}>
+                  {dayEvents.slice(0, 6).map((ev) => {
+                    const meta = KIND_META[ev.kind];
+                    return (
+                      <Box
+                        key={ev.id}
+                        data-testid={`calendar-event-${ev.id}`}
+                        sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: meta.color }}
+                      />
+                    );
+                  })}
+                </Box>
+                <Box sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', gap: 0.25 }}>
+                  {dayEvents.slice(0, 3).map((ev) => {
+                    const meta = KIND_META[ev.kind];
+                    return (
+                      <Box
+                        key={ev.id}
+                        data-testid={`calendar-event-${ev.id}`}
+                        data-event-id={ev.id}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData('text/event-id', ev.id); }}
+                        onClick={(e) => { e.stopPropagation(); onClickEvent(ev); }}
+                        sx={{
+                          px: 0.5, py: 0.1, borderRadius: 0.5,
+                          bgcolor: meta.bg, color: meta.color,
+                          fontSize: 9.5, fontWeight: 700,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          '&:hover': { filter: 'brightness(1.2)' },
+                        }}
+                      >
+                        {formatTimeShort(ev.startSec)} {ev.title}
+                      </Box>
+                    );
+                  })}
+                  {dayEvents.length > 3 ? (
+                    <Typography sx={{ fontSize: 9, color: '#9ca3af', pl: 0.5 }}>
+                      + {dayEvents.length - 3} flere
+                    </Typography>
+                  ) : null}
+                </Box>
               </Stack>
             </Box>
           );
@@ -871,9 +897,25 @@ const WeekView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; o
     return d;
   });
   return (
-    <Box data-testid="calendar-week-view" sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>
+    <Box
+      data-testid="calendar-week-view"
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', md: 'repeat(7, 1fr)' },
+        gap: 0.5,
+      }}
+    >
       {days.map((d) => (
-        <Box key={d.toISOString()} sx={{ minHeight: 320, p: 0.75, bgcolor: '#0f1318', borderRadius: 0.5, border: '1px solid rgba(255,255,255,0.06)' }}>
+        <Box
+          key={d.toISOString()}
+          sx={{
+            minHeight: { xs: 80, md: 320 },
+            p: 0.75,
+            bgcolor: '#0f1318',
+            borderRadius: 0.5,
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
           <Typography sx={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, mb: 0.5, letterSpacing: 0.5 }}>
             {d.toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric' })}
           </Typography>

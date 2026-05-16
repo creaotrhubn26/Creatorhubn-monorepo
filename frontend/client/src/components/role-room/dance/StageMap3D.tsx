@@ -168,7 +168,7 @@ export function StageMap3D({
       sx={{
         width: '100%',
         height: '100%',
-        minHeight: 360,
+        minHeight: { xs: 240, sm: 320, md: 360 },
         bgcolor: '#050608',
         borderRadius: 1,
         overflow: 'hidden',

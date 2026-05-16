@@ -38,11 +38,16 @@ export default defineConfig({
       name: 'mobile-chrome',
       use: { ...devices['Pixel 5'] },
       grep: /@mobile/,
+      // Mobile-viewports gjør Fabric.js / Three.js / wavesurfer-init merkbart
+      // tyngre på shared vite-server. Bumper per-test-timeout for å unngå
+      // flakies under serial-suite-kjøring.
+      timeout: 60_000,
     },
     {
       name: 'mobile-safari',
       use: { ...devices['iPhone 13'] },
       grep: /@mobile/,
+      timeout: 60_000,
     },
     {
       name: 'tablet',

@@ -36,15 +36,31 @@ import {
   getTabsForProfession,
   type TabConfig,
 } from '../config/professionTabs';
+// F12: Code-split tunge tabs. FormationView (Three.js + Fabric.js +
+// CurveOverlay) + VideoLibrary (wavesurfer + annotation-pipeline) +
+// ChoreographyBuilder (count-grid + audio) + Production-Calendar +
+// Analysis-panel utgjør hovedparten av bundle-størrelsen. Lazy-load
+// disse, og pakk renderTabBody i en Suspense-fallback.
 import { DanceDashboard } from './DanceDashboard';
-import { DanceAnalysisPanel } from './DanceAnalysisPanel';
-import { DanceProductionCalendar } from './DanceProductionCalendar';
-import { ChoreographyBuilderConnected } from './ChoreographyBuilderConnected';
 import { RehearsalPlannerConnected } from './RehearsalPlannerConnected';
 import { DancerProfileGridConnected } from './DancerProfileGridConnected';
 import { DancerInjuryLogPanel } from './DancerInjuryLogPanel';
-import { FormationViewConnected } from './FormationViewConnected';
-import { VideoLibrary } from './VideoLibrary';
+
+const DanceAnalysisPanel = React.lazy(() =>
+  import('./DanceAnalysisPanel').then((m) => ({ default: m.DanceAnalysisPanel })),
+);
+const DanceProductionCalendar = React.lazy(() =>
+  import('./DanceProductionCalendar').then((m) => ({ default: m.DanceProductionCalendar })),
+);
+const ChoreographyBuilderConnected = React.lazy(() =>
+  import('./ChoreographyBuilderConnected').then((m) => ({ default: m.ChoreographyBuilderConnected })),
+);
+const FormationViewConnected = React.lazy(() =>
+  import('./FormationViewConnected').then((m) => ({ default: m.FormationViewConnected })),
+);
+const VideoLibrary = React.lazy(() =>
+  import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
+);
 import {
   ClassesPanel,
   InstructorsPanel,
@@ -423,7 +439,27 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         onTouchEnd={onTouchEnd}
         sx={{ flex: 1, minHeight: 0 }}
       >
-        {renderTabBody(activeTab)}
+        <React.Suspense
+          fallback={
+            <Box
+              data-testid="dance-tab-loading"
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                py: 6,
+                color: '#a78bfa',
+                fontSize: 12,
+                letterSpacing: 1.5,
+                fontWeight: 700,
+              }}
+            >
+              LASTER…
+            </Box>
+          }
+        >
+          {renderTabBody(activeTab)}
+        </React.Suspense>
       </Box>
     </Box>
   );
