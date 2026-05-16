@@ -143,4 +143,61 @@ describe('Sprint A.7 — analyzeStyleDrift', () => {
     expect(empty?.drift).toBe(0);
     expect(empty?.severity).toBe('ok');
   });
+
+  it('uten targetPalette: driftSource er sequence', () => {
+    const report = analyzeStyleDrift([
+      makeFrame('f1', [makeStroke('#0a4f8a', [{ x: 0, y: 0 }, { x: 100, y: 0 }])]),
+      makeFrame('f2', [makeStroke('#0a4f8a', [{ x: 0, y: 0 }, { x: 100, y: 0 }])]),
+    ]);
+    expect(report.driftSource).toBe('sequence');
+  });
+});
+
+describe('Sprint A.7 — analyzeStyleDrift med targetPalette (mood-board loop)', () => {
+  it('med targetPalette: driftSource er target', () => {
+    const report = analyzeStyleDrift(
+      [makeFrame('f1', [makeStroke('#ff0000', [{ x: 0, y: 0 }, { x: 100, y: 0 }])])],
+      { targetPalette: [{ color: '#0000ff', weight: 100 }] },
+    );
+    expect(report.driftSource).toBe('target');
+  });
+
+  it('frame som matcher target gir lav drift', () => {
+    const report = analyzeStyleDrift(
+      [makeFrame('f1', [makeStroke('#0a4f8a', [{ x: 0, y: 0 }, { x: 100, y: 0 }])])],
+      { targetPalette: [{ color: '#0a4f8a', weight: 100 }] },
+    );
+    const entry = report.driftByFrame.find((d) => d.frameId === 'f1');
+    expect(entry?.drift).toBeLessThan(0.18);
+    expect(entry?.severity).toBe('ok');
+  });
+
+  it('frame som er langt fra target gir høy drift', () => {
+    const report = analyzeStyleDrift(
+      [makeFrame('f1', [makeStroke('#ff0000', [{ x: 0, y: 0 }, { x: 100, y: 0 }])])],
+      { targetPalette: [{ color: '#0000ff', weight: 100 }] },
+    );
+    const entry = report.driftByFrame.find((d) => d.frameId === 'f1');
+    expect(entry?.drift).toBeGreaterThan(0.18);
+  });
+
+  it('virker med kun én frame (target trenger ikke leave-one-out)', () => {
+    const report = analyzeStyleDrift(
+      [makeFrame('only', [makeStroke('#ff8800', [{ x: 0, y: 0 }, { x: 100, y: 0 }])])],
+      { targetPalette: [{ color: '#ff8800', weight: 50 }] },
+    );
+    const entry = report.driftByFrame.find((d) => d.frameId === 'only');
+    expect(entry?.drift).toBeLessThan(0.18);
+  });
+
+  it('tom targetPalette faller tilbake til sequence-mode', () => {
+    const report = analyzeStyleDrift(
+      [
+        makeFrame('f1', [makeStroke('#0a4f8a', [{ x: 0, y: 0 }, { x: 100, y: 0 }])]),
+        makeFrame('f2', [makeStroke('#0a4f8a', [{ x: 0, y: 0 }, { x: 100, y: 0 }])]),
+      ],
+      { targetPalette: [] },
+    );
+    expect(report.driftSource).toBe('sequence');
+  });
 });

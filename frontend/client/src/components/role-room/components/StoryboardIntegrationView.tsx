@@ -60,6 +60,7 @@ import { StyleConsistencyIndicator } from './drawing/StyleConsistencyIndicator';
 // Sprint A.7: Mood-board + pose-library
 import { MoodBoardPanel } from './drawing/MoodBoardPanel';
 import { PoseLibraryPanel } from './drawing/PoseLibraryPanel';
+import { useMoodBoardPalette } from './drawing/useMoodBoardPalette';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import type { PencilStroke } from '../hooks/useApplePencil';
 import type { FrameDrawingData } from '../state/storyboardStore';
@@ -1140,6 +1141,11 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
             activeFrameIndex={activeFrameIdx}
             onSelectFrame={handleFrameSelect}
+            scene={scene}
+            allScenes={allScenes}
+            sceneDialogue={sceneDialogue}
+            projectCinemaFormat={projectCinemaFormat}
+            showCreativeStudio={showCreativeStudio}
           />
         )}
         {!storyboardPanelOnly && viewMode === 'split' && (
@@ -1203,6 +1209,11 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
                 activeFrameIndex={activeFrameIdx}
                 onSelectFrame={handleFrameSelect}
+                scene={scene}
+                allScenes={allScenes}
+                sceneDialogue={sceneDialogue}
+                projectCinemaFormat={projectCinemaFormat}
+                showCreativeStudio={showCreativeStudio}
               />
             </Box>
           </Box>
@@ -1307,6 +1318,11 @@ const StoryboardView: React.FC<{
   libraryScopeKey: string;
   activeFrameIndex: number;
   onSelectFrame: (index: number) => void;
+  scene: SceneBreakdown;
+  allScenes?: SceneBreakdown[];
+  sceneDialogue?: import('../models/casting').DialogueLine[];
+  projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
+  showCreativeStudio?: boolean;
 }> = ({
   frames,
   onUpdate,
@@ -1318,6 +1334,11 @@ const StoryboardView: React.FC<{
   libraryScopeKey,
   activeFrameIndex,
   onSelectFrame,
+  scene,
+  allScenes,
+  sceneDialogue,
+  projectCinemaFormat,
+  showCreativeStudio = true,
 }) => {
   const device = useDeviceDetection();
   const { showSuccess, showInfo } = useToast();
@@ -1326,6 +1347,7 @@ const StoryboardView: React.FC<{
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
   const [pendingPoseStrokes, setPendingPoseStrokes] = useState<PencilStroke[] | null>(null);
   const [pendingReferenceSrc, setPendingReferenceSrc] = useState<string | null>(null);
+  const moodBoardPalette = useMoodBoardPalette(sceneId);
   const [quickViewFrameId, setQuickViewFrameId] = useState<string | null>(null);
   const [editingFrameId, setEditingFrameId] = useState<string | null>(null);
   const [deletingFrameId, setDeletingFrameId] = useState<string | null>(null);
@@ -2338,6 +2360,7 @@ const StoryboardView: React.FC<{
           <StyleConsistencyIndicator
             frames={storyboardFrames}
             activeFrameId={storyboardFrames[activeFrameIdx]?.id}
+            targetPalette={moodBoardPalette.palette.length > 0 ? moodBoardPalette.palette : undefined}
             compact
           />
         </Box>

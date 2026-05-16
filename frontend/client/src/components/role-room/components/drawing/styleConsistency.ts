@@ -46,6 +46,14 @@ export interface StyleDriftReport {
   driftByFrame: Array<{ frameId: string; drift: number; severity: 'ok' | 'warning' | 'high' }>;
   /** Frames med drift over warning-terskel. */
   outliers: Array<{ frameId: string; drift: number }>;
+  /** Hvilken palett drift ble målt mot — 'sequence' (leave-one-out) eller 'target' (eksternt). */
+  driftSource: 'sequence' | 'target';
+}
+
+export interface AnalyzeStyleDriftOptions {
+  /** Hvis satt: bruk denne paletten som referanse i stedet for leave-one-out
+   *  sekvens-palett. Typisk fra mood-board → måler drift fra intendert stil. */
+  targetPalette?: ColorBin[];
 }
 
 interface StrokeLike {
@@ -252,36 +260,54 @@ const HIGH_THRESHOLD = 0.32;
 /**
  * Hovedfunksjon: analyser alle frames, finn etablert palett, flagg outliers.
  *
- * Bruker leave-one-out for drift-beregning: hver frame sammenlignes mot
- * sekvens-palett UTEN sin egen bidrag. Uten dette ville outlier-frames
- * "validere seg selv" og aldri bli flagget.
+ * To moduser:
+ *   - Default (ingen options): leave-one-out drift fra sekvens-palett.
+ *     Hver frame sammenlignes mot sekvens-palett UTEN sin egen bidrag —
+ *     ellers ville outliers "validere seg selv".
+ *   - Med `targetPalette`: drift måles mot ekstern target (typisk fra
+ *     mood-board). Da kan ALLE frames flagges, inkludert hele sekvensen
+ *     hvis den har drevet bort fra intensjonen.
  */
-export function analyzeStyleDrift(frames: FrameWithStrokes[]): StyleDriftReport {
+export function analyzeStyleDrift(
+  frames: FrameWithStrokes[],
+  options: AnalyzeStyleDriftOptions = {},
+): StyleDriftReport {
+  const { targetPalette } = options;
   const palettes = frames.map((frame) => analyzeFramePalette(frame));
   const framesWithStrokes = palettes.filter((p) => p.colors.length > 0);
 
-  if (framesWithStrokes.length < 2) {
-    // Trenger minst 2 frames med strokes for å kunne sammenligne.
+  // Display-palett (alle frames) — beholdes uavhengig av modus så UI kan vise begge.
+  const sequencePalette = framesWithStrokes.length > 0
+    ? computeSequencePalette(framesWithStrokes)
+    : [];
+
+  const hasTarget = Array.isArray(targetPalette) && targetPalette.length > 0;
+
+  if (!hasTarget && framesWithStrokes.length < 2) {
+    // Uten target og <2 frames: ikke nok grunnlag for drift.
     return {
-      sequencePalette: framesWithStrokes[0]?.colors ?? [],
+      sequencePalette,
       driftByFrame: palettes.map((p) => ({ frameId: p.frameId, drift: 0, severity: 'ok' as const })),
       outliers: [],
+      driftSource: 'sequence',
     };
   }
-
-  // Display-palett (alle frames) til UI-bruk.
-  const sequencePalette = computeSequencePalette(framesWithStrokes);
 
   const driftByFrame = palettes.map((palette) => {
     if (palette.colors.length === 0) {
       return { frameId: palette.frameId, drift: 0, severity: 'ok' as const };
     }
-    // Leave-one-out: rebuild sekvens-palett uten denne framen.
-    const others = framesWithStrokes.filter((p) => p.frameId !== palette.frameId);
-    if (others.length === 0) {
-      return { frameId: palette.frameId, drift: 0, severity: 'ok' as const };
+    let referencePalette: ColorBin[];
+    if (hasTarget) {
+      referencePalette = targetPalette!;
+    } else {
+      // Leave-one-out: rebuild sekvens-palett uten denne framen.
+      const others = framesWithStrokes.filter((p) => p.frameId !== palette.frameId);
+      if (others.length === 0) {
+        return { frameId: palette.frameId, drift: 0, severity: 'ok' as const };
+      }
+      referencePalette = computeSequencePalette(others);
     }
-    const referencePalette = computeSequencePalette(others);
     const drift = computeFrameDrift(palette, referencePalette);
     let severity: 'ok' | 'warning' | 'high' = 'ok';
     if (drift >= HIGH_THRESHOLD) severity = 'high';
@@ -292,5 +318,10 @@ export function analyzeStyleDrift(frames: FrameWithStrokes[]): StyleDriftReport 
     .filter((entry) => entry.severity !== 'ok')
     .map(({ frameId, drift }) => ({ frameId, drift }));
 
-  return { sequencePalette, driftByFrame, outliers };
+  return {
+    sequencePalette,
+    driftByFrame,
+    outliers,
+    driftSource: hasTarget ? 'target' : 'sequence',
+  };
 }
