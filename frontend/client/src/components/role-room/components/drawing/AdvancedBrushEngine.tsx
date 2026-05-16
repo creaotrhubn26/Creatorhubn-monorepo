@@ -15,14 +15,17 @@ import type { PencilPoint } from '../../hooks/useApplePencil';
 // Types
 // =============================================================================
 
-export type AdvancedBrushType = 
-  | 'pencil'      // Textured pencil with grain
-  | 'pen'         // Smooth technical pen
-  | 'marker'      // Chisel tip marker with bleed
-  | 'brush'       // Bristle brush
-  | 'watercolor'  // Wet watercolor with blending
-  | 'ink'         // Ink with feathering
-  | 'highlighter' // Transparent overlay
+export type AdvancedBrushType =
+  | 'pencil'        // Textured pencil with grain
+  | 'graphite'      // Bredere graphite stick — side-shading + sterkere trykk
+  | 'charcoal'      // Myk charcoal — chunky partikler, høyere spread, smearable
+  | 'conte'         // Conté crayon — mellom pencil og charcoal, tett tekstur
+  | 'pen'           // Smooth technical pen
+  | 'marker'        // Chisel tip marker with bleed
+  | 'brush'         // Bristle brush
+  | 'watercolor'    // Wet watercolor with blending
+  | 'ink'           // Ink with feathering
+  | 'highlighter'   // Transparent overlay
   | 'eraser';
 
 // Alias for external usage
@@ -68,6 +71,27 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
     flow: 0.8,
     grain: 0.7,
     pressureSensitivity: 0.9,
+  },
+  graphite: {
+    hardness: 0.55,
+    flow: 0.9,
+    grain: 0.55,
+    pressureSensitivity: 0.95,
+    tiltSensitivity: 0.85,
+  },
+  charcoal: {
+    hardness: 0.25,
+    flow: 0.85,
+    grain: 0.85,
+    pressureSensitivity: 1.0,
+    tiltSensitivity: 0.55,
+  },
+  conte: {
+    hardness: 0.5,
+    flow: 0.85,
+    grain: 0.7,
+    pressureSensitivity: 0.9,
+    tiltSensitivity: 0.4,
   },
   pen: {
     hardness: 1,
@@ -211,6 +235,15 @@ export class AdvancedBrushEngine {
       case 'pencil':
         this.drawPencilStroke(this.lastPoint, point);
         break;
+      case 'graphite':
+        this.drawGraphiteStickStroke(this.lastPoint, point);
+        break;
+      case 'charcoal':
+        this.drawCharcoalStroke(this.lastPoint, point);
+        break;
+      case 'conte':
+        this.drawConteStroke(this.lastPoint, point);
+        break;
       case 'pen':
         this.drawPenStroke(this.lastPoint, point);
         break;
@@ -279,6 +312,136 @@ export class AdvancedBrushEngine {
         this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
         this.ctx.beginPath();
         this.ctx.arc(px, py, 0.5 + Math.random() * 0.5, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    }
+  }
+
+  // =========================================================================
+  // Graphite stick — bredere enn pencil, mer ensartet dekning, side-shading
+  // Brukes for raske blokker av tone / value-study, kjapp skyggelegging.
+  // =========================================================================
+
+  private drawGraphiteStickStroke(from: PencilPoint, to: PencilPoint) {
+    const { size, color, opacity, grain, pressureSensitivity, tiltSensitivity } = this.config;
+    const rgb = hexToRgb(color);
+
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.ceil(dist / 1.5));
+    // Tilt utvider strøken sideveis — emulerer at man holder graphiten flatt.
+    const tilt = ((from.tilt ?? 0) + (to.tilt ?? 0)) / 2;
+    const tiltBroaden = 1 + tilt * tiltSensitivity * 1.2;
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      const pressure = from.pressure + (to.pressure - from.pressure) * t;
+
+      const strokeSize = size * tiltBroaden * (0.6 + pressure * 0.7 * pressureSensitivity);
+      const strokeOpacity = opacity * (0.55 + pressure * 0.45);
+
+      // Tettere partikler enn pencil — gir solid graphite-tone.
+      const particles = Math.ceil(strokeSize * 3.5);
+      for (let p = 0; p < particles; p++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * strokeSize * 0.7;
+        const px = x + Math.cos(angle) * radius;
+        const py = y + Math.sin(angle) * radius;
+
+        const noiseVal = noise2D(px * 0.35, py * 0.35);
+        if (noiseVal < grain * 0.25) continue;
+
+        const particleOpacity = strokeOpacity * (0.45 + noiseVal * 0.55);
+        this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, 0.6 + Math.random() * 0.6, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    }
+  }
+
+  // =========================================================================
+  // Charcoal — myk, chunky, smearable. Stort spread, varierende opacity.
+  // Brukes til atmosfære, mørke områder, raske komposisjons-thumbnails.
+  // =========================================================================
+
+  private drawCharcoalStroke(from: PencilPoint, to: PencilPoint) {
+    const { size, color, opacity, grain, pressureSensitivity } = this.config;
+    const rgb = hexToRgb(color);
+
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.ceil(dist / 1.8));
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      const pressure = from.pressure + (to.pressure - from.pressure) * t;
+
+      const strokeSize = size * (0.7 + pressure * 0.9 * pressureSensitivity);
+      const strokeOpacity = opacity * (0.4 + pressure * 0.6);
+
+      // Bredere spread enn pencil/graphite for kornete charcoal-følelse.
+      const particles = Math.ceil(strokeSize * 4);
+      for (let p = 0; p < particles; p++) {
+        const angle = Math.random() * Math.PI * 2;
+        // Spread går litt utenfor radius for fluffy edges.
+        const radius = Math.random() * strokeSize * 1.0;
+        const px = x + Math.cos(angle) * radius;
+        const py = y + Math.sin(angle) * radius;
+
+        const noiseVal = noise2D(px * 0.6, py * 0.6);
+        // Hopper over flere partikler enn pencil = mer brutt overflate.
+        if (noiseVal < grain * 0.65) continue;
+
+        // Mer variabel opacity gir myk charcoal-overgang.
+        const particleOpacity = strokeOpacity * (0.2 + noiseVal * 0.8) * (0.6 + Math.random() * 0.4);
+        this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
+        this.ctx.beginPath();
+        // Større, mer varierende partikkel-størrelse.
+        this.ctx.arc(px, py, 0.7 + Math.random() * 1.2, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    }
+  }
+
+  // =========================================================================
+  // Conté crayon — mellom pencil og charcoal. Tettere enn charcoal, mer
+  // forutsigbar enn pencil. Bra for figurstudier og volum.
+  // =========================================================================
+
+  private drawConteStroke(from: PencilPoint, to: PencilPoint) {
+    const { size, color, opacity, grain, pressureSensitivity } = this.config;
+    const rgb = hexToRgb(color);
+
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.ceil(dist / 1.6));
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      const pressure = from.pressure + (to.pressure - from.pressure) * t;
+
+      const strokeSize = size * (0.5 + pressure * 0.8 * pressureSensitivity);
+      const strokeOpacity = opacity * (0.5 + pressure * 0.5);
+
+      const particles = Math.ceil(strokeSize * 3);
+      for (let p = 0; p < particles; p++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * strokeSize * 0.65;
+        const px = x + Math.cos(angle) * radius;
+        const py = y + Math.sin(angle) * radius;
+
+        const noiseVal = noise2D(px * 0.45, py * 0.45);
+        if (noiseVal < grain * 0.4) continue;
+
+        // Conté er tett — mindre opacity-variasjon enn charcoal.
+        const particleOpacity = strokeOpacity * (0.5 + noiseVal * 0.5);
+        this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, 0.55 + Math.random() * 0.7, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }

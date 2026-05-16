@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Box, IconButton, Stack, Tooltip, Paper, Popover, Slider, Typography, ToggleButton, Divider } from "@mui/material";
-import { Create, Brush, BorderColor, Highlight, Edit, FormatPaint, AutoFixHigh, TextFields, CameraAlt, Undo, Redo } from "@mui/icons-material";
+import { Create, Brush, BorderColor, Highlight, Edit, FormatPaint, AutoFixHigh, TextFields, CameraAlt, Undo, Redo, BlurOn, Gesture, EditOutlined } from "@mui/icons-material";
 import { styled } from "@mui/material/styles";
 import { BRUSH_PRESETS, type AdvancedBrushType, type BrushConfig } from "./AdvancedBrushEngine";
 import ColorWheelPicker from "../ColorWheelPicker";
@@ -121,6 +121,11 @@ interface BrushDefinition {
 const BRUSHES: BrushDefinition[] = [
   { type: 'pen', name: 'Pen', icon: <Create />, tipShape: 'round' },
   { type: 'pencil', name: 'Pencil', icon: <Edit />, tipShape: 'pointed' },
+  // Sprint A.7: storyboard-bransje-brushes for value-studies, atmosfære
+  // og figurarbeid. Plassert sammen med pencil-familien.
+  { type: 'graphite', name: 'Graphite', icon: <Gesture />, tipShape: 'flat' },
+  { type: 'charcoal', name: 'Charcoal', icon: <BlurOn />, tipShape: 'pointed' },
+  { type: 'conte', name: 'Conté', icon: <EditOutlined />, tipShape: 'pointed' },
   { type: 'marker', name: 'Marker', icon: <BorderColor />, tipShape: 'chisel' },
   { type: 'brush', name: 'Brush', icon: <Brush />, tipShape: 'pointed' },
   { type: 'watercolor', name: 'Watercolor', icon: <FormatPaint />, tipShape: 'round' },
@@ -207,6 +212,32 @@ const BrushTipSVG: React.FC<{
           <>
             <rect x="10" y="4" width="12" height="36" fill="#FFB6C1" rx="2" />
             <rect x="10" y="36" width="12" height="10" fill="#FF69B4" rx="2" />
+          </>
+        );
+      // Sprint A.7: distinkte tip-shapes for graphite/charcoal/conté.
+      case 'graphite':
+        // Bredere, flat graphite stick — heksagonal kropp + flat tip.
+        return (
+          <>
+            <polygon points="8,8 24,8 22,44 10,44" fill="#3a3a3e" />
+            <rect x="10" y="44" width="12" height="4" fill="#1a1a1c" />
+          </>
+        );
+      case 'charcoal':
+        // Mørk, kornete vine charcoal — irregular shape.
+        return (
+          <>
+            <path d="M12 4 Q18 6 22 8 L20 44 Q16 48 12 44 L10 8 Z" fill="#1a1a1c" />
+            <ellipse cx="16" cy="44" rx="6" ry="3" fill="#0a0a0a" />
+          </>
+        );
+      case 'conte':
+        // Conté crayon — kortere, kvadratisk stick.
+        return (
+          <>
+            <rect x="11" y="10" width="10" height="30" fill={color} rx="1" />
+            <polygon points="16,44 11,40 21,40" fill={color} opacity="0.9" />
+            <rect x="11" y="10" width="10" height="3" fill="rgba(255,255,255,0.18)" />
           </>
         );
       default:
