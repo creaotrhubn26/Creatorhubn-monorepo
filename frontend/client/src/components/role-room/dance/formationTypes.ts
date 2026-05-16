@@ -62,12 +62,14 @@ export interface Formation {
   /** DanceFlow-paritet: når på koreografi-timeline formasjonen er aktiv. */
   startSec?: number | null;
   endSec?: number | null;
+  /** ID til formasjonen denne kommer FRA i sekvensen. */
+  transitionFromId?: string | null;
   /** Kort tekst om overgang fra forrige formasjon. */
   transitionNote?: string | null;
   /** Frie tagger ("Opening", "V-Shape", "Group"). */
   tags?: string[];
   /** F5-13B: eksplisitte bezier-baner FRA denne formasjonen TIL neste, én per danser. */
-  transitionPaths?: DancerTransitionPath[];
+  transitionPaths?: ReadonlyArray<DancerTransitionPath>;
 }
 
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────

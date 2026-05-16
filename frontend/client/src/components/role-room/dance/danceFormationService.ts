@@ -25,7 +25,7 @@ export interface FormationRecord {
   /** Frie tagger ("Opening", "V-Shape", "Group"). */
   tags: string[];
   /** F5-13B: bezier-baner mellom denne formasjonen og neste, én per danser. */
-  transitionPaths: Array<{ dancerId: string; controlPoints: Array<{ x: number; y: number }> }>;
+  transitionPaths: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,7 +43,7 @@ export interface FormationInput {
   endSec?: number | null;
   transitionNote?: string | null;
   tags?: string[];
-  transitionPaths?: Array<{ dancerId: string; controlPoints: Array<{ x: number; y: number }> }>;
+  transitionPaths?: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
 }
 
 export type FormationPatch = Partial<FormationInput>;
@@ -119,7 +119,7 @@ export async function replaceFormations(input: {
     endSec?: number | null;
     transitionNote?: string | null;
     tags?: string[];
-    transitionPaths?: Array<{ dancerId: string; controlPoints: Array<{ x: number; y: number }> }>;
+    transitionPaths?: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
   }>;
 }): Promise<FormationRecord[]> {
   const res = await fetch(BASE, {
@@ -143,6 +143,7 @@ export function recordToFormation(r: FormationRecord): Formation {
     createdAt: r.createdAt,
     startSec: r.startSec ?? null,
     endSec: r.endSec ?? null,
+    transitionFromId: r.transitionFromId ?? null,
     transitionNote: r.transitionNote ?? null,
     tags: r.tags ?? [],
     transitionPaths: r.transitionPaths ?? [],
@@ -166,7 +167,7 @@ export function formationToInput(
     positions: f.positions.map((p) => ({ ...p })),
     stageWidthM: options.stageWidthM,
     stageDepthM: options.stageDepthM,
-    transitionFromId: options.transitionFromId ?? null,
+    transitionFromId: options.transitionFromId ?? f.transitionFromId ?? null,
     displayOrder: options.displayOrder ?? 0,
     startSec: f.startSec ?? null,
     endSec: f.endSec ?? null,

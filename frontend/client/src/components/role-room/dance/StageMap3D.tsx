@@ -52,7 +52,7 @@ const Dancer3D: React.FC<DancerProps3D> = ({ dancer, x, y, facing = 0, isLead, s
     <group
       position={[worldX, PUCK_HEIGHT_M / 2, worldZ]}
       rotation={[0, ((-facing) * Math.PI) / 180, 0]}
-      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+      onClick={(e: { stopPropagation: () => void }) => { e.stopPropagation(); onSelect(); }}
     >
       {/* Body: cylinder for "kropp" */}
       <mesh castShadow receiveShadow>

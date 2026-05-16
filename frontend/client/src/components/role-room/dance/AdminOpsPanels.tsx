@@ -523,7 +523,7 @@ export const GrantsPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       await ops.createGrant({
         projectId,
         title: t.defaults.title ?? 'Ny søknad',
-        fundName: t.fundName as ops.GrantFundName,
+        fundName: t.fundName,
         status: 'draft',
         applicationText: t.defaults.applicationText ?? null,
       });
