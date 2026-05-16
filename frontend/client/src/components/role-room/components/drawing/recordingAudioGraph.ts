@@ -1,15 +1,21 @@
 /**
- * recordingAudioGraph — bygger en Web Audio-graf for å rute lyden fra
- * et HTMLAudioElement gjennom en GainNode før den fanges inn i en
- * MediaStream for MediaRecorder. Det gir oss to ting:
+ * recordingAudioGraph — Web Audio-mikser som ruter N audio-kilder
+ * gjennom en master-GainNode før de fanges inn i en MediaStream for
+ * MediaRecorder. Tre roller:
  *
  *   1. Fade-in/fade-out på opptak — så hard cut ved start/stop ikke
  *      påvirker hvordan animaticen høres ut for mottakeren.
- *   2. Et felles routing-punkt som senere kan ta imot flere audio-
- *      kilder (per-frame voiceover) i samme stream.
+ *   2. Multi-track mixing — scene-level scratch-track + per-frame
+ *      voiceover + SFX-events kan alle eksistere samtidig.
+ *   3. Felles routing-punkt så SFX/voiceover-kilder kan legges til
+ *      og fjernes dynamisk mens grafen lever.
  *
- * Lytting (audible playback) går via en separat GainNode med fast
- * gain=1 så fade ikke påvirker hva brukeren hører under opptak.
+ * Lytting (audible playback) går via en separat audibleGain (=1) så
+ * record-fade ikke påvirker hva brukeren hører.
+ *
+ * NB: createMediaElementSource kan bare kalles én gang per element
+ * per AudioContext, så caller må holde grafen i live mellom upload
+ * og opptak hvis flere kilder skal mikses inn.
  */
 
 export const RECORDING_FADE_DURATION = 0.15; // sekunder
@@ -25,43 +31,53 @@ export interface RecordingAudioGraph {
 }
 
 /**
- * Bygg grafen. Skal kalles én gang per opptak (graf-state er knyttet
- * til AudioContexts livssyklus).
+ * Bygg grafen. Caller leverer N audio-kilder; minst én må være satt
+ * for at grafen skal være meningsfull.
  */
 export function createRecordingAudioGraph(
-  audioElement: HTMLAudioElement,
+  audioElements: HTMLAudioElement[],
 ): RecordingAudioGraph | null {
   if (typeof AudioContext === 'undefined' && typeof (window as any).webkitAudioContext === 'undefined') {
     return null;
   }
+  const valid = audioElements.filter(Boolean);
+  if (valid.length === 0) return null;
+
   const Ctx = (typeof AudioContext !== 'undefined' ? AudioContext : (window as any).webkitAudioContext) as typeof AudioContext;
   const context = new Ctx();
 
-  let source: MediaElementAudioSourceNode;
-  try {
-    source = context.createMediaElementSource(audioElement);
-  } catch {
-    // I noen tilfeller har samme element allerede vært koblet til en
-    // annen AudioContext. Gi opp opp pent.
-    context.close();
-    return null;
-  }
-
-  // Audible-sti: source → audibleGain(=1) → destination (høyttalere).
   const audibleGain = context.createGain();
   audibleGain.gain.value = 1;
-  source.connect(audibleGain);
   audibleGain.connect(context.destination);
 
-  // Recording-sti: source → recordGain → MediaStreamDestination.
   const recordGain = context.createGain();
-  recordGain.gain.value = 0; // start stum, fadeInRecording() åpner.
-  source.connect(recordGain);
+  recordGain.gain.value = 0; // fadeInRecording() åpner.
   const recordDest = context.createMediaStreamDestination();
   recordGain.connect(recordDest);
 
+  const sources: MediaElementAudioSourceNode[] = [];
+  for (const el of valid) {
+    let source: MediaElementAudioSourceNode;
+    try {
+      source = context.createMediaElementSource(el);
+    } catch {
+      // Element er allerede koblet til en annen context — hopp over.
+      continue;
+    }
+    source.connect(audibleGain);
+    source.connect(recordGain);
+    sources.push(source);
+  }
+
+  if (sources.length === 0) {
+    try { context.close(); } catch {}
+    return null;
+  }
+
   const cleanup = () => {
-    try { source.disconnect(); } catch {}
+    for (const s of sources) {
+      try { s.disconnect(); } catch {}
+    }
     try { audibleGain.disconnect(); } catch {}
     try { recordGain.disconnect(); } catch {}
     try { context.close(); } catch {}

@@ -64,6 +64,9 @@ export interface AnimaticFrameMeta {
   /** Manus-linjer som hører til dette framet (vises som caption under
    *  stagen). Brukes for pacing-test av dialog. */
   caption?: string;
+  /** Per-frame voiceover (objektURL eller data-URL). Spilles av når
+   *  framet er aktivt under playback. */
+  voiceoverUrl?: string;
 }
 
 export interface AnimaticPlayerProps {
@@ -105,6 +108,13 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const [audioUrl, setAudioUrl] = React.useState<string | null>(null);
   const [audioName, setAudioName] = React.useState<string | null>(null);
   const [audioElement, setAudioElement] = React.useState<HTMLAudioElement | null>(null);
+  // Per-frame voiceover: ett delt audio-element som bytter src ved
+  // frame-skift. Sources holdes i en map basert på frameId så vi kan
+  // lookupe url'en raskt under playback.
+  const [voiceoverElement, setVoiceoverElement] = React.useState<HTMLAudioElement | null>(null);
+  const [voiceoverUrls, setVoiceoverUrls] = React.useState<Record<string, string>>({});
+  const voiceoverFileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const voiceoverTargetFrameRef = React.useRef<string | null>(null);
   const audioFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const stageContainerRef = React.useRef<HTMLDivElement | null>(null);
@@ -130,13 +140,43 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     onActiveFrameChange: handleActiveFrameChange,
   });
 
-  // Synk audio med playback-state.
+  // Synk scene-level scratch-track med playback-state.
   useAnimaticAudio({
     audioElement,
     isPlaying: player.isPlaying,
     currentTime: player.currentTime,
     playbackSpeed: speed,
   });
+
+  // Resolved voiceover-URL for et frame: prop-verdi vinner over
+  // user-uploaded (i tilfelle caller setter den eksplisitt).
+  const resolveVoiceoverUrl = React.useCallback((frame: AnimaticFrameMeta): string | undefined => {
+    return frame.voiceoverUrl || voiceoverUrls[frame.id];
+  }, [voiceoverUrls]);
+
+  // Per-frame voiceover-sync: bytt src og spill når aktivt frame
+  // skifter til et som har voiceover. Pauser ellers.
+  React.useEffect(() => {
+    if (!voiceoverElement) return;
+    const active = player.activeFrameIndex >= 0 ? frames[player.activeFrameIndex] : null;
+    const vUrl = active ? resolveVoiceoverUrl(active) : undefined;
+    if (vUrl && voiceoverElement.src !== vUrl) {
+      voiceoverElement.src = vUrl;
+      voiceoverElement.currentTime = 0;
+    }
+    if (vUrl && player.isPlaying) {
+      const result = voiceoverElement.play();
+      if (result && typeof result.then === 'function') result.catch(() => {});
+    } else {
+      voiceoverElement.pause();
+    }
+  }, [voiceoverElement, player.activeFrameIndex, player.isPlaying, frames, resolveVoiceoverUrl]);
+
+  // Voiceover-hastighet skal følge playback-fart.
+  React.useEffect(() => {
+    if (!voiceoverElement) return;
+    voiceoverElement.playbackRate = speed;
+  }, [voiceoverElement, speed]);
 
   // Opptak-controller — kobler canvas (video) + audio (valgfritt) til
   // en MediaRecorder som dumper til WebM. Hvis vi har en Web Audio-
@@ -190,10 +230,16 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       return;
     }
 
-    // Bygg Web Audio-graf hvis vi har en audio-source — for fade i opptak.
+    // Bygg Web Audio-graf med alle aktive audio-kilder (scene-track
+    // + per-frame voiceover) for å miksing under opptak + fade.
     let pendingStream: MediaStream | null = null;
-    if (audioElement) {
-      const graph = createRecordingAudioGraph(audioElement);
+    const elementsForRecording: HTMLAudioElement[] = [];
+    if (audioElement) elementsForRecording.push(audioElement);
+    if (voiceoverElement && Object.keys(voiceoverUrls).length > 0) {
+      elementsForRecording.push(voiceoverElement);
+    }
+    if (elementsForRecording.length > 0) {
+      const graph = createRecordingAudioGraph(elementsForRecording);
       if (graph) {
         audioGraphRef.current = graph;
         pendingStream = graph.recordingStream;
@@ -215,7 +261,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         setAudioStreamOverride(null);
       }
     }, pendingStream ? 30 : 0);
-  }, [recorder, player, audioElement]);
+  }, [recorder, player, audioElement, voiceoverElement, voiceoverUrls]);
 
   // Auto-fade-out + cleanup når opptaket avsluttes via naturlig
   // playback-slutt (recorder.stop() trigget av effect over).
@@ -314,6 +360,44 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   React.useEffect(() => () => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
   }, [audioUrl]);
+
+  // Per-frame voiceover: trigger file-picker for et bestemt frame.
+  const openVoiceoverPickerForFrame = React.useCallback((frameId: string) => {
+    voiceoverTargetFrameRef.current = frameId;
+    voiceoverFileInputRef.current?.click();
+  }, []);
+
+  const handleVoiceoverPick = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const frameId = voiceoverTargetFrameRef.current;
+    voiceoverTargetFrameRef.current = null;
+    if (!file || !frameId) return;
+    if (!file.type.startsWith('audio/')) return;
+    setVoiceoverUrls((prev) => {
+      // Revoke forrige om den var bruker-uploadet.
+      if (prev[frameId]) URL.revokeObjectURL(prev[frameId]);
+      return { ...prev, [frameId]: URL.createObjectURL(file) };
+    });
+  }, []);
+
+  const clearVoiceoverForFrame = React.useCallback((frameId: string) => {
+    setVoiceoverUrls((prev) => {
+      if (!prev[frameId]) return prev;
+      URL.revokeObjectURL(prev[frameId]);
+      const next = { ...prev };
+      delete next[frameId];
+      return next;
+    });
+  }, []);
+
+  // Cleanup ALLE per-frame voiceover-URLs ved unmount.
+  React.useEffect(() => () => {
+    Object.values(voiceoverUrls).forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch {}
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const activeFrame = player.activeFrameIndex >= 0 ? frames[player.activeFrameIndex] : null;
   const hasFrames = frames.length > 0 && player.totalDuration > 0;
@@ -643,6 +727,80 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         </Box>
       )}
 
+      {/* Per-frame voiceover-strip: én rad med mic-knapper per frame.
+          Aktivt frame fremheves, frames med voiceover får grønn tint. */}
+      {frames.length > 1 && (
+        <Box
+          sx={{
+            maxWidth: isFullscreen ? '70%' : stageMaxWidth,
+            mx: 'auto',
+            mb: 0.75,
+            display: 'flex',
+            gap: 0.25,
+            overflowX: 'auto',
+            px: 0.5,
+            py: 0.5,
+            bgcolor: 'rgba(0,0,0,0.3)',
+            borderRadius: 1,
+          }}
+          data-testid="animatic-voiceover-strip"
+        >
+          {frames.map((f, idx) => {
+            const hasVo = !!resolveVoiceoverUrl(f);
+            const isActive = idx === player.activeFrameIndex;
+            return (
+              <Tooltip
+                key={f.id}
+                title={
+                  hasVo
+                    ? `Frame ${idx + 1} — voiceover på (klikk for å bytte)`
+                    : `Frame ${idx + 1} — legg til voiceover`
+                }
+              >
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={0.25}
+                  sx={{
+                    px: 0.5,
+                    py: 0.25,
+                    borderRadius: 0.75,
+                    bgcolor: isActive ? 'rgba(165,180,252,0.2)' : 'transparent',
+                    border: '1px solid',
+                    borderColor: isActive ? 'rgba(165,180,252,0.5)' : 'transparent',
+                    flexShrink: 0,
+                  }}
+                  data-testid={`animatic-voiceover-frame-${idx}`}
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() => openVoiceoverPickerForFrame(f.id)}
+                    sx={{
+                      p: 0.25,
+                      color: hasVo ? '#86efac' : 'rgba(255,255,255,0.5)',
+                    }}
+                  >
+                    <MicNone fontSize="inherit" sx={{ fontSize: 14 }} />
+                  </IconButton>
+                  <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.6)' }}>
+                    {idx + 1}
+                  </Typography>
+                  {hasVo && voiceoverUrls[f.id] && (
+                    <IconButton
+                      size="small"
+                      onClick={() => clearVoiceoverForFrame(f.id)}
+                      sx={{ p: 0.1, color: 'rgba(255,255,255,0.4)' }}
+                    >
+                      <CloseIcon sx={{ fontSize: 10 }} />
+                    </IconButton>
+                  )}
+                </Stack>
+              </Tooltip>
+            );
+          })}
+        </Box>
+      )}
+
       {/* Scrubber med frame-grenser som marker */}
       <Box sx={{ px: 1, mb: 0.5 }}>
         <Slider
@@ -760,6 +918,14 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           style={{ display: 'none' }}
           data-testid="animatic-audio-input"
         />
+        <input
+          ref={voiceoverFileInputRef}
+          type="file"
+          accept="audio/*"
+          onChange={handleVoiceoverPick}
+          style={{ display: 'none' }}
+          data-testid="animatic-voiceover-input"
+        />
         {audioUrl && (
           <audio
             ref={setAudioElement}
@@ -767,6 +933,17 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             preload="auto"
             style={{ display: 'none' }}
             data-testid="animatic-audio-element"
+          />
+        )}
+        {/* Per-frame voiceover — alltid montert hvis vi har minst én
+            voiceover-URL, slik at Web Audio kan koble til. src settes
+            av sync-effekten basert på aktivt frame. */}
+        {Object.keys(voiceoverUrls).length > 0 && (
+          <audio
+            ref={setVoiceoverElement}
+            preload="auto"
+            style={{ display: 'none' }}
+            data-testid="animatic-voiceover-element"
           />
         )}
 
