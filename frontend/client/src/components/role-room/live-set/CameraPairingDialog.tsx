@@ -43,6 +43,7 @@ import { SonyWifiAdapter } from "./cameras/sony-adapter";
 import { ArriWebAdapter } from "./cameras/arri-adapter";
 import { ZcamAdapter } from "./cameras/zcam-adapter";
 import { GoProAdapter, requestGoProDevice, isWebBluetoothAvailable as isWebBluetoothAvailableForGoPro } from "./cameras/gopro-adapter";
+import { discoverBridgedCameras, getIpadBridge } from "./cameras/ipad-bridge-adapter";
 import type { CameraAdapter, CameraVendor } from "./cameras/types";
 
 interface CameraPairingDialogProps {
@@ -60,7 +61,18 @@ const VENDOR_LABELS: Record<Exclude<CameraVendor, "mock" | "red" | "dji">, strin
   gopro: "GoPro",
 };
 
-type SupportedVendor = keyof typeof VENDOR_LABELS;
+// Spesial-tab for iPad-bridge (ikke en CameraVendor — meta-pattern)
+type TabKey = keyof typeof VENDOR_LABELS | "ipad-bridge";
+
+const ALL_TAB_LABELS: Record<TabKey, string> = {
+  ...VENDOR_LABELS,
+  "ipad-bridge": "iPad-bridge",
+};
+
+// SupportedVendor brukes ikke direkte etter at vi byttet til TabKey, men
+// holdes som type-alias for konsistens i kommende kode.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _SupportedVendor = keyof typeof VENDOR_LABELS;
 
 // ─────────────────────────────────────────────────────────────────────
 // Canon-form: IP + scan
@@ -499,11 +511,128 @@ function GoProForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// iPad-bridge-form: koble til iPad CaptureApp som agerer som proxy for
+// native-SDK-vendors (RED, DJI, Panasonic, etc.)
+// ─────────────────────────────────────────────────────────────────────
+
+function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const [wsUrl, setWsUrl] = React.useState("ws://192.168.1.100:8765/bridge");
+  const [authToken, setAuthToken] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [bridgedCameras, setBridgedCameras] = React.useState<
+    Array<{ adapter: CameraAdapter; label: string; vendor: string }>
+  >([]);
+
+  const handleDiscover = async () => {
+    setBusy(true);
+    setError(null);
+    setBridgedCameras([]);
+    try {
+      const bridge = getIpadBridge(wsUrl, authToken || undefined);
+      const adapters = await discoverBridgedCameras(bridge);
+      setBridgedCameras(
+        adapters.map((a) => ({ adapter: a, label: a.label, vendor: a.vendor })),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "iPad-bridge ikke tilgjengelig");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleConnectBridged = async (adapter: CameraAdapter) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await adapter.connect();
+      onPaired(adapter);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connect via bridge feilet");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Typography variant="body2" color="text.secondary">
+        iPad CaptureApp kan bridge native-SDK-kameraer (RED Cinema RCP, DJI
+        Mobile SDK, Panasonic Wi-Fi-modul, Bluetooth-protokoller via
+        CoreBluetooth) til web-UI. iPad må kjøre LIVE SET PRO-bridge på samme
+        nettverk, og kameraer paires fra iPad-appen først.
+      </Typography>
+
+      <TextField
+        fullWidth
+        size="small"
+        label="iPad WebSocket-URL"
+        value={wsUrl}
+        onChange={(e) => setWsUrl(e.target.value)}
+        placeholder="ws://192.168.1.100:8765/bridge"
+      />
+      <TextField
+        fullWidth
+        size="small"
+        label="Auth-token (valgfri)"
+        value={authToken}
+        onChange={(e) => setAuthToken(e.target.value)}
+        type="password"
+      />
+
+      <Button
+        variant="outlined"
+        startIcon={busy ? <CircularProgress size={14} /> : <SearchIcon />}
+        onClick={handleDiscover}
+        disabled={busy || !wsUrl}
+      >
+        Søk etter bridged-kameraer
+      </Button>
+
+      {bridgedCameras.length > 0 && (
+        <Stack spacing={0.5}>
+          <Typography variant="caption" color="text.secondary">
+            Tilgjengelig via iPad-bridge:
+          </Typography>
+          {bridgedCameras.map((cam) => (
+            <Stack
+              key={cam.adapter.id}
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              sx={{ p: 1, bgcolor: "rgba(255,255,255,0.04)", borderRadius: 1 }}
+            >
+              <Box sx={{ flexGrow: 1 }}>
+                <Typography variant="body2">{cam.label}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {cam.vendor.toUpperCase()} · via iPad
+                </Typography>
+              </Box>
+              <Button size="small" onClick={() => handleConnectBridged(cam.adapter)} disabled={busy}>
+                Koble til
+              </Button>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+
+      <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
+        iPad-side trenger CaptureApp v2.x med bridge-protokoll (dokumentert i
+        ipad-bridge-adapter.ts). Når implementert, dekker dette RED, DJI,
+        Panasonic, og fremtidige native-SDK-vendors uten ny web-kode.
+      </Typography>
+
+      {error && <Alert severity="error">{error}</Alert>}
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Main dialog
 // ─────────────────────────────────────────────────────────────────────
 
 export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, onClose, onPaired }) => {
-  const [vendor, setVendor] = React.useState<SupportedVendor>("canon");
+  const [tab, setTab] = React.useState<TabKey>("canon");
 
   const handlePaired = (adapter: CameraAdapter) => {
     onPaired(adapter);
@@ -522,21 +651,24 @@ export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, 
       </DialogTitle>
       <DialogContent>
         <Tabs
-          value={vendor}
-          onChange={(_, v) => setVendor(v)}
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
           sx={{ borderBottom: "1px solid rgba(255,255,255,0.08)", mb: 2 }}
         >
-          {(Object.keys(VENDOR_LABELS) as SupportedVendor[]).map((v) => (
-            <Tab key={v} value={v} label={VENDOR_LABELS[v]} />
+          {(Object.keys(ALL_TAB_LABELS) as TabKey[]).map((v) => (
+            <Tab key={v} value={v} label={ALL_TAB_LABELS[v]} />
           ))}
         </Tabs>
 
-        {vendor === "canon" && <CanonForm onPaired={handlePaired} />}
-        {vendor === "sony" && <SonyForm onPaired={handlePaired} />}
-        {vendor === "arri" && <ArriForm onPaired={handlePaired} />}
-        {vendor === "zcam" && <ZcamForm onPaired={handlePaired} />}
-        {vendor === "blackmagic" && <BlackmagicForm onPaired={handlePaired} />}
-        {vendor === "gopro" && <GoProForm onPaired={handlePaired} />}
+        {tab === "canon" && <CanonForm onPaired={handlePaired} />}
+        {tab === "sony" && <SonyForm onPaired={handlePaired} />}
+        {tab === "arri" && <ArriForm onPaired={handlePaired} />}
+        {tab === "zcam" && <ZcamForm onPaired={handlePaired} />}
+        {tab === "blackmagic" && <BlackmagicForm onPaired={handlePaired} />}
+        {tab === "gopro" && <GoProForm onPaired={handlePaired} />}
+        {tab === "ipad-bridge" && <IpadBridgeForm onPaired={handlePaired} />}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Lukk</Button>
