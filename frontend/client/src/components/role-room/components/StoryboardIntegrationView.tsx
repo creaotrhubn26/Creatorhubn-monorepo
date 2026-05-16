@@ -54,6 +54,9 @@ import type { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '..
 import { FrameDrawingEditor } from './FrameDrawingEditor';
 // Sprint A.7: Creative Studio-panel — shot-forslag, coverage-gaps, refs
 import { CreativeSuggestionsPanel } from './drawing/CreativeSuggestionsPanel';
+// Sprint A.7: Continuity strip + style consistency
+import { ContinuityStrip } from './drawing/ContinuityStrip';
+import { StyleConsistencyIndicator } from './drawing/StyleConsistencyIndicator';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import type { PencilStroke } from '../hooks/useApplePencil';
 import type { FrameDrawingData } from '../state/storyboardStore';
@@ -2299,6 +2302,29 @@ const StoryboardView: React.FC<{
           </Box>
         ))}
       </Box>
+
+      {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift. */}
+      {storyboardFrames.length > 1 && (
+        <Box sx={{ mt: 2, display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }} data-testid="continuity-mount">
+          <ContinuityStrip
+            frames={storyboardFrames.map((f) => ({
+              id: f.id,
+              imageUrl: f.imageUrl,
+              thumbnailUrl: f.thumbnailUrl,
+              description: f.description,
+              shotNumber: f.shotNumber,
+            }))}
+            activeIndex={activeFrameIdx}
+            onSelectFrame={handleFrameSelect}
+            compact
+          />
+          <StyleConsistencyIndicator
+            frames={storyboardFrames}
+            activeFrameId={storyboardFrames[activeFrameIdx]?.id}
+            compact
+          />
+        </Box>
+      )}
 
       {/* Sprint A.7: Creative Studio — shot-forslag, coverage, refs.
           Vises som sticky-sidepanel når showCreativeStudio er på. */}

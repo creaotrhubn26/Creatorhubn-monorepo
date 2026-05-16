@@ -37,6 +37,36 @@ export type {
 export { CreativeSuggestionsPanel } from './CreativeSuggestionsPanel';
 export type { CreativeSuggestionsPanelProps } from './CreativeSuggestionsPanel';
 
+// Sprint A.7: Continuity strip — nabo-frame-thumbnails i editor
+export {
+  getNeighborWindow,
+  getNavigationFlags,
+} from './continuityStrip';
+export type {
+  StripFrame,
+  ContinuityWindow,
+  ContinuityNavigationFlags,
+} from './continuityStrip';
+export { ContinuityStrip } from './ContinuityStrip';
+export type {
+  ContinuityStripProps,
+  ContinuityStripFrame,
+} from './ContinuityStrip';
+
+// Sprint A.7: Style consistency — palett-drift på tvers av frames
+export {
+  analyzeFramePalette,
+  analyzeStyleDrift,
+  parseHex,
+} from './styleConsistency';
+export type {
+  ColorBin,
+  FramePalette,
+  StyleDriftReport,
+} from './styleConsistency';
+export { StyleConsistencyIndicator } from './StyleConsistencyIndicator';
+export type { StyleConsistencyIndicatorProps } from './StyleConsistencyIndicator';
+
 // Shape tools
 export { ShapeTools, drawShape } from './ShapeTools';
 export type { ShapeType, ShapeStyle, ShapeToolsProps } from './ShapeTools';
