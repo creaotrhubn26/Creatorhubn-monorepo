@@ -12666,6 +12666,7 @@ type RoleRoomProjectWorkspaceState = {
                     <ManuscriptPanel
                       key={currentProject?.id ?? 'no-project'}
                       projectId={currentProject?.id}
+                      projectCinemaFormat={currentProject?.cinemaFormat}
                       initialSceneId={storyArcFocus?.sceneId}
                       onStoryArcFocusChange={(focus) => {
                         setStoryArcFocus(normalizeStoryArcNavigationFocus(focus));

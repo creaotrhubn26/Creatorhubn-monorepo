@@ -40,6 +40,10 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const isDrawingRef = React.useRef(false);
   const currentPathRef = React.useRef<DrawingPath | null>(null);
+  // Sprint A.7: hvilket event-system trekker streken nå. I ekte browsere
+  // fyrer både pointer- og mouse-events for samme musebevegelse — uten
+  // dette tracker-flagget ville hvert punkt blitt registrert to ganger.
+  const eventSourceRef = React.useRef<'pointer' | 'mouse' | null>(null);
 
   // Re-tegn alle paths når størrelse, paths eller enabled endres.
   const redraw = React.useCallback(() => {
@@ -135,31 +139,38 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         // setPointerCapture kan kaste i e2e med syntetiske events — ignorer
       }
     }
+    eventSourceRef.current = 'pointer';
     startStrokeAt(e.clientX, e.clientY);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (eventSourceRef.current !== 'pointer') return;
     extendStrokeAt(e.clientX, e.clientY);
   };
 
   // Sprint A.7: Playwright `page.mouse`-events oversetter ikke pålitelig til
   // pointer events i CDP-driven Chromium. Vi lytter også på mouse-eventene
   // direkte slik at både ekte touch/stylus (via pointer) og e2e-tester
-  // (via mouse) trigger samme tegne-logikk.
+  // (via mouse) trigger samme tegne-logikk. eventSourceRef sikrer at vi
+  // bare bruker én kilde per stroke, så ikke pointer+mouse begge pusher
+  // samme punkt i ekte browsere.
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>): void => {
     if (!enabled || readOnly) return;
     if (isDrawingRef.current) return; // pointer event tok turen først
     e.preventDefault();
+    eventSourceRef.current = 'mouse';
     startStrokeAt(e.clientX, e.clientY);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>): void => {
+    if (eventSourceRef.current !== 'mouse') return;
     extendStrokeAt(e.clientX, e.clientY);
   };
 
   const finishStroke = (): void => {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
+    eventSourceRef.current = null;
     const cur = currentPathRef.current;
     currentPathRef.current = null;
     if (cur && cur.points.length >= 2) {

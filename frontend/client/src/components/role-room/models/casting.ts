@@ -3,6 +3,8 @@
  * Centralized type and helper exports consumed across role-room modules.
  */
 
+import type { StoryboardDocumentAspectRatio } from '../state/storyboardDrawingDocument';
+
 export type UserRoleType =
   | 'director'
   | 'producer'
@@ -1789,6 +1791,12 @@ export interface CastingProject {
   previousStatus?: string;
   genre?: string;
   projectType?: string;
+  /**
+   * Prosjekt-nivå cinema-format som storyboards og frames arver fra.
+   * Default fallback til '16:9' når ikke satt — men storyboard-artister
+   * for film/commercial bør sette dette eksplisitt på prosjektnivå.
+   */
+  cinemaFormat?: StoryboardDocumentAspectRatio;
   startDate?: string;
   endDate?: string;
   budget?: number;

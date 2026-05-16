@@ -20,6 +20,8 @@ interface SceneStoryboardDialogProps {
   open: boolean;
   scene: SceneBreakdown | null;
   projectId?: string;
+  /** Cinema-format på prosjektnivå (CastingProject.cinemaFormat). */
+  projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   activeFrameIndex?: number;
   onClose: () => void;
   onSceneUpdate: (scene: SceneBreakdown) => void;
@@ -29,6 +31,7 @@ export function SceneStoryboardDialog({
   open,
   scene,
   projectId,
+  projectCinemaFormat,
   activeFrameIndex,
   onClose,
   onSceneUpdate,
@@ -92,6 +95,7 @@ export function SceneStoryboardDialog({
             <StoryboardIntegrationView
               scene={scene}
               projectId={projectId}
+              projectCinemaFormat={projectCinemaFormat}
               onUpdate={onSceneUpdate}
               storyboardOnly={true}
               activeFrameIndex={activeFrameIndex}

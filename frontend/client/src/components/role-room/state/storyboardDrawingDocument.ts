@@ -1,6 +1,17 @@
 import type { PencilStroke } from '../hooks/useApplePencil';
 
-export type StoryboardDocumentAspectRatio = '16:9' | '4:3' | '2.35:1' | '1:1' | '9:16';
+// Cinema-bransjestandard + sosiale formater. 2.39:1 (moderne anamorphic),
+// 1.85:1 (Academy Flat) og 2.76:1 (Ultra Panavision) er kritiske for
+// storyboard-artister som jobber mot film/commercial.
+export type StoryboardDocumentAspectRatio =
+  | '16:9'
+  | '4:3'
+  | '2.39:1'
+  | '2.35:1'
+  | '1.85:1'
+  | '2.76:1'
+  | '1:1'
+  | '9:16';
 export type StoryboardDocumentLayerType = 'drawing' | 'group' | 'video' | 'audio' | 'transformation' | 'effect';
 export type StoryboardDocumentBlendMode =
   | 'normal'

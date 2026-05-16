@@ -246,7 +246,7 @@ import {
 export interface FrameDrawingEditorProps {
   frameId?: string;
   storyboardId?: string;
-  aspectRatio?: '16:9' | '4:3' | '2.35:1' | '1:1' | '9:16';
+  aspectRatio?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   initialImage?: string;
   initialStrokes?: PencilStroke[];
   initialDrawingData?: FrameDrawingData;
@@ -360,10 +360,16 @@ const StatusBar = styled(Box)(({ theme }) => ({
 // Aspect Ratio Helpers
 // =============================================================================
 
+// Cinema-bransjestandard + sosiale formater. Storyboard-artister som jobber
+// mot film/commercial trenger 2.39:1 (moderne anamorphic), 1.85:1 (Academy
+// Flat) og 2.76:1 (Ultra Panavision 70) — ikke bare TV/social-aspekter.
 const ASPECT_RATIOS: Record<string, number> = {
   '16:9': 16 / 9,
   '4:3': 4 / 3,
-  '2.35:1': 2.35,
+  '2.39:1': 2.39,    // Moderne anamorphic widescreen
+  '2.35:1': 2.35,    // Klassisk anamorphic
+  '1.85:1': 1.85,    // Academy Flat (standard theatrical)
+  '2.76:1': 2.76,    // Ultra Panavision 70
   '1:1': 1,
   '9:16': 9 / 16,
 };
@@ -18048,7 +18054,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
 export interface QuickDrawButtonProps {
   frameId: string;
   storyboardId: string;
-  aspectRatio?: '16:9' | '4:3' | '2.35:1' | '1:1' | '9:16';
+  aspectRatio?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   existingImage?: string;
   onDrawingComplete?: (drawingData: FrameDrawingData, imageDataUrl: string) => void;
 }

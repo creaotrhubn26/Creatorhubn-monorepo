@@ -7611,6 +7611,7 @@ export function CastingShotListPanel({
         open={Boolean(sceneStoryboardDialog)}
         scene={activeSceneStoryboardScene}
         projectId={projectId}
+        projectCinemaFormat={project?.cinemaFormat}
         activeFrameIndex={sceneStoryboardDialog?.activeFrameIndex}
         onClose={() => setSceneStoryboardDialog(null)}
         onSceneUpdate={async (updatedScene) => {

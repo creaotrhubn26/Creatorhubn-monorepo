@@ -451,6 +451,8 @@ import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
 
 interface ManuscriptPanelProps {
   projectId?: string;
+  /** Cinema-format på prosjektnivå — propageres til Storyboard-editoren. */
+  projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   initialSceneId?: string;
   onManuscriptChange?: (manuscript: Manuscript) => void;
   storyLogicData?: StoryLogicState | null;
@@ -495,6 +497,7 @@ const buildSceneAutosaveSnapshot = (scene: SceneBreakdown) => {
 
 const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   projectId,
+  projectCinemaFormat,
   initialSceneId,
   onManuscriptChange,
   storyLogicData,
@@ -2692,6 +2695,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 }}
                 selectedScene={selectedScene || undefined}
                 highlightedSceneIds={highlightedSceneIds}
+                projectCinemaFormat={projectCinemaFormat}
               />
             )}
 
@@ -3009,6 +3013,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                             <StoryboardIntegrationView
                               scene={scene}
                               onUpdate={onUpdate}
+                              projectCinemaFormat={projectCinemaFormat}
                               storyboardOnly={true}
                               activeFrameIndex={activeFrameIndex}
                                 onFrameSelect={(index) => {
@@ -3033,6 +3038,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         <StoryboardIntegrationView
                           scene={selectedScene}
                           onUpdate={handleSceneUpdateFromStoryboard}
+                          projectCinemaFormat={projectCinemaFormat}
                           storyboardOnly={true}
                           onFrameSelect={(index) => {
                             const shot = String(
@@ -4869,7 +4875,9 @@ const ScenesTab: React.FC<{
   onReorderScenes: (scenes: SceneBreakdown[]) => void;
   selectedScene?: SceneBreakdown;
   highlightedSceneIds?: Set<string>;
-}> = ({ scenes, viewMode, onViewModeChange, onAddScene, onEditScene, onSelectScene, onReorderScenes, selectedScene, highlightedSceneIds }) => {
+  /** Cinema-format på prosjektnivå — propageres til storyboard-view. */
+  projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
+}> = ({ scenes, viewMode, onViewModeChange, onAddScene, onEditScene, onSelectScene, onReorderScenes, selectedScene, highlightedSceneIds, projectCinemaFormat }) => {
   // 7-tier responsive system
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
@@ -4963,6 +4971,7 @@ const ScenesTab: React.FC<{
       ) : viewMode === 'storyboard' && selectedScene ? (
         <StoryboardIntegrationView
           scene={selectedScene}
+          projectCinemaFormat={projectCinemaFormat}
           onUpdate={(updatedScene) => {
             onReorderScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
           }}

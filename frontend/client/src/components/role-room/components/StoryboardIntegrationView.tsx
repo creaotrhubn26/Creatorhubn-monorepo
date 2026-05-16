@@ -75,6 +75,12 @@ interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
   onUpdate: (scene: SceneBreakdown) => void;
   projectId?: string;
+  /**
+   * Prosjekt-nivå cinema-format som propageres til FrameDrawingEditor.
+   * Storyboard-artister for film/commercial trenger 2.39:1/1.85:1 osv. —
+   * tidligere var dette hardkodet til 16:9.
+   */
+  projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   // Script integration
   scriptContent?: string;
   onScriptChange?: (content: string) => void;
@@ -827,6 +833,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   scene,
   onUpdate,
   projectId,
+  projectCinemaFormat,
   scriptContent,
   onScriptChange,
   showScriptPanel = false,
@@ -2286,7 +2293,14 @@ const StoryboardView: React.FC<{
       {drawingFrame && (
         <FrameDrawingEditor
           frameId={drawingFrame.id}
-          aspectRatio="16:9"
+          // Arver cinema-format fra prosjektnivå (CastingProject.cinemaFormat).
+          // Faller tilbake til frame-spesifikk lagret aspectRatio i drawing-data,
+          // og til 16:9 først hvis intet annet er definert.
+          aspectRatio={
+            projectCinemaFormat
+              ?? drawingFrame.drawingData?.document?.aspectRatio
+              ?? '16:9'
+          }
           initialImage={drawingFrameBaseImage}
           initialStrokes={drawingFrameInitialStrokes}
           initialDrawingData={drawingFrame.drawingData}

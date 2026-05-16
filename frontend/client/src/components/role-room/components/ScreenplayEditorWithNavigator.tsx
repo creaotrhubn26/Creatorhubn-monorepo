@@ -239,6 +239,8 @@ export interface ScreenplayEditorWithNavigatorProps {
   
   // Role-based access
   projectId?: string;
+  /** Cinema-format på prosjektnivå — propageres til storyboard-view. */
+  projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   currentUserRole?: UserRoleType;
   
   // Default panel (right side)
@@ -271,6 +273,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   lockState = 'unlocked',
   onLockStateChange,
   projectId,
+  projectCinemaFormat,
   currentUserRole = 'director',
   defaultRightPanel = 'none',
   enableSpellcheck = true,
@@ -1137,6 +1140,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <StoryboardIntegrationView
                   scene={selectedScene}
                   onUpdate={(updatedScene) => setSelectedScene(updatedScene)}
+                  projectCinemaFormat={projectCinemaFormat}
                   scriptContent={value}
                   onScriptChange={handleChange}
                   showScriptPanel={true}
