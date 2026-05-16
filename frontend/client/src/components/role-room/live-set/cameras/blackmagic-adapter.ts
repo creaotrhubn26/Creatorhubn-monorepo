@@ -394,7 +394,9 @@ export class BlackmagicCameraAdapter implements CameraAdapter {
       OP_ASSIGN,
       data,
     );
-    await this.outgoingControl.writeValueWithoutResponse(packet);
+    // Cast .buffer som ArrayBuffer — TypeScript er strict på SharedArrayBuffer
+    // som BufferSource. Vi vet at vår Uint8Array er ArrayBuffer-backed.
+    await this.outgoingControl.writeValueWithoutResponse(packet.buffer as ArrayBuffer);
   }
 
   private handleIncomingControl(value: DataView): void {

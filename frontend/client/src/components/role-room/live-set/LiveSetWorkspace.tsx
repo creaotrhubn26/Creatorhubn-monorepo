@@ -18,11 +18,14 @@ import SceneInfoColumn from './SceneInfoColumn';
 import AudioColumn from './AudioColumn';
 import EditModeWorkspace from './EditModeWorkspace';
 import ReviewModeWorkspace from './ReviewModeWorkspace';
+import CameraPairingDialog from './CameraPairingDialog';
 import { useLiveSetHardware } from './useLiveSetHardware';
+import { useMultiVendorCameras } from './cameras/useMultiVendorCameras';
 import type {
   CameraId,
   CameraPreset,
   CameraSettings,
+  CameraSlot,
   LiveSetMode,
 } from './types';
 import type { SceneBreakdown } from '../models/casting';
@@ -92,8 +95,37 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
   const [recordingStartedAt, setRecordingStartedAt] = React.useState<number | null>(null);
   const [recordingElapsed, setRecordingElapsed] = React.useState(0);
   const [selectedTakeId, setSelectedTakeId] = React.useState<string | null>(null);
+  const [pairingOpen, setPairingOpen] = React.useState(false);
 
-  const { cameras, masterAudioDb, syncStatus, crewCount } = useLiveSetHardware();
+  const { cameras: mockCameras, masterAudioDb, syncStatus, crewCount } = useLiveSetHardware();
+  // removeCamera kommer i kamera-detail-panel — wires senere
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { cameras: pairedCameras, addCamera, removeCamera: _removeCamera } = useMultiVendorCameras();
+
+  // Bruk real paired-kameraer hvis noen finnes, ellers fall tilbake til mock
+  // så bruker fortsatt ser noe i UI før de har paret noe.
+  const cameras: CameraSlot[] = React.useMemo(() => {
+    if (pairedCameras.length === 0) return mockCameras;
+    // Map paired → CameraSlot — opp til 4 første (A/B/C/D)
+    const ids: CameraId[] = ['A', 'B', 'C', 'D'];
+    return pairedCameras.slice(0, 4).map((paired, idx) => ({
+      id: ids[idx],
+      label: paired.state?.label ?? paired.adapter.id,
+      isMaster: idx === 0,
+      online: paired.state?.online ?? false,
+      audioLevelDb: -12, // ekte audio kommer fra Sound Devices-integrasjon
+      ccapi: paired.adapter.vendor === 'canon' && paired.state?.model
+        ? {
+            ipAddress: paired.adapter.id,
+            model: paired.state.model,
+            firmwareVersion: paired.state.firmwareVersion,
+            serialNumber: paired.state.serialNumber,
+            batteryLevel: paired.state.batteryPercent,
+            lastSeenAt: paired.state.fetchedAt,
+          }
+        : undefined,
+    }));
+  }, [pairedCameras, mockCameras]);
 
   // Recording-timer
   React.useEffect(() => {
@@ -177,7 +209,17 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
           isRecording={isRecording}
           syncStatus={syncStatus}
           crewCount={crewCount}
+          onSettingsOpen={() => setPairingOpen(true)}
           onClose={onClose}
+        />
+
+        <CameraPairingDialog
+          open={pairingOpen}
+          onClose={() => setPairingOpen(false)}
+          onPaired={(adapter) => {
+            addCamera(adapter);
+            setPairingOpen(false);
+          }}
         />
 
         {mode === 'live' && (
