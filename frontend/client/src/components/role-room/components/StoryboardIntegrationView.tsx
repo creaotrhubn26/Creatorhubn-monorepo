@@ -1324,6 +1324,7 @@ const StoryboardView: React.FC<{
   const { user } = useAuth();
   const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
+  const [pendingPoseStrokes, setPendingPoseStrokes] = useState<PencilStroke[] | null>(null);
   const [quickViewFrameId, setQuickViewFrameId] = useState<string | null>(null);
   const [editingFrameId, setEditingFrameId] = useState<string | null>(null);
   const [deletingFrameId, setDeletingFrameId] = useState<string | null>(null);
@@ -2345,7 +2346,31 @@ const StoryboardView: React.FC<{
           />
           <MoodBoardPanel sceneId={scene.id} compact />
           <Box sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}>
-            <PoseLibraryPanel canvasWidth={1280} canvasHeight={720} compact />
+            <PoseLibraryPanel
+              canvasWidth={1280}
+              canvasHeight={720}
+              compact
+              onInsertPose={(poseStrokes) => {
+                const targetFrame = frames[activeFrameIndex] ?? frames[0];
+                if (!targetFrame) return;
+                const converted: PencilStroke[] = poseStrokes.map((s) => ({
+                  inputType: 'pen',
+                  color: s.color,
+                  width: s.width,
+                  opacity: s.opacity,
+                  points: s.points.map((p) => ({
+                    x: p.x,
+                    y: p.y,
+                    pressure: p.pressure,
+                    tiltX: 0,
+                    tiltY: 0,
+                    timestamp: p.t,
+                  })),
+                }));
+                setPendingPoseStrokes(converted);
+                setDrawingFrameId(targetFrame.id);
+              }}
+            />
           </Box>
         </Box>
       )}
@@ -2364,6 +2389,7 @@ const StoryboardView: React.FC<{
           }
           initialImage={drawingFrameBaseImage}
           initialStrokes={drawingFrameInitialStrokes}
+          additionalInitialStrokes={pendingPoseStrokes ?? undefined}
           initialDrawingData={drawingFrame.drawingData}
           workflowLevel={drawingFrame.detailLevel || 'idea'}
           mode="dialog"
@@ -2373,6 +2399,7 @@ const StoryboardView: React.FC<{
             // Lokalt callback (oppdaterer frame-state i parent)
             onFrameDrawingComplete(drawingFrame.id, drawingData, imageUrl);
             setDrawingFrameId(null);
+            setPendingPoseStrokes(null);
 
             // Persistens til backend — "fire and forget", logger feil men
             // blokkerer ikke UI. Bruker upsert via frame_id slik at samme
@@ -2396,7 +2423,10 @@ const StoryboardView: React.FC<{
               }
             }
           }}
-          onCancel={() => setDrawingFrameId(null)}
+          onCancel={() => {
+            setDrawingFrameId(null);
+            setPendingPoseStrokes(null);
+          }}
         />
       )}
 

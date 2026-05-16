@@ -249,6 +249,9 @@ export interface FrameDrawingEditorProps {
   aspectRatio?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   initialImage?: string;
   initialStrokes?: PencilStroke[];
+  /** Ekstra strokes som appendes til initial-strokes ved mount — brukes
+   *  for å sette inn pose-templates / referanselayer fra panel utenfor. */
+  additionalInitialStrokes?: PencilStroke[];
   initialDrawingData?: FrameDrawingData;
   workflowLevel?: 'idea' | 'blocking' | 'shot' | 'presentation';
   onSave?: (drawingData: FrameDrawingData, imageDataUrl: string) => void;
@@ -3300,6 +3303,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   aspectRatio = '16:9',
   initialImage,
   initialStrokes,
+  additionalInitialStrokes,
   initialDrawingData,
   workflowLevel = 'shot',
   onSave,
@@ -3418,17 +3422,19 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const initialSelectedShapeScaffoldId = initialDocument.metadata.shapeScaffolds?.[0]?.id;
   const initialSelectedShapeScaffoldAssemblyId = initialDocument.metadata.shapeScaffoldAssemblies?.[0]?.id;
   const resolvedInitialStrokes = useMemo(
-    () => (
-      initialDrawingData?.document
-        ? (
-          getStoryboardDocumentDrawingLayerStrokes(
+    () => {
+      const base = initialDrawingData?.document
+        ? getStoryboardDocumentDrawingLayerStrokes(
             initialDocument,
             getStoryboardDocumentActiveLayerId(initialDocument, initialActiveSheetId) || initialDocument.sheets[0]?.layerIds[0] || ''
           )
-        )
-        : (initialStrokes || getStoryboardDocumentSheetStrokes(initialDocument, initialActiveSheetId))
-    ),
-    [initialActiveSheetId, initialDocument, initialDrawingData?.document, initialStrokes]
+        : (initialStrokes || getStoryboardDocumentSheetStrokes(initialDocument, initialActiveSheetId));
+      if (additionalInitialStrokes && additionalInitialStrokes.length > 0) {
+        return [...base, ...additionalInitialStrokes];
+      }
+      return base;
+    },
+    [initialActiveSheetId, initialDocument, initialDrawingData?.document, initialStrokes, additionalInitialStrokes]
   );
   const initialBrushSettingsForEditor = useMemo(() => {
     const brush = initialDrawingData?.brushSettings || initialDocument.metadata.brushSettings;
