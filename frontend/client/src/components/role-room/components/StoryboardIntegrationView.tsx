@@ -2369,18 +2369,44 @@ const StoryboardView: React.FC<{
       )}
 
       {/* Sprint A.7: Animatic-avspilling — spiller frame-sekvensen som
-          enkel video for å teste pacing. */}
+          enkel video for å teste pacing. Caption (manus-linjer) vises
+          under stagen så artisten ser om dialog matcher visuelt tempo. */}
       {storyboardFrames.length > 0 && (
         <Box sx={{ mt: 2 }} data-testid="animatic-mount">
           <AnimaticPlayer
-            frames={storyboardFrames.map((f) => ({
-              id: f.id,
-              duration: f.duration,
-              imageUrl: f.imageUrl,
-              thumbnailUrl: f.thumbnailUrl,
-              shotNumber: f.shotNumber,
-              description: f.description,
-            }))}
+            frames={storyboardFrames.map((f) => {
+              let caption: string | undefined;
+              if (
+                Array.isArray(f.scriptLineRange) &&
+                f.scriptLineRange.length === 2 &&
+                Array.isArray(sceneDialogue) &&
+                sceneDialogue.length > 0
+              ) {
+                const [lo, hi] = f.scriptLineRange;
+                const lines = sceneDialogue
+                  .filter(
+                    (line) =>
+                      typeof line.lineNumber === 'number' &&
+                      line.lineNumber >= lo &&
+                      line.lineNumber <= hi,
+                  )
+                  .map((line) => {
+                    const speaker = line.characterName ? `${line.characterName}: ` : '';
+                    return `${speaker}${line.dialogueText || line.text || ''}`.trim();
+                  })
+                  .filter((s) => s.length > 0);
+                if (lines.length > 0) caption = lines.join('\n');
+              }
+              return {
+                id: f.id,
+                duration: f.duration,
+                imageUrl: f.imageUrl,
+                thumbnailUrl: f.thumbnailUrl,
+                shotNumber: f.shotNumber,
+                description: f.description,
+                caption,
+              };
+            })}
             onActiveFrameChange={(_id, index) => {
               if (index !== activeFrameIndex) onSelectFrame(index);
             }}

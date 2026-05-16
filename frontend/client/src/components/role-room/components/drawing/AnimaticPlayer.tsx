@@ -50,6 +50,9 @@ export interface AnimaticFrameMeta {
   thumbnailUrl?: string;
   shotNumber?: string;
   description?: string;
+  /** Manus-linjer som hører til dette framet (vises som caption under
+   *  stagen). Brukes for pacing-test av dialog. */
+  caption?: string;
 }
 
 export interface AnimaticPlayerProps {
@@ -61,6 +64,8 @@ export interface AnimaticPlayerProps {
   compact?: boolean;
   /** Kalles når aktiv frame endrer seg (for sync med annen UI). */
   onActiveFrameChange?: (frameId: string, index: number) => void;
+  /** Sekunder med cross-fade mellom frames. 0 = hard cut. Default 0.3. */
+  transitionDuration?: number;
 }
 
 function formatTime(seconds: number): string {
@@ -79,6 +84,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   aspectRatio = 16 / 9,
   compact = false,
   onActiveFrameChange,
+  transitionDuration = 0.3,
 }) => {
   const [speed, setSpeed] = React.useState(1);
   const [loop, setLoop] = React.useState(false);
@@ -266,15 +272,31 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     }
   }, []);
 
-  // Tegn aktivt frame til canvas. Canvas brukes som rendering-target
-  // (kan capture-streames for opptak), og <img> trengs ikke i DOM.
+  // Cache av lastede bilder per src, så vi slipper å re-loade ved
+  // hver redraw (kritisk når cross-fade trigger redraw på hver
+  // RAF-tick).
+  const imageCacheRef = React.useRef<Map<string, HTMLImageElement>>(new Map());
+
+  const loadImage = React.useCallback((src: string): HTMLImageElement => {
+    const cache = imageCacheRef.current;
+    const existing = cache.get(src);
+    if (existing) return existing;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = src;
+    cache.set(src, img);
+    return img;
+  }, []);
+
+  // Tegn aktivt frame (med valgfri cross-fade fra forrige frame) til
+  // canvas. Canvas brukes som rendering-target og er capture-stream-
+  // kilde for opptak. Effekten kjører på hver currentTime-tikk så
+  // cross-fade går jevnt.
   React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    // Sørg for canvas-størrelse er satt (i piksler, ikke CSS-piksler).
     if (canvas.width !== STAGE_CANVAS_WIDTH) canvas.width = STAGE_CANVAS_WIDTH;
     if (canvas.height !== STAGE_CANVAS_HEIGHT) canvas.height = STAGE_CANVAS_HEIGHT;
 
@@ -282,31 +304,27 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, STAGE_CANVAS_WIDTH, STAGE_CANVAS_HEIGHT);
 
-    const drawPlaceholder = () => {
+    const segments = player.timeline.segments;
+    const activeIdx = player.activeFrameIndex;
+    if (activeIdx < 0 || segments.length === 0) return;
+    const activeSeg = segments[activeIdx];
+    const activeFrameMeta = frames[activeIdx];
+
+    const drawPlaceholder = (frameMeta) => {
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.font = '24px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const label = activeFrame?.shotNumber
-        ? `Shot ${activeFrame.shotNumber}`
-        : `Frame ${player.activeFrameIndex + 1}`;
+      const label = frameMeta?.shotNumber
+        ? `Shot ${frameMeta.shotNumber}`
+        : `Frame ${segments.indexOf(activeSeg) + 1}`;
       ctx.fillText(label, STAGE_CANVAS_WIDTH / 2, STAGE_CANVAS_HEIGHT / 2 - 16);
       ctx.font = '16px system-ui, sans-serif';
       ctx.fillText('Ingen tegning enda', STAGE_CANVAS_WIDTH / 2, STAGE_CANVAS_HEIGHT / 2 + 16);
     };
 
-    const src = activeFrame?.imageUrl || activeFrame?.thumbnailUrl;
-    if (!src) {
-      drawPlaceholder();
-      return;
-    }
-
-    let cancelled = false;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      if (cancelled) return;
-      // Contain-fit: ikke beskjær, behold aspect.
+    const drawFitted = (img: HTMLImageElement, alpha: number) => {
+      if (!img.complete || img.naturalWidth === 0) return false;
       const imgRatio = img.width / img.height;
       const canvasRatio = STAGE_CANVAS_WIDTH / STAGE_CANVAS_HEIGHT;
       let drawW: number;
@@ -320,17 +338,70 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       }
       const x = (STAGE_CANVAS_WIDTH - drawW) / 2;
       const y = (STAGE_CANVAS_HEIGHT - drawH) / 2;
+      ctx.globalAlpha = alpha;
       ctx.drawImage(img, x, y, drawW, drawH);
+      ctx.globalAlpha = 1;
+      return true;
     };
-    img.onerror = () => {
-      if (cancelled) return;
-      drawPlaceholder();
+
+    const drawFrameOrPlaceholder = (frameMeta, alpha = 1) => {
+      const src = frameMeta?.imageUrl || frameMeta?.thumbnailUrl;
+      if (!src) {
+        if (alpha === 1) drawPlaceholder(frameMeta);
+        return;
+      }
+      const img = loadImage(src);
+      if (img.complete && img.naturalWidth > 0) {
+        drawFitted(img, alpha);
+      } else {
+        // Mens bildet laster: trigg re-render etter load (med en
+        // tom dependency så vi ikke setter opp uendelige listeners).
+        img.onload = () => {
+          // Etter load: be om re-render via dummy state-bump om vi vil,
+          // men currentTime endrer seg uansett ofte under playback. For
+          // korrekthet ved pause: invalidate via canvas re-clear etter en
+          // tick.
+          requestAnimationFrame(() => {
+            const c = canvasRef.current;
+            if (!c) return;
+            const cx = c.getContext('2d');
+            if (!cx) return;
+            // Tving full redraw ved å fyre en synthetisk no-op state
+            // — i praksis enklere å bare re-tegne nå hvis frame fortsatt aktivt.
+            const segNow = player.timeline.segments[player.activeFrameIndex];
+            if (segNow && segNow === activeSeg) {
+              drawFitted(img, 1);
+            }
+          });
+        };
+        // Placeholder mens den laster.
+        if (alpha === 1) drawPlaceholder(frameMeta);
+      }
     };
-    img.src = src;
-    return () => {
-      cancelled = true;
-    };
-  }, [activeFrame, player.activeFrameIndex]);
+
+    // Cross-fade-vurdering: ligger vi i transitionDuration etter start
+    // på et nytt segment? I så fall blend fra forrige segment.
+    const timeInSeg = Math.max(0, player.currentTime - activeSeg.start);
+    if (
+      transitionDuration > 0 &&
+      timeInSeg < transitionDuration &&
+      activeIdx > 0
+    ) {
+      const prevFrameMeta = frames[activeIdx - 1];
+      const progress = timeInSeg / transitionDuration; // 0..1
+      drawFrameOrPlaceholder(prevFrameMeta, 1 - progress);
+      drawFrameOrPlaceholder(activeFrameMeta, progress);
+    } else {
+      drawFrameOrPlaceholder(activeFrameMeta, 1);
+    }
+  }, [
+    player.currentTime,
+    player.activeFrameIndex,
+    player.timeline,
+    frames,
+    transitionDuration,
+    loadImage,
+  ]);
 
   if (!hasFrames) {
     return (
@@ -455,6 +526,37 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           </IconButton>
         </Tooltip>
       </Box>
+
+      {/* Dialog-caption for aktivt frame — viser manuslinje(r) så
+          artisten ser om dialog matcher visuelt tempo. */}
+      {activeFrame?.caption && (
+        <Box
+          data-testid="animatic-caption"
+          sx={{
+            maxWidth: isFullscreen ? '70%' : stageMaxWidth,
+            mx: 'auto',
+            mb: 0.75,
+            px: 1,
+            py: 0.5,
+            borderRadius: 1,
+            bgcolor: 'rgba(0,0,0,0.5)',
+            border: '1px solid rgba(165,180,252,0.2)',
+            textAlign: 'center',
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'rgba(255,255,255,0.92)',
+              fontSize: isFullscreen ? 14 : 11,
+              lineHeight: 1.4,
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {activeFrame.caption}
+          </Typography>
+        </Box>
+      )}
 
       {/* Scrubber med frame-grenser som marker */}
       <Box sx={{ px: 1, mb: 0.5 }}>
