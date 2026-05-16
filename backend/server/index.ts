@@ -448,6 +448,7 @@ import {
   sceneReadinessApplier,
 } from "./ai-scene-readiness-agent.js";
 import { setupCcapiRoutes } from "./ccapi-routes.js";
+import { setupMultiVendorCameraRoutes } from "./multi-vendor-camera-routes.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
 import { createCoverageJobWorker } from "./coverage-job-queue.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
@@ -15681,6 +15682,10 @@ setupCoverageTakeRoutes({ app, pool });
 
 // Canon CCAPI-proxy — frontend snakker hit, vi snakker direkte mot kamera-AP
 setupCcapiRoutes({ app, pool });
+
+// Multi-vendor kamera-proxy — Sony Wi-Fi Remote + ARRI Web Remote
+// (Z CAM HTTP og GoPro BLE kommer senere; RED krever native SDK)
+setupMultiVendorCameraRoutes({ app, pool });
 
 // Coverage job-worker — bakgrunns-prosessering av analyse-jobber.
 // Starter automatisk; stoppes ved server-shutdown via SIGTERM-håndtering
