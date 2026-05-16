@@ -182,6 +182,12 @@ interface ProjectData {
   eventDate: string;
   location: string;
   projectType: string;
+  /**
+   * Cinema-format på prosjektnivå — propageres til storyboard-editoren
+   * så artisten jobber i riktig aspect ratio. Tom streng = ikke valgt
+   * (default 16:9 nedstrøms).
+   */
+  cinemaFormat: '' | '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   guestCount: string;
   description: string;
   socialProfiles?: unknown[];
@@ -382,6 +388,7 @@ export default function NewProjectCreationModal({
       eventDate: '',
       location: '',
       projectType: '',
+      cinemaFormat: '',
       guestCount: '',
       description: '',
       socialProfiles: [],
@@ -421,6 +428,7 @@ export default function NewProjectCreationModal({
       eventDate: initialData.eventDate || '',
       location: initialData.location || '',
       projectType: initialData.projectType || '',
+      cinemaFormat: (initialData as { cinemaFormat?: ProjectFormData['cinemaFormat'] }).cinemaFormat || '',
       guestCount: initialData.guestCount || '',
       description: initialData.description || '',
       socialProfiles: Array.isArray(initialData.socialProfiles) ? initialData.socialProfiles : [],
@@ -605,6 +613,7 @@ export default function NewProjectCreationModal({
           eventDate: project.eventDate || '',
           location: project.location || '',
           projectType: project.projectType || '',
+          cinemaFormat: project.cinemaFormat || '',
           guestCount: project.guestCount || '',
           description: project.description || '',
           collaborators: project.collaborators || project.crew?.map((m: any) => ({
@@ -1730,6 +1739,7 @@ export default function NewProjectCreationModal({
         eventDate: projectData.eventDate || '',
         location: projectData.location || '',
         projectType: projectData.projectType || '',
+        cinemaFormat: projectData.cinemaFormat || undefined,
         guestCount: projectData.guestCount || '',
         description: projectData.description || '',
         socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
@@ -1952,6 +1962,7 @@ export default function NewProjectCreationModal({
         eventDate: projectData.eventDate || '',
         location: projectData.location || '',
         projectType: projectData.projectType || '',
+        cinemaFormat: projectData.cinemaFormat || undefined,
         guestCount: projectData.guestCount || '',
         description: projectData.description || '',
         socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
@@ -2727,6 +2738,39 @@ export default function NewProjectCreationModal({
               value={projectData.projectType}
               onChange={(value) => setProjectData((prev) => ({ ...prev, projectType: value }))}
             />
+
+            {/* Cinema-format på prosjektnivå. Storyboard-editoren arver
+                dette så artisten jobber i riktig aspect ratio fra start.
+                "Ikke valgt" lar editoren falle tilbake til 16:9. */}
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                Cinema-format (aspect ratio for storyboard)
+              </Typography>
+              <FormControl fullWidth size="small" data-testid="project-cinema-format">
+                <InputLabel id="project-cinema-format-label">Cinema-format</InputLabel>
+                <Select
+                  labelId="project-cinema-format-label"
+                  label="Cinema-format"
+                  value={projectData.cinemaFormat}
+                  onChange={(e) => setProjectData((prev) => ({
+                    ...prev,
+                    cinemaFormat: e.target.value as ProjectFormData['cinemaFormat'],
+                  }))}
+                >
+                  <MenuItem value="">
+                    <em>Ikke valgt — bruker 16:9 som default</em>
+                  </MenuItem>
+                  <MenuItem value="2.39:1">Cinemascope (2.39:1) — moderne anamorphic</MenuItem>
+                  <MenuItem value="2.35:1">Scope (2.35:1) — klassisk anamorphic</MenuItem>
+                  <MenuItem value="1.85:1">Academy Flat (1.85:1) — standard theatrical</MenuItem>
+                  <MenuItem value="2.76:1">Ultra Panavision 70 (2.76:1)</MenuItem>
+                  <MenuItem value="16:9">16:9 — TV / HDTV / web</MenuItem>
+                  <MenuItem value="4:3">4:3 — legacy SD / Academy mute</MenuItem>
+                  <MenuItem value="1:1">1:1 — Instagram-post</MenuItem>
+                  <MenuItem value="9:16">9:16 — vertikal / Stories / TikTok</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
           </CardContent>
         </Card>
       )}
