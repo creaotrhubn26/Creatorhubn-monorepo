@@ -47,6 +47,12 @@ import {
   loadScratchTrack,
   deleteScratchTrack,
 } from './animaticAudioStore';
+import {
+  createRecordingAudioGraph,
+  fadeInRecording,
+  fadeOutRecording,
+  type RecordingAudioGraph,
+} from './recordingAudioGraph';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -106,6 +112,9 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [recordingElapsed, setRecordingElapsed] = React.useState(0);
   const recordingStartRef = React.useRef<number | null>(null);
+  // Web Audio-graf bygges når opptak starter, rives ned når det stopper.
+  const audioGraphRef = React.useRef<RecordingAudioGraph | null>(null);
+  const [audioStreamOverride, setAudioStreamOverride] = React.useState<MediaStream | null>(null);
 
   const handleActiveFrameChange = React.useCallback(
     (segment) => {
@@ -130,10 +139,12 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   });
 
   // Opptak-controller — kobler canvas (video) + audio (valgfritt) til
-  // en MediaRecorder som dumper til WebM.
+  // en MediaRecorder som dumper til WebM. Hvis vi har en Web Audio-
+  // graf for fade, brukes dens stream som override.
   const recorder = useAnimaticRecorder({
     canvas: canvasRef.current,
     audioElement,
+    audioStreamOverride,
   });
 
   // Når opptak er aktivt og playback når slutt: stopp opptaket.
@@ -163,18 +174,59 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
 
   const handleRecord = React.useCallback(() => {
     if (recorder.state === 'recording') {
-      recorder.stop();
-      player.pause();
+      const graph = audioGraphRef.current;
+      if (graph) {
+        fadeOutRecording(graph, () => {
+          recorder.stop();
+          player.pause();
+          graph.cleanup();
+          audioGraphRef.current = null;
+          setAudioStreamOverride(null);
+        });
+      } else {
+        recorder.stop();
+        player.pause();
+      }
       return;
     }
-    // Start fra null + start opptak først, så playback.
-    player.seek(0);
-    const started = recorder.start();
-    if (started) {
-      // Liten timeout slik at recorderen rekker å gå til 'recording' før vi spiller.
-      setTimeout(() => player.play(), 50);
+
+    // Bygg Web Audio-graf hvis vi har en audio-source — for fade i opptak.
+    let pendingStream: MediaStream | null = null;
+    if (audioElement) {
+      const graph = createRecordingAudioGraph(audioElement);
+      if (graph) {
+        audioGraphRef.current = graph;
+        pendingStream = graph.recordingStream;
+        setAudioStreamOverride(graph.recordingStream);
+        fadeInRecording(graph);
+      }
     }
-  }, [recorder, player]);
+
+    // Vi må vente på neste render så useAnimaticRecorder ser
+    // audioStreamOverride før start(). Workaround: liten timeout.
+    player.seek(0);
+    setTimeout(() => {
+      const started = recorder.start();
+      if (started) {
+        setTimeout(() => player.play(), 50);
+      } else if (audioGraphRef.current) {
+        audioGraphRef.current.cleanup();
+        audioGraphRef.current = null;
+        setAudioStreamOverride(null);
+      }
+    }, pendingStream ? 30 : 0);
+  }, [recorder, player, audioElement]);
+
+  // Auto-fade-out + cleanup når opptaket avsluttes via naturlig
+  // playback-slutt (recorder.stop() trigget av effect over).
+  React.useEffect(() => {
+    if (recorder.state === 'idle' && audioGraphRef.current) {
+      // Hadde ikke fade-out fra handleRecord — gjør oppryddingen nå.
+      audioGraphRef.current.cleanup();
+      audioGraphRef.current = null;
+      setAudioStreamOverride(null);
+    }
+  }, [recorder.state]);
 
   // Keyboard shortcuts: Space=toggle, ←/→=frame-nav, R=record. Aktive
   // bare når player-root har fokus (eller fullscreen), så vi ikke

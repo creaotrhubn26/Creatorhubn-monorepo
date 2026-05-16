@@ -24,6 +24,10 @@ export type RecorderState = 'idle' | 'preparing' | 'recording' | 'finalizing';
 export interface UseAnimaticRecorderOptions {
   canvas: HTMLCanvasElement | null;
   audioElement?: HTMLAudioElement | null;
+  /** Hvis satt: bruk denne strømmen som audio-kilde i stedet for å
+   *  capture-streame fra audioElement direkte. Brukes når caller vil
+   *  rute lyden gjennom Web Audio (f.eks. for fade i opptak). */
+  audioStreamOverride?: MediaStream | null;
   /** Bilderate på opptaket. Default 30 fps. */
   frameRate?: number;
   /** Bitrate på video. Default 4 Mbps — fin nok for storyboard-frames. */
@@ -59,7 +63,13 @@ function pickMimeType(): string | null {
 }
 
 export function useAnimaticRecorder(options: UseAnimaticRecorderOptions): AnimaticRecorderController {
-  const { canvas, audioElement, frameRate = 30, videoBitsPerSecond = 4_000_000 } = options;
+  const {
+    canvas,
+    audioElement,
+    audioStreamOverride,
+    frameRate = 30,
+    videoBitsPerSecond = 4_000_000,
+  } = options;
 
   const [state, setState] = useState<RecorderState>('idle');
   const [lastBlob, setLastBlob] = useState<Blob | null>(null);
@@ -110,8 +120,11 @@ export function useAnimaticRecorder(options: UseAnimaticRecorderOptions): Animat
       }
       const combinedTracks: MediaStreamTrack[] = [...videoStream.getVideoTracks()];
 
-      // Lyd er valgfritt.
-      if (audioElement) {
+      // Lyd er valgfritt. Prioritet: override-stream (typisk fra Web
+      // Audio-graf med fade) > audioElement.captureStream > ingen lyd.
+      if (audioStreamOverride) {
+        combinedTracks.push(...audioStreamOverride.getAudioTracks());
+      } else if (audioElement) {
         const captureFn = (audioElement as any).captureStream
           || (audioElement as any).mozCaptureStream;
         if (typeof captureFn === 'function') {
@@ -164,7 +177,7 @@ export function useAnimaticRecorder(options: UseAnimaticRecorderOptions): Animat
       setState('idle');
       return false;
     }
-  }, [canvas, audioElement, frameRate, videoBitsPerSecond, isSupported, mimeType, state, cleanup]);
+  }, [canvas, audioElement, audioStreamOverride, frameRate, videoBitsPerSecond, isSupported, mimeType, state, cleanup]);
 
   const stop = useCallback(() => {
     const recorder = recorderRef.current;
