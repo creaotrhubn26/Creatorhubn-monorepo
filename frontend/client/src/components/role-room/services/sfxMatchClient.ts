@@ -160,3 +160,40 @@ export async function generateSfx(request: GenerateSfxRequest): Promise<Generate
     body: JSON.stringify(request),
   });
 }
+
+// ============================================================================
+// Visuell SFX-deteksjon (Claude vision)
+// ============================================================================
+
+export interface VisualSfxEvent {
+  categoryId: string;
+  offsetSec: number;
+  intensity: 'low' | 'medium' | 'high';
+  rationale?: string;
+}
+
+export interface DetectVisualSfxRequest {
+  /** data:image/{png|jpeg|webp|gif};base64,... */
+  imageDataUrl: string;
+  frameDurationSec: number;
+}
+
+export interface DetectVisualSfxResponse {
+  events: VisualSfxEvent[];
+  cached: boolean;
+  cacheKey: string;
+}
+
+/**
+ * Analyser et frame-bilde med Claude vision og få tilbake foreslåtte
+ * SFX-events med timing. Cache'er per (image-hash + duration) på
+ * backend så samme frame ikke analyseres to ganger.
+ */
+export async function detectVisualSfx(
+  request: DetectVisualSfxRequest,
+): Promise<DetectVisualSfxResponse> {
+  return apiRequest<DetectVisualSfxResponse>('/api/sfx/visual-detect', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}

@@ -5,9 +5,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { createSfxMatchRouter, type GenerateSfxFn } from '../sfx-match-routes.js';
+import { createSfxMatchRouter, type GenerateSfxFn, type VisualDetectFn } from '../sfx-match-routes.js';
 import type { LoadedLibrary, TextEmbedder } from '../_sfx-clap.js';
 import { ElevenLabsError, type GenerateSfxResult } from '../_sfx-elevenlabs.js';
+import { VisualDetectError, type DetectVisualSfxResult } from '../_sfx-visual.js';
 
 const EMBED_DIM = 512;
 
@@ -42,9 +43,10 @@ function buildApp(opts: {
   libraryPath?: string;
   generateFn?: GenerateSfxFn;
   loadGeneratedFn?: (cacheKey: string) => ReturnType<typeof Readable.from> extends never ? never : ({ stream: NodeJS.ReadableStream; sizeBytes: number } | null);
+  visualDetectFn?: VisualDetectFn;
 }) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '20mb' }));
   app.use(
     '/api/sfx',
     createSfxMatchRouter({
@@ -53,6 +55,7 @@ function buildApp(opts: {
       libraryPath: opts.libraryPath,
       generateFn: opts.generateFn,
       loadGeneratedFn: opts.loadGeneratedFn as any,
+      visualDetectFn: opts.visualDetectFn,
     }),
   );
   return app;
@@ -390,5 +393,136 @@ describe('Sprint A.7 — _sfx-elevenlabs cache-key + duration-clamp', () => {
     expect(_internalForTests.clampDuration(3)).toBe(3);
     expect(_internalForTests.clampDuration(undefined)).toBeNull();
     expect(_internalForTests.clampDuration(NaN)).toBeNull();
+  });
+});
+
+
+const TINY_PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+describe("Sprint A.7 — POST /api/sfx/visual-detect", () => {
+  const fakeEmbedder: TextEmbedder = async () => makeUnitVector(0);
+
+  it("avviser body uten imageDataUrl", async () => {
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]) });
+    const res = await request(app).post("/api/sfx/visual-detect").send({ frameDurationSec: 3 });
+    expect(res.status).toBe(400);
+  });
+
+  it("avviser invalid imageDataUrl-format", async () => {
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]) });
+    const res = await request(app).post("/api/sfx/visual-detect").send({
+      imageDataUrl: "not-a-data-url-just-some-text-thats-long-enough-to-pass-min-validation-".repeat(3),
+      frameDurationSec: 3,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_image");
+  });
+
+  it("avviser frameDurationSec ut av range", async () => {
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]) });
+    const res = await request(app).post("/api/sfx/visual-detect").send({
+      imageDataUrl: TINY_PNG_DATA_URL,
+      frameDurationSec: 0,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returnerer events fra mock-visualDetectFn", async () => {
+    const visualDetectFn: VisualDetectFn = async () => ({
+      events: [
+        { categoryId: "door-slam", offsetSec: 0.5, intensity: "high", rationale: "Door mid-slam" },
+        { categoryId: "phone-ring", offsetSec: 1.2, intensity: "medium" },
+      ],
+      cached: false,
+      cacheKey: "abc123",
+    });
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]), visualDetectFn });
+    const res = await request(app).post("/api/sfx/visual-detect").send({
+      imageDataUrl: TINY_PNG_DATA_URL,
+      frameDurationSec: 3,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.events).toHaveLength(2);
+    expect(res.body.events[0].categoryId).toBe("door-slam");
+    expect(res.body.cached).toBe(false);
+  });
+
+  it("503 hvis ANTHROPIC_API_KEY mangler", async () => {
+    const visualDetectFn: VisualDetectFn = async () => {
+      throw new VisualDetectError("ANTHROPIC_API_KEY ikke satt", 503, false);
+    };
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]), visualDetectFn });
+    const res = await request(app).post("/api/sfx/visual-detect").send({
+      imageDataUrl: TINY_PNG_DATA_URL,
+      frameDurationSec: 3,
+    });
+    expect(res.status).toBe(503);
+  });
+
+  it("502 ved retryable Claude-feil (429/5xx)", async () => {
+    const visualDetectFn: VisualDetectFn = async () => {
+      throw new VisualDetectError("Claude returnerte 429", 429, true);
+    };
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]), visualDetectFn });
+    const res = await request(app).post("/api/sfx/visual-detect").send({
+      imageDataUrl: TINY_PNG_DATA_URL,
+      frameDurationSec: 3,
+    });
+    expect(res.status).toBe(502);
+    expect(res.body.retryable).toBe(true);
+  });
+});
+
+describe("Sprint A.7 — _sfx-visual validateEvents (security)", () => {
+  it("avviser categoryId som ikke er i allowed-list", async () => {
+    const { _internalForTests } = await import("../_sfx-visual.js");
+    const result = _internalForTests.validateEvents({
+      events: [
+        { categoryId: "evil-injection", offsetSec: 0, intensity: "high" },
+        { categoryId: "door-slam", offsetSec: 0.5, intensity: "high" },
+      ],
+    }, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0].categoryId).toBe("door-slam");
+  });
+
+  it("klamper offsetSec til [0, maxOffset]", async () => {
+    const { _internalForTests } = await import("../_sfx-visual.js");
+    const result = _internalForTests.validateEvents({
+      events: [
+        { categoryId: "door-slam", offsetSec: -5, intensity: "high" },
+        { categoryId: "phone-ring", offsetSec: 100, intensity: "high" },
+      ],
+    }, 3);
+    expect(result[0].offsetSec).toBe(0);
+    expect(result[1].offsetSec).toBe(3);
+  });
+
+  it("avviser invalid intensity", async () => {
+    const { _internalForTests } = await import("../_sfx-visual.js");
+    const result = _internalForTests.validateEvents({
+      events: [
+        { categoryId: "door-slam", offsetSec: 1, intensity: "extreme" },
+      ],
+    }, 3);
+    expect(result).toEqual([]);
+  });
+
+  it("trimmer rationale til 200 tegn", async () => {
+    const { _internalForTests } = await import("../_sfx-visual.js");
+    const longRationale = "x".repeat(500);
+    const result = _internalForTests.validateEvents({
+      events: [
+        { categoryId: "door-slam", offsetSec: 1, intensity: "high", rationale: longRationale },
+      ],
+    }, 3);
+    expect(result[0].rationale?.length).toBe(200);
+  });
+
+  it("ikke-objekt/ikke-array input gir tom resultat", async () => {
+    const { _internalForTests } = await import("../_sfx-visual.js");
+    expect(_internalForTests.validateEvents(null, 3)).toEqual([]);
+    expect(_internalForTests.validateEvents({ events: "not-array" }, 3)).toEqual([]);
+    expect(_internalForTests.validateEvents({}, 3)).toEqual([]);
   });
 });

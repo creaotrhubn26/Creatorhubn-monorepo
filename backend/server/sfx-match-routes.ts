@@ -37,6 +37,13 @@ import {
   type GenerateSfxRequest,
   type GenerateSfxResult,
 } from './_sfx-elevenlabs.js';
+import {
+  detectVisualSfx,
+  getCachedVisualSfx,
+  VisualDetectError,
+  type DetectVisualSfxInput,
+  type DetectVisualSfxResult,
+} from './_sfx-visual.js';
 
 const DEFAULT_LIBRARY_PATH = path.resolve(process.cwd(), 'data', 'sfx-library.json');
 
@@ -54,7 +61,14 @@ const GenerateBodySchema = z.object({
   loop: z.boolean().optional(),
 });
 
+const VisualDetectBodySchema = z.object({
+  // data-URL eller raw base64 — vi parser begge.
+  imageDataUrl: z.string().min(100).max(20_000_000), // ~15MB max input
+  frameDurationSec: z.number().min(0.2).max(60),
+});
+
 export type GenerateSfxFn = (req: GenerateSfxRequest) => Promise<GenerateSfxResult>;
+export type VisualDetectFn = (req: DetectVisualSfxInput) => Promise<DetectVisualSfxResult>;
 
 export interface SfxMatchRouterDeps {
   /** Path til library JSON. Default: data/sfx-library.json under cwd. */
@@ -67,6 +81,8 @@ export interface SfxMatchRouterDeps {
   generateFn?: GenerateSfxFn;
   /** Override-file-server for tester. */
   loadGeneratedFn?: (cacheKey: string) => ReturnType<typeof loadGeneratedSfxFile>;
+  /** Override visual-detect for tester. Default: detectVisualSfx via Anthropic. */
+  visualDetectFn?: VisualDetectFn;
 }
 
 export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
@@ -254,6 +270,67 @@ export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
       }
       return res.status(500).json({
         error: 'generation_failed',
+        message: err?.message ?? String(err),
+      });
+    }
+  });
+
+  // ── POST /visual-detect ──────────────────────────────────────
+  // Analyserer et frame-bilde med Claude vision og returnerer
+  // detekterte SFX-events. Cache'er per image-hash + duration så
+  // samme frame ikke analyseres to ganger uten override.
+  router.post('/visual-detect', async (req: Request, res: Response) => {
+    const parseResult = VisualDetectBodySchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'invalid_request',
+        details: parseResult.error.flatten(),
+      });
+    }
+    const { imageDataUrl, frameDurationSec } = parseResult.data;
+
+    // Parse dataURL → bytes + MIME.
+    const match = imageDataUrl.match(/^data:(image\/(png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) {
+      return res.status(400).json({
+        error: 'invalid_image',
+        message: 'Forventet data:image/{png|jpeg|webp|gif};base64,...',
+      });
+    }
+    const mimeType = match[1];
+    const imageBase64 = match[3];
+
+    const input: DetectVisualSfxInput = { imageBase64, mimeType, frameDurationSec };
+
+    // Cache-treff først (uten å treffe Claude).
+    const cachedHit = getCachedVisualSfx(input);
+    if (cachedHit) {
+      return res.json({
+        events: cachedHit.events,
+        cached: true,
+        cacheKey: cachedHit.cacheKey,
+      });
+    }
+
+    const fn = deps.visualDetectFn ?? detectVisualSfx;
+    try {
+      const result = await fn(input);
+      return res.json({
+        events: result.events,
+        cached: result.cached,
+        cacheKey: result.cacheKey,
+      });
+    } catch (err: any) {
+      if (err instanceof VisualDetectError) {
+        const status = err.status === 503 ? 503 : err.retryable ? 502 : err.status === 400 ? 400 : 500;
+        return res.status(status).json({
+          error: 'visual_detect_failed',
+          message: err.message,
+          retryable: err.retryable,
+        });
+      }
+      return res.status(500).json({
+        error: 'visual_detect_failed',
         message: err?.message ?? String(err),
       });
     }

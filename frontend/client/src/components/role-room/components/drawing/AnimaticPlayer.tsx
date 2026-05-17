@@ -72,7 +72,13 @@ import {
 import { detectSequenceSfx, groupEventsByFrame, type SfxEvent } from './sfxDetector';
 import { scheduleSfx } from './sfxScheduler';
 import { useSfxPlayback } from './useSfxPlayback';
-import { matchSfx, generateSfx, type SfxMatchHit } from '../../services/sfxMatchClient';
+import {
+  matchSfx,
+  generateSfx,
+  detectVisualSfx,
+  type SfxMatchHit,
+  type VisualSfxEvent,
+} from '../../services/sfxMatchClient';
 import {
   AnimaticStageCanvas,
   STAGE_CANVAS_WIDTH as STAGE_W,
@@ -154,6 +160,10 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   // Per-event offset i sekunder — overstyrer event.offsetSec ved scheduling.
   // Lar bruker time SFX presist innen et frame (f.eks. dør smell ved 1.5s).
   const [sfxOffsets, setSfxOffsets] = React.useState<Record<string, number>>({});
+  // Visual-detect-events per frameId. Mergeres med text-detekterte events.
+  const [visualSfxByFrame, setVisualSfxByFrame] = React.useState<Record<string, VisualSfxEvent[]>>({});
+  const [visualDetectLoading, setVisualDetectLoading] = React.useState<Record<string, boolean>>({});
+  const [visualDetectError, setVisualDetectError] = React.useState<Record<string, string>>({});
   // Forslag fra CLAP-match per event-id.
   const [sfxSuggestions, setSfxSuggestions] = React.useState<Record<string, {
     loading: boolean;
@@ -232,6 +242,55 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     voiceoverElement.playbackRate = speed;
   }, [voiceoverElement, speed]);
 
+  // Konverter en imageUrl (object-URL, http-URL, eller data-URL) til
+  // data:image/...;base64,... — formatet backend forventer.
+  const imageUrlToDataUrl = React.useCallback(async (imageUrl: string): Promise<string> => {
+    if (imageUrl.startsWith('data:')) return imageUrl;
+    const resp = await fetch(imageUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('FileReader feilet'));
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  const analyzeFrameVisually = React.useCallback(async (frame: AnimaticFrameMeta) => {
+    const src = frame.imageUrl ?? frame.thumbnailUrl;
+    if (!src) {
+      setVisualDetectError((prev) => ({ ...prev, [frame.id]: 'Frame mangler bilde' }));
+      return;
+    }
+    const duration = (frame.duration ?? 3) > 0 ? (frame.duration ?? 3) : 3;
+    setVisualDetectLoading((prev) => ({ ...prev, [frame.id]: true }));
+    setVisualDetectError((prev) => {
+      const next = { ...prev };
+      delete next[frame.id];
+      return next;
+    });
+    try {
+      const dataUrl = await imageUrlToDataUrl(src);
+      const result = await detectVisualSfx({
+        imageDataUrl: dataUrl,
+        frameDurationSec: duration,
+      });
+      setVisualSfxByFrame((prev) => ({ ...prev, [frame.id]: result.events }));
+    } catch (err: any) {
+      setVisualDetectError((prev) => ({
+        ...prev,
+        [frame.id]: err?.message ?? 'Visuell analyse feilet',
+      }));
+    } finally {
+      setVisualDetectLoading((prev) => {
+        const next = { ...prev };
+        delete next[frame.id];
+        return next;
+      });
+    }
+  }, [imageUrlToDataUrl]);
+
   // Auto-detekter SFX-events fra frame-tekst (description + caption).
   const detectedSfxEvents = React.useMemo<SfxEvent[]>(() => {
     if (!sfxEnabled) return [];
@@ -250,14 +309,57 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     [detectedSfxEvents, hiddenSfxEventIds],
   );
 
+  // Merge inn visuelt-detekterte events. Konverter VisualSfxEvent →
+  // SfxEvent-format (legg til id, category-objekt, layer). Dedup per
+  // (frameId, categoryId) — text-detektering vinner over visual hvis
+  // begge har samme kategori for samme frame.
+  const mergedSfxEvents = React.useMemo(() => {
+    const merged = [...visibleSfxEvents];
+    const seenIds = new Set(merged.map((e) => e.id));
+    for (const [frameId, visualEvents] of Object.entries(visualSfxByFrame)) {
+      // Sjekk om framet eksisterer fortsatt i frames-array.
+      if (!frames.some((f) => f.id === frameId)) continue;
+      for (const v of visualEvents) {
+        const id = `${frameId}:${v.categoryId}`;
+        if (seenIds.has(id)) continue;
+        if (hiddenSfxEventIds.has(id)) continue;
+        // Bygg minimalt category-objekt så det matcher SfxEvent-form.
+        // Vi har ikke full sfxCategories-import her — bruker stripped form.
+        const layer: 'event' | 'ambient' | 'music' = v.categoryId.startsWith('music-')
+          ? 'music'
+          : v.categoryId.startsWith('ambient-') || ['rain','wind','traffic','crowd-murmur','water-running','fight'].includes(v.categoryId)
+            ? 'ambient'
+            : 'event';
+        merged.push({
+          id,
+          frameId,
+          categoryId: v.categoryId,
+          category: {
+            id: v.categoryId,
+            label: v.categoryId.replace(/-/g, ' '),
+            keywords: [],
+            defaultIntensity: v.intensity,
+            layer,
+          } as any,
+          intensity: v.intensity,
+          offsetSec: v.offsetSec,
+          matchedKeyword: '(visual)',
+          layer,
+        } as any);
+        seenIds.add(id);
+      }
+    }
+    return merged;
+  }, [visibleSfxEvents, visualSfxByFrame, frames, hiddenSfxEventIds]);
+
   // Anvend per-event offset-override før scheduling.
   const eventsWithOffsets = React.useMemo(
-    () => visibleSfxEvents.map((ev) => {
+    () => mergedSfxEvents.map((ev) => {
       const override = sfxOffsets[ev.id];
       if (override === undefined) return ev;
       return { ...ev, offsetSec: override };
     }),
-    [visibleSfxEvents, sfxOffsets],
+    [mergedSfxEvents, sfxOffsets],
   );
 
   // Schedule til absolutt tid.
@@ -276,8 +378,8 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   });
 
   const sfxByFrame = React.useMemo(
-    () => groupEventsByFrame(visibleSfxEvents),
-    [visibleSfxEvents],
+    () => groupEventsByFrame(mergedSfxEvents),
+    [mergedSfxEvents],
   );
 
   // Opptak-controller — kobler canvas (video) + audio (valgfritt) til
@@ -950,6 +1052,9 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         activeFrameDuration={(activeFrame?.duration ?? 0) > 0 ? (activeFrame!.duration as number) : 3}
         sfxEnabled={sfxEnabled}
         onToggleSfxEnabled={() => setSfxEnabled((v) => !v)}
+        visualDetectLoading={activeFrame ? !!visualDetectLoading[activeFrame.id] : false}
+        visualDetectError={activeFrame ? visualDetectError[activeFrame.id] : undefined}
+        onAnalyzeVisually={activeFrame ? () => analyzeFrameVisually(activeFrame) : undefined}
         onSuggest={suggestSfxForEvent}
         onGenerate={generateSfxForEvent}
         onUpload={openSfxPickerForEvent}

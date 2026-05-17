@@ -20,6 +20,7 @@ import {
   PlayCircleOutline,
   PlayArrow,
   Timer,
+  Visibility,
 } from '@mui/icons-material';
 import type { SfxEvent } from './sfxDetector';
 import type { SfxMatchHit } from '../../services/sfxMatchClient';
@@ -42,6 +43,10 @@ export interface AnimaticSfxPanelProps {
   /** Master-toggle for auto-SFX. */
   sfxEnabled: boolean;
   onToggleSfxEnabled: () => void;
+  /** Visual-detect: loading/error for aktivt frame, og callback. */
+  visualDetectLoading?: boolean;
+  visualDetectError?: string;
+  onAnalyzeVisually?: () => void;
   /** Handlers per event. */
   onSuggest: (ev: SfxEvent) => void;
   onGenerate: (ev: SfxEvent) => void;
@@ -66,6 +71,9 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
   activeFrameDuration,
   sfxEnabled,
   onToggleSfxEnabled,
+  visualDetectLoading,
+  visualDetectError,
+  onAnalyzeVisually,
   onSuggest,
   onGenerate,
   onUpload,
@@ -77,7 +85,11 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
   isFullscreen,
   stageMaxWidth,
 }) => {
-  if (!sfxEnabled || events.length === 0) return null;
+  // Skjul panelet kun hvis SFX er av OG vi ikke har visual-detect.
+  // Hvis visual-detect er tilgjengelig, viser vi en minimal panel
+  // med 👁️-knappen så bruker kan analysere et frame uten tekst-treff.
+  if (!sfxEnabled) return null;
+  if (events.length === 0 && !onAnalyzeVisually) return null;
   return (
     <Box
       sx={{
@@ -96,11 +108,35 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
         <Typography variant="caption" sx={{ fontSize: 10, color: '#a5b4fc', fontWeight: 700, letterSpacing: '0.05em' }}>
           SFX
         </Typography>
+        {visualDetectLoading && (
+          <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', ml: 0.5 }}>
+            analyserer bilde…
+          </Typography>
+        )}
+        {visualDetectError && (
+          <Typography variant="caption" sx={{ fontSize: 9, color: '#fca5a5', ml: 0.5, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {visualDetectError}
+          </Typography>
+        )}
+        <Box sx={{ flex: 1 }} />
+        {onAnalyzeVisually && (
+          <Tooltip title="Analyser frame-bildet med Claude vision (detekter SFX fra hva som er tegnet)">
+            <IconButton
+              size="small"
+              onClick={onAnalyzeVisually}
+              disabled={visualDetectLoading}
+              sx={{ p: 0.25, color: '#c4b5fd' }}
+              data-testid="animatic-sfx-visual-detect"
+            >
+              <Visibility sx={{ fontSize: 12 }} />
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title={sfxEnabled ? 'Skru av auto-SFX' : 'Skru på auto-SFX'}>
           <IconButton
             size="small"
             onClick={onToggleSfxEnabled}
-            sx={{ p: 0.25, ml: 'auto', color: sfxEnabled ? '#86efac' : 'rgba(255,255,255,0.4)' }}
+            sx={{ p: 0.25, color: sfxEnabled ? '#86efac' : 'rgba(255,255,255,0.4)' }}
             data-testid="animatic-sfx-toggle"
           >
             {sfxEnabled ? <VolumeUp sx={{ fontSize: 12 }} /> : <VolumeOff sx={{ fontSize: 12 }} />}
