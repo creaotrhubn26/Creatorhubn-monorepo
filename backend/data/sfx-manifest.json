@@ -1,0 +1,1429 @@
+{
+  "$schema": "Auto-generert manifest for synthetic starter-samples.",
+  "comment": "Disse er PROCEDURALE placeholders for å verifisere CLAP-pipelinen. Bytt ut med ekte CC0/Pixabay-samples i produksjon. Se data/SFX_LIBRARY.md.",
+  "samples": [
+    {
+      "id": "synthetic-door-slam",
+      "title": "Synthetic door slam",
+      "url": "/api/sfx/static/door-slam.wav",
+      "sourcePath": "data/synthetic-samples/door-slam.wav",
+      "categoryId": "door-slam",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-door-open",
+      "title": "Synthetic door open",
+      "url": "/api/sfx/static/door-open.wav",
+      "sourcePath": "data/synthetic-samples/door-open.wav",
+      "categoryId": "door-open",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-door-close",
+      "title": "Synthetic door close",
+      "url": "/api/sfx/static/door-close.wav",
+      "sourcePath": "data/synthetic-samples/door-close.wav",
+      "categoryId": "door-close",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-knock",
+      "title": "Synthetic knock",
+      "url": "/api/sfx/static/knock.wav",
+      "sourcePath": "data/synthetic-samples/knock.wav",
+      "categoryId": "knock",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-footsteps-walking",
+      "title": "Synthetic footsteps",
+      "url": "/api/sfx/static/footsteps-walking.wav",
+      "sourcePath": "data/synthetic-samples/footsteps-walking.wav",
+      "categoryId": "footsteps-walking",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-footsteps-running",
+      "title": "Synthetic running footsteps",
+      "url": "/api/sfx/static/footsteps-running.wav",
+      "sourcePath": "data/synthetic-samples/footsteps-running.wav",
+      "categoryId": "footsteps-running",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-gunshot",
+      "title": "Synthetic gunshot",
+      "url": "/api/sfx/static/gunshot.wav",
+      "sourcePath": "data/synthetic-samples/gunshot.wav",
+      "categoryId": "gunshot",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-explosion",
+      "title": "Synthetic explosion",
+      "url": "/api/sfx/static/explosion.wav",
+      "sourcePath": "data/synthetic-samples/explosion.wav",
+      "categoryId": "explosion",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-punch",
+      "title": "Synthetic punch impact",
+      "url": "/api/sfx/static/punch.wav",
+      "sourcePath": "data/synthetic-samples/punch.wav",
+      "categoryId": "punch",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-glass-break",
+      "title": "Synthetic glass break",
+      "url": "/api/sfx/static/glass-break.wav",
+      "sourcePath": "data/synthetic-samples/glass-break.wav",
+      "categoryId": "glass-break",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-water-splash",
+      "title": "Synthetic splash",
+      "url": "/api/sfx/static/water-splash.wav",
+      "sourcePath": "data/synthetic-samples/water-splash.wav",
+      "categoryId": "water-splash",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-phone-ring",
+      "title": "Synthetic phone ring",
+      "url": "/api/sfx/static/phone-ring.wav",
+      "sourcePath": "data/synthetic-samples/phone-ring.wav",
+      "categoryId": "phone-ring",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-beep",
+      "title": "Synthetic beep",
+      "url": "/api/sfx/static/beep.wav",
+      "sourcePath": "data/synthetic-samples/beep.wav",
+      "categoryId": "beep",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-click",
+      "title": "Synthetic click",
+      "url": "/api/sfx/static/click.wav",
+      "sourcePath": "data/synthetic-samples/click.wav",
+      "categoryId": "click",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-siren",
+      "title": "Synthetic siren",
+      "url": "/api/sfx/static/siren.wav",
+      "sourcePath": "data/synthetic-samples/siren.wav",
+      "categoryId": "siren",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-rain",
+      "title": "Synthetic rain",
+      "url": "/api/sfx/static/rain.wav",
+      "sourcePath": "data/synthetic-samples/rain.wav",
+      "categoryId": "rain",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-wind",
+      "title": "Synthetic wind",
+      "url": "/api/sfx/static/wind.wav",
+      "sourcePath": "data/synthetic-samples/wind.wav",
+      "categoryId": "wind",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-thunder",
+      "title": "Synthetic thunder",
+      "url": "/api/sfx/static/thunder.wav",
+      "sourcePath": "data/synthetic-samples/thunder.wav",
+      "categoryId": "thunder",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-traffic",
+      "title": "Synthetic traffic ambient",
+      "url": "/api/sfx/static/traffic.wav",
+      "sourcePath": "data/synthetic-samples/traffic.wav",
+      "categoryId": "traffic",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-crowd-murmur",
+      "title": "Synthetic crowd murmur",
+      "url": "/api/sfx/static/crowd-murmur.wav",
+      "sourcePath": "data/synthetic-samples/crowd-murmur.wav",
+      "categoryId": "crowd-murmur",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-water-running",
+      "title": "Synthetic running water",
+      "url": "/api/sfx/static/water-running.wav",
+      "sourcePath": "data/synthetic-samples/water-running.wav",
+      "categoryId": "water-running",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-ambient-indoor",
+      "title": "Synthetic indoor ambient",
+      "url": "/api/sfx/static/ambient-indoor.wav",
+      "sourcePath": "data/synthetic-samples/ambient-indoor.wav",
+      "categoryId": "ambient-indoor",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-ambient-outdoor",
+      "title": "Synthetic outdoor ambient",
+      "url": "/api/sfx/static/ambient-outdoor.wav",
+      "sourcePath": "data/synthetic-samples/ambient-outdoor.wav",
+      "categoryId": "ambient-outdoor",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-music-tense",
+      "title": "Synthetic tense music",
+      "url": "/api/sfx/static/music-tense.wav",
+      "sourcePath": "data/synthetic-samples/music-tense.wav",
+      "categoryId": "music-tense",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-music-soft",
+      "title": "Synthetic soft music",
+      "url": "/api/sfx/static/music-soft.wav",
+      "sourcePath": "data/synthetic-samples/music-soft.wav",
+      "categoryId": "music-soft",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "synthetic-music-action",
+      "title": "Synthetic action music",
+      "url": "/api/sfx/static/music-action.wav",
+      "sourcePath": "data/synthetic-samples/music-action.wav",
+      "categoryId": "music-action",
+      "license": "CC0",
+      "attribution": "Procedurally generated (synthetic placeholder)",
+      "durationSec": 1,
+      "tags": [
+        "synthetic",
+        "placeholder"
+      ]
+    },
+    {
+      "id": "freesound-door-open-663390",
+      "title": "2022-12-07-forgotten-airlock.wav",
+      "url": "/api/sfx/static/freesound-door-open-663390.wav",
+      "sourcePath": "data/synthetic-samples/freesound-door-open-663390.wav",
+      "categoryId": "door-open",
+      "license": "CC0",
+      "attribution": "Freesound: ilmari_freesound (https://freesound.org/people/ilmari_freesound/sounds/663390/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8.95,
+      "tags": [
+        "airlock",
+        "cinematic",
+        "cold",
+        "dark",
+        "door"
+      ]
+    },
+    {
+      "id": "freesound-door-open-678453",
+      "title": "hydraulic office chair moving effect 02",
+      "url": "/api/sfx/static/freesound-door-open-678453.wav",
+      "sourcePath": "data/synthetic-samples/freesound-door-open-678453.wav",
+      "categoryId": "door-open",
+      "license": "CC0",
+      "attribution": "Freesound: rubberduck9999 (https://freesound.org/people/rubberduck9999/sounds/678453/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 0.868571,
+      "tags": [
+        "air",
+        "chair",
+        "door",
+        "hydraulic",
+        "hydraulics"
+      ]
+    },
+    {
+      "id": "freesound-door-close-814881",
+      "title": "Closing large metal door-003",
+      "url": "/api/sfx/static/freesound-door-close-814881.wav",
+      "sourcePath": "data/synthetic-samples/freesound-door-close-814881.wav",
+      "categoryId": "door-close",
+      "license": "CC0",
+      "attribution": "Freesound: AudioPapkin (https://freesound.org/people/AudioPapkin/sounds/814881/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 6.32651,
+      "tags": [
+        "bunker",
+        "clang",
+        "closing",
+        "door",
+        "echoing"
+      ]
+    },
+    {
+      "id": "freesound-door-close-700705",
+      "title": "Metal Door Squeaking 8 (Medium)",
+      "url": "/api/sfx/static/freesound-door-close-700705.wav",
+      "sourcePath": "data/synthetic-samples/freesound-door-close-700705.wav",
+      "categoryId": "door-close",
+      "license": "CC0",
+      "attribution": "Freesound: MathewHenry (https://freesound.org/people/MathewHenry/sounds/700705/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.87501,
+      "tags": [
+        "creak",
+        "creaking",
+        "door",
+        "hinges",
+        "metal"
+      ]
+    },
+    {
+      "id": "freesound-door-slam-814881",
+      "title": "Closing large metal door-003",
+      "url": "/api/sfx/static/freesound-door-slam-814881.wav",
+      "sourcePath": "data/synthetic-samples/freesound-door-slam-814881.wav",
+      "categoryId": "door-slam",
+      "license": "CC0",
+      "attribution": "Freesound: AudioPapkin (https://freesound.org/people/AudioPapkin/sounds/814881/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 6.32651,
+      "tags": [
+        "bunker",
+        "clang",
+        "closing",
+        "door",
+        "echoing"
+      ]
+    },
+    {
+      "id": "freesound-door-slam-465807",
+      "title": "big stone door suddenly slamming shut",
+      "url": "/api/sfx/static/freesound-door-slam-465807.wav",
+      "sourcePath": "data/synthetic-samples/freesound-door-slam-465807.wav",
+      "categoryId": "door-slam",
+      "license": "CC0",
+      "attribution": "Freesound: PaceHeart (https://freesound.org/people/PaceHeart/sounds/465807/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 0.852336,
+      "tags": [
+        "boom",
+        "closing",
+        "door",
+        "shut",
+        "slam"
+      ]
+    },
+    {
+      "id": "freesound-footsteps-walking-384878",
+      "title": "Right Gravel Footstep 4",
+      "url": "/api/sfx/static/freesound-footsteps-walking-384878.wav",
+      "sourcePath": "data/synthetic-samples/freesound-footsteps-walking-384878.wav",
+      "categoryId": "footsteps-walking",
+      "license": "CC0",
+      "attribution": "Freesound: Ali_6868 (https://freesound.org/people/Ali_6868/sounds/384878/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 0.571882,
+      "tags": [
+        "Gravel",
+        "crunch",
+        "feet",
+        "foley",
+        "foot"
+      ]
+    },
+    {
+      "id": "freesound-footsteps-walking-384895",
+      "title": "Knight Right Footstep Forest/Grass 6 (With Chainmail)",
+      "url": "/api/sfx/static/freesound-footsteps-walking-384895.wav",
+      "sourcePath": "data/synthetic-samples/freesound-footsteps-walking-384895.wav",
+      "categoryId": "footsteps-walking",
+      "license": "CC0",
+      "attribution": "Freesound: Ali_6868 (https://freesound.org/people/Ali_6868/sounds/384895/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1,
+      "tags": [
+        "Knight",
+        "chainmail",
+        "feet",
+        "foley",
+        "foot"
+      ]
+    },
+    {
+      "id": "freesound-footsteps-running-584323",
+      "title": "Abrupt stopping on gravel road 2.wav",
+      "url": "/api/sfx/static/freesound-footsteps-running-584323.wav",
+      "sourcePath": "data/synthetic-samples/freesound-footsteps-running-584323.wav",
+      "categoryId": "footsteps-running",
+      "license": "CC0",
+      "attribution": "Freesound: Vendarro (https://freesound.org/people/Vendarro/sounds/584323/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 2.9795,
+      "tags": [
+        "abrupt",
+        "fast",
+        "field-recording",
+        "footsteps",
+        "forest"
+      ]
+    },
+    {
+      "id": "freesound-footsteps-running-584322",
+      "title": "Abrupt stopping on gravel road.wav",
+      "url": "/api/sfx/static/freesound-footsteps-running-584322.wav",
+      "sourcePath": "data/synthetic-samples/freesound-footsteps-running-584322.wav",
+      "categoryId": "footsteps-running",
+      "license": "CC0",
+      "attribution": "Freesound: Vendarro (https://freesound.org/people/Vendarro/sounds/584322/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 2.35681,
+      "tags": [
+        "abrupt",
+        "fast",
+        "field-recording",
+        "footsteps",
+        "forest"
+      ]
+    },
+    {
+      "id": "freesound-gunshot-182806",
+      "title": "IR-02 (gunshot in a chapel MIXED)",
+      "url": "/api/sfx/static/freesound-gunshot-182806.wav",
+      "sourcePath": "data/synthetic-samples/freesound-gunshot-182806.wav",
+      "categoryId": "gunshot",
+      "license": "CC0",
+      "attribution": "Freesound: unfa (https://freesound.org/people/unfa/sounds/182806/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.55106,
+      "tags": [
+        "IR",
+        "bang",
+        "clap",
+        "convolution",
+        "explosion"
+      ]
+    },
+    {
+      "id": "freesound-gunshot-520044",
+      "title": "Grenade_Fire_02.wav",
+      "url": "/api/sfx/static/freesound-gunshot-520044.wav",
+      "sourcePath": "data/synthetic-samples/freesound-gunshot-520044.wav",
+      "categoryId": "gunshot",
+      "license": "CC0",
+      "attribution": "Freesound: xFromarge1 (https://freesound.org/people/xFromarge1/sounds/520044/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 0.700884,
+      "tags": [
+        "Action",
+        "FX",
+        "Firearm",
+        "Grenade",
+        "Gun"
+      ]
+    },
+    {
+      "id": "freesound-explosion-617043",
+      "title": "Bass Impact 3",
+      "url": "/api/sfx/static/freesound-explosion-617043.wav",
+      "sourcePath": "data/synthetic-samples/freesound-explosion-617043.wav",
+      "categoryId": "explosion",
+      "license": "CC0",
+      "attribution": "Freesound: D4XX (https://freesound.org/people/D4XX/sounds/617043/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.22998,
+      "tags": [
+        "bass",
+        "big",
+        "explosion",
+        "impact"
+      ]
+    },
+    {
+      "id": "freesound-explosion-814044",
+      "title": "Creation Magic Blast",
+      "url": "/api/sfx/static/freesound-explosion-814044.wav",
+      "sourcePath": "data/synthetic-samples/freesound-explosion-814044.wav",
+      "categoryId": "explosion",
+      "license": "CC0",
+      "attribution": "Freesound: qubodup (https://freesound.org/people/qubodup/sounds/814044/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 7.2,
+      "tags": [
+        "arcane",
+        "blast",
+        "bright",
+        "burst",
+        "celestial"
+      ]
+    },
+    {
+      "id": "freesound-punch-676466",
+      "title": "Hit 6",
+      "url": "/api/sfx/static/freesound-punch-676466.wav",
+      "sourcePath": "data/synthetic-samples/freesound-punch-676466.wav",
+      "categoryId": "punch",
+      "license": "CC0",
+      "attribution": "Freesound: NearTheAtmoshphere (https://freesound.org/people/NearTheAtmoshphere/sounds/676466/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 0.65625,
+      "tags": [
+        "bag",
+        "bang",
+        "collision",
+        "hit",
+        "impact"
+      ]
+    },
+    {
+      "id": "freesound-punch-470122",
+      "title": "Apple Hits",
+      "url": "/api/sfx/static/freesound-punch-470122.wav",
+      "sourcePath": "data/synthetic-samples/freesound-punch-470122.wav",
+      "categoryId": "punch",
+      "license": "CC0",
+      "attribution": "Freesound: Sheyvan (https://freesound.org/people/Sheyvan/sounds/470122/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8,
+      "tags": [
+        "Apple",
+        "Crush",
+        "Fight",
+        "Gore",
+        "Hit"
+      ]
+    },
+    {
+      "id": "freesound-glass-break-566448",
+      "title": "break01.wav",
+      "url": "/api/sfx/static/freesound-glass-break-566448.wav",
+      "sourcePath": "data/synthetic-samples/freesound-glass-break-566448.wav",
+      "categoryId": "glass-break",
+      "license": "CC0",
+      "attribution": "Freesound: Johnny97 (https://freesound.org/people/Johnny97/sounds/566448/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.28096,
+      "tags": [
+        "break",
+        "breaking",
+        "crack",
+        "destroy",
+        "glass"
+      ]
+    },
+    {
+      "id": "freesound-glass-break-173557",
+      "title": "004.wav",
+      "url": "/api/sfx/static/freesound-glass-break-173557.wav",
+      "sourcePath": "data/synthetic-samples/freesound-glass-break-173557.wav",
+      "categoryId": "glass-break",
+      "license": "CC0",
+      "attribution": "Freesound: gevaroy (https://freesound.org/people/gevaroy/sounds/173557/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.78345,
+      "tags": [
+        "break",
+        "breaking-glass",
+        "indoor",
+        "window"
+      ]
+    },
+    {
+      "id": "freesound-glass-clink-761136",
+      "title": "Wine Glass clank 2",
+      "url": "/api/sfx/static/freesound-glass-clink-761136.wav",
+      "sourcePath": "data/synthetic-samples/freesound-glass-clink-761136.wav",
+      "categoryId": "glass-clink",
+      "license": "CC0",
+      "attribution": "Freesound: wasserbjorn (https://freesound.org/people/wasserbjorn/sounds/761136/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 6.81821,
+      "tags": [
+        "cheers",
+        "chime",
+        "clank",
+        "clink",
+        "glass"
+      ]
+    },
+    {
+      "id": "freesound-glass-clink-346697",
+      "title": "Chink_03.wav",
+      "url": "/api/sfx/static/freesound-glass-clink-346697.wav",
+      "sourcePath": "data/synthetic-samples/freesound-glass-clink-346697.wav",
+      "categoryId": "glass-clink",
+      "license": "CC0",
+      "attribution": "Freesound: deleted_user_2104797 (https://freesound.org/people/deleted_user_2104797/sounds/346697/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 0.699917,
+      "tags": [
+        "beer",
+        "bottle",
+        "cheers",
+        "clink",
+        "clinking"
+      ]
+    },
+    {
+      "id": "freesound-water-splash-398039",
+      "title": "water splash 2",
+      "url": "/api/sfx/static/freesound-water-splash-398039.wav",
+      "sourcePath": "data/synthetic-samples/freesound-water-splash-398039.wav",
+      "categoryId": "water-splash",
+      "license": "CC0",
+      "attribution": "Freesound: swordofkings128 (https://freesound.org/people/swordofkings128/sounds/398039/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.89494,
+      "tags": [
+        "pool",
+        "small",
+        "sony-ic-recorder",
+        "splash",
+        "water"
+      ]
+    },
+    {
+      "id": "freesound-water-splash-316590",
+      "title": "Water_Paddle_med_003.wav",
+      "url": "/api/sfx/static/freesound-water-splash-316590.wav",
+      "sourcePath": "data/synthetic-samples/freesound-water-splash-316590.wav",
+      "categoryId": "water-splash",
+      "license": "CC0",
+      "attribution": "Freesound: EpicWizard (https://freesound.org/people/EpicWizard/sounds/316590/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.61828,
+      "tags": [
+        "boat",
+        "field-recording",
+        "lake",
+        "paddle",
+        "river"
+      ]
+    },
+    {
+      "id": "freesound-phone-ring-556499",
+      "title": "Rotary Phone Ring loopable",
+      "url": "/api/sfx/static/freesound-phone-ring-556499.wav",
+      "sourcePath": "data/synthetic-samples/freesound-phone-ring-556499.wav",
+      "categoryId": "phone-ring",
+      "license": "CC0",
+      "attribution": "Freesound: cookies+policy (https://freesound.org/people/cookies+policy/sounds/556499/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 5.71874,
+      "tags": [
+        "Antique",
+        "Dial",
+        "Mechanical",
+        "Telephone",
+        "phone"
+      ]
+    },
+    {
+      "id": "freesound-phone-ring-332915",
+      "title": "GORI_AURELIEN_2015_2016_distorsion.wav",
+      "url": "/api/sfx/static/freesound-phone-ring-332915.wav",
+      "sourcePath": "data/synthetic-samples/freesound-phone-ring-332915.wav",
+      "categoryId": "phone-ring",
+      "license": "CC0",
+      "attribution": "Freesound: univ_lyon3 (https://freesound.org/people/univ_lyon3/sounds/332915/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 9.93814,
+      "tags": [
+        "bizarre",
+        "cell",
+        "distorsion",
+        "dreamlike",
+        "phone"
+      ]
+    },
+    {
+      "id": "freesound-phone-hangup-435910",
+      "title": "08/01/2018 found tapes excerpt 2",
+      "url": "/api/sfx/static/freesound-phone-hangup-435910.wav",
+      "sourcePath": "data/synthetic-samples/freesound-phone-hangup-435910.wav",
+      "categoryId": "phone-hangup",
+      "license": "CC0",
+      "attribution": "Freesound: ChrisReierson (https://freesound.org/people/ChrisReierson/sounds/435910/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8.00669,
+      "tags": [
+        "answering",
+        "beep",
+        "found",
+        "foundsound",
+        "machine"
+      ]
+    },
+    {
+      "id": "freesound-phone-hangup-556493",
+      "title": "Rotary Phone Pick up and Hang up Swiflty",
+      "url": "/api/sfx/static/freesound-phone-hangup-556493.wav",
+      "sourcePath": "data/synthetic-samples/freesound-phone-hangup-556493.wav",
+      "categoryId": "phone-hangup",
+      "license": "CC0",
+      "attribution": "Freesound: cookies+policy (https://freesound.org/people/cookies+policy/sounds/556493/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 4.30735,
+      "tags": [
+        "Antique",
+        "Dial",
+        "Mechanical",
+        "Telephone",
+        "hang-up"
+      ]
+    },
+    {
+      "id": "freesound-beep-650317",
+      "title": "Japanese Railway Level Crossing Electronic Beeping Loop.",
+      "url": "/api/sfx/static/freesound-beep-650317.wav",
+      "sourcePath": "data/synthetic-samples/freesound-beep-650317.wav",
+      "categoryId": "beep",
+      "license": "CC0",
+      "attribution": "Freesound: JotrainG (https://freesound.org/people/JotrainG/sounds/650317/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 2.01381,
+      "tags": [
+        "Barrier",
+        "Beeping",
+        "Bell",
+        "Clean",
+        "Crossing"
+      ]
+    },
+    {
+      "id": "freesound-beep-701330",
+      "title": "Walkie Talkie radio static",
+      "url": "/api/sfx/static/freesound-beep-701330.wav",
+      "sourcePath": "data/synthetic-samples/freesound-beep-701330.wav",
+      "categoryId": "beep",
+      "license": "CC0",
+      "attribution": "Freesound: SEF7 (https://freesound.org/people/SEF7/sounds/701330/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.90324,
+      "tags": [
+        "beep",
+        "communication",
+        "electronic",
+        "interference",
+        "noise"
+      ]
+    },
+    {
+      "id": "freesound-click-220187",
+      "title": "Loose/Deny Casual 1",
+      "url": "/api/sfx/static/freesound-click-220187.wav",
+      "sourcePath": "data/synthetic-samples/freesound-click-220187.wav",
+      "categoryId": "click",
+      "license": "CC0",
+      "attribution": "Freesound: GameAudio (https://freesound.org/people/GameAudio/sounds/220187/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.00159,
+      "tags": [
+        "bleep",
+        "blip",
+        "button",
+        "click",
+        "event"
+      ]
+    },
+    {
+      "id": "freesound-click-553077",
+      "title": "Foley_Mechanism_Camera_Button_Mono_H5.wav",
+      "url": "/api/sfx/static/freesound-click-553077.wav",
+      "sourcePath": "data/synthetic-samples/freesound-click-553077.wav",
+      "categoryId": "click",
+      "license": "CC0",
+      "attribution": "Freesound: Nox_Sound (https://freesound.org/people/Nox_Sound/sounds/553077/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 2.42115,
+      "tags": [
+        "button",
+        "camera",
+        "click",
+        "digital",
+        "dslr"
+      ]
+    },
+    {
+      "id": "freesound-siren-800708",
+      "title": "SS2000_wail_seamless",
+      "url": "/api/sfx/static/freesound-siren-800708.wav",
+      "sourcePath": "data/synthetic-samples/freesound-siren-800708.wav",
+      "categoryId": "siren",
+      "license": "CC0",
+      "attribution": "Freesound: ThePeasantJoe (https://freesound.org/people/ThePeasantJoe/sounds/800708/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 5.19506,
+      "tags": [
+        "ambulance",
+        "car",
+        "cop",
+        "cruiser",
+        "emergency"
+      ]
+    },
+    {
+      "id": "freesound-siren-612668",
+      "title": "BOUVIER_Romain_2021_2022_plasma_flic.wav",
+      "url": "/api/sfx/static/freesound-siren-612668.wav",
+      "sourcePath": "data/synthetic-samples/freesound-siren-612668.wav",
+      "categoryId": "siren",
+      "license": "CC0",
+      "attribution": "Freesound: univ_lyon3 (https://freesound.org/people/univ_lyon3/sounds/612668/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8.4,
+      "tags": [
+        "car-chase",
+        "police",
+        "siren"
+      ]
+    },
+    {
+      "id": "freesound-thunder-802441",
+      "title": "Ominous Metal Sheet (Ogg)",
+      "url": "/api/sfx/static/freesound-thunder-802441.wav",
+      "sourcePath": "data/synthetic-samples/freesound-thunder-802441.wav",
+      "categoryId": "thunder",
+      "license": "CC0",
+      "attribution": "Freesound: modusmogulus (https://freesound.org/people/modusmogulus/sounds/802441/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 5.108,
+      "tags": [
+        "Horror",
+        "Metal",
+        "Monster",
+        "Ominous",
+        "Scary"
+      ]
+    },
+    {
+      "id": "freesound-thunder-325666",
+      "title": "Sammy's Best - Single Shot 1",
+      "url": "/api/sfx/static/freesound-thunder-325666.wav",
+      "sourcePath": "data/synthetic-samples/freesound-thunder-325666.wav",
+      "categoryId": "thunder",
+      "license": "CC0",
+      "attribution": "Freesound: sloppyjoe24 (https://freesound.org/people/sloppyjoe24/sounds/325666/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 7.328,
+      "tags": [
+        "Best",
+        "Boom",
+        "Explosion",
+        "Firework",
+        "King"
+      ]
+    },
+    {
+      "id": "freesound-crowd-cheer-777709",
+      "title": "Synced applause edited 1",
+      "url": "/api/sfx/static/freesound-crowd-cheer-777709.wav",
+      "sourcePath": "data/synthetic-samples/freesound-crowd-cheer-777709.wav",
+      "categoryId": "crowd-cheer",
+      "license": "CC0",
+      "attribution": "Freesound: Sadiquecat (https://freesound.org/people/Sadiquecat/sounds/777709/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8.93974,
+      "tags": [
+        "Edited",
+        "Processed",
+        "aplause",
+        "applaud",
+        "applauding"
+      ]
+    },
+    {
+      "id": "freesound-crowd-cheer-267246",
+      "title": "BerlinGameScene.com Crowd Cheer 4",
+      "url": "/api/sfx/static/freesound-crowd-cheer-267246.wav",
+      "sourcePath": "data/synthetic-samples/freesound-crowd-cheer-267246.wav",
+      "categoryId": "crowd-cheer",
+      "license": "CC0",
+      "attribution": "Freesound: BerlinGameScene (https://freesound.org/people/BerlinGameScene/sounds/267246/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 7.10692,
+      "tags": [
+        "applause",
+        "cheer",
+        "cheering",
+        "crowd",
+        "mass"
+      ]
+    },
+    {
+      "id": "freesound-scream-482341",
+      "title": "Angry Goblin 1_1",
+      "url": "/api/sfx/static/freesound-scream-482341.wav",
+      "sourcePath": "data/synthetic-samples/freesound-scream-482341.wav",
+      "categoryId": "scream",
+      "license": "CC0",
+      "attribution": "Freesound: Joao_Janz (https://freesound.org/people/Joao_Janz/sounds/482341/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.01821,
+      "tags": [
+        "Angry",
+        "Creature",
+        "Design",
+        "Fantasy",
+        "Goblin"
+      ]
+    },
+    {
+      "id": "freesound-scream-482339",
+      "title": "Annoying Jungle Creature",
+      "url": "/api/sfx/static/freesound-scream-482339.wav",
+      "sourcePath": "data/synthetic-samples/freesound-scream-482339.wav",
+      "categoryId": "scream",
+      "license": "CC0",
+      "attribution": "Freesound: Joao_Janz (https://freesound.org/people/Joao_Janz/sounds/482339/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.25958,
+      "tags": [
+        "Angry",
+        "Creature",
+        "Design",
+        "Fantasy",
+        "Goblin"
+      ]
+    },
+    {
+      "id": "freesound-gasp-447460",
+      "title": "yawning sound by a man",
+      "url": "/api/sfx/static/freesound-gasp-447460.wav",
+      "sourcePath": "data/synthetic-samples/freesound-gasp-447460.wav",
+      "categoryId": "gasp",
+      "license": "CC0",
+      "attribution": "Freesound: florianreichelt (https://freesound.org/people/florianreichelt/sounds/447460/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 6.93333,
+      "tags": [
+        "air",
+        "bored",
+        "breath",
+        "breathing",
+        "deep"
+      ]
+    },
+    {
+      "id": "freesound-gasp-344416",
+      "title": "Male Gasp 3.wav",
+      "url": "/api/sfx/static/freesound-gasp-344416.wav",
+      "sourcePath": "data/synthetic-samples/freesound-gasp-344416.wav",
+      "categoryId": "gasp",
+      "license": "CC0",
+      "attribution": "Freesound: jawbutch (https://freesound.org/people/jawbutch/sounds/344416/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 0.917583,
+      "tags": [
+        "breath",
+        "gasp",
+        "human",
+        "male",
+        "man"
+      ]
+    },
+    {
+      "id": "freesound-laugh-457908",
+      "title": "funny kids 2",
+      "url": "/api/sfx/static/freesound-laugh-457908.wav",
+      "sourcePath": "data/synthetic-samples/freesound-laugh-457908.wav",
+      "categoryId": "laugh",
+      "license": "CC0",
+      "attribution": "Freesound: phantastonia (https://freesound.org/people/phantastonia/sounds/457908/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.8798,
+      "tags": [
+        "angry",
+        "child",
+        "creepy",
+        "crowd",
+        "darkness"
+      ]
+    },
+    {
+      "id": "freesound-laugh-800973",
+      "title": "Noises - Short laugh",
+      "url": "/api/sfx/static/freesound-laugh-800973.wav",
+      "sourcePath": "data/synthetic-samples/freesound-laugh-800973.wav",
+      "categoryId": "laugh",
+      "license": "CC0",
+      "attribution": "Freesound: Sadiquecat (https://freesound.org/people/Sadiquecat/sounds/800973/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 2.20424,
+      "tags": [
+        "FR-AV2",
+        "Human",
+        "Male",
+        "Man",
+        "Mid-20s"
+      ]
+    },
+    {
+      "id": "freesound-car-pass-465397",
+      "title": "One car passing by",
+      "url": "/api/sfx/static/freesound-car-pass-465397.wav",
+      "sourcePath": "data/synthetic-samples/freesound-car-pass-465397.wav",
+      "categoryId": "car-pass",
+      "license": "CC0",
+      "attribution": "Freesound: JPBILLINGSLEYJR (https://freesound.org/people/JPBILLINGSLEYJR/sounds/465397/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 9.94133,
+      "tags": [
+        "1",
+        "Car",
+        "One",
+        "automobile",
+        "by"
+      ]
+    },
+    {
+      "id": "freesound-car-pass-462862",
+      "title": "Passing Car (Wet road)",
+      "url": "/api/sfx/static/freesound-car-pass-462862.wav",
+      "sourcePath": "data/synthetic-samples/freesound-car-pass-462862.wav",
+      "categoryId": "car-pass",
+      "license": "CC0",
+      "attribution": "Freesound: Breviceps (https://freesound.org/people/Breviceps/sounds/462862/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 5.75983,
+      "tags": [
+        "automobile",
+        "by",
+        "car",
+        "cars",
+        "drive"
+      ]
+    },
+    {
+      "id": "freesound-car-start-141528",
+      "title": "misstart.wav",
+      "url": "/api/sfx/static/freesound-car-start-141528.wav",
+      "sourcePath": "data/synthetic-samples/freesound-car-start-141528.wav",
+      "categoryId": "car-start",
+      "license": "CC0",
+      "attribution": "Freesound: escortmarius (https://freesound.org/people/escortmarius/sounds/141528/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.43989,
+      "tags": [
+        "cold-start",
+        "engine",
+        "formula-ford",
+        "motor",
+        "race-car"
+      ]
+    },
+    {
+      "id": "freesound-car-start-524829",
+      "title": "carengine-startupwithkeys.wav",
+      "url": "/api/sfx/static/freesound-car-start-524829.wav",
+      "sourcePath": "data/synthetic-samples/freesound-car-start-524829.wav",
+      "categoryId": "car-start",
+      "license": "CC0",
+      "attribution": "Freesound: ellanjellan (https://freesound.org/people/ellanjellan/sounds/524829/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.37592,
+      "tags": [
+        "car",
+        "engine",
+        "ford",
+        "keys",
+        "motor"
+      ]
+    },
+    {
+      "id": "freesound-car-crash-321482",
+      "title": "Metal Hit 2 ",
+      "url": "/api/sfx/static/freesound-car-crash-321482.wav",
+      "sourcePath": "data/synthetic-samples/freesound-car-crash-321482.wav",
+      "categoryId": "car-crash",
+      "license": "CC0",
+      "attribution": "Freesound: dslrguide (https://freesound.org/people/dslrguide/sounds/321482/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.55417,
+      "tags": [
+        "car",
+        "hit",
+        "impact",
+        "metallic",
+        "thud"
+      ]
+    },
+    {
+      "id": "freesound-car-crash-592388",
+      "title": "Car Crash (with Glass)",
+      "url": "/api/sfx/static/freesound-car-crash-592388.wav",
+      "sourcePath": "data/synthetic-samples/freesound-car-crash-592388.wav",
+      "categoryId": "car-crash",
+      "license": "CC0",
+      "attribution": "Freesound: magnuswaker (https://freesound.org/people/magnuswaker/sounds/592388/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 2.56404,
+      "tags": [
+        "car",
+        "chaos",
+        "crash",
+        "fragments",
+        "glass"
+      ]
+    },
+    {
+      "id": "freesound-rain-444245",
+      "title": "Waterfall 10 Sec.wav",
+      "url": "/api/sfx/static/freesound-rain-444245.wav",
+      "sourcePath": "data/synthetic-samples/freesound-rain-444245.wav",
+      "categoryId": "rain",
+      "license": "CC0",
+      "attribution": "Freesound: LilMati (https://freesound.org/people/LilMati/sounds/444245/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 10,
+      "tags": [
+        "Ambiance",
+        "Ambience",
+        "Ambient",
+        "Atmosphere",
+        "Background"
+      ]
+    },
+    {
+      "id": "freesound-rain-719358",
+      "title": "drain-water",
+      "url": "/api/sfx/static/freesound-rain-719358.wav",
+      "sourcePath": "data/synthetic-samples/freesound-rain-719358.wav",
+      "categoryId": "rain",
+      "license": "CC0",
+      "attribution": "Freesound: larsn.wav (https://freesound.org/people/larsn.wav/sounds/719358/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 9.29687,
+      "tags": [
+        "ambience",
+        "ambient",
+        "drain",
+        "dripping",
+        "drizzle"
+      ]
+    },
+    {
+      "id": "freesound-wind-405136",
+      "title": "Autumn leaves falling on forest floor (close, loopable)",
+      "url": "/api/sfx/static/freesound-wind-405136.wav",
+      "sourcePath": "data/synthetic-samples/freesound-wind-405136.wav",
+      "categoryId": "wind",
+      "license": "CC0",
+      "attribution": "Freesound: Mjeno (https://freesound.org/people/Mjeno/sounds/405136/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 9.41656,
+      "tags": [
+        "ambiance",
+        "ambience",
+        "ambient",
+        "atmo",
+        "autumn"
+      ]
+    },
+    {
+      "id": "freesound-wind-731366",
+      "title": "Wind Up Music Box (Winding Up)",
+      "url": "/api/sfx/static/freesound-wind-731366.wav",
+      "sourcePath": "data/synthetic-samples/freesound-wind-731366.wav",
+      "categoryId": "wind",
+      "license": "CC0",
+      "attribution": "Freesound: moodyfingers (https://freesound.org/people/moodyfingers/sounds/731366/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.538,
+      "tags": [
+        "music",
+        "music-box",
+        "phone-recording",
+        "wind-up",
+        "winding-up"
+      ]
+    },
+    {
+      "id": "freesound-traffic-473693",
+      "title": "City Ambience At Night 1.wav",
+      "url": "/api/sfx/static/freesound-traffic-473693.wav",
+      "sourcePath": "data/synthetic-samples/freesound-traffic-473693.wav",
+      "categoryId": "traffic",
+      "license": "CC0",
+      "attribution": "Freesound: Joao_Janz (https://freesound.org/people/Joao_Janz/sounds/473693/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8.1675,
+      "tags": [
+        "ambiance",
+        "ambience",
+        "ambient",
+        "atmosphere",
+        "cars"
+      ]
+    },
+    {
+      "id": "freesound-traffic-397087",
+      "title": "emt_noisy.wav",
+      "url": "/api/sfx/static/freesound-traffic-397087.wav",
+      "sourcePath": "data/synthetic-samples/freesound-traffic-397087.wav",
+      "categoryId": "traffic",
+      "license": "CC0",
+      "attribution": "Freesound: relwin (https://freesound.org/people/relwin/sounds/397087/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8.75889,
+      "tags": [
+        "ambience",
+        "ambient",
+        "electronic",
+        "interference",
+        "noise"
+      ]
+    },
+    {
+      "id": "freesound-crowd-murmur-479892",
+      "title": "R11-46-Women Laughing and Talking in a Group.wav",
+      "url": "/api/sfx/static/freesound-crowd-murmur-479892.wav",
+      "sourcePath": "data/synthetic-samples/freesound-crowd-murmur-479892.wav",
+      "categoryId": "crowd-murmur",
+      "license": "CC0",
+      "attribution": "Freesound: craigsmith (https://freesound.org/people/craigsmith/sounds/479892/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 6.57852,
+      "tags": [
+        "Crowds",
+        "Laughter",
+        "Optical",
+        "Vintage"
+      ]
+    },
+    {
+      "id": "freesound-water-running-389464",
+      "title": "Running_Water.wav",
+      "url": "/api/sfx/static/freesound-water-running-389464.wav",
+      "sourcePath": "data/synthetic-samples/freesound-water-running-389464.wav",
+      "categoryId": "water-running",
+      "license": "CC0",
+      "attribution": "Freesound: lzmraul (https://freesound.org/people/lzmraul/sounds/389464/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 8.18996,
+      "tags": [
+        "Water",
+        "ambiance",
+        "running"
+      ]
+    },
+    {
+      "id": "freesound-water-running-699755",
+      "title": "Water Gently Flowing Down A Small Brook.wav",
+      "url": "/api/sfx/static/freesound-water-running-699755.wav",
+      "sourcePath": "data/synthetic-samples/freesound-water-running-699755.wav",
+      "categoryId": "water-running",
+      "license": "CC0",
+      "attribution": "Freesound: 8bitmyketison (https://freesound.org/people/8bitmyketison/sounds/699755/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 6.28125,
+      "tags": [
+        "brook",
+        "field-recording",
+        "flowing",
+        "found-sounds",
+        "running"
+      ]
+    },
+    {
+      "id": "freesound-ambient-outdoor-812093",
+      "title": "Teenagers Laughing Outdoors (Field Recording, Palestine)",
+      "url": "/api/sfx/static/freesound-ambient-outdoor-812093.wav",
+      "sourcePath": "data/synthetic-samples/freesound-ambient-outdoor-812093.wav",
+      "categoryId": "ambient-outdoor",
+      "license": "CC0",
+      "attribution": "Freesound: sounds_from_palestine (https://freesound.org/people/sounds_from_palestine/sounds/812093/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.58929,
+      "tags": [
+        "giggle",
+        "laughter",
+        "mixing-humans"
+      ]
+    },
+    {
+      "id": "freesound-ambient-outdoor-323426",
+      "title": "light rain and crickets",
+      "url": "/api/sfx/static/freesound-ambient-outdoor-323426.wav",
+      "sourcePath": "data/synthetic-samples/freesound-ambient-outdoor-323426.wav",
+      "categoryId": "ambient-outdoor",
+      "license": "CC0",
+      "attribution": "Freesound: seth-m (https://freesound.org/people/seth-m/sounds/323426/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 7.67933,
+      "tags": [
+        "ambient",
+        "crickets",
+        "drizzle",
+        "life",
+        "light"
+      ]
+    },
+    {
+      "id": "freesound-ambient-night-275640",
+      "title": "night ambience",
+      "url": "/api/sfx/static/freesound-ambient-night-275640.wav",
+      "sourcePath": "data/synthetic-samples/freesound-ambient-night-275640.wav",
+      "categoryId": "ambient-night",
+      "license": "CC0",
+      "attribution": "Freesound: seth-m (https://freesound.org/people/seth-m/sounds/275640/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 3.60474,
+      "tags": [
+        "ambience",
+        "ambient",
+        "atmosphere",
+        "crickets",
+        "night"
+      ]
+    },
+    {
+      "id": "freesound-ambient-night-612590",
+      "title": "night ambient with crickets and dogs 48000 Hz 24 bit Stereo.wav",
+      "url": "/api/sfx/static/freesound-ambient-night-612590.wav",
+      "sourcePath": "data/synthetic-samples/freesound-ambient-night-612590.wav",
+      "categoryId": "ambient-night",
+      "license": "CC0",
+      "attribution": "Freesound: diogorusso (https://freesound.org/people/diogorusso/sounds/612590/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 9.19477,
+      "tags": [
+        "ambient",
+        "cricket",
+        "dogs",
+        "night"
+      ]
+    },
+    {
+      "id": "freesound-fight-483260",
+      "title": "R19-01-Fight Scuffle.wav",
+      "url": "/api/sfx/static/freesound-fight-483260.wav",
+      "sourcePath": "data/synthetic-samples/freesound-fight-483260.wav",
+      "categoryId": "fight",
+      "license": "CC0",
+      "attribution": "Freesound: craigsmith (https://freesound.org/people/craigsmith/sounds/483260/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 6.07654,
+      "tags": [
+        "Fights",
+        "Optical",
+        "Vintage"
+      ]
+    },
+    {
+      "id": "freesound-fight-812359",
+      "title": "Skin contact grab",
+      "url": "/api/sfx/static/freesound-fight-812359.wav",
+      "sourcePath": "data/synthetic-samples/freesound-fight-812359.wav",
+      "categoryId": "fight",
+      "license": "CC0",
+      "attribution": "Freesound: avainquin (https://freesound.org/people/avainquin/sounds/812359/) — ikke krevd under CC0, men bevart for åpenhet",
+      "durationSec": 1.91673,
+      "tags": [
+        "attack",
+        "fight",
+        "foley",
+        "grab",
+        "hand"
+      ]
+    }
+  ]
+}
