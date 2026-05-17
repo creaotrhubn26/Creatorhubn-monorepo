@@ -52,6 +52,9 @@ import MusicShowcase from '@/pages/music-showcase';
 import ShowcaseAdmin from '@/pages/showcase-admin';
 import ClientGallery from '@/pages/client-gallery';
 import ClientPortalMarketingPage from '@/pages/client-portal-marketing';
+import ResetPasswordPage from '@/pages/reset-passord';
+import SecuritySettingsPage from '@/pages/sikkerhet';
+import WelcomeWizard from '@/components/role-room/onboarding/WelcomeWizard';
 import CullingReviewPage from '@/pages/CullingReview';
 import ContractView from '@/pages/contract-view';
 import AdminNotificationDisplay from '@/components/notifications/AdminNotificationDisplay';
@@ -185,12 +188,25 @@ import GoogleVerificationDemoPage from '@/pages/GoogleVerificationDemoPage';
 import PhotographerClientsList from '@/pages/photographer-clients-list';
 import PhotographerClientDetail from '@/pages/photographer-client-detail';
 import PhotographerPrintOrders from '@/pages/photographer-print-orders';
+import PhotographerProjectsList from '@/pages/photographer-projects-list';
+import PhotographerProjectDetail from '@/pages/photographer-project-detail';
+import PhotographerProfitability from '@/pages/photographer-profitability';
+import PhotographerIntegrations from '@/pages/photographer-integrations';
+import PhotographerGalleryDetail from '@/pages/photographer-gallery-detail';
+import PortalPage from '@/pages/portal';
+import PhotographerProjectUpload from '@/pages/photographer-project-upload';
+import PhotographerEquipment from '@/pages/photographer-equipment';
+import PhotographerSettings from '@/pages/photographer-settings';
+import WeddingAccessPage from '@/pages/wedding-access';
+import WeddingClientFormPage from '@/pages/wedding-client-form';
+import PhotographerWeddingDay from '@/pages/photographer-wedding-day';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
 const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
 const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
+const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -623,6 +639,7 @@ function App() {
                     </Box>
                   )} />
                   <Route path="/showcase-amazon-demo" component={() => <ShowcaseAmazonDesign />} />
+                  <Route path="/demo/animatic" component={DemoAnimaticPage} />
                   <Route path="/integration-test" component={IntegrationTest} />
                   <Route path="/email-designer" component={EmailDesignerPage} />
                   {/* <Route path="/google-oauth-setup" component={GoogleOAuthSetupPage} /> */}
@@ -671,6 +688,18 @@ function App() {
                   <Route path="/photographer/clients/:clientId" component={PhotographerClientDetail} />
                   <Route path="/photographer/clients" component={PhotographerClientsList} />
                   <Route path="/photographer/print-orders" component={PhotographerPrintOrders} />
+                  <Route path="/photographer/projects/:projectId" component={PhotographerProjectDetail} />
+                  <Route path="/photographer/projects" component={PhotographerProjectsList} />
+                  <Route path="/photographer/profitability" component={PhotographerProfitability} />
+                  <Route path="/photographer/settings/integrations" component={PhotographerIntegrations} />
+                  <Route path="/photographer/galleries/:galleryId" component={PhotographerGalleryDetail} />
+                  <Route path="/portal" component={PortalPage} />
+                  <Route path="/photographer/projects/:projectId/upload" component={PhotographerProjectUpload} />
+                  <Route path="/photographer/equipment" component={PhotographerEquipment} />
+                  <Route path="/photographer/settings" component={PhotographerSettings} />
+                  <Route path="/wedding/access" component={WeddingAccessPage} />
+                  <Route path="/wedding/timeline/:token" component={WeddingClientFormPage} />
+                  <Route path="/photographer/wedding-day/:weddingId" component={PhotographerWeddingDay} />
                   <Route
                     path="/videographer-dashboard-material"
                     component={() => <SmartDashboardRoute profession="videographer" />}
@@ -782,6 +811,8 @@ function App() {
                   <Route path="/client/gallery/:projectId/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/portal/:token" component={ClientPortalMarketingPage as React.ComponentType<any>} />
+                  <Route path="/reset-passord/:token" component={ResetPasswordPage as React.ComponentType<any>} />
+                  <Route path="/innstillinger/sikkerhet" component={SecuritySettingsPage as React.ComponentType<any>} />
                   <Route path="/capture/sessions/:sessionId/culling" component={CullingReviewPage as React.ComponentType<any>} />
                   <Route path="/bryllup/:projectId" component={WeddingClient} />
                   <Route path="/showcase/:projectId" component={ShowcaseClient} />
@@ -884,6 +915,7 @@ function App() {
           <BackgroundDownloadWidget profession="photographer" /> */}
                 <SmartFileManagerWidget />
                 <UniversalSessionManager />
+                <WelcomeWizard />
                 <Toaster />
                 <SpeedInsights />
                       </GlobalChatProvider>
