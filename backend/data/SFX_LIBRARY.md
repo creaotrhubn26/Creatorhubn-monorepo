@@ -33,18 +33,47 @@ sample. Det er denne fila backend leser inn ved oppstart.
 
 ## Trinn 1: Skaff samples
 
-**Lovlige kilder for kommersielt bruk:**
+**Lovlige kilder for kommersielt bruk (verifisert mai 2026):**
 
 | Kilde | Lisens | Notater |
 |-------|--------|---------|
-| [Pixabay Sound](https://pixabay.com/sound-effects/) | Pixabay License | Gratis kommersielt, ingen attribusjon |
-| [Freesound](https://freesound.org/) | CC0 / CC-BY | Sjekk per fil. CC-BY krever kreditering. |
-| [BBC Sound Effects](https://sound-effects.bbcrewind.co.uk/) | RemArc PA-NC | Sjekk om passer ditt bruk |
-| [Mixkit](https://mixkit.co/free-sound-effects/) | Mixkit License | Gratis kommersielt |
+| [Freesound (CC0-filter)](https://freesound.org/browse/tags/CC0/) | CC0 | ~70k+ CC0-sounds, gratis API. **Anbefalt.** |
+| [Pixabay Sound](https://pixabay.com/sound-effects/) | Pixabay License | Funksjonelt CC0, ingen attribusjon |
+| [BigSoundBank](https://bigsoundbank.com/) | Royalty-free | 3 500+ WAV/MP3/OGG |
+| [OpenGameArt.org (CC0)](https://opengameart.org/) | CC0 | Game-fokusert |
 
-**Ikke trygt** med mindre du har egen lisens:
-- Splice, EpidemicSound (krever abonnement)
-- YouTube-rips, "free sound packs" uten klar lisens
+**❌ IKKE trygt for kommersielt bruk uten betaling:**
+- [BBC Sound Effects](https://sound-effects.bbcrewind.co.uk/) (RemArc) — **kun personlig/utdanning**. Kommersielt = $5-1995 via Pro Sound Effects.
+- ZapSplat free tier — krever attribusjon + samples kan ikke være primær verdi (TOS-konflikt med en SFX-library-feature).
+- Splice, EpidemicSound (krever abonnement).
+- YouTube-rips, "free sound packs" uten klar lisens.
+
+## Automatisk kuratering fra Freesound
+
+Det enkleste er å la et script laste ned ekte CC0-samples fra Freesound:
+
+```bash
+# 1. Få gratis API-nøkkel: https://freesound.org/apiv2/apply/
+export FREESOUND_API_KEY=din-nøkkel-her
+
+# 2. Kjør curation-scriptet (default 2 samples per kategori = ~70 totalt)
+cd backend
+npm run sfx:curate-freesound
+
+# Eller flere per kategori (max 5):
+npm run sfx:curate-freesound -- --per-category 3
+```
+
+Scriptet:
+- Søker Freesound API per kategori med streng `license:"Creative Commons 0"`-filter
+- **Dobbeltsjekker** lisens-URL på hver sample (URL-parser sjekker hostname = creativecommons.org og path = /publicdomain/zero/1.0)
+- Avviser look-alike-domener og non-CC0
+- Laster ned mp3-preview, konverterer til 48kHz mono WAV via ffmpeg
+- Skriver inn i `data/sfx-manifest.json` (legger til, dupliserer ikke)
+
+Krav: `ffmpeg` på PATH + Freesound API-nøkkel.
+
+Etter kjøring, kjør `npm run sfx:build` for å embeddte de nye samplene via CLAP.
 
 ## Trinn 2: Last opp samples til CDN
 

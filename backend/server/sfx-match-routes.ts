@@ -265,10 +265,12 @@ export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
   // scripts/generate-synthetic-sfx.ts) som starter-bibliotek.
   router.get('/static/:filename', (req: Request, res: Response) => {
     const filename = String(req.params.filename ?? '');
-    // Whitelist: kun a-z, 0-9, dash + .wav. Ingen subdirektoriet.
-    if (!/^[a-z0-9-]+\.wav$/.test(filename)) {
+    // Whitelist: a-z, 0-9, dash + .wav eller .mp3. Ingen subdirektoriet.
+    const match = filename.match(/^([a-z0-9-]+)\.(wav|mp3)$/);
+    if (!match) {
       return res.status(400).json({ error: 'invalid_filename' });
     }
+    const ext = match[2];
     const filePath = path.resolve(
       process.cwd(),
       'data',
@@ -286,7 +288,7 @@ export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
     } catch {
       return res.status(404).json({ error: 'not_found' });
     }
-    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Type', ext === 'mp3' ? 'audio/mpeg' : 'audio/wav');
     res.setHeader('Content-Length', String(stat.size));
     res.setHeader('Cache-Control', 'public, max-age=86400');
     fs.createReadStream(filePath).pipe(res);
