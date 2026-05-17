@@ -53,6 +53,13 @@ import {
   saveScratchTrack,
   loadScratchTrack,
   deleteScratchTrack,
+  saveFrameVoiceover,
+  loadFrameVoiceovers,
+  deleteFrameVoiceover,
+  saveSfxClipBlob,
+  saveSfxClipReference,
+  loadSfxClips,
+  deleteSfxClip,
 } from './animaticAudioStore';
 import {
   createRecordingAudioGraph,
@@ -430,6 +437,59 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     };
   }, [sceneId]);
 
+  // Last alle persisterte per-frame voiceovers ved scene-bytte.
+  React.useEffect(() => {
+    if (!sceneId) return;
+    let cancelled = false;
+    loadFrameVoiceovers(sceneId).then((stored) => {
+      if (cancelled || Object.keys(stored).length === 0) return;
+      setVoiceoverUrls((prev) => {
+        // Revoke alle eksisterende blob-URLs for å unngå lekkasje.
+        Object.values(prev).forEach((url) => {
+          try { URL.revokeObjectURL(url); } catch {}
+        });
+        const next: Record<string, string> = {};
+        for (const [frameId, record] of Object.entries(stored)) {
+          next[frameId] = URL.createObjectURL(record.blob);
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sceneId]);
+
+  // Last alle persisterte SFX-clips ved scene-bytte. Blob-clips lages
+  // som object-URL; URL-referanser (CLAP/AI) brukes direkte.
+  React.useEffect(() => {
+    if (!sceneId) return;
+    let cancelled = false;
+    loadSfxClips(sceneId).then((stored) => {
+      if (cancelled || Object.keys(stored).length === 0) return;
+      setSfxClipUrls((prev) => {
+        // Revoke alle eksisterende blob-URLs.
+        Object.values(prev).forEach((url) => {
+          if (url.startsWith('blob:')) {
+            try { URL.revokeObjectURL(url); } catch {}
+          }
+        });
+        const next: Record<string, string> = {};
+        for (const [eventId, record] of Object.entries(stored)) {
+          if (record.kind === 'blob' && record.blob) {
+            next[eventId] = URL.createObjectURL(record.blob);
+          } else if (record.kind === 'url' && record.url) {
+            next[eventId] = record.url;
+          }
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sceneId]);
+
   // Cleanup object-URL ved unmount.
   React.useEffect(() => () => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -453,7 +513,11 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       if (prev[frameId]) URL.revokeObjectURL(prev[frameId]);
       return { ...prev, [frameId]: URL.createObjectURL(file) };
     });
-  }, []);
+    // Persistens — fire-and-forget. Kun hvis sceneId er satt.
+    if (sceneId) {
+      saveFrameVoiceover(sceneId, frameId, file).catch(() => {});
+    }
+  }, [sceneId]);
 
   const clearVoiceoverForFrame = React.useCallback((frameId: string) => {
     setVoiceoverUrls((prev) => {
@@ -463,7 +527,10 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       delete next[frameId];
       return next;
     });
-  }, []);
+    if (sceneId) {
+      deleteFrameVoiceover(sceneId, frameId).catch(() => {});
+    }
+  }, [sceneId]);
 
   // Cleanup ALLE per-frame voiceover-URLs ved unmount.
   React.useEffect(() => () => {
@@ -539,7 +606,11 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       delete next[eventId];
       return next;
     });
-  }, []);
+    // Persistens: lagre URL-referansen + label.
+    if (sceneId) {
+      saveSfxClipReference(sceneId, eventId, hit.url, `CLAP: ${hit.title}`).catch(() => {});
+    }
+  }, [sceneId]);
 
   // Cleanup preview-audio ved unmount.
   React.useEffect(() => () => {
@@ -570,6 +641,10 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         delete next[ev.id];
         return next;
       });
+      // Persistens: lagre AI-URL'en som referanse.
+      if (sceneId) {
+        saveSfxClipReference(sceneId, ev.id, result.url, `AI: ${ev.category.label}`).catch(() => {});
+      }
     } catch (err: any) {
       setSfxGenerating((prev) => ({
         ...prev,
@@ -579,7 +654,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         },
       }));
     }
-  }, [buildSfxPrompt]);
+  }, [buildSfxPrompt, sceneId]);
 
   // SFX-upload-handlers.
   const openSfxPickerForEvent = React.useCallback((eventId: string) => {
@@ -595,20 +670,32 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     if (!file || !eventId) return;
     if (!file.type.startsWith('audio/')) return;
     setSfxClipUrls((prev) => {
-      if (prev[eventId]) URL.revokeObjectURL(prev[eventId]);
+      if (prev[eventId] && prev[eventId].startsWith('blob:')) {
+        URL.revokeObjectURL(prev[eventId]);
+      }
       return { ...prev, [eventId]: URL.createObjectURL(file) };
     });
-  }, []);
+    if (sceneId) {
+      saveSfxClipBlob(sceneId, eventId, file).catch(() => {});
+    }
+  }, [sceneId]);
 
   const clearSfxClip = React.useCallback((eventId: string) => {
     setSfxClipUrls((prev) => {
       if (!prev[eventId]) return prev;
-      URL.revokeObjectURL(prev[eventId]);
+      // Kun revoke hvis det er en blob-URL — server-URL-er (CLAP/AI)
+      // skal ikke revokes.
+      if (prev[eventId].startsWith('blob:')) {
+        URL.revokeObjectURL(prev[eventId]);
+      }
       const next = { ...prev };
       delete next[eventId];
       return next;
     });
-  }, []);
+    if (sceneId) {
+      deleteSfxClip(sceneId, eventId).catch(() => {});
+    }
+  }, [sceneId]);
 
   const hideSfxEvent = React.useCallback((eventId: string) => {
     setHiddenSfxEventIds((prev) => {
