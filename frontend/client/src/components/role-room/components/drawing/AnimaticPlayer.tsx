@@ -88,6 +88,7 @@ import { AnimaticVoiceoverStrip } from './AnimaticVoiceoverStrip';
 import { AnimaticSfxPanel } from './AnimaticSfxPanel';
 import { AnimaticTransportBar } from './AnimaticTransportBar';
 import { AnimaticHelpDialog, hasSeenAnimaticHelp } from './AnimaticHelpDialog';
+import { AnimaticThumbnailStrip } from './AnimaticThumbnailStrip';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -1079,6 +1080,18 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         style={{ display: 'none' }}
         data-testid="animatic-sfx-input"
       />
+
+      {/* Frame-thumbnail-strip — viser miniatyrer langs tidslinjen,
+          proporsjonal med frame.duration. */}
+      <Box sx={{ px: 1, mb: 0.5 }}>
+        <AnimaticThumbnailStrip
+          frames={frames}
+          activeFrameIndex={player.activeFrameIndex}
+          totalDuration={player.totalDuration}
+          onSeekToFrame={(idx) => player.seekToFrame(idx)}
+          compact={compact}
+        />
+      </Box>
 
       {/* Scrubber med frame-grenser som marker */}
       <Box sx={{ px: 1, mb: 0.5 }}>
