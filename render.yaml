@@ -26,6 +26,17 @@ services:
       # until the DPA is signed and the flag is flipped in Render UI.
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Freesound API-nøkkel — brukes av `npm run sfx:curate-freesound`
+      # for å automatisk hente CC0-samples til CLAP-biblioteket.
+      # Free tier (~2000 req/dag). sync: false → sett i Render UI.
+      # Få nøkkel: https://freesound.org/apiv2/apply/
+      - key: FREESOUND_API_KEY
+        sync: false
+      # ElevenLabs Sound Effects API — brukes av POST /api/sfx/generate
+      # når CLAP-match ikke har gode treff. Default ~$0.04 per generering.
+      # sync: false → sett i Render UI. Uten denne returnerer route 503.
+      - key: ELEVENLABS_API_KEY
+        sync: false
       - key: ROLE_ROOM_AGENT_CLAUDE_ENABLED
         value: "false"
       - key: ROLE_ROOM_AGENT_CLAUDE_MODEL
@@ -71,6 +82,24 @@ services:
       # paste the numeric id here.
       - key: PRINTFUL_STORE_ID
         sync: false
+      # Vercel AI Gateway — unified API for image-generation (#168).
+      # Når satt: routes thumbnail-genering via Gateway (gir fallback +
+      # observability + cost-tracking på tvers av providers). Hvis ikke:
+      # faller tilbake til direkte OPENAI_API_KEY. Set THUMBNAIL_MODEL
+      # for å bytte modell (default "openai/dall-e-3"; prøv
+      # "google/imagen-3" for bedre fotorealisme).
+      - key: AI_GATEWAY_API_KEY
+        sync: false
+      - key: THUMBNAIL_MODEL
+        value: "openai/dall-e-3"
+      # HMAC secret for Role Room research share-links (item #13). Render
+      # generates a strong random value once at provision time. Without
+      # this set, the /research/share endpoint refuses to issue tokens
+      # rather than fall back to a hardcoded secret. Rotating this
+      # invalidates every outstanding share-link — only do that after
+      # confirming no live share-links are in critical use.
+      - key: ROLE_ROOM_SHARE_SECRET
+        generateValue: true
       # Proactive daily scan — runs once a day and pushes risk findings
       # into producer_project_notifications. Default off; enable after
       # you've validated costs with a small pilot group.
@@ -276,6 +305,24 @@ services:
         value: "true"
       - key: CASTING_WHATSAPP_INVOICE_INTERVAL_HOURS
         value: "24"
+      # ─── PowerOffice GO (faktura-push for fotograf-prosjekter) ─────────
+      # Bruker Tidsflyt sitt OAuth client_credentials-mønster. Hver fotograf
+      # limer inn sin egen per-tenant ClientKey via UI; APPLICATION_KEY og
+      # SUBSCRIPTION_KEY er developer-shared (vår API-identitet) og må settes
+      # som hemmeligheter her. Sekundær subscription-key støtter rotering
+      # uten downtime — auto-fallback ved 401/403 på primær.
+      - key: POWEROFFICE_APPLICATION_KEY
+        sync: false
+      - key: POWEROFFICE_SUBSCRIPTION_KEY
+        sync: false
+      - key: POWEROFFICE_SUBSCRIPTION_KEY_SECONDARY
+        sync: false
+      # Demo-miljø som default. For produksjon: bytt til
+      # https://goapi.poweroffice.net/v2 (BASE_URL) og .../OAuth/Token (AUTH_URL).
+      - key: POWEROFFICE_AUTH_URL
+        value: "https://goapi.poweroffice.net/Demo/OAuth/Token"
+      - key: POWEROFFICE_BASE_URL
+        value: "https://goapi.poweroffice.net/demo/v2"
   - type: web
     name: creatorhub-gfpgan-runner
     runtime: docker
