@@ -61,6 +61,7 @@ import {
   saveSfxClipReference,
   loadSfxClips,
   deleteSfxClip,
+  updateSfxClipOffset,
 } from './animaticAudioStore';
 import {
   createRecordingAudioGraph,
@@ -150,6 +151,9 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const [sfxEnabled, setSfxEnabled] = React.useState(true);
   // Bruker kan også fjerne en auto-detektert event (skjul den).
   const [hiddenSfxEventIds, setHiddenSfxEventIds] = React.useState<Set<string>>(new Set());
+  // Per-event offset i sekunder — overstyrer event.offsetSec ved scheduling.
+  // Lar bruker time SFX presist innen et frame (f.eks. dør smell ved 1.5s).
+  const [sfxOffsets, setSfxOffsets] = React.useState<Record<string, number>>({});
   // Forslag fra CLAP-match per event-id.
   const [sfxSuggestions, setSfxSuggestions] = React.useState<Record<string, {
     loading: boolean;
@@ -246,10 +250,20 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     [detectedSfxEvents, hiddenSfxEventIds],
   );
 
+  // Anvend per-event offset-override før scheduling.
+  const eventsWithOffsets = React.useMemo(
+    () => visibleSfxEvents.map((ev) => {
+      const override = sfxOffsets[ev.id];
+      if (override === undefined) return ev;
+      return { ...ev, offsetSec: override };
+    }),
+    [visibleSfxEvents, sfxOffsets],
+  );
+
   // Schedule til absolutt tid.
   const scheduledSfx = React.useMemo(
-    () => scheduleSfx(visibleSfxEvents, player.timeline),
-    [visibleSfxEvents, player.timeline],
+    () => scheduleSfx(eventsWithOffsets, player.timeline),
+    [eventsWithOffsets, player.timeline],
   );
 
   // Spill av SFX i takt med timeline (auto-miks).
@@ -473,14 +487,14 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   }, [sceneId]);
 
   // Last alle persisterte SFX-clips ved scene-bytte. Blob-clips lages
-  // som object-URL; URL-referanser (CLAP/AI) brukes direkte.
+  // som object-URL; URL-referanser (CLAP/AI) brukes direkte. Plukker
+  // også opp offset-overrides så timing restaureres.
   React.useEffect(() => {
     if (!sceneId) return;
     let cancelled = false;
     loadSfxClips(sceneId).then((stored) => {
       if (cancelled || Object.keys(stored).length === 0) return;
       setSfxClipUrls((prev) => {
-        // Revoke alle eksisterende blob-URLs.
         Object.values(prev).forEach((url) => {
           if (url.startsWith('blob:')) {
             try { URL.revokeObjectURL(url); } catch {}
@@ -492,6 +506,15 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             next[eventId] = URL.createObjectURL(record.blob);
           } else if (record.kind === 'url' && record.url) {
             next[eventId] = record.url;
+          }
+        }
+        return next;
+      });
+      setSfxOffsets((prev) => {
+        const next = { ...prev };
+        for (const [eventId, record] of Object.entries(stored)) {
+          if (typeof record.offsetSec === 'number') {
+            next[eventId] = record.offsetSec;
           }
         }
         return next;
@@ -922,7 +945,9 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         sfxClipUrls={sfxClipUrls}
         sfxSuggestions={sfxSuggestions}
         sfxGenerating={sfxGenerating}
+        sfxOffsets={sfxOffsets}
         activeEventIds={sfxPlayback.activeIds}
+        activeFrameDuration={(activeFrame?.duration ?? 0) > 0 ? (activeFrame!.duration as number) : 3}
         sfxEnabled={sfxEnabled}
         onToggleSfxEnabled={() => setSfxEnabled((v) => !v)}
         onSuggest={suggestSfxForEvent}
@@ -932,6 +957,12 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         onHideEvent={hideSfxEvent}
         onPreviewHit={playPreview}
         onUseHit={useSuggestion}
+        onOffsetChange={(eventId, offsetSec) => {
+          setSfxOffsets((prev) => ({ ...prev, [eventId]: offsetSec }));
+          if (sceneId) {
+            updateSfxClipOffset(sceneId, eventId, offsetSec).catch(() => {});
+          }
+        }}
         isFullscreen={isFullscreen}
         stageMaxWidth={stageMaxWidth}
       />

@@ -125,4 +125,20 @@ describe('Sprint A.7 — sfx-clip fallback (no IndexedDB)', () => {
   it('manglende url i saveReference gir false', async () => {
     expect(await saveSfxClipReference('scene-1', 'evt-1', '')).toBe(false);
   });
+
+  it('updateSfxClipOffset uten indexedDB returnerer false', async () => {
+    const { updateSfxClipOffset } = await import('../animaticAudioStore');
+    expect(await updateSfxClipOffset('scene-1', 'evt-1', 1.5)).toBe(false);
+  });
+
+  it('updateSfxClipOffset uten sceneId/eventId returnerer false', async () => {
+    const { updateSfxClipOffset } = await import('../animaticAudioStore');
+    expect(await updateSfxClipOffset('', 'evt-1', 1.5)).toBe(false);
+    expect(await updateSfxClipOffset('scene-1', '', 1.5)).toBe(false);
+  });
+
+  it('updateSfxClipOffset med NaN avvises', async () => {
+    const { updateSfxClipOffset } = await import('../animaticAudioStore');
+    expect(await updateSfxClipOffset('scene-1', 'evt-1', NaN)).toBe(false);
+  });
 });

@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { Box, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, IconButton, Slider, Stack, Tooltip, Typography } from '@mui/material';
 import {
   GraphicEq,
   VolumeUp,
@@ -19,6 +19,7 @@ import {
   Close as CloseIcon,
   PlayCircleOutline,
   PlayArrow,
+  Timer,
 } from '@mui/icons-material';
 import type { SfxEvent } from './sfxDetector';
 import type { SfxMatchHit } from '../../services/sfxMatchClient';
@@ -32,8 +33,12 @@ export interface AnimaticSfxPanelProps {
   sfxSuggestions: Record<string, { loading: boolean; error?: string; hits?: SfxMatchHit[] }>;
   /** Map fra eventId → generation-state (loading/error). */
   sfxGenerating: Record<string, { loading: boolean; error?: string }>;
+  /** Map fra eventId → offset i sekunder fra frame-start. */
+  sfxOffsets: Record<string, number>;
   /** IDs av events som spilles av akkurat nå. */
   activeEventIds: string[];
+  /** Aktivt frame sin duration — setter slider-max for offset. */
+  activeFrameDuration: number;
   /** Master-toggle for auto-SFX. */
   sfxEnabled: boolean;
   onToggleSfxEnabled: () => void;
@@ -45,6 +50,7 @@ export interface AnimaticSfxPanelProps {
   onHideEvent: (eventId: string) => void;
   onPreviewHit: (url: string) => void;
   onUseHit: (eventId: string, hit: SfxMatchHit) => void;
+  onOffsetChange: (eventId: string, offsetSec: number) => void;
   /** Layout. */
   isFullscreen: boolean;
   stageMaxWidth: number;
@@ -55,7 +61,9 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
   sfxClipUrls,
   sfxSuggestions,
   sfxGenerating,
+  sfxOffsets,
   activeEventIds,
+  activeFrameDuration,
   sfxEnabled,
   onToggleSfxEnabled,
   onSuggest,
@@ -65,6 +73,7 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
   onHideEvent,
   onPreviewHit,
   onUseHit,
+  onOffsetChange,
   isFullscreen,
   stageMaxWidth,
 }) => {
@@ -198,6 +207,50 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
               >
                 <CloseIcon sx={{ fontSize: 9 }} />
               </IconButton>
+            </Stack>
+          );
+        })}
+        {/* Offset-slider per event — synlig kun når clip er satt så bruker
+            ikke ser slider for events uten lyd. Slideren går fra 0 til
+            frame.duration så timing er innenfor framet. */}
+        {events.map((ev) => {
+          const hasClip = !!sfxClipUrls[ev.id];
+          if (!hasClip || activeFrameDuration <= 0) return null;
+          const currentOffset = sfxOffsets[ev.id] ?? 0;
+          // Max-offset er litt under frame-slutt så event-lag rekker å høres.
+          const maxOffset = Math.max(0, activeFrameDuration - 0.1);
+          return (
+            <Stack
+              key={`offset-${ev.id}`}
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              sx={{ px: 1, py: 0.25 }}
+              data-testid={`animatic-sfx-offset-${ev.id}`}
+            >
+              <Timer sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }} />
+              <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', minWidth: 70 }}>
+                {ev.category.label}
+              </Typography>
+              <Slider
+                size="small"
+                min={0}
+                max={maxOffset}
+                step={0.05}
+                value={Math.min(currentOffset, maxOffset)}
+                onChange={(_, value) => {
+                  const v = Array.isArray(value) ? value[0] : value;
+                  onOffsetChange(ev.id, v);
+                }}
+                sx={{
+                  color: '#a5b4fc',
+                  flex: 1,
+                  '& .MuiSlider-thumb': { width: 10, height: 10 },
+                }}
+              />
+              <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.7)', minWidth: 40, fontFamily: 'monospace' }}>
+                +{currentOffset.toFixed(2)}s
+              </Typography>
             </Stack>
           );
         })}

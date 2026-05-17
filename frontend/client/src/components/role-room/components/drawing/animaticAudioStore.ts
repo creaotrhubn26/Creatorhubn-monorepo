@@ -62,6 +62,8 @@ export interface StoredSfxClip {
   fileName?: string;
   /** Friendly label (f.eks. "AI-generated" eller "CLAP: Door slam"). */
   sourceLabel?: string;
+  /** Per-event timing-offset i sekunder fra frame-start. Default 0. */
+  offsetSec?: number;
   addedAt: string;
 }
 
@@ -345,6 +347,47 @@ export async function deleteSfxClip(
       const req = store.delete([sceneId, eventId]);
       req.onsuccess = () => resolve(true);
       req.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Oppdater kun timing-offset på en eksisterende sfx-clip. Hvis ingen
+ * record finnes for (sceneId, eventId), opprettes en stub med kind='url'
+ * og url=undefined — kun for å bære offset. Når bruker senere setter en
+ * faktisk clip, erstattes hele recordet.
+ */
+export async function updateSfxClipOffset(
+  sceneId: string,
+  eventId: string,
+  offsetSec: number,
+): Promise<boolean> {
+  if (!sceneId || !eventId || !Number.isFinite(offsetSec)) return false;
+  const db = await openDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(SFX_CLIP_STORE, 'readwrite');
+      const store = tx.objectStore(SFX_CLIP_STORE);
+      const getReq = store.get([sceneId, eventId]);
+      getReq.onsuccess = () => {
+        const existing = getReq.result as StoredSfxClip | undefined;
+        const entry: StoredSfxClip = existing
+          ? { ...existing, offsetSec }
+          : {
+              sceneId,
+              eventId,
+              kind: 'url',
+              offsetSec,
+              addedAt: new Date().toISOString(),
+            };
+        const putReq = store.put(entry);
+        putReq.onsuccess = () => resolve(true);
+        putReq.onerror = () => resolve(false);
+      };
+      getReq.onerror = () => resolve(false);
     } catch {
       resolve(false);
     }

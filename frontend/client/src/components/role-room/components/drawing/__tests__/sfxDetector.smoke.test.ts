@@ -136,6 +136,91 @@ describe('Sprint A.7 — detectSequenceSfx + gruppering', () => {
   });
 });
 
+describe('Sprint A.7 — sfxDetector timing-offset auto-detect', () => {
+  it('"etter 1 sekund" gir offsetSec=1', () => {
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Han åpner døra. Etter 1 sekund kommer skuddet.',
+    });
+    const gun = events.find((e) => e.categoryId === 'gunshot');
+    expect(gun?.offsetSec).toBe(1);
+  });
+
+  it('"etter 1.5 sekund" parses som desimaltall', () => {
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Han skyter etter 1.5 sekund.',
+    });
+    const gun = events.find((e) => e.categoryId === 'gunshot');
+    expect(gun?.offsetSec).toBe(1.5);
+  });
+
+  it('engelsk "after 2 seconds" støttes', () => {
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Door slam after 2 seconds.',
+    });
+    const slam = events.find((e) => e.categoryId === 'door-slam');
+    expect(slam?.offsetSec).toBe(2);
+  });
+
+  it('"ved 0.5s" støttes', () => {
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Telefonen ringer ved 0.5s.',
+    });
+    const ring = events.find((e) => e.categoryId === 'phone-ring');
+    expect(ring?.offsetSec).toBe(0.5);
+  });
+
+  it('uten timing-cue: offsetSec=0', () => {
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Han åpner døra.',
+    });
+    const door = events.find((e) => e.categoryId === 'door-open');
+    expect(door?.offsetSec).toBe(0);
+  });
+
+  it('komma som desimal-skille også', () => {
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Han skyter etter 2,5 sekund.',
+    });
+    const gun = events.find((e) => e.categoryId === 'gunshot');
+    expect(gun?.offsetSec).toBe(2.5);
+  });
+
+  it('cue må være innenfor 60 tegn etter keyword', () => {
+    // "etter 1 sekund" kommer langt etter "ringer" → ignoreres som offset.
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Telefonen ringer. ' + 'x'.repeat(80) + ' og etter 1 sekund stopper det.',
+    });
+    const ring = events.find((e) => e.categoryId === 'phone-ring');
+    expect(ring?.offsetSec).toBe(0);
+  });
+
+  it('negative tall avvises (urealistiske)', () => {
+    // Vår regex parser kun positive numre — minus prefix matcher ikke.
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Han skyter etter -1 sekund.',
+    });
+    const gun = events.find((e) => e.categoryId === 'gunshot');
+    expect(gun?.offsetSec).toBe(0);
+  });
+
+  it('urealistisk høye tall (> 30s) avvises', () => {
+    const events = detectFrameSfx({
+      id: 'f1',
+      description: 'Han skyter etter 999 sekunder.',
+    });
+    const gun = events.find((e) => e.categoryId === 'gunshot');
+    expect(gun?.offsetSec).toBe(0);
+  });
+});
+
 describe('Sprint A.7 — sfxCategories-katalog er konsistent', () => {
   it('alle kategorier har unik id', () => {
     const ids = SFX_CATEGORIES.map((c) => c.id);

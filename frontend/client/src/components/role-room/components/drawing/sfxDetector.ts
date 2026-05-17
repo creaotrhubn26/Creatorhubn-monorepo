@@ -50,6 +50,38 @@ function normalize(text: string | undefined): string {
   return text.toLowerCase();
 }
 
+/**
+ * Forsøk å finne et eksplisitt tidspunkt i teksten for et matchet keyword.
+ * Eksempler vi forstår:
+ *   "etter 1 sekund" / "etter 1.5 sekund" / "etter 2 sek"
+ *   "after 1 second" / "after 2.5 seconds"
+ *   "ved 0.5s" / "at 1.5s"
+ *
+ * Heuristikk: ser etter mønsteret innenfor 40 tegn etter keyword-treff.
+ * Hvis funnet, returnerer offset i sekunder, ellers 0.
+ */
+function detectOffsetForKeyword(text: string, keywordPos: number, keywordLen: number): number {
+  // Vindu på 50 tegn før + 60 etter keyword. Dekker mønstre som
+  // "etter 1 sek X" (cue før keyword) og "X etter 1 sek" (cue etter).
+  const start = Math.max(0, keywordPos - 50);
+  const end = keywordPos + keywordLen + 60;
+  const window = text.slice(start, end);
+  const patterns = [
+    /etter\s+(\d+(?:[.,]\d+)?)\s*(?:sek|sekund|sekunder|s\b)/i,
+    /after\s+(\d+(?:[.,]\d+)?)\s*(?:sec|second|seconds|s\b)/i,
+    /ved\s+(\d+(?:[.,]\d+)?)\s*s\b/i,
+    /at\s+(\d+(?:[.,]\d+)?)\s*s\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = window.match(pattern);
+    if (match) {
+      const num = parseFloat(match[1].replace(',', '.'));
+      if (Number.isFinite(num) && num >= 0 && num <= 30) return num;
+    }
+  }
+  return 0;
+}
+
 function adjustIntensity(base: SfxIntensity, text: string): SfxIntensity {
   const hasBoost = INTENSITY_BOOSTERS.some((b) => text.includes(b));
   const hasDamp = INTENSITY_DAMPENERS.some((d) => text.includes(d));
@@ -83,7 +115,8 @@ export function detectFrameSfx(frame: DetectableFrame): SfxEvent[] {
   for (const category of SFX_CATEGORIES) {
     for (const keyword of category.keywords) {
       const k = keyword.toLowerCase();
-      if (haystack.includes(k)) {
+      const pos = haystack.indexOf(k);
+      if (pos >= 0) {
         if (seen.has(category.id)) break;
         seen.add(category.id);
         events.push({
@@ -92,7 +125,9 @@ export function detectFrameSfx(frame: DetectableFrame): SfxEvent[] {
           categoryId: category.id,
           category,
           intensity: adjustIntensity(category.defaultIntensity, haystack),
-          offsetSec: 0,
+          // Auto-detekter "etter X sek" etter keyword-treff. Bruker kan
+          // overstyre senere via offset-slider.
+          offsetSec: detectOffsetForKeyword(haystack, pos, k.length),
           matchedKeyword: keyword,
           layer: category.layer,
         });
