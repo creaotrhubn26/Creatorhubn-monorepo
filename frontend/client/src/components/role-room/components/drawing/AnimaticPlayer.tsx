@@ -71,6 +71,11 @@ import { detectSequenceSfx, groupEventsByFrame, type SfxEvent } from './sfxDetec
 import { scheduleSfx } from './sfxScheduler';
 import { useSfxPlayback } from './useSfxPlayback';
 import { matchSfx, generateSfx, type SfxMatchHit } from '../../services/sfxMatchClient';
+import {
+  AnimaticStageCanvas,
+  STAGE_CANVAS_WIDTH as STAGE_W,
+  STAGE_CANVAS_HEIGHT as STAGE_H,
+} from './AnimaticStageCanvas';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -109,8 +114,8 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const STAGE_CANVAS_WIDTH = 1280;
-const STAGE_CANVAS_HEIGHT = 720;
+const STAGE_CANVAS_WIDTH = STAGE_W;
+const STAGE_CANVAS_HEIGHT = STAGE_H;
 
 export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   frames,
@@ -756,136 +761,9 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     }
   }, []);
 
-  // Cache av lastede bilder per src, så vi slipper å re-loade ved
-  // hver redraw (kritisk når cross-fade trigger redraw på hver
-  // RAF-tick).
-  const imageCacheRef = React.useRef<Map<string, HTMLImageElement>>(new Map());
-
-  const loadImage = React.useCallback((src: string): HTMLImageElement => {
-    const cache = imageCacheRef.current;
-    const existing = cache.get(src);
-    if (existing) return existing;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = src;
-    cache.set(src, img);
-    return img;
-  }, []);
-
-  // Tegn aktivt frame (med valgfri cross-fade fra forrige frame) til
-  // canvas. Canvas brukes som rendering-target og er capture-stream-
-  // kilde for opptak. Effekten kjører på hver currentTime-tikk så
-  // cross-fade går jevnt.
-  React.useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    if (canvas.width !== STAGE_CANVAS_WIDTH) canvas.width = STAGE_CANVAS_WIDTH;
-    if (canvas.height !== STAGE_CANVAS_HEIGHT) canvas.height = STAGE_CANVAS_HEIGHT;
-
-    // Bakgrunn.
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, STAGE_CANVAS_WIDTH, STAGE_CANVAS_HEIGHT);
-
-    const segments = player.timeline.segments;
-    const activeIdx = player.activeFrameIndex;
-    if (activeIdx < 0 || segments.length === 0) return;
-    const activeSeg = segments[activeIdx];
-    const activeFrameMeta = frames[activeIdx];
-
-    const drawPlaceholder = (frameMeta) => {
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.font = '24px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const label = frameMeta?.shotNumber
-        ? `Shot ${frameMeta.shotNumber}`
-        : `Frame ${segments.indexOf(activeSeg) + 1}`;
-      ctx.fillText(label, STAGE_CANVAS_WIDTH / 2, STAGE_CANVAS_HEIGHT / 2 - 16);
-      ctx.font = '16px system-ui, sans-serif';
-      ctx.fillText('Ingen tegning enda', STAGE_CANVAS_WIDTH / 2, STAGE_CANVAS_HEIGHT / 2 + 16);
-    };
-
-    const drawFitted = (img: HTMLImageElement, alpha: number) => {
-      if (!img.complete || img.naturalWidth === 0) return false;
-      const imgRatio = img.width / img.height;
-      const canvasRatio = STAGE_CANVAS_WIDTH / STAGE_CANVAS_HEIGHT;
-      let drawW: number;
-      let drawH: number;
-      if (imgRatio > canvasRatio) {
-        drawW = STAGE_CANVAS_WIDTH;
-        drawH = drawW / imgRatio;
-      } else {
-        drawH = STAGE_CANVAS_HEIGHT;
-        drawW = drawH * imgRatio;
-      }
-      const x = (STAGE_CANVAS_WIDTH - drawW) / 2;
-      const y = (STAGE_CANVAS_HEIGHT - drawH) / 2;
-      ctx.globalAlpha = alpha;
-      ctx.drawImage(img, x, y, drawW, drawH);
-      ctx.globalAlpha = 1;
-      return true;
-    };
-
-    const drawFrameOrPlaceholder = (frameMeta, alpha = 1) => {
-      const src = frameMeta?.imageUrl || frameMeta?.thumbnailUrl;
-      if (!src) {
-        if (alpha === 1) drawPlaceholder(frameMeta);
-        return;
-      }
-      const img = loadImage(src);
-      if (img.complete && img.naturalWidth > 0) {
-        drawFitted(img, alpha);
-      } else {
-        // Mens bildet laster: trigg re-render etter load (med en
-        // tom dependency så vi ikke setter opp uendelige listeners).
-        img.onload = () => {
-          // Etter load: be om re-render via dummy state-bump om vi vil,
-          // men currentTime endrer seg uansett ofte under playback. For
-          // korrekthet ved pause: invalidate via canvas re-clear etter en
-          // tick.
-          requestAnimationFrame(() => {
-            const c = canvasRef.current;
-            if (!c) return;
-            const cx = c.getContext('2d');
-            if (!cx) return;
-            // Tving full redraw ved å fyre en synthetisk no-op state
-            // — i praksis enklere å bare re-tegne nå hvis frame fortsatt aktivt.
-            const segNow = player.timeline.segments[player.activeFrameIndex];
-            if (segNow && segNow === activeSeg) {
-              drawFitted(img, 1);
-            }
-          });
-        };
-        // Placeholder mens den laster.
-        if (alpha === 1) drawPlaceholder(frameMeta);
-      }
-    };
-
-    // Cross-fade-vurdering: ligger vi i transitionDuration etter start
-    // på et nytt segment? I så fall blend fra forrige segment.
-    const timeInSeg = Math.max(0, player.currentTime - activeSeg.start);
-    if (
-      transitionDuration > 0 &&
-      timeInSeg < transitionDuration &&
-      activeIdx > 0
-    ) {
-      const prevFrameMeta = frames[activeIdx - 1];
-      const progress = timeInSeg / transitionDuration; // 0..1
-      drawFrameOrPlaceholder(prevFrameMeta, 1 - progress);
-      drawFrameOrPlaceholder(activeFrameMeta, progress);
-    } else {
-      drawFrameOrPlaceholder(activeFrameMeta, 1);
-    }
-  }, [
-    player.currentTime,
-    player.activeFrameIndex,
-    player.timeline,
-    frames,
-    transitionDuration,
-    loadImage,
-  ]);
+  // Stage-canvas-rendering + cross-fade er eksternalisert til
+  // AnimaticStageCanvas. canvasRef forwardes så MediaRecorder kan
+  // capture-streame den.
 
   if (!hasFrames) {
     return (
@@ -956,60 +834,19 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         </Typography>
       </Stack>
 
-      {/* Stage: canvas — tegner aktivt frame og er capture-stream-kilde for opptak. */}
-      <Box
-        ref={stageContainerRef}
-        sx={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: isFullscreen ? 'none' : stageMaxWidth,
-          mx: 'auto',
-          aspectRatio: isFullscreen ? 'auto' : String(aspectRatio),
-          height: isFullscreen ? '100vh' : 'auto',
-          bgcolor: '#000',
-          borderRadius: isFullscreen ? 0 : 1,
-          border: isFullscreen ? 'none' : '1px solid rgba(255,255,255,0.08)',
-          overflow: 'hidden',
-          mb: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        data-testid="animatic-stage"
-      >
-        <canvas
-          ref={canvasRef}
-          width={STAGE_CANVAS_WIDTH}
-          height={STAGE_CANVAS_HEIGHT}
-          style={{
-            width: isFullscreen ? 'auto' : '100%',
-            height: isFullscreen ? '100%' : 'auto',
-            maxWidth: '100%',
-            maxHeight: '100%',
-            display: 'block',
-          }}
-          data-testid="animatic-stage-canvas"
-        />
-        {/* Fullscreen-toggle: synlig på hover av stage. */}
-        <Tooltip title={isFullscreen ? 'Lukk fullskjerm (F)' : 'Fullskjerm (F)'}>
-          <IconButton
-            size="small"
-            onClick={toggleFullscreen}
-            sx={{
-              position: 'absolute',
-              top: 4,
-              right: 4,
-              color: 'rgba(255,255,255,0.8)',
-              bgcolor: 'rgba(0,0,0,0.4)',
-              opacity: 0.6,
-              '&:hover': { opacity: 1, bgcolor: 'rgba(0,0,0,0.6)' },
-            }}
-            data-testid="animatic-fullscreen"
-          >
-            {isFullscreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}
-          </IconButton>
-        </Tooltip>
-      </Box>
+      <AnimaticStageCanvas
+        ref={canvasRef}
+        frames={frames}
+        activeFrameIndex={player.activeFrameIndex}
+        currentTime={player.currentTime}
+        timelineSegments={player.timeline.segments}
+        transitionDuration={transitionDuration}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+        aspectRatio={aspectRatio}
+        stageMaxWidth={stageMaxWidth}
+        onContainerRef={(el) => { stageContainerRef.current = el; }}
+      />
 
       {/* Dialog-caption for aktivt frame — viser manuslinje(r) så
           artisten ser om dialog matcher visuelt tempo. */}
