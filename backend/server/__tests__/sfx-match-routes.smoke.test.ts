@@ -4,8 +4,10 @@ import request from 'supertest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createSfxMatchRouter } from '../sfx-match-routes.js';
+import { Readable } from 'node:stream';
+import { createSfxMatchRouter, type GenerateSfxFn } from '../sfx-match-routes.js';
 import type { LoadedLibrary, TextEmbedder } from '../_sfx-clap.js';
+import { ElevenLabsError, type GenerateSfxResult } from '../_sfx-elevenlabs.js';
 
 const EMBED_DIM = 512;
 
@@ -38,6 +40,8 @@ function buildApp(opts: {
   embedder: TextEmbedder;
   library?: LoadedLibrary;
   libraryPath?: string;
+  generateFn?: GenerateSfxFn;
+  loadGeneratedFn?: (cacheKey: string) => ReturnType<typeof Readable.from> extends never ? never : ({ stream: NodeJS.ReadableStream; sizeBytes: number } | null);
 }) {
   const app = express();
   app.use(express.json());
@@ -47,6 +51,8 @@ function buildApp(opts: {
       embedder: opts.embedder,
       preloadedLibrary: opts.library,
       libraryPath: opts.libraryPath,
+      generateFn: opts.generateFn,
+      loadGeneratedFn: opts.loadGeneratedFn as any,
     }),
   );
   return app;
@@ -247,5 +253,142 @@ describe('Sprint A.7 — POST /api/sfx/library/reload', () => {
     const res = await request(app).post('/api/sfx/library/reload');
     expect(res.status).toBe(500);
     expect(res.body.error).toBe('library_reload_failed');
+  });
+});
+
+describe('Sprint A.7 — POST /api/sfx/generate (ElevenLabs)', () => {
+  const fakeEmbedder: TextEmbedder = async () => makeUnitVector(0);
+
+  it('avviser invalid prompt (under 3 tegn)', async () => {
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]) });
+    const res = await request(app).post('/api/sfx/generate').send({ prompt: 'a' });
+    expect(res.status).toBe(400);
+  });
+
+  it('avviser duration > 10s', async () => {
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]) });
+    const res = await request(app)
+      .post('/api/sfx/generate')
+      .send({ prompt: 'door slam', durationSec: 20 });
+    expect(res.status).toBe(400);
+  });
+
+  it('returnerer url + cached=false ved første generering', async () => {
+    const generateFn: GenerateSfxFn = async () => ({
+      cacheKey: 'abc123',
+      filePath: '/tmp/abc123.mp3',
+      url: '/api/sfx/generated/abc123.mp3',
+      cached: false,
+      sizeBytes: 12345,
+    });
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]), generateFn });
+    const res = await request(app)
+      .post('/api/sfx/generate')
+      .send({ prompt: 'heavy door slam in old wooden house' });
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe('/api/sfx/generated/abc123.mp3');
+    expect(res.body.cached).toBe(false);
+    expect(res.body.sizeBytes).toBe(12345);
+  });
+
+  it('503 hvis ELEVENLABS_API_KEY mangler', async () => {
+    const generateFn: GenerateSfxFn = async () => {
+      throw new ElevenLabsError('ELEVENLABS_API_KEY mangler', 503, false);
+    };
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]), generateFn });
+    const res = await request(app)
+      .post('/api/sfx/generate')
+      .send({ prompt: 'door slam' });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('generation_failed');
+  });
+
+  it('502 ved retryable nettverksfeil', async () => {
+    const generateFn: GenerateSfxFn = async () => {
+      throw new ElevenLabsError('Nettverksfeil', undefined, true);
+    };
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]), generateFn });
+    const res = await request(app)
+      .post('/api/sfx/generate')
+      .send({ prompt: 'door slam' });
+    expect(res.status).toBe(502);
+    expect(res.body.retryable).toBe(true);
+  });
+});
+
+describe('Sprint A.7 — GET /api/sfx/generated/:filename', () => {
+  const fakeEmbedder: TextEmbedder = async () => makeUnitVector(0);
+
+  it('400 hvis filnavn ikke matcher hex.mp3-mønster', async () => {
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]) });
+    const res = await request(app).get('/api/sfx/generated/notvalid.txt');
+    expect(res.status).toBe(400);
+  });
+
+  it('400 ved path-traversal-forsøk', async () => {
+    const app = buildApp({ embedder: fakeEmbedder, library: makeLibrary([]) });
+    const res = await request(app).get('/api/sfx/generated/..%2Fetc%2Fpasswd.mp3');
+    expect(res.status).toBe(400);
+  });
+
+  it('404 når filen ikke finnes', async () => {
+    const loadGeneratedFn = (_key: string) => null;
+    const app = buildApp({
+      embedder: fakeEmbedder,
+      library: makeLibrary([]),
+      loadGeneratedFn,
+    });
+    const res = await request(app).get('/api/sfx/generated/abc123def456.mp3');
+    expect(res.status).toBe(404);
+  });
+
+  it('serverer audio-stream med riktig Content-Type', async () => {
+    const fakeAudio = Buffer.from([0xff, 0xfb, 0x90, 0x64, 0x00, 0x00]);
+    const loadGeneratedFn = (_key: string) => ({
+      stream: Readable.from(fakeAudio) as any,
+      sizeBytes: fakeAudio.length,
+    });
+    const app = buildApp({
+      embedder: fakeEmbedder,
+      library: makeLibrary([]),
+      loadGeneratedFn,
+    });
+    const res = await request(app).get('/api/sfx/generated/abc123.mp3').buffer(true);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('audio/mpeg');
+    expect(res.headers['content-length']).toBe(String(fakeAudio.length));
+    expect(res.headers['cache-control']).toContain('immutable');
+  });
+});
+
+describe('Sprint A.7 — _sfx-elevenlabs cache-key + duration-clamp', () => {
+  it('cacheKey er deterministisk for samme input', async () => {
+    const { _internalForTests } = await import('../_sfx-elevenlabs.js');
+    const a = _internalForTests.buildCacheKey({ prompt: 'door slam' });
+    const b = _internalForTests.buildCacheKey({ prompt: 'door slam' });
+    expect(a).toBe(b);
+  });
+
+  it('cacheKey er case-insensitiv på prompt', async () => {
+    const { _internalForTests } = await import('../_sfx-elevenlabs.js');
+    const a = _internalForTests.buildCacheKey({ prompt: 'Door Slam' });
+    const b = _internalForTests.buildCacheKey({ prompt: 'door slam' });
+    expect(a).toBe(b);
+  });
+
+  it('cacheKey endrer seg med duration', async () => {
+    const { _internalForTests } = await import('../_sfx-elevenlabs.js');
+    const a = _internalForTests.buildCacheKey({ prompt: 'door', durationSec: 2 });
+    const b = _internalForTests.buildCacheKey({ prompt: 'door', durationSec: 5 });
+    expect(a).not.toBe(b);
+  });
+
+  it('clampDuration tvinger til [0.5, 10]', async () => {
+    const { _internalForTests } = await import('../_sfx-elevenlabs.js');
+    expect(_internalForTests.clampDuration(0.1)).toBe(0.5);
+    expect(_internalForTests.clampDuration(100)).toBe(10);
+    expect(_internalForTests.clampDuration(3)).toBe(3);
+    expect(_internalForTests.clampDuration(undefined)).toBeNull();
+    expect(_internalForTests.clampDuration(NaN)).toBeNull();
   });
 });

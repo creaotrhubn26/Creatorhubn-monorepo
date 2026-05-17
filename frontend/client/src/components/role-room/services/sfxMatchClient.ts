@@ -129,3 +129,34 @@ export function clearSfxMatchCache(): void {
 export function _sfxMatchCacheSize(): number {
   return cache.size;
 }
+
+// ============================================================================
+// AI-generering (ElevenLabs fallback)
+// ============================================================================
+
+export interface GenerateSfxRequest {
+  prompt: string;
+  durationSec?: number;
+  promptInfluence?: number;
+  loop?: boolean;
+}
+
+export interface GenerateSfxResponse {
+  /** Public URL til generert audio — bruk direkte i Audio-elementet. */
+  url: string;
+  /** True hvis serveren returnerte fra cache uten å kalle ElevenLabs. */
+  cached: boolean;
+  sizeBytes: number;
+}
+
+/**
+ * Generer en helt ny SFX via ElevenLabs. Backend disk-cacher per
+ * prompt-hash, så samme prompt-kall to ganger koster bare første
+ * gangen.
+ */
+export async function generateSfx(request: GenerateSfxRequest): Promise<GenerateSfxResponse> {
+  return apiRequest<GenerateSfxResponse>('/api/sfx/generate', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}

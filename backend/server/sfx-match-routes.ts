@@ -28,6 +28,14 @@ import {
   type LoadedLibrary,
   type TextEmbedder,
 } from './_sfx-clap.js';
+import {
+  generateSfx,
+  getCachedSfx,
+  loadGeneratedSfxFile,
+  ElevenLabsError,
+  type GenerateSfxRequest,
+  type GenerateSfxResult,
+} from './_sfx-elevenlabs.js';
 
 const DEFAULT_LIBRARY_PATH = path.resolve(process.cwd(), 'data', 'sfx-library.json');
 
@@ -38,6 +46,15 @@ const MatchBodySchema = z.object({
   minScore: z.number().min(-1).max(1).optional(),
 });
 
+const GenerateBodySchema = z.object({
+  prompt: z.string().min(3).max(500),
+  durationSec: z.number().min(0.5).max(10).optional(),
+  promptInfluence: z.number().min(0).max(1).optional(),
+  loop: z.boolean().optional(),
+});
+
+export type GenerateSfxFn = (req: GenerateSfxRequest) => Promise<GenerateSfxResult>;
+
 export interface SfxMatchRouterDeps {
   /** Path til library JSON. Default: data/sfx-library.json under cwd. */
   libraryPath?: string;
@@ -45,6 +62,10 @@ export interface SfxMatchRouterDeps {
   embedder?: TextEmbedder;
   /** Pre-loadet library (for tester). Default: load fra disk. */
   preloadedLibrary?: LoadedLibrary;
+  /** Override-generator for tester. Default: ElevenLabs via env-var. */
+  generateFn?: GenerateSfxFn;
+  /** Override-file-server for tester. */
+  loadGeneratedFn?: (cacheKey: string) => ReturnType<typeof loadGeneratedSfxFile>;
 }
 
 export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
@@ -181,6 +202,81 @@ export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
         message: err?.message ?? String(err),
       });
     }
+  });
+
+  // ── POST /generate ───────────────────────────────────────────
+  // Genererer ny SFX via ElevenLabs når CLAP-match ikke har gode
+  // treff. Cache'er per prompt-hash så samme prompt ikke koster
+  // dobbelt. Returnerer URL til /api/sfx/generated/:key.
+  router.post('/generate', async (req: Request, res: Response) => {
+    const parseResult = GenerateBodySchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'invalid_request',
+        details: parseResult.error.flatten(),
+      });
+    }
+    const { prompt, durationSec, promptInfluence, loop } = parseResult.data;
+    const generateRequest: GenerateSfxRequest = {
+      prompt,
+      durationSec,
+      promptInfluence,
+      loop,
+    };
+
+    // Cache-hit-sjekk uten å treffe API.
+    const cachedHit = getCachedSfx(generateRequest);
+    if (cachedHit) {
+      return res.json({
+        url: cachedHit.url,
+        cached: true,
+        sizeBytes: cachedHit.sizeBytes,
+      });
+    }
+
+    const fn = deps.generateFn ?? generateSfx;
+    try {
+      const result = await fn(generateRequest);
+      return res.json({
+        url: result.url,
+        cached: result.cached,
+        sizeBytes: result.sizeBytes,
+      });
+    } catch (err: any) {
+      if (err instanceof ElevenLabsError) {
+        const status = err.status === 503 ? 503 : err.retryable ? 502 : 500;
+        return res.status(status).json({
+          error: 'generation_failed',
+          message: err.message,
+          retryable: err.retryable,
+        });
+      }
+      return res.status(500).json({
+        error: 'generation_failed',
+        message: err?.message ?? String(err),
+      });
+    }
+  });
+
+  // ── GET /generated/:key.mp3 ───────────────────────────────────
+  // Server cachet generert audio fra disk. Path-traversal-vern i
+  // loadGeneratedSfxFile (kun hex-tegn tillatt).
+  router.get('/generated/:filename', (req: Request, res: Response) => {
+    const filename = req.params.filename;
+    const match = filename.match(/^([a-f0-9]+)\.mp3$/);
+    if (!match) {
+      return res.status(400).json({ error: 'invalid_filename' });
+    }
+    const cacheKey = match[1];
+    const loader = deps.loadGeneratedFn ?? loadGeneratedSfxFile;
+    const result = loader(cacheKey);
+    if (!result) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', String(result.sizeBytes));
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    result.stream.pipe(res);
   });
 
   return router;

@@ -44,6 +44,7 @@ import {
   VolumeOff,
   AutoAwesome,
   PlayCircleOutline,
+  Psychology,
 } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
@@ -62,7 +63,7 @@ import {
 import { detectSequenceSfx, groupEventsByFrame, type SfxEvent } from './sfxDetector';
 import { scheduleSfx } from './sfxScheduler';
 import { useSfxPlayback } from './useSfxPlayback';
-import { matchSfx, type SfxMatchHit } from '../../services/sfxMatchClient';
+import { matchSfx, generateSfx, type SfxMatchHit } from '../../services/sfxMatchClient';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -137,6 +138,11 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     loading: boolean;
     error?: string;
     hits?: SfxMatchHit[];
+  }>>({});
+  // AI-generering status per event-id.
+  const [sfxGenerating, setSfxGenerating] = React.useState<Record<string, {
+    loading: boolean;
+    error?: string;
   }>>({});
   // Preview-audio for forslag (lazy laget per suggestion-url).
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -541,6 +547,39 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       try { previewAudioRef.current.pause(); } catch {}
     }
   }, []);
+
+  // Generer via ElevenLabs som fallback når CLAP-match ikke har gode treff.
+  const generateSfxForEvent = React.useCallback(async (ev: SfxEvent) => {
+    setSfxGenerating((prev) => ({ ...prev, [ev.id]: { loading: true } }));
+    try {
+      const prompt = buildSfxPrompt(ev);
+      // Default-varighet basert på layer: event=2s, ambient=8s, music=8s.
+      const durationSec =
+        ev.layer === 'event' ? 2 :
+        ev.layer === 'ambient' ? 8 :
+        8;
+      const result = await generateSfx({ prompt, durationSec });
+      setSfxClipUrls((prev) => {
+        if (prev[ev.id] && prev[ev.id].startsWith('blob:')) {
+          URL.revokeObjectURL(prev[ev.id]);
+        }
+        return { ...prev, [ev.id]: result.url };
+      });
+      setSfxGenerating((prev) => {
+        const next = { ...prev };
+        delete next[ev.id];
+        return next;
+      });
+    } catch (err: any) {
+      setSfxGenerating((prev) => ({
+        ...prev,
+        [ev.id]: {
+          loading: false,
+          error: err?.message ?? 'Generering feilet',
+        },
+      }));
+    }
+  }, [buildSfxPrompt]);
 
   // SFX-upload-handlers.
   const openSfxPickerForEvent = React.useCallback((eventId: string) => {
@@ -1057,7 +1096,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
                     </Typography>
                   </Typography>
                   {!hasClip && (
-                    <Tooltip title="Foreslå lyd fra CLAP-bibliotek">
+                    <Tooltip title="Foreslå fra CLAP-bibliotek">
                       <IconButton
                         size="small"
                         onClick={() => suggestSfxForEvent(ev)}
@@ -1066,6 +1105,19 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
                         disabled={sfxSuggestions[ev.id]?.loading}
                       >
                         <AutoAwesome sx={{ fontSize: 12 }} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  {!hasClip && (
+                    <Tooltip title="Generer med AI (ElevenLabs)">
+                      <IconButton
+                        size="small"
+                        onClick={() => generateSfxForEvent(ev)}
+                        sx={{ p: 0.25, color: '#c4b5fd' }}
+                        data-testid={`animatic-sfx-generate-${ev.id}`}
+                        disabled={sfxGenerating[ev.id]?.loading}
+                      >
+                        <Psychology sx={{ fontSize: 12 }} />
                       </IconButton>
                     </Tooltip>
                   )}
@@ -1109,6 +1161,34 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
                     <CloseIcon sx={{ fontSize: 9 }} />
                   </IconButton>
                 </Stack>
+              );
+            })}
+            {/* AI-generation status per event */}
+            {(sfxByFrame.get(activeFrame.id) ?? []).map((ev) => {
+              const gen = sfxGenerating[ev.id];
+              if (!gen) return null;
+              return (
+                <Box
+                  key={`gen-${ev.id}`}
+                  sx={{
+                    pl: 1.5,
+                    py: 0.5,
+                    borderLeft: '2px solid rgba(196,181,253,0.3)',
+                    bgcolor: 'rgba(196,181,253,0.05)',
+                  }}
+                  data-testid={`animatic-sfx-generating-${ev.id}`}
+                >
+                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                    <Psychology sx={{ fontSize: 10, color: '#c4b5fd' }} />
+                    <Typography variant="caption" sx={{ fontSize: 9, color: '#c4b5fd' }}>
+                      {gen.loading
+                        ? `Genererer "${ev.category.label}" via ElevenLabs…`
+                        : gen.error
+                          ? gen.error
+                          : 'Generert ✓'}
+                    </Typography>
+                  </Stack>
+                </Box>
               );
             })}
             {/* Suggestion-list per event */}
