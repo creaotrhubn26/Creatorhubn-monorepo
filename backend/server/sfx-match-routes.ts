@@ -258,11 +258,44 @@ export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
     }
   });
 
+  // ── GET /static/:filename ─────────────────────────────────────
+  // Server "statiske" sample-filer fra data/synthetic-samples/.
+  // Brukes av synthetic-sample-pakken (generert via
+  // scripts/generate-synthetic-sfx.ts) som starter-bibliotek.
+  router.get('/static/:filename', (req: Request, res: Response) => {
+    const filename = String(req.params.filename ?? '');
+    // Whitelist: kun a-z, 0-9, dash + .wav. Ingen subdirektoriet.
+    if (!/^[a-z0-9-]+\.wav$/.test(filename)) {
+      return res.status(400).json({ error: 'invalid_filename' });
+    }
+    const filePath = path.resolve(
+      process.cwd(),
+      'data',
+      'synthetic-samples',
+      filename,
+    );
+    // Bekreft at den løste pathen er innenfor synthetic-samples-dir.
+    const expectedDir = path.resolve(process.cwd(), 'data', 'synthetic-samples');
+    if (!filePath.startsWith(expectedDir + path.sep) && filePath !== expectedDir) {
+      return res.status(400).json({ error: 'invalid_path' });
+    }
+    let stat: import('node:fs').Stats;
+    try {
+      stat = require('node:fs').statSync(filePath);
+    } catch {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Length', String(stat.size));
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    require('node:fs').createReadStream(filePath).pipe(res);
+  });
+
   // ── GET /generated/:key.mp3 ───────────────────────────────────
   // Server cachet generert audio fra disk. Path-traversal-vern i
   // loadGeneratedSfxFile (kun hex-tegn tillatt).
   router.get('/generated/:filename', (req: Request, res: Response) => {
-    const filename = req.params.filename;
+    const filename = String(req.params.filename ?? '');
     const match = filename.match(/^([a-f0-9]+)\.mp3$/);
     if (!match) {
       return res.status(400).json({ error: 'invalid_filename' });

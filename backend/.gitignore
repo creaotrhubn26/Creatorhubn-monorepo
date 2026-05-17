@@ -61,3 +61,6 @@ temp/
 /data/sfx-manifest.json
 !/data/sfx-manifest.example.json
 !/data/SFX_LIBRARY.md
+# Synthetic samples + ElevenLabs-cache lever utenfor git
+/data/synthetic-samples/
+/data/sfx-generated/

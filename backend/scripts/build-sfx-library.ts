@@ -34,7 +34,12 @@ import path from 'node:path';
 interface ManifestSample {
   id: string;
   title: string;
+  /** Runtime-URL — det frontend henter for avspilling. */
   url: string;
+  /** Hvis satt: hvor build-skriptet skal lese audio fra (kan være
+   *  forskjellig fra URL — f.eks. lokal sti mens URL er /api/sfx/
+   *  static/...). Default: bruk url. */
+  sourcePath?: string;
   categoryId: string;
   license: string;
   attribution?: string;
@@ -46,7 +51,15 @@ interface Manifest {
   samples: ManifestSample[];
 }
 
-interface LibrarySample extends ManifestSample {
+interface LibrarySample {
+  id: string;
+  title: string;
+  url: string;
+  categoryId: string;
+  license: string;
+  attribution?: string;
+  durationSec?: number;
+  tags?: string[];
   embedding: number[];
 }
 
@@ -123,8 +136,10 @@ async function main() {
     const sample = manifest.samples[i];
     process.stdout.write(`[${i + 1}/${manifest.samples.length}] ${sample.id} … `);
     try {
-      // 1. Last audio-bytes
-      const bytes = await loadAudioBytes(sample.url);
+      // 1. Last audio-bytes — bruk sourcePath hvis satt (lokal sti),
+      //    ellers url (typisk fjern URL).
+      const audioSource = sample.sourcePath ?? sample.url;
+      const bytes = await loadAudioBytes(audioSource);
 
       // 2. Skriv til midlertidig fil + dekode via read_audio (forventer
       //    en URL eller filsti, så vi lagrer ned først)
@@ -146,7 +161,18 @@ async function main() {
         throw new Error(`dim ${embedding.length}, forventet ${EMBEDDING_DIM}`);
       }
 
-      library.samples.push({ ...sample, embedding });
+      // Bygg LibrarySample uten sourcePath (det er kun byggetid-felt).
+      library.samples.push({
+        id: sample.id,
+        title: sample.title,
+        url: sample.url,
+        categoryId: sample.categoryId,
+        license: sample.license,
+        attribution: sample.attribution,
+        durationSec: sample.durationSec,
+        tags: sample.tags,
+        embedding,
+      });
       ok += 1;
       process.stdout.write('OK\n');
     } catch (err: any) {
