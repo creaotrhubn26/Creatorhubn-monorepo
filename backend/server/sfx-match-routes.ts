@@ -19,6 +19,7 @@
  */
 
 import { Router, type Request, type Response } from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import {
@@ -279,16 +280,16 @@ export function createSfxMatchRouter(deps: SfxMatchRouterDeps = {}): Router {
     if (!filePath.startsWith(expectedDir + path.sep) && filePath !== expectedDir) {
       return res.status(400).json({ error: 'invalid_path' });
     }
-    let stat: import('node:fs').Stats;
+    let stat: fs.Stats;
     try {
-      stat = require('node:fs').statSync(filePath);
+      stat = fs.statSync(filePath);
     } catch {
       return res.status(404).json({ error: 'not_found' });
     }
     res.setHeader('Content-Type', 'audio/wav');
     res.setHeader('Content-Length', String(stat.size));
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    require('node:fs').createReadStream(filePath).pipe(res);
+    fs.createReadStream(filePath).pipe(res);
   });
 
   // ── GET /generated/:key.mp3 ───────────────────────────────────

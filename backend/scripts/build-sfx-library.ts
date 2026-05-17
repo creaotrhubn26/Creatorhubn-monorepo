@@ -30,6 +30,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
 interface ManifestSample {
   id: string;
@@ -99,6 +100,71 @@ async function loadAudioBytes(urlOrPath: string): Promise<Uint8Array> {
   return new Uint8Array(fs.readFileSync(abs));
 }
 
+/**
+ * Manuell WAV-decoder for PCM-format. CLAP venter mono Float32Array
+ * @ 48kHz. read_audio() i @xenova/transformers krever AudioContext
+ * (browser-only) — derfor må vi gjøre dette selv i Node.
+ *
+ * Støtter: PCM 16-bit eller 32-bit float, 1 eller 2 kanaler. Stereo
+ * konverteres til mono ved kanal-snitt. Resampling skjer ikke — vi
+ * antar at samples allerede er 48kHz (generate-synthetic-sfx.ts
+ * skriver alltid 48kHz).
+ */
+function decodeWavToFloat32(bytes: Uint8Array): Float32Array {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // RIFF-header
+  const riff = String.fromCharCode(...bytes.subarray(0, 4));
+  const wave = String.fromCharCode(...bytes.subarray(8, 12));
+  if (riff !== 'RIFF' || wave !== 'WAVE') {
+    throw new Error('Ikke en gyldig RIFF/WAVE-fil');
+  }
+  // Finn fmt + data chunks
+  let offset = 12;
+  let numChannels = 1;
+  let bitsPerSample = 16;
+  let audioFormat = 1; // 1 = PCM, 3 = IEEE float
+  let dataOffset = -1;
+  let dataLength = 0;
+  while (offset < bytes.length - 8) {
+    const chunkId = String.fromCharCode(...bytes.subarray(offset, offset + 4));
+    const chunkSize = view.getUint32(offset + 4, true);
+    if (chunkId === 'fmt ') {
+      audioFormat = view.getUint16(offset + 8, true);
+      numChannels = view.getUint16(offset + 10, true);
+      bitsPerSample = view.getUint16(offset + 22, true);
+    } else if (chunkId === 'data') {
+      dataOffset = offset + 8;
+      dataLength = chunkSize;
+      break;
+    }
+    offset += 8 + chunkSize;
+  }
+  if (dataOffset < 0) throw new Error('Ingen data-chunk i WAV');
+
+  const bytesPerSample = bitsPerSample / 8;
+  const totalSamples = dataLength / bytesPerSample;
+  const samplesPerChannel = Math.floor(totalSamples / numChannels);
+  const out = new Float32Array(samplesPerChannel);
+
+  for (let i = 0; i < samplesPerChannel; i += 1) {
+    let sum = 0;
+    for (let ch = 0; ch < numChannels; ch += 1) {
+      const pos = dataOffset + (i * numChannels + ch) * bytesPerSample;
+      if (audioFormat === 1 && bitsPerSample === 16) {
+        sum += view.getInt16(pos, true) / 32768;
+      } else if (audioFormat === 1 && bitsPerSample === 32) {
+        sum += view.getInt32(pos, true) / 2147483648;
+      } else if (audioFormat === 3 && bitsPerSample === 32) {
+        sum += view.getFloat32(pos, true);
+      } else {
+        throw new Error(`Ustøttet format: ${audioFormat} ${bitsPerSample}-bit`);
+      }
+    }
+    out[i] = sum / numChannels;
+  }
+  return out;
+}
+
 async function main() {
   const { manifest: manifestPath, output: outputPath } = parseArgs();
   console.log(`[build-sfx-library] manifest=${manifestPath}`);
@@ -114,8 +180,8 @@ async function main() {
   // Lazy-load CLAP audio-encoder via @xenova/transformers.
   console.log('[build-sfx-library] laster CLAP-modell (kan ta noen sekunder ved første kjøring)…');
   const transformers = await import('@xenova/transformers');
-  const { AutoProcessor, ClapAudioModelWithProjection, read_audio } = transformers as any;
-  if (!ClapAudioModelWithProjection || !AutoProcessor || !read_audio) {
+  const { AutoProcessor, ClapAudioModelWithProjection } = transformers as any;
+  if (!ClapAudioModelWithProjection || !AutoProcessor) {
     throw new Error('CLAP audio-API mangler i @xenova/transformers — sjekk versjon ≥ 2.17');
   }
   const processor = await AutoProcessor.from_pretrained(EMBEDDING_MODEL);
@@ -141,13 +207,10 @@ async function main() {
       const audioSource = sample.sourcePath ?? sample.url;
       const bytes = await loadAudioBytes(audioSource);
 
-      // 2. Skriv til midlertidig fil + dekode via read_audio (forventer
-      //    en URL eller filsti, så vi lagrer ned først)
-      const tmpDir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'sfx-build-'));
-      const tmpFile = path.join(tmpDir, `${sample.id}-source`);
-      fs.writeFileSync(tmpFile, bytes);
-      const audioFloat32: Float32Array = await read_audio(tmpFile, TARGET_SAMPLE_RATE);
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      // 2. Dekod WAV → Float32Array. Vi bruker manuell decoder fordi
+      //    read_audio() i @xenova/transformers krever AudioContext
+      //    (browser-only).
+      const audioFloat32 = decodeWavToFloat32(bytes);
 
       // 3. Send gjennom CLAP audio-encoder
       const inputs = await processor(audioFloat32);
