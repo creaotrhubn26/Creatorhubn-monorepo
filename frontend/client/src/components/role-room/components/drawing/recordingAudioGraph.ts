@@ -45,6 +45,12 @@ export function createRecordingAudioGraph(
 
   const Ctx = (typeof AudioContext !== 'undefined' ? AudioContext : (window as any).webkitAudioContext) as typeof AudioContext;
   const context = new Ctx();
+  // Safari kan starte i 'suspended' state. Resume tvinger en aktiv
+  // kontekst etter user-gesture (createRecordingAudioGraph kalles fra
+  // record-knapp-click så vi er innenfor gesturen).
+  if (context.state === 'suspended' && typeof context.resume === 'function') {
+    context.resume().catch(() => {});
+  }
 
   const audibleGain = context.createGain();
   audibleGain.gain.value = 1;

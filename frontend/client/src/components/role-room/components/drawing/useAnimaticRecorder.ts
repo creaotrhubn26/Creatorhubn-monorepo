@@ -50,16 +50,31 @@ export interface AnimaticRecorderController {
 function pickMimeType(): string | null {
   if (typeof MediaRecorder === 'undefined') return null;
   const candidates = [
+    // WebM (Chrome, Firefox, Edge, nyere Safari)
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
+    // MP4 (Safari 14.1+)
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1',
+    'video/mp4',
   ];
   for (const mime of candidates) {
-    if (MediaRecorder.isTypeSupported(mime)) return mime;
+    try {
+      if (MediaRecorder.isTypeSupported(mime)) return mime;
+    } catch {
+      // Eldre Safari kaster i stedet for å returnere false.
+    }
   }
   return null;
+}
+
+/** Hent filending som matcher mime — viktig for download-filnavn. */
+function extensionForMime(mime: string): string {
+  if (mime.startsWith('video/mp4')) return 'mp4';
+  return 'webm';
 }
 
 export function useAnimaticRecorder(options: UseAnimaticRecorderOptions): AnimaticRecorderController {
@@ -187,12 +202,15 @@ export function useAnimaticRecorder(options: UseAnimaticRecorderOptions): Animat
     }
   }, []);
 
-  const downloadLastBlob = useCallback((filename = `animatic-${Date.now()}.webm`) => {
+  const downloadLastBlob = useCallback((filename?: string) => {
     if (!lastBlob) return;
+    // Bruk riktig filending — Safari produserer mp4, andre produserer webm.
+    const ext = lastBlob.type.startsWith('video/mp4') ? 'mp4' : 'webm';
+    const finalName = filename ?? `animatic-${Date.now()}.${ext}`;
     const url = URL.createObjectURL(lastBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    a.download = finalName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
