@@ -18,6 +18,16 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   failure_count INTEGER DEFAULT 0
 );
 
+-- Idempotente ALTER-er: hvis tabellen ble opprettet av en eldre versjon
+-- (lazy CREATE TABLE i web-push-routes.ts) uten alle kolonnene, legg dem
+-- til her. Trygt å kjøre flere ganger.
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS endpoint TEXT;
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS p256dh TEXT;
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS auth TEXT;
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS user_agent TEXT;
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS failure_count INTEGER DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
   ON push_subscriptions (user_id);
 

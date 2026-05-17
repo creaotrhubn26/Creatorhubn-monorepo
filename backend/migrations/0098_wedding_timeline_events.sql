@@ -26,6 +26,25 @@ CREATE TABLE IF NOT EXISTS wedding_timeline_events (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Idempotente ALTER-er for tabeller opprettet av eldre lazy-init med
+-- delvis skjema (index.ts:26667 har inline CREATE TABLE her). Trygt å
+-- kjøre flere ganger.
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS wedding_id VARCHAR(64);
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS title VARCHAR(255);
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS photo_notes TEXT;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS category VARCHAR(32) DEFAULT 'photo_session';
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS scheduled_time TIMESTAMPTZ;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS duration_minutes INTEGER DEFAULT 30;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS buffer_before_minutes INTEGER DEFAULT 0;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS buffer_after_minutes INTEGER DEFAULT 0;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS estimated_shots INTEGER;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS location_id UUID;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'planned';
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS client_visible BOOLEAN DEFAULT TRUE;
+ALTER TABLE wedding_timeline_events ADD COLUMN IF NOT EXISTS client_can_comment BOOLEAN DEFAULT TRUE;
+
 CREATE INDEX IF NOT EXISTS wedding_timeline_events_wedding_idx
   ON wedding_timeline_events (wedding_id, scheduled_time);
 CREATE INDEX IF NOT EXISTS wedding_timeline_events_sort_idx
