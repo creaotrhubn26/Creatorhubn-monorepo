@@ -849,6 +849,15 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         aspectRatio={aspectRatio}
         stageMaxWidth={stageMaxWidth}
         onContainerRef={(el) => { stageContainerRef.current = el; }}
+        onTap={player.toggle}
+        onSwipeLeft={() => {
+          const next = Math.min(frames.length - 1, player.activeFrameIndex + 1);
+          if (next !== player.activeFrameIndex) player.seekToFrame(next);
+        }}
+        onSwipeRight={() => {
+          const prev = Math.max(0, player.activeFrameIndex - 1);
+          if (prev !== player.activeFrameIndex) player.seekToFrame(prev);
+        }}
       />
 
       {/* Dialog-caption for aktivt frame — viser manuslinje(r) så

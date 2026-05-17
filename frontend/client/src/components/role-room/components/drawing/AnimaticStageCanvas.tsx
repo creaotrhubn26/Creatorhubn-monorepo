@@ -43,6 +43,12 @@ export interface AnimaticStageCanvasProps {
   stageMaxWidth: number;
   /** Container-ref — foreldre bruker den til fullscreen API. */
   onContainerRef?: (el: HTMLDivElement | null) => void;
+  /** Tap på stage — typisk play/pause-toggle (touch-vennlig). */
+  onTap?: () => void;
+  /** Sveip venstre — neste frame. */
+  onSwipeLeft?: () => void;
+  /** Sveip høyre — forrige frame. */
+  onSwipeRight?: () => void;
 }
 
 export const AnimaticStageCanvas = React.forwardRef<
@@ -60,6 +66,9 @@ export const AnimaticStageCanvas = React.forwardRef<
     aspectRatio,
     stageMaxWidth,
     onContainerRef,
+    onTap,
+    onSwipeLeft,
+    onSwipeRight,
   } = props;
 
   // Intern canvas-ref + bro til forwarded.
@@ -72,6 +81,42 @@ export const AnimaticStageCanvas = React.forwardRef<
       (forwardedCanvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = el;
     }
   }, [forwardedCanvasRef]);
+
+  // Pointer-gestures for touch (iPad): tap = play/pause, swipe = frame-nav.
+  // Bruker pointer-events i stedet for touch-events så musa også funker.
+  const pointerStartRef = React.useRef<{ x: number; y: number; t: number } | null>(null);
+  const TAP_MAX_DURATION_MS = 300;
+  const TAP_MAX_MOVE_PX = 10;
+  const SWIPE_MIN_DX_PX = 50;
+
+  const onPointerDown = React.useCallback((e: React.PointerEvent) => {
+    // Hopp over hvis bruker trykker direkte på fullscreen-knappen.
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-testid="animatic-fullscreen"]')) return;
+    pointerStartRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+  }, []);
+
+  const onPointerUp = React.useCallback((e: React.PointerEvent) => {
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+    if (!start) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-testid="animatic-fullscreen"]')) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const dt = Date.now() - start.t;
+
+    // Tap: liten bevegelse, kort tid.
+    if (Math.abs(dx) < TAP_MAX_MOVE_PX && Math.abs(dy) < TAP_MAX_MOVE_PX && dt < TAP_MAX_DURATION_MS) {
+      onTap?.();
+      return;
+    }
+    // Swipe: betydelig horisontal bevegelse, dominerer over vertikal.
+    if (Math.abs(dx) >= SWIPE_MIN_DX_PX && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) onSwipeLeft?.();
+      else onSwipeRight?.();
+    }
+  }, [onTap, onSwipeLeft, onSwipeRight]);
 
   // Cache av lastede bilder per src — kritisk når cross-fade trigger
   // redraw på hver RAF-tick.
@@ -187,6 +232,8 @@ export const AnimaticStageCanvas = React.forwardRef<
   return (
     <Box
       ref={onContainerRef}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
       sx={{
         position: 'relative',
         width: '100%',
@@ -202,6 +249,9 @@ export const AnimaticStageCanvas = React.forwardRef<
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        cursor: onTap ? 'pointer' : 'default',
+        touchAction: 'pan-y', // tillater vertikal scroll, gir oss horisontal swipe
+        userSelect: 'none',
       }}
       data-testid="animatic-stage"
     >
