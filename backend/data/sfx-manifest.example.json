@@ -1,0 +1,48 @@
+{
+  "$schema": "Sample-manifest for CLAP-SFX-pipeline. Bytt URL-er ut med dine egne CC0/CC-BY-samples.",
+  "comment": "Last opp samples til en CDN/S3 (eller server fra Express som statisk-fil), så peker disse URL-ene dit. categoryId må matche en av kategoriene i sfxCategories.ts.",
+  "samples": [
+    {
+      "id": "door-slam-01",
+      "title": "Heavy wooden door slam",
+      "url": "https://example.com/sfx/door-slam-heavy-01.wav",
+      "categoryId": "door-slam",
+      "license": "CC0",
+      "attribution": "Pixabay user xyz",
+      "tags": ["heavy", "wooden", "interior"]
+    },
+    {
+      "id": "footsteps-walking-01",
+      "title": "Footsteps on wooden floor",
+      "url": "https://example.com/sfx/footsteps-walking-wood-01.wav",
+      "categoryId": "footsteps-walking",
+      "license": "CC0",
+      "tags": ["interior", "wood"]
+    },
+    {
+      "id": "thunder-01",
+      "title": "Distant thunder rumble",
+      "url": "https://example.com/sfx/thunder-distant-01.wav",
+      "categoryId": "thunder",
+      "license": "CC-BY",
+      "attribution": "BBC Sound Effects archive",
+      "tags": ["weather", "ambient"]
+    },
+    {
+      "id": "rain-ambient-01",
+      "title": "Steady rain on roof",
+      "url": "https://example.com/sfx/rain-roof-01.wav",
+      "categoryId": "rain",
+      "license": "CC0",
+      "tags": ["weather", "ambient", "looping"]
+    },
+    {
+      "id": "phone-ring-01",
+      "title": "Classic landline ring",
+      "url": "https://example.com/sfx/phone-ring-classic-01.wav",
+      "categoryId": "phone-ring",
+      "license": "CC0",
+      "tags": ["interior", "office"]
+    }
+  ]
+}

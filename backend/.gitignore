@@ -52,3 +52,12 @@ temp/
 # Render
 .render
 .render-bin/
+
+# CLAP-SFX-bibliotek — genereres lokalt fra manifestet.
+# .example.json + .md skal committes; .json (generert) + bruker-
+# editert manifest skal ikke.
+/data/sfx-library.json
+/data/sfx-library.json.tmp
+/data/sfx-manifest.json
+!/data/sfx-manifest.example.json
+!/data/SFX_LIBRARY.md
