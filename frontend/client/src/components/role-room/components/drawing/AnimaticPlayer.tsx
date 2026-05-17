@@ -76,6 +76,7 @@ import {
   STAGE_CANVAS_WIDTH as STAGE_W,
   STAGE_CANVAS_HEIGHT as STAGE_H,
 } from './AnimaticStageCanvas';
+import { AnimaticVoiceoverStrip } from './AnimaticVoiceoverStrip';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -879,79 +880,16 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         </Box>
       )}
 
-      {/* Per-frame voiceover-strip: én rad med mic-knapper per frame.
-          Aktivt frame fremheves, frames med voiceover får grønn tint. */}
-      {frames.length > 1 && (
-        <Box
-          sx={{
-            maxWidth: isFullscreen ? '70%' : stageMaxWidth,
-            mx: 'auto',
-            mb: 0.75,
-            display: 'flex',
-            gap: 0.25,
-            overflowX: 'auto',
-            px: 0.5,
-            py: 0.5,
-            bgcolor: 'rgba(0,0,0,0.3)',
-            borderRadius: 1,
-          }}
-          data-testid="animatic-voiceover-strip"
-        >
-          {frames.map((f, idx) => {
-            const hasVo = !!resolveVoiceoverUrl(f);
-            const isActive = idx === player.activeFrameIndex;
-            return (
-              <Tooltip
-                key={f.id}
-                title={
-                  hasVo
-                    ? `Frame ${idx + 1} — voiceover på (klikk for å bytte)`
-                    : `Frame ${idx + 1} — legg til voiceover`
-                }
-              >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  spacing={0.25}
-                  sx={{
-                    px: 0.5,
-                    py: 0.25,
-                    borderRadius: 0.75,
-                    bgcolor: isActive ? 'rgba(165,180,252,0.2)' : 'transparent',
-                    border: '1px solid',
-                    borderColor: isActive ? 'rgba(165,180,252,0.5)' : 'transparent',
-                    flexShrink: 0,
-                  }}
-                  data-testid={`animatic-voiceover-frame-${idx}`}
-                >
-                  <IconButton
-                    size="small"
-                    onClick={() => openVoiceoverPickerForFrame(f.id)}
-                    sx={{
-                      p: 0.25,
-                      color: hasVo ? '#86efac' : 'rgba(255,255,255,0.5)',
-                    }}
-                  >
-                    <MicNone fontSize="inherit" sx={{ fontSize: 14 }} />
-                  </IconButton>
-                  <Typography variant="caption" sx={{ fontSize: 9, color: 'rgba(255,255,255,0.6)' }}>
-                    {idx + 1}
-                  </Typography>
-                  {hasVo && voiceoverUrls[f.id] && (
-                    <IconButton
-                      size="small"
-                      onClick={() => clearVoiceoverForFrame(f.id)}
-                      sx={{ p: 0.1, color: 'rgba(255,255,255,0.4)' }}
-                    >
-                      <CloseIcon sx={{ fontSize: 10 }} />
-                    </IconButton>
-                  )}
-                </Stack>
-              </Tooltip>
-            );
-          })}
-        </Box>
-      )}
+      <AnimaticVoiceoverStrip
+        frames={frames}
+        activeFrameIndex={player.activeFrameIndex}
+        voiceoverUrls={voiceoverUrls}
+        hasVoiceover={(f) => !!resolveVoiceoverUrl(f as AnimaticFrameMeta)}
+        isFullscreen={isFullscreen}
+        stageMaxWidth={stageMaxWidth}
+        onPick={openVoiceoverPickerForFrame}
+        onClear={clearVoiceoverForFrame}
+      />
 
       {/* SFX-panel for aktiv frame: viser auto-detekterte events +
           lar bruker laste opp egne lyder. Auto-mikset i playback. */}
