@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import { Box, Container, Typography, Paper, Stack, Divider } from '@mui/material';
+import { Box, Container, Typography, Paper, Stack, Divider, Button } from '@mui/material';
 import { AnimaticPlayer } from '../components/drawing/AnimaticPlayer';
 
 const DEMO_SCENE_ID = 'demo-animatic-scene-001';
@@ -130,7 +130,24 @@ const DEMO_FRAMES = [
   },
 ];
 
+// Multi-scene-eksempel: deler de 6 framene i to scener for å vise
+// scene-break-markøren i thumbnail-stripen.
+const DEMO_SCENES = [
+  {
+    id: 'scene-1',
+    name: 'Scene 1 — Natten våkner',
+    frames: DEMO_FRAMES.slice(0, 3),
+  },
+  {
+    id: 'scene-2',
+    name: 'Scene 2 — Ut i regnet',
+    frames: DEMO_FRAMES.slice(3),
+  },
+];
+
 export const DemoAnimaticPage: React.FC = () => {
+  const [multiScene, setMultiScene] = React.useState(false);
+
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Stack spacing={2}>
@@ -164,12 +181,41 @@ export const DemoAnimaticPage: React.FC = () => {
           </Stack>
         </Paper>
 
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Button
+            size="small"
+            variant={multiScene ? 'outlined' : 'contained'}
+            onClick={() => setMultiScene(false)}
+          >
+            Én scene (6 frames)
+          </Button>
+          <Button
+            size="small"
+            variant={multiScene ? 'contained' : 'outlined'}
+            onClick={() => setMultiScene(true)}
+          >
+            To scener (3+3 frames)
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            {multiScene
+              ? 'Lilla skille mellom scene 1 og 2 i thumbnail-stripen.'
+              : 'Bytt til to-scener for å se scene-break-markøren.'}
+          </Typography>
+        </Stack>
+
         <Divider />
 
-        <AnimaticPlayer
-          frames={DEMO_FRAMES}
-          sceneId={DEMO_SCENE_ID}
-        />
+        {multiScene ? (
+          <AnimaticPlayer
+            scenes={DEMO_SCENES}
+            sceneId={DEMO_SCENE_ID}
+          />
+        ) : (
+          <AnimaticPlayer
+            frames={DEMO_FRAMES}
+            sceneId={DEMO_SCENE_ID}
+          />
+        )}
 
         <Paper sx={{ p: 2, bgcolor: 'rgba(165,180,252,0.05)', border: '1px solid rgba(165,180,252,0.2)' }}>
           <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, display: 'block', mb: 0.5 }}>

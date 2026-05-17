@@ -23,6 +23,9 @@ export interface AnimaticThumbnailStripProps {
   /** Total duration i sekunder — for proporsjonal bredde. */
   totalDuration: number;
   onSeekToFrame: (frameIndex: number) => void;
+  /** Frame-indekser som er FØRSTE frame i en ny scene. Tegner et
+   *  tykkere skille til venstre for disse. */
+  sceneBoundaries?: number[];
   /** Compact-modus: kortere thumbnail-høyde. */
   compact?: boolean;
 }
@@ -34,11 +37,13 @@ export const AnimaticThumbnailStrip: React.FC<AnimaticThumbnailStripProps> = ({
   activeFrameIndex,
   totalDuration,
   onSeekToFrame,
+  sceneBoundaries = [],
   compact = false,
 }) => {
   if (frames.length === 0 || totalDuration <= 0) return null;
 
   const height = compact ? 36 : 48;
+  const sceneBoundarySet = new Set(sceneBoundaries);
 
   return (
     <Box
@@ -91,6 +96,11 @@ export const AnimaticThumbnailStrip: React.FC<AnimaticThumbnailStripProps> = ({
                 overflow: 'hidden',
                 bgcolor: '#000',
                 borderRight: idx < frames.length - 1 ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                // Scene-boundary: tykt lilla skille til venstre for første
+                // frame i ny scene (men ikke for index 0).
+                borderLeft: idx > 0 && sceneBoundarySet.has(idx)
+                  ? '3px solid #c4b5fd'
+                  : 'none',
                 opacity: isActive ? 1 : 0.65,
                 transition: 'opacity 0.15s',
                 '&:hover': { opacity: 0.9 },

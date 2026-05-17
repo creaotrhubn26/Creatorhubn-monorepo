@@ -105,8 +105,20 @@ export interface AnimaticFrameMeta {
   voiceoverUrl?: string;
 }
 
-export interface AnimaticPlayerProps {
+/** Multi-scene-input. Hver scene har egne frames; de spilles sekvensielt
+ *  som én sammenhengende animatic. */
+export interface AnimaticScene {
+  id: string;
+  name?: string;
   frames: AnimaticFrameMeta[];
+}
+
+export interface AnimaticPlayerProps {
+  /** Single-scene: bare frames. Multi-scene: bruk `scenes` i stedet.
+   *  Hvis begge er satt, vinner `scenes`. */
+  frames?: AnimaticFrameMeta[];
+  /** Multi-scene-input. Spilles sekvensielt som én lang animatic. */
+  scenes?: AnimaticScene[];
   /** Standard sett av hastigheter. */
   speeds?: number[];
   /** Aspect ratio for stage-området (default 16:9). */
@@ -131,7 +143,8 @@ const STAGE_CANVAS_WIDTH = STAGE_W;
 const STAGE_CANVAS_HEIGHT = STAGE_H;
 
 export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
-  frames,
+  frames: framesProp,
+  scenes,
   speeds = [0.5, 1, 1.5, 2],
   aspectRatio = 16 / 9,
   compact = false,
@@ -139,6 +152,28 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   transitionDuration = 0.3,
   sceneId,
 }) => {
+  // Flat frame-array: bruker scenes hvis satt, ellers frames. Bygger
+  // også sceneBoundaries (indekser hvor en ny scene starter) for
+  // visuelle skiller i timeline/thumbnail-strip.
+  const { frames, sceneBoundaries, sceneNames } = React.useMemo(() => {
+    if (scenes && scenes.length > 0) {
+      const flat: AnimaticFrameMeta[] = [];
+      const boundaries: number[] = [];
+      const names: Array<{ index: number; name: string }> = [];
+      for (const sc of scenes) {
+        if (flat.length > 0) boundaries.push(flat.length); // hopp i array
+        if (sc.name) names.push({ index: flat.length, name: sc.name });
+        flat.push(...sc.frames);
+      }
+      return { frames: flat, sceneBoundaries: boundaries, sceneNames: names };
+    }
+    return {
+      frames: framesProp ?? [],
+      sceneBoundaries: [] as number[],
+      sceneNames: [] as Array<{ index: number; name: string }>,
+    };
+  }, [scenes, framesProp]);
+
   const [speed, setSpeed] = React.useState(1);
   const [loop, setLoop] = React.useState(false);
   const [audioUrl, setAudioUrl] = React.useState<string | null>(null);
@@ -855,6 +890,19 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const activeFrame = player.activeFrameIndex >= 0 ? frames[player.activeFrameIndex] : null;
   const hasFrames = frames.length > 0 && player.totalDuration > 0;
 
+  // Finn navn på scene som aktiv frame tilhører (kun relevant ved
+  // multi-scene-input).
+  const activeSceneName = React.useMemo(() => {
+    if (sceneNames.length === 0 || player.activeFrameIndex < 0) return null;
+    // Finn siste sceneName.index som er <= activeFrameIndex.
+    let current: string | null = null;
+    for (const sn of sceneNames) {
+      if (sn.index <= player.activeFrameIndex) current = sn.name;
+      else break;
+    }
+    return current;
+  }, [sceneNames, player.activeFrameIndex]);
+
   // Preload bilder for de neste 2 frames så switch ikke flimrer.
   React.useEffect(() => {
     if (!hasFrames || player.activeFrameIndex < 0) return;
@@ -963,6 +1011,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           </Stack>
         )}
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 10, ml: audioName ? 1 : 0 }}>
+          {activeSceneName ? `${activeSceneName} · ` : ''}
           Frame {player.activeFrameIndex + 1} / {frames.length}
         </Typography>
         <Tooltip title="Hjelp og snarveier">
@@ -1089,6 +1138,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
           activeFrameIndex={player.activeFrameIndex}
           totalDuration={player.totalDuration}
           onSeekToFrame={(idx) => player.seekToFrame(idx)}
+          sceneBoundaries={sceneBoundaries}
           compact={compact}
         />
       </Box>
