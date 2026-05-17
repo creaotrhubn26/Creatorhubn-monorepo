@@ -78,6 +78,7 @@ import {
 } from './AnimaticStageCanvas';
 import { AnimaticVoiceoverStrip } from './AnimaticVoiceoverStrip';
 import { AnimaticSfxPanel } from './AnimaticSfxPanel';
+import { AnimaticTransportBar } from './AnimaticTransportBar';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -948,86 +949,27 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         />
       </Box>
 
-      {/* Transport-kontroller */}
-      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ px: 0.5 }}>
-        <Tooltip title={player.isPlaying ? 'Pause' : 'Spill av'}>
-          <IconButton
-            size="small"
-            onClick={player.toggle}
-            sx={{ color: '#a5b4fc' }}
-            data-testid="animatic-toggle"
-          >
-            {player.isPlaying ? <Pause fontSize="small" /> : <PlayArrow fontSize="small" />}
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Start på nytt">
-          <IconButton
-            size="small"
-            onClick={() => player.seek(0)}
-            sx={{ color: 'rgba(255,255,255,0.7)' }}
-            data-testid="animatic-restart"
-          >
-            <Replay fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={loop ? 'Loop på' : 'Loop av'}>
-          <ToggleButton
-            size="small"
-            value="loop"
-            selected={loop}
-            onChange={() => setLoop((l) => !l)}
-            sx={{
-              color: loop ? '#a5b4fc' : 'rgba(255,255,255,0.5)',
-              border: 'none',
-              p: 0.5,
-              '&.Mui-selected': { bgcolor: 'rgba(165,180,252,0.15)' },
-            }}
-          >
-            <Loop fontSize="small" />
-          </ToggleButton>
-        </Tooltip>
-        <Tooltip title={audioUrl ? 'Bytt lydspor' : 'Legg til voiceover / midlertidig musikk'}>
-          <IconButton
-            size="small"
-            onClick={() => audioFileInputRef.current?.click()}
-            sx={{ color: audioUrl ? '#86efac' : 'rgba(255,255,255,0.7)' }}
-            data-testid="animatic-audio-upload"
-          >
-            <MicNone fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        {recorder.isSupported && (
-          <Tooltip
-            title={
-              recorder.state === 'recording'
-                ? 'Stopp opptak'
-                : `Spill inn animatic til WebM${audioUrl ? ' (med lyd)' : ''}`
-            }
-          >
-            <IconButton
-              size="small"
-              onClick={handleRecord}
-              sx={{ color: recorder.state === 'recording' ? '#fca5a5' : 'rgba(255,255,255,0.7)' }}
-              data-testid="animatic-record"
-            >
-              {recorder.state === 'recording'
-                ? <StopIcon fontSize="small" />
-                : <FiberManualRecord fontSize="small" />}
-            </IconButton>
-          </Tooltip>
-        )}
-        {recorder.lastBlob && recorder.state === 'idle' && (
-          <Tooltip title="Last ned siste opptak (.webm)">
-            <IconButton
-              size="small"
-              onClick={() => recorder.downloadLastBlob()}
-              sx={{ color: '#86efac' }}
-              data-testid="animatic-download"
-            >
-              <DownloadIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
+      <AnimaticTransportBar
+        isPlaying={player.isPlaying}
+        onTogglePlay={player.toggle}
+        onSeekToStart={() => player.seek(0)}
+        loop={loop}
+        onToggleLoop={() => setLoop((l) => !l)}
+        audioUrl={audioUrl}
+        onOpenAudioPicker={() => audioFileInputRef.current?.click()}
+        recorderState={recorder.state}
+        recorderIsSupported={recorder.isSupported}
+        recorderHasLastBlob={!!recorder.lastBlob}
+        onRecord={handleRecord}
+        onDownloadLastBlob={() => recorder.downloadLastBlob()}
+        currentTime={player.currentTime}
+        totalDuration={player.totalDuration}
+        speed={speed}
+        speeds={speeds}
+        onSpeedChange={setSpeed}
+      >
+        {/* Hidden audio-elementer og file-inputs — refs eies av
+            AnimaticPlayer så Web Audio-grafen kan kobles til dem. */}
         <input
           ref={audioFileInputRef}
           type="file"
@@ -1053,9 +995,6 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             data-testid="animatic-audio-element"
           />
         )}
-        {/* Per-frame voiceover — alltid montert hvis vi har minst én
-            voiceover-URL, slik at Web Audio kan koble til. src settes
-            av sync-effekten basert på aktivt frame. */}
         {Object.keys(voiceoverUrls).length > 0 && (
           <audio
             ref={setVoiceoverElement}
@@ -1064,29 +1003,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             data-testid="animatic-voiceover-element"
           />
         )}
-
-        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, ml: 0.5, fontFamily: 'monospace' }}>
-          {formatTime(player.currentTime)} / {formatTime(player.totalDuration)}
-        </Typography>
-
-        <Box sx={{ flex: 1 }} />
-
-        <Select
-          size="small"
-          value={speed}
-          onChange={(e) => setSpeed(Number(e.target.value))}
-          variant="standard"
-          disableUnderline
-          sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', '& .MuiSelect-icon': { color: 'rgba(255,255,255,0.5)' } }}
-          data-testid="animatic-speed"
-        >
-          {speeds.map((s) => (
-            <MenuItem key={s} value={s} sx={{ fontSize: 12 }}>
-              {s}×
-            </MenuItem>
-          ))}
-        </Select>
-      </Stack>
+      </AnimaticTransportBar>
     </Box>
   );
 };
