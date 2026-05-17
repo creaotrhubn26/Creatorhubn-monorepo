@@ -18,6 +18,7 @@ import NotFound from '@/pages/not-found';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import VisualCMSAdminDashboard from '@/components/admin/VisualCMSAdminDashboard';
 import EquipmentAdminPage from '@/pages/EquipmentAdminPage';
+import PhotoVenuesAdminPage from '@/pages/PhotoVenuesAdminPage';
 
 const AdminBootstrapApp = () => (
   <QueryClientProvider client={queryClient}>
@@ -41,6 +42,7 @@ const AdminBootstrapApp = () => (
                         </Route>
                         <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard} />
                         <Route path="/equipment-admin" component={EquipmentAdminPage} />
+                        <Route path="/photo-venues-admin" component={PhotoVenuesAdminPage} />
                         <Route component={NotFound} />
                       </Switch>
                       <Toaster />

@@ -31,6 +31,9 @@ import {
   Rocket as RocketIcon,
   Tag as TagIcon,
 } from '@mui/icons-material';
+import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
+import ResearchProgressLive from './ResearchProgressLive';
+import type { ResearchStage, ResearchProgressStatus } from '../../hooks/useResearchProgress';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import AdsAttributionInspector from './AdsAttributionInspector';
 import FacebookVideoPublisher from './FacebookVideoPublisher';
@@ -81,6 +84,13 @@ type RoleRoomAgentDialogProps = {
   }) => Promise<void> | void;
   onApply: (result: RoleRoomAgentProducerBootstrapResult) => Promise<void> | void;
   onCreateProject?: (result: RoleRoomAgentProducerBootstrapResult) => Promise<void> | void;
+  /** Live progress (#2) — pass through from the parent's useResearchProgress
+   *  hook. When status === 'streaming' the dialog renders the per-stage
+   *  ticking timeline above the existing form. Optional so callers that
+   *  haven't migrated to the SSE flow can omit them. */
+  progressStages?: ResearchStage[];
+  progressStatus?: ResearchProgressStatus;
+  progressError?: string | null;
 };
 
 function renderList(items: string[]) {
@@ -215,6 +225,9 @@ export default function RoleRoomAgentDialog({
   onGenerate,
   onApply,
   onCreateProject,
+  progressStages,
+  progressStatus,
+  progressError,
 }: RoleRoomAgentDialogProps) {
   const [websiteUrl, setWebsiteUrl] = useState(initialWebsiteUrl ?? '');
   const [organizationNumber, setOrganizationNumber] = useState(initialOrganizationNumber ?? '');
@@ -228,6 +241,21 @@ export default function RoleRoomAgentDialog({
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
+
+  // Item #155 — lytt etter cross-component navigasjon (MarketingPlanPanel
+  // sin "Send til feed-planner"-knapp dispatcher denne). Vi gjør det med
+  // window event istedenfor prop-drilling fordi PostCard er dypt nestet
+  // og prop-kjeden ville bli kontekst-spamming.
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      const detail = (e as CustomEvent).detail as { tab?: string } | null;
+      if (detail?.tab === 'feed-planner') {
+        setActiveTab('feed-planner');
+      }
+    };
+    window.addEventListener('role-room:navigate-tab', handler);
+    return () => window.removeEventListener('role-room:navigate-tab', handler);
+  }, []);
 
   // Track whether the current generated result has already been turned
   // into a real project. Lets us (a) nudge the user while they're still
@@ -697,6 +725,23 @@ export default function RoleRoomAgentDialog({
           flexDirection: 'column',
         }}
       >
+        {/* Live progress (#2) — only the research tab benefits from this;
+            other tabs (merch, feed-planner, etc.) consume the finished
+            result. We render above the tab content so the user sees
+            stages tick off without the form jumping around. */}
+        {activeTab === 'research'
+          && progressStatus
+          && progressStatus !== 'idle'
+          && (progressStatus === 'streaming' || (progressStages && progressStages.length > 0)) ? (
+            <Box sx={{ px: { xs: 1.4, md: 2 }, pt: { xs: 1.4, md: 2 } }}>
+              <ResearchProgressLive
+                status={progressStatus}
+                stages={progressStages ?? []}
+                error={progressError ?? null}
+              />
+            </Box>
+          ) : null}
+
         {activeTab === 'chat' && currentUserId ? (
           <Box
             sx={{
@@ -1792,6 +1837,17 @@ export default function RoleRoomAgentDialog({
         projectId={projectId}
         platform={accessRequestPlatform?.platform ?? 'youtube'}
         platformLabel={accessRequestPlatform?.label ?? ''}
+      />
+
+      {/* Item 1, 7, 8, 11, 18, 19, 21, 22, 23, 24, 25 — auto-opens once
+          per researchId (tracked in sessionStorage). When user dismisses,
+          scrolls focus to the next-step CTA. Primary action navigates to
+          the marketing-plan tab so the user has a clear next-step. */}
+      <RoleRoomResearchCompleteOverlay
+        result={result}
+        projectId={projectId}
+        primaryActionLabel="Til Marketing Plan"
+        onPrimaryAction={() => setActiveTab('marketing-plan')}
       />
     </Dialog>
   );

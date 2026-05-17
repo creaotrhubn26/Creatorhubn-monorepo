@@ -185,6 +185,13 @@ import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemory
 import UniversalKeyboardShortcuts from '../keyboard-shortcuts/UniversalKeyboardShortcuts';
 import SmartTimingPreferences from '../smart-timing/SmartTimingPreferences';
 import HelpdeskSystem from './HelpdeskSystem';
+// Slice 9X.17 — fotograf-spesifikke widgets som surface'r data fra
+// /api/photographer/* inni de generiske dashboardfanene.
+import {
+  PhotographerWorklogWidget,
+  PhotographerAdminWidgets,
+  PhotographerOtherProjectsTimelineWidget,
+} from '../photographer/PhotographerTabWidgets';
 
 // Import Timeline & Showcase components for universal access
 import ProjectTimeline from '../project/ProjectTimeline';
@@ -2930,10 +2937,22 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         {/* Admin Dashboard Switcher */}
         {renderAdminDashboardSwitcher()}
 
-        {/* Project Creation Dialog (Submission → Project) */}
+        {/* Project Creation Dialog (Submission → Project, eller manuelt fra "Nytt prosjekt"-knapp) */}
         {uiSettings.submissionProjectData && (
-        <Dialog open={showProjectCreation} onClose={() => setShowProjectCreation(false)} maxWidth="lg" fullWidth>
-          <DialogTitle>Opprett prosjekt fra innsending</DialogTitle>
+        <Dialog
+          open={showProjectCreation}
+          onClose={() => {
+            setShowProjectCreation(false);
+            setUiSettings((prev) => ({ ...prev, submissionProjectData: null }));
+          }}
+          maxWidth="lg"
+          fullWidth
+        >
+          <DialogTitle>
+            {uiSettings.submissionProjectData?.isManual
+              ? 'Nytt prosjekt'
+              : 'Opprett prosjekt fra innsending'}
+          </DialogTitle>
           <DialogContent dividers>
             <RealTimeProvider>
               <VisualEditorProvider>
@@ -2977,6 +2996,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           await queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
                           queryClient.invalidateQueries({ queryKey: [`/api/dashboard/${profession}`] });
                           queryClient.invalidateQueries({ queryKey: ['/api/submissions'] });
+                          // Slice 9X.14 — naviger fotograf direkte til
+                          // prosjekt-detalj med ProjectTimeline + next-steps,
+                          // så hun ser hva som er auto-generert og hva som
+                          // gjenstår frem til leveranse.
+                          if (profession === 'photographer' && projectId) {
+                            queryClient.invalidateQueries({ queryKey: ['/api/photographer/projects'] });
+                            setLocation(`/photographer/projects/${projectId}?created=1`);
+                          }
                         }}
                       />
                     </ProjectProvider>
@@ -2986,13 +3013,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             </RealTimeProvider>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setShowProjectCreation(false)}>Lukk</Button>
+            <Button onClick={() => {
+              setShowProjectCreation(false);
+              setUiSettings((prev) => ({ ...prev, submissionProjectData: null }));
+            }}>Lukk</Button>
           </DialogActions>
         </Dialog>
         )}
 
-        {/* Header - WCAG Compliant */}
-        {uiSettings.submissionProjectData && (
+        {/* Header - WCAG Compliant — kun for ekte inquiry-konverteringer,
+            ikke for manuell "Nytt prosjekt"-knapp. */}
+        {uiSettings.submissionProjectData && !uiSettings.submissionProjectData.isManual && (
           <MuiCard sx={{ mb: 2 }}>
             <MuiCardContent>
               <Typography component="div" variant="h6" sx={{ color: theming.colors.primary, mb: 1 }}>
@@ -4552,8 +4583,120 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             </Box>
 
           <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'overview')}>
+            {/* Slice 9X.9.A — Fotograf-mission-control: hurtigtilgang til
+                prosjekter, klienter og lønnsomhet. Kun synlig for fotograf. */}
+            {profession === 'photographer' && (
+              <Box sx={{ mb: { xs: 3, md: 4 } }}>
+                {/* Slice 9X.13 — primær CTA: nytt prosjekt manuelt
+                    (uten å vente på en kunde-forespørsel). Åpner samme
+                    ProjectCreationWithMemoryCards-dialog som inquiry-flyt. */}
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddCircle />}
+                    size="large"
+                    onClick={() => {
+                      setUiSettings((prev) => ({
+                        ...prev,
+                        submissionProjectData: { isManual: true },
+                      }));
+                      setShowProjectCreation(true);
+                    }}
+                  >
+                    Nytt prosjekt
+                  </Button>
+                </Box>
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Paper
+                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
+                      onClick={() => window.location.assign('/photographer/projects')}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <Folder color="primary" />
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>Prosjekter</Typography>
+                          <Typography variant="caption" color="text.secondary">Alle oppdrag & margin</Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Paper
+                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
+                      onClick={() => window.location.assign('/photographer/clients')}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <Group color="primary" />
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>Klienter</Typography>
+                          <Typography variant="caption" color="text.secondary">CRM & historikk</Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Paper
+                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
+                      onClick={() => window.location.assign('/photographer/profitability')}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <TrendingUp color="success" />
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>Lønnsomhet</Typography>
+                          <Typography variant="caption" color="text.secondary">Margin per tjeneste</Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Paper
+                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
+                      onClick={() => window.location.assign('/photographer/print-orders')}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <LocalShipping color="primary" />
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>Print-ordrer</Typography>
+                          <Typography variant="caption" color="text.secondary">Leveranser & shipping</Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Paper
+                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
+                      onClick={() => window.location.assign('/photographer/equipment')}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <CameraAlt color="primary" />
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>Utstyr</Typography>
+                          <Typography variant="caption" color="text.secondary">Garanti & firmware</Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Paper
+                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
+                      onClick={() => window.location.assign('/photographer/settings')}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <Settings color="primary" />
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>Innstillinger</Typography>
+                          <Typography variant="caption" color="text.secondary">Profil, logo, abonnement</Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  </Grid2>
+                </Grid2>
+              </Box>
+            )}
+
             {/* Unified Customer Inquiry & Email Center - Floating Overlay */}
-            <Box sx={{ 
+            <Box sx={{
               mb: { xs: 3, md: 4 },
               position: 'relative',
               zIndex: 10,
@@ -5849,8 +5992,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {/* Tab 4: Evendi */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'wedding-timeline')}>
                 <Box sx={{ width: '100%' }}>
+                  {/* Slice 9X.17 — for fotografer: vis også non-wedding-prosjekter med timeline */}
+                  {profession === 'photographer' && <PhotographerOtherProjectsTimelineWidget />}
                   <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                    <MuiTabs 
+                    <MuiTabs
                       value={selectedTimelineTab}
                       onChange={handleTimelineTabChange}
                       variant="scrollable"
@@ -6032,6 +6177,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 10: Worklog */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'worklog')}>
+                {/* Slice 9X.17 — fotograf-spesifikk widget over generisk worklog */}
+                {profession === 'photographer' && <PhotographerWorklogWidget />}
                 <SettingsProvider>
                   <RealTimeProvider>
                     <VisualEditorProvider>
@@ -6237,6 +6384,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {/* Tab: Administrasjon */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'administration')}>
                 <Box sx={{ p: 3 }}>
+                  {/* Slice 9X.17 — surface lønnsomhet + ufakturerte for fotograf */}
+                  {profession === 'photographer' && <PhotographerAdminWidgets />}
                   <Grid2 container spacing={3}>
                     <Grid2 size={{ xs: 12 }}>
                       <AdministrationHub

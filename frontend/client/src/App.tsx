@@ -200,6 +200,8 @@ import PhotographerSettings from '@/pages/photographer-settings';
 import WeddingAccessPage from '@/pages/wedding-access';
 import WeddingClientFormPage from '@/pages/wedding-client-form';
 import PhotographerWeddingDay from '@/pages/photographer-wedding-day';
+import PhotographerWeddingWalkthrough from '@/pages/photographer-wedding-walkthrough';
+import PhotographerWeddingInvoice from '@/pages/photographer-wedding-invoice';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
@@ -700,6 +702,8 @@ function App() {
                   <Route path="/wedding/access" component={WeddingAccessPage} />
                   <Route path="/wedding/timeline/:token" component={WeddingClientFormPage} />
                   <Route path="/photographer/wedding-day/:weddingId" component={PhotographerWeddingDay} />
+                  <Route path="/photographer/wedding/:weddingId/pre" component={PhotographerWeddingWalkthrough} />
+                  <Route path="/photographer/wedding/:weddingId/invoice" component={PhotographerWeddingInvoice} />
                   <Route
                     path="/videographer-dashboard-material"
                     component={() => <SmartDashboardRoute profession="videographer" />}

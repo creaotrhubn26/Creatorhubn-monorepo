@@ -358,6 +358,8 @@ import { setupEvendiBridgesRoutes } from "./evendi-bridges-routes";
 import { setupEvendiMiscRoutes } from "./evendi-misc-routes";
 import { setupRoleRoomMarketingPlanRoutes } from "./role-room-marketing-plan-routes";
 import { setupRoleRoomAgentCoreRoutes } from "./role-room-agent-core-routes";
+import { setupRoleRoomDataSourcesRoutes } from "./role-room-data-sources-routes";
+import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-routes";
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
@@ -457,6 +459,14 @@ import { setupAdminRefundRequestsRoutes } from "./admin-refund-requests-routes";
 import { setupAdminStatsRoutes } from "./admin-stats-routes";
 import { setupAdminDashboardRoutes } from "./admin-dashboard-routes";
 import { setupAdminUsersRoutes } from "./admin-users-routes";
+import { setupWeddingMileageRoutes } from "./wedding-mileage-routes";
+import { setupPhotoVenuesRoutes } from "./photo-venues-routes";
+import { setupWeddingWalkthroughRoutes } from "./wedding-walkthrough-routes";
+import { setupWeddingLocationAlternativesRoutes } from "./wedding-location-alternatives-routes";
+import { setupWeddingExpensesRoutes } from "./wedding-expenses-routes";
+import { setupWeddingInvoiceRoutes } from "./wedding-invoice-routes";
+import { setupWeddingGalleryDeliveryRoutes } from "./wedding-gallery-delivery-routes";
+import { setupWebPushRoutes, sendPushToUser } from "./web-push-routes";
 import {
   createScopedAuthMiddleware,
   parseAuthMode,
@@ -1262,6 +1272,29 @@ type ActiveSessionData = {
 };
 
 const activeSessions: Map<string, ActiveSessionData> = new Map();
+
+// Pending-2FA-state for login-flow. Når en bruker har TOTP aktivert,
+// stasher vi alt vi trenger for å fullføre sessionen mens vi venter på
+// 6-sifret kode fra Authenticator-appen. 5 min TTL — utløper hvis
+// bruker ikke fullfører.
+interface PendingTwoFactorLogin {
+  userId: string;
+  sessionData: ActiveSessionData;
+  responsePayload: Record<string, unknown>;
+  expiresAt: number;
+}
+const pendingTwoFactorLogins: Map<string, PendingTwoFactorLogin> = new Map();
+// Eksponer mapen til andre moduler (role-room-routes Google-callback)
+// så Google-login kan presse en pending-state inn samme broker som
+// vanlig login bruker. Slik fungerer /complete-2fa-endpointet for
+// begge login-typene uten å duplisere endepunkter.
+(globalThis as { __roleRoomPendingTwoFactorLogins?: Map<string, PendingTwoFactorLogin> }).__roleRoomPendingTwoFactorLogins = pendingTwoFactorLogins;
+function purgeExpiredPendingTwoFactor(): void {
+  const now = Date.now();
+  for (const [token, ctx] of pendingTwoFactorLogins.entries()) {
+    if (ctx.expiresAt < now) pendingTwoFactorLogins.delete(token);
+  }
+}
 void hydratePersistedAuthSessions<ActiveSessionData>(pool, activeSessions)
   .then((count) => {
     if (count > 0) {
@@ -22343,13 +22376,22 @@ app.post("/api/photographer/galleries", async (req, res) => {
       if (lookup.images != null) settings.contractedImages = lookup.images;
     }
     const canonicalClientId = await ensureCanonicalClientId(session.userId, clientEmail, clientName);
+    // Slice 9X.9.A — also persist project_id to dedicated column (migration 0091)
+    // so /api/photographer/projects/:id can join galleries directly.
+    if (projectId) {
+      try {
+        await pool.query(
+          `ALTER TABLE photographer_client_galleries ADD COLUMN IF NOT EXISTS project_id VARCHAR(64)`,
+        );
+      } catch { /* idempotent */ }
+    }
     const result = await pool.query(
       `INSERT INTO photographer_client_galleries
          (photographer_id, client_name, client_email, project_title, access_token,
-          gallery_settings, status, canonical_client_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, NOW(), NOW())
+          gallery_settings, status, canonical_client_id, project_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, NOW(), NOW())
        RETURNING id, access_token, created_at`,
-      [session.userId, clientName, clientEmail, projectTitle, accessToken, settings, canonicalClientId],
+      [session.userId, clientName, clientEmail, projectTitle, accessToken, settings, canonicalClientId, projectId],
     );
     const row = result.rows[0];
     // Analytics — bind gallery-creation til økosystem-event-loggen.
@@ -22622,6 +22664,717 @@ app.post("/api/photographer/galleries/:id/mark-complete", async (req, res) => {
   } catch (error) {
     console.error("[photographer-galleries] mark-complete failed", error);
     res.status(500).json({ error: "mark_complete_failed" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Gallery detail + activity + notify-client (Slice 9X.10 — UniversalShowcase leveranse)
+// ─────────────────────────────────────────────────────────────────────────
+
+// GET /api/photographer/galleries/:id — full detail med bilder + aktivitets-counts.
+app.get("/api/photographer/galleries/:id", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
+
+  try {
+    const galleryQ = await pool.query(
+      `SELECT g.id, g.client_name, g.client_email, g.project_title,
+              g.access_token, g.gallery_settings, g.status,
+              g.created_at, g.updated_at, g.completed_at,
+              g.project_id, g.contract_id,
+              COALESCE(img.image_count, 0)::int        AS image_count,
+              COALESCE(com.comment_count, 0)::int      AS comment_count,
+              COALESCE(sel.selection_count, 0)::int    AS selection_count,
+              COALESCE(sel.favorite_count, 0)::int     AS favorite_count
+         FROM photographer_client_galleries g
+         LEFT JOIN (
+           SELECT gallery_id, COUNT(*) AS image_count
+             FROM client_gallery_images
+            WHERE is_visible = true
+            GROUP BY gallery_id
+         ) img ON img.gallery_id = g.id
+         LEFT JOIN (
+           SELECT gallery_id, COUNT(*) AS comment_count
+             FROM client_image_comments
+            GROUP BY gallery_id
+         ) com ON com.gallery_id = g.id
+         LEFT JOIN (
+           SELECT gallery_id,
+                  COUNT(*) AS selection_count,
+                  COUNT(*) FILTER (WHERE selection_type = 'favorite') AS favorite_count
+             FROM client_image_selections
+            GROUP BY gallery_id
+         ) sel ON sel.gallery_id = g.id
+        WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (galleryQ.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+    const g = galleryQ.rows[0];
+
+    const imagesQ = await pool.query(
+      `SELECT id, image_title, image_description, thumbnail_url, full_size_url,
+              tags, sort_order, created_at
+         FROM client_gallery_images
+        WHERE gallery_id = $1 AND is_visible = true
+        ORDER BY sort_order ASC, created_at ASC
+        LIMIT 500`,
+      [galleryId],
+    );
+
+    res.json({
+      gallery: {
+        id: g.id,
+        clientName: g.client_name,
+        clientEmail: g.client_email,
+        projectTitle: g.project_title,
+        accessToken: g.access_token,
+        shareUrl: buildGalleryShareUrl(g.access_token),
+        settings: g.gallery_settings ?? {},
+        status: g.status,
+        projectId: g.project_id ?? null,
+        contractId: g.contract_id ?? null,
+        imageCount: Number(g.image_count ?? 0),
+        commentCount: Number(g.comment_count ?? 0),
+        selectionCount: Number(g.selection_count ?? 0),
+        favoriteCount: Number(g.favorite_count ?? 0),
+        createdAt: g.created_at,
+        updatedAt: g.updated_at,
+        completedAt: g.completed_at,
+      },
+      images: imagesQ.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        title: r.image_title,
+        description: r.image_description ?? null,
+        thumbnailUrl: r.thumbnail_url,
+        fullSizeUrl: r.full_size_url,
+        tags: r.tags ?? [],
+        sortOrder: Number(r.sort_order ?? 0),
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[photographer-galleries] detail failed:', err);
+    res.status(500).json({ error: 'detail_failed' });
+  }
+});
+
+// GET /api/photographer/galleries/:id/activity — aggregert klient-aktivitet
+// (kommentarer + favoritter + selections) for å vise en feed på fotograf-siden.
+app.get("/api/photographer/galleries/:id/activity", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
+
+  try {
+    const owned = await pool.query(
+      `SELECT 1 FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+
+    const [commentsQ, selectionsQ] = await Promise.all([
+      pool.query(
+        `SELECT c.id, c.image_id, c.client_name, c.client_email,
+                c.comment, c.comment_type, c.status,
+                c.photographer_response, c.responded_at, c.created_at,
+                img.image_title, img.thumbnail_url
+           FROM client_image_comments c
+           LEFT JOIN client_gallery_images img ON img.id = c.image_id
+          WHERE c.gallery_id = $1
+          ORDER BY c.created_at DESC
+          LIMIT 200`,
+        [galleryId],
+      ),
+      pool.query(
+        `SELECT s.id, s.image_id, s.client_email, s.selection_type,
+                s.priority, s.client_notes, s.created_at,
+                img.image_title, img.thumbnail_url
+           FROM client_image_selections s
+           LEFT JOIN client_gallery_images img ON img.id = s.image_id
+          WHERE s.gallery_id = $1
+          ORDER BY s.created_at DESC
+          LIMIT 500`,
+        [galleryId],
+      ),
+    ]);
+
+    res.json({
+      comments: commentsQ.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        imageId: r.image_id,
+        imageTitle: r.image_title ?? null,
+        imageThumbnail: r.thumbnail_url ?? null,
+        clientName: r.client_name,
+        clientEmail: r.client_email,
+        comment: r.comment,
+        commentType: r.comment_type,
+        status: r.status,
+        photographerResponse: r.photographer_response,
+        respondedAt: r.responded_at,
+        createdAt: r.created_at,
+      })),
+      selections: selectionsQ.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        imageId: r.image_id,
+        imageTitle: r.image_title ?? null,
+        imageThumbnail: r.thumbnail_url ?? null,
+        clientEmail: r.client_email,
+        selectionType: r.selection_type,
+        priority: Number(r.priority ?? 0),
+        clientNotes: r.client_notes,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[photographer-galleries] activity failed:', err);
+    res.status(500).json({ error: 'activity_failed' });
+  }
+});
+
+// POST /api/photographer/galleries/:id/notify-client — send share-URL på epost.
+// Body: { customMessage?: string }
+app.post("/api/photographer/galleries/:id/notify-client", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
+  const customMessage = typeof req.body?.customMessage === 'string'
+    ? req.body.customMessage.trim().slice(0, 2000) : null;
+
+  try {
+    const galleryQ = await pool.query(
+      `SELECT g.client_name, g.client_email, g.project_title, g.access_token,
+              u.first_name AS photographer_first, u.last_name AS photographer_last,
+              u.email AS photographer_email, u.company_name
+         FROM photographer_client_galleries g
+         LEFT JOIN users u ON u.id = g.photographer_id::varchar
+        WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (galleryQ.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+    const g = galleryQ.rows[0];
+    if (!g.client_email || !String(g.client_email).includes('@')) {
+      return res.status(400).json({ error: 'invalid_client_email' });
+    }
+
+    const shareUrl = buildGalleryShareUrl(g.access_token);
+    const photographerName = [g.photographer_first, g.photographer_last]
+      .filter(Boolean).join(' ') || g.company_name || 'Creatorhubn';
+
+    // Reuse existing nodemailer-mønster (GMAIL_USER + GMAIL_APP_PASSWORD)
+    const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
+    const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
+    if (!mailUser || !mailPass) {
+      return res.status(503).json({
+        error: 'mailer_not_configured',
+        message: 'Sett GMAIL_USER + GMAIL_APP_PASSWORD i Render for å sende epost.',
+        shareUrl,
+      });
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: mailUser, pass: mailPass },
+    });
+
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="color:#1a1a1a;margin:0 0 16px;">Hei ${escapeHtml(g.client_name)},</h2>
+        <p style="font-size:15px;line-height:1.6;color:#333;">
+          ${customMessage
+            ? escapeHtml(customMessage)
+            : `Bildene fra <strong>${escapeHtml(g.project_title)}</strong> er klare. Klikk knappen under for å se galleriet ditt.`
+          }
+        </p>
+        <div style="margin:32px 0;text-align:center;">
+          <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Åpne galleriet</a>
+        </div>
+        <p style="font-size:13px;color:#666;line-height:1.5;">
+          Eller kopier denne lenken: <br>
+          <a href="${shareUrl}" style="color:#1976d2;word-break:break-all;">${shareUrl}</a>
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
+        <p style="font-size:13px;color:#999;">
+          Hilsen ${escapeHtml(photographerName)}
+        </p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"${photographerName}" <${mailUser}>`,
+      to: g.client_email,
+      replyTo: g.photographer_email || undefined,
+      subject: `Galleriet ditt fra "${g.project_title}" er klart`,
+      html,
+    });
+
+    // Logg som event
+    recordAnalyticsEvent('gallery.notified', {
+      entityType: 'gallery',
+      entityId: galleryId,
+      actorUserId: session.userId,
+      metadata: { recipient: g.client_email },
+    });
+
+    res.json({ sent: true, recipient: g.client_email, shareUrl });
+  } catch (err) {
+    console.error('[photographer-galleries] notify-client failed:', err);
+    res.status(500).json({ error: 'notify_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Kontrakt-gate + download-audit (Slice 9X.11)
+// ─────────────────────────────────────────────────────────────────────────
+
+// POST /api/photographer/galleries/:id/link-contract — knytt kontrakt
+// til galleri. Når satt, gates ALL download på contract.signature_status.
+// Body: { contractId: string | null } — null = unlink.
+app.post("/api/photographer/galleries/:id/link-contract", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
+  const contractId = req.body?.contractId === null ? null
+    : (typeof req.body?.contractId === 'string' ? req.body.contractId.trim() : undefined);
+  if (contractId === undefined) return res.status(400).json({ error: 'contract_id_required_or_null' });
+
+  try {
+    // Schema-ensure for migrasjon 0093
+    try {
+      await pool.query(`ALTER TABLE photographer_client_galleries ADD COLUMN IF NOT EXISTS contract_id VARCHAR(64)`);
+    } catch { /* idempotent */ }
+
+    const owned = await pool.query(
+      `SELECT 1 FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+
+    if (contractId) {
+      // Verifiser at fotografen eier kontrakten
+      const contractCheck = await pool.query(
+        `SELECT 1 FROM contracts WHERE id = $1 AND user_id = $2 LIMIT 1`,
+        [contractId, session.userId],
+      );
+      if (contractCheck.rowCount === 0) {
+        return res.status(403).json({ error: 'contract_not_owned' });
+      }
+    }
+
+    await pool.query(
+      `UPDATE photographer_client_galleries
+          SET contract_id = $1, updated_at = NOW()
+        WHERE id = $2 AND photographer_id = $3`,
+      [contractId, galleryId, session.userId],
+    );
+    res.json({ linked: !!contractId, contractId });
+  } catch (err) {
+    console.error('[gallery-contract] link failed:', err);
+    res.status(500).json({ error: 'link_failed' });
+  }
+});
+
+// GET /api/photographer/galleries/:id/download-audit — full audit-historikk
+// + summer mot contractedImages. Stine bruker dette i UI for å se
+// hva som er lastet ned, av hvem, når, og hvor mye som gjenstår.
+app.get("/api/photographer/galleries/:id/download-audit", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
+
+  try {
+    const owned = await pool.query(
+      `SELECT id, gallery_settings, contract_id, client_email, status, completed_at
+         FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+    const g = owned.rows[0];
+    const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
+    const contractedImages = Math.max(0, Number(settings.contractedImages) || 0);
+
+    await ensureGalleryDownloadAuditSchema();
+    const [auditQ, summaryQ] = await Promise.all([
+      pool.query(
+        `SELECT a.id, a.image_id, a.client_email, a.client_ip, a.download_method,
+                a.downloaded_at, a.user_agent,
+                img.image_title, img.thumbnail_url
+           FROM gallery_download_audit a
+           LEFT JOIN client_gallery_images img ON img.id = a.image_id
+          WHERE a.gallery_id = $1
+          ORDER BY a.downloaded_at DESC
+          LIMIT 500`,
+        [galleryId],
+      ),
+      pool.query(
+        `SELECT
+           client_email,
+           COUNT(DISTINCT image_id)::int AS unique_images,
+           COUNT(*)::int                  AS total_downloads,
+           MIN(downloaded_at)             AS first_download,
+           MAX(downloaded_at)             AS last_download
+         FROM gallery_download_audit
+        WHERE gallery_id = $1
+        GROUP BY client_email
+        ORDER BY MAX(downloaded_at) DESC`,
+        [galleryId],
+      ),
+    ]);
+
+    // Kontrakt-status hvis linket
+    let contractStatus: {
+      contractId: string;
+      status: string | null;
+      signatureStatus: string | null;
+      signedAt: string | null;
+      title: string | null;
+    } | null = null;
+    if (g.contract_id) {
+      const cr = await pool.query(
+        `SELECT id, status, signature_status, signed_at, contract_title, title
+           FROM contracts WHERE id = $1 LIMIT 1`,
+        [g.contract_id],
+      ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+      const c = cr.rows[0];
+      if (c) {
+        contractStatus = {
+          contractId: String(c.id),
+          status: c.status ? String(c.status) : null,
+          signatureStatus: c.signature_status ? String(c.signature_status) : null,
+          signedAt: c.signed_at ? String(c.signed_at) : null,
+          title: (c.contract_title ?? c.title) ? String(c.contract_title ?? c.title) : null,
+        };
+      }
+    }
+
+    res.json({
+      gallery: {
+        id: g.id,
+        clientEmail: g.client_email,
+        status: g.status,
+        completedAt: g.completed_at,
+        contractedImages,
+        pricePerImage: Number(settings.pricePerImage ?? 0),
+      },
+      contract: contractStatus,
+      perClient: summaryQ.rows.map((r: Record<string, unknown>) => {
+        const unique = Number(r.unique_images ?? 0);
+        return {
+          clientEmail: r.client_email,
+          uniqueImages: unique,
+          totalDownloads: Number(r.total_downloads ?? 0),
+          firstDownload: r.first_download,
+          lastDownload: r.last_download,
+          remainingSlots: contractedImages > 0 ? Math.max(0, contractedImages - unique) : null,
+        };
+      }),
+      audit: auditQ.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        imageId: r.image_id,
+        imageTitle: r.image_title ?? null,
+        imageThumbnail: r.thumbnail_url ?? null,
+        clientEmail: r.client_email,
+        clientIp: r.client_ip ?? null,
+        downloadMethod: r.download_method ?? 'zip',
+        downloadedAt: r.downloaded_at,
+        userAgent: r.user_agent ?? null,
+      })),
+    });
+  } catch (err) {
+    console.error('[gallery-audit] fetch failed:', err);
+    res.status(500).json({ error: 'audit_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Gallery access codes (Slice 9X.15 — korte koder + /portal-landingsside)
+// ─────────────────────────────────────────────────────────────────────────
+
+let galleryAccessCodesSchemaReady: Promise<void> | null = null;
+function ensureGalleryAccessCodesSchema(): Promise<void> {
+  if (!galleryAccessCodesSchemaReady) {
+    galleryAccessCodesSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS gallery_access_codes (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            gallery_id UUID NOT NULL,
+            code VARCHAR(12) NOT NULL,
+            label VARCHAR(100),
+            expires_at TIMESTAMPTZ,
+            max_uses INTEGER,
+            use_count INTEGER NOT NULL DEFAULT 0,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_by VARCHAR(64) NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            last_used_at TIMESTAMPTZ,
+            revoked_at TIMESTAMPTZ
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS gallery_access_codes_unique_active
+            ON gallery_access_codes (code) WHERE is_active = TRUE;
+          CREATE INDEX IF NOT EXISTS gallery_access_codes_gallery_idx
+            ON gallery_access_codes (gallery_id, is_active);
+        `);
+      } catch (err) {
+        console.warn('[access-codes] schema-ensure failed:', err);
+        galleryAccessCodesSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return galleryAccessCodesSchemaReady;
+}
+
+// Tegn-pool ekskluderer 0/O/I/1 så koden kan dikteres pålitelig på telefon.
+const ACCESS_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateAccessCode(length = 6): string {
+  let out = '';
+  const buf = crypto.randomBytes(length * 2);
+  let i = 0;
+  while (out.length < length && i < buf.length) {
+    const idx = buf[i] % ACCESS_CODE_CHARS.length;
+    out += ACCESS_CODE_CHARS[idx];
+    i++;
+  }
+  return out;
+}
+
+// POST /api/photographer/galleries/:id/access-codes — generér ny kode.
+// Body: { label?: string, expiresInDays?: number, maxUses?: number }
+app.post("/api/photographer/galleries/:id/access-codes", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
+
+  const label = typeof req.body?.label === 'string' ? req.body.label.trim().slice(0, 100) : null;
+  const expiresInDays = Number.isFinite(Number(req.body?.expiresInDays)) ? Number(req.body.expiresInDays) : null;
+  const maxUses = Number.isFinite(Number(req.body?.maxUses)) ? Number(req.body.maxUses) : null;
+
+  try {
+    await ensureGalleryAccessCodesSchema();
+    // Verifiser gallery-eierskap
+    const owned = await pool.query(
+      `SELECT 1 FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+
+    // Generér unique kode med opp til 5 forsøk
+    let code = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = generateAccessCode(6);
+      const exists = await pool.query(
+        `SELECT 1 FROM gallery_access_codes WHERE code = $1 AND is_active = true LIMIT 1`,
+        [candidate],
+      );
+      if (exists.rowCount === 0) {
+        code = candidate;
+        break;
+      }
+    }
+    if (!code) return res.status(500).json({ error: 'code_generation_failed' });
+
+    const expiresAt = expiresInDays && expiresInDays > 0
+      ? new Date(Date.now() + expiresInDays * 86_400_000).toISOString()
+      : null;
+
+    const result = await pool.query(
+      `INSERT INTO gallery_access_codes
+         (gallery_id, code, label, expires_at, max_uses, created_by)
+       VALUES ($1, $2, $3, $4::timestamptz, $5, $6)
+       RETURNING id, code, label, expires_at, max_uses, created_at`,
+      [galleryId, code, label, expiresAt, maxUses, session.userId],
+    );
+    const row = result.rows[0];
+    res.status(201).json({
+      id: row.id,
+      code: row.code,
+      label: row.label,
+      expiresAt: row.expires_at,
+      maxUses: row.max_uses,
+      createdAt: row.created_at,
+      portalUrl: `${process.env.PUBLIC_APP_URL || 'https://creatorhubn.com'}/portal?code=${row.code}`,
+    });
+  } catch (err) {
+    console.error('[access-codes] create failed:', err);
+    res.status(500).json({ error: 'create_failed' });
+  }
+});
+
+// GET /api/photographer/galleries/:id/access-codes — list koder for galleri.
+app.get("/api/photographer/galleries/:id/access-codes", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
+
+  try {
+    await ensureGalleryAccessCodesSchema();
+    const owned = await pool.query(
+      `SELECT 1 FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+
+    const r = await pool.query(
+      `SELECT id, code, label, expires_at, max_uses, use_count,
+              is_active, created_at, last_used_at, revoked_at
+         FROM gallery_access_codes
+        WHERE gallery_id = $1
+        ORDER BY is_active DESC, created_at DESC`,
+      [galleryId],
+    );
+    const portalBase = `${process.env.PUBLIC_APP_URL || 'https://creatorhubn.com'}/portal`;
+    res.json({
+      codes: r.rows.map((c: Record<string, unknown>) => ({
+        id: c.id,
+        code: c.code,
+        label: c.label,
+        expiresAt: c.expires_at,
+        maxUses: c.max_uses,
+        useCount: Number(c.use_count ?? 0),
+        isActive: !!c.is_active,
+        createdAt: c.created_at,
+        lastUsedAt: c.last_used_at,
+        revokedAt: c.revoked_at,
+        portalUrl: `${portalBase}?code=${c.code}`,
+      })),
+    });
+  } catch (err) {
+    console.error('[access-codes] list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+// DELETE /api/photographer/galleries/:id/access-codes/:codeId — revoker kode.
+app.delete("/api/photographer/galleries/:id/access-codes/:codeId", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  const codeId = String(req.params.codeId || '').trim();
+  if (!galleryId || !codeId) return res.status(400).json({ error: 'ids_required' });
+
+  try {
+    await ensureGalleryAccessCodesSchema();
+    const owned = await pool.query(
+      `SELECT 1 FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+
+    const r = await pool.query(
+      `UPDATE gallery_access_codes
+          SET is_active = FALSE, revoked_at = NOW()
+        WHERE id = $1 AND gallery_id = $2 AND is_active = TRUE`,
+      [codeId, galleryId],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'code_not_found_or_already_revoked' });
+    res.json({ revoked: true });
+  } catch (err) {
+    console.error('[access-codes] revoke failed:', err);
+    res.status(500).json({ error: 'revoke_failed' });
+  }
+});
+
+// GET /api/portal/lookup?code=XXXXXX — public-endepunkt for /portal-siden.
+// Validerer kode + returnerer access_token slik at frontend kan redirecte
+// til /client-gallery/:token. Ingen auth nødvendig.
+app.get("/api/portal/lookup", async (req, res) => {
+  const code = String(req.query?.code || '').trim().toUpperCase();
+  if (!code || code.length < 4 || code.length > 12) {
+    return res.status(400).json({ error: 'invalid_code_format' });
+  }
+
+  try {
+    await ensureGalleryAccessCodesSchema();
+    const r = await pool.query(
+      `SELECT ac.id, ac.gallery_id, ac.expires_at, ac.max_uses, ac.use_count,
+              g.access_token, g.status AS gallery_status, g.project_title
+         FROM gallery_access_codes ac
+         JOIN photographer_client_galleries g ON g.id = ac.gallery_id
+        WHERE ac.code = $1 AND ac.is_active = true
+        LIMIT 1`,
+      [code],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'code_not_found' });
+    const row = r.rows[0];
+
+    // Sjekk utløp
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+      return res.status(410).json({ error: 'code_expired' });
+    }
+    // Sjekk max-uses
+    if (row.max_uses !== null && Number(row.use_count) >= Number(row.max_uses)) {
+      return res.status(429).json({ error: 'code_max_uses_reached' });
+    }
+    // Sjekk galleri-status
+    if (row.gallery_status === 'revoked' || row.gallery_status === 'deleted') {
+      return res.status(410).json({ error: 'gallery_unavailable' });
+    }
+
+    // Inkrement use_count (best-effort, idempotent ved hopp)
+    await pool.query(
+      `UPDATE gallery_access_codes
+          SET use_count = use_count + 1, last_used_at = NOW()
+        WHERE id = $1`,
+      [row.id],
+    ).catch(() => undefined);
+
+    res.json({
+      accessToken: row.access_token,
+      galleryUrl: `/client-gallery/${row.access_token}`,
+      projectTitle: row.project_title,
+    });
+  } catch (err) {
+    console.error('[portal-lookup] failed:', err);
+    res.status(500).json({ error: 'lookup_failed' });
+  }
+});
+
+// GET /api/photographer/contracts — list fotografens kontrakter for
+// link-til-galleri-UI. Returnerer kun id, tittel, status, klient.
+app.get("/api/photographer/contracts", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    const r = await pool.query(
+      `SELECT id,
+              COALESCE(contract_title, title) AS title,
+              client_name, client_email,
+              status, signature_status, signed_at, created_at
+         FROM contracts
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      [session.userId],
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    res.json({
+      contracts: r.rows.map((c: Record<string, unknown>) => ({
+        id: c.id,
+        title: c.title ?? 'Uten tittel',
+        clientName: c.client_name ?? null,
+        clientEmail: c.client_email ?? null,
+        status: c.status ?? null,
+        signatureStatus: c.signature_status ?? null,
+        signedAt: c.signed_at ?? null,
+        createdAt: c.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[photographer-contracts] list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
   }
 });
 
@@ -23777,6 +24530,4523 @@ app.patch("/api/photographer/clients/:clientId", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Photographer Projects (e2e Slice 9X.9.A)
+// ─────────────────────────────────────────────────────────────────────────
+// Knytter `projects`-tabellen til fotografens CRM + lønnsomhets-pipeline.
+// Migrering 0091 legger til client_id + service_price + hourly_rate +
+// cost_overhead. Schema-ensure her er idempotent fallback for miljøer der
+// migrasjonen ikke har kjørt enda.
+let photographerProjectsSchemaReady: Promise<void> | null = null;
+function ensurePhotographerProjectsSchema(): Promise<void> {
+  if (!photographerProjectsSchemaReady) {
+    photographerProjectsSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_id UUID;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_price NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS cost_overhead NUMERIC(10,2) DEFAULT 0;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2) DEFAULT 25.00;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS invoice_provider VARCHAR(32);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS external_invoice_id VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS external_invoice_number VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS google_calendar_event_id VARCHAR(255);
+          CREATE INDEX IF NOT EXISTS projects_client_id_idx ON projects (client_id);
+          ALTER TABLE photographer_client_galleries
+            ADD COLUMN IF NOT EXISTS project_id VARCHAR(64);
+          CREATE INDEX IF NOT EXISTS photographer_client_galleries_project_idx
+            ON photographer_client_galleries (project_id);
+          CREATE TABLE IF NOT EXISTS project_time_tracking (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id VARCHAR(64) NOT NULL,
+            task_description TEXT NOT NULL,
+            hours_spent NUMERIC(10,2) NOT NULL,
+            date_worked DATE NOT NULL DEFAULT CURRENT_DATE,
+            billable_hours NUMERIC(10,2) NOT NULL,
+            rate NUMERIC(10,2) NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS project_time_tracking_project_idx
+            ON project_time_tracking (project_id, date_worked DESC);
+        `);
+      } catch (err) {
+        console.warn('[photographer-projects] schema-ensure failed:', err);
+        photographerProjectsSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return photographerProjectsSchemaReady;
+}
+
+// GET /api/photographer/projects — liste over fotografens prosjekter.
+// Returnerer projects + clients-join + aggregert tracked hours og kostnad.
+app.get("/api/photographer/projects", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  try {
+    await ensurePhotographerProjectsSchema();
+    const result = await pool.query(
+      `SELECT
+         p.id, p.title, p.name, p.client_name, p.client_id,
+         p.project_type, p.status, p.phase, p.event_date, p.location,
+         p.service_price, p.hourly_rate, p.cost_overhead,
+         p.estimated_hours, p.actual_hours,
+         p.created_at, p.updated_at,
+         c.first_name AS client_first_name,
+         c.last_name  AS client_last_name,
+         c.email      AS client_email,
+         COALESCE(t.tracked_hours, 0)::numeric AS tracked_hours,
+         COALESCE(t.tracked_cost, 0)::numeric  AS tracked_cost
+       FROM projects p
+       LEFT JOIN clients c ON c.id = p.client_id
+       LEFT JOIN (
+         SELECT project_id,
+                SUM(billable_hours) AS tracked_hours,
+                SUM(billable_hours * rate) AS tracked_cost
+           FROM project_time_tracking
+          GROUP BY project_id
+       ) t ON t.project_id = p.id
+       WHERE p.user_id = $1
+       ORDER BY COALESCE(p.event_date, p.created_at::date) DESC NULLS LAST`,
+      [photographerId],
+    );
+    res.json({
+      projects: result.rows.map((r: Record<string, unknown>) => {
+        const price = Number(r.service_price ?? 0);
+        const cost = Number(r.tracked_cost ?? 0) + Number(r.cost_overhead ?? 0);
+        const margin = price > 0 ? ((price - cost) / price) * 100 : null;
+        const clientDisplay = [r.client_first_name, r.client_last_name]
+          .filter(Boolean).join(' ') || (r.client_email as string | null) || (r.client_name as string | null) || null;
+        return {
+          id: r.id,
+          title: r.title ?? r.name ?? 'Uten tittel',
+          clientId: r.client_id ?? null,
+          clientName: clientDisplay,
+          clientEmail: r.client_email ?? null,
+          projectType: r.project_type ?? null,
+          status: r.status ?? 'active',
+          phase: r.phase ?? null,
+          eventDate: r.event_date ?? null,
+          location: r.location ?? null,
+          servicePrice: price,
+          hourlyRate: Number(r.hourly_rate ?? 0),
+          costOverhead: Number(r.cost_overhead ?? 0),
+          estimatedHours: r.estimated_hours ?? null,
+          trackedHours: Number(r.tracked_hours ?? 0),
+          trackedCost: Number(r.tracked_cost ?? 0),
+          marginPct: margin,
+          profitAmount: price > 0 ? price - cost : null,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error('[photographer-projects] list failed:', err);
+    res.status(500).json({ error: 'list_projects_failed' });
+  }
+});
+
+// Slice 9X.14 — auto-genererer fotograf-relevante timeline-milestones
+// for nye prosjekter. Stine får dermed ferdig progresjon i stedet for
+// å starte fra blank tidslinje. Templater er valgt ut fra projectType
+// og datoer beregnes relativt til eventDate (dersom satt) eller "nå".
+interface PhotographerTimelineSeed {
+  projectId: string;
+  userId: string;
+  projectType: string | null;
+  eventDate: string | null;          // YYYY-MM-DD
+  clientName: string | null;
+  servicePrice: number | null;
+}
+
+interface MilestoneSeed {
+  title: string;
+  description: string;
+  category: string;       // 'planning' | 'production' | 'post' | 'delivery' | 'billing'
+  type: string;           // 'meeting' | 'milestone' | 'contract' | 'photo_session' | 'editing' | 'review' | 'delivery' | 'deadline'
+  daysFromAnchor: number; // offset i dager fra event_date (eller nå hvis ikke satt)
+  anchor: 'event' | 'now';
+  clientVisible: boolean;
+  requiresClientApproval: boolean;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+}
+
+function buildPhotographerMilestoneTemplate(projectType: string | null): MilestoneSeed[] {
+  const t = (projectType || '').toLowerCase().trim();
+
+  if (t === 'bryllup' || t.includes('wedding')) {
+    return [
+      { title: 'Førstegangskontakt', description: 'Bekreft prosjekt, send velkomst-mail',
+        category: 'planning', type: 'meeting', daysFromAnchor: -60, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'high' },
+      { title: 'Konsultasjons-møte', description: 'Gå gjennom dag, ønsker, shotlist',
+        category: 'planning', type: 'meeting', daysFromAnchor: -45, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'high' },
+      { title: 'Kontrakt signert', description: 'Bekreft og send kontrakt via Google Sign',
+        category: 'planning', type: 'contract', daysFromAnchor: -42, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'critical' },
+      { title: 'Forskudd 50% mottatt', description: 'Bekreft betaling for å reservere dato',
+        category: 'billing', type: 'milestone', daysFromAnchor: -35, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'critical' },
+      { title: 'Pre-wedding gjennomgang', description: 'Endelig timeline, lokasjoner, kontaktpersoner',
+        category: 'planning', type: 'meeting', daysFromAnchor: -7, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'high' },
+      { title: 'Bryllupsdagen — skyte', description: 'Hovedoppdraget',
+        category: 'production', type: 'photo_session', daysFromAnchor: 0, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'critical' },
+      { title: 'Backup + utvalg', description: 'Sikker lagring og første kulling',
+        category: 'post', type: 'editing', daysFromAnchor: 2, anchor: 'event',
+        clientVisible: false, requiresClientApproval: false, priority: 'high' },
+      { title: 'Sneak peek — 10 bilder', description: 'Send forsmak til kunde på social',
+        category: 'post', type: 'review', daysFromAnchor: 7, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'medium' },
+      { title: 'Redigering av full leveranse', description: 'Color grade, retouch, sortering',
+        category: 'post', type: 'editing', daysFromAnchor: 28, anchor: 'event',
+        clientVisible: false, requiresClientApproval: false, priority: 'high' },
+      { title: 'Galleri-leveranse til klient', description: 'Publiser via UniversalShowcase, send link',
+        category: 'delivery', type: 'delivery', daysFromAnchor: 42, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'critical' },
+      { title: 'Klient godkjent + restbetaling', description: 'Bekreft og fakturer restbeløp',
+        category: 'billing', type: 'milestone', daysFromAnchor: 56, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'critical' },
+    ];
+  }
+
+  if (t === 'portrett' || t === 'portrait' || t.includes('portrett')) {
+    return [
+      { title: 'Førstegangskontakt', description: 'Avtal stil, lokasjon og pris',
+        category: 'planning', type: 'meeting', daysFromAnchor: -14, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'high' },
+      { title: 'Kontrakt signert', description: 'Send kort kontrakt via Google Sign',
+        category: 'planning', type: 'contract', daysFromAnchor: -10, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'high' },
+      { title: 'Portrett-økt', description: 'Hovedoppdraget',
+        category: 'production', type: 'photo_session', daysFromAnchor: 0, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'critical' },
+      { title: 'Utvalg + redigering', description: 'Topp 20 bilder kuleres og redigeres',
+        category: 'post', type: 'editing', daysFromAnchor: 5, anchor: 'event',
+        clientVisible: false, requiresClientApproval: false, priority: 'high' },
+      { title: 'Galleri-leveranse', description: 'Publiser via UniversalShowcase',
+        category: 'delivery', type: 'delivery', daysFromAnchor: 10, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'high' },
+      { title: 'Faktura sendt', description: 'Generér faktura via PowerOffice',
+        category: 'billing', type: 'milestone', daysFromAnchor: 11, anchor: 'event',
+        clientVisible: false, requiresClientApproval: false, priority: 'high' },
+    ];
+  }
+
+  if (t === 'commercial' || t === 'kommersiell' || t === 'produkt') {
+    return [
+      { title: 'Briefing-møte', description: 'Klargjør deliverables, brand-guidelines, dead­line',
+        category: 'planning', type: 'meeting', daysFromAnchor: -14, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'high' },
+      { title: 'Kontrakt signert', description: 'Spesifiser bruksrettigheter, deliverables',
+        category: 'planning', type: 'contract', daysFromAnchor: -10, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'critical' },
+      { title: 'Mood board + shot list', description: 'Send til klient for godkjenning',
+        category: 'planning', type: 'review', daysFromAnchor: -5, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'high' },
+      { title: 'Produksjons-dag', description: 'Skyte',
+        category: 'production', type: 'photo_session', daysFromAnchor: 0, anchor: 'event',
+        clientVisible: true, requiresClientApproval: false, priority: 'critical' },
+      { title: 'Redigering — runde 1', description: 'Første utvalg + grading',
+        category: 'post', type: 'editing', daysFromAnchor: 7, anchor: 'event',
+        clientVisible: false, requiresClientApproval: false, priority: 'high' },
+      { title: 'Klient-review', description: 'Vis utvalg, samle feedback for revisjoner',
+        category: 'post', type: 'review', daysFromAnchor: 10, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'high' },
+      { title: 'Endelig leveranse', description: 'Hi-res via UniversalShowcase + nedlasting',
+        category: 'delivery', type: 'delivery', daysFromAnchor: 14, anchor: 'event',
+        clientVisible: true, requiresClientApproval: true, priority: 'critical' },
+      { title: 'Faktura', description: 'Generér via PowerOffice',
+        category: 'billing', type: 'milestone', daysFromAnchor: 15, anchor: 'event',
+        clientVisible: false, requiresClientApproval: false, priority: 'high' },
+    ];
+  }
+
+  // Default fallback for ukjent type
+  return [
+    { title: 'Førstegangskontakt', description: 'Bekreft prosjekt med klient',
+      category: 'planning', type: 'meeting', daysFromAnchor: 0, anchor: 'now',
+      clientVisible: true, requiresClientApproval: false, priority: 'high' },
+    { title: 'Kontrakt signert', description: 'Send kontrakt via Google Sign',
+      category: 'planning', type: 'contract', daysFromAnchor: 3, anchor: 'now',
+      clientVisible: true, requiresClientApproval: true, priority: 'critical' },
+    { title: 'Produksjon', description: 'Hovedoppdraget',
+      category: 'production', type: 'photo_session', daysFromAnchor: 14, anchor: 'now',
+      clientVisible: true, requiresClientApproval: false, priority: 'high' },
+    { title: 'Leveranse', description: 'Send ferdig materiale via UniversalShowcase',
+      category: 'delivery', type: 'delivery', daysFromAnchor: 28, anchor: 'now',
+      clientVisible: true, requiresClientApproval: true, priority: 'high' },
+    { title: 'Faktura', description: 'Generér via PowerOffice',
+      category: 'billing', type: 'milestone', daysFromAnchor: 30, anchor: 'now',
+      clientVisible: false, requiresClientApproval: false, priority: 'high' },
+  ];
+}
+
+async function generatePhotographerTimeline(seed: PhotographerTimelineSeed): Promise<void> {
+  const template = buildPhotographerMilestoneTemplate(seed.projectType);
+  if (template.length === 0) return;
+
+  // Beregn dato per milestone. Hvis vi har eventDate, bruk den som anker;
+  // ellers bruk nå.
+  const anchorEventTs = seed.eventDate ? new Date(seed.eventDate).getTime() : null;
+  const anchorNowTs = Date.now();
+
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+  let i = 1;
+  for (const m of template) {
+    const baseTs = m.anchor === 'event' && anchorEventTs !== null ? anchorEventTs : anchorNowTs;
+    const dueIso = new Date(baseTs + m.daysFromAnchor * 86_400_000).toISOString();
+    tuples.push(
+      `($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}::timestamptz, 'not_started', 0, $${i++}, $${i++}, $${i++}, true)`,
+    );
+    values.push(
+      seed.projectId,
+      seed.userId,
+      m.title,
+      m.description,
+      m.category,
+      m.type,
+      dueIso,
+      m.priority,
+      m.clientVisible,
+      m.requiresClientApproval,
+    );
+  }
+
+  await pool.query(
+    `INSERT INTO project_milestones
+       (project_id, user_id, title, description, category, type, due_date,
+        status, progress, priority, client_visible, requires_client_approval,
+        automated_reminders)
+     VALUES ${tuples.join(', ')}`,
+    values,
+  );
+}
+
+// POST /api/photographer/projects — opprett prosjekt, valgfritt knyttet til klient.
+// Aksepterer også payload fra ProjectCreationWithMemoryCards (inquiry → project)
+// med clientEmail/clientPhone/budget/submissionId/projectData (memory cards etc).
+app.post("/api/photographer/projects", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const {
+    title, clientId, clientName, clientEmail, clientPhone,
+    projectType, eventDate, location,
+    servicePrice, hourlyRate, costOverhead, estimatedHours, description,
+    submissionId, budget, projectData: projectDataPayload, settings,
+  } = req.body ?? {};
+
+  const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+  if (!trimmedTitle) return res.status(400).json({ error: 'title_required' });
+
+  try {
+    await ensurePhotographerProjectsSchema();
+    let effectiveClientId: string | null = clientId || null;
+
+    // Hvis clientId er gitt, sjekk at klienten tilhører fotografen (sikkerhet).
+    if (effectiveClientId) {
+      const owned = await pool.query(
+        `SELECT 1 FROM clients WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+        [effectiveClientId, photographerId],
+      );
+      if (owned.rowCount === 0) {
+        return res.status(403).json({ error: 'client_not_owned' });
+      }
+    }
+
+    // Slice 9X.13 — auto-CRM-opprettelse fra inquiry-payload.
+    // Hvis vi har email + (navn) men ingen clientId, ensureCanonicalClientId
+    // gjør oppslag/insert mot clients-tabellen og returnerer kanonisk id.
+    // Også oppdater telefon hvis gitt (ensureCanonicalClientId håndterer
+    // ikke phone — gjøres her som ekstra-update).
+    const trimmedEmail = typeof clientEmail === 'string' ? clientEmail.trim().toLowerCase() : '';
+    const trimmedName = typeof clientName === 'string' ? clientName.trim() : '';
+    const trimmedPhone = typeof clientPhone === 'string' ? clientPhone.trim() : '';
+    if (!effectiveClientId && trimmedEmail) {
+      const canonId = await ensureCanonicalClientId(photographerId, trimmedEmail, trimmedName || null);
+      if (canonId) {
+        effectiveClientId = canonId;
+        if (trimmedPhone) {
+          await pool.query(
+            `UPDATE clients SET phone = $1, updated_at = NOW()
+              WHERE id = $2 AND (phone IS NULL OR phone = '')`,
+            [trimmedPhone, canonId],
+          ).catch(() => undefined);
+        }
+      }
+    }
+
+    // Memory cards + shot list etc lagres i projectData JSONB så
+    // ProjectCreationWithMemoryCards kan hente det tilbake ved redigering.
+    const projectDataJson: Record<string, unknown> = {};
+    if (projectDataPayload && typeof projectDataPayload === 'object') {
+      Object.assign(projectDataJson, projectDataPayload);
+    }
+    if (submissionId) projectDataJson.submissionId = String(submissionId);
+    if (budget !== undefined && budget !== null) projectDataJson.budget = budget;
+
+    const result = await pool.query(
+      `INSERT INTO projects
+         (user_id, title, name, profession, client_id, client_name,
+          project_type, status, phase, event_date, location, description,
+          service_price, hourly_rate, cost_overhead, estimated_hours,
+          project_data, settings, budget,
+          created_at, updated_at)
+       VALUES ($1, $2, $2, 'photographer', $3, $4,
+               $5, 'active', 'planning', $6, $7, $8,
+               $9, $10, $11, $12,
+               $13::jsonb, $14::jsonb, $15,
+               NOW()::text, NOW()::text)
+       RETURNING id`,
+      [
+        photographerId,
+        trimmedTitle,
+        effectiveClientId,
+        trimmedName || null,
+        typeof projectType === 'string' && projectType.trim() ? projectType.trim() : null,
+        eventDate || null,
+        typeof location === 'string' && location.trim() ? location.trim() : null,
+        typeof description === 'string' && description.trim() ? description.trim() : null,
+        Number.isFinite(Number(servicePrice)) ? Number(servicePrice)
+          : (Number.isFinite(Number(budget)) ? Number(budget) : null),
+        Number.isFinite(Number(hourlyRate)) ? Number(hourlyRate) : null,
+        Number.isFinite(Number(costOverhead)) ? Number(costOverhead) : 0,
+        Number.isFinite(Number(estimatedHours)) ? Number(estimatedHours) : null,
+        Object.keys(projectDataJson).length > 0 ? JSON.stringify(projectDataJson) : null,
+        settings && typeof settings === 'object' ? JSON.stringify(settings) : null,
+        Number.isFinite(Number(budget)) ? Number(budget) : null,
+      ],
+    );
+    const newProjectId = result.rows[0]?.id;
+
+    // Slice 9X.13 — logg prosjekt-opprettelse til client_communications
+    // så CRM-historikken viser konvertering (inquiry → project) og
+    // generelle nye prosjekter for klient. Best-effort.
+    if (newProjectId && effectiveClientId) {
+      try {
+        const sourceText = submissionId
+          ? `Konvertert fra innkommende forespørsel (submission ${String(submissionId).slice(0, 8)})`
+          : 'Opprettet manuelt fra dashboard';
+        await pool.query(
+          `INSERT INTO client_communications
+             (user_id, client_id, project_id, communication_type, direction,
+              subject, content, status, requires_response, priority,
+              category, tags, created_at)
+           VALUES ($1, $2, $3, 'project_created', 'internal',
+                   $4, $5, 'read', false, 'normal',
+                   'project_lifecycle', ARRAY['project','created'], NOW())`,
+          [
+            photographerId,
+            effectiveClientId,
+            newProjectId,
+            `Nytt prosjekt: ${trimmedTitle}`,
+            `${sourceText}. Type: ${projectType || 'ukategorisert'}. `
+              + `Dato: ${eventDate || 'ikke satt'}. `
+              + `Avtalt pris: ${servicePrice ?? budget ?? 'ikke satt'} kr.`,
+          ],
+        );
+      } catch (crmErr) {
+        console.warn('[photographer-projects] CRM log failed (non-fatal):', crmErr);
+      }
+    }
+
+    // Marker submission som konvertert hvis fra inquiry-flyt.
+    if (newProjectId && submissionId) {
+      try {
+        await pool.query(
+          `UPDATE client_submissions
+              SET converted_to_project_id = $1, converted_at = NOW(), updated_at = NOW()
+            WHERE id = $2`,
+          [newProjectId, submissionId],
+        );
+      } catch { /* tabellen finnes kanskje ikke i alle env */ }
+    }
+
+    // Slice 9X.22 — auto-opprett wedding_timeline + send invite hvis bryllup.
+    if (newProjectId && projectType && String(projectType).toLowerCase() === 'bryllup') {
+      try {
+        await createWeddingTimelineFromProject({
+          projectId: newProjectId,
+          photographerId,
+          clientName: trimmedName || null,
+          clientEmail: trimmedEmail || null,
+          eventDate: eventDate || null,
+          projectTitle: trimmedTitle,
+        });
+      } catch (weddingErr) {
+        console.warn('[photographer-projects] wedding-timeline auto-create failed (non-fatal):', weddingErr);
+      }
+    }
+
+    // Slice 9X.14 — auto-generér standard timeline-milestones for foto.
+    // Etter dette har Stine en ferdig progresjon å klikke seg gjennom
+    // på prosjekt-detalj-siden. Templater er valgt ut fra projectType.
+    if (newProjectId) {
+      try {
+        await generatePhotographerTimeline({
+          projectId: newProjectId,
+          userId: photographerId,
+          projectType: typeof projectType === 'string' ? projectType : null,
+          eventDate: eventDate || null,
+          clientName: trimmedName || null,
+          servicePrice: Number.isFinite(Number(servicePrice)) ? Number(servicePrice)
+            : (Number.isFinite(Number(budget)) ? Number(budget) : null),
+        });
+      } catch (timelineErr) {
+        console.warn('[photographer-projects] auto-timeline failed (non-fatal):', timelineErr);
+      }
+    }
+
+    // Google Calendar-sync — best-effort. Hvis fotografen ikke har koblet
+    // Google Workspace, returnerer helperen skipped uten å kaste.
+    if (newProjectId && eventDate) {
+      try {
+        const { syncProjectCalendarEvent } = await import('./google-calendar-project.js');
+        const clientLookup = clientId
+          ? await pool.query(`SELECT first_name, last_name, email FROM clients WHERE id = $1 LIMIT 1`, [clientId])
+          : null;
+        const clientRow = clientLookup?.rows[0];
+        const calResult = await syncProjectCalendarEvent(pool, {
+          photographerId,
+          projectId: newProjectId,
+          title: trimmedTitle,
+          eventDate,
+          location: typeof location === 'string' ? location : null,
+          description: typeof description === 'string' ? description : null,
+          clientName: clientRow
+            ? [clientRow.first_name, clientRow.last_name].filter(Boolean).join(' ')
+            : (typeof clientName === 'string' ? clientName : null),
+          clientEmail: clientRow?.email ?? null,
+        });
+        if (calResult.eventId) {
+          await pool.query(
+            `UPDATE projects SET google_calendar_event_id = $1 WHERE id = $2`,
+            [calResult.eventId, newProjectId],
+          );
+        }
+      } catch (err) {
+        console.warn('[photographer-projects] calendar sync after create failed:', err);
+      }
+    }
+
+    res.status(201).json({ id: newProjectId });
+  } catch (err) {
+    console.error('[photographer-projects] create failed:', err);
+    res.status(500).json({ error: 'create_project_failed' });
+  }
+});
+
+// GET /api/photographer/projects/:projectId — detalj med time-logg + galleri-link.
+app.get("/api/photographer/projects/:projectId", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  try {
+    await ensurePhotographerProjectsSchema();
+    const projectQ = await pool.query(
+      `SELECT
+         p.id, p.title, p.name, p.client_id, p.client_name, p.description,
+         p.project_type, p.status, p.phase, p.event_date, p.location,
+         p.service_price, p.hourly_rate, p.cost_overhead, p.vat_rate,
+         p.estimated_hours, p.actual_hours,
+         p.invoice_provider, p.external_invoice_id, p.external_invoice_number, p.invoiced_at,
+         p.google_calendar_event_id,
+         p.created_at, p.updated_at,
+         c.first_name, c.last_name, c.email, c.phone
+       FROM projects p
+       LEFT JOIN clients c ON c.id = p.client_id
+       WHERE p.id = $1 AND p.user_id = $2
+       LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (projectQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+    const p = projectQ.rows[0];
+
+    const [timeQ, galleryQ] = await Promise.all([
+      pool.query(
+        `SELECT id, task_description, hours_spent, billable_hours, rate, date_worked, created_at
+           FROM project_time_tracking
+          WHERE project_id = $1
+          ORDER BY date_worked DESC, created_at DESC`,
+        [projectId],
+      ),
+      pool.query(
+        `SELECT id, project_title, access_token, status, created_at, completed_at
+           FROM photographer_client_galleries
+          WHERE photographer_id = $1 AND project_id = $2
+          ORDER BY created_at DESC`,
+        [photographerId, projectId],
+      ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+    ]);
+
+    const timeEntries = timeQ.rows.map((r: Record<string, unknown>) => ({
+      id: r.id,
+      taskDescription: r.task_description,
+      hoursSpent: Number(r.hours_spent),
+      billableHours: Number(r.billable_hours),
+      rate: Number(r.rate),
+      dateWorked: r.date_worked,
+      createdAt: r.created_at,
+    }));
+    const trackedHours = timeEntries.reduce((sum, t) => sum + t.billableHours, 0);
+    const trackedCost = timeEntries.reduce((sum, t) => sum + t.billableHours * t.rate, 0);
+    const servicePriceGross = Number(p.service_price ?? 0);
+    const vatRate = Number(p.vat_rate ?? 25);
+    const servicePriceNet = vatRate > 0 ? servicePriceGross / (1 + vatRate / 100) : servicePriceGross;
+    const totalCost = trackedCost + Number(p.cost_overhead ?? 0);
+    // Margin mot NETTO (riktig for AS — MVA er gjennomgangspost).
+    const marginPct = servicePriceNet > 0 ? ((servicePriceNet - totalCost) / servicePriceNet) * 100 : null;
+
+    res.json({
+      project: {
+        id: p.id,
+        title: p.title ?? p.name ?? 'Uten tittel',
+        clientId: p.client_id ?? null,
+        clientName: [p.first_name, p.last_name].filter(Boolean).join(' ') || p.client_name || null,
+        clientEmail: p.email ?? null,
+        clientPhone: p.phone ?? null,
+        description: p.description ?? null,
+        projectType: p.project_type ?? null,
+        status: p.status ?? 'active',
+        phase: p.phase ?? null,
+        eventDate: p.event_date ?? null,
+        location: p.location ?? null,
+        servicePrice: servicePriceGross,    // bakoverkompat
+        servicePriceGross,
+        servicePriceNet,
+        vatRate,
+        vatAmount: servicePriceGross - servicePriceNet,
+        hourlyRate: Number(p.hourly_rate ?? 0),
+        costOverhead: Number(p.cost_overhead ?? 0),
+        estimatedHours: p.estimated_hours ?? null,
+        trackedHours,
+        trackedCost,
+        totalCost,
+        marginPct,
+        profitAmount: servicePriceNet > 0 ? servicePriceNet - totalCost : null,
+        invoiceProvider: p.invoice_provider ?? null,
+        externalInvoiceId: p.external_invoice_id ?? null,
+        externalInvoiceNumber: p.external_invoice_number ?? null,
+        invoicedAt: p.invoiced_at ?? null,
+        googleCalendarEventId: p.google_calendar_event_id ?? null,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        // Slice 9X.23 — eksponer wedding_id hvis prosjektet er bryllup
+        // så frontend kan rendre WeddingTimelineEventsPanel.
+        weddingId: await pool.query(
+          `SELECT id FROM wedding_timelines WHERE project_id = $1 LIMIT 1`,
+          [projectId],
+        ).then((r) => r.rows[0]?.id ?? null).catch(() => null),
+      },
+      timeEntries,
+      galleries: (galleryQ.rows as Record<string, unknown>[]).map((g) => ({
+        id: g.id,
+        title: g.project_title,
+        accessToken: g.access_token,
+        status: g.status,
+        createdAt: g.created_at,
+        completedAt: g.completed_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[photographer-projects] detail failed:', err);
+    res.status(500).json({ error: 'project_detail_failed' });
+  }
+});
+
+// PATCH /api/photographer/projects/:projectId — oppdater felter.
+app.patch("/api/photographer/projects/:projectId", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  const {
+    title, projectType, status, phase, eventDate, location,
+    servicePrice, hourlyRate, costOverhead, estimatedHours, description, clientId,
+  } = req.body ?? {};
+
+  try {
+    await ensurePhotographerProjectsSchema();
+    if (clientId) {
+      const owned = await pool.query(
+        `SELECT 1 FROM clients WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+        [clientId, photographerId],
+      );
+      if (owned.rowCount === 0) return res.status(403).json({ error: 'client_not_owned' });
+    }
+    const result = await pool.query(
+      `UPDATE projects SET
+         title          = COALESCE($1, title),
+         project_type   = COALESCE($2, project_type),
+         status         = COALESCE($3, status),
+         phase          = COALESCE($4, phase),
+         event_date     = COALESCE($5, event_date),
+         location       = COALESCE($6, location),
+         service_price  = COALESCE($7, service_price),
+         hourly_rate    = COALESCE($8, hourly_rate),
+         cost_overhead  = COALESCE($9, cost_overhead),
+         estimated_hours= COALESCE($10, estimated_hours),
+         description    = COALESCE($11, description),
+         client_id      = COALESCE($12, client_id),
+         updated_at     = NOW()::text
+       WHERE id = $13 AND user_id = $14
+       RETURNING id, title, event_date, location, description, client_id,
+                 google_calendar_event_id`,
+      [
+        typeof title === 'string' && title.trim() ? title.trim() : null,
+        typeof projectType === 'string' && projectType.trim() ? projectType.trim() : null,
+        typeof status === 'string' && status.trim() ? status.trim() : null,
+        typeof phase === 'string' && phase.trim() ? phase.trim() : null,
+        eventDate || null,
+        typeof location === 'string' && location.trim() ? location.trim() : null,
+        Number.isFinite(Number(servicePrice)) ? Number(servicePrice) : null,
+        Number.isFinite(Number(hourlyRate)) ? Number(hourlyRate) : null,
+        Number.isFinite(Number(costOverhead)) ? Number(costOverhead) : null,
+        Number.isFinite(Number(estimatedHours)) ? Number(estimatedHours) : null,
+        typeof description === 'string' ? description : null,
+        clientId || null,
+        projectId,
+        photographerId,
+      ],
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+
+    // Google Calendar-sync — best-effort. Resynk hvis tittel/lokasjon/dato endret.
+    const updated = result.rows[0];
+    const hasCalendarRelevantChange =
+      title !== undefined || eventDate !== undefined
+      || location !== undefined || description !== undefined;
+    if (hasCalendarRelevantChange) {
+      try {
+        const { syncProjectCalendarEvent } = await import('./google-calendar-project.js');
+        const clientLookup = updated.client_id
+          ? await pool.query(`SELECT first_name, last_name, email FROM clients WHERE id = $1 LIMIT 1`, [updated.client_id])
+          : null;
+        const clientRow = clientLookup?.rows[0];
+        const calResult = await syncProjectCalendarEvent(pool, {
+          photographerId,
+          projectId,
+          title: updated.title ?? 'Uten tittel',
+          eventDate: updated.event_date,
+          location: updated.location ?? null,
+          description: updated.description ?? null,
+          clientName: clientRow
+            ? [clientRow.first_name, clientRow.last_name].filter(Boolean).join(' ')
+            : null,
+          clientEmail: clientRow?.email ?? null,
+          existingEventId: updated.google_calendar_event_id ?? null,
+        });
+        if (calResult.action === 'deleted') {
+          await pool.query(`UPDATE projects SET google_calendar_event_id = NULL WHERE id = $1`, [projectId]);
+        } else if (calResult.eventId && calResult.eventId !== updated.google_calendar_event_id) {
+          await pool.query(
+            `UPDATE projects SET google_calendar_event_id = $1 WHERE id = $2`,
+            [calResult.eventId, projectId],
+          );
+        }
+      } catch (err) {
+        console.warn('[photographer-projects] calendar sync after update failed:', err);
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[photographer-projects] update failed:', err);
+    res.status(500).json({ error: 'update_project_failed' });
+  }
+});
+
+// POST /api/photographer/projects/:projectId/time — logg time-entry.
+app.post("/api/photographer/projects/:projectId/time", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  const { taskDescription, hoursSpent, billableHours, rate, dateWorked } = req.body ?? {};
+
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+  if (!taskDescription || typeof taskDescription !== 'string') {
+    return res.status(400).json({ error: 'task_description_required' });
+  }
+  if (!Number.isFinite(Number(hoursSpent))) return res.status(400).json({ error: 'hours_invalid' });
+
+  try {
+    await ensurePhotographerProjectsSchema();
+    const owned = await pool.query(
+      `SELECT hourly_rate FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+    const defaultRate = Number(owned.rows[0]?.hourly_rate ?? 0);
+    const finalRate = Number.isFinite(Number(rate)) ? Number(rate) : defaultRate;
+    const billable = Number.isFinite(Number(billableHours)) ? Number(billableHours) : Number(hoursSpent);
+
+    const ins = await pool.query(
+      `INSERT INTO project_time_tracking
+         (project_id, task_description, hours_spent, billable_hours, rate, date_worked, created_at)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6::date, CURRENT_DATE), NOW())
+       RETURNING id`,
+      [projectId, taskDescription.trim(), Number(hoursSpent), billable, finalRate, dateWorked || null],
+    );
+    res.status(201).json({ id: ins.rows[0]?.id });
+  } catch (err) {
+    console.error('[photographer-projects] time-log failed:', err);
+    res.status(500).json({ error: 'time_log_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// PowerOffice GO integrasjon (faktura-push for fotograf-prosjekter)
+// ─────────────────────────────────────────────────────────────────────────
+// Per-fotograf clientKey lagres i photographer_integrations (migrasjon 0092).
+// ClientKey returneres ALDRI til frontend — kun connected/status.
+
+let photographerIntegrationsSchemaReady: Promise<void> | null = null;
+function ensurePhotographerIntegrationsSchema(): Promise<void> {
+  if (!photographerIntegrationsSchemaReady) {
+    photographerIntegrationsSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS photographer_integrations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            photographer_id VARCHAR(64) NOT NULL,
+            provider VARCHAR(32) NOT NULL,
+            client_key TEXT NOT NULL,
+            label TEXT,
+            status VARCHAR(32) DEFAULT 'active',
+            last_verified_at TIMESTAMPTZ,
+            last_used_at TIMESTAMPTZ,
+            last_error TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (photographer_id, provider)
+          );
+          CREATE INDEX IF NOT EXISTS photographer_integrations_photographer_idx
+            ON photographer_integrations (photographer_id);
+        `);
+      } catch (err) {
+        console.warn('[photographer-integrations] schema-ensure failed:', err);
+        photographerIntegrationsSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return photographerIntegrationsSchemaReady;
+}
+
+// GET /api/photographer/integrations/poweroffice/status — er fotografen koblet?
+// Returnerer kun publik state, aldri clientKey.
+app.get("/api/photographer/integrations/poweroffice/status", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePhotographerIntegrationsSchema();
+    const { isPowerOfficeConfigured } = await import('./poweroffice.js');
+    const r = await pool.query(
+      `SELECT id, label, status, last_verified_at, last_used_at, last_error, created_at
+         FROM photographer_integrations
+        WHERE photographer_id = $1 AND provider = 'poweroffice'
+        LIMIT 1`,
+      [session.userId],
+    );
+    if (r.rowCount === 0) {
+      return res.json({
+        connected: false,
+        serverConfigured: isPowerOfficeConfigured(),
+      });
+    }
+    const row = r.rows[0];
+    res.json({
+      connected: true,
+      serverConfigured: isPowerOfficeConfigured(),
+      label: row.label,
+      status: row.status,
+      lastVerifiedAt: row.last_verified_at,
+      lastUsedAt: row.last_used_at,
+      lastError: row.last_error,
+      createdAt: row.created_at,
+    });
+  } catch (err) {
+    console.error('[poweroffice] status failed:', err);
+    res.status(500).json({ error: 'status_failed' });
+  }
+});
+
+// POST /api/photographer/integrations/poweroffice/connect — verifiser + lagre clientKey.
+// Body: { clientKey: string, label?: string }
+app.post("/api/photographer/integrations/poweroffice/connect", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const clientKey = typeof req.body?.clientKey === 'string' ? req.body.clientKey.trim() : '';
+  const label = typeof req.body?.label === 'string' ? req.body.label.trim().slice(0, 200) : null;
+  if (!clientKey) return res.status(400).json({ error: 'client_key_required' });
+
+  try {
+    await ensurePhotographerIntegrationsSchema();
+    const { verifyClientKey, isPowerOfficeConfigured, PowerOfficeAuthError } = await import('./poweroffice.js');
+    if (!isPowerOfficeConfigured()) {
+      return res.status(503).json({
+        error: 'server_not_configured',
+        message: 'PowerOffice APPLICATION_KEY/SUBSCRIPTION_KEY mangler i ENV. Be admin sette dem i Render.',
+      });
+    }
+    const ok = await verifyClientKey(clientKey).catch((e: unknown) => {
+      if (e instanceof PowerOfficeAuthError) return false;
+      throw e;
+    });
+    if (!ok) {
+      return res.status(401).json({
+        error: 'invalid_client_key',
+        message: 'PowerOffice avviste ClientKey. Sjekk at den er kopiert riktig fra Innstillinger → API-klienter i GO.',
+      });
+    }
+    await pool.query(
+      `INSERT INTO photographer_integrations
+         (photographer_id, provider, client_key, label, status, last_verified_at, updated_at)
+       VALUES ($1, 'poweroffice', $2, $3, 'active', NOW(), NOW())
+       ON CONFLICT (photographer_id, provider) DO UPDATE SET
+         client_key = EXCLUDED.client_key,
+         label = COALESCE(EXCLUDED.label, photographer_integrations.label),
+         status = 'active',
+         last_verified_at = NOW(),
+         last_error = NULL,
+         updated_at = NOW()`,
+      [session.userId, clientKey, label],
+    );
+    res.json({ connected: true });
+  } catch (err) {
+    console.error('[poweroffice] connect failed:', err);
+    res.status(500).json({ error: 'connect_failed' });
+  }
+});
+
+// DELETE /api/photographer/integrations/poweroffice — fjern lagret clientKey.
+app.delete("/api/photographer/integrations/poweroffice", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePhotographerIntegrationsSchema();
+    await pool.query(
+      `DELETE FROM photographer_integrations
+        WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+      [session.userId],
+    );
+    res.json({ disconnected: true });
+  } catch (err) {
+    console.error('[poweroffice] disconnect failed:', err);
+    res.status(500).json({ error: 'disconnect_failed' });
+  }
+});
+
+// POST /api/photographer/projects/:projectId/invoice — lag faktura i PowerOffice.
+// Bruker prosjektets service_price + vat_rate + client-info.
+app.post("/api/photographer/projects/:projectId/invoice", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  try {
+    await ensurePhotographerProjectsSchema();
+    await ensurePhotographerIntegrationsSchema();
+
+    // Hent integrasjon
+    const intQ = await pool.query(
+      `SELECT client_key, status FROM photographer_integrations
+        WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
+      [photographerId],
+    );
+    if (intQ.rowCount === 0) {
+      return res.status(412).json({
+        error: 'poweroffice_not_connected',
+        message: 'Koble til PowerOffice først via /photographer/settings/integrations.',
+      });
+    }
+    const { client_key, status } = intQ.rows[0];
+    if (status !== 'active') {
+      return res.status(412).json({ error: 'integration_not_active', integrationStatus: status });
+    }
+
+    // Hent prosjekt + klient
+    const projQ = await pool.query(
+      `SELECT
+         p.id, p.title, p.service_price, p.vat_rate,
+         p.invoice_provider, p.external_invoice_id, p.external_invoice_number,
+         COALESCE(c.first_name || ' ' || c.last_name, p.client_name) AS client_name,
+         c.email AS client_email
+       FROM projects p
+       LEFT JOIN clients c ON c.id = p.client_id
+       WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+    const p = projQ.rows[0];
+
+    // Idempotens: hvis allerede fakturert via PO, returner eksisterende.
+    if (p.invoice_provider === 'poweroffice' && p.external_invoice_id) {
+      return res.json({
+        alreadyInvoiced: true,
+        invoiceId: p.external_invoice_id,
+        invoiceNumber: p.external_invoice_number,
+      });
+    }
+
+    if (!p.client_email) {
+      return res.status(400).json({ error: 'client_email_required', message: 'Prosjektet må ha klient med epost-adresse.' });
+    }
+    const serviceGross = Number(p.service_price || 0);
+    if (serviceGross <= 0) {
+      return res.status(400).json({ error: 'service_price_required', message: 'Sett en avtalt pris på prosjektet før fakturering.' });
+    }
+    const vatRate = Number(p.vat_rate ?? 25);
+    const unitPriceNet = vatRate > 0 ? serviceGross / (1 + vatRate / 100) : serviceGross;
+
+    const { createOutgoingInvoice, PowerOfficeApiError, PowerOfficeAuthError } = await import('./poweroffice.js');
+    let result;
+    try {
+      result = await createOutgoingInvoice({
+        clientKey: client_key,
+        clientName: p.client_name || 'Kunde',
+        clientEmail: p.client_email,
+        reference: p.title,
+        lines: [
+          {
+            description: p.title || 'Fotograf-leveranse',
+            quantity: 1,
+            unitPrice: Math.round(unitPriceNet * 100) / 100,
+            vatRate,
+          },
+        ],
+      });
+    } catch (err) {
+      // Auth-feil — marker integrasjonen som invalid så fotograf får clear feedback.
+      if (err instanceof PowerOfficeAuthError) {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET status = 'invalid', last_error = $2, updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [photographerId, err.message.slice(0, 500)],
+        );
+        return res.status(401).json({
+          error: 'poweroffice_auth_failed',
+          message: 'PowerOffice-tilkoblingen er ikke gyldig lenger. Reconnect via innstillinger.',
+        });
+      }
+      if (err instanceof PowerOfficeApiError) {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET last_error = $2, updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [photographerId, `${err.status}: ${err.message}`.slice(0, 500)],
+        );
+        return res.status(502).json({
+          error: 'poweroffice_api_failed',
+          status: err.status,
+          detail: err.body,
+        });
+      }
+      throw err;
+    }
+
+    // Lagre invoice-koblingen på prosjektet.
+    await pool.query(
+      `UPDATE projects SET
+         invoice_provider = 'poweroffice',
+         external_invoice_id = $1,
+         external_invoice_number = $2,
+         invoiced_at = NOW(),
+         updated_at = NOW()::text
+       WHERE id = $3 AND user_id = $4`,
+      [result.invoiceId, result.invoiceNumber, projectId, photographerId],
+    );
+    await pool.query(
+      `UPDATE photographer_integrations
+          SET last_used_at = NOW(), last_error = NULL, updated_at = NOW()
+        WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+      [photographerId],
+    );
+
+    res.status(201).json({
+      invoiceId: result.invoiceId,
+      invoiceNumber: result.invoiceNumber,
+      status: result.status,
+      provider: 'poweroffice',
+    });
+  } catch (err) {
+    console.error('[poweroffice] invoice creation failed:', err);
+    res.status(500).json({ error: 'invoice_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Photographer project milestones (Slice 9X.14 — timeline + next-steps)
+// ─────────────────────────────────────────────────────────────────────────
+
+// GET /api/photographer/projects/:projectId/milestones — list timeline for
+// prosjekt + identifiser "neste steg" (første pending milestone) som
+// frontend bruker til "Next steps"-card.
+app.get("/api/photographer/projects/:projectId/milestones", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  try {
+    // Verify project ownership
+    const owned = await pool.query(
+      `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+
+    const r = await pool.query(
+      `SELECT id, title, description, category, type, due_date, scheduled_date,
+              status, progress, priority, client_visible, requires_client_approval,
+              client_approval_status, google_calendar_event_id,
+              actual_cost, budget_allocated, created_at, updated_at
+         FROM project_milestones
+        WHERE project_id = $1 AND user_id = $2
+        ORDER BY due_date ASC NULLS LAST, created_at ASC`,
+      [projectId, photographerId],
+    );
+
+    const milestones = r.rows.map((m: Record<string, unknown>) => ({
+      id: m.id,
+      title: m.title,
+      description: m.description ?? null,
+      category: m.category,
+      type: m.type,
+      dueDate: m.due_date,
+      scheduledDate: m.scheduled_date,
+      status: m.status,
+      progress: Number(m.progress ?? 0),
+      priority: m.priority,
+      clientVisible: !!m.client_visible,
+      requiresClientApproval: !!m.requires_client_approval,
+      clientApprovalStatus: m.client_approval_status ?? null,
+      googleCalendarEventId: m.google_calendar_event_id ?? null,
+      createdAt: m.created_at,
+      updatedAt: m.updated_at,
+    }));
+
+    // "Neste steg" = første milestone som ikke er completed/cancelled.
+    // Frontend bruker denne til CTA-card øverst på prosjekt-detalj.
+    const nextStep = milestones.find(
+      (m) => m.status !== 'completed' && m.status !== 'cancelled',
+    ) ?? null;
+    const completed = milestones.filter((m) => m.status === 'completed').length;
+    const totalProgress = milestones.length > 0
+      ? Math.round((completed / milestones.length) * 100)
+      : 0;
+
+    res.json({ milestones, nextStep, totalProgress, completedCount: completed });
+  } catch (err) {
+    console.error('[photographer-milestones] list failed:', err);
+    res.status(500).json({ error: 'milestones_failed' });
+  }
+});
+
+// PATCH /api/photographer/projects/:projectId/milestones/:milestoneId — oppdater
+// status (in_progress, completed, cancelled), progress (0-100), notes.
+app.patch("/api/photographer/projects/:projectId/milestones/:milestoneId", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  const milestoneId = String(req.params.milestoneId || '').trim();
+  if (!projectId || !milestoneId) return res.status(400).json({ error: 'ids_required' });
+
+  const { status, progress, googleCalendarEventId } = req.body ?? {};
+
+  try {
+    const r = await pool.query(
+      `UPDATE project_milestones SET
+         status = COALESCE($1, status),
+         progress = COALESCE($2, progress),
+         google_calendar_event_id = COALESCE($3, google_calendar_event_id),
+         updated_at = NOW()
+       WHERE id = $4 AND project_id = $5 AND user_id = $6`,
+      [
+        typeof status === 'string' && status.trim() ? status.trim() : null,
+        Number.isFinite(Number(progress)) ? Math.max(0, Math.min(100, Number(progress))) : null,
+        typeof googleCalendarEventId === 'string' && googleCalendarEventId.trim()
+          ? googleCalendarEventId.trim() : null,
+        milestoneId, projectId, photographerId,
+      ],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'milestone_not_found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[photographer-milestones] update failed:', err);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
+
+// POST /api/photographer/projects/:projectId/meet — opprett Google Meet-event
+// koblet til milestone. Bruker eksisterende createGoogleMeetLink-helper.
+app.post("/api/photographer/projects/:projectId/meet", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  const { milestoneId, date, time, duration, title, description } = req.body ?? {};
+
+  try {
+    // Verify project + hent klient-info
+    const projQ = await pool.query(
+      `SELECT p.id, p.title, p.client_id,
+              COALESCE(c.email, '') AS client_email,
+              COALESCE(c.first_name || ' ' || c.last_name, p.client_name) AS client_display
+         FROM projects p
+         LEFT JOIN clients c ON c.id = p.client_id
+        WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+    const p = projQ.rows[0];
+
+    const { createGoogleMeetLink } = await import('./google-meet.js');
+    const result = await createGoogleMeetLink(pool, {
+      title: typeof title === 'string' && title.trim() ? title : `Møte: ${p.title}`,
+      description: typeof description === 'string' ? description : undefined,
+      date,
+      time,
+      duration: Number.isFinite(Number(duration)) ? Number(duration) : 60,
+      projectId,
+      projectName: p.title,
+      clientName: p.client_display ?? undefined,
+      attendees: p.client_email ? [p.client_email] : undefined,
+    }, photographerId);
+
+    // Hvis milestoneId gitt: lagre calendar-event-id på milestone
+    if (milestoneId && result.calendarEventId) {
+      await pool.query(
+        `UPDATE project_milestones
+            SET google_calendar_event_id = $1,
+                scheduled_date = $2::timestamptz,
+                status = CASE WHEN status = 'not_started' THEN 'in_progress' ELSE status END,
+                updated_at = NOW()
+          WHERE id = $3 AND project_id = $4 AND user_id = $5`,
+        [result.calendarEventId, result.scheduledAt, milestoneId, projectId, photographerId],
+      );
+    }
+
+    // CRM-log
+    if (p.client_id) {
+      await pool.query(
+        `INSERT INTO client_communications
+           (user_id, client_id, project_id, communication_type, direction,
+            subject, content, meeting_url, status, requires_response,
+            priority, category, tags, created_at)
+         VALUES ($1, $2, $3, 'meeting', 'outbound',
+                 $4, $5, $6, 'sent', false,
+                 'normal', 'meeting_scheduled', ARRAY['meeting','google_meet'], NOW())`,
+        [
+          photographerId, p.client_id, projectId,
+          `Google Meet planlagt: ${result.title}`,
+          `Møte planlagt ${result.scheduledAt}. Link: ${result.meetLink}`,
+          result.meetLink,
+        ],
+      ).catch((e) => console.warn('[meet] CRM log failed:', e));
+    }
+
+    res.status(201).json({
+      meetLink: result.meetLink,
+      title: result.title,
+      scheduledAt: result.scheduledAt,
+      calendarEventId: result.calendarEventId,
+      webViewUrl: result.webViewUrl,
+    });
+  } catch (err: any) {
+    console.error('[photographer-meet] create failed:', err);
+    res.status(500).json({ error: 'meet_create_failed', message: String(err?.message || '').slice(0, 200) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Photographer upload session (Slice 9X.16 — batch foto-upload)
+// ─────────────────────────────────────────────────────────────────────────
+
+// GET /api/photographer/projects/:projectId/upload-session — get-or-create
+// en capture_session knyttet til prosjektet. Returnerer session-id som
+// frontend bruker mot eksisterende /api/capture/sessions/:id/assets +
+// multipart-upload-endepunktene. Forenkler upload-UI så Stine slipper å
+// vite om capture-sessions er en separat ting.
+app.get("/api/photographer/projects/:projectId/upload-session", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  try {
+    // Verifiser prosjekt-eierskap
+    const projQ = await pool.query(
+      `SELECT title, event_date FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+    const proj = projQ.rows[0];
+
+    // Sjekk om det allerede finnes en aktiv capture_session for prosjektet
+    let existing = await pool.query(
+      `SELECT id, name, status, starts_at, created_at
+         FROM capture_sessions
+        WHERE owner_user_id = $1 AND project_id = $2 AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [photographerId, projectId],
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    let sessionRow = existing.rows[0];
+
+    // Hvis ingen: opprett ny
+    if (!sessionRow) {
+      const startsAt = proj.event_date
+        ? new Date(proj.event_date).toISOString()
+        : new Date().toISOString();
+      const insert = await pool.query(
+        `INSERT INTO capture_sessions (owner_user_id, name, project_id, starts_at, status)
+         VALUES ($1, $2, $3, $4::timestamptz, 'active')
+         RETURNING id, name, status, starts_at, created_at`,
+        [photographerId, proj.title || 'Upload session', projectId, startsAt],
+      );
+      sessionRow = insert.rows[0];
+    }
+
+    // Hent eksisterende asset-count
+    const countQ = await pool.query(
+      `SELECT COUNT(*)::int AS asset_count
+         FROM capture_assets
+        WHERE session_id = $1 AND deleted_at IS NULL`,
+      [sessionRow.id],
+    ).catch(() => ({ rows: [{ asset_count: 0 }] }));
+
+    res.json({
+      session: {
+        id: sessionRow.id,
+        name: sessionRow.name,
+        status: sessionRow.status,
+        startsAt: sessionRow.starts_at,
+        createdAt: sessionRow.created_at,
+      },
+      assetCount: Number(countQ.rows[0]?.asset_count ?? 0),
+    });
+  } catch (err) {
+    console.error('[photographer-upload-session] failed:', err);
+    res.status(500).json({ error: 'upload_session_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Chat-over-email bridge (Slice 9X.18 — UniversalChat med Gmail under)
+// ─────────────────────────────────────────────────────────────────────────
+// Bobler-chat i UI mellom fotograf og klient. Hver melding lagres i
+// client_communications + sendes som Gmail-mail med RFC 2822-threading-
+// headers (Message-ID, In-Reply-To, References) så klientens svar går
+// i samme tråd i deres innboks. Innkommende svar polles separat.
+
+const CHAT_MESSAGE_ID_DOMAIN = process.env.PUBLIC_APP_HOSTNAME || 'creatorhubn.com';
+
+function generateChatMessageId(projectId: string): string {
+  // RFC 5322 message-id: lokal-del må være globalt unik. Inkluderer
+  // project-id-prefix så Gmail-poll-løperen senere kan filtrere på det.
+  const random = crypto.randomBytes(12).toString('hex');
+  return `<chat-${projectId.slice(0, 8)}-${random}@${CHAT_MESSAGE_ID_DOMAIN}>`;
+}
+
+// POST /api/photographer/projects/:projectId/messages — send chat-melding.
+// Body: { content: string }
+// Lagrer i client_communications + sender Gmail til klienten med riktig
+// threading-headers. Returnerer den lagrede meldingen.
+app.post("/api/photographer/projects/:projectId/messages", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!content) return res.status(400).json({ error: 'content_required' });
+  if (content.length > 10_000) return res.status(413).json({ error: 'content_too_long' });
+
+  try {
+    // Hent prosjekt + klient + fotograf-info
+    const ctxQ = await pool.query(
+      `SELECT
+         p.id, p.title, p.client_id,
+         c.email AS client_email,
+         COALESCE(c.first_name || ' ' || c.last_name, p.client_name, c.email) AS client_display,
+         u.email AS photographer_email,
+         COALESCE(u.first_name || ' ' || u.last_name, u.company_name, 'Creatorhubn') AS photographer_display
+       FROM projects p
+       LEFT JOIN clients c ON c.id = p.client_id
+       LEFT JOIN users u ON u.id = $2::varchar
+       WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (ctxQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+    const ctx = ctxQ.rows[0];
+
+    if (!ctx.client_id) {
+      return res.status(412).json({ error: 'no_client_linked', message: 'Prosjektet må ha klient med epost-adresse for chat.' });
+    }
+    if (!ctx.client_email) {
+      return res.status(412).json({ error: 'no_client_email' });
+    }
+
+    // Hent tråd-historikk for å sette In-Reply-To + References
+    // (samtlige tidligere message-ids på samme prosjekt).
+    const threadQ = await pool.query(
+      `SELECT google_email_id
+         FROM client_communications
+        WHERE project_id = $1
+          AND is_universal_chat = true
+          AND google_email_id IS NOT NULL
+        ORDER BY created_at ASC
+        LIMIT 50`,
+      [projectId],
+    );
+    const allMessageIds = threadQ.rows
+      .map((r: Record<string, unknown>) => r.google_email_id)
+      .filter((x: unknown): x is string => typeof x === 'string' && x.length > 0);
+    const lastMessageId = allMessageIds[allMessageIds.length - 1] ?? null;
+
+    // Universal thread id = stabilt prosjekt-id-prefix
+    const universalThreadId = `proj-${projectId}`;
+
+    const newMessageId = generateChatMessageId(projectId);
+
+    // Send Gmail (best-effort — chat-rad lagres uansett så Stine ikke mister meldingen)
+    let emailSent = false;
+    let gmailMessageError: string | null = null;
+    const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
+    const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
+
+    if (mailUser && mailPass) {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user: mailUser, pass: mailPass },
+        });
+        const headers: Record<string, string> = {
+          'Message-ID': newMessageId,
+        };
+        if (lastMessageId) {
+          headers['In-Reply-To'] = lastMessageId;
+          headers['References'] = allMessageIds.join(' ');
+        }
+
+        const html = `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+            <p style="font-size:15px;line-height:1.6;color:#333;white-space:pre-wrap;">${escapeHtml(content)}</p>
+            <hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px;">
+            <p style="font-size:12px;color:#999;">
+              Sendt fra ${escapeHtml(ctx.photographer_display)} via Creatorhubn.
+              Du kan svare på denne meldingen — svaret blir lagt til i samme tråd.
+            </p>
+          </div>
+        `;
+
+        await transporter.sendMail({
+          from: `"${ctx.photographer_display}" <${mailUser}>`,
+          to: ctx.client_email,
+          replyTo: ctx.photographer_email || mailUser,
+          subject: lastMessageId
+            ? `Re: ${ctx.title}`
+            : `${ctx.title}`,
+          text: content,
+          html,
+          headers,
+        });
+        emailSent = true;
+      } catch (mailErr: any) {
+        gmailMessageError = String(mailErr?.message || mailErr).slice(0, 200);
+        console.warn('[chat] Gmail send failed:', gmailMessageError);
+      }
+    } else {
+      gmailMessageError = 'GMAIL_USER/GMAIL_APP_PASSWORD ikke satt';
+    }
+
+    // Lagre i client_communications (selv om epost feilet — fotograf ser meldingen sin)
+    const ins = await pool.query(
+      `INSERT INTO client_communications
+         (user_id, client_id, project_id, communication_type, direction,
+          subject, content, from_email, to_email, status, requires_response,
+          priority, category, tags, universal_thread_id, is_universal_chat,
+          google_email_id, created_at)
+       VALUES ($1, $2, $3, 'chat', 'outbound',
+               $4, $5, $6, $7, 'sent', false,
+               'normal', 'chat', ARRAY['chat','outbound'], $8, true,
+               $9, NOW())
+       RETURNING id, created_at`,
+      [
+        photographerId, ctx.client_id, projectId,
+        `Chat: ${ctx.title}`,
+        content,
+        mailUser || ctx.photographer_email || null,
+        ctx.client_email,
+        universalThreadId,
+        newMessageId,
+      ],
+    );
+
+    res.status(201).json({
+      id: ins.rows[0].id,
+      content,
+      direction: 'outbound',
+      fromEmail: mailUser || ctx.photographer_email,
+      toEmail: ctx.client_email,
+      messageId: newMessageId,
+      emailSent,
+      emailError: gmailMessageError,
+      createdAt: ins.rows[0].created_at,
+    });
+  } catch (err) {
+    console.error('[chat] message send failed:', err);
+    res.status(500).json({ error: 'send_failed' });
+  }
+});
+
+// GET /api/photographer/projects/:projectId/messages — hent hele chat-tråden.
+// Trigger automatisk Gmail-poll i bakgrunnen så innkommende svar dukker
+// opp uten manuell refresh (debounced via in-memory lock for å unngå spam).
+const chatPollLastRunByProject = new Map<string, number>();
+const CHAT_POLL_MIN_INTERVAL_MS = 20_000;
+
+app.get("/api/photographer/projects/:projectId/messages", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  try {
+    const owned = await pool.query(
+      `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+
+    // Best-effort bakgrunns-poll. Debounced så vi ikke hammrer Gmail
+    // når frontend auto-refreshes hver 30s. Kjøres etter response.
+    const lastRun = chatPollLastRunByProject.get(projectId) ?? 0;
+    if (Date.now() - lastRun > CHAT_POLL_MIN_INTERVAL_MS) {
+      chatPollLastRunByProject.set(projectId, Date.now());
+      // Fire and forget — chat-listen returneres uten å vente
+      (async () => {
+        try {
+          const { pollProjectGmailReplies } = await import('./chat-gmail-poller.js');
+          await pollProjectGmailReplies(pool, { photographerId, projectId });
+        } catch (err) {
+          console.warn('[chat] background poll failed:', err);
+        }
+      })();
+    }
+
+    const r = await pool.query(
+      `SELECT id, communication_type, direction, content, from_email, to_email,
+              google_email_id, google_thread_id, created_at, status
+         FROM client_communications
+        WHERE project_id = $1
+          AND (is_universal_chat = true OR communication_type IN ('chat', 'email'))
+        ORDER BY created_at ASC
+        LIMIT 500`,
+      [projectId],
+    );
+
+    res.json({
+      messages: r.rows.map((m: Record<string, unknown>) => ({
+        id: m.id,
+        type: m.communication_type,
+        direction: m.direction,
+        content: m.content,
+        fromEmail: m.from_email,
+        toEmail: m.to_email,
+        messageId: m.google_email_id ?? null,
+        threadId: m.google_thread_id ?? null,
+        status: m.status,
+        createdAt: m.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[chat] list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+// POST /api/photographer/projects/:projectId/messages/refresh — manuell
+// trigger av Gmail-poll for innkommende svar. Returnerer antall nye
+// meldinger funnet + status-info så UI kan vise feedback ved scope-feil.
+app.post("/api/photographer/projects/:projectId/messages/refresh", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const projectId = String(req.params.projectId || '').trim();
+  if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
+
+  try {
+    const owned = await pool.query(
+      `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [projectId, photographerId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+
+    const { pollProjectGmailReplies } = await import('./chat-gmail-poller.js');
+    const result = await pollProjectGmailReplies(pool, { photographerId, projectId });
+    chatPollLastRunByProject.set(projectId, Date.now());
+    res.json(result);
+  } catch (err) {
+    console.error('[chat] refresh failed:', err);
+    res.status(500).json({ error: 'refresh_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Wedding Timeline e2e (Slice 9X.22 — auto-invitasjon + kode-flow + GDPR)
+// ─────────────────────────────────────────────────────────────────────────
+
+let weddingTimelineSchemaReady: Promise<void> | null = null;
+function ensureWeddingTimelineSchema(): Promise<void> {
+  if (!weddingTimelineSchemaReady) {
+    weddingTimelineSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS invited_at TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS first_opened_at TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS gdpr_consent_at TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS gdpr_delete_requested_at TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS photographer_arrival TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines
+            ADD COLUMN IF NOT EXISTS showcase_url VARCHAR(500);
+          CREATE TABLE IF NOT EXISTS wedding_locations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            wedding_id VARCHAR(64) NOT NULL,
+            label VARCHAR(255) NOT NULL,
+            address TEXT,
+            postal_code VARCHAR(16),
+            city VARCHAR(128),
+            arrival_time TIMESTAMPTZ,
+            departure_time TIMESTAMPTZ,
+            notes TEXT,
+            sort_order INTEGER DEFAULT 0,
+            google_maps_url VARCHAR(500),
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE TABLE IF NOT EXISTS wedding_inspirations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            wedding_id VARCHAR(64) NOT NULL,
+            image_url VARCHAR(1000),
+            source_url VARCHAR(1000),
+            caption TEXT,
+            uploaded_by_email VARCHAR(255),
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE TABLE IF NOT EXISTS wedding_contacts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            wedding_id VARCHAR(64) NOT NULL,
+            full_name VARCHAR(255) NOT NULL,
+            relation VARCHAR(64) NOT NULL,
+            phone VARCHAR(32),
+            email VARCHAR(255),
+            notes TEXT,
+            is_must_capture BOOLEAN DEFAULT FALSE,
+            sort_order INTEGER DEFAULT 0,
+            captured_at TIMESTAMPTZ,
+            captured_by VARCHAR(64),
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          ALTER TABLE wedding_contacts ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ;
+          ALTER TABLE wedding_contacts ADD COLUMN IF NOT EXISTS captured_by VARCHAR(64);
+          ALTER TABLE wedding_timelines ADD COLUMN IF NOT EXISTS contracted_hours NUMERIC(4,1);
+          ALTER TABLE wedding_timelines ADD COLUMN IF NOT EXISTS overtime_activated_at TIMESTAMPTZ;
+          ALTER TABLE wedding_timelines ADD COLUMN IF NOT EXISTS overtime_hourly_rate NUMERIC(10,2);
+          ALTER TABLE wedding_timelines ADD COLUMN IF NOT EXISTS overtime_ended_at TIMESTAMPTZ;
+          CREATE INDEX IF NOT EXISTS wedding_locations_wedding_idx ON wedding_locations (wedding_id, sort_order);
+          CREATE INDEX IF NOT EXISTS wedding_inspirations_wedding_idx ON wedding_inspirations (wedding_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS wedding_contacts_wedding_idx ON wedding_contacts (wedding_id, is_must_capture, sort_order);
+        `);
+        await pool.query(`
+          CREATE UNIQUE INDEX IF NOT EXISTS wedding_timelines_access_code_unique
+            ON wedding_timelines (client_access_code) WHERE client_access_code IS NOT NULL;
+        `).catch(() => undefined);
+      } catch (err) {
+        console.warn('[wedding-timeline] schema-ensure failed:', err);
+        weddingTimelineSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return weddingTimelineSchemaReady;
+}
+
+// Generér 6-tegns wedding-access-kode med samme alfabet som gallery-koder
+// (ekskl. 0/O/I/1 for telefon-diktering).
+const WEDDING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateWeddingAccessCode(length = 6): string {
+  let out = '';
+  const buf = crypto.randomBytes(length * 2);
+  let i = 0;
+  while (out.length < length && i < buf.length) {
+    out += WEDDING_CODE_ALPHABET[buf[i] % WEDDING_CODE_ALPHABET.length];
+    i++;
+  }
+  return out;
+}
+
+async function createWeddingTimelineFromProject(input: {
+  projectId: string;
+  photographerId: string;
+  clientName: string | null;
+  clientEmail: string | null;
+  eventDate: string | null;
+  projectTitle: string;
+}): Promise<{ weddingId: string; accessCode: string } | null> {
+  await ensureWeddingTimelineSchema();
+
+  // Sjekk om wedding_timeline allerede eksisterer for prosjektet
+  const existing = await pool.query(
+    `SELECT id, client_access_code FROM wedding_timelines WHERE project_id = $1 LIMIT 1`,
+    [input.projectId],
+  );
+  if ((existing.rowCount ?? 0) > 0) {
+    return {
+      weddingId: existing.rows[0].id,
+      accessCode: existing.rows[0].client_access_code,
+    };
+  }
+
+  // Generér unik kode med opp til 5 forsøk
+  let accessCode = '';
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = generateWeddingAccessCode();
+    const dupe = await pool.query(
+      `SELECT 1 FROM wedding_timelines WHERE client_access_code = $1 LIMIT 1`,
+      [candidate],
+    );
+    if ((dupe.rowCount ?? 0) === 0) {
+      accessCode = candidate;
+      break;
+    }
+  }
+  if (!accessCode) return null;
+
+  const weddingId = crypto.randomUUID();
+  const coupleName = input.clientName ?? input.projectTitle;
+  const accessToken = crypto.randomBytes(16).toString('hex');
+
+  // Slice 9X.32 — auto-propagér overtime-rate fra fotografens prisadministrasjon
+  const defaultOvertimeRate = await getPhotographerOvertimeRate(input.photographerId);
+
+  await pool.query(
+    `INSERT INTO wedding_timelines
+       (id, project_id, wedding_date, groom_name, bride_name, couple_name,
+        photographer_id, user_id, title, client_access_code, client_access_enabled,
+        client_settings, timeline_data, is_active, invited_at,
+        overtime_hourly_rate, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6,
+             $7, $7, $8, $9, true,
+             $10::jsonb, $11::jsonb, true, NOW(),
+             $12, NOW(), NOW())`,
+    [
+      weddingId,
+      input.projectId,
+      input.eventDate || new Date().toISOString().slice(0, 10),
+      input.clientName ? String(input.clientName).split(' ').slice(-1)[0] : '',
+      input.clientName ? String(input.clientName).split(' ')[0] : '',
+      coupleName,
+      input.photographerId,
+      input.projectTitle,
+      accessCode,
+      JSON.stringify({ accessToken }),
+      JSON.stringify({ completed: false }),
+      defaultOvertimeRate,
+    ],
+  );
+
+  // Send invitasjons-mail til klient
+  const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
+  const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
+  if (mailUser && mailPass && input.clientEmail) {
+    try {
+      const photographerInfo = await pool.query(
+        `SELECT COALESCE(company_name, first_name || ' ' || last_name, 'Creatorhubn') AS display_name,
+                email FROM users WHERE id = $1 LIMIT 1`,
+        [input.photographerId],
+      );
+      const photographerName = photographerInfo.rows[0]?.display_name ?? 'Creatorhubn';
+      const photographerEmail = photographerInfo.rows[0]?.email ?? mailUser;
+      const baseUrl = process.env.PUBLIC_APP_URL || 'https://creatorhubn.com';
+
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: mailUser, pass: mailPass },
+      });
+      const html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+          <h2 style="color:#1a1a1a;">Velkommen til wedding-timeline for ${escapeHtml(coupleName)}!</h2>
+          <p style="font-size:15px;line-height:1.6;color:#333;">
+            ${escapeHtml(photographerName)} har opprettet en wedding-timeline for deres bryllup
+            ${input.eventDate ? `den ${new Date(input.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}.
+          </p>
+          <p style="font-size:15px;line-height:1.6;color:#333;">
+            Her kan dere fylle ut detaljer om dagen — kjøreplan, viktige personer,
+            lokasjoner, kulturelle tradisjoner og inspirasjoner. Alt hjelper fotografen
+            å forberede seg slik at dagen blir akkurat som dere ønsker.
+          </p>
+          <div style="background:#f5f5f5;border-radius:8px;padding:24px;margin:24px 0;text-align:center;">
+            <p style="margin:0 0 8px;color:#666;font-size:13px;">Deres tilgangskode:</p>
+            <p style="margin:0;font-family:monospace;font-size:32px;letter-spacing:8px;color:#ff8c00;font-weight:600;">
+              ${accessCode}
+            </p>
+          </div>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${baseUrl}/wedding/access?code=${accessCode}"
+               style="display:inline-block;background:#ff8c00;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">
+              Åpne timeline
+            </a>
+          </div>
+          <p style="font-size:13px;color:#666;line-height:1.5;">
+            <strong>GDPR:</strong> Når dere fyller ut detaljer, samtykker dere til at fotografen
+            lagrer informasjonen for bryllups-planlegging. Dere har full rett til å slette dataen
+            når som helst — bare gi beskjed eller bruk "Slett mine data"-knappen i skjemaet.
+          </p>
+          <hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px;">
+          <p style="font-size:12px;color:#999;">
+            Hilsen ${escapeHtml(photographerName)} · ${escapeHtml(photographerEmail)}
+          </p>
+        </div>
+      `;
+      await transporter.sendMail({
+        from: `"${photographerName}" <${mailUser}>`,
+        to: input.clientEmail,
+        replyTo: photographerEmail,
+        subject: `Velkommen til wedding-timeline — kode ${accessCode}`,
+        html,
+      });
+    } catch (mailErr) {
+      console.warn('[wedding-invite] mail failed (non-fatal):', mailErr);
+    }
+  }
+
+  return { weddingId, accessCode };
+}
+
+// GET /api/wedding/access?code=XXXXXX — public lookup som returnerer
+// accessToken slik at /wedding/timeline/:token kan vises uten auth.
+app.get("/api/wedding/access", async (req, res) => {
+  const code = String(req.query?.code || '').trim().toUpperCase();
+  if (!code || code.length < 4 || code.length > 12) {
+    return res.status(400).json({ error: 'invalid_code_format' });
+  }
+  try {
+    await ensureWeddingTimelineSchema();
+    const r = await pool.query(
+      `SELECT id, project_id, couple_name, wedding_date, client_settings,
+              client_access_enabled, gdpr_delete_requested_at
+         FROM wedding_timelines
+        WHERE client_access_code = $1 LIMIT 1`,
+      [code],
+    );
+    if ((r.rowCount ?? 0) === 0) return res.status(404).json({ error: 'code_not_found' });
+    const row = r.rows[0];
+    if (!row.client_access_enabled) {
+      return res.status(403).json({ error: 'access_disabled' });
+    }
+    if (row.gdpr_delete_requested_at) {
+      return res.status(410).json({ error: 'data_deleted' });
+    }
+    const settings = (row.client_settings ?? {}) as Record<string, unknown>;
+    const accessToken = typeof settings.accessToken === 'string' ? settings.accessToken : null;
+    if (!accessToken) return res.status(500).json({ error: 'token_missing' });
+
+    // Stempel first_opened_at
+    await pool.query(
+      `UPDATE wedding_timelines
+          SET first_opened_at = COALESCE(first_opened_at, NOW()),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [row.id],
+    );
+
+    res.json({
+      accessToken,
+      weddingUrl: `/wedding/timeline/${accessToken}`,
+      coupleName: row.couple_name,
+      weddingDate: row.wedding_date,
+    });
+  } catch (err) {
+    console.error('[wedding-access] lookup failed:', err);
+    res.status(500).json({ error: 'lookup_failed' });
+  }
+});
+
+// GET /api/wedding/client/:token — hent timeline-data for brudepar (public)
+app.get("/api/wedding/client/:token", async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'token_required' });
+  try {
+    await ensureWeddingTimelineSchema();
+    const r = await pool.query(
+      `SELECT id, couple_name, wedding_date, culture, photographer_arrival,
+              showcase_url, timeline_data, client_settings, gdpr_consent_at,
+              gdpr_delete_requested_at
+         FROM wedding_timelines
+        WHERE (client_settings->>'accessToken') = $1 LIMIT 1`,
+      [token],
+    );
+    if ((r.rowCount ?? 0) === 0) return res.status(404).json({ error: 'not_found' });
+    const row = r.rows[0];
+    if (row.gdpr_delete_requested_at) return res.status(410).json({ error: 'data_deleted' });
+
+    const [locationsQ, contactsQ, inspirationsQ] = await Promise.all([
+      pool.query(`SELECT * FROM wedding_locations WHERE wedding_id = $1 ORDER BY sort_order, arrival_time`, [row.id]),
+      pool.query(`SELECT * FROM wedding_contacts WHERE wedding_id = $1 ORDER BY is_must_capture DESC, sort_order`, [row.id]),
+      pool.query(`SELECT * FROM wedding_inspirations WHERE wedding_id = $1 ORDER BY created_at DESC LIMIT 100`, [row.id]),
+    ]);
+
+    // Slice 9X.37 — gruppér locations med nested alternativer
+    const allLocations = locationsQ.rows;
+    const primaryLocs = allLocations.filter((l: any) => !l.alternative_for_location_id);
+    const mappedLocations = primaryLocs.map((l: any) => ({
+      id: l.id,
+      label: l.label || '',
+      address: l.address || '',
+      postalCode: l.postal_code || '',
+      city: l.city || '',
+      arrivalTime: l.arrival_time,
+      departureTime: l.departure_time,
+      notes: l.notes || '',
+      isIndoor: l.is_indoor,
+      weatherDependent: !!l.weather_dependent,
+      activationStatus: l.activation_status || 'standby',
+      alternatives: allLocations
+        .filter((a: any) => a.alternative_for_location_id === l.id)
+        .map((a: any) => ({
+          id: a.id,
+          label: a.label,
+          address: a.address,
+          city: a.city,
+          isIndoor: a.is_indoor,
+          activationStatus: a.activation_status || 'standby',
+        })),
+    }));
+
+    res.json({
+      timeline: {
+        id: row.id,
+        coupleName: row.couple_name,
+        weddingDate: row.wedding_date,
+        culture: row.culture,
+        photographerArrival: row.photographer_arrival,
+        showcaseUrl: row.showcase_url,
+        timelineData: row.timeline_data,
+        gdprConsented: !!row.gdpr_consent_at,
+      },
+      locations: mappedLocations,
+      contacts: contactsQ.rows,
+      inspirations: inspirationsQ.rows,
+    });
+  } catch (err) {
+    console.error('[wedding-client] fetch failed:', err);
+    res.status(500).json({ error: 'fetch_failed' });
+  }
+});
+
+// POST /api/wedding/client/:token/details — brudepar lagrer/oppdaterer detaljer
+app.post("/api/wedding/client/:token/details", async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'token_required' });
+
+  const {
+    culture, photographerArrival, gdprConsent,
+    locations, contacts, inspirations, markComplete,
+  } = req.body ?? {};
+
+  try {
+    await ensureWeddingTimelineSchema();
+    const weddingQ = await pool.query(
+      `SELECT id, photographer_id FROM wedding_timelines
+        WHERE (client_settings->>'accessToken') = $1 LIMIT 1`,
+      [token],
+    );
+    if ((weddingQ.rowCount ?? 0) === 0) return res.status(404).json({ error: 'not_found' });
+    const weddingId = weddingQ.rows[0].id;
+
+    // Krever GDPR-samtykke før noe kan lagres
+    if (!gdprConsent) {
+      return res.status(412).json({ error: 'gdpr_consent_required' });
+    }
+
+    await pool.query(
+      `UPDATE wedding_timelines SET
+         culture = COALESCE($1, culture),
+         photographer_arrival = COALESCE($2::timestamptz, photographer_arrival),
+         gdpr_consent_at = COALESCE(gdpr_consent_at, NOW()),
+         completed_at = CASE WHEN $3::boolean THEN NOW() ELSE completed_at END,
+         updated_at = NOW()
+       WHERE id = $4`,
+      [
+        typeof culture === 'string' ? culture : null,
+        photographerArrival || null,
+        !!markComplete,
+        weddingId,
+      ],
+    );
+
+    // Replace locations (forenkling — full replace ved hver save)
+    if (Array.isArray(locations)) {
+      // Slice 9X.37 — bevar alternativer (plan-B-lokasjoner) som peker
+      // til primary via alternative_for_location_id. Vi sletter kun
+      // primary, og deretter cascade-sletter orphaned alternativer.
+      await pool.query(
+        `DELETE FROM wedding_locations
+           WHERE wedding_id = $1 AND alternative_for_location_id IS NULL`,
+        [weddingId],
+      );
+      await pool.query(
+        `DELETE FROM wedding_locations
+           WHERE wedding_id = $1
+             AND alternative_for_location_id IS NOT NULL
+             AND alternative_for_location_id NOT IN (
+               SELECT id FROM wedding_locations WHERE wedding_id = $1
+             )`,
+        [weddingId],
+      );
+      for (let i = 0; i < locations.length; i++) {
+        const loc = locations[i];
+        if (!loc?.label) continue;
+        await pool.query(
+          `INSERT INTO wedding_locations
+             (wedding_id, label, address, postal_code, city, arrival_time, departure_time, notes, sort_order, is_indoor, weather_dependent)
+           VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10, $11)`,
+          [
+            weddingId,
+            String(loc.label).slice(0, 255),
+            loc.address ?? null,
+            loc.postalCode ?? null,
+            loc.city ?? null,
+            loc.arrivalTime || null,
+            loc.departureTime || null,
+            loc.notes ?? null,
+            i,
+            typeof loc.isIndoor === "boolean" ? loc.isIndoor : null,
+            Boolean(loc.weatherDependent),
+          ],
+        );
+      }
+    }
+
+    if (Array.isArray(contacts)) {
+      await pool.query(`DELETE FROM wedding_contacts WHERE wedding_id = $1`, [weddingId]);
+      for (let i = 0; i < contacts.length; i++) {
+        const c = contacts[i];
+        if (!c?.fullName || !c?.relation) continue;
+        await pool.query(
+          `INSERT INTO wedding_contacts
+             (wedding_id, full_name, relation, phone, email, notes, is_must_capture, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            weddingId,
+            String(c.fullName).slice(0, 255),
+            String(c.relation).slice(0, 64),
+            c.phone ?? null,
+            c.email ?? null,
+            c.notes ?? null,
+            !!c.isMustCapture,
+            i,
+          ],
+        );
+      }
+    }
+
+    if (Array.isArray(inspirations)) {
+      // Append-only — vi sletter ikke eksisterende, kun legger til nye uten id
+      for (const ins of inspirations) {
+        if (!ins?.imageUrl && !ins?.sourceUrl) continue;
+        if (ins.id) continue; // eksisterende, hopp
+        await pool.query(
+          `INSERT INTO wedding_inspirations (wedding_id, image_url, source_url, caption, uploaded_by_email)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [weddingId, ins.imageUrl ?? null, ins.sourceUrl ?? null, ins.caption ?? null, ins.uploadedByEmail ?? null],
+        );
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[wedding-client] save failed:', err);
+    res.status(500).json({ error: 'save_failed' });
+  }
+});
+
+// DELETE /api/wedding/client/:token/data — GDPR Art. 17 sletting
+app.delete("/api/wedding/client/:token/data", async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'token_required' });
+  try {
+    await ensureWeddingTimelineSchema();
+    const r = await pool.query(
+      `SELECT id FROM wedding_timelines
+        WHERE (client_settings->>'accessToken') = $1 LIMIT 1`,
+      [token],
+    );
+    if ((r.rowCount ?? 0) === 0) return res.status(404).json({ error: 'not_found' });
+    const weddingId = r.rows[0].id;
+
+    // Soft-delete: nullstill data + sett delete-flagg
+    await pool.query(`DELETE FROM wedding_locations WHERE wedding_id = $1`, [weddingId]);
+    await pool.query(`DELETE FROM wedding_contacts WHERE wedding_id = $1`, [weddingId]);
+    await pool.query(`DELETE FROM wedding_inspirations WHERE wedding_id = $1`, [weddingId]);
+    await pool.query(
+      `UPDATE wedding_timelines SET
+         gdpr_delete_requested_at = NOW(),
+         timeline_data = '{}'::jsonb,
+         culture = NULL,
+         photographer_arrival = NULL,
+         client_access_enabled = false,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [weddingId],
+    );
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error('[wedding-gdpr] delete failed:', err);
+    res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+// GET /api/wedding/culture-templates — list tilgjengelige kultur-templates
+app.get("/api/wedding/culture-templates", async (_req, res) => {
+  try {
+    const { listCultureTemplates } = await import('./wedding-culture-templates.js');
+    res.json({ templates: listCultureTemplates() });
+  } catch (err) {
+    console.error('[wedding-culture] list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Wedding Timeline Events (Slice 9X.23 — fotograf-kuratert + toveis-comments)
+// ─────────────────────────────────────────────────────────────────────────
+
+let weddingEventsSchemaReady: Promise<void> | null = null;
+function ensureWeddingEventsSchema(): Promise<void> {
+  if (!weddingEventsSchemaReady) {
+    weddingEventsSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS wedding_timeline_events (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            wedding_id VARCHAR(64) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            photo_notes TEXT,
+            lens_notes TEXT,
+            category VARCHAR(32) DEFAULT 'photo_session',
+            scheduled_time TIMESTAMPTZ,
+            duration_minutes INTEGER DEFAULT 30,
+            buffer_before_minutes INTEGER DEFAULT 0,
+            buffer_after_minutes INTEGER DEFAULT 0,
+            estimated_shots INTEGER,
+            location_id UUID,
+            status VARCHAR(32) DEFAULT 'planned',
+            sort_order INTEGER DEFAULT 0,
+            client_visible BOOLEAN DEFAULT TRUE,
+            client_can_comment BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS wedding_timeline_events_wedding_idx
+            ON wedding_timeline_events (wedding_id, scheduled_time);
+          ALTER TABLE wedding_timeline_events
+            ADD COLUMN IF NOT EXISTS lens_notes TEXT;
+          ALTER TABLE wedding_timeline_events
+            ADD COLUMN IF NOT EXISTS memory_cards TEXT[] DEFAULT '{}';
+          ALTER TABLE wedding_timeline_events
+            ADD COLUMN IF NOT EXISTS equipment_ids INTEGER[] DEFAULT '{}';
+          CREATE TABLE IF NOT EXISTS wedding_event_comments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            event_id UUID NOT NULL,
+            wedding_id VARCHAR(64) NOT NULL,
+            author_type VARCHAR(16) NOT NULL,
+            author_name VARCHAR(255),
+            author_email VARCHAR(255),
+            content TEXT NOT NULL,
+            parent_comment_id UUID,
+            is_resolved BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS wedding_event_comments_event_idx
+            ON wedding_event_comments (event_id, created_at);
+        `);
+      } catch (err) {
+        console.warn('[wedding-events] schema-ensure failed:', err);
+        weddingEventsSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return weddingEventsSchemaReady;
+}
+
+async function assertPhotographerOwnsWedding(weddingId: string, photographerId: string): Promise<boolean> {
+  const r = await pool.query(
+    `SELECT 1 FROM wedding_timelines WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+    [weddingId, photographerId],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+async function lookupWeddingIdByToken(token: string): Promise<{ id: string; coupleName: string; clientEmail: string | null; projectId: string | null } | null> {
+  const r = await pool.query(
+    `SELECT w.id, w.couple_name, w.project_id, c.email AS client_email
+       FROM wedding_timelines w
+       LEFT JOIN projects p ON p.id = w.project_id
+       LEFT JOIN clients c ON c.id = p.client_id
+      WHERE (w.client_settings->>'accessToken') = $1
+        AND w.gdpr_delete_requested_at IS NULL
+        AND w.client_access_enabled = true
+      LIMIT 1`,
+    [token],
+  );
+  if ((r.rowCount ?? 0) === 0) return null;
+  return {
+    id: r.rows[0].id,
+    coupleName: r.rows[0].couple_name,
+    clientEmail: r.rows[0].client_email ?? null,
+    projectId: r.rows[0].project_id ?? null,
+  };
+}
+
+function serializeEvent(row: Record<string, unknown>, includePhotoNotes = false) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description ?? null,
+    // Slice 9X.23 — alle utstyr/note-felter er PRIVATE.
+    photoNotes: includePhotoNotes ? (row.photo_notes ?? null) : undefined,
+    lensNotes: includePhotoNotes ? (row.lens_notes ?? null) : undefined,
+    memoryCards: includePhotoNotes ? (Array.isArray(row.memory_cards) ? row.memory_cards : []) : undefined,
+    equipmentIds: includePhotoNotes
+      ? (Array.isArray(row.equipment_ids) ? row.equipment_ids.map(Number) : [])
+      : undefined,
+    category: row.category,
+    scheduledTime: row.scheduled_time,
+    durationMinutes: Number(row.duration_minutes ?? 30),
+    bufferBeforeMinutes: Number(row.buffer_before_minutes ?? 0),
+    bufferAfterMinutes: Number(row.buffer_after_minutes ?? 0),
+    estimatedShots: row.estimated_shots != null ? Number(row.estimated_shots) : null,
+    locationId: row.location_id ?? null,
+    status: row.status,
+    sortOrder: Number(row.sort_order ?? 0),
+    clientVisible: !!row.client_visible,
+    clientCanComment: !!row.client_can_comment,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function serializeComment(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    authorType: row.author_type,
+    authorName: row.author_name,
+    authorEmail: row.author_email,
+    content: row.content,
+    isResolved: !!row.is_resolved,
+    createdAt: row.created_at,
+  };
+}
+
+app.get("/api/wedding/:id/timeline-events", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const eventsQ = await pool.query(
+      `SELECT * FROM wedding_timeline_events
+        WHERE wedding_id = $1
+        ORDER BY scheduled_time ASC NULLS LAST, sort_order ASC`,
+      [weddingId],
+    );
+    const commentsQ = await pool.query(
+      `SELECT event_id, COUNT(*)::int AS comment_count,
+              COUNT(*) FILTER (WHERE author_type = 'client')::int AS client_comment_count,
+              COUNT(*) FILTER (WHERE author_type = 'client' AND is_resolved = false)::int AS unresolved_client_count
+         FROM wedding_event_comments WHERE wedding_id = $1 GROUP BY event_id`,
+      [weddingId],
+    );
+    const countMap = new Map(commentsQ.rows.map((r: Record<string, unknown>) => [String(r.event_id), r]));
+    res.json({
+      events: eventsQ.rows.map((row: Record<string, unknown>) => {
+        const c = countMap.get(String(row.id));
+        return {
+          ...serializeEvent(row, true),
+          commentCount: Number(c?.comment_count ?? 0),
+          clientCommentCount: Number(c?.client_comment_count ?? 0),
+          unresolvedClientCount: Number(c?.unresolved_client_count ?? 0),
+        };
+      }),
+    });
+  } catch (err) {
+    console.error('[wedding-events] list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+app.post("/api/wedding/:id/timeline-events", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const {
+    title, description, photoNotes, lensNotes, memoryCards, equipmentIds,
+    category, scheduledTime, durationMinutes,
+    bufferBeforeMinutes, bufferAfterMinutes, estimatedShots, locationId,
+    clientVisible, clientCanComment,
+  } = req.body ?? {};
+  const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+  if (!trimmedTitle) return res.status(400).json({ error: 'title_required' });
+  const memoryCardsArray = Array.isArray(memoryCards)
+    ? memoryCards.filter((c: unknown): c is string => typeof c === 'string' && c.trim().length > 0).slice(0, 20)
+    : [];
+  const equipmentIdsArray = Array.isArray(equipmentIds)
+    ? equipmentIds.map((e: unknown) => Number(e)).filter((n) => Number.isFinite(n) && n > 0).slice(0, 30)
+    : [];
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const r = await pool.query(
+      `INSERT INTO wedding_timeline_events
+         (wedding_id, title, description, photo_notes, lens_notes, memory_cards, equipment_ids,
+          category, scheduled_time, duration_minutes, buffer_before_minutes, buffer_after_minutes,
+          estimated_shots, location_id, client_visible, client_can_comment)
+       VALUES ($1, $2, $3, $4, $5, $6::text[], $7::int[], $8, $9::timestamptz, $10, $11, $12, $13, $14, $15, $16)
+       RETURNING *`,
+      [
+        weddingId, trimmedTitle,
+        typeof description === 'string' ? description : null,
+        typeof photoNotes === 'string' ? photoNotes : null,
+        typeof lensNotes === 'string' ? lensNotes : null,
+        memoryCardsArray,
+        equipmentIdsArray,
+        typeof category === 'string' ? category : 'photo_session',
+        scheduledTime || null,
+        Number.isFinite(Number(durationMinutes)) ? Number(durationMinutes) : 30,
+        Number.isFinite(Number(bufferBeforeMinutes)) ? Number(bufferBeforeMinutes) : 0,
+        Number.isFinite(Number(bufferAfterMinutes)) ? Number(bufferAfterMinutes) : 0,
+        Number.isFinite(Number(estimatedShots)) ? Number(estimatedShots) : null,
+        locationId || null,
+        clientVisible !== false, clientCanComment !== false,
+      ],
+    );
+    res.status(201).json(serializeEvent(r.rows[0], true));
+  } catch (err) {
+    console.error('[wedding-events] create failed:', err);
+    res.status(500).json({ error: 'create_failed' });
+  }
+});
+
+app.patch("/api/wedding/:id/timeline-events/:eventId", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const eventId = String(req.params.eventId || '').trim();
+  const {
+    title, description, photoNotes, lensNotes, memoryCards, equipmentIds,
+    category, scheduledTime, durationMinutes,
+    bufferBeforeMinutes, bufferAfterMinutes, estimatedShots, status,
+    clientVisible, clientCanComment,
+  } = req.body ?? {};
+  const memoryCardsPatch = Array.isArray(memoryCards)
+    ? memoryCards.filter((c: unknown): c is string => typeof c === 'string' && c.trim().length > 0).slice(0, 20)
+    : null;
+  const equipmentIdsPatch = Array.isArray(equipmentIds)
+    ? equipmentIds.map((e: unknown) => Number(e)).filter((n) => Number.isFinite(n) && n > 0).slice(0, 30)
+    : null;
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const r = await pool.query(
+      `UPDATE wedding_timeline_events SET
+         title = COALESCE($1, title), description = COALESCE($2, description),
+         photo_notes = COALESCE($3, photo_notes), category = COALESCE($4, category),
+         scheduled_time = COALESCE($5::timestamptz, scheduled_time),
+         duration_minutes = COALESCE($6, duration_minutes),
+         buffer_before_minutes = COALESCE($7, buffer_before_minutes),
+         buffer_after_minutes = COALESCE($8, buffer_after_minutes),
+         estimated_shots = COALESCE($9, estimated_shots),
+         status = COALESCE($10, status),
+         client_visible = COALESCE($11, client_visible),
+         client_can_comment = COALESCE($12, client_can_comment),
+         lens_notes = COALESCE($13, lens_notes),
+         memory_cards = COALESCE($14::text[], memory_cards),
+         equipment_ids = COALESCE($15::int[], equipment_ids),
+         updated_at = NOW()
+       WHERE id = $16 AND wedding_id = $17 RETURNING *`,
+      [
+        typeof title === 'string' && title.trim() ? title.trim() : null,
+        typeof description === 'string' ? description : null,
+        typeof photoNotes === 'string' ? photoNotes : null,
+        typeof category === 'string' ? category : null,
+        scheduledTime || null,
+        Number.isFinite(Number(durationMinutes)) ? Number(durationMinutes) : null,
+        Number.isFinite(Number(bufferBeforeMinutes)) ? Number(bufferBeforeMinutes) : null,
+        Number.isFinite(Number(bufferAfterMinutes)) ? Number(bufferAfterMinutes) : null,
+        Number.isFinite(Number(estimatedShots)) ? Number(estimatedShots) : null,
+        typeof status === 'string' ? status : null,
+        typeof clientVisible === 'boolean' ? clientVisible : null,
+        typeof clientCanComment === 'boolean' ? clientCanComment : null,
+        typeof lensNotes === 'string' ? lensNotes : null,
+        memoryCardsPatch,
+        equipmentIdsPatch,
+        eventId, weddingId,
+      ],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'event_not_found' });
+    res.json(serializeEvent(r.rows[0], true));
+  } catch (err) {
+    console.error('[wedding-events] update failed:', err);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
+
+// GET /api/wedding/:id/template-suggestion — foreslå komplett event-template
+// basert på kultur + Stines registrerte utstyr. Brukes til "Skal vi legge
+// til dette?"-prompt på et tomt bryllup-prosjekt.
+app.get("/api/wedding/:id/template-suggestion", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    // Hent kultur + wedding-date
+    const wQ = await pool.query(
+      `SELECT culture, wedding_date, couple_name, photographer_arrival
+         FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const w = wQ.rows[0];
+    if (!w) return res.status(404).json({ error: 'wedding_not_found' });
+
+    const culture = w.culture ?? 'norsk-kristen';
+    const { getCultureTemplate, WEDDING_CULTURE_TEMPLATES } = await import('./wedding-culture-templates.js');
+    const template = getCultureTemplate(culture) ?? WEDDING_CULTURE_TEMPLATES['norsk-kristen'];
+
+    // Bruk ceremonyStart = photographer_arrival hvis satt, ellers wedding_date 14:00
+    let ceremonyStart: Date;
+    if (w.photographer_arrival) {
+      // Anta seremoni starter ~3-4 timer etter fotograf ankomst
+      ceremonyStart = new Date(new Date(w.photographer_arrival).getTime() + 3 * 3600_000);
+    } else {
+      ceremonyStart = new Date(w.wedding_date);
+      ceremonyStart.setHours(14, 0, 0, 0);
+    }
+
+    // Hent Stines utstyr — split kameraer + linser + blits
+    const eqQ = await pool.query(
+      `SELECT id, category, brand, model FROM user_equipment
+        WHERE user_id = $1
+        ORDER BY purchase_date DESC NULLS LAST`,
+      [session.userId],
+    );
+    const cameras = eqQ.rows.filter((r) => r.category === 'camera_body');
+    const lenses = eqQ.rows.filter((r) => r.category === 'lens');
+    const flashes = eqQ.rows.filter((r) => r.category === 'flash');
+
+    // Generér events fra template med foreslått utstyr
+    const suggestedEvents = template.events.map((tpl) => {
+      const scheduledTime = new Date(ceremonyStart.getTime() + tpl.minutesFromCeremony * 60000);
+
+      // Foreslå utstyr basert på event-type (forenkling — kan utvides)
+      const suggestedEquipmentIds: number[] = [];
+      // Alltid med kameraer
+      if (cameras.length >= 1) suggestedEquipmentIds.push(Number(cameras[0].id));
+      if (cameras.length >= 2 && (tpl.activityType === 'ceremony' || tpl.activityType === 'religious' || tpl.activityType === 'reception')) {
+        suggestedEquipmentIds.push(Number(cameras[1].id));
+      }
+      // Linser per event-type
+      if (lenses.length > 0) {
+        const eventCategory = tpl.activityType;
+        const preferLens = (slug: string) => lenses.find((l) =>
+          String(l.model).toLowerCase().includes(slug),
+        );
+        if (eventCategory === 'preparation') {
+          const lens = preferLens('50') ?? preferLens('35') ?? lenses[0];
+          if (lens) suggestedEquipmentIds.push(Number(lens.id));
+        } else if (eventCategory === 'ceremony' || eventCategory === 'religious') {
+          const lens = preferLens('24-70') ?? preferLens('70-200') ?? lenses[0];
+          if (lens) suggestedEquipmentIds.push(Number(lens.id));
+          if (lenses.length > 1) {
+            const second = preferLens('70-200') ?? preferLens('85') ?? lenses[1];
+            if (second && !suggestedEquipmentIds.includes(Number(second.id))) {
+              suggestedEquipmentIds.push(Number(second.id));
+            }
+          }
+        } else if (eventCategory === 'photo_session') {
+          const lens = preferLens('85') ?? preferLens('50') ?? preferLens('24-70') ?? lenses[0];
+          if (lens) suggestedEquipmentIds.push(Number(lens.id));
+        } else if (eventCategory === 'reception') {
+          const lens = preferLens('24-70') ?? preferLens('35') ?? lenses[0];
+          if (lens) suggestedEquipmentIds.push(Number(lens.id));
+        } else {
+          if (lenses[0]) suggestedEquipmentIds.push(Number(lenses[0].id));
+        }
+      }
+      // Blits ved reception eller mørke seremonier
+      if (flashes.length > 0 && (tpl.activityType === 'reception' || tpl.activityType === 'religious')) {
+        suggestedEquipmentIds.push(Number(flashes[0].id));
+      }
+
+      // Foreslå estimert antall bilder per event-type
+      const estimatedShots = (() => {
+        switch (tpl.activityType) {
+          case 'preparation': return 80;
+          case 'ceremony':
+          case 'religious': return 120;
+          case 'photo_session': return 60;
+          case 'reception': return 180;
+          case 'transport': return 15;
+          default: return 30;
+        }
+      })();
+
+      return {
+        title: tpl.activityName,
+        description: tpl.notes ?? null,
+        category: tpl.activityType === 'religious' ? 'religious' :
+                  tpl.activityType === 'transport' ? 'transport' :
+                  tpl.activityType === 'preparation' ? 'preparation' :
+                  tpl.activityType === 'ceremony' ? 'ceremony' :
+                  tpl.activityType === 'photo_session' ? 'photo_session' : 'reception',
+        scheduledTime: scheduledTime.toISOString(),
+        durationMinutes: tpl.durationMinutes,
+        bufferBeforeMinutes: tpl.bufferBefore ?? 0,
+        bufferAfterMinutes: tpl.bufferAfter ?? 0,
+        estimatedShots,
+        equipmentIds: suggestedEquipmentIds,
+        clientVisible: true,
+        clientCanComment: true,
+      };
+    });
+
+    res.json({
+      cultureTemplate: { id: template.id, displayName: template.displayName },
+      ceremonyStart: ceremonyStart.toISOString(),
+      eventCount: suggestedEvents.length,
+      events: suggestedEvents,
+      availableEquipment: {
+        cameras: cameras.map((c) => ({ id: Number(c.id), label: `${c.brand} ${c.model}` })),
+        lenses: lenses.map((l) => ({ id: Number(l.id), label: `${l.brand} ${l.model}` })),
+        flashes: flashes.map((f) => ({ id: Number(f.id), label: `${f.brand} ${f.model}` })),
+      },
+      message: cameras.length === 0
+        ? 'Du har ingen kameraer registrert i utstyrs-katalogen — events foreslås uten utstyr-tildeling. Legg til utstyr på /photographer/equipment for smartere forslag.'
+        : `Forslag basert på ${template.displayName} + ${cameras.length} kamera(er), ${lenses.length} linser, ${flashes.length} blits du har registrert.`,
+    });
+  } catch (err) {
+    console.error('[wedding-events] template-suggestion failed:', err);
+    res.status(500).json({ error: 'suggest_failed' });
+  }
+});
+
+// POST /api/wedding/:id/apply-template — opprett alle foreslåtte events i én batch
+app.post("/api/wedding/:id/apply-template", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+
+  const events = Array.isArray(req.body?.events) ? req.body.events : null;
+  if (!events || events.length === 0) return res.status(400).json({ error: 'events_required' });
+
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+
+    const createdIds: string[] = [];
+    for (const ev of events) {
+      const title = typeof ev?.title === 'string' ? ev.title.trim() : '';
+      if (!title) continue;
+      const equipmentIdsArray = Array.isArray(ev.equipmentIds)
+        ? ev.equipmentIds.map((e: unknown) => Number(e)).filter((n: number) => Number.isFinite(n) && n > 0).slice(0, 30)
+        : [];
+      const r = await pool.query(
+        `INSERT INTO wedding_timeline_events
+           (wedding_id, title, description, category, scheduled_time,
+            duration_minutes, buffer_before_minutes, buffer_after_minutes,
+            estimated_shots, equipment_ids, client_visible, client_can_comment)
+         VALUES ($1, $2, $3, $4, $5::timestamptz, $6, $7, $8, $9, $10::int[], $11, $12)
+         RETURNING id`,
+        [
+          weddingId, title,
+          typeof ev.description === 'string' ? ev.description : null,
+          typeof ev.category === 'string' ? ev.category : 'photo_session',
+          ev.scheduledTime || null,
+          Number.isFinite(Number(ev.durationMinutes)) ? Number(ev.durationMinutes) : 30,
+          Number.isFinite(Number(ev.bufferBeforeMinutes)) ? Number(ev.bufferBeforeMinutes) : 0,
+          Number.isFinite(Number(ev.bufferAfterMinutes)) ? Number(ev.bufferAfterMinutes) : 0,
+          Number.isFinite(Number(ev.estimatedShots)) ? Number(ev.estimatedShots) : null,
+          equipmentIdsArray,
+          ev.clientVisible !== false,
+          ev.clientCanComment !== false,
+        ],
+      );
+      if (r.rows[0]?.id) createdIds.push(r.rows[0].id);
+    }
+
+    res.status(201).json({ created: createdIds.length, eventIds: createdIds });
+  } catch (err) {
+    console.error('[wedding-events] apply-template failed:', err);
+    res.status(500).json({ error: 'apply_failed' });
+  }
+});
+
+// Slice 9X.27 — Wedding-day live-status. Stine åpner på mobil under shoot,
+// systemet sier "Du er på Vielse-shots (14:00-14:45), 32/120 bilder så langt.
+// Neste: Familiebilder kl 15:30." Reagerer live mens dagen utfolder seg.
+app.get("/api/wedding/:id/live-status", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    await ensureWeddingEventsSchema();
+    const weddingQ = await pool.query(
+      `SELECT id, project_id, couple_name, wedding_date,
+              contracted_hours, overtime_activated_at, overtime_hourly_rate, overtime_ended_at
+         FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const w = weddingQ.rows[0];
+    if (!w) return res.status(404).json({ error: 'wedding_not_found' });
+
+    const eventsQ = await pool.query(
+      `SELECT id, title, description, photo_notes, scheduled_time, duration_minutes,
+              buffer_before_minutes, buffer_after_minutes, estimated_shots,
+              status, equipment_ids, memory_cards
+         FROM wedding_timeline_events
+        WHERE wedding_id = $1
+        ORDER BY scheduled_time ASC NULLS LAST`,
+      [weddingId],
+    );
+
+    const now = Date.now();
+    const events = eventsQ.rows.map((row: Record<string, unknown>) => {
+      const scheduled = row.scheduled_time ? new Date(row.scheduled_time as string).getTime() : null;
+      const duration = Number(row.duration_minutes ?? 30);
+      const endTime = scheduled ? scheduled + duration * 60000 : null;
+      const isCompleted = row.status === 'completed';
+      const isLive = !isCompleted && scheduled !== null && endTime !== null
+        && now >= scheduled && now <= endTime;
+      const isUpcoming = !isCompleted && scheduled !== null && now < scheduled;
+      const isOverdue = !isCompleted && endTime !== null && now > endTime;
+      const minutesUntil = scheduled ? Math.round((scheduled - now) / 60000) : null;
+      return {
+        id: row.id,
+        title: row.title,
+        description: row.description ?? null,
+        photoNotes: row.photo_notes ?? null,
+        scheduledTime: row.scheduled_time,
+        durationMinutes: duration,
+        estimatedShots: row.estimated_shots != null ? Number(row.estimated_shots) : null,
+        status: row.status,
+        equipmentIds: Array.isArray(row.equipment_ids) ? row.equipment_ids.map(Number) : [],
+        memoryCards: Array.isArray(row.memory_cards) ? row.memory_cards : [],
+        isLive, isUpcoming, isOverdue, isCompleted, minutesUntil,
+        startEpoch: scheduled, endEpoch: endTime,
+        bufferBeforeMinutes: Number(row.buffer_before_minutes ?? 0),
+        bufferAfterMinutes: Number(row.buffer_after_minutes ?? 0),
+      };
+    });
+
+    // Live photo-count per event via EXIF capture_time
+    const projectId = w.project_id;
+    const photoCounts = new Map<string, number>();
+    if (projectId) {
+      try {
+        const windows = events
+          .filter((e) => e.startEpoch !== null && e.endEpoch !== null)
+          .map((e) => ({
+            id: e.id,
+            start: new Date((e.startEpoch ?? 0) - e.bufferBeforeMinutes * 60000),
+            end: new Date((e.endEpoch ?? 0) + e.bufferAfterMinutes * 60000),
+          }));
+        if (windows.length > 0) {
+          const earliestStart = new Date(Math.min(...windows.map((w) => w.start.getTime())));
+          const latestEnd = new Date(Math.max(...windows.map((w) => w.end.getTime())));
+          const photosQ = await pool.query(
+            `SELECT a.capture_time
+               FROM capture_assets a
+               JOIN capture_sessions s ON s.id = a.session_id
+              WHERE s.owner_user_id = $1 AND s.project_id = $2
+                AND a.deleted_at IS NULL
+                AND a.capture_time >= $3::timestamptz
+                AND a.capture_time <= $4::timestamptz`,
+            [session.userId, projectId, earliestStart.toISOString(), latestEnd.toISOString()],
+          ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+          for (const photo of photosQ.rows) {
+            if (!photo.capture_time) continue;
+            const captureTs = new Date(photo.capture_time as string).getTime();
+            for (const w of windows) {
+              if (captureTs >= w.start.getTime() && captureTs <= w.end.getTime()) {
+                photoCounts.set(String(w.id), (photoCounts.get(String(w.id)) ?? 0) + 1);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[wedding-live] photo-count failed:', err);
+      }
+    }
+
+    const withPhotos = events.map((e) => ({
+      ...e,
+      capturedShots: photoCounts.get(String(e.id)) ?? 0,
+      shotProgress: e.estimatedShots && e.estimatedShots > 0
+        ? Math.round(((photoCounts.get(String(e.id)) ?? 0) / e.estimatedShots) * 100)
+        : null,
+    }));
+
+    const current = withPhotos.find((e) => e.isLive) ?? null;
+    const next = withPhotos.find((e) => e.isUpcoming) ?? null;
+    const overdue = withPhotos.filter((e) => e.isOverdue);
+    const completed = withPhotos.filter((e) => e.isCompleted);
+    const upcoming = withPhotos.filter((e) => e.isUpcoming);
+
+    // Slice 9X.28 — VIP-checklist
+    const vipQ = await pool.query(
+      `SELECT id, full_name, relation, phone, email, notes,
+              is_must_capture, captured_at, sort_order
+         FROM wedding_contacts
+        WHERE wedding_id = $1 AND is_must_capture = true
+        ORDER BY captured_at NULLS FIRST, sort_order ASC, full_name ASC`,
+      [weddingId],
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    const vips = vipQ.rows.map((r: Record<string, unknown>) => ({
+      id: r.id,
+      fullName: r.full_name,
+      relation: r.relation,
+      phone: r.phone ?? null,
+      email: r.email ?? null,
+      notes: r.notes ?? null,
+      capturedAt: r.captured_at ?? null,
+      isCaptured: !!r.captured_at,
+    }));
+
+    // Slice 9X.31 — overtime-beregning
+    const firstEventStart = events
+      .filter((e) => e.startEpoch !== null)
+      .map((e) => e.startEpoch as number)
+      .sort((a, b) => a - b)[0] ?? null;
+    const contractedHours = w.contracted_hours != null ? Number(w.contracted_hours) : null;
+    const contractedEndEpoch = firstEventStart !== null && contractedHours !== null
+      ? firstEventStart + contractedHours * 3600_000 : null;
+    const overtimeActive = !!w.overtime_activated_at;
+    const overtimeStartEpoch = w.overtime_activated_at ? new Date(w.overtime_activated_at).getTime() : null;
+    const overtimeRate = w.overtime_hourly_rate != null ? Number(w.overtime_hourly_rate) : null;
+    const overtimeMinutes = overtimeStartEpoch !== null
+      ? Math.max(0, Math.round((now - overtimeStartEpoch) / 60000))
+      : 0;
+    const overtimeEstimatedFee = overtimeRate !== null
+      ? Math.round((overtimeMinutes / 60) * overtimeRate * 100) / 100
+      : null;
+    const isOverContractedTime = contractedEndEpoch !== null && now > contractedEndEpoch;
+    const minutesPastContract = contractedEndEpoch !== null
+      ? Math.max(0, Math.round((now - contractedEndEpoch) / 60000)) : 0;
+
+    res.json({
+      wedding: { id: w.id, coupleName: w.couple_name, weddingDate: w.wedding_date },
+      now: new Date().toISOString(),
+      current, next, overdue, completed, upcoming, allEvents: withPhotos,
+      vips,
+      overtime: {
+        contractedHours,
+        firstEventStart: firstEventStart ? new Date(firstEventStart).toISOString() : null,
+        contractedEndAt: contractedEndEpoch ? new Date(contractedEndEpoch).toISOString() : null,
+        isOverContractedTime,
+        minutesPastContract,
+        active: overtimeActive,
+        activatedAt: w.overtime_activated_at ?? null,
+        hourlyRate: overtimeRate,
+        currentMinutes: overtimeMinutes,
+        estimatedFee: overtimeEstimatedFee,
+      },
+      totals: {
+        eventCount: events.length,
+        completedCount: completed.length,
+        overdueCount: overdue.length,
+        totalCaptured: Array.from(photoCounts.values()).reduce((sum, n) => sum + n, 0),
+        totalEstimated: events.reduce((sum, e) => sum + (e.estimatedShots ?? 0), 0),
+        vipTotal: vips.length,
+        vipCaptured: vips.filter((v) => v.isCaptured).length,
+      },
+    });
+  } catch (err) {
+    console.error('[wedding-live] failed:', err);
+    res.status(500).json({ error: 'live_status_failed' });
+  }
+});
+
+// POST /api/wedding/:id/activate-overtime — Slice 9X.31
+// Stine tapper "aktiver overtid" når kontraktstiden er overskredet.
+// Stempler timestamp + lager note i client_communications som "husk å fakturere".
+app.post("/api/wedding/:id/activate-overtime", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+  const hourlyRate = req.body?.hourlyRate;
+
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    // Slice 9X.32 — auto-fetch rate fra prisadministrasjon hvis ikke gitt
+    let effectiveRate: number | null = null;
+    if (Number.isFinite(Number(hourlyRate))) {
+      effectiveRate = Number(hourlyRate);
+    } else {
+      effectiveRate = await getPhotographerOvertimeRate(session.userId);
+    }
+    // Idempotent — hvis allerede aktivert, returner eksisterende timestamp
+    const r = await pool.query(
+      `UPDATE wedding_timelines SET
+         overtime_activated_at = COALESCE(overtime_activated_at, NOW()),
+         overtime_hourly_rate = COALESCE($1, overtime_hourly_rate),
+         updated_at = NOW()
+       WHERE id = $2
+       RETURNING overtime_activated_at, overtime_hourly_rate, project_id, couple_name`,
+      [effectiveRate, weddingId],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'wedding_not_found' });
+    const row = r.rows[0];
+
+    // Logg til client_communications som påminnelse om fakturering
+    if (row.project_id) {
+      try {
+        const clientQ = await pool.query(
+          `SELECT client_id FROM projects WHERE id = $1 LIMIT 1`,
+          [row.project_id],
+        );
+        const clientId = clientQ.rows[0]?.client_id;
+        if (clientId) {
+          await pool.query(
+            `INSERT INTO client_communications
+               (user_id, client_id, project_id, communication_type, direction,
+                subject, content, status, requires_response, priority,
+                category, tags, created_at)
+             VALUES ($1, $2, $3, 'overtime_alert', 'internal',
+                     $4, $5, 'unread', true, 'high',
+                     'billing', ARRAY['overtime','billing-reminder'], NOW())`,
+            [
+              session.userId, clientId, row.project_id,
+              `⏰ Overtid aktivert — ${row.couple_name}`,
+              `Bryllup-dekningen gikk over avtalt kontraktstid. Husk å fakturere ekstra timer `
+                + `(${row.overtime_hourly_rate ? `${row.overtime_hourly_rate} kr/t avtalt` : 'sett rate'}). `
+                + `Aktivert ${new Date(row.overtime_activated_at).toLocaleString('nb-NO')}.`,
+            ],
+          );
+        }
+      } catch (e) {
+        console.warn('[wedding-overtime] CRM-log failed:', e);
+      }
+    }
+
+    res.json({
+      activated: true,
+      activatedAt: row.overtime_activated_at,
+      hourlyRate: row.overtime_hourly_rate,
+    });
+  } catch (err) {
+    console.error('[wedding-overtime] activate failed:', err);
+    res.status(500).json({ error: 'activate_failed' });
+  }
+});
+
+// POST /api/wedding/:id/timeline-events/:eventId/shift-following
+// Slice 9X.30 — Når event tok lengre tid enn planlagt, bumper alle senere
+// non-completed events scheduled_time med offset (i minutter, kan være negativ).
+// Body: { offsetMinutes: number }
+app.post("/api/wedding/:id/timeline-events/:eventId/shift-following", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const eventId = String(req.params.eventId || '').trim();
+  const offsetMinutes = Number(req.body?.offsetMinutes);
+  if (!Number.isFinite(offsetMinutes) || offsetMinutes === 0) {
+    return res.status(400).json({ error: 'offset_minutes_required_nonzero' });
+  }
+  if (Math.abs(offsetMinutes) > 12 * 60) {
+    return res.status(400).json({ error: 'offset_too_large', max: '12 hours' });
+  }
+
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    // Hent scheduled_time for trigger-event
+    const triggerQ = await pool.query(
+      `SELECT scheduled_time FROM wedding_timeline_events
+        WHERE id = $1 AND wedding_id = $2 LIMIT 1`,
+      [eventId, weddingId],
+    );
+    if ((triggerQ.rowCount ?? 0) === 0) return res.status(404).json({ error: 'event_not_found' });
+    const trigger = triggerQ.rows[0];
+    if (!trigger.scheduled_time) return res.status(400).json({ error: 'trigger_has_no_time' });
+
+    // Bump alle senere events som ikke er completed/cancelled
+    const r = await pool.query(
+      `UPDATE wedding_timeline_events SET
+         scheduled_time = scheduled_time + ($1 || ' minutes')::interval,
+         updated_at = NOW()
+       WHERE wedding_id = $2
+         AND scheduled_time > $3::timestamptz
+         AND status NOT IN ('completed', 'cancelled')
+       RETURNING id, title, scheduled_time`,
+      [offsetMinutes, weddingId, trigger.scheduled_time],
+    );
+
+    res.json({
+      shifted: r.rowCount,
+      offsetMinutes,
+      events: r.rows.map((row: Record<string, unknown>) => ({
+        id: row.id, title: row.title, newScheduledTime: row.scheduled_time,
+      })),
+    });
+  } catch (err) {
+    console.error('[wedding-events] shift failed:', err);
+    res.status(500).json({ error: 'shift_failed' });
+  }
+});
+
+// PATCH /api/wedding/:id/vip-contacts/:contactId/capture — toggle VIP fanget-status
+app.patch("/api/wedding/:id/vip-contacts/:contactId/capture", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const contactId = String(req.params.contactId || '').trim();
+  if (!weddingId || !contactId) return res.status(400).json({ error: 'ids_required' });
+  const captured = req.body?.captured;
+  if (typeof captured !== 'boolean') return res.status(400).json({ error: 'captured_boolean_required' });
+
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const r = await pool.query(
+      `UPDATE wedding_contacts SET
+         captured_at = CASE WHEN $1::boolean THEN NOW() ELSE NULL END,
+         captured_by = CASE WHEN $1::boolean THEN $2 ELSE NULL END
+       WHERE id = $3 AND wedding_id = $4
+       RETURNING captured_at`,
+      [captured, session.userId, contactId, weddingId],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'contact_not_found' });
+    res.json({ success: true, capturedAt: r.rows[0].captured_at });
+  } catch (err) {
+    console.error('[wedding-vip] capture toggle failed:', err);
+    res.status(500).json({ error: 'capture_failed' });
+  }
+});
+
+// Slice 9X.26 — Norske foto-retailer-søk per batteri-modell.
+function buildBatteryPurchaseLinks(batteryModel: string | null): Array<{ retailer: string; url: string }> {
+  if (!batteryModel) return [];
+  const q = encodeURIComponent(batteryModel);
+  return [
+    { retailer: 'foto.no', url: `https://www.foto.no/search?q=${q}` },
+    { retailer: 'cyberphoto.no', url: `https://www.cyberphoto.no/search?q=${q}` },
+    { retailer: 'fotovideo.no', url: `https://www.fotovideo.no/search?q=${q}` },
+  ];
+}
+
+function buildAaBatteryPurchaseLinks(): Array<{ retailer: string; url: string }> {
+  return [
+    { retailer: 'Clas Ohlson', url: 'https://www.clasohlson.com/no/search?q=eneloop+pro+AA' },
+    { retailer: 'foto.no', url: 'https://www.foto.no/search?q=eneloop+pro' },
+  ];
+}
+
+// POST /api/wedding/:id/charging-reminder — opprett Google Calendar-event
+// dagen før bryllupet kl 18 med påminnelse "Lade alle batterier".
+app.post("/api/wedding/:id/charging-reminder", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const wQ = await pool.query(
+      `SELECT wedding_date, couple_name FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const w = wQ.rows[0];
+    if (!w?.wedding_date) return res.status(400).json({ error: 'no_wedding_date' });
+
+    const weddingDate = new Date(w.wedding_date);
+    const reminderDate = new Date(weddingDate);
+    reminderDate.setDate(reminderDate.getDate() - 1);
+    const reminderIso = reminderDate.toISOString().slice(0, 10);
+
+    const { syncProjectCalendarEvent } = await import('./google-calendar-project.js');
+    const result = await syncProjectCalendarEvent(pool, {
+      photographerId: session.userId,
+      projectId: `wedding-${weddingId}-charging`,
+      title: `🔋 Lade batterier — ${w.couple_name} bryllup i morgen`,
+      eventDate: reminderIso,
+      description: `Sjekk at alle kamera-batterier, blits-batterier og minnekort er ladet/klargjort for morgendagens bryllup.`,
+      clientName: null,
+      clientEmail: null,
+    });
+
+    if (result.action === 'skipped' || result.action === 'noop') {
+      return res.status(400).json({
+        error: 'calendar_sync_failed',
+        reason: result.reason ?? 'unknown',
+        message: 'Kunne ikke opprette calendar-event. Sjekk at Google Workspace er koblet til.',
+      });
+    }
+
+    res.json({
+      success: true,
+      reminderDate: reminderIso,
+      calendarEventId: result.eventId,
+      message: `Påminnelse satt for ${reminderDate.toLocaleDateString('nb-NO')} i din Google Calendar.`,
+    });
+  } catch (err) {
+    console.error('[wedding-events] charging-reminder failed:', err);
+    res.status(500).json({ error: 'reminder_failed' });
+  }
+});
+
+// GET /api/wedding/:id/battery-estimate — beregn batteri-behov for hele bryllupet.
+// Summer estimerte shots per event, fordel på valgte kameraer, sammenlign mot
+// hver Stines battery_count + has_battery_grip. For blits: total trigger-count
+// fordeles på valgte blits-enheter, sjekker chargingTimeMinutes vs gap mellom events.
+app.get("/api/wedding/:id/battery-estimate", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    await ensureWeddingEventsSchema();
+
+    // Hent alle events
+    const eventsQ = await pool.query(
+      `SELECT id, title, scheduled_time, duration_minutes, estimated_shots, equipment_ids
+         FROM wedding_timeline_events
+        WHERE wedding_id = $1
+        ORDER BY scheduled_time ASC NULLS LAST`,
+      [weddingId],
+    );
+
+    // Hent UNIK liste av equipment_ids brukt i events
+    const allEquipmentIds = new Set<number>();
+    for (const ev of eventsQ.rows) {
+      if (Array.isArray(ev.equipment_ids)) {
+        ev.equipment_ids.forEach((id: number) => allEquipmentIds.add(Number(id)));
+      }
+    }
+
+    if (allEquipmentIds.size === 0) {
+      return res.json({
+        warnings: ['Ingen utstyr valgt på events ennå — legg til kameraer/blits per event for å se batteri-estimat.'],
+        cameras: [], flashes: [], totals: { totalEstimatedShots: 0, totalFlashFires: 0 },
+      });
+    }
+
+    // Hent utstyrs-data
+    const eqQ = await pool.query(
+      `SELECT id, category, brand, model, catalog_id, battery_count,
+              has_battery_grip, battery_model
+         FROM user_equipment
+        WHERE id = ANY($1::int[]) AND user_id = $2`,
+      [Array.from(allEquipmentIds), session.userId],
+    );
+
+    const { findCatalogEntry } = await import('./equipment-catalog.js');
+
+    // Total estimerte shots
+    const totalEstimatedShots = eventsQ.rows.reduce(
+      (sum: number, ev: Record<string, unknown>) => sum + Number(ev.estimated_shots ?? 0),
+      0,
+    );
+
+    // Per-event metadata for senere gap-analyse (blits charging)
+    const eventsByTime = eventsQ.rows
+      .filter((e) => e.scheduled_time)
+      .sort((a, b) => new Date(a.scheduled_time as string).getTime() - new Date(b.scheduled_time as string).getTime());
+
+    // === KAMERAER ===
+    const cameras = eqQ.rows
+      .filter((r) => r.category === 'camera_body')
+      .map((r) => {
+        const catalog = r.catalog_id ? findCatalogEntry(String(r.catalog_id)) : null;
+        const batteryCount = Number(r.battery_count ?? 1);
+        const hasGrip = !!r.has_battery_grip;
+        const shotsPerBattery = catalog?.cipaBatteryShotsEvf ?? catalog?.cipaBatteryShots ?? 400;
+        const gripMultiplier = hasGrip ? (catalog?.batteryGripMultiplier ?? 1.5) : 1.0;
+        const totalCapacity = Math.round(shotsPerBattery * batteryCount * gripMultiplier);
+
+        // Anta likedeling av shots mellom valgte kameraer (forenkling)
+        const cameraCountInUse = eqQ.rows.filter((x) => x.category === 'camera_body').length;
+        const shotsAssignedToThisCamera = cameraCountInUse > 0
+          ? Math.round(totalEstimatedShots / cameraCountInUse) : totalEstimatedShots;
+
+        const utilizationPct = totalCapacity > 0
+          ? Math.round((shotsAssignedToThisCamera / totalCapacity) * 100) : 0;
+        const shortage = Math.max(0, shotsAssignedToThisCamera - totalCapacity);
+        const extraBatteriesNeeded = shortage > 0 && shotsPerBattery > 0
+          ? Math.ceil(shortage / (shotsPerBattery * gripMultiplier)) : 0;
+
+        const batteryModelFinal = r.battery_model ?? catalog?.batteryModel ?? null;
+        return {
+          equipmentId: r.id,
+          label: `${r.brand} ${r.model}`,
+          batteryModel: batteryModelFinal,
+          batteryCount, hasBatteryGrip: hasGrip,
+          shotsPerBattery,
+          totalCapacity,
+          estimatedShotsAssigned: shotsAssignedToThisCamera,
+          utilizationPct,
+          status: utilizationPct < 70 ? 'ok' : utilizationPct < 100 ? 'tight' : 'shortage',
+          extraBatteriesNeeded,
+          recommendation: extraBatteriesNeeded > 0
+            ? `Bytt batteri ${extraBatteriesNeeded} ganger ila dagen — vurder å kjøpe ${extraBatteriesNeeded} ekstra ${r.battery_model ?? 'batterier'}.`
+            : utilizationPct >= 70
+              ? 'Bytt batteri på halvveis i dagen for trygghet.'
+              : `God margin — ${100 - utilizationPct}% kapasitet til overs.`,
+          // Slice 9X.26 — kjøps-lenker + ladings-påminnelse
+          chargingReminder: 'Husk å lade alle batterier dagen før!',
+          purchaseLinks: extraBatteriesNeeded > 0 || utilizationPct >= 80
+            ? buildBatteryPurchaseLinks(batteryModelFinal) : [],
+        };
+      });
+
+    // === BLITSER ===
+    // Anta gjennomsnitt 30-40% av bilder bruker blits (1/32 power = fyll-blits)
+    const flashFireRate = 0.35;
+    const totalFlashFires = Math.round(totalEstimatedShots * flashFireRate);
+
+    const flashes = eqQ.rows
+      .filter((r) => r.category === 'flash')
+      .map((r) => {
+        const catalog = r.catalog_id ? findCatalogEntry(String(r.catalog_id)) : null;
+        const flashCountInUse = eqQ.rows.filter((x) => x.category === 'flash').length;
+        const firesAssigned = flashCountInUse > 0
+          ? Math.round(totalFlashFires / flashCountInUse) : totalFlashFires;
+        const firesPerCharge = catalog?.flashesAt32Power ?? catalog?.flashesPerCharge ?? 200;
+        const batteryCount = Number(r.battery_count ?? 1);
+        const totalCapacity = firesPerCharge * batteryCount;
+        const utilizationPct = totalCapacity > 0 ? Math.round((firesAssigned / totalCapacity) * 100) : 0;
+        const extraBatteriesNeeded = firesAssigned > totalCapacity && firesPerCharge > 0
+          ? Math.ceil((firesAssigned - totalCapacity) / firesPerCharge) : 0;
+
+        const isRechargeable = catalog?.isRechargeable ?? false;
+        const chargingTime = catalog?.chargingTimeMinutes ?? null;
+
+        // Sjekk om gap mellom events er nok for lading
+        let canRechargeDuringEvent = false;
+        if (isRechargeable && chargingTime && eventsByTime.length >= 2) {
+          for (let i = 1; i < eventsByTime.length; i++) {
+            const prevEnd = new Date(eventsByTime[i - 1].scheduled_time as string).getTime()
+              + Number(eventsByTime[i - 1].duration_minutes ?? 30) * 60000;
+            const nextStart = new Date(eventsByTime[i].scheduled_time as string).getTime();
+            const gapMinutes = (nextStart - prevEnd) / 60000;
+            if (gapMinutes >= chargingTime) {
+              canRechargeDuringEvent = true;
+              break;
+            }
+          }
+        }
+
+        let recommendation: string;
+        if (extraBatteriesNeeded > 0) {
+          if (isRechargeable && canRechargeDuringEvent && chargingTime) {
+            recommendation = `Du kan lade batteri ila pauser (~${chargingTime} min ladings-tid). Eller ta med ${extraBatteriesNeeded} ekstra batterier.`;
+          } else if (isRechargeable) {
+            recommendation = `Lading tar ${chargingTime ?? '?'} min — for kort pause mellom events. Ta med ${extraBatteriesNeeded} ekstra batterier.`;
+          } else {
+            recommendation = `${r.brand} ${r.model} bruker ${catalog?.batteryType === 'aa-removable' ? 'AA-batterier' : 'enkeltbatterier'} — ta med ekstra sett (~${extraBatteriesNeeded * 4} AA om brukt 4-stk).`;
+          }
+        } else {
+          recommendation = `God margin — ${100 - utilizationPct}% kapasitet til overs.`;
+        }
+
+        const isAaType = catalog?.batteryType === 'aa-removable';
+        const flashBatteryModel = catalog?.batteryType === 'li-ion-removable'
+          ? `${r.brand} ${r.model} batteri` : null;
+        return {
+          equipmentId: r.id,
+          label: `${r.brand} ${r.model}`,
+          batteryCount,
+          batteryType: catalog?.batteryType ?? null,
+          isRechargeable,
+          chargingTimeMinutes: chargingTime,
+          canRechargeDuringEvent,
+          firesPerCharge,
+          totalCapacity,
+          estimatedFiresAssigned: firesAssigned,
+          utilizationPct,
+          status: utilizationPct < 70 ? 'ok' : utilizationPct < 100 ? 'tight' : 'shortage',
+          extraBatteriesNeeded,
+          recommendation,
+          chargingReminder: isRechargeable ? 'Husk å lade alle batterier dagen før!' : null,
+          purchaseLinks: extraBatteriesNeeded > 0 || utilizationPct >= 80
+            ? (isAaType ? buildAaBatteryPurchaseLinks() : buildBatteryPurchaseLinks(flashBatteryModel))
+            : [],
+        };
+      });
+
+    res.json({
+      totals: { totalEstimatedShots, totalFlashFires },
+      cameras,
+      flashes,
+      eventCount: eventsQ.rowCount,
+      assumptions: {
+        flashFireRate: '35% av bilder bruker blits',
+        cameraShotDistribution: 'Likedelt mellom alle valgte kameraer',
+        evfPreferred: 'CIPA EVF-tall foretrekkes (lavest, mest realistisk for bryllup)',
+      },
+    });
+  } catch (err) {
+    console.error('[wedding-events] battery-estimate failed:', err);
+    res.status(500).json({ error: 'estimate_failed' });
+  }
+});
+
+// GET /api/wedding/:id/memory-cards — hent prosjektets registrerte memory-cards
+// fra projects.project_data.selectedMemoryCards (satt via ProjectCreationWithMemoryCards).
+// Brukes som picker-options når Stine velger kort for et event.
+app.get("/api/wedding/:id/memory-cards", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+  try {
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const r = await pool.query(
+      `SELECT p.project_data
+         FROM wedding_timelines w
+         JOIN projects p ON p.id = w.project_id
+        WHERE w.id = $1 AND p.user_id = $2 LIMIT 1`,
+      [weddingId, session.userId],
+    );
+    if ((r.rowCount ?? 0) === 0) return res.json({ cards: [] });
+    const projectData = (r.rows[0].project_data ?? {}) as Record<string, unknown>;
+    const selectedCards = Array.isArray(projectData.selectedMemoryCards)
+      ? projectData.selectedMemoryCards
+      : [];
+    // Normaliser til { id, label } så frontend kan vise konsistent
+    const cards = selectedCards
+      .map((c: any, idx: number) => {
+        const brand = c?.brand ?? c?.manufacturer ?? '';
+        const type = c?.type ?? c?.cardType ?? '';
+        const capacity = c?.capacity ?? '';
+        const camera = c?.camera ?? c?.cameraName ?? '';
+        const labelParts = [type, capacity, brand].filter(Boolean);
+        const baseLabel = labelParts.join(' ') || `Kort ${idx + 1}`;
+        const fullLabel = camera ? `${baseLabel} (${camera})` : baseLabel;
+        return {
+          id: c?.id ?? `card-${idx + 1}`,
+          label: fullLabel,
+          camera: camera || null,
+          capacity: capacity || null,
+          type: type || null,
+        };
+      });
+    res.json({ cards });
+  } catch (err) {
+    console.error('[wedding-events] memory-cards fetch failed:', err);
+    res.status(500).json({ error: 'fetch_failed' });
+  }
+});
+
+app.delete("/api/wedding/:id/timeline-events/:eventId", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const eventId = String(req.params.eventId || '').trim();
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    await pool.query(`DELETE FROM wedding_event_comments WHERE event_id = $1`, [eventId]);
+    const r = await pool.query(
+      `DELETE FROM wedding_timeline_events WHERE id = $1 AND wedding_id = $2`,
+      [eventId, weddingId],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'event_not_found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[wedding-events] delete failed:', err);
+    res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+// Comments — fotograf
+app.get("/api/wedding/:id/timeline-events/:eventId/comments", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const eventId = String(req.params.eventId || '').trim();
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const r = await pool.query(
+      `SELECT * FROM wedding_event_comments WHERE event_id = $1 ORDER BY created_at ASC`,
+      [eventId],
+    );
+    res.json({ comments: r.rows.map(serializeComment) });
+  } catch (err) {
+    console.error('[wedding-events] comments list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+app.post("/api/wedding/:id/timeline-events/:eventId/comments", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const eventId = String(req.params.eventId || '').trim();
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!content) return res.status(400).json({ error: 'content_required' });
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const userQ = await pool.query(
+      `SELECT email, first_name, last_name, company_name FROM users WHERE id = $1 LIMIT 1`,
+      [session.userId],
+    );
+    const u = userQ.rows[0] ?? {};
+    const r = await pool.query(
+      `INSERT INTO wedding_event_comments
+         (event_id, wedding_id, author_type, author_name, author_email, content)
+       VALUES ($1, $2, 'photographer', $3, $4, $5) RETURNING *`,
+      [
+        eventId, weddingId,
+        [u.first_name, u.last_name].filter(Boolean).join(' ') || u.company_name || 'Fotograf',
+        u.email ?? null, content.slice(0, 5000),
+      ],
+    );
+    res.status(201).json(serializeComment(r.rows[0]));
+  } catch (err) {
+    console.error('[wedding-events] photographer-comment failed:', err);
+    res.status(500).json({ error: 'comment_failed' });
+  }
+});
+
+// GET /api/wedding/:id/timeline-events/:eventId/photos
+// Slice 9X.23 — match capture_assets med event ved å sammenligne EXIF capture_time
+// mot event scheduled_time ± duration (med buffer-tider). Lar Stine se "alle
+// bilder tatt under vielsen" automatisk uten å manuelt tagge hvert bilde.
+app.get("/api/wedding/:id/timeline-events/:eventId/photos", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  const eventId = String(req.params.eventId || '').trim();
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    // Hent event + tilhørende projectId for å avgrense søk
+    const eventQ = await pool.query(
+      `SELECT e.scheduled_time, e.duration_minutes, e.buffer_before_minutes,
+              e.buffer_after_minutes, w.project_id
+         FROM wedding_timeline_events e
+         JOIN wedding_timelines w ON w.id = e.wedding_id
+        WHERE e.id = $1 AND e.wedding_id = $2 LIMIT 1`,
+      [eventId, weddingId],
+    );
+    if ((eventQ.rowCount ?? 0) === 0) return res.status(404).json({ error: 'event_not_found' });
+    const ev = eventQ.rows[0];
+    if (!ev.scheduled_time) return res.json({ photos: [], windowStart: null, windowEnd: null });
+
+    // Window = scheduled_time - bufferBefore til scheduled_time + duration + bufferAfter
+    const start = new Date(ev.scheduled_time);
+    const windowStart = new Date(start.getTime() - (Number(ev.buffer_before_minutes ?? 0) * 60000));
+    const windowEnd = new Date(start.getTime()
+      + (Number(ev.duration_minutes ?? 30) * 60000)
+      + (Number(ev.buffer_after_minutes ?? 0) * 60000));
+
+    // Match capture_assets via capture_time (settet til EXIF DateTimeOriginal i Slice 9X.20)
+    const photosQ = await pool.query(
+      `SELECT a.id, a.original_filename, a.preview_key, a.full_key, a.capture_time,
+              a.mime, a.size_bytes, a.exif, a.tags, a.rating, a.flagged_for_client
+         FROM capture_assets a
+         JOIN capture_sessions s ON s.id = a.session_id
+        WHERE s.owner_user_id = $1
+          AND s.project_id = $2
+          AND a.deleted_at IS NULL
+          AND a.capture_time >= $3::timestamptz
+          AND a.capture_time <= $4::timestamptz
+        ORDER BY a.capture_time ASC
+        LIMIT 500`,
+      [session.userId, ev.project_id, windowStart.toISOString(), windowEnd.toISOString()],
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    // Re-sign R2 URLs for preview
+    const { signAssetReadUrl } = await import('./capture-upload-service.js').catch(() => ({ signAssetReadUrl: null }));
+    const photos = await Promise.all(
+      photosQ.rows.map(async (row: Record<string, unknown>) => {
+        let previewUrl: string | null = null;
+        if (signAssetReadUrl && row.preview_key) {
+          previewUrl = await signAssetReadUrl(String(row.preview_key)).catch(() => null);
+        }
+        return {
+          id: row.id,
+          filename: row.original_filename,
+          captureTime: row.capture_time,
+          previewUrl,
+          mime: row.mime,
+          sizeBytes: row.size_bytes ? Number(row.size_bytes) : null,
+          exif: row.exif ?? null,
+          tags: row.tags ?? [],
+          rating: Number(row.rating ?? 0),
+          flaggedForClient: !!row.flagged_for_client,
+        };
+      }),
+    );
+    res.json({
+      photos,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+      matchCount: photos.length,
+    });
+  } catch (err) {
+    console.error('[wedding-events] photos match failed:', err);
+    res.status(500).json({ error: 'photos_failed' });
+  }
+});
+
+// GET /api/wedding/:id/all-photos — samlet visning av bilder gruppert per
+// event basert på EXIF capture_time + alle bilder uten event-match.
+// Stine bruker dette for å se hele bryllupsdagen i kronologisk rekkefølge.
+app.get("/api/wedding/:id/all-photos", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  try {
+    await ensureWeddingEventsSchema();
+    if (!(await assertPhotographerOwnsWedding(weddingId, session.userId))) {
+      return res.status(404).json({ error: 'wedding_not_found' });
+    }
+    const weddingQ = await pool.query(
+      `SELECT project_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const projectId = weddingQ.rows[0]?.project_id;
+    if (!projectId) return res.json({ groups: [], ungrouped: [], total: 0 });
+
+    // Hent alle events for bryllupet
+    const eventsQ = await pool.query(
+      `SELECT id, title, scheduled_time, duration_minutes, buffer_before_minutes, buffer_after_minutes
+         FROM wedding_timeline_events
+        WHERE wedding_id = $1 AND scheduled_time IS NOT NULL
+        ORDER BY scheduled_time ASC`,
+      [weddingId],
+    );
+    const events = eventsQ.rows.map((e: Record<string, unknown>) => {
+      const start = new Date(e.scheduled_time as string);
+      const windowStart = new Date(start.getTime() - Number(e.buffer_before_minutes ?? 0) * 60000);
+      const windowEnd = new Date(start.getTime()
+        + Number(e.duration_minutes ?? 30) * 60000
+        + Number(e.buffer_after_minutes ?? 0) * 60000);
+      return {
+        id: String(e.id),
+        title: String(e.title),
+        scheduledTime: e.scheduled_time,
+        windowStart,
+        windowEnd,
+      };
+    });
+
+    // Hent ALLE bilder fra prosjektet (med capture_time)
+    const photosQ = await pool.query(
+      `SELECT a.id, a.original_filename, a.preview_key, a.capture_time,
+              a.mime, a.size_bytes, a.exif, a.tags, a.rating, a.flagged_for_client
+         FROM capture_assets a
+         JOIN capture_sessions s ON s.id = a.session_id
+        WHERE s.owner_user_id = $1
+          AND s.project_id = $2
+          AND a.deleted_at IS NULL
+        ORDER BY a.capture_time ASC NULLS LAST
+        LIMIT 5000`,
+      [session.userId, projectId],
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    const { signAssetReadUrl } = await import('./capture-upload-service.js').catch(() => ({ signAssetReadUrl: null }));
+
+    // Bucket-isér bilder
+    const grouped = new Map<string, Record<string, unknown>[]>();
+    const ungrouped: Record<string, unknown>[] = [];
+    for (const photo of photosQ.rows) {
+      if (!photo.capture_time) {
+        ungrouped.push(photo);
+        continue;
+      }
+      const captureTs = new Date(photo.capture_time as string).getTime();
+      const matchingEvent = events.find((e) =>
+        captureTs >= e.windowStart.getTime() && captureTs <= e.windowEnd.getTime(),
+      );
+      if (matchingEvent) {
+        if (!grouped.has(matchingEvent.id)) grouped.set(matchingEvent.id, []);
+        grouped.get(matchingEvent.id)!.push(photo);
+      } else {
+        ungrouped.push(photo);
+      }
+    }
+
+    async function serializePhoto(row: Record<string, unknown>) {
+      let previewUrl: string | null = null;
+      if (signAssetReadUrl && row.preview_key) {
+        previewUrl = await signAssetReadUrl(String(row.preview_key)).catch(() => null);
+      }
+      return {
+        id: row.id,
+        filename: row.original_filename,
+        captureTime: row.capture_time,
+        previewUrl,
+        mime: row.mime,
+        sizeBytes: row.size_bytes ? Number(row.size_bytes) : null,
+        exif: row.exif ?? null,
+        tags: row.tags ?? [],
+        rating: Number(row.rating ?? 0),
+        flaggedForClient: !!row.flagged_for_client,
+      };
+    }
+
+    const groups = await Promise.all(events.map(async (e) => ({
+      eventId: e.id,
+      eventTitle: e.title,
+      scheduledTime: e.scheduledTime,
+      windowStart: e.windowStart.toISOString(),
+      windowEnd: e.windowEnd.toISOString(),
+      photoCount: (grouped.get(e.id) ?? []).length,
+      photos: await Promise.all((grouped.get(e.id) ?? []).map(serializePhoto)),
+    })));
+
+    const ungroupedPhotos = await Promise.all(ungrouped.map(serializePhoto));
+
+    res.json({
+      groups,
+      ungrouped: ungroupedPhotos,
+      total: photosQ.rows.length,
+    });
+  } catch (err) {
+    console.error('[wedding-events] all-photos failed:', err);
+    res.status(500).json({ error: 'all_photos_failed' });
+  }
+});
+
+// Client-side endepunkter
+app.get("/api/wedding/client/:token/timeline-events", async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  try {
+    await ensureWeddingEventsSchema();
+    const wedding = await lookupWeddingIdByToken(token);
+    if (!wedding) return res.status(404).json({ error: 'not_found' });
+    const eventsQ = await pool.query(
+      `SELECT * FROM wedding_timeline_events
+        WHERE wedding_id = $1 AND client_visible = true
+        ORDER BY scheduled_time ASC NULLS LAST, sort_order ASC`,
+      [wedding.id],
+    );
+    const commentsQ = await pool.query(
+      `SELECT * FROM wedding_event_comments WHERE wedding_id = $1 ORDER BY created_at ASC`,
+      [wedding.id],
+    );
+    const commentsByEvent = new Map<string, ReturnType<typeof serializeComment>[]>();
+    for (const c of commentsQ.rows) {
+      const key = String(c.event_id);
+      if (!commentsByEvent.has(key)) commentsByEvent.set(key, []);
+      commentsByEvent.get(key)!.push(serializeComment(c));
+    }
+    res.json({
+      events: eventsQ.rows.map((row: Record<string, unknown>) => ({
+        ...serializeEvent(row, false),
+        comments: commentsByEvent.get(String(row.id)) ?? [],
+      })),
+    });
+  } catch (err) {
+    console.error('[wedding-events] client list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+app.post("/api/wedding/client/:token/timeline-events/:eventId/comments", async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  const eventId = String(req.params.eventId || '').trim();
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  const authorName = typeof req.body?.authorName === 'string' ? req.body.authorName.trim().slice(0, 100) : '';
+  if (!content) return res.status(400).json({ error: 'content_required' });
+  try {
+    await ensureWeddingEventsSchema();
+    const wedding = await lookupWeddingIdByToken(token);
+    if (!wedding) return res.status(404).json({ error: 'not_found' });
+    const evQ = await pool.query(
+      `SELECT client_can_comment FROM wedding_timeline_events
+        WHERE id = $1 AND wedding_id = $2 LIMIT 1`,
+      [eventId, wedding.id],
+    );
+    if ((evQ.rowCount ?? 0) === 0) return res.status(404).json({ error: 'event_not_found' });
+    if (!evQ.rows[0].client_can_comment) return res.status(403).json({ error: 'comments_disabled' });
+    const r = await pool.query(
+      `INSERT INTO wedding_event_comments
+         (event_id, wedding_id, author_type, author_name, author_email, content)
+       VALUES ($1, $2, 'client', $3, $4, $5) RETURNING *`,
+      [
+        eventId, wedding.id,
+        authorName || wedding.coupleName,
+        wedding.clientEmail, content.slice(0, 5000),
+      ],
+    );
+    res.status(201).json(serializeComment(r.rows[0]));
+  } catch (err) {
+    console.error('[wedding-events] client-comment failed:', err);
+    res.status(500).json({ error: 'comment_failed' });
+  }
+});
+
+// POST /api/wedding/reminders/run — trigger reminder-runner manuelt eller via cron
+app.post("/api/wedding/reminders/run", async (req, res) => {
+  // Krever enten admin-session ELLER en hemmelig header (for cron)
+  const cronSecret = process.env.WEDDING_REMINDER_CRON_SECRET || '';
+  const providedSecret = String(req.headers['x-cron-secret'] || '').trim();
+  const isAdmin = (() => {
+    try {
+      const session = requireUserSession(req, res);
+      return !!session;
+    } catch { return false; }
+  })();
+  if (!isAdmin && (!cronSecret || providedSecret !== cronSecret)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  try {
+    const { runWeddingReminders } = await import('./wedding-reminder-runner.js');
+    const result = await runWeddingReminders(pool);
+    res.json(result);
+  } catch (err) {
+    console.error('[wedding-reminders] run failed:', err);
+    res.status(500).json({ error: 'run_failed' });
+  }
+});
+
+// POST /api/wedding/:id/generate-shotlist — auto-genérer shot-list fra kultur
+app.post("/api/wedding/:id/generate-shotlist", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const weddingId = String(req.params.id || '').trim();
+  if (!weddingId) return res.status(400).json({ error: 'id_required' });
+
+  try {
+    const r = await pool.query(
+      `SELECT culture, project_id FROM wedding_timelines
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [weddingId, session.userId],
+    );
+    if ((r.rowCount ?? 0) === 0) return res.status(404).json({ error: 'wedding_not_found' });
+    const { culture, project_id } = r.rows[0];
+    if (!culture) return res.status(400).json({ error: 'no_culture_set' });
+
+    const { getCultureTemplate, WEDDING_CULTURE_TEMPLATES } = await import('./wedding-culture-templates.js');
+    const template = getCultureTemplate(culture);
+    if (!template) return res.status(404).json({ error: 'culture_template_not_found' });
+
+    // Inkluder shots fra norsk-kristen som fallback for templates med tom shots-array
+    const shots = template.shots.length > 0
+      ? template.shots
+      : WEDDING_CULTURE_TEMPLATES['norsk-kristen'].shots;
+
+    res.json({
+      culture: template.id,
+      eventCount: template.events.length,
+      shotCount: shots.length,
+      events: template.events,
+      shots,
+      message: `${shots.length} shots og ${template.events.length} events generert fra ${template.displayName}-template.`,
+    });
+  } catch (err) {
+    console.error('[wedding-shotlist] generate failed:', err);
+    res.status(500).json({ error: 'generate_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Photographer Settings (Slice 9X.21 — overview + profil + Drive-folder)
+// ─────────────────────────────────────────────────────────────────────────
+
+// GET /api/photographer/settings/overview — alt-i-én for settings-siden:
+// profil + abonnement-status + Drive-tilkobling + lagring + integrasjoner.
+app.get("/api/photographer/settings/overview", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
+
+  try {
+    // Profil (users-tabell)
+    const profileQ = await pool.query(
+      `SELECT id, email, first_name, last_name, phone_number,
+              company_name, organization_number, business_address,
+              website, vat_number, profile_image_url, profession,
+              google_workspace_connected, google_drive_connected,
+              gmail_connected, google_calendar_connected,
+              created_at
+         FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    const profile = profileQ.rows[0] ?? null;
+
+    // Antall prosjekter + aktive klienter (for context)
+    const counts = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM projects WHERE user_id = $1) AS projects_count,
+         (SELECT COUNT(*)::int FROM clients WHERE photographer_id = $1) AS clients_count,
+         (SELECT COUNT(*)::int FROM photographer_client_galleries WHERE photographer_id = $1) AS galleries_count`,
+      [userId],
+    ).catch(() => ({ rows: [{ projects_count: 0, clients_count: 0, galleries_count: 0 }] }));
+
+    // Integrasjons-status: PowerOffice
+    let poStatus: { connected: boolean; status: string | null } = { connected: false, status: null };
+    try {
+      const po = await pool.query(
+        `SELECT status FROM photographer_integrations
+          WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
+        [userId],
+      );
+      if ((po.rowCount ?? 0) > 0) {
+        poStatus = { connected: true, status: po.rows[0].status };
+      }
+    } catch { /* tabellen finnes kanskje ikke */ }
+
+    res.json({
+      profile: profile ? {
+        id: profile.id,
+        email: profile.email,
+        firstName: profile.first_name,
+        lastName: profile.last_name,
+        phoneNumber: profile.phone_number,
+        companyName: profile.company_name,
+        organizationNumber: profile.organization_number,
+        businessAddress: profile.business_address,
+        website: profile.website,
+        vatNumber: profile.vat_number,
+        profileImageUrl: profile.profile_image_url,
+        profession: profile.profession,
+        createdAt: profile.created_at,
+      } : null,
+      google: {
+        workspaceConnected: !!profile?.google_workspace_connected,
+        driveConnected: !!profile?.google_drive_connected,
+        gmailConnected: !!profile?.gmail_connected,
+        calendarConnected: !!profile?.google_calendar_connected,
+      },
+      counts: {
+        projects: Number(counts.rows[0]?.projects_count ?? 0),
+        clients: Number(counts.rows[0]?.clients_count ?? 0),
+        galleries: Number(counts.rows[0]?.galleries_count ?? 0),
+      },
+      integrations: {
+        poweroffice: poStatus,
+      },
+    });
+  } catch (err) {
+    console.error('[photographer-settings] overview failed:', err);
+    res.status(500).json({ error: 'overview_failed' });
+  }
+});
+
+// PATCH /api/photographer/profile — oppdater fotografens business-info.
+app.patch("/api/photographer/profile", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
+  const {
+    firstName, lastName, phoneNumber, companyName,
+    organizationNumber, businessAddress, website, vatNumber,
+  } = req.body ?? {};
+
+  try {
+    const r = await pool.query(
+      `UPDATE users SET
+         first_name = COALESCE($1, first_name),
+         last_name = COALESCE($2, last_name),
+         phone_number = COALESCE($3, phone_number),
+         company_name = COALESCE($4, company_name),
+         organization_number = COALESCE($5, organization_number),
+         business_address = COALESCE($6, business_address),
+         website = COALESCE($7, website),
+         vat_number = COALESCE($8, vat_number),
+         updated_at = NOW()
+       WHERE id = $9`,
+      [
+        typeof firstName === 'string' ? firstName : null,
+        typeof lastName === 'string' ? lastName : null,
+        typeof phoneNumber === 'string' ? phoneNumber : null,
+        typeof companyName === 'string' ? companyName : null,
+        typeof organizationNumber === 'string' ? organizationNumber : null,
+        typeof businessAddress === 'string' ? businessAddress : null,
+        typeof website === 'string' ? website : null,
+        typeof vatNumber === 'string' ? vatNumber : null,
+        userId,
+      ],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'user_not_found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[photographer-profile] update failed:', err);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
+
+// POST /api/photographer/google-drive/setup-folders — idempotent oppretting
+// av standard fotograf-folder-struktur i Google Drive. Lager:
+//   /Creatorhubn Photographer
+//     /01-RAW
+//     /02-Selected
+//     /03-Edited
+//     /04-Delivery
+//     /05-Contracts
+// Stine kopierer template-struktur per prosjekt eller bruker root-mappene direkte.
+const PHOTOGRAPHER_DRIVE_FOLDERS = [
+  '01-RAW',
+  '02-Selected',
+  '03-Edited',
+  '04-Delivery',
+  '05-Contracts',
+];
+
+app.post("/api/photographer/google-drive/setup-folders", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
+
+  try {
+    const { google } = await import('googleapis');
+    let oauthClient;
+    try {
+      // Bruk samme helper som google-calendar-project.ts via dynamic import
+      const credsModule = await import('./google-calendar-project.js');
+      // Vi har ikke en eksportert helper for å hente bare credentials.
+      // Inline-versjon: bruk resolveRoleRoomGoogleConnection hvis tilgjengelig
+      // Fallback: prøv direct pool-query for tokens
+      const r = await pool.query(
+        `SELECT access_token_encrypted, refresh_token_encrypted, expiry_date, oauth_app
+           FROM role_room_google_connections
+          WHERE user_id = $1 AND connection_state = 'connected'
+            AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
+          ORDER BY last_used_at DESC NULLS LAST LIMIT 1`,
+        [userId],
+      );
+      if ((r.rowCount ?? 0) === 0) {
+        return res.status(412).json({
+          error: 'google_not_connected',
+          message: 'Google Workspace må kobles til først for å opprette folder-struktur.',
+        });
+      }
+      void credsModule; // tie-in for future helper
+
+      // Bygg oauth-client på samme måte som google-calendar-project.ts
+      const row = r.rows[0];
+      const { getGoogleWorkspaceOauthConfig, normalizeGoogleWorkspaceOauthApp } =
+        await import('./google-workspace-oauth.js');
+      const oauthApp = normalizeGoogleWorkspaceOauthApp(row.oauth_app, 'role_room');
+      const oauthConfig = getGoogleWorkspaceOauthConfig(oauthApp as 'role_room' | 'creatorhub');
+      if (!oauthConfig.clientId || !oauthConfig.clientSecret) {
+        return res.status(500).json({ error: 'oauth_config_missing' });
+      }
+
+      // Decrypt tokens (samme pattern som chat-gmail-poller)
+      const cryptoMod = await import('crypto');
+      const secret = process.env.ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY
+        || process.env.ROLE_ROOM_ENCRYPTION_KEY
+        || process.env.SESSION_SECRET
+        || process.env.JWT_SECRET
+        || process.env.AUTH_SECRET;
+      if (!secret) return res.status(500).json({ error: 'encryption_key_missing' });
+      const key = cryptoMod.createHash('sha256').update(secret).digest();
+      const decrypt = (val: string | null | undefined): string | null => {
+        if (!val) return null;
+        try {
+          const buf = Buffer.from(val, 'base64');
+          if (buf.length < 28) return null;
+          const iv = buf.subarray(0, 12);
+          const tag = buf.subarray(12, 28);
+          const ct = buf.subarray(28);
+          const dec = cryptoMod.createDecipheriv('aes-256-gcm', key, iv);
+          dec.setAuthTag(tag);
+          return Buffer.concat([dec.update(ct), dec.final()]).toString('utf8');
+        } catch { return null; }
+      };
+
+      const refreshToken = decrypt(row.refresh_token_encrypted);
+      const accessToken = decrypt(row.access_token_encrypted);
+      if (!refreshToken && !accessToken) {
+        return res.status(412).json({ error: 'tokens_invalid' });
+      }
+      oauthClient = new google.auth.OAuth2(
+        oauthConfig.clientId,
+        oauthConfig.clientSecret,
+        // google.auth.OAuth2 forventer string | undefined; oauth-config
+        // returnerer null ved manglende env. Konvertér eksplisitt.
+        oauthConfig.redirectUri ?? undefined,
+      );
+      const seed: any = {};
+      if (refreshToken) seed.refresh_token = refreshToken;
+      if (accessToken) seed.access_token = accessToken;
+      if (row.expiry_date) {
+        const ts = Date.parse(row.expiry_date);
+        if (Number.isFinite(ts)) seed.expiry_date = ts;
+      }
+      oauthClient.setCredentials(seed);
+      if (refreshToken) await oauthClient.refreshAccessToken().catch(() => undefined);
+    } catch (credErr) {
+      console.warn('[drive-setup] cred load failed:', credErr);
+      return res.status(500).json({ error: 'cred_load_failed' });
+    }
+
+    const driveApi = google.drive({ version: 'v3', auth: oauthClient });
+
+    // Sjekk om root-folder eksisterer (idempotent)
+    const rootName = 'Creatorhubn Photographer';
+    const existing = await driveApi.files.list({
+      q: `name='${rootName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id, name)',
+      spaces: 'drive',
+    });
+    let rootId: string;
+    if ((existing.data.files ?? []).length > 0) {
+      rootId = existing.data.files![0].id!;
+    } else {
+      const created = await driveApi.files.create({
+        requestBody: {
+          name: rootName,
+          mimeType: 'application/vnd.google-apps.folder',
+        },
+        fields: 'id',
+      });
+      rootId = created.data.id!;
+    }
+
+    // Opprett underfoldere (idempotent — sjekker hver først)
+    const createdSubfolders: { name: string; id: string }[] = [];
+    for (const folderName of PHOTOGRAPHER_DRIVE_FOLDERS) {
+      const sub = await driveApi.files.list({
+        q: `name='${folderName}' and '${rootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+        fields: 'files(id, name)',
+        spaces: 'drive',
+      });
+      if ((sub.data.files ?? []).length > 0) {
+        createdSubfolders.push({ name: folderName, id: sub.data.files![0].id! });
+      } else {
+        const newSub = await driveApi.files.create({
+          requestBody: {
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [rootId],
+          },
+          fields: 'id',
+        });
+        createdSubfolders.push({ name: folderName, id: newSub.data.id! });
+      }
+    }
+
+    res.json({
+      rootFolderId: rootId,
+      rootFolderUrl: `https://drive.google.com/drive/folders/${rootId}`,
+      subfolders: createdSubfolders,
+    });
+  } catch (err: any) {
+    console.error('[drive-setup] failed:', err);
+    if (err?.code === 403 || err?.response?.status === 403) {
+      return res.status(403).json({
+        error: 'drive_scope_missing',
+        message: 'Mangler Google Drive-tilgang. Koble til Google på nytt og godkjenn Drive-scope.',
+      });
+    }
+    res.status(500).json({ error: 'setup_failed', message: String(err?.message ?? '').slice(0, 200) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Photographer Equipment (Slice 9X.19 — utstyr-katalog + garanti-tracking)
+// ─────────────────────────────────────────────────────────────────────────
+
+let photographerEquipmentSchemaReady: Promise<void> | null = null;
+function ensurePhotographerEquipmentSchema(): Promise<void> {
+  if (!photographerEquipmentSchemaReady) {
+    photographerEquipmentSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS catalog_id VARCHAR(64);
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS warranty_months INTEGER;
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS reklamasjon_months INTEGER DEFAULT 60;
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS firmware_url VARCHAR(500);
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS latest_firmware_version VARCHAR(64);
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS retailer VARCHAR(128);
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS receipt_url VARCHAR(500);
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS battery_count INTEGER DEFAULT 1;
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS has_battery_grip BOOLEAN DEFAULT FALSE;
+          ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS battery_model VARCHAR(64);
+        `);
+      } catch (err) {
+        console.warn('[photographer-equipment] schema-ensure failed:', err);
+        photographerEquipmentSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return photographerEquipmentSchemaReady;
+}
+
+function computeDaysRemaining(purchaseDate: string | null, months: number | null | undefined): {
+  days: number | null;
+  endDate: string | null;
+  totalDays: number | null;
+  pct: number | null;
+} {
+  if (!purchaseDate || !months || months <= 0) {
+    return { days: null, endDate: null, totalDays: null, pct: null };
+  }
+  const pd = new Date(purchaseDate);
+  if (!Number.isFinite(pd.getTime())) {
+    return { days: null, endDate: null, totalDays: null, pct: null };
+  }
+  const end = new Date(pd);
+  end.setMonth(end.getMonth() + months);
+  const totalDays = Math.round((end.getTime() - pd.getTime()) / 86400000);
+  const days = Math.round((end.getTime() - Date.now()) / 86400000);
+  const elapsed = totalDays - days;
+  const pct = totalDays > 0 ? Math.max(0, Math.min(100, (elapsed / totalDays) * 100)) : null;
+  return { days, endDate: end.toISOString().slice(0, 10), totalDays, pct };
+}
+
+app.get("/api/photographer/equipment/catalog", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : '';
+    const { searchCatalog } = await import('./equipment-catalog.js');
+    res.json({ catalog: searchCatalog(q) });
+  } catch (err) {
+    console.error('[equipment-catalog] failed:', err);
+    res.status(500).json({ error: 'catalog_failed' });
+  }
+});
+
+app.get("/api/photographer/equipment", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePhotographerEquipmentSchema();
+    const r = await pool.query(
+      `SELECT id, category, brand, model, serial_number, purchase_date,
+              purchase_price, current_value, condition, notes, image_url,
+              catalog_id, warranty_months, reklamasjon_months, firmware_url,
+              latest_firmware_version, firmware_version, retailer, receipt_url,
+              last_maintenance, next_maintenance,
+              battery_count, has_battery_grip, battery_model,
+              created_at, updated_at
+         FROM user_equipment
+        WHERE user_id = $1
+        ORDER BY purchase_date DESC NULLS LAST, created_at DESC`,
+      [session.userId],
+    );
+    const items = r.rows.map((row: Record<string, unknown>) => {
+      const purchaseDate = row.purchase_date ? String(row.purchase_date) : null;
+      const warrantyMonths = row.warranty_months != null ? Number(row.warranty_months) : null;
+      const reklamasjonMonths = row.reklamasjon_months != null ? Number(row.reklamasjon_months) : 60;
+      const warranty = computeDaysRemaining(purchaseDate, warrantyMonths);
+      const reklamasjon = computeDaysRemaining(purchaseDate, reklamasjonMonths);
+      return {
+        id: row.id,
+        category: row.category ?? null,
+        brand: row.brand,
+        model: row.model,
+        serialNumber: row.serial_number ?? null,
+        purchaseDate,
+        purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
+        currentValue: row.current_value != null ? Number(row.current_value) : null,
+        condition: row.condition ?? null,
+        catalogId: row.catalog_id ?? null,
+        imageUrl: row.image_url ?? null,
+        firmwareUrl: row.firmware_url ?? null,
+        firmwareVersion: row.firmware_version ?? null,
+        latestFirmwareVersion: row.latest_firmware_version ?? null,
+        warrantyMonths,
+        reklamasjonMonths,
+        warranty: { ...warranty, expired: warranty.days !== null && warranty.days < 0 },
+        reklamasjon: { ...reklamasjon, expired: reklamasjon.days !== null && reklamasjon.days < 0 },
+        retailer: row.retailer ?? null,
+        receiptUrl: row.receipt_url ?? null,
+        lastMaintenance: row.last_maintenance ?? null,
+        nextMaintenance: row.next_maintenance ?? null,
+        notes: row.notes ?? null,
+        // Slice 9X.24 — batteri-data (auto-fylt fra katalog, redigerbart)
+        batteryCount: row.battery_count != null ? Number(row.battery_count) : 1,
+        hasBatteryGrip: !!row.has_battery_grip,
+        batteryModel: row.battery_model ?? null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    });
+    res.json({ equipment: items });
+  } catch (err) {
+    console.error('[photographer-equipment] list failed:', err);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+app.post("/api/photographer/equipment", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const {
+    catalogId, brand, model, category, serialNumber, purchaseDate,
+    purchasePrice, retailer, condition, notes, receiptUrl,
+    warrantyMonths, reklamasjonMonths,
+  } = req.body ?? {};
+
+  try {
+    await ensurePhotographerEquipmentSchema();
+    let resolved: {
+      brand?: string; model?: string; category?: string;
+      imageUrl?: string | null; firmwareUrl?: string | null;
+      warrantyMonths?: number; reklamasjonMonths?: number;
+      batteryModel?: string | null; hasBatteryGripOption?: boolean;
+    } = {};
+
+    if (catalogId) {
+      const { findCatalogEntry } = await import('./equipment-catalog.js');
+      const entry = findCatalogEntry(String(catalogId));
+      if (entry) {
+        resolved = {
+          brand: entry.brand, model: entry.model, category: entry.category,
+          imageUrl: entry.imageUrl, firmwareUrl: entry.firmwareUrl,
+          warrantyMonths: entry.warrantyMonths, reklamasjonMonths: entry.reklamasjonMonths,
+          batteryModel: entry.batteryModel ?? null,
+          hasBatteryGripOption: !!entry.hasBatteryGripOption,
+        };
+      }
+    }
+
+    const finalBrand = (typeof brand === 'string' && brand.trim()) || resolved.brand;
+    const finalModel = (typeof model === 'string' && model.trim()) || resolved.model;
+    if (!finalBrand || !finalModel) {
+      return res.status(400).json({ error: 'brand_and_model_required' });
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO user_equipment
+         (user_id, user_type, category, brand, model, serial_number,
+          purchase_date, purchase_price, condition, notes,
+          image_url, catalog_id, warranty_months, reklamasjon_months,
+          firmware_url, retailer, receipt_url,
+          battery_count, has_battery_grip, battery_model,
+          created_at, updated_at)
+       VALUES ($1, 'photographer', $2, $3, $4, $5,
+               $6, $7, $8, $9,
+               $10, $11, $12, $13,
+               $14, $15, $16,
+               $17, $18, $19, NOW(), NOW())
+       RETURNING id`,
+      [
+        session.userId,
+        (typeof category === 'string' && category.trim()) || resolved.category || 'other',
+        finalBrand, finalModel,
+        typeof serialNumber === 'string' && serialNumber.trim() ? serialNumber.trim() : null,
+        purchaseDate || null,
+        Number.isFinite(Number(purchasePrice)) ? Number(purchasePrice) : null,
+        typeof condition === 'string' ? condition : 'excellent',
+        typeof notes === 'string' ? notes : null,
+        resolved.imageUrl ?? null,
+        catalogId || null,
+        Number.isFinite(Number(warrantyMonths)) ? Number(warrantyMonths) : (resolved.warrantyMonths ?? null),
+        Number.isFinite(Number(reklamasjonMonths)) ? Number(reklamasjonMonths) : (resolved.reklamasjonMonths ?? 60),
+        resolved.firmwareUrl ?? null,
+        typeof retailer === 'string' && retailer.trim() ? retailer.trim() : null,
+        typeof receiptUrl === 'string' && receiptUrl.trim() ? receiptUrl.trim() : null,
+        // Slice 9X.24 — batteri auto-fylles fra katalog hvis kamera
+        Number.isFinite(Number(req.body?.batteryCount)) ? Number(req.body.batteryCount) : 1,
+        !!req.body?.hasBatteryGrip,
+        resolved.batteryModel ?? null,
+      ],
+    );
+    res.status(201).json({ id: ins.rows[0]?.id });
+  } catch (err) {
+    console.error('[photographer-equipment] create failed:', err);
+    res.status(500).json({ error: 'create_failed' });
+  }
+});
+
+app.patch("/api/photographer/equipment/:id", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'id_required' });
+
+  const {
+    purchaseDate, purchasePrice, currentValue, serialNumber, condition,
+    notes, warrantyMonths, reklamasjonMonths, retailer, receiptUrl,
+    firmwareVersion, lastMaintenance, nextMaintenance,
+    batteryCount, hasBatteryGrip,
+  } = req.body ?? {};
+
+  try {
+    await ensurePhotographerEquipmentSchema();
+    const r = await pool.query(
+      `UPDATE user_equipment SET
+         purchase_date = COALESCE($1, purchase_date),
+         purchase_price = COALESCE($2, purchase_price),
+         current_value = COALESCE($3, current_value),
+         serial_number = COALESCE($4, serial_number),
+         condition = COALESCE($5, condition),
+         notes = COALESCE($6, notes),
+         warranty_months = COALESCE($7, warranty_months),
+         reklamasjon_months = COALESCE($8, reklamasjon_months),
+         retailer = COALESCE($9, retailer),
+         receipt_url = COALESCE($10, receipt_url),
+         firmware_version = COALESCE($11, firmware_version),
+         last_maintenance = COALESCE($12, last_maintenance),
+         next_maintenance = COALESCE($13, next_maintenance),
+         battery_count = COALESCE($14, battery_count),
+         has_battery_grip = COALESCE($15, has_battery_grip),
+         updated_at = NOW()
+       WHERE id = $16 AND user_id = $17`,
+      [
+        purchaseDate || null,
+        Number.isFinite(Number(purchasePrice)) ? Number(purchasePrice) : null,
+        Number.isFinite(Number(currentValue)) ? Number(currentValue) : null,
+        typeof serialNumber === 'string' ? serialNumber : null,
+        typeof condition === 'string' ? condition : null,
+        typeof notes === 'string' ? notes : null,
+        Number.isFinite(Number(warrantyMonths)) ? Number(warrantyMonths) : null,
+        Number.isFinite(Number(reklamasjonMonths)) ? Number(reklamasjonMonths) : null,
+        typeof retailer === 'string' ? retailer : null,
+        typeof receiptUrl === 'string' ? receiptUrl : null,
+        typeof firmwareVersion === 'string' ? firmwareVersion : null,
+        typeof lastMaintenance === 'string' ? lastMaintenance : null,
+        typeof nextMaintenance === 'string' ? nextMaintenance : null,
+        Number.isFinite(Number(batteryCount)) ? Number(batteryCount) : null,
+        typeof hasBatteryGrip === 'boolean' ? hasBatteryGrip : null,
+        Number(id), session.userId,
+      ],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not_found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[photographer-equipment] update failed:', err);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
+
+app.delete("/api/photographer/equipment/:id", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'id_required' });
+  try {
+    const r = await pool.query(
+      `DELETE FROM user_equipment WHERE id = $1 AND user_id = $2`,
+      [Number(id), session.userId],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not_found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[photographer-equipment] delete failed:', err);
+    res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+// GET /api/photographer/worklog/summary — uke/måned-aggregering av tracked
+// hours fra project_time_tracking. Surface'r i Worklog-fanen så fotograf
+// ser totalt + per prosjekt + per kategori uten å gå inn på hvert prosjekt.
+app.get("/api/photographer/worklog/summary", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+
+  try {
+    await ensurePhotographerProjectsSchema();
+
+    // Aggregert per prosjekt — denne uka + denne måneden + total
+    const r = await pool.query(
+      `WITH per_project AS (
+        SELECT
+          p.id AS project_id,
+          p.title,
+          p.project_type,
+          p.status,
+          p.event_date,
+          COALESCE(p.service_price, 0)::numeric AS service_price,
+          SUM(t.billable_hours) AS total_hours,
+          SUM(t.billable_hours * t.rate) AS total_cost,
+          SUM(CASE WHEN t.date_worked >= CURRENT_DATE - INTERVAL '7 days'
+              THEN t.billable_hours ELSE 0 END) AS week_hours,
+          SUM(CASE WHEN t.date_worked >= DATE_TRUNC('month', CURRENT_DATE)::date
+              THEN t.billable_hours ELSE 0 END) AS month_hours
+        FROM projects p
+        JOIN project_time_tracking t ON t.project_id = p.id
+        WHERE p.user_id = $1
+        GROUP BY p.id, p.title, p.project_type, p.status, p.event_date, p.service_price
+      )
+      SELECT * FROM per_project
+      WHERE total_hours > 0
+      ORDER BY week_hours DESC, total_hours DESC
+      LIMIT 50`,
+      [photographerId],
+    );
+
+    // Total totals
+    const totals = r.rows.reduce(
+      (acc, row: Record<string, unknown>) => {
+        acc.weekHours += Number(row.week_hours ?? 0);
+        acc.monthHours += Number(row.month_hours ?? 0);
+        acc.totalHours += Number(row.total_hours ?? 0);
+        return acc;
+      },
+      { weekHours: 0, monthHours: 0, totalHours: 0 },
+    );
+
+    // Last 7 days breakdown (for sparkline)
+    const dailyQ = await pool.query(
+      `SELECT date_worked::text AS d, SUM(billable_hours)::numeric AS hours
+         FROM project_time_tracking t
+         JOIN projects p ON p.id = t.project_id
+        WHERE p.user_id = $1
+          AND t.date_worked >= CURRENT_DATE - INTERVAL '14 days'
+        GROUP BY date_worked
+        ORDER BY date_worked ASC`,
+      [photographerId],
+    );
+
+    res.json({
+      totals: {
+        weekHours: totals.weekHours,
+        monthHours: totals.monthHours,
+        totalHours: totals.totalHours,
+        avgPerDay: totals.weekHours / 7,
+      },
+      perProject: r.rows.map((row: Record<string, unknown>) => ({
+        projectId: row.project_id,
+        title: row.title ?? 'Uten tittel',
+        projectType: row.project_type ?? null,
+        status: row.status ?? 'active',
+        eventDate: row.event_date ?? null,
+        weekHours: Number(row.week_hours ?? 0),
+        monthHours: Number(row.month_hours ?? 0),
+        totalHours: Number(row.total_hours ?? 0),
+        totalCost: Number(row.total_cost ?? 0),
+        servicePrice: Number(row.service_price ?? 0),
+      })),
+      dailyLast14: dailyQ.rows.map((row: Record<string, unknown>) => ({
+        date: row.d,
+        hours: Number(row.hours ?? 0),
+      })),
+    });
+  } catch (err) {
+    console.error('[worklog-summary] failed:', err);
+    res.status(500).json({ error: 'summary_failed' });
+  }
+});
+
+// GET /api/photographer/profitability/summary — PnL-aggregering per type/klient.
+app.get("/api/photographer/profitability/summary", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  try {
+    await ensurePhotographerProjectsSchema();
+    const projectsQ = await pool.query(
+      `SELECT
+         p.id, p.title, p.project_type, p.event_date, p.status, p.client_id,
+         COALESCE(p.service_price, 0)::numeric AS service_price,
+         COALESCE(p.cost_overhead, 0)::numeric AS cost_overhead,
+         COALESCE(p.vat_rate, 25)::numeric     AS vat_rate,
+         COALESCE(t.tracked_hours, 0)::numeric AS tracked_hours,
+         COALESCE(t.tracked_cost, 0)::numeric  AS tracked_cost,
+         c.first_name, c.last_name, c.email
+       FROM projects p
+       LEFT JOIN clients c ON c.id = p.client_id
+       LEFT JOIN (
+         SELECT project_id,
+                SUM(billable_hours) AS tracked_hours,
+                SUM(billable_hours * rate) AS tracked_cost
+           FROM project_time_tracking
+          GROUP BY project_id
+       ) t ON t.project_id = p.id
+       WHERE p.user_id = $1`,
+      [photographerId],
+    );
+
+    const projects = projectsQ.rows.map((r: Record<string, unknown>) => {
+      // MVA-skille — service_price antas å være INKL MVA (norsk B2C-konvensjon).
+      // Netto = brutto / (1 + sats/100). VAT = brutto - netto.
+      const revenueGross = Number(r.service_price);
+      const vatRate = Number(r.vat_rate);
+      const revenueNet = vatRate > 0 ? revenueGross / (1 + vatRate / 100) : revenueGross;
+      const vatAmount = revenueGross - revenueNet;
+      // Kostnad er ALLTID netto (timepris + faste utgifter eks MVA).
+      const cost = Number(r.tracked_cost) + Number(r.cost_overhead);
+      const profitNet = revenueNet - cost;
+      const marginNet = revenueNet > 0 ? (profitNet / revenueNet) * 100 : null;
+      const clientDisplay = [r.first_name, r.last_name].filter(Boolean).join(' ')
+        || (r.email as string | null) || 'Uten klient';
+      return {
+        id: r.id,
+        title: r.title ?? 'Uten tittel',
+        projectType: (r.project_type as string) ?? 'ukategorisert',
+        clientId: r.client_id ?? null,
+        clientName: clientDisplay,
+        eventDate: r.event_date ?? null,
+        status: r.status ?? 'active',
+        revenue: revenueGross,      // brutto — bakoverkompatibel
+        revenueGross,
+        revenueNet,
+        vatRate,
+        vatAmount,
+        trackedHours: Number(r.tracked_hours),
+        trackedCost: Number(r.tracked_cost),
+        overhead: Number(r.cost_overhead),
+        totalCost: cost,
+        profit: profitNet,          // netto-fortjeneste
+        marginPct: marginNet,       // basert på netto-omsetning
+      };
+    });
+
+    const totals = projects.reduce(
+      (acc, p) => {
+        acc.revenueGross += p.revenueGross;
+        acc.revenueNet += p.revenueNet;
+        acc.vatAmount += p.vatAmount;
+        acc.totalCost += p.totalCost;
+        acc.profit += p.profit;
+        acc.trackedHours += p.trackedHours;
+        return acc;
+      },
+      { revenueGross: 0, revenueNet: 0, vatAmount: 0, totalCost: 0, profit: 0, trackedHours: 0 },
+    );
+    // Margin beregnes mot NETTO omsetning (riktig for AS — MVA er gjennomgangspost).
+    const overallMargin = totals.revenueNet > 0 ? (totals.profit / totals.revenueNet) * 100 : null;
+    // Bakoverkompatibel: `revenue` peker på brutto.
+    (totals as any).revenue = totals.revenueGross;
+
+    const byType = new Map<string, {
+      projectType: string; projects: number;
+      revenueGross: number; revenueNet: number; vatAmount: number;
+      cost: number; profit: number; hours: number;
+    }>();
+    for (const p of projects) {
+      const key = p.projectType;
+      const cur = byType.get(key) ?? {
+        projectType: key, projects: 0,
+        revenueGross: 0, revenueNet: 0, vatAmount: 0,
+        cost: 0, profit: 0, hours: 0,
+      };
+      cur.projects += 1;
+      cur.revenueGross += p.revenueGross;
+      cur.revenueNet += p.revenueNet;
+      cur.vatAmount += p.vatAmount;
+      cur.cost += p.totalCost;
+      cur.profit += p.profit;
+      cur.hours += p.trackedHours;
+      byType.set(key, cur);
+    }
+    const serviceTypes = Array.from(byType.values())
+      .map((t) => ({
+        ...t,
+        revenue: t.revenueGross,            // bakoverkompat
+        marginPct: t.revenueNet > 0 ? (t.profit / t.revenueNet) * 100 : null,
+        avgHourlyYield: t.hours > 0 ? t.profit / t.hours : null,
+      }))
+      .sort((a, b) => b.revenueGross - a.revenueGross);
+
+    const topProjects = [...projects]
+      .filter((p) => p.revenue > 0)
+      .sort((a, b) => (b.marginPct ?? -Infinity) - (a.marginPct ?? -Infinity))
+      .slice(0, 5);
+    const bottomProjects = [...projects]
+      .filter((p) => p.revenue > 0)
+      .sort((a, b) => (a.marginPct ?? Infinity) - (b.marginPct ?? Infinity))
+      .slice(0, 5);
+
+    res.json({
+      totals: { ...totals, marginPct: overallMargin, projectCount: projects.length },
+      serviceTypes,
+      topProjects,
+      bottomProjects,
+      projects,
+    });
+  } catch (err) {
+    console.error('[photographer-profitability] summary failed:', err);
+    res.status(500).json({ error: 'profitability_summary_failed' });
+  }
+});
+
 // Public — klient ser tilgjengelige prints for sitt galleri
 app.get("/api/client/gallery/:accessToken/print-products", async (req, res) => {
   const accessToken = String(req.params.accessToken || "").trim();
@@ -24575,9 +29845,19 @@ function calculateGalleryPricing(
 /// as JSONB. Helper keeps the cast in one place + handles missing rows.
 async function fetchGalleryWithSettingsByToken(
   accessToken: string,
-): Promise<{ id: string; clientEmail: string; settings: Record<string, unknown> } | null> {
+): Promise<{
+  id: string;
+  clientEmail: string;
+  settings: Record<string, unknown>;
+  contractId: string | null;
+  photographerId: string;
+} | null> {
+  // Schema-ensure før query — idempotent ADD COLUMN (migrasjon 0093).
+  try {
+    await pool.query(`ALTER TABLE photographer_client_galleries ADD COLUMN IF NOT EXISTS contract_id VARCHAR(64)`);
+  } catch { /* idempotent */ }
   const rows = await pool.query(
-    `SELECT id, client_email, gallery_settings, status
+    `SELECT id, client_email, gallery_settings, status, contract_id, photographer_id
      FROM photographer_client_galleries
      WHERE access_token = $1
      LIMIT 1`,
@@ -24585,12 +29865,103 @@ async function fetchGalleryWithSettingsByToken(
   );
   const row = rows.rows[0];
   if (!row) return null;
-  if (row.status && row.status !== 'active') return null;
+  if (row.status && row.status !== 'active' && row.status !== 'completed') return null;
   return {
     id: row.id,
     clientEmail: row.client_email ?? '',
     settings: (row.gallery_settings ?? {}) as Record<string, unknown>,
+    contractId: row.contract_id ?? null,
+    photographerId: String(row.photographer_id ?? ''),
   };
+}
+
+// Schema-ensure for audit-tabellen (migrasjon 0093). Kalles før første
+// insert/select. Idempotent CREATE TABLE IF NOT EXISTS.
+let galleryDownloadAuditSchemaReady: Promise<void> | null = null;
+function ensureGalleryDownloadAuditSchema(): Promise<void> {
+  if (!galleryDownloadAuditSchemaReady) {
+    galleryDownloadAuditSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS gallery_download_audit (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            gallery_id UUID NOT NULL,
+            image_id UUID NOT NULL,
+            client_email VARCHAR(255) NOT NULL,
+            client_ip VARCHAR(45),
+            user_agent TEXT,
+            download_method VARCHAR(32) DEFAULT 'zip',
+            downloaded_at TIMESTAMPTZ DEFAULT NOW(),
+            photographer_id VARCHAR(64) NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS gallery_download_audit_gallery_idx
+            ON gallery_download_audit (gallery_id, downloaded_at DESC);
+          CREATE INDEX IF NOT EXISTS gallery_download_audit_photographer_idx
+            ON gallery_download_audit (photographer_id, downloaded_at DESC);
+          CREATE UNIQUE INDEX IF NOT EXISTS gallery_download_audit_unique_image
+            ON gallery_download_audit (gallery_id, client_email, image_id);
+        `);
+      } catch (err) {
+        console.warn('[gallery-audit] schema-ensure failed:', err);
+        galleryDownloadAuditSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return galleryDownloadAuditSchemaReady;
+}
+
+// Returnerer antall UNIKE bilder klienten allerede har lastet ned fra
+// dette galleriet. Brukes til å beregne hvor mange "slots" som
+// gjenstår mot contractedImages. Re-download av samme bilde teller
+// IKKE (unique-index på gallery+client+image).
+async function countUniqueDownloadedImages(
+  galleryId: string,
+  clientEmail: string,
+): Promise<number> {
+  await ensureGalleryDownloadAuditSchema();
+  const r = await pool.query(
+    `SELECT COUNT(DISTINCT image_id)::int AS used
+       FROM gallery_download_audit
+      WHERE gallery_id = $1 AND client_email = $2`,
+    [galleryId, clientEmail],
+  );
+  return Number(r.rows[0]?.used ?? 0);
+}
+
+// Sjekker contracts.signature_status for kontrakten linket til
+// galleriet. Returnerer { ok: true } hvis ingen kontrakt linket
+// (= ingen gate), eller hvis kontrakten er signert. Ellers en
+// HTTP-shaped error som download-endepunktet videresender.
+async function checkContractSignature(
+  contractId: string | null,
+): Promise<{ ok: true } | { ok: false; status: number; error: string; signatureStatus?: string }> {
+  if (!contractId) return { ok: true };
+  try {
+    const r = await pool.query(
+      `SELECT signature_status, status FROM contracts WHERE id = $1 LIMIT 1`,
+      [contractId],
+    );
+    if (r.rowCount === 0) {
+      // Kontrakten er slettet — fail-safe blokker. Stine må enten
+      // unlinke kontrakten eller laste opp ny.
+      return { ok: false, status: 412, error: 'linked_contract_missing' };
+    }
+    const sigStatus = String(r.rows[0]?.signature_status ?? r.rows[0]?.status ?? 'unknown').toLowerCase();
+    if (sigStatus === 'signed' || sigStatus === 'completed') return { ok: true };
+    return {
+      ok: false,
+      status: 412,
+      error: 'contract_not_signed',
+      signatureStatus: sigStatus,
+    };
+  } catch (err) {
+    // Hvis contracts-tabellen ikke har signature_status-kolonnen
+    // (eldre miljø før migrering 088), defaultes til at vi IKKE blokker
+    // — bedre å la fungere enn å låse fungerende kunder ute.
+    console.warn('[gallery-gate] contract-check failed, allowing:', err);
+    return { ok: true };
+  }
 }
 
 // Slice 9.4 — access-gate helper. Wraps fetchGallery + expiration +
@@ -24605,7 +29976,17 @@ async function fetchGalleryWithSettingsByToken(
 // the password; this gate is "raise the bar against accidental
 // access", not airtight security.
 type GalleryAccessResult =
-  | { ok: true; gallery: { id: string; clientEmail: string; settings: Record<string, unknown> }; settings: Record<string, unknown> }
+  | {
+      ok: true;
+      gallery: {
+        id: string;
+        clientEmail: string;
+        settings: Record<string, unknown>;
+        contractId: string | null;
+        photographerId: string;
+      };
+      settings: Record<string, unknown>;
+    }
   | { ok: false; status: number; error: string; requiresPassword?: boolean };
 
 async function gateGalleryAccess(
@@ -24803,6 +30184,162 @@ app.post("/api/client/gallery/:accessToken/submit-selection", async (req, res) =
 // honoured. Payment-gated for galleries with extras (Slice 10 wires
 // the actual gate; v1 just refuses unpaid extras with a clear error).
 //
+// Slice 9X.12 — varsle Stine når kunden faktisk har lastet ned, og
+// logg i clientCommunications som CRM-event. Begge best-effort:
+// download-endepunktet returnerer suksess uansett om denne feiler.
+async function notifyPhotographerOfDownload(input: {
+  photographerId: string;
+  galleryId: string;
+  clientEmail: string;
+  newDownloadCount: number;
+  totalRequestedInBatch: number;
+  clientIp: string;
+  userAgent: string;
+}): Promise<void> {
+  // 1. Hent fotograf + galleri-info
+  const ctxQ = await pool.query(
+    `SELECT
+       u.id AS photographer_id, u.email AS photographer_email,
+       u.first_name AS photographer_first, u.last_name AS photographer_last,
+       g.project_title, g.client_name, g.gallery_settings,
+       g.project_id, g.contract_id,
+       c.id AS canonical_client_id
+     FROM users u
+     CROSS JOIN photographer_client_galleries g
+     LEFT JOIN clients c
+       ON c.photographer_id = u.id AND LOWER(c.email) = LOWER($3)
+     WHERE u.id = $1 AND g.id = $2
+     LIMIT 1`,
+    [input.photographerId, input.galleryId, input.clientEmail],
+  ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+  const ctx = ctxQ.rows[0];
+  if (!ctx) return;
+
+  // 2. Hent oppdatert audit-summary for å vise total i mail/CRM-log
+  let totalUnique = 0;
+  let contractedImages = 0;
+  try {
+    const sumQ = await pool.query(
+      `SELECT COUNT(DISTINCT image_id)::int AS unique
+         FROM gallery_download_audit
+        WHERE gallery_id = $1 AND client_email = $2`,
+      [input.galleryId, input.clientEmail],
+    );
+    totalUnique = Number(sumQ.rows[0]?.unique ?? 0);
+    const settings = (ctx.gallery_settings ?? {}) as Record<string, unknown>;
+    contractedImages = Math.max(0, Number(settings.contractedImages) || 0);
+  } catch { /* ignore */ }
+
+  const limitText = contractedImages > 0
+    ? `${totalUnique} av ${contractedImages} avtalte bilder`
+    : `${totalUnique} unike bilder`;
+
+  // 3. CRM-log via client_communications. Trenger canonical client_id.
+  // Hvis klienten ikke finnes som CRM-record, hopp over CRM (e-post sendes
+  // fortsatt). Photographer kan opprette klient retrospektivt.
+  if (ctx.canonical_client_id) {
+    try {
+      await pool.query(
+        `INSERT INTO client_communications
+           (user_id, client_id, project_id, communication_type, direction,
+            subject, content, from_email, to_email, status, requires_response,
+            priority, category, tags, created_at)
+         VALUES ($1, $2, $3, 'download', 'inbound',
+                 $4, $5, $6, $7, 'unread', false,
+                 'low', 'gallery_activity', ARRAY['download','gallery'], NOW())`,
+        [
+          input.photographerId,
+          ctx.canonical_client_id,
+          ctx.project_id || null,
+          `Klient lastet ned ${input.newDownloadCount} bilder fra "${ctx.project_title}"`,
+          `${input.clientEmail} lastet ned ${input.newDownloadCount} nye bilder `
+            + `(${input.totalRequestedInBatch} i batchen totalt). `
+            + `Totalt brukt: ${limitText}.`
+            + (input.clientIp ? ` IP: ${input.clientIp}.` : ''),
+          input.clientEmail,
+          ctx.photographer_email || null,
+        ],
+      );
+    } catch (err) {
+      console.warn('[download-notify] CRM-insert failed:', err);
+    }
+  }
+
+  // 4. E-post-varsling til fotografen
+  const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
+  const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
+  if (!mailUser || !mailPass || !ctx.photographer_email) {
+    return;
+  }
+
+  const photographerName = [ctx.photographer_first, ctx.photographer_last]
+    .filter(Boolean).join(' ') || 'Du';
+  const limitWarning = contractedImages > 0 && totalUnique >= contractedImages
+    ? `<p style="background:#fff3cd;padding:12px;border-radius:6px;color:#856404;margin:16px 0;">
+        <strong>⚠️ Kontraktsgrensen er nådd</strong> — klienten har lastet ned ${contractedImages} av ${contractedImages} avtalte bilder. Eventuelle nye nedlastinger blir blokkert.
+      </p>`
+    : contractedImages > 0 && (contractedImages - totalUnique) <= 5
+      ? `<p style="background:#fff3cd;padding:12px;border-radius:6px;color:#856404;margin:16px 0;">
+          <strong>Nær grensen</strong> — kun ${contractedImages - totalUnique} bilder igjen før limit nås.
+        </p>`
+      : '';
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: mailUser, pass: mailPass },
+    });
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="color:#1a1a1a;margin:0 0 16px;">Klient-nedlasting registrert</h2>
+        <p style="font-size:15px;line-height:1.6;color:#333;">
+          Hei ${escapeHtml(photographerName)},<br><br>
+          <strong>${escapeHtml(String(ctx.client_name ?? input.clientEmail))}</strong>
+          (${escapeHtml(input.clientEmail)}) har lastet ned <strong>${input.newDownloadCount} nye bilder</strong>
+          fra galleriet "<strong>${escapeHtml(String(ctx.project_title))}</strong>".
+        </p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #eee;color:#666;">Nye nedlastinger</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${input.newDownloadCount}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #eee;color:#666;">Bilder i batchen</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${input.totalRequestedInBatch}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #eee;color:#666;">Totalt brukt</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${escapeHtml(limitText)}</td>
+          </tr>
+          ${input.clientIp ? `<tr>
+            <td style="padding:8px;border-bottom:1px solid #eee;color:#666;">Fra IP</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-family:monospace;font-size:12px;">${escapeHtml(input.clientIp)}</td>
+          </tr>` : ''}
+        </table>
+        ${limitWarning}
+        <div style="margin:24px 0;text-align:center;">
+          <a href="${process.env.PUBLIC_APP_URL || 'https://creatorhubn.com'}/photographer/galleries/${input.galleryId}"
+             style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+            Se aktivitet
+          </a>
+        </div>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px;">
+        <p style="font-size:12px;color:#999;">
+          Logget i CRM under klient ${escapeHtml(String(ctx.client_name ?? input.clientEmail))}.
+        </p>
+      </div>
+    `;
+    await transporter.sendMail({
+      from: `"Creatorhubn" <${mailUser}>`,
+      to: String(ctx.photographer_email),
+      subject: `Klient lastet ned ${input.newDownloadCount} bilder — ${ctx.project_title}`,
+      html,
+    });
+  } catch (err) {
+    console.warn('[download-notify] email failed:', err);
+  }
+}
+
 // Body: { imageIds: string[], clientEmail?: string }
 // Returns: streamed ZIP, or 4xx on validation failures.
 app.post("/api/client/gallery/:accessToken/download-zip", async (req, res) => {
@@ -24834,13 +30371,62 @@ app.post("/api/client/gallery/:accessToken/download-zip", async (req, res) => {
       return res.status(403).json({ error: "download_disabled" });
     }
 
-    // Slice 10 will gate this on payment status. For now: refuse zip
-    // download when the photographer's pricing model has extras and
-    // the client hasn't paid yet — better than silently letting them
-    // skip the checkout.
+    // Slice 9X.11 — kontrakt-gate. Hvis galleriet er linket til en
+    // kontrakt, sjekk signature_status før vi serverer noe.
+    const contractCheck = await checkContractSignature(gallery.contractId);
+    if (!contractCheck.ok) {
+      return res.status(contractCheck.status).json({
+        error: contractCheck.error,
+        ...(contractCheck.signatureStatus ? { signatureStatus: contractCheck.signatureStatus } : {}),
+        message: contractCheck.error === 'contract_not_signed'
+          ? 'Kontrakten må signeres av begge parter før nedlasting tillates.'
+          : 'Kontrakt-status hindrer nedlasting.',
+      });
+    }
+
     const clientEmail = typeof req.body?.clientEmail === 'string'
       ? req.body.clientEmail.trim()
       : gallery.clientEmail;
+
+    // Slice 9X.11 — count-gate mot contractedImages. Tell HVOR MANGE
+    // UNIKE bilder denne klienten allerede har lastet ned, og blokker
+    // hvis denne batchen ville overskredet contracted limit. Klienten
+    // får tilbake hvor mange "slots" de har igjen så frontend kan
+    // vise klar feilmelding ("Du har 50 av 50 brukt — kontakt fotograf").
+    const contractedImages = Math.max(0, Number(settings.contractedImages) || 0);
+    if (contractedImages > 0) {
+      const alreadyUsed = await countUniqueDownloadedImages(gallery.id, clientEmail);
+      // Tell kun NYE bilder mot limiten (re-download av samme bilde gratis).
+      const newImageIds = imageIds.filter(async () => true); // initial — we filter properly inside loop later
+      // Faster path: hent allerede-nedlastede image-ids
+      const previouslyDownloaded = await pool.query(
+        `SELECT DISTINCT image_id::text AS image_id
+           FROM gallery_download_audit
+          WHERE gallery_id = $1 AND client_email = $2`,
+        [gallery.id, clientEmail],
+      );
+      const alreadyDownloadedSet = new Set(
+        previouslyDownloaded.rows.map((r: Record<string, unknown>) => String(r.image_id)),
+      );
+      const trulyNew = imageIds.filter((id: string) => !alreadyDownloadedSet.has(id));
+      const wouldUse = alreadyUsed + trulyNew.length;
+      if (wouldUse > contractedImages) {
+        return res.status(403).json({
+          error: 'contracted_limit_exceeded',
+          message: `Kontrakten dekker ${contractedImages} bilder. Du har allerede lastet ned ${alreadyUsed} — denne batchen ville økt totalen til ${wouldUse}. Kontakt fotografen for å utvide leveransen.`,
+          contractedImages,
+          alreadyDownloaded: alreadyUsed,
+          requested: imageIds.length,
+          alreadyHadInBatch: imageIds.length - trulyNew.length,
+          wouldUse,
+          remaining: Math.max(0, contractedImages - alreadyUsed),
+        });
+      }
+    }
+
+    // Payment-gate (samme som før). Pricing-modellen kicker in når
+    // selectedCount > contractedImages — så denne sjekken er primært
+    // for galleries UTEN contracted-limit (rene per-image-pakker).
     const pricing = calculateGalleryPricing(settings, imageIds.length);
     if (pricing.totalAmount > 0) {
       const paid = await pool.query(
@@ -24918,6 +30504,47 @@ app.post("/api/client/gallery/:accessToken/download-zip", async (req, res) => {
       console.warn(`[client-gallery] zip download produced 0 entries for gallery ${gallery.id}`);
     }
     await archive.finalize();
+
+    // Slice 9X.11 — audit hver bilde som faktisk ble inkludert i zipen.
+    // ON CONFLICT DO NOTHING gjør re-download idempotent (samme klient
+    // som laster ned samme bilde flere ganger bruker ikke nye slots).
+    // Best-effort etter response er ferdig — feiler stille.
+    if (appended > 0) {
+      try {
+        await ensureGalleryDownloadAuditSchema();
+        const auditedIds = picked.slice(0, appended).map((img) => img.id);
+        const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '')
+          .toString().split(',')[0].trim().slice(0, 45);
+        const userAgent = String(req.headers['user-agent'] || '').slice(0, 500);
+        // Bulk insert via UNNEST for å unngå én query per bilde.
+        const insertResult = await pool.query(
+          `INSERT INTO gallery_download_audit
+             (gallery_id, image_id, client_email, client_ip, user_agent,
+              download_method, photographer_id)
+           SELECT $1::uuid, unnest($2::uuid[]), $3, $4, $5, 'zip', $6
+           ON CONFLICT (gallery_id, client_email, image_id) DO NOTHING
+           RETURNING image_id`,
+          [gallery.id, auditedIds, clientEmail, clientIp || null, userAgent, gallery.photographerId],
+        );
+        const newDownloads = insertResult.rowCount ?? 0;
+
+        // Slice 9X.12 — notify Stine + CRM-logg. Kun ved nye downloads
+        // (re-download teller ikke). Begge best-effort, feiler stille.
+        if (newDownloads > 0) {
+          notifyPhotographerOfDownload({
+            photographerId: gallery.photographerId,
+            galleryId: gallery.id,
+            clientEmail,
+            newDownloadCount: newDownloads,
+            totalRequestedInBatch: imageIds.length,
+            clientIp,
+            userAgent,
+          }).catch((err) => console.warn('[download-notify] failed (non-fatal):', err));
+        }
+      } catch (auditErr) {
+        console.warn('[client-gallery] audit-log failed (non-fatal):', auditErr);
+      }
+    }
   } catch (error) {
     console.error("[client-gallery] download-zip failed", error);
     if (!res.headersSent) {
@@ -25216,6 +30843,65 @@ app.post("/api/auth/login", async (req, res) => {
       sessionData.displayName =
         coupleCheck.rows[0].display_name || sessionData.displayName;
     }
+    // Bygg user-payload som returneres etter (eventuell 2FA-)login
+    const userPayload = {
+      id: dbUser.id,
+      email: dbUser.email,
+      name,
+      role: normalizedSessionRole,
+      roleLabel: sessionRoleEntry.name,
+      profession: sessionProfession || undefined,
+      userType: sessionProfession || undefined,
+      permissions: sessionRoleEntry.permissions,
+      isAdmin: ADMIN_SESSION_ROLES.has(normalizedSessionRole),
+      ...(isRoleRoomLogin
+        ? {
+            requestedRole: normalizedRequestedRole,
+            loginAs,
+          }
+        : {}),
+      ...(role === "vendor" && vendorCheck.rows.length > 0
+        ? {
+            vendorId: vendorCheck.rows[0].id,
+            businessName: vendorCheck.rows[0].business_name,
+          }
+        : {}),
+      ...(role === "couple" && coupleCheck.rows.length > 0
+        ? {
+            coupleProfileId: coupleCheck.rows[0].id,
+            displayName: coupleCheck.rows[0].display_name,
+          }
+        : {}),
+    };
+
+    // 2FA-gate: hvis brukeren har TOTP aktivert, IKKE commit session
+    // ennå — krev kode først. Returner needs_2fa + tempToken.
+    try {
+      const totpSvc = await import("./totp-2fa-service.js");
+      const totpStatus = await totpSvc.getTotpStatus(pool, String(dbUser.id));
+      if (totpStatus.enabled) {
+        purgeExpiredPendingTwoFactor();
+        const tempToken = crypto.randomUUID();
+        pendingTwoFactorLogins.set(tempToken, {
+          userId: String(dbUser.id),
+          sessionData,
+          responsePayload: { token: sessionToken, user: userPayload },
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        });
+        return res.json({
+          success: false,
+          needs_2fa: true,
+          method: "totp",
+          tempToken,
+          message: "Skriv inn 6-sifret kode fra Authenticator-appen for å fullføre innloggingen.",
+        });
+      }
+    } catch (totpCheckError) {
+      console.error("[Auth] TOTP-sjekk feilet, fortsetter uten 2FA:", totpCheckError);
+      // Best-effort: hvis TOTP-tabellen ikke finnes (gammel DB), la
+      // login fortsette uten 2FA istedenfor å låse brukeren ute.
+    }
+
     activeSessions.set(sessionToken, sessionData);
     await persistAuthSession(pool, sessionToken, sessionData);
 
@@ -25226,35 +30912,7 @@ app.post("/api/auth/login", async (req, res) => {
     res.json({
       success: true,
       token: sessionToken,
-      user: {
-        id: dbUser.id,
-        email: dbUser.email,
-        name,
-        role: normalizedSessionRole,
-        roleLabel: sessionRoleEntry.name,
-        profession: sessionProfession || undefined,
-        userType: sessionProfession || undefined,
-        permissions: sessionRoleEntry.permissions,
-        isAdmin: ADMIN_SESSION_ROLES.has(normalizedSessionRole),
-        ...(isRoleRoomLogin
-          ? {
-              requestedRole: normalizedRequestedRole,
-              loginAs,
-            }
-          : {}),
-        ...(role === "vendor" && vendorCheck.rows.length > 0
-          ? {
-              vendorId: vendorCheck.rows[0].id,
-              businessName: vendorCheck.rows[0].business_name,
-            }
-          : {}),
-        ...(role === "couple" && coupleCheck.rows.length > 0
-          ? {
-              coupleProfileId: coupleCheck.rows[0].id,
-              displayName: coupleCheck.rows[0].display_name,
-            }
-          : {}),
-      },
+      user: userPayload,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -25634,6 +31292,229 @@ app.get("/api/couples/vendors", async (req, res) => {
   }
 });
 
+// ── E-post-kode-verifisering (generisk for flere purposes) ──────────────
+//
+// POST /api/auth/email-code/send    { email, purpose }
+// POST /api/auth/email-code/verify  { email, purpose, code }
+//
+// Purpose-strings: client_portal_register | password_change |
+//                  login_2fa_email | account_delete
+//
+// NB: `send` rate-limites på server-siden via at vi invaliderer
+// eksisterende kode hver gang ny sendes — så "spam send"-knapp gir
+// bare ny kode, ikke flere parallelt. For ekte rate-limiting på
+// IP-nivå anbefales nginx/cloudflare-laget.
+app.post("/api/auth/email-code/send", async (req, res) => {
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const email = typeof body.email === "string" ? body.email : "";
+  const purpose = typeof body.purpose === "string" ? body.purpose : "";
+  const validPurposes = ["client_portal_register", "password_change", "login_2fa_email", "account_delete", "vault_reveal"] as const;
+  if (!validPurposes.includes(purpose as typeof validPurposes[number])) {
+    return res.status(400).json({ error: "invalid_purpose" });
+  }
+  const ipAddress = (req.headers["x-forwarded-for"]?.toString().split(",")[0]
+    ?? req.socket?.remoteAddress
+    ?? null) as string | null;
+  try {
+    const svc = await import("./email-verification-service.js");
+    const result = await svc.sendVerificationCode(pool, {
+      email,
+      purpose: purpose as typeof validPurposes[number],
+      ipAddress,
+    });
+    return res.json({
+      status: result.ok ? "ok" : "failed",
+      expiresAt: result.expiresAt,
+      reason: result.reason ?? null,
+      // KUN i dev og kun hvis SMTP mangler — slik at devs kan teste:
+      ...(result.devCode ? { devCode: result.devCode } : {}),
+    });
+  } catch (error) {
+    console.error("[auth/email-code/send] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+app.post("/api/auth/email-code/verify", async (req, res) => {
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const email = typeof body.email === "string" ? body.email : "";
+  const purpose = typeof body.purpose === "string" ? body.purpose : "";
+  const code = typeof body.code === "string" ? body.code : "";
+  const validPurposes = ["client_portal_register", "password_change", "login_2fa_email", "account_delete", "vault_reveal"] as const;
+  if (!validPurposes.includes(purpose as typeof validPurposes[number])) {
+    return res.status(400).json({ error: "invalid_purpose" });
+  }
+  try {
+    const svc = await import("./email-verification-service.js");
+    const result = await svc.verifyCode(pool, {
+      email,
+      purpose: purpose as typeof validPurposes[number],
+      code,
+    });
+    if (!result.ok) {
+      const httpStatus = result.reason === "wrong_code" ? 401
+                       : result.reason === "max_attempts" ? 429
+                       : result.reason === "expired" ? 410
+                       : 400;
+      return res.status(httpStatus).json({
+        error: result.reason,
+        attemptsRemaining: result.attemptsRemaining,
+      });
+    }
+    return res.json({ status: "ok" });
+  } catch (error) {
+    console.error("[auth/email-code/verify] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+// ── Password reset (alle bruker-typer) ──────────────────────────────────
+//
+// POST /api/auth/request-password-reset — alltid 204 (anti-enumeration)
+// GET  /api/auth/reset-password/:token   — sjekk om token er gyldig
+// POST /api/auth/reset-password/:token   — sett nytt passord
+app.post("/api/auth/request-password-reset", async (req, res) => {
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const email = typeof body.email === "string" ? body.email : "";
+  const ipAddress = (req.headers["x-forwarded-for"]?.toString().split(",")[0]
+    ?? req.socket?.remoteAddress
+    ?? null) as string | null;
+  try {
+    const svc = await import("./password-reset-service.js");
+    await svc.requestPasswordReset(pool, { email, ipAddress });
+  } catch (error) {
+    console.error("[auth/request-password-reset] failed", error);
+  }
+  // Alltid 204 — caller skal ikke kunne enumere hvilke e-poster som finnes
+  return res.status(204).end();
+});
+
+app.get("/api/auth/reset-password/:token", async (req, res) => {
+  const token = String(req.params.token || "").trim();
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  try {
+    const svc = await import("./password-reset-service.js");
+    const info = await svc.verifyResetToken(pool, token);
+    if (!info.valid) {
+      return res.status(404).json({ error: info.reason ?? "not_found" });
+    }
+    return res.json({ status: "ok", email: info.email });
+  } catch (error) {
+    console.error("[auth/reset-password GET] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+app.post("/api/auth/reset-password/:token", async (req, res) => {
+  const token = String(req.params.token || "").trim();
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  try {
+    const svc = await import("./password-reset-service.js");
+    const result = await svc.consumeResetToken(pool, token, password);
+    if (!result.ok) {
+      const httpStatus = result.error === "weak_password" ? 400
+                       : result.error === "expired" || result.error === "already_used" || result.error === "invalid_token" ? 410
+                       : 500;
+      return res.status(httpStatus).json({ error: result.error, message: result.message });
+    }
+    return res.json({ status: "ok", message: result.message });
+  } catch (error) {
+    console.error("[auth/reset-password POST] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+// ── Onboarding-wizard progresjon ──────────────────────────────────────
+//
+// GET   /api/onboarding/status        — hent fullførte steg + ferdig-flagg
+// POST  /api/onboarding/complete-step { stepId } — marker steg som ferdig
+// POST  /api/onboarding/dismiss       — skjul wizarden permanent
+app.get("/api/onboarding/status", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "not_authenticated" });
+  try {
+    const svc = await import("./onboarding-service.js");
+    const status = await svc.getOnboardingStatus(pool, session.userId);
+    return res.json(status);
+  } catch (error) {
+    console.error("[onboarding/status] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+app.post("/api/onboarding/complete-step", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "not_authenticated" });
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const stepId = typeof body.stepId === "string" ? body.stepId : "";
+  try {
+    const svc = await import("./onboarding-service.js");
+    const status = await svc.markStepCompleted(pool, session.userId, stepId as any);
+    return res.json(status);
+  } catch (error) {
+    console.error("[onboarding/complete-step] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+app.post("/api/onboarding/dismiss", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "not_authenticated" });
+  try {
+    const svc = await import("./onboarding-service.js");
+    const status = await svc.dismissOnboarding(pool, session.userId);
+    return res.json(status);
+  } catch (error) {
+    console.error("[onboarding/dismiss] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+// POST /api/auth/login/complete-2fa — fullfør login etter at brukeren
+//   har gitt en 6-sifret TOTP-kode (eller backup-kode).
+//   Body: { tempToken, code }
+app.post("/api/auth/login/complete-2fa", async (req, res) => {
+  purgeExpiredPendingTwoFactor();
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const tempToken = typeof body.tempToken === "string" ? body.tempToken : "";
+  const code = typeof body.code === "string" ? body.code : "";
+  if (!tempToken || !code) {
+    return res.status(400).json({ error: "missing_token_or_code" });
+  }
+  const pending = pendingTwoFactorLogins.get(tempToken);
+  if (!pending) {
+    return res.status(410).json({ error: "expired_or_invalid_temp_token" });
+  }
+  try {
+    const totpSvc = await import("./totp-2fa-service.js");
+    const result = await totpSvc.verifyLoginToken(pool, { userId: pending.userId, token: code });
+    if (!result.ok) {
+      return res.status(401).json({
+        error: result.reason ?? "wrong_code",
+        message: result.reason === "wrong_code"
+          ? "Feil kode. Sjekk Authenticator-appen og prøv igjen."
+          : "Verifisering feilet.",
+      });
+    }
+    // Commit session
+    pendingTwoFactorLogins.delete(tempToken);
+    const sessionToken = String(pending.responsePayload.token);
+    activeSessions.set(sessionToken, pending.sessionData);
+    await persistAuthSession(pool, sessionToken, pending.sessionData);
+    console.log(`[Auth] 2FA login completed for ${pending.sessionData.email}${result.usedBackupCode ? " (backup-code)" : ""}`);
+    return res.json({
+      success: true,
+      usedBackupCode: result.usedBackupCode === true,
+      ...pending.responsePayload,
+    });
+  } catch (error) {
+    console.error("[/api/auth/login/complete-2fa] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
 // POST /api/auth/logout — Logout
 app.post("/api/auth/logout", async (req, res) => {
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -25664,6 +31545,120 @@ app.get("/api/auth/user", async (req, res) => {
       authenticated: false,
       error: "Could not resolve session user",
     });
+  }
+});
+
+// ── TOTP 2FA (Google Authenticator / 1Password / Authy) ────────────────
+//
+// GET   /api/2fa/status                — om 2FA er aktivert
+// POST  /api/2fa/setup                 — mint secret + returner QR
+// POST  /api/2fa/verify-and-enable     — bekreft første kode + aktiver
+// POST  /api/2fa/disable               — slå av (krever auth)
+// POST  /api/2fa/login-verify          — brukes etter passord-valid
+//                                         i login-flow
+//
+// /api/2fa/status og /verify-and-enable krever vanlig session.
+// /login-verify brukes UTEN session — kun via temp-token-flow under
+// login (kommer i en etterfølgende patch).
+
+app.get("/api/2fa/status", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "not_authenticated" });
+  try {
+    const svc = await import("./totp-2fa-service.js");
+    const status = await svc.getTotpStatus(pool, session.userId);
+    const backupCodesRemaining = status.enabled
+      ? await svc.countUnusedBackupCodes(pool, session.userId)
+      : 0;
+    return res.json({
+      enabled: status.enabled,
+      pending: status.pending,
+      backupCodesRemaining,
+    });
+  } catch (error) {
+    console.error("[/api/2fa/status] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+app.post("/api/2fa/setup", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "not_authenticated" });
+  try {
+    const svc = await import("./totp-2fa-service.js");
+    const setup = await svc.startSetup(pool, {
+      userId: session.userId,
+      userEmail: session.email,
+    });
+    return res.json({
+      secret: setup.secret,
+      otpauthUrl: setup.otpauthUrl,
+      qrPngDataUrl: setup.qrPngDataUrl,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[/api/2fa/setup] failed", msg);
+    return res.status(500).json({ error: "setup_failed", message: msg });
+  }
+});
+
+app.post("/api/2fa/verify-and-enable", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "not_authenticated" });
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const token = typeof body.token === "string" ? body.token : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  try {
+    const svc = await import("./totp-2fa-service.js");
+    const result = await svc.verifyAndEnable(pool, { userId: session.userId, token });
+    if (!result.ok) {
+      return res.status(result.reason === "wrong_code" ? 401 : 400).json({
+        error: result.reason,
+      });
+    }
+    return res.json({
+      status: "ok",
+      backupCodes: result.backupCodes,
+      message: "2FA er aktivert. Lagre backup-kodene et trygt sted — de vises kun denne ene gangen.",
+    });
+  } catch (error) {
+    console.error("[/api/2fa/verify-and-enable] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+app.post("/api/2fa/disable", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "not_authenticated" });
+  try {
+    const svc = await import("./totp-2fa-service.js");
+    await svc.disableTotp(pool, session.userId);
+    return res.json({ status: "ok" });
+  } catch (error) {
+    console.error("[/api/2fa/disable] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+// Brukes av /api/auth/login når password-valid og bruker har 2FA på.
+// Body: { userId, token }. Returnerer { ok, usedBackupCode }.
+// Caller (login-handler) er ansvarlig for å bare la dette opp etter
+// at passord er bekreftet — endpoint validerer ikke passord selv.
+app.post("/api/2fa/login-verify", async (req, res) => {
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const userId = typeof body.userId === "string" ? body.userId : "";
+  const token = typeof body.token === "string" ? body.token : "";
+  if (!userId || !token) return res.status(400).json({ error: "missing_userid_or_token" });
+  try {
+    const svc = await import("./totp-2fa-service.js");
+    const result = await svc.verifyLoginToken(pool, { userId, token });
+    if (!result.ok) {
+      return res.status(401).json({ error: result.reason });
+    }
+    return res.json({ status: "ok", usedBackupCode: result.usedBackupCode === true });
+  } catch (error) {
+    console.error("[/api/2fa/login-verify] failed", error);
+    return res.status(500).json({ error: "failed" });
   }
 });
 
@@ -30520,10 +36515,276 @@ setupRoleRoomMarketingPlanRoutes({
   isCompatAdminFeatureEnabled,
 });
 
+// ── Datakilder-fanen i Creative Sync (Vault-utvidelse for KPI-config)
+//   4 endpoints: list, configure, delete, test. Setter på plass
+//   per-platform property/location-IDs som connectorene bruker for å
+//   fetche faktisk data. Test-endpoint pinger live API for å verifisere
+//   at token + config faktisk fungerer.
+setupRoleRoomDataSourcesRoutes({
+  app,
+  pool,
+  requireAdminSession,
+  isCompatAdminFeatureEnabled,
+});
+
+// ── Klient-forespørsler (generisk, gjelder hele CSW). Markedsføreren
+//   kan opprette en request fra hvilken som helst panel for å spørre
+//   klienten om data/tilgang/assets, med automatisk e-post-utsending
+//   og in-app tråd som viser status "Venter på klient: <X>".
+setupRoleRoomClientRequestsRoutes({
+  app,
+  pool,
+  requireAdminSession,
+  isCompatAdminFeatureEnabled,
+});
+
 // ── Client portal (magic-link dashboard) — admin-side flyttet til
 //   ./role-room-client-portal-routes.ts. Klient-siden (magic-link-auth)
 //   blir igjen i index.ts som /api/client/portal/*.
 setupRoleRoomClientPortalRoutes({ app, pool, requireAdminSession });
+
+// Klient-portal: hent alle forespørsler scopet til (project, email)
+//   som session-tokenet representerer. Klienten ser kun det de er
+//   invitert til (sessionen er bound til en spesifikk klient-e-post).
+app.get("/api/client/portal/requests", async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  const session = await resolveClientPortalSession(pool, token);
+  if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+  try {
+    const requests = await (await import("./role-room-client-request-service.js"))
+      .listClientRequestsForClient(pool, session.projectId, session.clientEmail);
+    return res.json({
+      status: "ok",
+      clientName: session.clientName,
+      requests: requests.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        title: r.title,
+        bodyMarkdown: r.bodyMarkdown,
+        contextArea: r.contextArea,
+        contextKey: r.contextKey,
+        status: r.status,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        answeredAt: r.answeredAt,
+        bookingUrl: r.bookingUrl,
+      })),
+    });
+  } catch (error) {
+    console.error("[client/portal/requests] failed", error);
+    return res.status(500).json({ error: "failed_to_list_requests" });
+  }
+});
+
+// Hent meldings-tråd for en spesifikk request — guarded slik at
+// klienten bare kan se requests scoped til sin session.
+app.get("/api/client/portal/requests/:id/messages", async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  const session = await resolveClientPortalSession(pool, token);
+  if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+  const id = String(req.params.id || "").trim();
+  try {
+    const svc = await import("./role-room-client-request-service.js");
+    const request = await svc.getClientRequest(pool, id);
+    if (!request) return res.status(404).json({ error: "not_found" });
+    // Scope-sjekk: må matche session sin project + email
+    if (request.projectId !== session.projectId ||
+        request.clientEmail.toLowerCase() !== session.clientEmail.toLowerCase()) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    const messages = await svc.listClientRequestMessages(pool, id);
+    return res.json({
+      status: "ok",
+      request: {
+        id: request.id,
+        kind: request.kind,
+        title: request.title,
+        bodyMarkdown: request.bodyMarkdown,
+        status: request.status,
+        bookingUrl: request.bookingUrl,
+        createdAt: request.createdAt,
+        answeredAt: request.answeredAt,
+      },
+      messages,
+    });
+  } catch (error) {
+    console.error("[client/portal/requests/messages] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+// Klient svarer på en request. Samme scope-sjekk som GET.
+app.post("/api/client/portal/requests/:id/reply", async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  const session = await resolveClientPortalSession(pool, token);
+  if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+  const id = String(req.params.id || "").trim();
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const bodyMarkdown = typeof body.bodyMarkdown === "string" ? body.bodyMarkdown : "";
+  if (!bodyMarkdown.trim()) {
+    return res.status(400).json({ error: "missing_body" });
+  }
+  try {
+    const svc = await import("./role-room-client-request-service.js");
+    const request = await svc.getClientRequest(pool, id);
+    if (!request) return res.status(404).json({ error: "not_found" });
+    if (request.projectId !== session.projectId ||
+        request.clientEmail.toLowerCase() !== session.clientEmail.toLowerCase()) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    if (request.status === "closed") {
+      return res.status(400).json({ error: "request_closed" });
+    }
+    const message = await svc.addClientRequestMessage({
+      pool,
+      requestId: id,
+      sender: "client",
+      senderLabel: session.clientName ?? request.clientEmail,
+      bodyMarkdown,
+      markAnswered: true,
+    });
+    return res.json({ status: "ok", message });
+  } catch (error) {
+    console.error("[client/portal/requests/reply] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
+
+// Klient-portal: registrer en ekte bruker-konto fra innsiden av
+//   portalen. E-posten er bundet til portal-session og kan ikke
+//   endres — vi vil ikke at en lekk magic-link skal kunne brukes til
+//   å lage en bruker for en helt annen e-post. Etter registrering kan
+//   klienten logge inn på vanlig /login med e-post + passord; magic-
+//   linken fortsetter å fungere som backup.
+app.post("/api/client/portal/register", async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  const session = await resolveClientPortalSession(pool, token);
+  if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const password = typeof body.password === "string" ? body.password : "";
+  const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: "weak_password", message: "Passord må være minst 8 tegn." });
+  }
+
+  // Krev at klienten har bekreftet e-posten med kode først.
+  // Dette stopper en evt. lekkasje av magic-linken fra å brukes til å
+  // sette passord — angriperen trenger også tilgang til e-post-innboksen.
+  try {
+    const verifSvc = await import("./email-verification-service.js");
+    const hasVerified = await verifSvc.hasRecentlyVerifiedCode(pool, {
+      email: session.clientEmail,
+      purpose: "client_portal_register",
+      withinMinutes: 30,
+    });
+    if (!hasVerified) {
+      return res.status(403).json({
+        error: "email_not_verified",
+        message: "Du må bekrefte e-posten din med en kode først. Be om en bekreftelseskode og fyll den inn.",
+      });
+    }
+  } catch (error) {
+    console.error("[client/portal/register] verification check failed", error);
+    return res.status(500).json({ error: "verification_check_failed" });
+  }
+
+  try {
+    const bcrypt = await import("bcrypt");
+    const hashed = await bcrypt.default.hash(password, 10);
+    const email = session.clientEmail.toLowerCase();
+    const firstName = (fullName.split(/\s+/)[0] || session.clientName || email.split("@")[0]).slice(0, 64);
+    const lastName = fullName.split(/\s+/).slice(1).join(" ").slice(0, 64) || null;
+    const username = (email.split("@")[0] || "klient")
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 64);
+
+    // ON CONFLICT: hvis brukeren allerede finnes (kanskje samme e-post
+    // ble brukt fra et tidligere prosjekt), oppdater bare passord +
+    // navn — vi vil ikke at registrering skal silently feile.
+    const result = await pool.query(
+      `INSERT INTO users (email, username, first_name, last_name, role, password, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'user', $5, NOW(), NOW())
+       ON CONFLICT (email) DO UPDATE
+         SET password = EXCLUDED.password,
+             first_name = COALESCE(NULLIF(EXCLUDED.first_name, ''), users.first_name),
+             last_name  = COALESCE(NULLIF(EXCLUDED.last_name, ''), users.last_name),
+             updated_at = NOW()
+       RETURNING id, email, first_name, last_name`,
+      [email, username, firstName, lastName, hashed],
+    );
+
+    // Mint en regulær auth-session så klienten kan bruke 2FA-setup og
+    // andre innloggede endpoints UTEN å måtte logge ut + inn igjen.
+    // Bruker minimal session-data — vi gir klient 'user'-rolle for nå.
+    const dbUser = result.rows[0];
+    const sessionToken = crypto.randomUUID();
+    const fullDisplayName = [dbUser.first_name, dbUser.last_name].filter(Boolean).join(" ") || dbUser.email;
+    const sessionData: ActiveSessionData = {
+      userId: String(dbUser.id),
+      email: dbUser.email,
+      name: fullDisplayName,
+      role: "user",
+      roleLabel: "Klient",
+      permissions: [],
+      displayName: fullDisplayName,
+      isAdmin: false,
+      loginAt: new Date().toISOString(),
+    };
+    activeSessions.set(sessionToken, sessionData);
+    await persistAuthSession(pool, sessionToken, sessionData);
+
+    return res.json({
+      status: "ok",
+      userId: dbUser.id ?? null,
+      email,
+      sessionToken,
+      user: {
+        id: dbUser.id,
+        email: dbUser.email,
+        name: fullDisplayName,
+        role: "user",
+        display_name: fullDisplayName,
+      },
+      message: "Brukeren din er opprettet. Du kan nå logge inn med e-post og passord neste gang.",
+    });
+  } catch (error) {
+    console.error("[client/portal/register] failed", error);
+    return res.status(500).json({ error: "registration_failed" });
+  }
+});
+
+// Sjekk om en bruker allerede er registrert for portal-sessionens e-post —
+//   brukes for å vise/skjule "Opprett bruker"-banner i portalen.
+app.get("/api/client/portal/register/status", async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  const session = await resolveClientPortalSession(pool, token);
+  if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+  try {
+    const r = await pool.query(
+      `SELECT id, password IS NOT NULL AND password <> '' AS has_password
+         FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [session.clientEmail],
+    );
+    return res.json({
+      status: "ok",
+      email: session.clientEmail,
+      isRegistered: r.rows[0]?.has_password === true,
+    });
+  } catch (error) {
+    console.error("[client/portal/register/status] failed", error);
+    return res.status(500).json({ error: "failed" });
+  }
+});
 
 // Public — magic-link-auth via session_token query param. Returns the
 // marketing plan dashboard data scoped to the session's project.
@@ -83429,6 +89690,30 @@ function getPricingUserId(req: any): string {
   );
 }
 
+// Slice 9X.33 — Kjøregodtgjørelse fra wedding-timeline + Vegvesen-bil.
+setupWeddingMileageRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.34 + 9X.35 — Foto-lokasjons-katalog + community-bidrag.
+setupPhotoVenuesRoutes({ app, pool, getPricingUserId, requireAdminSession });
+
+// Slice 9X.36 — Pre-bryllup walkthrough-sjekkliste.
+setupWeddingWalkthroughRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.37 — Plan-B-lokasjoner ved dårlig vær.
+setupWeddingLocationAlternativesRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.40 — Bryllupsdag-utlegg (parkering, lunsj, gaver).
+setupWeddingExpensesRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.41 — Post-bryllup faktura-sammenstilling.
+setupWeddingInvoiceRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.42 — Galleri-leveringsflyt med proof + favoritter.
+setupWeddingGalleryDeliveryRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.43 — Web Push (VAPID) for PWA-varsler.
+setupWebPushRoutes({ app, pool, getPricingUserId });
+
 // ============================================
 // Pricing Categories (DB: pricing_categories)
 // ============================================
@@ -84060,6 +90345,29 @@ app.get("/api/clients", async (req, res) => {
 // Price Administration — Pricing Structures (DB: pricing_structures)
 // ============================================
 
+// Slice 9X.32 — hjelper: hent fotografens default overtime-rate fra
+// prisadministrasjon. Returnerer null hvis ikke satt, så caller kan
+// bruke fallback eller spørre Stine manuelt.
+async function getPhotographerOvertimeRate(userId: string): Promise<number | null> {
+  try {
+    await pool.query(
+      `ALTER TABLE pricing_structures ADD COLUMN IF NOT EXISTS overtime_hourly_rate NUMERIC(10,2)`,
+    ).catch(() => undefined);
+    const r = await pool.query(
+      `SELECT overtime_hourly_rate FROM pricing_structures
+        WHERE user_id = $1 AND overtime_hourly_rate IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [userId],
+    );
+    if ((r.rowCount ?? 0) === 0) return null;
+    const rate = Number(r.rows[0].overtime_hourly_rate);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  } catch (err) {
+    console.warn('[pricing] overtime-rate lookup failed:', err);
+    return null;
+  }
+}
+
 app.get("/api/price-administration/pricing", async (req, res) => {
   try {
     const userId = getPricingUserId(req);
@@ -84091,6 +90399,9 @@ app.get("/api/price-administration/pricing", async (req, res) => {
         hourlyRate: parseFloat(r.hourly_rate || "0"),
         fullDayRate: parseFloat(r.full_day_rate || "0"),
         basePrice: parseFloat(r.base_price || "0"),
+        // Slice 9X.32 — overtime rate fra prisadministrasjon
+        overtimeHourlyRate: r.overtime_hourly_rate != null
+          ? parseFloat(r.overtime_hourly_rate) : null,
         minimumPrice: parseFloat(r.minimum_price || "0"),
         maximumPrice: parseFloat(r.maximum_price || "0"),
         seasonFactor: parseFloat(r.season_factor || "1"),
@@ -84130,11 +90441,16 @@ app.post("/api/price-administration/pricing", async (req, res) => {
       travelIncluded,
       travelRadiusKm,
       travelRatePerKm,
+      overtimeHourlyRate,
     } = req.body;
     const uid = userId || getPricingUserId(req);
+    // Slice 9X.32 — sørg for at overtime_hourly_rate-kolonnen finnes
+    await pool.query(
+      `ALTER TABLE pricing_structures ADD COLUMN IF NOT EXISTS overtime_hourly_rate NUMERIC(10,2)`,
+    ).catch(() => undefined);
     const result = await pool.query(
-      `INSERT INTO pricing_structures (user_id, name, type, profession, category, hourly_rate, full_day_rate, base_price, minimum_price, maximum_price, season_factor, description, included_services, extra_costs, travel_included, travel_radius_km, travel_rate_per_km, status, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,$17,'active',NOW(),NOW()) RETURNING *`,
+      `INSERT INTO pricing_structures (user_id, name, type, profession, category, hourly_rate, full_day_rate, base_price, minimum_price, maximum_price, season_factor, description, included_services, extra_costs, travel_included, travel_radius_km, travel_rate_per_km, overtime_hourly_rate, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,$17,$18,'active',NOW(),NOW()) RETURNING *`,
       [
         uid,
         name,
@@ -84153,6 +90469,7 @@ app.post("/api/price-administration/pricing", async (req, res) => {
         travelIncluded || false,
         travelRadiusKm || 0,
         travelRatePerKm || 0,
+        Number.isFinite(Number(overtimeHourlyRate)) ? Number(overtimeHourlyRate) : null,
       ],
     );
     res.status(201).json(result.rows[0]);

@@ -110,8 +110,11 @@ import {
   linkedInWorkspaceApi,
   projectAgreementsApi,
   roleRoomAccessVaultApi,
+  CastingApiError,
   type ProjectAgreement,
 } from '../../services/castingApiService';
+import VaultRevealMfaPrompt from './VaultRevealMfaPrompt';
+import VaultSecurityGuide from './VaultSecurityGuide';
 import {
   applyProducerDeliveryWorkflowPreset,
   createProducerWorkspacePage,
@@ -172,6 +175,8 @@ import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
+import { useResearchProgress } from '../../hooks/useResearchProgress';
+import DataSourcesPanel from './DataSourcesPanel';
 import AccountProviderLogo from './AccountProviderLogo';
 
 interface ProducerMediaPanelProps {
@@ -1939,6 +1944,17 @@ export default function ProducerMediaPanel({
   const [accessVaultError, setAccessVaultError] = useState<string | null>(null);
   const [accessVaultActionKey, setAccessVaultActionKey] = useState<string | null>(null);
   const [accessVaultDrafts, setAccessVaultDrafts] = useState<Partial<Record<ProducerAccountAccessPlatform, VaultSecretDraft>>>({});
+  // MFA step-up state: når backend returnerer mfa_required, holder vi
+  // platform + tilgjengelige metoder så modalen kan vises og retry'e.
+  const [vaultMfaPrompt, setVaultMfaPrompt] = useState<{
+    platform: ProducerAccountAccessPlatform;
+    availableMethods: { totp: boolean; emailCode: boolean };
+    policy: string;
+    message: string;
+  } | null>(null);
+  // Sikkerhetsguide-modal for Vault — vises når brukeren klikker "Slik
+  // fungerer sikkerheten" i Client Access Vault-headeren.
+  const [vaultSecurityGuideOpen, setVaultSecurityGuideOpen] = useState(false);
   const [revealedVaultSecrets, setRevealedVaultSecrets] = useState<Record<string, RoleRoomAccessVaultRevealResult>>({});
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [loadingRoleRoomAgentAccess, setLoadingRoleRoomAgentAccess] = useState(false);
@@ -1948,6 +1964,11 @@ export default function ProducerMediaPanel({
   const [roleRoomAgentResult, setRoleRoomAgentResult] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
   const [roleRoomAgentError, setRoleRoomAgentError] = useState<string | null>(null);
   const [roleRoomAgentNotice, setRoleRoomAgentNotice] = useState<string | null>(null);
+  // Live-progress (#2) — SSE-driven hook so the dialog can show a per-stage
+  // timeline ticking off as Brreg/website/Places/Claude resolve. Falls back
+  // to a regular non-SSE call below if the stream errors out, so we never
+  // strand the user on a half-rendered overlay.
+  const researchProgress = useResearchProgress();
   const [projectFiles, setProjectFiles] = useState<ProjectFileRecord[]>([]);
   const [focusedArtifactId, setFocusedArtifactId] = useState<string | null>(initialArtifactId ?? null);
   const brandLogoFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -2950,18 +2971,27 @@ export default function ProducerMediaPanel({
     setRoleRoomAgentGenerating(true);
     setRoleRoomAgentError(null);
     setRoleRoomAgentNotice(null);
+    // Kick off the SSE-streamed bootstrap so the dialog gets per-stage
+    // timeline events. researchProgress.start() is fire-and-forget; the
+    // useEffect below watches researchProgress.status to set the result.
+    researchProgress.start(input);
+  }, [researchProgress]);
 
-    try {
-      const generated = await roleRoomAgentService.generateProducerBootstrap(input);
-      setRoleRoomAgentResult(generated);
+  // Bridge the SSE hook back into the existing roleRoomAgentResult state
+  // so the rest of the panel doesn't need to know about the streaming
+  // protocol — only the dialog renders the live timeline.
+  useEffect(() => {
+    if (researchProgress.status === 'done' && researchProgress.result) {
+      setRoleRoomAgentResult(researchProgress.result);
       setRoleRoomAgentNotice('The Role Room Agent har laget et nytt utkast for kundeprofil, brief og story logikk.');
-    } catch (agentError) {
-      console.error('[ProducerMediaPanel] Failed to generate Role Room Agent result', agentError);
-      setRoleRoomAgentError(agentError instanceof Error ? agentError.message : 'Kunne ikke generere forslag fra The Role Room Agent.');
-    } finally {
+      setRoleRoomAgentGenerating(false);
+    } else if (researchProgress.status === 'error') {
+      const message = researchProgress.error ?? 'Kunne ikke generere forslag fra The Role Room Agent.';
+      console.error('[ProducerMediaPanel] Research stream failed', message);
+      setRoleRoomAgentError(message);
       setRoleRoomAgentGenerating(false);
     }
-  }, []);
+  }, [researchProgress.status, researchProgress.result, researchProgress.error]);
 
   const handleApplyRoleRoomAgent = useCallback(async (result: RoleRoomAgentProducerBootstrapResult) => {
     if (isBriefLockedByApproval) {
@@ -3572,29 +3602,94 @@ export default function ProducerMediaPanel({
     }
   }, [loadAccessVault, projectId]);
 
-  const handleRequestAccessVaultReveal = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+  // Felles helper: prøv reveal-request, returner mfa-info hvis backend
+  // krever step-up. Brukes både fra direkte CTA og fra retry i modalen.
+  const submitRevealRequest = useCallback(async (
+    platform: ProducerAccountAccessPlatform,
+    extraPayload: { totpCode?: string; emailCode?: string } = {},
+  ): Promise<{ ok: boolean; needsMfa?: { availableMethods: { totp: boolean; emailCode: boolean }; policy: string; message: string }; errorMessage?: string }> => {
     const draft = accessVaultDrafts[platform] ?? EMPTY_VAULT_SECRET_DRAFT;
-    setAccessVaultActionKey(`${platform}:request`);
-    setAccessVaultError(null);
     try {
       await roleRoomAccessVaultApi.requestReveal(projectId, platform, {
         requestReason: draft.requestReason.trim() || undefined,
+        ...extraPayload,
       });
+      return { ok: true };
+    } catch (err) {
+      if (err instanceof CastingApiError && err.status === 401) {
+        const details = err.details as { error?: string; availableMethods?: { totp?: boolean; emailCode?: boolean }; policy?: string; message?: string } | null;
+        if (details?.error === 'mfa_required') {
+          return {
+            ok: false,
+            needsMfa: {
+              availableMethods: {
+                totp: details.availableMethods?.totp ?? false,
+                emailCode: details.availableMethods?.emailCode ?? true,
+              },
+              policy: details.policy ?? 'mfa_required',
+              message: details.message ?? 'Bekreft med 2FA for å se passordet.',
+            },
+          };
+        }
+      }
+      return { ok: false, errorMessage: err instanceof Error ? err.message : 'Kunne ikke be om innsyn.' };
+    }
+  }, [accessVaultDrafts, projectId]);
+
+  const handleRequestAccessVaultReveal = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+    setAccessVaultActionKey(`${platform}:request`);
+    setAccessVaultError(null);
+    try {
+      const result = await submitRevealRequest(platform);
+      if (result.ok) {
+        setAccessVaultDrafts((previous) => ({
+          ...previous,
+          [platform]: {
+            ...(previous[platform] ?? EMPTY_VAULT_SECRET_DRAFT),
+            requestReason: '',
+          },
+        }));
+        await loadAccessVault();
+      } else if (result.needsMfa) {
+        setVaultMfaPrompt({
+          platform,
+          availableMethods: result.needsMfa.availableMethods,
+          policy: result.needsMfa.policy,
+          message: result.needsMfa.message,
+        });
+      } else {
+        setAccessVaultError(result.errorMessage ?? 'Kunne ikke be om innsyn.');
+      }
+    } finally {
+      setAccessVaultActionKey(null);
+    }
+  }, [submitRevealRequest, loadAccessVault]);
+
+  // Når MFA-modalen submit'er kode, retry'er vi reveal-request med
+  // koden. Hvis backend igjen returnerer mfa_required (feil kode),
+  // sender vi feilmelding tilbake til modalen så den kan vise den.
+  const handleMfaPromptSubmit = useCallback(async (
+    input: { totpCode?: string; emailCode?: string },
+  ): Promise<{ ok: boolean; errorMessage?: string }> => {
+    if (!vaultMfaPrompt) return { ok: false };
+    const result = await submitRevealRequest(vaultMfaPrompt.platform, input);
+    if (result.ok) {
       setAccessVaultDrafts((previous) => ({
         ...previous,
-        [platform]: {
-          ...(previous[platform] ?? EMPTY_VAULT_SECRET_DRAFT),
+        [vaultMfaPrompt.platform]: {
+          ...(previous[vaultMfaPrompt.platform] ?? EMPTY_VAULT_SECRET_DRAFT),
           requestReason: '',
         },
       }));
       await loadAccessVault();
-    } catch (vaultError) {
-      console.error('[ProducerMediaPanel] Failed to request access vault reveal', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke be om innsyn.');
-    } finally {
-      setAccessVaultActionKey(null);
+      setVaultMfaPrompt(null);
+      return { ok: true };
     }
-  }, [accessVaultDrafts, loadAccessVault, projectId]);
+    if (result.needsMfa) {
+      return { ok: false, errorMessage: result.needsMfa.message };
+    }
+    return { ok: false, errorMessage: result.errorMessage };
+  }, [vaultMfaPrompt, submitRevealRequest, loadAccessVault]);
 
   const handleDecideAccessVaultReveal = useCallback(async (
     request: RoleRoomAccessVaultRevealRequest,
@@ -11792,11 +11887,35 @@ export default function ProducerMediaPanel({
             >
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
-                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-                    Client Access Vault
-                  </Typography>
+                  <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap" useFlexGap sx={{ mb: 0.3 }}>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
+                      Client Access Vault
+                    </Typography>
+                    <Button
+                      size="small"
+                      onClick={() => setVaultSecurityGuideOpen(true)}
+                      sx={{
+                        textTransform: 'none',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        color: '#22d3ee',
+                        bgcolor: 'rgba(34,211,238,0.08)',
+                        border: '1px solid rgba(34,211,238,0.25)',
+                        borderRadius: 999,
+                        px: 1.2,
+                        py: 0.2,
+                        minHeight: 24,
+                        '&:hover': { bgcolor: 'rgba(34,211,238,0.16)', borderColor: 'rgba(34,211,238,0.4)' },
+                      }}
+                    >
+                      Slik fungerer sikkerheten
+                    </Button>
+                  </Stack>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 660 }}>
-                    Hold all klienttilgang i ett kontrollert spor. Start med delegert tilgang og invite-flyt. Hvis kunden faktisk må dele noe sensitivt, skal det beskrives som sikker håndtering, maskert referanse og tydelig ansvar, ikke som rå credentials i prosjekttekst.
+                    Hold all klienttilgang i ett kontrollert spor. Passord krypteres med AES-256-GCM,
+                    krever 2FA-bekreftelse hver gang de skal vises, og alle reveal-events logges i
+                    audit-historikken. Start med delegert tilgang og invite-flyt — hvis kunden faktisk
+                    må dele noe sensitivt, blir det aldri lagret som klartekst.
                   </Typography>
                 </Box>
                 <Stack
@@ -12103,6 +12222,12 @@ export default function ProducerMediaPanel({
                         planningDraft.accountAccess.securityNotes ?? '',
                         'Bruk OAuth, invite eller klientstyrt handling. Role Room skal ikke være et lager for passord eller 2-faktor-koder.',
                       )}
+                    </Typography>
+                    {/* Bridge til Datakilder-fanen — håndhilse-tekst som
+                        forklarer at konto-tilgang og KPI-OAuth er to steg */}
+                    <Typography sx={{ color: 'rgba(165,243,252,0.72)', fontSize: '0.72rem', mt: 0.5, fontStyle: 'italic' }}>
+                      Tips: når kontoen er koblet, gå til <strong>Datakilder</strong>-fanen for å konfigurere
+                      automatisk KPI-henting (analytics, posts, engagement).
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems={{ lg: 'flex-start' }}>
@@ -13559,6 +13684,16 @@ export default function ProducerMediaPanel({
                       helperText={accountAccessWorkspaceWarnings.emergencyAccessNotes ?? 'Beskriv hvem som kan godkjenne reveal, når nødtilgang er lov, og hvordan klienten varsles.'}
                     />
                   </Stack>
+                </Box>
+              ) : null}
+
+              {/* Datakilder-fanen — KPI/analytics-koblinger som lever
+                  utenfor vault-secret-modellen (GA4 property-id, GBP
+                  location-id, etc. — ikke-hemmelige men trengs for
+                  per-platform KPI-henting). */}
+              {accountAccessVaultTab === 'data_sources' ? (
+                <Box sx={{ mb: 1.1 }}>
+                  <DataSourcesPanel projectId={projectId} />
                 </Box>
               ) : null}
 
@@ -16289,6 +16424,26 @@ export default function ProducerMediaPanel({
         onGenerate={handleGenerateRoleRoomAgent}
         onApply={handleApplyRoleRoomAgent}
         onCreateProject={handleCreateProjectFromRoleRoomAgent}
+        progressStages={researchProgress.stages}
+        progressStatus={researchProgress.status}
+        progressError={researchProgress.error}
+      />
+      {/* MFA step-up modal for vault-reveal — vises kun når backend
+          har returnert mfa_required for siste reveal-request */}
+      {vaultMfaPrompt ? (
+        <VaultRevealMfaPrompt
+          open={vaultMfaPrompt !== null}
+          onClose={() => setVaultMfaPrompt(null)}
+          availableMethods={vaultMfaPrompt.availableMethods}
+          policy={vaultMfaPrompt.policy}
+          message={vaultMfaPrompt.message}
+          userEmail={roleRoomSession.adminUser?.email ?? ''}
+          onSubmit={handleMfaPromptSubmit}
+        />
+      ) : null}
+      <VaultSecurityGuide
+        open={vaultSecurityGuideOpen}
+        onClose={() => setVaultSecurityGuideOpen(false)}
       />
     </Box>
   );

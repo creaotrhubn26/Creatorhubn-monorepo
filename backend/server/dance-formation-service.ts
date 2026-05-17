@@ -325,16 +325,10 @@ export async function replaceFormations(
   pool: Pool,
   ownerUserId: string,
   projectId: string | null,
-  formations: Array<{
-    id?: string;
-    label: string;
-    notes?: string | null;
-    stageWidthM?: number;
-    stageDepthM?: number;
-    positions: DancerPosition[];
-    transitionFromId?: string | null;
-    displayOrder?: number;
-  }>,
+  // Tidligere subset-inline-type manglet startSec/endSec/transitionNote/
+  // tags/transitionPaths som body refererte (genererte 10 TS-errors).
+  // Bruker nå hele FormationInput pluss valgfri id.
+  formations: Array<FormationInput & { id?: string }>,
 ): Promise<FormationRecord[]> {
   const client = await pool.connect();
   try {

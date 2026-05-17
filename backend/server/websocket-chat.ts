@@ -38,6 +38,28 @@ export function broadcastChatEventToUser(userId: string, message: unknown): void
   }
 }
 
+/**
+ * Slice 9X.39 — Broadcast til alle klienter i et spesifikt rom.
+ * Wedding-flyten bruker `room=wedding:${weddingId}` på connect.
+ * Returnerer antall klienter som mottok meldingen.
+ */
+export function broadcastEventToRoom(room: string, message: unknown): number {
+  if (!activeChatClients) return 0;
+  const data = JSON.stringify(message);
+  let count = 0;
+  for (const client of activeChatClients.values()) {
+    if (client.room === room && client.ws.readyState === WebSocket.OPEN) {
+      try {
+        client.ws.send(data);
+        count++;
+      } catch {
+        // Ignore failed send
+      }
+    }
+  }
+  return count;
+}
+
 export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<string, ConnectedClient>();

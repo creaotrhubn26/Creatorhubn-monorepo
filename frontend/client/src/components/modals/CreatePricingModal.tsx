@@ -64,7 +64,9 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
       fullDayRate: '',
       packageRate: '',
       unitRate: '',
-      licenseRate: ''
+      licenseRate: '',
+      // Slice 9X.32 — overtime-pris, synker til wedding-day live-mode
+      overtimeRate: ''
 },
     licenseTypes: {
       commercial: false,
@@ -126,7 +128,8 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
           fullDayRate: '',
           packageRate: '',
           unitRate: '',
-          licenseRate: ''
+          licenseRate: '',
+          overtimeRate: ''
     },
         licenseTypes: editData.licenseTypes || {
           commercial: false,
@@ -209,9 +212,19 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
       return acc;
   }, {} as any);
 
+    // Slice 9X.32 — flytt overtimeRate til top-level overtimeHourlyRate
+    // som backend forventer (samme felt på pricing_structures-rad).
+    const overtimeHourlyRate = cleanRates.overtimeRate ?? null;
+    delete cleanRates.overtimeRate;
+
+    // Hourly rate top-level for backend (pricing_structures.hourly_rate)
     const pricingData = {
       ...formData,
-      rates: cleanRates
+      rates: cleanRates,
+      hourlyRate: cleanRates.hourlyRate ?? 0,
+      fullDayRate: cleanRates.fullDayRate ?? 0,
+      basePrice: cleanRates.packageRate ?? 0,
+      overtimeHourlyRate,
 };
 
     createPricingMutation.mutate(pricingData);
@@ -274,7 +287,8 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
       fullDayRate: 'Heldagspris',
       packageRate: 'Pakkepris',
       unitRate: 'Stykkpris',
-      licenseRate: 'Lisenspris'
+      licenseRate: 'Lisenspris',
+      overtimeRate: 'Overtidspris (kr/t)'
     };
     return labels[field] || field;
   };
@@ -286,7 +300,8 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
       fullDayRate: <DayIcon />,
       packageRate: <PackageIcon />,
       unitRate: <PriceIcon />,
-      licenseRate: <PriceIcon />
+      licenseRate: <PriceIcon />,
+      overtimeRate: <TimeIcon />
     };
     return icons[field] || <PriceIcon />;
 };
@@ -453,6 +468,29 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
               </Grid>
             );
         })}
+
+          {/* Slice 9X.32 — Overtidspris (alltid synlig).
+              Synker til wedding_timelines.overtime_hourly_rate ved nytt
+              bryllup-prosjekt, brukes i wedding-day live-mode når
+              Stine tapper "Aktiver overtid". */}
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label={getRateLabel('overtimeRate')}
+              value={formData.rates.overtimeRate || ''}
+              onChange={(e) => handleRateChange('overtimeRate', e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    {getRateIcon('overtimeRate')}
+                  </InputAdornment>
+                ),
+                endAdornment: <InputAdornment position="end">NOK/t</InputAdornment>,
+              }}
+              placeholder="f.eks. 1875 (typisk 1.5x timepris)"
+              helperText="Brukes når oppdraget går over kontraktstid. Synker automatisk til alle nye bryllup-prosjekter."
+            />
+          </Grid>
 
           {/* License Types (for license pricing) */}
           {formData.type === 'lisenspris' && (

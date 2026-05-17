@@ -191,8 +191,8 @@ export function PagePublicContentInspector() {
                 </Alert>
               ) : (
                 <Stack spacing={1.5} sx={{ mt: 1 }}>
-                  {result.posts.map((p) => (
-                    <Box key={p.id ?? Math.random()} sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)' }}>
+                  {result.posts.map((p, idx) => (
+                    <Box key={p.id ?? `post-${idx}`} sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)' }}>
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start">
                         {p.fullPicture ? (
                           <Box component="img" src={p.fullPicture} alt="post"
@@ -229,8 +229,8 @@ export function PagePublicContentInspector() {
                 </Alert>
               ) : (
                 <Stack spacing={1.5} sx={{ mt: 1 }}>
-                  {result.videos.map((v) => (
-                    <Box key={v.id ?? Math.random()} sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)' }}>
+                  {result.videos.map((v, idx) => (
+                    <Box key={v.id ?? `video-${idx}`} sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)' }}>
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start">
                         {v.picture ? (
                           <Box component="img" src={v.picture} alt="video"

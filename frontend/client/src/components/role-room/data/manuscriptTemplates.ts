@@ -267,6 +267,99 @@ export const STRUCTURE_TEMPLATES: StructureTemplate[] = [
   },
 ];
 
+/**
+ * Manuscript scaffold templates — applied at manuscript-creation time.
+ *
+ * Unlike snippet templates (inserted into the editor) or structure templates
+ * (beat-sheet references), a scaffold template materializes as a series of
+ * empty scenes when a new manuscript is created. The writer opens each scene
+ * and fills in the actual content — but the structural slots are visible
+ * from the start. See ai-prinsipper.md, cold-start pattern #2.
+ *
+ * The scaffold is intentionally minimal: only structural intent is pre-filled
+ * (via `sceneIntent`), never content (action, dialogue, descriptions).
+ */
+export interface ScaffoldBeat {
+  beatName: string;
+  sceneIntent: string;
+  suggestedIntExt?: 'INT' | 'EXT' | 'INT/EXT';
+  suggestedTimeOfDay?:
+    | 'DAY'
+    | 'NIGHT'
+    | 'DAWN'
+    | 'DUSK'
+    | 'CONTINUOUS'
+    | 'LATER'
+    | 'MORNING'
+    | 'EVENING';
+}
+
+export interface ManuscriptScaffoldTemplate {
+  id: string;
+  name: string;
+  description: string;
+  recommendedFormat?: 'fountain' | 'final-draft' | 'markdown';
+  beats: ScaffoldBeat[];
+}
+
+export const MANUSCRIPT_SCAFFOLD_TEMPLATES: ManuscriptScaffoldTemplate[] = [
+  {
+    id: 'blank',
+    name: 'Tom struktur',
+    description: 'Ingen forhåndsdefinerte scener. Du bygger strukturen selv.',
+    beats: [],
+  },
+  {
+    id: 'kortfilm-3akt',
+    name: 'Kortfilm — 3-akts',
+    description: '6 strukturelle beats for 10–15 minutters kortfilm.',
+    beats: [
+      { beatName: 'Hook', sceneIntent: 'Etablér verden og hovedperson — gi seeren grunn til å bli sittende.' },
+      { beatName: 'Inciting incident', sceneIntent: 'Noe forandres for hovedpersonen. Det normale opphører.' },
+      { beatName: 'Eskalering', sceneIntent: 'Hovedpersonen prøver, og det blir verre.' },
+      { beatName: 'Vendepunkt', sceneIntent: 'Største nederlag eller åpenbaring. Alt står på spill.' },
+      { beatName: 'Klimaks', sceneIntent: 'Konfrontasjon — alt avgjøres.' },
+      { beatName: 'Resolusjon', sceneIntent: 'Ny normal. Hva har forandret seg?' },
+    ],
+  },
+  {
+    id: 'reklame-30s',
+    name: 'Reklame — 30 sek',
+    description: 'Hook → problem → løsning → CTA for kort kommersiell.',
+    beats: [
+      { beatName: 'Hook', sceneIntent: 'Stopp scroll i 2 sekunder.' },
+      { beatName: 'Problem', sceneIntent: 'Hvilket problem løser produktet?' },
+      { beatName: 'Løsning', sceneIntent: 'Produktet i bruk.' },
+      { beatName: 'CTA', sceneIntent: 'Hva skal seeren gjøre nå?' },
+    ],
+  },
+  {
+    id: 'reklame-60s-narrativ',
+    name: 'Reklame — 60 sek narrativ',
+    description: 'Karakterdrevet reklame med emosjonell bue og brand reveal.',
+    beats: [
+      { beatName: 'Karakter i hverdagen', sceneIntent: 'Hvem er denne personen før produktet?' },
+      { beatName: 'Friksjon eller behov', sceneIntent: 'Hva mangler eller plager?' },
+      { beatName: 'Møte med produktet', sceneIntent: 'Hvordan introduseres løsningen?' },
+      { beatName: 'Forvandling', sceneIntent: 'Hva endrer seg synlig?' },
+      { beatName: 'Brand reveal + CTA', sceneIntent: 'Logo, claim, kall til handling.' },
+    ],
+  },
+  {
+    id: 'musikkvideo-narrativ',
+    name: 'Musikkvideo — narrativ',
+    description: 'Visuell historie som matcher låtens emosjonelle bue.',
+    beats: [
+      { beatName: 'Anslag', sceneIntent: 'Visuelt motiv som setter tonen.' },
+      { beatName: 'Karakter introdusert', sceneIntent: 'Hvem følger vi gjennom låten?' },
+      { beatName: 'Konflikt eller spenning', sceneIntent: 'Hva er drivkraften — internt eller eksternt?' },
+      { beatName: 'Bro — visuelt skifte', sceneIntent: 'Tilsvarer låtens bro. Bryt med etablerte rytmer.' },
+      { beatName: 'Klimaks med refreng', sceneIntent: 'Størst emosjonelt øyeblikk synker sammen med musikken.' },
+      { beatName: 'Outro', sceneIntent: 'Hvor står karakteren nå? Ekko av åpningen?' },
+    ],
+  },
+];
+
 export function buildTemplateLibrary(): TemplateLibrary {
   // Return fresh arrays to keep caller-side mutations isolated.
   return {

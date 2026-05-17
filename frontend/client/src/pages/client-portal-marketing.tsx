@@ -12,6 +12,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'wouter';
+import ClientPortalRequestsSection from '@/components/role-room/client-portal/ClientPortalRequestsSection';
+import ClientPortalRegisterCard from '@/components/role-room/client-portal/ClientPortalRegisterCard';
 import {
   Alert,
   Box,
@@ -107,6 +109,14 @@ export default function ClientPortalMarketingPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Deep-link via ?request=<id> — leses fra window.location ved mount
+  // (wouter useSearch er ikke i bruk her). Highlight + auto-expand i
+  // ClientPortalRequestsSection bruker denne id-en.
+  const highlightRequestId = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('request');
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,17 +171,23 @@ export default function ClientPortalMarketingPage() {
 
   if (data.status === 'no_plan_yet') {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#0b1220', color: '#e2e8f0', display: 'grid', placeItems: 'center', p: 3 }}>
-        <Box sx={{ maxWidth: 520, textAlign: 'center' }}>
-          <Typography variant="h5" sx={{ color: '#f8fafc', fontWeight: 800, mb: 1 }}>
-            Markedsplanen er under utforming
-          </Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.95rem', lineHeight: 1.6 }}>
-            Hei{data.clientName ? ` ${data.clientName}` : ''} — produsenten din jobber med
-            planen akkurat nå. Du får beskjed her så fort den er klar. Siden oppdateres
-            automatisk hver gang du besøker den.
-          </Typography>
-        </Box>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#0b1220', color: '#e2e8f0', p: 3 }}>
+        <Container maxWidth="md">
+          <Stack spacing={3} sx={{ py: 4 }}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h5" sx={{ color: '#f8fafc', fontWeight: 800, mb: 1 }}>
+                Markedsplanen er under utforming
+              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+                Hei{data.clientName ? ` ${data.clientName}` : ''} — produsenten din jobber med
+                planen akkurat nå. Du får beskjed her så fort den er klar.
+              </Typography>
+            </Box>
+            <ClientPortalRegisterCard token={token} />
+            {/* Forespørsler kan likevel vises mens vi venter på plan */}
+            <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
+          </Stack>
+        </Container>
       </Box>
     );
   }
@@ -181,6 +197,9 @@ export default function ClientPortalMarketingPage() {
       <HeroHeader data={data} />
       <Container maxWidth="lg" sx={{ mt: 3 }}>
         <Stack spacing={3}>
+          <ClientPortalRegisterCard token={token} />
+          {/* Forespørsler øverst — viser kun seksjonen hvis det finnes noen */}
+          <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
           <ProgressSection progress={data.progress!} plan={data.plan!} />
           <UpcomingSection upcoming={data.upcoming!} />
           <StrategyCard plan={data.plan!} />

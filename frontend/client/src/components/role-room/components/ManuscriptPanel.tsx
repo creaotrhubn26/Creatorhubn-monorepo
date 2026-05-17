@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+
+// DEV-only debug-logging — autosave-meldinger og data-snapshot går
+// IKKE til prod-konsol (støy + privacy: klient-script lekker ikke).
+const DEV_LOG = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true;
 import {
   Box,
   Typography,
@@ -821,7 +825,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         setCastingRoles(roles);
         setCastingLocations(locations);
         setCastingCandidates(candidates);
-        console.log(`Loaded ${roles.length} casting roles, ${locations.length} locations and ${candidates.length} candidates for autocomplete`);
+        if (DEV_LOG) console.log(`Loaded ${roles.length} casting roles, ${locations.length} locations and ${candidates.length} candidates for autocomplete`);
       }
     } catch (error) {
       console.error('Could not load casting data for autocomplete:', error);
@@ -1022,7 +1026,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       try {
         // Save only modified scenes (batch update)
         await Promise.all(scenes.map(scene => manuscriptService.saveScene(scene)));
-        console.log('✓ Scener auto-lagret:', scenes.length);
+        if (DEV_LOG) console.log('✓ Scener auto-lagret:', scenes.length);
       } catch (error) {
         console.error('Error saving scenes:', error);
       }
@@ -1055,7 +1059,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     const saveActs = async () => {
       try {
         await Promise.all(acts.map(act => manuscriptService.updateAct(act)));
-        console.log('✓ Akter auto-lagret:', acts.length);
+        if (DEV_LOG) console.log('✓ Akter auto-lagret:', acts.length);
       } catch (error) {
         console.error('Error saving acts:', error);
       }
@@ -1469,7 +1473,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       scheduleLoadCastingData();
       autoCreatedRoleNamesRef.current.add(normalizedName);
       scheduleAutoCreatedEntitiesToast();
-      console.log(`✓ Auto-created role "${normalizedName}" from screenplay`);
+      if (DEV_LOG) console.log(`✓ Auto-created role "${normalizedName}" from screenplay`);
     } catch (error) {
       console.warn('Failed to auto-create role from screenplay:', error);
     }
@@ -1502,7 +1506,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       scheduleLoadCastingData();
       autoCreatedLocationNamesRef.current.add(normalizedName);
       scheduleAutoCreatedEntitiesToast();
-      console.log(`✓ Auto-created location "${normalizedName}" from screenplay`);
+      if (DEV_LOG) console.log(`✓ Auto-created location "${normalizedName}" from screenplay`);
     } catch (error) {
       console.warn('Failed to auto-create location from screenplay:', error);
     }
@@ -2796,7 +2800,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   scenes={scenes}
                   onCharactersChange={(chars) => {
                     // Character updates would need backend support
-                    console.log('Character update:', chars);
+                    if (DEV_LOG) console.log('Character update count:', Array.isArray(chars) ? chars.length : 0);
                   }}
                 />
               </Stack>
@@ -3080,7 +3084,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     try {
                       await manuscriptService.saveScene(updatedScene);
                       showSuccess('Scene lagret');
-                      console.log('Scene saved:', updatedScene.id);
+                      if (DEV_LOG) console.log('Scene saved:', updatedScene.id);
                     } catch (error) {
                       console.error('Failed to save scene:', error);
                       showError('Kunne ikke lagre scene-endringer');
@@ -3140,7 +3144,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     // Persist to service
                     try {
                       await manuscriptService.updateManuscript(updatedManuscript);
-                      console.log('Manuscript saved:', updatedManuscript.id);
+                      if (DEV_LOG) console.log('Manuscript saved:', updatedManuscript.id);
                     } catch (error) {
                       console.error('Failed to save manuscript:', error);
                       showError('Kunne ikke lagre manuskript-endringer');
@@ -5167,7 +5171,7 @@ const CharactersTab: React.FC<{
       setIsSaving(true);
       try {
         await characterProfileService.saveProfiles(manuscriptId, characterProfiles);
-        console.log('✓ Character profiles saved to database');
+        if (DEV_LOG) console.log('✓ Character profiles saved to database');
       } catch (error) {
         console.error('Error saving character profiles:', error);
         showError('Kunne ikke lagre karakterprofiler');

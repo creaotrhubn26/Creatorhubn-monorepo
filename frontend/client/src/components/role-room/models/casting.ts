@@ -1443,7 +1443,11 @@ export type ProducerAccountAccessSecretStatus =
 export type ProducerAccountAccessRevealPolicy =
   | 'approval_required'
   | 'one_time'
-  | 'manual_only';
+  | 'manual_only'
+  // Krever 2FA-step-up (TOTP/e-post-kode) ved hver reveal, uansett om
+  // bruker har 2FA aktivert generelt. Strengeste policy — for admin-
+  // passord og signing-keys.
+  | 'mfa_required';
 
 export type ProducerAccountAccessRoleTarget =
   | 'client_owner'
@@ -1458,7 +1462,8 @@ export type ProducerAccountAccessVaultTab =
   | 'secrets'
   | 'permissions'
   | 'audit'
-  | 'emergency';
+  | 'emergency'
+  | 'data_sources';
 
 export type RoleRoomAccessVaultRevealRequestStatus =
   | 'pending'

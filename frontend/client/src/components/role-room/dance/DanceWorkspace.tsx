@@ -176,15 +176,16 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
   const mode = modeOverride ?? getActiveProfessionMode();
   const tabs = useMemo(() => getTabsForProfession(mode), [mode]);
 
-  // Initial tab kommer fra ?tab=<id> hvis gyldig, ellers første tab i listen.
-  const initialTabId = useMemo(() => {
+  // Initial tab kommer fra ?tab=<id> hvis gyldig, ellers første tab.
+  // Brukes useState-lazy-initializer slik at `tabs` leses ÉN gang ved
+  // mount uten stale-closure-risiko (forrige useMemo med []-deps +
+  // eslint-disable hadde subtilt bug-potensial).
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
     if (typeof window === 'undefined') return tabs[0]?.id ?? 'dashboard';
     const fromUrl = new URLSearchParams(window.location.search).get('tab');
     if (fromUrl && tabs.some((t) => t.id === fromUrl)) return fromUrl;
     return tabs[0]?.id ?? 'dashboard';
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const [activeTabId, setActiveTabId] = useState<string>(initialTabId);
+  });
 
   // Sync ?tab=<id> til URL ved bytte — uten å trigge full nav.
   React.useEffect(() => {

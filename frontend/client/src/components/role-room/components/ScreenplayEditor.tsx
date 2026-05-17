@@ -437,9 +437,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   useEffect(() => {
     // Only sync if this is truly an external update (not echoing back our own change)
     if (value !== lastInternalValueRef.current) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('🔄 ScreenplayEditor SYNCING - value changed from external source');
-      }
+      // Tidligere log-spam ved hver value-prop-endring fjernet — bruk
+      // React DevTools / breakpoint hvis du trenger å spore eksterne syncs.
       setInternalValue(value);
       lastInternalValueRef.current = value;
       historyRef.current = [value];

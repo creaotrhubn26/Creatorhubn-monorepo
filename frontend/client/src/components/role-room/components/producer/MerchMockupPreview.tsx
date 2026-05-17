@@ -140,10 +140,14 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
         1000,
       );
       try {
+        // force=true bypasses BOTH the local-state cache (above) and the
+        // backend Postgres cache, so a broken render (e.g. favicon picked
+        // up instead of real logo) can actually be re-rendered.
         const result = await generateMerchMockup({
           projectId,
           productId,
           designImageUrl: logoUrl,
+          forceRefresh: force,
         });
         setMockupUrl(result.mockupUrl);
         setCached(result.cached);
@@ -231,14 +235,95 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
               før produksjon.
             </Typography>
           </Box>
-          {cached ? (
-            <Chip
+          <Stack direction="row" spacing={0.6} alignItems="center">
+            {cached ? (
+              <Chip
+                size="small"
+                label="Lagret render"
+                sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 600 }}
+              />
+            ) : null}
+            <Button
               size="small"
-              label="Lagret render"
-              sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 600 }}
-            />
-          ) : null}
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={() => void runFetch(true)}
+              disabled={loading || !logoUrl}
+              sx={{
+                textTransform: 'none',
+                color: '#cbd5e1',
+                borderColor: 'rgba(148,163,184,0.32)',
+                fontSize: '0.78rem',
+                py: 0.3,
+              }}
+            >
+              Rendre på nytt
+            </Button>
+          </Stack>
         </Stack>
+
+        {/* Source-logo preview — shows EXACTLY what we're sending to Printful.
+            Catches the most common failure mode: a favicon being scraped
+            instead of the real logo, which then renders unrecognizable on
+            the merch. If this thumbnail looks wrong, the mockup will too. */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.2,
+            p: 0.9,
+            borderRadius: 2,
+            border: '1px solid rgba(148,163,184,0.18)',
+            bgcolor: 'rgba(15,23,42,0.4)',
+          }}
+        >
+          <Box
+            sx={{
+              width: 56,
+              height: 56,
+              borderRadius: 1,
+              bgcolor: 'rgba(248,250,252,0.95)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}
+          >
+            <Box
+              component="img"
+              src={logoUrl}
+              alt="Logo brukt for mockup"
+              sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                target.style.opacity = '0.2';
+                target.title = 'Kunne ikke laste logo — Printful kan heller ikke nå denne URLen';
+              }}
+            />
+          </Box>
+          <Stack spacing={0.2} sx={{ minWidth: 0, flex: 1 }}>
+            <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem' }}>
+              Logo brukt for render
+            </Typography>
+            <Typography
+              sx={{
+                color: 'rgba(226,232,240,0.6)',
+                fontSize: '0.72rem',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+              title={logoUrl}
+            >
+              {logoUrl}
+            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.46)', fontSize: '0.68rem' }}>
+              Hvis dette ser feil ut (f.eks. favicon i stedet for ekte logo), klikk «Rendre på nytt»
+              etter at research har plukket opp riktig bilde.
+            </Typography>
+          </Stack>
+        </Box>
 
         {/* Product picker, filtered by selected supplier's catalog */}
         <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>

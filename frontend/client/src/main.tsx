@@ -37,7 +37,7 @@ declare global {
 }
 
 const VISUAL_EDITOR_ROUTE_PATTERN = /^\/(?:visual-editor-enhanced(?:\/.*)?|evendi(?:\/.*)?)$/;
-const ADMIN_ROUTE_PATTERN = /^\/(?:admin|visual-cms-admin|equipment-admin)(?:\/.*)?$/;
+const ADMIN_ROUTE_PATTERN = /^\/(?:admin|visual-cms-admin|equipment-admin|photo-venues-admin)(?:\/.*)?$/;
 const ROLE_ROOM_SHARED_APP_ROUTE_PATTERN = /^\/(?:privacy-policy|terms-and-conditions)\/?$/;
 const LOCALHOST_HOSTNAME_SET = new Set(['localhost', '127.0.0.1']);
 
@@ -160,6 +160,28 @@ if (shouldUseRoleRoomDedicatedHostBootstrap(window.location)) {
   void registerRoleRoomPwaServiceWorker().catch((error) => {
     console.warn('[main.tsx] Role Room service worker registration failed:', error);
   });
+} else {
+  // Slice 9X.29 — Creatorhubn-PWA service worker for fotograf-flyt
+  // (offline-støtte på wedding-day live-mode + cached app-shell).
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch((err) => {
+        console.warn('[main.tsx] Creatorhubn service worker registration failed:', err);
+      });
+    });
+
+    // Slice 9X.43 — SW kan be hovedtråden navigere ved notification-click
+    // (når Client.navigate ikke er støttet, faller den tilbake til postMessage).
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data?.type === 'navigate' && typeof event.data.url === 'string') {
+        try { window.location.assign(event.data.url); } catch { /* ignore */ }
+      }
+    });
+  }
+  // Aktiver auto-replay av offline-queue ved 'online'-event
+  import('./lib/offlineQueue').then(({ installAutoReplay }) => {
+    installAutoReplay();
+  }).catch(() => undefined);
 }
 
 // #region agent log

@@ -25,7 +25,10 @@ import type { Pool } from "pg";
 
 const PRINTFUL_API_BASE = "https://api.printful.com";
 const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 30_000;
+// Printful's renderer occasionally takes >30s under load. 60s gives the
+// task room to complete before we surface a 504, which previously hid
+// the real cause (the task was about to finish) behind a generic timeout.
+const POLL_TIMEOUT_MS = 60_000;
 const CACHE_TTL_DAYS = 30;
 
 export type MerchMockupProductId =
@@ -205,13 +208,19 @@ async function pollPrintfulTask(taskKey: string): Promise<string> {
       },
     );
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.error("[merch-mockup] poll failed", {
+        status: response.status,
+        taskKey,
+        body,
+      });
       throw new PrintfulMockupError(
         response.status,
         `Printful poll failed: ${response.status} ${response.statusText}`,
       );
     }
     const payload = (await response.json().catch(() => null)) as
-      | { result?: { status?: string; mockups?: Array<{ mockup_url?: string }> } }
+      | { result?: { status?: string; error?: string; mockups?: Array<{ mockup_url?: string }> } }
       | null;
     const status = payload?.result?.status;
     if (status === "completed") {
@@ -223,7 +232,9 @@ async function pollPrintfulTask(taskKey: string): Promise<string> {
       return url;
     }
     if (status === "failed") {
-      throw new PrintfulMockupError(502, "Printful task failed");
+      const errorDetail = payload?.result?.error || "no error detail";
+      console.error("[merch-mockup] task failed", { taskKey, payload });
+      throw new PrintfulMockupError(502, `Printful task failed: ${errorDetail}`);
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
@@ -240,6 +251,11 @@ export async function generateMerchMockup(
   params: {
     productId: MerchMockupProductId;
     designImageUrl: string;
+    /** Skip cache lookup and force a fresh Printful render. The new render
+     *  overwrites the cached entry. Use when the previous render looked
+     *  broken (e.g. favicon picked up instead of a real logo) and the
+     *  logo URL itself didn't change. */
+    forceRefresh?: boolean;
   },
 ): Promise<{ mockupUrl: string; cached: boolean; productLabel: string }> {
   const map = PRINTFUL_PRODUCT_MAP[params.productId];
@@ -257,9 +273,11 @@ export async function generateMerchMockup(
   }
 
   const cacheKey = buildCacheKey(params.productId, params.designImageUrl);
-  const cached = await lookupCachedMockup(pool, cacheKey);
-  if (cached) {
-    return { mockupUrl: cached.mockupUrl, cached: true, productLabel: map.label };
+  if (!params.forceRefresh) {
+    const cached = await lookupCachedMockup(pool, cacheKey);
+    if (cached) {
+      return { mockupUrl: cached.mockupUrl, cached: true, productLabel: map.label };
+    }
   }
 
   // Create the mockup task. The body shape follows Printful's
@@ -291,9 +309,20 @@ export async function generateMerchMockup(
   );
   if (!createResponse.ok) {
     const body = await createResponse.text().catch(() => "");
+    // Log the full body server-side — the previous 200-char slice in the
+    // thrown message hid Printful's MG-* error codes (e.g. MG-4 "Position
+    // field is missing", MG-6 "Image dimensions too small") that you need
+    // to diagnose why the logo failed. The user-facing detail stays
+    // truncated to keep the JSON response small.
+    console.error("[merch-mockup] create-task failed", {
+      status: createResponse.status,
+      productId: params.productId,
+      designImageUrl: params.designImageUrl,
+      body,
+    });
     throw new PrintfulMockupError(
       createResponse.status,
-      `Printful create-task failed: ${createResponse.status} ${body.slice(0, 200)}`,
+      `Printful create-task failed: ${createResponse.status} ${body.slice(0, 400)}`,
     );
   }
   const createPayload = (await createResponse.json().catch(() => null)) as

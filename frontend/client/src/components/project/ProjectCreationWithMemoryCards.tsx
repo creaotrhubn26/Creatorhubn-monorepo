@@ -2079,13 +2079,69 @@ useEffect(() => {
     },
   }), [projectData, userProfession, user?.id]);
 
+  // Slice 9X.13 — for fotografer rutes prosjektopprettelse til den
+  // photographer-spesifikke endepunkten som auto-oppretter CRM-klient,
+  // logger til client_communications og kobler submission-id. For
+  // andre profesjoner brukes fortsatt ProjectContext.createProject
+  // (legacy /api/projects).
+  const createProjectViaCorrectEndpoint = useCallback(async (): Promise<{ id?: string; name?: string } & Record<string, unknown> | null> => {
+    const mapped = mapToProjectData();
+    const isPhotographer = (userProfession || '').toLowerCase().includes('photographer');
+    if (!isPhotographer) {
+      return await createProjectContext(mapped);
+    }
+
+    // Hent submissionId hvis det ligger i state (settes når dialog
+    // åpnes fra CustomerInquiryCenter via initialData → projectData).
+    const submissionId = (initialData as Record<string, unknown> | undefined)?.submissionId
+      || (projectData as Record<string, unknown>).submissionId
+      || null;
+
+    try {
+      const result = await apiRequest('/api/photographer/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: mapped.name,
+          clientName: mapped.clientName,
+          clientEmail: projectData.clientEmail || null,
+          clientPhone: projectData.clientPhone || null,
+          projectType: mapped.projectType,
+          eventDate: mapped.eventDate,
+          location: mapped.location,
+          description: mapped.description,
+          servicePrice: projectData.budget ? Number(projectData.budget) : null,
+          budget: projectData.budget ? Number(projectData.budget) : null,
+          estimatedHours: projectData.estimatedHours
+            ? Number(projectData.estimatedHours) : null,
+          submissionId,
+          projectData: mapped.metadata,
+          settings: mapped.settings,
+        }),
+      }) as { id?: string };
+
+      if (!result?.id) {
+        throw new Error('Photographer projects API returnerte ikke id');
+      }
+      // Returnér shape kompatibel med createProjectContext sin retur
+      // så WorkflowIntegrationService + onProjectCreated funker likt.
+      return { id: result.id, ...mapped };
+    } catch (err) {
+      console.warn('[photographer-project] create via /api/photographer/projects failed, fallback til legacy /api/projects:', err);
+      // Fallback til legacy så Stine ikke blir blokkert hvis det nye
+      // endepunktet skulle ha en bug. Prosjektet havner i legacy-tabellen
+      // men er fortsatt opprettet — bedre enn å miste innsendingen.
+      return await createProjectContext(mapped);
+    }
+  }, [mapToProjectData, userProfession, createProjectContext, initialData, projectData]);
+
   const handleHealthCheckPassed = async () => {
     setHealthCheckPassed(true);
     setShowHealthCheck(false);
     showSuccessToast('Health check passed! Ready to create project.', 3000);
     // Proceed with project creation
     try {
-      const newProject = await createProjectContext(mapToProjectData());
+      const newProject = await createProjectViaCorrectEndpoint();
       if (newProject) {
         await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject);
         // Bridge to Capture: persist the shot list into the shot_lists
@@ -4858,7 +4914,7 @@ useEffect(() => {
                     hasClient: !!projectData.clientName
                   });
                   showInfoToast('Oppretter prosjekt...', 2000);
-                  const newProject = await createProjectContext(mapToProjectData());
+                  const newProject = await createProjectViaCorrectEndpoint();
                   showSuccessToast(`Prosjekt "${projectData.projectName}" opprettet!`, 4000);
                   if (newProject) {
                     await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject);
@@ -4920,7 +4976,7 @@ useEffect(() => {
                     projectType: projectData.projectType,
                   });
                   showInfoToast('Oppretter prosjekt + klient-galleri…', 2000);
-                  const newProject = await createProjectContext(mapToProjectData());
+                  const newProject = await createProjectViaCorrectEndpoint();
                   if (newProject) {
                     await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject);
                   }

@@ -2,13 +2,16 @@ import { useState, useCallback } from 'react';
 
 type EventCallback = (data: unknown) => void;
 
+// DEV-only logging — produksjons-konsoll spammes ikke av real-time-emits
+const DEV = typeof import.meta !== 'undefined' && (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+
 export function useRealTime() {
   const [isConnected, setIsConnected] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const eventListeners = new Map<string, EventCallback[]>();
 
   const emitEvent = useCallback((event: string, data: unknown) => {
-    console.log(`[RealTime] Emit: ${event}`, data);
+    if (DEV) console.log(`[RealTime] Emit: ${event}`, data);
     const listeners = eventListeners.get(event);
     if (listeners) {
       listeners.forEach(callback => callback(data));
@@ -36,18 +39,18 @@ export function useRealTime() {
   const createSession = useCallback(async (sessionName: string) => {
     const id = `session-${Date.now()}`;
     setSessionId(id);
-    console.log(`[RealTime] Session created: ${id}`);
+    if (DEV) console.log(`[RealTime] Session created: ${id}`);
     return id;
   }, []);
 
   const joinSession = useCallback(async (id: string) => {
     setSessionId(id);
-    console.log(`[RealTime] Joined session: ${id}`);
+    if (DEV) console.log(`[RealTime] Joined session: ${id}`);
     return true;
   }, []);
 
   const leaveSession = useCallback(async () => {
-    console.log(`[RealTime] Left session: ${sessionId}`);
+    if (DEV) console.log(`[RealTime] Left session: ${sessionId}`);
     setSessionId(null);
   }, [sessionId]);
 

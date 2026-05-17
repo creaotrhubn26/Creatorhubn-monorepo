@@ -2923,6 +2923,12 @@ export const roleRoomAccessVaultApi = {
     payload?: {
       requestReason?: string;
       expiresAt?: string | null;
+      /** TOTP-kode fra Authenticator-app — sendes med hvis backend har
+       *  returnert mfa_required tidligere og bruker har TOTP aktivert. */
+      totpCode?: string;
+      /** E-post-kode-fallback for brukere uten TOTP — be om kode først
+       *  via /api/auth/email-code/send med purpose=vault_reveal. */
+      emailCode?: string;
     },
   ): Promise<RoleRoomAccessVaultRevealRequest | null> => {
     const result = await apiRequest<{ request: RoleRoomAccessVaultRevealRequest | null }>(

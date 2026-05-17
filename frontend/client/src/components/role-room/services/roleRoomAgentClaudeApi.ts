@@ -332,12 +332,17 @@ export class MerchMockupError extends Error {
 /**
  * Generate a Printful-rendered mockup for the given product +
  * customer-logo URL. Synchronous from the caller's perspective; the
- * backend polls Printful internally for up to 30s.
+ * backend polls Printful internally for up to 60s.
+ *
+ * Pass forceRefresh to bypass the server-side cache — useful when the
+ * previous render picked up the wrong logo (favicon) and the URL itself
+ * hasn't changed, so cache-key would otherwise return the broken render.
  */
 export async function generateMerchMockup(input: {
   projectId: string;
   productId: MerchMockupProductId;
   designImageUrl: string;
+  forceRefresh?: boolean;
 }): Promise<MerchMockupResult> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-mockup`,
@@ -347,6 +352,7 @@ export async function generateMerchMockup(input: {
       body: JSON.stringify({
         productId: input.productId,
         designImageUrl: input.designImageUrl,
+        forceRefresh: input.forceRefresh === true,
       }),
     },
   );

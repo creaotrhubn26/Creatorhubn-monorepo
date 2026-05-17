@@ -160,6 +160,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
       url.searchParams.delete('rrGoogleMessage');
       url.searchParams.delete('rrGoogleTransfer');
       url.searchParams.delete('rrGoogleMode');
+      url.searchParams.delete('rrGoogleTempToken');
       window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
     }
     setGoogleAuthMessage(null);
@@ -174,6 +175,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
       url.searchParams.delete('rrGoogleMessage');
       url.searchParams.delete('rrGoogleTransfer');
       url.searchParams.delete('rrGoogleMode');
+      url.searchParams.delete('rrGoogleTempToken');
       window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
     }
     setGoogleAuthMessage(null);

@@ -125,10 +125,47 @@ export interface MarketingPlanPillar {
   };
 }
 
+export interface GeneratedMarketingPlanUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Cache-read tokens — koster 10× mindre enn vanlig input. Returnert
+   *  av Anthropic når system-prompten treffer ephemeral cache. */
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  /** Beregnet NOK-kostnad basert på modell-pricing. Null hvis ukjent. */
+  costNok: number | null;
+}
+
 export interface GeneratedMarketingPlan {
   strategy: MarketingPlanStrategy;
   pillars: MarketingPlanPillar[];
   generatedWithModel: string;
+  usage?: GeneratedMarketingPlanUsage;
+}
+
+/** Anthropic Sonnet 4.5 pricing (per 1M tokens, USD). NOK-rate hardkodet
+ *  ~10.5 — refresh hvis FX-svingninger blir relevante. Cache-reads er
+ *  $0.30/1M (10% av input-pris). */
+function computeClaudeCostNok(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  cacheReadTokens = 0,
+  cacheCreationTokens = 0,
+): number | null {
+  const PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+    "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
+    "claude-haiku-4-5-20251001": { input: 0.80, output: 4, cacheRead: 0.08, cacheWrite: 1.00 },
+    "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.50, cacheWrite: 18.75 },
+  };
+  const p = PRICING[model];
+  if (!p) return null;
+  const usd =
+    (inputTokens * p.input) / 1_000_000
+    + (outputTokens * p.output) / 1_000_000
+    + (cacheReadTokens * p.cacheRead) / 1_000_000
+    + (cacheCreationTokens * p.cacheWrite) / 1_000_000;
+  return Math.round(usd * 10.5 * 100) / 100;
 }
 
 // ── Claude generation ───────────────────────────────────────────────────
@@ -295,6 +332,17 @@ export async function generateMarketingPlan(input: {
   hasInstagramConnection: boolean;
   horizonDays?: number;
   model?: string;
+  /** Item #194 — forrige plans KPI-resultat passes som context for
+   *  feedback-loop. Inneholder topp-performende pillar/format/platform
+   *  fra de siste 30 dagene + missed targets. Claude bruker dette til
+   *  å skifte vekt i ny plan. */
+  previousPlanKpiContext?: {
+    topPillar?: { name: string; primaryMetric: string; value: number } | null;
+    topFormat?: { name: string; primaryMetric: string; value: number } | null;
+    topPlatform?: { name: string; primaryMetric: string; value: number } | null;
+    missedTargets?: Array<{ metric: string; target: number; actual: number; ratio: number }>;
+    totalSnapshots?: number;
+  };
 }): Promise<GeneratedMarketingPlan | null> {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error('[marketing-plan] ANTHROPIC_API_KEY missing — cannot generate');
@@ -317,7 +365,37 @@ export async function generateMarketingPlan(input: {
   }
 
   const systemPrompt = buildSystemPrompt();
-  const userMessage = buildUserMessage(input.bootstrap, horizonDays, input.hasInstagramConnection);
+  let userMessage = buildUserMessage(input.bootstrap, horizonDays, input.hasInstagramConnection);
+
+  // Item #194 — KPI-feedback-loop: legg til "what worked / what didn't"
+  // som ekstra context. Holder Claude fra å gjenta strategier som
+  // konsekvent underperform.
+  if (input.previousPlanKpiContext) {
+    const ctx = input.previousPlanKpiContext;
+    const lines: string[] = ['\n## Previous plan performance (last 30 days)'];
+    if (typeof ctx.totalSnapshots === 'number') {
+      lines.push(`Total KPI snapshots: ${ctx.totalSnapshots}`);
+    }
+    if (ctx.topPillar) {
+      lines.push(`Best-performing pillar: "${ctx.topPillar.name}" — ${ctx.topPillar.primaryMetric}=${ctx.topPillar.value}. Keep this angle prominent in the new plan.`);
+    }
+    if (ctx.topFormat) {
+      lines.push(`Best-performing format: ${ctx.topFormat.name} — ${ctx.topFormat.primaryMetric}=${ctx.topFormat.value}. Weight the new plan toward this format.`);
+    }
+    if (ctx.topPlatform) {
+      lines.push(`Best-performing platform: ${ctx.topPlatform.name} — ${ctx.topPlatform.primaryMetric}=${ctx.topPlatform.value}. Consider boosting cadence here.`);
+    }
+    if (ctx.missedTargets && ctx.missedTargets.length > 0) {
+      lines.push('Targets missed (actual vs target ratio):');
+      for (const m of ctx.missedTargets) {
+        lines.push(`  - ${m.metric}: actual ${m.actual} vs target ${m.target} (${Math.round(m.ratio * 100)}%)`);
+      }
+      lines.push('Adjust KPI targets in the new plan to be realistic OR change strategy to actually hit them.');
+    }
+    if (lines.length > 1) {
+      userMessage += '\n' + lines.join('\n');
+    }
+  }
 
   try {
     const response: any = await client.messages.create({
@@ -344,7 +422,20 @@ export async function generateMarketingPlan(input: {
       console.error('[marketing-plan] failed to parse Claude response', text.slice(0, 500));
       return null;
     }
-    return { ...parsed, generatedWithModel: model };
+    // Item #146 — capture token usage from Anthropic response.
+    const u = response?.usage ?? {};
+    const inputTokens = Number(u.input_tokens) || 0;
+    const outputTokens = Number(u.output_tokens) || 0;
+    const cacheReadInputTokens = Number(u.cache_read_input_tokens) || 0;
+    const cacheCreationInputTokens = Number(u.cache_creation_input_tokens) || 0;
+    const usage: GeneratedMarketingPlanUsage = {
+      inputTokens,
+      outputTokens,
+      cacheReadInputTokens: cacheReadInputTokens || undefined,
+      cacheCreationInputTokens: cacheCreationInputTokens || undefined,
+      costNok: computeClaudeCostNok(model, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens),
+    };
+    return { ...parsed, generatedWithModel: model, usage };
   } catch (error) {
     console.error('[marketing-plan] Claude request failed', error);
     return null;
@@ -372,6 +463,8 @@ export interface PersistedPillar extends MarketingPlanPillar {
   id: string;
   planId: string;
   sortOrder: number;
+  isActive: boolean;
+  isCustom: boolean;
 }
 
 /**
@@ -397,6 +490,12 @@ export async function persistGeneratedMarketingPlan(
         WHERE project_id = $1 AND status = 'draft'`,
       [input.projectId],
     );
+    // Stuff usage into the strategy JSONB blob so we don't need a
+    // migration just to surface tokens + cost. Frontend reads
+    // plan.strategy.usage transparently.
+    const strategyWithUsage = input.generated.usage
+      ? { ...input.generated.strategy, usage: input.generated.usage }
+      : input.generated.strategy;
     const planInsert = await client.query(
       `INSERT INTO role_room_marketing_plans
          (project_id, owner_user_id, status, strategy, generated_at,
@@ -406,7 +505,7 @@ export async function persistGeneratedMarketingPlan(
       [
         input.projectId,
         input.ownerUserId,
-        JSON.stringify(input.generated.strategy),
+        JSON.stringify(strategyWithUsage),
         input.generated.generatedWithModel,
         input.horizonDays ?? HORIZON_DAYS_DEFAULT,
       ],
@@ -433,6 +532,8 @@ export async function persistGeneratedMarketingPlan(
         id: String(pillarInsert.rows[0].id),
         planId,
         sortOrder,
+        isActive: true,    // AI-genererte pillars starter alltid aktive
+        isCustom: false,   // custom-flagget settes kun via POST /pillars
         ...pillar,
       });
       sortOrder += 1;
@@ -483,8 +584,13 @@ export async function fetchActiveMarketingPlan(
     );
     const row = planResult.rows[0];
     if (!row) return null;
+    // is_active + is_custom kom i migrasjon 0090. COALESCE gjør spørringen
+    // tolerant mot databaser som ikke har kjørt migrasjonen ennå (returnerer
+    // TRUE/FALSE som om feltene var defaultverdier).
     const pillarsResult = await pool.query(
-      `SELECT id, name, description, rationale, target_kpi, sort_order
+      `SELECT id, name, description, rationale, target_kpi, sort_order,
+              COALESCE(is_active, TRUE) AS is_active,
+              COALESCE(is_custom, FALSE) AS is_custom
          FROM role_room_marketing_plan_pillars
         WHERE plan_id = $1
         ORDER BY sort_order`,
@@ -498,6 +604,8 @@ export async function fetchActiveMarketingPlan(
       rationale: p.rationale ?? '',
       targetKpi: p.target_kpi ?? undefined,
       sortOrder: Number(p.sort_order ?? 0),
+      isActive: Boolean(p.is_active),
+      isCustom: Boolean(p.is_custom),
     }));
     return {
       id: String(row.id),

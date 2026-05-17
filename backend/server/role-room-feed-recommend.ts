@@ -120,6 +120,15 @@ export interface RoleRoomFeedRecommendInput {
     keyMessage?: string | null;
     dos?: string[];
     donts?: string[];
+    /** Public URL of the customer's logo, scraped during bootstrap.
+     *  Listed in the prompt so Claude can reference it when suggesting
+     *  graphic treatments ("plasser logo top-right på lys variant"). */
+    logoUrl?: string | null;
+    /** Brand palette extracted from the logo via node-vibrant during
+     *  bootstrap. When present, Claude will lock caption tone and
+     *  graphic-element suggestions to these specific hexes so posts
+     *  don't drift into off-brand colors. */
+    brandColors?: Array<{ label: string; hex: string; usage?: string | null }>;
   };
   scheduleHint?: string | null;
 }
@@ -196,6 +205,12 @@ function buildSystemPrompt(
 }
 
 function buildUserMessage(input: RoleRoomFeedRecommendInput): string {
+  const palette = (input.brand.brandColors || [])
+    .filter((entry) => entry && typeof entry.hex === 'string')
+    .map((entry) => {
+      const usage = entry.usage ? ` — ${entry.usage}` : '';
+      return `  • ${entry.label} ${entry.hex.toUpperCase()}${usage}`;
+    });
   return [
     `Post-konsept: ${input.post.concept}`,
     `Medietype: ${input.post.mediaType ?? 'image'}`,
@@ -214,6 +229,10 @@ function buildUserMessage(input: RoleRoomFeedRecommendInput): string {
     `- Nøkkelbudskap: ${input.brand.keyMessage || '(ukjent)'}`,
     `- Gjør: ${(input.brand.dos || []).join(', ') || '(ingen)'}`,
     `- Unngå: ${(input.brand.donts || []).join(', ') || '(ingen)'}`,
+    input.brand.logoUrl ? `- Logo: ${input.brand.logoUrl}` : '',
+    palette.length > 0
+      ? `- Merkefarger (lås grafiske forslag til disse hexkodene; ikke foreslå farger utenfor paletten):\n${palette.join('\n')}`
+      : '',
     input.scheduleHint ? `- Ønsket publiseringsvindu (hvis satt): ${input.scheduleHint}` : '',
   ]
     .filter(Boolean)

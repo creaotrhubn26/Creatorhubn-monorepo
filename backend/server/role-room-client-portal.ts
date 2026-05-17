@@ -153,6 +153,34 @@ export async function resolveClientPortalSession(
   }
 }
 
+/**
+ * Returnerer aktiv session for (projectId, email) hvis én finnes —
+ * brukes til å gjenbruke session istedenfor å mint en ny hver gang
+ * markedsføreren oppretter en ny klient-forespørsel.
+ */
+export async function findActiveSessionForEmail(
+  pool: Pool,
+  projectId: string,
+  clientEmail: string,
+): Promise<ClientPortalSession | null> {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM role_room_client_portal_sessions
+        WHERE project_id = $1
+          AND client_email = $2
+          AND status = 'active'
+          AND expires_at > now()
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [projectId, clientEmail.toLowerCase().trim()],
+    );
+    return result.rows[0] ? mapSessionRow(result.rows[0]) : null;
+  } catch (error) {
+    console.error('[client-portal] find session by email failed', error);
+    return null;
+  }
+}
+
 export async function listClientPortalSessionsForProject(
   pool: Pool,
   projectId: string,

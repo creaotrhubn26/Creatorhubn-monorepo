@@ -147,6 +147,7 @@ function CastingStandaloneRuntimeContent() {
       url.searchParams.delete('rrGoogleTransfer');
       url.searchParams.delete('rrGoogleMode');
       url.searchParams.delete('rrGoogleMessage');
+      url.searchParams.delete('rrGoogleTempToken');
       return `${url.pathname}${url.search}${url.hash}`;
     };
     const clearGoogleIntentFromUrl = () => {
@@ -192,6 +193,59 @@ function CastingStandaloneRuntimeContent() {
       const googleMode = params.get('rrGoogleMode');
       const clientInviteStatus = params.get('rrClientInviteStatus');
       const clientInviteTransferId = params.get('rrClientInviteTransfer');
+
+      // Sikkerhetsfix (#1): Google-callback kan returnere needs_2fa hvis
+      // brukeren har TOTP aktivert. Da bærer URL-en en rrGoogleTempToken
+      // som vi sender til /api/auth/login/complete-2fa sammen med koden
+      // brukeren oppgir. Bygger en enkel prompt — full LoginDialog-
+      // integrasjon kan komme senere; det viktige er at bypassen er
+      // stengt på backend, og UX-en gir brukeren en vei videre.
+      if (googleStatus === 'needs_2fa') {
+        const tempToken = params.get('rrGoogleTempToken');
+        if (tempToken) {
+          const code = window.prompt(
+            '2FA er aktivert på kontoen din. Skriv inn 6-sifret kode fra Authenticator-appen for å fullføre Google-innloggingen.',
+          );
+          if (code && code.trim().length >= 6) {
+            try {
+              const response = await fetch('/api/auth/login/complete-2fa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tempToken, code: code.trim() }),
+              });
+              const payload = await response.json().catch(() => null) as {
+                success?: boolean;
+                token?: string;
+                user?: any;
+                message?: string;
+              } | null;
+              if (response.ok && payload?.success && payload.token && payload.user) {
+                await authSessionService.applyRoleRoomLogin(
+                  {
+                    id: payload.user.id,
+                    email: payload.user.email,
+                    role: payload.user.role,
+                    display_name: payload.user.display_name ?? payload.user.name,
+                    name: payload.user.name,
+                    loginAs: payload.user.loginAs,
+                    requestedRole: payload.user.requestedRole ?? null,
+                  },
+                  payload.token,
+                );
+                clearGoogleIntentFromUrl();
+                setIsAuthenticated(true);
+                setAuthResolved(true);
+                return;
+              }
+              window.alert(payload?.message ?? 'Feil 2FA-kode. Prøv å logge inn på nytt.');
+            } catch {
+              window.alert('Nettverksfeil ved 2FA-verifisering. Prøv å logge inn på nytt.');
+            }
+          }
+        }
+        clearGoogleIntentFromUrl();
+        // Fall gjennom så standard authResolved-state settes
+      }
 
       if (googleStatus === 'success' && googleMode === 'login' && googleTransferId) {
         const transferKey = `${googleMode}:${googleTransferId}`;
@@ -323,6 +377,7 @@ function CastingStandaloneRuntimeContent() {
       url.searchParams.delete('rrGoogleTransfer');
       url.searchParams.delete('rrGoogleMode');
       url.searchParams.delete('rrGoogleMessage');
+      url.searchParams.delete('rrGoogleTempToken');
       url.searchParams.delete('rrClientInviteStatus');
       url.searchParams.delete('rrClientInviteTransfer');
       url.searchParams.delete('rrClientInviteMessage');

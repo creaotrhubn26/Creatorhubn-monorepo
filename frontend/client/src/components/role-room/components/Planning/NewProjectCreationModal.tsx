@@ -5,6 +5,10 @@
  */
 
 import React, { useState, useCallback, useMemo, useId, useEffect, useRef } from 'react';
+
+// DEV-only debug-logging. I prod-build slipper vi ikke prosjekt-payload
+// til console (privacy + støy). Bytt til true lokalt for å feilsøke.
+const DEV_LOG = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true;
 import {
   Box,
   Card,
@@ -1697,20 +1701,20 @@ export default function NewProjectCreationModal({
 
   // Save project to database - called by SplitSheetEditor before saving split sheet
   const saveProjectToDatabase = useCallback(async (): Promise<boolean> => {
-    console.log('[saveProjectToDatabase] CALLED! isCastingPlanner:', isCastingPlanner);
-    
+    if (DEV_LOG) console.log('[saveProjectToDatabase] CALLED! isCastingPlanner:', isCastingPlanner);
+
     if (!isCastingPlanner) {
-      console.log('[saveProjectToDatabase] Not a The Role Room, skipping');
+      if (DEV_LOG) console.log('[saveProjectToDatabase] Not a The Role Room, skipping');
       return true;
     }
-    
+
     const projectId = projectData.projectId;
     if (!projectId) {
       console.error('[saveProjectToDatabase] No project ID');
       return false;
     }
-    
-    console.log('[saveProjectToDatabase] Saving project:', projectId);
+
+    if (DEV_LOG) console.log('[saveProjectToDatabase] Saving project:', projectId);
     
     try {
       // Map collaborators to crew
@@ -1751,20 +1755,20 @@ export default function NewProjectCreationModal({
         enableSplitSheet: projectData.enableSplitSheet || false,
       };
 
-      console.log('[saveProjectToDatabase] Sending to /api/casting/projects:', projectPayload);
-      
+      if (DEV_LOG) console.log('[saveProjectToDatabase] Sending to /api/casting/projects');
+
       const response = await apiRequest('/api/casting/projects', {
         method: 'POST',
         body: JSON.stringify(projectPayload),
       }) as { error?: string; id?: string } | null;
 
-      console.log('[saveProjectToDatabase] Response:', response);
+      if (DEV_LOG) console.log('[saveProjectToDatabase] Response status:', response?.error ? 'error' : 'ok');
 
       if (response && !response.error) {
         // Verify project was saved
         const verifyResponse = await apiRequest(`/api/casting/projects/${projectId}`) as { id?: string } | null;
         if (verifyResponse && verifyResponse.id) {
-          console.log('[saveProjectToDatabase] Project verified in database:', verifyResponse.id);
+          if (DEV_LOG) console.log('[saveProjectToDatabase] Project verified:', verifyResponse.id);
           return true;
         }
       }
@@ -1974,15 +1978,18 @@ export default function NewProjectCreationModal({
         enableSplitSheet: projectData.enableSplitSheet || false,
       };
       
-      console.log('[NewProjectCreationModal] Saving project to:', endpoint);
-      console.log('[NewProjectCreationModal] Project payload:', JSON.stringify(projectPayload, null, 2));
-      
+      if (DEV_LOG) console.log('[NewProjectCreationModal] Saving project to:', endpoint);
+      // NB: payload-dump er fjernet med vilje — vi vil ikke lekke klient-
+      // og prosjekt-data til prod-konsol (samme grunn som vi krypterer
+      // vault-secrets). Bytt DEV_LOG=true lokalt og console.log selv om
+      // du trenger payload for debugging.
+
       const response = await apiRequest(endpoint, {
         method: 'POST',
         body: JSON.stringify(projectPayload),
       }) as { data?: { id?: string }; id?: string } | { id?: string };
-      
-      console.log('[NewProjectCreationModal] Save response:', JSON.stringify(response, null, 2));
+
+      if (DEV_LOG) console.log('[NewProjectCreationModal] Save returned id:', (response as any)?.id ?? (response as any)?.data?.id);
 
       // Get project ID from response or use the one we generated
       // For The Role Room, always use the ID we sent (projectId) to ensure consistency
@@ -2007,12 +2014,7 @@ export default function NewProjectCreationModal({
             if (verifyResponse && !verifyResponse?.error) {
               // Check that project has required fields
               if (verifyResponse?.id && verifyResponse?.name) {
-                console.log('Project verified in database:', {
-                  id: verifyResponse?.id,
-                  name: verifyResponse?.name,
-                  hasClientName: !!verifyResponse?.clientName,
-                  hasClientEmail: !!verifyResponse?.clientEmail,
-                });
+                if (DEV_LOG) console.log('Project verified:', verifyResponse?.id);
                 verified = true;
                 break;
               } else {
@@ -2058,11 +2060,7 @@ export default function NewProjectCreationModal({
           
           if (splitSheetResponse && !(splitSheetResponse as { error?: string })?.error) {
             const createdSplitSheet = ((splitSheetResponse as { data?: Record<string, unknown> })?.data || splitSheetResponse) as Record<string, unknown>;
-            console.log('Split sheet created successfully:', {
-              id: createdSplitSheet.id,
-              project_id: createdSplitSheet.project_id,
-              expected_project_id: finalProjectId,
-            });
+            if (DEV_LOG) console.log('Split sheet created:', createdSplitSheet.id);
             
             // Verify split sheet was created with correct project_id
             if (createdSplitSheet.project_id !== finalProjectId) {

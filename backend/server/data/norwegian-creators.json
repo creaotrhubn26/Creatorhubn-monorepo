@@ -1,0 +1,265 @@
+{
+  "_meta": {
+    "version": 1,
+    "description": "Kuratert liste over kjente norske social-media-creators. Public-info (handles, plattform, kategori) — ingen private kontakt-detaljer. Brukes som baseline-creator-discovery når IG Business Discovery API ikke er koblet for prosjektet. Oppdateres manuelt.",
+    "lastUpdated": "2026-05-16",
+    "source": "Public profiles + creator-marketplace-listings 2025-2026"
+  },
+  "creators": [
+    {
+      "handle": "linniameister",
+      "displayName": "Linnéa Myhre",
+      "platforms": ["instagram"],
+      "categories": ["lifestyle", "beauty", "trening"],
+      "followerTier": "macro",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian",
+      "notes": "Forfatter, lifestyle, kropp/selvfølelse-tema"
+    },
+    {
+      "handle": "isabellaloevengreen",
+      "displayName": "Isabella Løvengreen",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["beauty", "lifestyle", "mote"],
+      "followerTier": "macro",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "annerusti",
+      "displayName": "Anne Rusti",
+      "platforms": ["instagram"],
+      "categories": ["mat", "lifestyle"],
+      "followerTier": "macro",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian",
+      "notes": "Kokebokforfatter, oppskrifter"
+    },
+    {
+      "handle": "krittblanke",
+      "displayName": "Kine Lytomt",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["lifestyle", "beauty"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "nettofitness",
+      "displayName": "Netto Fitness",
+      "platforms": ["instagram"],
+      "categories": ["trening", "fitness", "kosthold"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "matpaibordet",
+      "displayName": "Mat på Bordet",
+      "platforms": ["instagram", "youtube"],
+      "categories": ["mat", "oppskrifter", "familie"],
+      "followerTier": "macro",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "trinesmatblogg",
+      "displayName": "Trines Matblogg",
+      "platforms": ["instagram", "website"],
+      "categories": ["mat", "oppskrifter"],
+      "followerTier": "macro",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian",
+      "notes": "Etablert mat-blogger, populær for hverdagsoppskrifter"
+    },
+    {
+      "handle": "wenchelyseggen",
+      "displayName": "Wenche Lysseggen",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["mat", "tradisjon"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "audunkristofferpaulberg",
+      "displayName": "Audun Paulberg",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["mote", "lifestyle"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "thecookingmomma",
+      "displayName": "The Cooking Momma",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["mat", "familie", "barn"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "kine_riise",
+      "displayName": "Kine Riise",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["lifestyle", "beauty", "humor"],
+      "followerTier": "macro",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "fjellfantasten",
+      "displayName": "Fjellfantasten",
+      "platforms": ["instagram"],
+      "categories": ["friluft", "tur", "natur"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "mattisthorsen",
+      "displayName": "Mattis Thorsen",
+      "platforms": ["youtube", "instagram"],
+      "categories": ["teknologi", "tech", "review"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_male",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "vegardharm",
+      "displayName": "Vegard Harm",
+      "platforms": ["instagram", "tiktok", "youtube"],
+      "categories": ["humor", "lifestyle", "underholdning"],
+      "followerTier": "mega",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "morgan_sulele",
+      "displayName": "Morgan Sulele",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["musikk", "underholdning", "lifestyle"],
+      "followerTier": "mega",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "tonjedankertsen",
+      "displayName": "Tonje Dankertsen",
+      "platforms": ["instagram"],
+      "categories": ["mote", "beauty", "lifestyle"],
+      "followerTier": "macro",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "amaliesnoelovheim",
+      "displayName": "Amalie Snøløs",
+      "platforms": ["instagram", "youtube"],
+      "categories": ["beauty", "lifestyle", "mote"],
+      "followerTier": "mega",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "sophieelise",
+      "displayName": "Sophie Elise Isachsen",
+      "platforms": ["instagram", "youtube"],
+      "categories": ["beauty", "lifestyle", "podcast"],
+      "followerTier": "mega",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "jonisbnu",
+      "displayName": "Jon Anders",
+      "platforms": ["instagram", "youtube"],
+      "categories": ["trening", "fitness", "kosthold"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_male",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "frkesteen",
+      "displayName": "Esteen",
+      "platforms": ["tiktok", "instagram"],
+      "categories": ["humor", "lifestyle"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "annacecilieabusland",
+      "displayName": "Anna Cecilie Abusland",
+      "platforms": ["instagram"],
+      "categories": ["interior", "design", "lifestyle"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "marthelouiseaarrestad",
+      "displayName": "Marthe Louise Aarrestad",
+      "platforms": ["instagram"],
+      "categories": ["interior", "DIY", "lifestyle"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "andrea_badendyck",
+      "displayName": "Andrea Badendyck",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["beauty", "selvtillit", "mental_helse"],
+      "followerTier": "macro",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "ronaldoaslaksen",
+      "displayName": "Ronald Aslaksen",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["humor", "underholdning"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "morteneriksens",
+      "displayName": "Morten Eriksen",
+      "platforms": ["instagram", "youtube"],
+      "categories": ["bil", "automotive"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_male",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "vegardvike",
+      "displayName": "Vegard Vike",
+      "platforms": ["instagram", "tiktok"],
+      "categories": ["humor", "lifestyle"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "norwegian"
+    },
+    {
+      "handle": "norwegianadventures",
+      "displayName": "Norwegian Adventures",
+      "platforms": ["instagram", "youtube"],
+      "categories": ["reise", "natur", "friluft"],
+      "followerTier": "mid",
+      "audienceGender": "mixed",
+      "primaryLanguage": "english"
+    },
+    {
+      "handle": "barnehagepoddmor",
+      "displayName": "Barnehagepoddmor",
+      "platforms": ["instagram"],
+      "categories": ["familie", "barn", "foreldreskap"],
+      "followerTier": "mid",
+      "audienceGender": "mostly_female",
+      "primaryLanguage": "norwegian"
+    }
+  ]
+}

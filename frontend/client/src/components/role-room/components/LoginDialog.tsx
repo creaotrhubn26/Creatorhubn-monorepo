@@ -1822,6 +1822,61 @@ export default function LoginDialog({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // 2FA-state: når backend returnerer needs_2fa, vises inline-prompt
+  // for 6-sifret kode. Når brukeren submitter går vi til complete-2fa.
+  const [twoFactorState, setTwoFactorState] = useState<{ tempToken: string; message: string } | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorSubmitting, setTwoFactorSubmitting] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
+
+  const completeTwoFactorLogin = useCallback(async (): Promise<void> => {
+    if (!twoFactorState) return;
+    const code = twoFactorCode.trim();
+    if (code.length < 6) {
+      setTwoFactorError('Skriv inn 6-sifret kode (eller backup-kode på 8 tegn).');
+      return;
+    }
+    setTwoFactorSubmitting(true);
+    setTwoFactorError(null);
+    try {
+      const response = await fetch('/api/auth/login/complete-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken: twoFactorState.tempToken, code }),
+      });
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        token?: string;
+        user?: any;
+        error?: string;
+        message?: string;
+        usedBackupCode?: boolean;
+      } | null;
+      if (!response.ok || !payload?.success) {
+        setTwoFactorError(payload?.message ?? 'Feil kode. Prøv igjen.');
+        return;
+      }
+      // Match samme normalisering som vanlig login-success-grenen
+      const user = payload.user as { id: number | string; email: string; role: string; display_name?: string; name?: string; loginAs?: string; requestedRole?: string | null };
+      const normalizedUser = {
+        ...user,
+        loginAs: user.loginAs,
+        requestedRole: user.requestedRole ?? null,
+        display_name: user.display_name || user.name || user.email.split('@')[0],
+      };
+      await authSessionService.setSessionToken(payload.token ?? null);
+      await authSessionService.setAdminUser(normalizedUser);
+      await authSessionService.setCurrentUserId(String(normalizedUser.id));
+      clearRoleRoomCommercialDraft();
+      setTwoFactorState(null);
+      setTwoFactorCode('');
+      onLoginSuccess(normalizedUser);
+    } catch {
+      setTwoFactorError('Nettverksfeil — prøv igjen.');
+    } finally {
+      setTwoFactorSubmitting(false);
+    }
+  }, [twoFactorState, twoFactorCode, onLoginSuccess]);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [ucIdx, setUcIdx] = useState(0);
@@ -3281,7 +3336,23 @@ export default function LoginDialog({
         };
         detail?: string;
         error?: string;
+        needs_2fa?: boolean;
+        method?: string;
+        tempToken?: string;
+        message?: string;
       } = await Promise.race([request, timeout]);
+
+      // 2FA-gate: backend ber om kode før session opprettes.
+      // Aktiver inline 2FA-prompt — bruker taster inn 6-sifret kode +
+      // POST'er til complete-2fa for å fullføre login.
+      if (!data.success && data.needs_2fa && data.tempToken) {
+        setTwoFactorState({
+          tempToken: data.tempToken,
+          message: data.message ?? 'Skriv inn 6-sifret kode fra Authenticator-appen.',
+        });
+        setLoading(false);
+        return;
+      }
 
       if (data.success) {
         const resolvedRole =
@@ -6410,6 +6481,85 @@ export default function LoginDialog({
           )}
         </Box>
       </Box>
+
+      {/* 2FA-prompt overlay — vises kun når backend returnerte needs_2fa */}
+      <Dialog
+        open={twoFactorState !== null}
+        onClose={twoFactorSubmitting ? undefined : () => { setTwoFactorState(null); setTwoFactorCode(''); setTwoFactorError(null); }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { bgcolor: '#0b1226', color: '#f8fafc' } }}
+      >
+        <Box sx={{ p: 3 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', mb: 1, color: '#22d3ee' }}>
+            To-faktor-bekreftelse
+          </Typography>
+          <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.72)', mb: 2 }}>
+            {twoFactorState?.message}
+          </Typography>
+          <Box
+            component="input"
+            type="text"
+            inputMode="numeric"
+            autoFocus
+            maxLength={8}
+            value={twoFactorCode}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setTwoFactorCode(e.target.value.replace(/\s/g, '').toUpperCase().slice(0, 8))
+            }
+            placeholder="123456"
+            onKeyDown={(e: React.KeyboardEvent) => {
+              if (e.key === 'Enter') void completeTwoFactorLogin();
+            }}
+            sx={{
+              width: '100%',
+              p: 1.4,
+              fontSize: '1.4rem',
+              fontFamily: 'monospace',
+              letterSpacing: '8px',
+              textAlign: 'center',
+              bgcolor: 'rgba(15,23,42,0.6)',
+              color: '#f8fafc',
+              border: '1px solid rgba(148,163,184,0.3)',
+              borderRadius: '8px',
+              outline: 'none',
+              '&:focus': { borderColor: '#22d3ee' },
+            }}
+          />
+          {twoFactorError ? (
+            <Typography sx={{ color: '#f87171', fontSize: '0.82rem', mt: 1.2 }}>
+              {twoFactorError}
+            </Typography>
+          ) : null}
+          <Box sx={{ display: 'flex', gap: 1, mt: 2.4 }}>
+            <Button
+              onClick={() => { setTwoFactorState(null); setTwoFactorCode(''); setTwoFactorError(null); }}
+              disabled={twoFactorSubmitting}
+              sx={{ textTransform: 'none', color: '#94a3b8', flex: 1 }}
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={() => void completeTwoFactorLogin()}
+              disabled={twoFactorSubmitting || twoFactorCode.length < 6}
+              variant="contained"
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                flex: 2,
+                bgcolor: '#22d3ee',
+                color: '#0b1226',
+                '&:hover': { bgcolor: '#06b6d4' },
+              }}
+            >
+              {twoFactorSubmitting ? 'Verifiserer…' : 'Bekreft'}
+            </Button>
+          </Box>
+          <Typography sx={{ fontSize: '0.7rem', color: 'rgba(226,232,240,0.5)', mt: 1.4 }}>
+            Bruker du en backup-kode? Skriv inn de 8 tegnene.
+          </Typography>
+        </Box>
+      </Dialog>
     </Dialog>
   );
 }

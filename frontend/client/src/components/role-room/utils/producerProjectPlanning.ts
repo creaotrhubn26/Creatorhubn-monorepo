@@ -547,6 +547,7 @@ export const PRODUCER_ACCOUNT_ACCESS_REVEAL_POLICY_LABELS: Record<ProducerAccoun
   approval_required: 'Krever godkjenning',
   one_time: 'Kun én visning',
   manual_only: 'Manuell utlevering',
+  mfa_required: '2FA-bekreftelse for hver visning',
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_ROLE_TARGET_LABELS: Record<ProducerAccountAccessRoleTarget, string> = {
@@ -564,6 +565,7 @@ export const PRODUCER_ACCOUNT_ACCESS_VAULT_TAB_LABELS: Record<ProducerAccountAcc
   permissions: 'Rettigheter',
   audit: 'Aktivitetslogg',
   emergency: 'Nødtilgang',
+  data_sources: 'Datakilder',
 };
 
 export const PRODUCER_COLLABORATION_STATUS_LABELS: Record<NonNullable<ProducerCollaborationTerms['status']>, string> = {
@@ -1244,6 +1246,7 @@ const normalizeProducerAccountAccessRevealPolicy = (
   value === 'approval_required'
   || value === 'one_time'
   || value === 'manual_only'
+  || value === 'mfa_required'
     ? value
     : fallback
 );

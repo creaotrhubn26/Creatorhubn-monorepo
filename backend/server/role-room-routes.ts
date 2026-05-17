@@ -13,6 +13,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import {
+  persistOauthState,
+  loadOauthState,
+  deleteOauthState,
+  persistOauthTransfer,
+  loadOauthTransfer,
+  deleteOauthTransfer,
+} from './role-room-oauth-store.js';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -239,7 +247,11 @@ type RoleRoomAccessVaultSecretStatus =
 type RoleRoomAccessVaultRevealPolicy =
   | 'approval_required'
   | 'one_time'
-  | 'manual_only';
+  | 'manual_only'
+  // Krever 2FA-step-up (TOTP fra Authenticator eller e-post-kode) ved
+  // hver reveal-request, uavhengig av om bruker har 2FA aktivert generelt.
+  // Brukes for høy-risiko-secrets (admin-passord, signing-keys).
+  | 'mfa_required';
 
 interface RoleRoomGoogleConnectionRow {
   id: string;
@@ -780,6 +792,17 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   // Publishing requires both direct uploads and full video management.
   'https://www.googleapis.com/auth/youtube',
   'https://www.googleapis.com/auth/youtube.upload',
+  // ── KPI-tracking scopes (Datakilder-fanen) ─────────────────────────
+  // GA4 Data API — read-only sessions/users/conversions per property.
+  'https://www.googleapis.com/auth/analytics.readonly',
+  // Google Business Profile Performance API — local-business insights
+  // (calls, directions, search-queries, photo-views per location).
+  'https://www.googleapis.com/auth/business.manage',
+  // Search Console — clicks/impressions/CTR/position per query.
+  'https://www.googleapis.com/auth/webmasters.readonly',
+  // YouTube Analytics — channel + video performance metrics.
+  'https://www.googleapis.com/auth/yt-analytics.readonly',
+  'https://www.googleapis.com/auth/yt-analytics-monetary.readonly',
 ] as const;
 const ROLE_ROOM_LINKEDIN_SCOPES = [
   'openid',
@@ -1237,7 +1260,7 @@ function normalizeProducerAccountAccessPlatform(value: unknown): ProducerAccount
 
 function normalizeRoleRoomVaultRevealPolicy(value: unknown): RoleRoomAccessVaultRevealPolicy {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (normalized === 'one_time' || normalized === 'manual_only') {
+  if (normalized === 'one_time' || normalized === 'manual_only' || normalized === 'mfa_required') {
     return normalized;
   }
   return 'approval_required';
@@ -3729,11 +3752,22 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       ?? usernameBase;
     const nextUsername = `${usernameBase}-${hashApiKey(normalizedEmail).slice(0, 6)}`;
 
+    // Sikkerhetsfix (#4): tidligere brukte vi tom passord-streng for
+    // Google-login-brukere. Hvis lokal-login noensinne hadde tolket tom
+    // streng som match (eller bcrypt med tomme verdier hadde fungert),
+    // ga det en account-takeover-vektor. Bruker en bcrypt-hashed random
+    // 64-byte streng — bruker kan likevel ikke logge inn med passord
+    // (de må bruke Google), men feltet er aldri tomt.
+    const bcrypt = await import('bcrypt');
+    const placeholderPassword = await bcrypt.default.hash(
+      crypto.randomBytes(64).toString('base64'),
+      10,
+    );
     const inserted = await pool.query(
       `INSERT INTO users (email, username, first_name, role, password, created_at, updated_at)
-       VALUES ($1, $2, $3, 'user', '', NOW(), NOW())
+       VALUES ($1, $2, $3, 'user', $4, NOW(), NOW())
        RETURNING id, email, username, first_name, last_name, role`,
-      [normalizedEmail, nextUsername, inferredFirstName],
+      [normalizedEmail, nextUsername, inferredFirstName, placeholderPassword],
     );
 
     return {
@@ -5057,7 +5091,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   type RoleRoomAccessVaultRevealPolicy =
     | 'approval_required'
     | 'one_time'
-    | 'manual_only';
+    | 'manual_only'
+    | 'mfa_required';
 
   type RoleRoomAccessVaultRevealRequestStatus =
     | 'pending'
@@ -8810,7 +8845,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
       }
 
-      roleRoomGoogleOauthStateStore.set(stateId, {
+      const oauthStatePayload: RoleRoomGoogleOauthState = {
         mode,
         returnPath,
         browserOrigin,
@@ -8823,7 +8858,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         targetConnectionUserId,
         targetConnectionEmail,
         createdAt: Date.now(),
-      });
+      };
+      roleRoomGoogleOauthStateStore.set(stateId, oauthStatePayload);
+      // Sikkerhetsfix (#6): persister også til DB så multi-pod
+      // setups (Render horizontal scaling) ikke mister state når
+      // callback treffer en annen pod enn den som opprettet den.
+      // 10 min TTL — samme som in-memory pruning.
+      void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
 
       const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
       const authorizationUrl = oauthClient.generateAuthUrl({
@@ -8863,7 +8904,31 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
     const stateId = readStringValue(req.query.state);
     const code = readStringValue(req.query.code);
-    const oauthState = stateId ? roleRoomGoogleOauthStateStore.get(stateId) : null;
+    // Sikkerhetsfix (#6): Map kan miste treff hvis callback treffer en
+    // annen pod enn den som opprettet state. DB-fallback dekker det.
+    let oauthState = stateId ? roleRoomGoogleOauthStateStore.get(stateId) : null;
+    if (!oauthState && stateId) {
+      const fromDb = await loadOauthState<RoleRoomGoogleOauthState>(pool, stateId);
+      if (fromDb) {
+        oauthState = fromDb;
+        // Cache i Map for raskere oppslag senere i samme prosess.
+        roleRoomGoogleOauthStateStore.set(stateId, fromDb);
+      }
+    }
+
+    // Sikkerhetsfix (#5): bruker som klikker "Avbryt" på Googles consent-
+    // skjerm sender ?error=access_denied. Tidligere fanget vi dette via
+    // !code-grenen → generisk "Ugyldig Google-forespørsel". Nå viser vi
+    // en forklarende melding så bruker forstår at de avbrøt selv.
+    const oauthError = readStringValue(req.query.error);
+    if (oauthError) {
+      const errorMessage = oauthError === 'access_denied'
+        ? 'Du avbrøt Google-innloggingen. Prøv igjen hvis du ønsker å logge inn.'
+        : `Google avviste forespørselen: ${oauthError}`;
+      redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, errorMessage, oauthState?.browserOrigin);
+      return;
+    }
+
     const config = getRoleRoomGoogleConfig(req, oauthState?.redirectUri);
     if (!config.configured) {
       redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Google Workspace er ikke konfigurert', oauthState?.browserOrigin);
@@ -8875,6 +8940,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     roleRoomGoogleOauthStateStore.delete(stateId!);
+    // Sikkerhetsfix (#6): slett også fra DB
+    void deleteOauthState(pool, stateId!);
 
     try {
       const oauthClient = createRoleRoomGoogleOAuthClient(req, oauthState.redirectUri);
@@ -8903,6 +8970,57 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (!googleEmail || !googleSubject) {
         redirectWithError(oauthState.returnPath, 'Google-kontoen mangler e-post eller identitet', oauthState.browserOrigin);
         return;
+      }
+
+      // Sikkerhetsfix (#3): avvis uverifiserte Google-kontoer. En
+      // angriper kan opprette en Google-konto med vilkårlig e-post-
+      // adresse uten å eie domenet; verified_email=true betyr at Google
+      // har bekreftet at brukeren har tilgang til e-posten.
+      if (profileResponse.data.verified_email !== true) {
+        redirectWithError(
+          oauthState.returnPath,
+          'E-posten i Google-kontoen din er ikke verifisert. Bekreft den i Google først.',
+          oauthState.browserOrigin,
+        );
+        return;
+      }
+
+      // Sikkerhetsfix (#2): valider hd-claim mot allow-list så "Google
+      // WORKSPACE login" faktisk krever Workspace-domene (ikke gmail.com).
+      // ROLE_ROOM_GOOGLE_ALLOWED_DOMAINS = "kunde1.no,kunde2.com" — hvis
+      // tom, allow alle (backward compat). Hvis satt, må hd være i lista.
+      const allowedDomainsRaw = (process.env.ROLE_ROOM_GOOGLE_ALLOWED_DOMAINS ?? '').trim();
+      if (allowedDomainsRaw) {
+        const allowedDomains = allowedDomainsRaw
+          .split(',')
+          .map((d) => d.trim().toLowerCase())
+          .filter(Boolean);
+        // hd-claim ligger i id_token. Hvis ikke tilgjengelig (no Workspace
+        // → personlig gmail), fall tilbake til e-post-domenet — gmail.com
+        // vil da feile mot allow-list.
+        let hostedDomain: string | null = null;
+        const idToken = readStringValue(tokenResult.tokens.id_token);
+        if (idToken) {
+          try {
+            const payloadB64 = idToken.split('.')[1] ?? '';
+            const payloadJson = Buffer.from(payloadB64, 'base64url').toString('utf8');
+            const payload = JSON.parse(payloadJson) as { hd?: string };
+            if (typeof payload.hd === 'string') hostedDomain = payload.hd.toLowerCase();
+          } catch {
+            // ignorer parse-feil — falle tilbake til e-post-domene
+          }
+        }
+        if (!hostedDomain) {
+          hostedDomain = googleEmail.split('@')[1]?.toLowerCase() ?? null;
+        }
+        if (!hostedDomain || !allowedDomains.includes(hostedDomain)) {
+          redirectWithError(
+            oauthState.returnPath,
+            `E-postdomenet "${hostedDomain ?? 'ukjent'}" er ikke godkjent for innlogging. Kontakt administrator.`,
+            oauthState.browserOrigin,
+          );
+          return;
+        }
       }
 
       const existingSubjectConnection = await getRoleRoomGoogleConnectionBySubject(googleSubject);
@@ -9005,11 +9123,66 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           loginAs: oauthState.loginAs ?? undefined,
           loginAt: new Date().toISOString(),
         };
+
+        // Sikkerhetsfix (#1): bruker med TOTP aktivert via vanlig login
+        // KUNNE tidligere gå rundt 2FA ved å bruke Google-login. Nå
+        // sjekker vi totp-status FØR session committes, og hvis aktivert
+        // redirecter vi til 2FA-prompt med en temp-token (samme mønster
+        // som login/complete-2fa).
+        try {
+          const totpSvc = await import('./totp-2fa-service.js');
+          const totpStatus = await totpSvc.getTotpStatus(pool, resolvedUser.userId);
+          if (totpStatus.enabled) {
+            // Lagre pending-state i transfer-store så frontend kan vise
+            // 2FA-prompt og fullføre via /api/auth/login/complete-2fa.
+            // Forventet payload-shape matcher det complete-2fa-endpointet
+            // returnerer for vanlig login.
+            const tempToken = crypto.randomUUID();
+            const userPayload = {
+              id: resolvedUser.userId,
+              email: resolvedUser.email,
+              role: resolvedUser.role,
+              name: resolvedUser.name,
+              display_name: resolvedUser.name,
+              loginAs: oauthState.loginAs ?? undefined,
+              requestedRole: oauthState.requestedRole ?? null,
+            };
+            // Bruker (activeSessions as any).__pendingTwoFactorLogins som
+            // intern broker — settes opp i index.ts. Hvis Map mangler
+            // (eldre prosesser), fall tilbake til å utstede session og
+            // logge advarsel istedenfor å låse ute brukere.
+            const pendingMap = (globalThis as any).__roleRoomPendingTwoFactorLogins as
+              | Map<string, { userId: string; sessionData: SessionData; responsePayload: any; expiresAt: number }>
+              | undefined;
+            if (pendingMap) {
+              pendingMap.set(tempToken, {
+                userId: resolvedUser.userId,
+                sessionData,
+                responsePayload: { token: sessionToken, user: userPayload },
+                expiresAt: Date.now() + 5 * 60 * 1000,
+              });
+              res.redirect(
+                buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+                  rrGoogleStatus: 'needs_2fa',
+                  rrGoogleMode: 'login',
+                  rrGoogleTempToken: tempToken,
+                }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+              );
+              return;
+            }
+            console.warn('[Auth] 2FA pending-map mangler — Google-login fortsetter UTEN 2FA-gate.');
+          }
+        } catch (totpError) {
+          console.error('[Auth] TOTP-status-sjekk i Google-callback feilet:', totpError);
+          // Best-effort: hvis TOTP-stack er nede, ikke lås ute brukeren
+          // som ikke har 2FA på. Logger varselet.
+        }
+
         activeSessions?.set(sessionToken, sessionData);
         await persistAuthSession(pool, sessionToken, sessionData);
 
         const transferId = crypto.randomUUID();
-        roleRoomGoogleTransferStore.set(transferId, {
+        const transferPayload: RoleRoomGoogleTransferPayload = {
           mode: 'login',
           createdAt: Date.now(),
           projectId: oauthState.projectId ?? null,
@@ -9029,7 +9202,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           googleEmail,
           googleSubject,
           profile: googleProfile,
-        });
+        };
+        roleRoomGoogleTransferStore.set(transferId, transferPayload);
+        // Sikkerhetsfix (#6): persister også til DB for multi-pod
+        void persistOauthTransfer(pool, transferId, transferPayload, new Date(Date.now() + 10 * 60 * 1000));
 
         res.redirect(
           buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
@@ -9074,7 +9250,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         tokenBundle,
       );
 
-      roleRoomGoogleTransferStore.set(transferId, {
+      const linkTransferPayload: RoleRoomGoogleTransferPayload = {
         mode: 'link',
         createdAt: Date.now(),
         projectId: oauthState.projectId ?? null,
@@ -9086,7 +9262,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         googleSubject,
         profile: googleProfile,
         tokenBundle,
-      });
+      };
+      roleRoomGoogleTransferStore.set(transferId, linkTransferPayload);
+      // Sikkerhetsfix (#6): persister også til DB for multi-pod
+      void persistOauthTransfer(pool, transferId, linkTransferPayload, new Date(Date.now() + 10 * 60 * 1000));
 
       res.redirect(
         buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
@@ -9114,7 +9293,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const payload = roleRoomGoogleTransferStore.get(transferId);
+      // Sikkerhetsfix (#6): Map miss → fallback til DB (multi-pod)
+      let payload = roleRoomGoogleTransferStore.get(transferId);
+      if (!payload) {
+        const fromDb = await loadOauthTransfer<RoleRoomGoogleTransferPayload>(pool, transferId);
+        if (fromDb) {
+          payload = fromDb;
+          roleRoomGoogleTransferStore.set(transferId, fromDb);
+        }
+      }
       if (!payload) {
         res.status(404).json({ error: 'Google-overføringen er utløpt eller brukt' });
         return;
@@ -9122,6 +9309,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       if (payload.mode === 'login') {
         roleRoomGoogleTransferStore.delete(transferId);
+        void deleteOauthTransfer(pool, transferId);
       }
 
       res.json({
@@ -9153,7 +9341,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const payload = roleRoomGoogleTransferStore.get(transferId);
+      // Sikkerhetsfix (#6): Map miss → fallback til DB (multi-pod)
+      let payload = roleRoomGoogleTransferStore.get(transferId);
+      if (!payload) {
+        const fromDb = await loadOauthTransfer<RoleRoomGoogleTransferPayload>(pool, transferId);
+        if (fromDb) {
+          payload = fromDb;
+          roleRoomGoogleTransferStore.set(transferId, fromDb);
+        }
+      }
       if (!payload || payload.mode !== 'link' || !payload.tokenBundle) {
         res.status(404).json({ error: 'Fant ikke en gyldig Google-kobling å fullføre' });
         return;
@@ -9245,6 +9441,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       roleRoomGoogleTransferStore.delete(transferId);
+      void deleteOauthTransfer(pool, transferId);
       res.json({
         ...buildRoleRoomGoogleConnectionResponse(connection, getRoleRoomGoogleConfig(req)),
         projectBinding: projectBindingResponse?.binding ?? null,
@@ -14857,6 +15054,89 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      // ── MFA step-up gate ──────────────────────────────────────────
+      // Krev TOTP-kode (eller e-post-fallback) hvis:
+      //   1. Secret har policy=mfa_required, ELLER
+      //   2. Brukeren har TOTP aktivert på kontoen sin (vi krever det
+      //      uansett — har du 2FA på, skal du måtte bekrefte med kode
+      //      for å se passord, akkurat som 1Password / Bitwarden)
+      //
+      // Body kan inneholde { totpCode } eller { emailCode }. Hvis
+      // ingen verifisering er gjort, returnerer vi 401 med info om
+      // hvilke metoder som er tilgjengelige slik at frontend kan vise
+      // riktig prompt.
+      let mfaMethod: 'totp' | 'email_code' | 'none' = 'none';
+      const policy = normalizeRoleRoomVaultRevealPolicy(secret.reveal_policy);
+      const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+      const userEmail = apiKeyReq.apiKeyUser?.email ?? null;
+      const realUserId = apiKeyReq.apiKeyUser?.userId ?? null;
+      try {
+        const totpSvc = await import('./totp-2fa-service.js');
+        const totpStatus = realUserId ? await totpSvc.getTotpStatus(pool, realUserId) : { enabled: false, pending: false };
+        const requireMfa = policy === 'mfa_required' || totpStatus.enabled;
+
+        if (requireMfa) {
+          const totpCode = typeof req.body?.totpCode === 'string' ? req.body.totpCode : '';
+          const emailCode = typeof req.body?.emailCode === 'string' ? req.body.emailCode : '';
+
+          if (totpStatus.enabled && totpCode) {
+            const result = realUserId
+              ? await totpSvc.verifyLoginToken(pool, { userId: realUserId, token: totpCode })
+              : { ok: false, reason: 'not_enrolled' as const };
+            if (!result.ok) {
+              res.status(401).json({
+                error: 'mfa_required',
+                method: 'totp',
+                reason: result.reason,
+                message: 'Feil TOTP-kode. Sjekk Authenticator-appen.',
+              });
+              return;
+            }
+            mfaMethod = 'totp';
+          } else if (emailCode && userEmail) {
+            const verifSvc = await import('./email-verification-service.js');
+            const result = await verifSvc.verifyCode(pool, {
+              email: userEmail,
+              purpose: 'vault_reveal',
+              code: emailCode,
+            });
+            if (!result.ok) {
+              res.status(401).json({
+                error: 'mfa_required',
+                method: 'email_code',
+                reason: result.reason,
+                attemptsRemaining: result.attemptsRemaining,
+                message: 'Feil eller utløpt e-post-kode.',
+              });
+              return;
+            }
+            mfaMethod = 'email_code';
+          } else {
+            // Ingen kode oppgitt — be om en
+            res.status(401).json({
+              error: 'mfa_required',
+              availableMethods: {
+                totp: totpStatus.enabled,
+                emailCode: Boolean(userEmail),
+              },
+              policy,
+              message: totpStatus.enabled
+                ? 'Skriv inn 6-sifret kode fra Authenticator-appen for å se passordet.'
+                : 'Be om en e-post-kode og skriv den inn for å se passordet.',
+            });
+            return;
+          }
+        }
+      } catch (mfaError) {
+        console.error('[vault] MFA-sjekk feilet:', mfaError);
+        // Fail-closed: hvis MFA-stacken er nede og policy=mfa_required,
+        // ikke slipp gjennom. For andre policies kan vi være pragmatiske.
+        if (policy === 'mfa_required') {
+          res.status(503).json({ error: 'mfa_service_unavailable' });
+          return;
+        }
+      }
+
       const existingRequestResult = await pool.query(
         `SELECT *
          FROM role_room_access_vault_reveal_requests
@@ -14908,6 +15188,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         metadata: {
           requestReason,
           revealPolicy: secret.reveal_policy ?? null,
+          mfaMethod,
         },
       });
 
@@ -20338,7 +20619,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             detail: 'Printful is not fully configured. Both PRINTFUL_API_KEY and PRINTFUL_STORE_ID must be set in Render env. Create a free Printful store under Stores → Add store, then add the numeric store id to env.',
           });
         }
-        const { productId, designImageUrl } = req.body ?? {};
+        const { productId, designImageUrl, forceRefresh } = req.body ?? {};
         const allowedProducts = new Set<MerchMockupProductId>([
           'tshirt', 'hoodie', 'polo', 'cap', 'totebag', 'mug',
         ]);
@@ -20351,6 +20632,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const result = await generateMerchMockup(pool, {
           productId: productId as MerchMockupProductId,
           designImageUrl,
+          forceRefresh: forceRefresh === true,
         });
         res.json(result);
       } catch (error) {

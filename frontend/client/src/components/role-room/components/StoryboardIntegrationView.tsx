@@ -885,12 +885,18 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   const currentDialogue = scriptStoryboard?.currentDialogue;
   const syncEnabled = scriptStoryboard?.syncEnabled ?? false;
   
-  // Sync active frame with context
+  // Sync active frame with context. Reagerer kun på endring i prop —
+  // `activeFrameIdx` er KUN brukt for guard inni body (read-only-snapshot),
+  // ikke som trigger, så den er fjernet fra deps for å unngå at hver
+  // setActiveFrameIdx-kall re-evaluerer effekten.
   useEffect(() => {
-    if (propActiveFrameIndex !== undefined && propActiveFrameIndex !== activeFrameIdx) {
-      setActiveFrameIdx(propActiveFrameIndex);
+    if (propActiveFrameIndex !== undefined) {
+      setActiveFrameIdx((current) => (
+        current === propActiveFrameIndex ? current : propActiveFrameIndex
+      ));
     }
-  }, [propActiveFrameIndex, activeFrameIdx]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propActiveFrameIndex]);
 
   // Lock view mode when production tab should only expose storyboard.
   useEffect(() => {

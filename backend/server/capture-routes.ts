@@ -149,6 +149,34 @@ const analyzeAssetBody = z.object({
   mime: z.enum(['image/jpeg', 'image/png', 'image/webp']),
 });
 
+// Slice 9X.20 — EXIF metadata parset i nettleseren ved opplasting.
+// Frontend sender bare felt vi faktisk bruker for tags + visning, ikke
+// hele EXIF-dumpen (kan være 100k+ for noen RAW-filer).
+const exifBody = z.object({
+  exif: z.object({
+    cameraMake: z.string().max(64).optional(),
+    cameraModel: z.string().max(128).optional(),
+    lensModel: z.string().max(128).optional(),
+    lensMake: z.string().max(64).optional(),
+    iso: z.number().int().nonnegative().max(1_000_000).optional(),
+    aperture: z.number().nonnegative().max(64).optional(),       // f-stop, e.g. 2.8
+    shutterSpeed: z.string().max(32).optional(),                 // "1/250" or "0.5"
+    shutterSpeedSec: z.number().nonnegative().optional(),
+    focalLength: z.number().nonnegative().max(2000).optional(),  // mm
+    focalLengthIn35mm: z.number().nonnegative().max(2000).optional(),
+    captureDate: z.string().datetime().optional(),
+    gpsLat: z.number().min(-90).max(90).optional(),
+    gpsLng: z.number().min(-180).max(180).optional(),
+    gpsAlt: z.number().optional(),
+    orientation: z.number().int().min(1).max(8).optional(),
+    flashFired: z.boolean().optional(),
+    whiteBalance: z.string().max(32).optional(),
+    exposureMode: z.string().max(32).optional(),
+    meteringMode: z.string().max(32).optional(),
+    software: z.string().max(128).optional(),
+  }),
+});
+
 const assetSignalsBody = z.object({
   sharpness: z.number().min(0).max(100).optional(),
   eyesOpen: z.boolean().optional(),
@@ -345,6 +373,99 @@ function handleZod<T>(
     return false;
   }
   return true;
+}
+
+/**
+ * Slice 9X.20 — slugify EXIF-felter til søkbare tags.
+ * "Canon EOS R5" → "canon-eos-r5"
+ * 50.0 mm → "50mm" (rundet til nærmeste prime/range-bucket)
+ * ISO 1600 → "iso-1600" + "iso-high" (range-bucket)
+ */
+function slugify(text: string): string {
+  return text.toLowerCase()
+    .replace(/[æå]/g, 'a').replace(/ø/g, 'o')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
+function bucketFocalLength(mm: number): string[] {
+  const rounded = Math.round(mm);
+  const tags = [`${rounded}mm`];
+  if (mm < 24) tags.push('ultra-wide');
+  else if (mm < 35) tags.push('wide');
+  else if (mm < 70) tags.push('normal');
+  else if (mm < 135) tags.push('short-tele');
+  else if (mm < 300) tags.push('tele');
+  else tags.push('super-tele');
+  return tags;
+}
+
+function bucketIso(iso: number): string[] {
+  const tags = [`iso-${iso}`];
+  if (iso <= 200) tags.push('iso-low');
+  else if (iso <= 1600) tags.push('iso-mid');
+  else if (iso <= 6400) tags.push('iso-high');
+  else tags.push('iso-very-high');
+  return tags;
+}
+
+function bucketAperture(f: number): string[] {
+  // Match til vanlige f-stop verdier
+  const round = Math.round(f * 10) / 10;
+  const slug = `f-${round.toString().replace('.', '-')}`;
+  const tags = [slug];
+  if (f <= 1.4) tags.push('very-fast');
+  else if (f <= 2.8) tags.push('fast');
+  else if (f <= 5.6) tags.push('medium');
+  else tags.push('slow');
+  return tags;
+}
+
+interface NormalizedExif {
+  cameraMake?: string;
+  cameraModel?: string;
+  lensModel?: string;
+  iso?: number;
+  aperture?: number;
+  focalLength?: number;
+  captureDate?: string;
+  gpsLat?: number;
+  gpsLng?: number;
+}
+
+export function buildExifTags(exif: NormalizedExif): string[] {
+  const tags = new Set<string>();
+  if (exif.cameraMake) tags.add(slugify(exif.cameraMake));
+  if (exif.cameraModel) {
+    tags.add(slugify(exif.cameraModel));
+    if (exif.cameraMake) {
+      tags.add(slugify(`${exif.cameraMake} ${exif.cameraModel}`));
+    }
+  }
+  if (exif.lensModel) tags.add(slugify(exif.lensModel));
+  if (typeof exif.iso === 'number') {
+    for (const t of bucketIso(exif.iso)) tags.add(t);
+  }
+  if (typeof exif.aperture === 'number') {
+    for (const t of bucketAperture(exif.aperture)) tags.add(t);
+  }
+  if (typeof exif.focalLength === 'number') {
+    for (const t of bucketFocalLength(exif.focalLength)) tags.add(t);
+  }
+  if (exif.captureDate) {
+    const d = new Date(exif.captureDate);
+    if (Number.isFinite(d.getTime())) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      tags.add(`${y}-${m}`);
+      tags.add(String(y));
+    }
+  }
+  if (typeof exif.gpsLat === 'number' && typeof exif.gpsLng === 'number') {
+    tags.add('gps');
+  }
+  return Array.from(tags).slice(0, 50);
 }
 
 export function createCaptureRouter(
@@ -757,6 +878,47 @@ export function createCaptureRouter(
   });
 
   // ── Events ──────────────────────────────────────────────────
+
+  // Slice 9X.20 — lagre EXIF + auto-generér tags. Idempotent (PATCH-like).
+  router.post('/assets/:id/exif', auth, async (req, res) => {
+    const parsed = exifBody.safeParse(req.body);
+    if (!handleZod(res, parsed)) return;
+    const { userId } = req as AuthedRequest;
+
+    // Sjekk ownership via session-join
+    const ownership = await pool.query(
+      `SELECT a.id FROM capture_assets a
+         JOIN capture_sessions s ON s.id = a.session_id
+        WHERE a.id = $1 AND s.owner_user_id = $2 LIMIT 1`,
+      [req.params.id, userId],
+    ).catch(() => ({ rowCount: 0 }));
+    if ((ownership.rowCount ?? 0) === 0) {
+      res.status(404).json({ error: 'asset_not_found' });
+      return;
+    }
+
+    const exif = parsed.data.exif;
+    const tags = buildExifTags(exif);
+
+    // Schema-ensure (migrasjon 0096 idempotent)
+    await pool.query(`
+      ALTER TABLE capture_assets ADD COLUMN IF NOT EXISTS exif JSONB;
+      ALTER TABLE capture_assets ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+    `).catch(() => undefined);
+
+    await pool.query(
+      `UPDATE capture_assets SET
+         exif = $1::jsonb,
+         tags = (
+           SELECT ARRAY(SELECT DISTINCT unnest(COALESCE(tags, '{}'::text[]) || $2::text[]))
+         ),
+         updated_at = NOW()
+       WHERE id = $3`,
+      [JSON.stringify(exif), tags, req.params.id],
+    );
+
+    res.json({ tags, exif });
+  });
 
   router.post('/sessions/:sessionId/events', auth, async (req, res) => {
     const parsed = postEventsBody.safeParse(req.body);

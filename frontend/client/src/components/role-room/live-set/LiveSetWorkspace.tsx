@@ -173,7 +173,7 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
 
   const handleSnapshot = () => {
     // TODO: trigger /api/ccapi/cameras/:ip/shutter via Canon backend-proxy
-    console.log('[LiveSetWorkspace] snapshot triggered');
+    // (no-op placeholder — fjernet console.log som la til konsoll-støy)
   };
 
   const handleSettingsChange = (patch: Partial<CameraSettings>) => {
@@ -256,7 +256,8 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
                   recordingTimecode={formatTimecode(recordingElapsed)}
                   onRoll={toggleRoll}
                   onCut={toggleRoll}
-                  onAutoCut={() => console.log('[LiveSetWorkspace] auto-cut triggered')}
+                  /* TODO: auto-cut trigger til Canon-API. No-op for nå. */
+                  onAutoCut={() => { /* placeholder */ }}
                   onSnapshot={handleSnapshot}
                 />
               </Box>
@@ -281,7 +282,8 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
                 cameras={cameras}
                 activeCameraId={activeCameraId}
                 activeCameraSettings={settings}
-                onQuickAction={(action) => console.log('[LiveSetWorkspace] quick-action:', action)}
+                /* TODO: quick-action-dispatcher til scene-context. */
+                onQuickAction={(_action) => { /* placeholder */ }}
               />
             </Box>
 
@@ -290,7 +292,8 @@ export const LiveSetWorkspace: React.FC<LiveSetWorkspaceProps> = ({
               <AudioColumn
                 masterDb={masterAudioDb}
                 cameras={cameras}
-                onOpenMixer={() => console.log('[LiveSetWorkspace] open mixer')}
+                /* TODO: åpne ekstern mixer-modal. */
+                onOpenMixer={() => { /* placeholder */ }}
               />
             </Box>
           </Box>

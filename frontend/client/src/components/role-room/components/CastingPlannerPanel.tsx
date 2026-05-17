@@ -1021,11 +1021,15 @@ type RoleRoomProjectWorkspaceState = {
   sortingBySurface?: Partial<Record<RoleRoomWorkspaceSurfaceKey, RoleRoomWorkspaceSortState>>;
   updatedAt: string;
 };
-  const CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS: Array<{
+  // Stabil referanse — denne arrayen er ren konstantdata, men ble før
+  // re-skapt hver render, noe som invaliderte alle memoisering-deps som
+  // refererte den (4 hooks). Bruker useMemo med tom dep så barn med
+  // React.memo faktisk får stabile props.
+  const CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS = useMemo<Array<{
     value: ContentProducerPlannerSurface;
     label: string;
     description: string;
-  }> = [
+  }>>(() => [
     {
       value: 'overview',
       label: 'Oversikt',
@@ -1051,7 +1055,7 @@ type RoleRoomProjectWorkspaceState = {
       label: 'Økonomi',
       description: 'Følg budsjett, økonomiske beslutninger og hva som må godkjennes kommersielt.',
     },
-  ];
+  ], []);
   type RoleRoomWorkspaceState = {
     projectId: string | null;
     lastRealProjectId?: string | null;
@@ -4860,6 +4864,7 @@ type RoleRoomProjectWorkspaceState = {
       url.searchParams.delete('rrGoogleTransfer');
       url.searchParams.delete('rrGoogleMode');
       url.searchParams.delete('rrGoogleMessage');
+      url.searchParams.delete('rrGoogleTempToken');
       window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
     };
 

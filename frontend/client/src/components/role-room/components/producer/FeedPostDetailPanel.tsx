@@ -35,6 +35,7 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 import RoleRoomTierIcon, { ROLE_ROOM_TIERS, tierForEntitlementSource } from './RoleRoomTierIcon';
 import type {
+  RoleRoomAgentBrandColor,
   RoleRoomAgentProducerBootstrapResult,
   RoleRoomFeedBrandSnapshot,
   RoleRoomFeedLogoPlacement,
@@ -363,6 +364,17 @@ export default function FeedPostDetailPanel({
           keyMessage: bootstrap.intakeDraft?.keyMessage ?? null,
           dos: bootstrap.planningDraft?.brandGuide?.dos ?? [],
           donts: bootstrap.planningDraft?.brandGuide?.donts ?? [],
+          logoUrl:
+            bootstrap.planningDraft?.brandGuide?.logoUrl
+            ?? bootstrap.companyProfile?.logoUrl
+            ?? null,
+          brandColors: (bootstrap.planningDraft?.brandGuide?.colors ?? [])
+            .filter((entry): entry is RoleRoomAgentBrandColor => Boolean(entry?.hex))
+            .map((entry) => ({
+              label: entry.label,
+              hex: entry.hex,
+              usage: entry.usage ?? null,
+            })),
         },
         scheduleHint: post.scheduledFor,
       });

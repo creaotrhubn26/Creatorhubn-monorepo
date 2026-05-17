@@ -11,6 +11,10 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+
+// DEV-only debug-logging — løp ikke prod-konsolen med per-project /
+// per-autosave-info (kjører hver 1.2s ved unsaved changes).
+const DEV_LOG = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true;
 import {
   Box,
   Typography,
@@ -462,12 +466,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             refreshSyncMeta();
             lastSavedSnapshot.current = JSON.stringify(normalizedProducerDemo);
             setSaveStatus('saved');
-            console.log('🧹 Replaced legacy producer demo story logic with business project data');
+            if (DEV_LOG) console.log('🧹 Replaced legacy producer demo story logic with business project data');
           } else {
             setState(normalized);
             lastSavedSnapshot.current = JSON.stringify(normalized);
             setSaveStatus('saved');
-            console.log('✓ Loaded story logic from database for project:', projectId);
+            if (DEV_LOG) console.log('✓ Loaded story logic from database for project:', projectId);
           }
         } else if (isContentProducerDemoProject) {
           const normalizedProducerDemo = normalizeStoryLogicState(CONTENT_PRODUCER_DEMO_STATE);
@@ -475,14 +479,14 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           await storyLogicService.saveStoryLogic(projectId, normalizedProducerDemo);
           refreshSyncMeta();
           lastSavedSnapshot.current = JSON.stringify(normalizedProducerDemo);
-          console.log('🎬 Initialized producer story logic demo data');
+          if (DEV_LOG) console.log('🎬 Initialized producer story logic demo data');
         } else if (isTrollDemoProject) {
           const normalizedDemo = normalizeStoryLogicState(TROLL_DEMO_STATE);
           setState(normalizedDemo);
           await storyLogicService.saveStoryLogic(projectId, normalizedDemo);
           refreshSyncMeta();
           lastSavedSnapshot.current = JSON.stringify(normalizedDemo);
-          console.log('🎬 Initialized TROLL story logic demo data');
+          if (DEV_LOG) console.log('🎬 Initialized TROLL story logic demo data');
         }
       } catch (error) {
         console.error('Failed to load story logic data:', error);
@@ -601,7 +605,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       lastSavedSnapshot.current = JSON.stringify(dataToSave);
       setSaveStatus('saved');
       onSave?.(dataToSave);
-      console.log('✓ Story logic saved for project:', projectId);
+      if (DEV_LOG) console.log('✓ Story logic saved for project:', projectId);
     } catch (error) {
       console.error('Failed to save story logic:', error);
       refreshSyncMeta();
