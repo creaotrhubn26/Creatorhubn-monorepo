@@ -45,6 +45,7 @@ import {
   AutoAwesome,
   PlayCircleOutline,
   Psychology,
+  HelpOutline,
 } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
@@ -79,6 +80,7 @@ import {
 import { AnimaticVoiceoverStrip } from './AnimaticVoiceoverStrip';
 import { AnimaticSfxPanel } from './AnimaticSfxPanel';
 import { AnimaticTransportBar } from './AnimaticTransportBar';
+import { AnimaticHelpDialog, hasSeenAnimaticHelp } from './AnimaticHelpDialog';
 
 export interface AnimaticFrameMeta {
   id: string;
@@ -171,6 +173,8 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   // Web Audio-graf bygges når opptak starter, rives ned når det stopper.
   const audioGraphRef = React.useRef<RecordingAudioGraph | null>(null);
   const [audioStreamOverride, setAudioStreamOverride] = React.useState<MediaStream | null>(null);
+  // Help-dialog: åpnes manuelt via ?-knapp + auto-vises ved første mount.
+  const [helpOpen, setHelpOpen] = React.useState(() => !hasSeenAnimaticHelp());
 
   const handleActiveFrameChange = React.useCallback(
     (segment) => {
@@ -835,7 +839,18 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 10, ml: audioName ? 1 : 0 }}>
           Frame {player.activeFrameIndex + 1} / {frames.length}
         </Typography>
+        <Tooltip title="Hjelp og snarveier">
+          <IconButton
+            size="small"
+            onClick={() => setHelpOpen(true)}
+            sx={{ color: 'rgba(255,255,255,0.5)', p: 0.25 }}
+            data-testid="animatic-help-open"
+          >
+            <HelpOutline sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
       </Stack>
+      <AnimaticHelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <AnimaticStageCanvas
         ref={canvasRef}
