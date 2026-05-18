@@ -578,10 +578,13 @@ export async function validateCreatorHubStoredSession(): Promise<CreatorHubSessi
       : null;
 
       if (!payload.authenticated || !normalizedServerUser) {
-      clearCreatorHubAuthSession({ dispatch: false });
-        const nextSnapshot = buildCreatorHubSessionSnapshot(null, null);
-        writeValidatedSessionCache(null, nextSnapshot);
-        return nextSnapshot;
+        // Slice 9X.60 — IKKE clear session aggressivt. Server kan returnere
+        // 200 + authenticated:false i et kort race-vindu rett etter Render-
+        // restart (in-memory wiped, DB-fallback ikke ferdig). Behold
+        // localStorage; neste validerings-runde vil få korrekt svar.
+        // Returner snapshot uten å skrive cache — så vi prøver igjen.
+        console.warn('[creatorhubGoogleAuth] validateCreatorHubStoredSession: server returnerte authenticated:false. Beholder stored session (race-fix).');
+        return buildCreatorHubSessionSnapshot(token, storedUser);
       }
 
       const mergedUser: CreatorHubAuthUser = {
