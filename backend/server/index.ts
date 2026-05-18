@@ -56274,6 +56274,8 @@ app.post("/api/academy/cohort-settings", async (req, res) => {
 // Get all invite requests (admin view)
 app.get("/api/invite-requests", async (req, res) => {
   try {
+    // Slice 9X.55 — Sikkerhetsfix: lister alle søkere med PII.
+    if (!requireInviteRequestApproverSession(req, res)) return;
     if (!(await hasTable("invite_requests"))) {
       return res.json([]);
     }
@@ -56321,6 +56323,8 @@ app.get("/api/invite-requests", async (req, res) => {
 // Get single invite request
 app.get("/api/invite-requests/:id", async (req, res) => {
   try {
+    // Slice 9X.55 — Sikkerhetsfix: detalj-oppslag med PII.
+    if (!requireInviteRequestApproverSession(req, res)) return;
     const result = await pool.query(
       "SELECT * FROM invite_requests WHERE id = $1",
       [req.params.id],
@@ -56338,6 +56342,8 @@ app.get("/api/invite-requests/:id", async (req, res) => {
 
 app.get("/api/invite-requests/:id/proff-analysis", async (req, res) => {
   try {
+    // Slice 9X.55 — Sikkerhetsfix: PROFF-screening inneholder kreditt-data.
+    if (!requireInviteRequestApproverSession(req, res)) return;
     const result = await pool.query(
       "SELECT * FROM invite_requests WHERE id = $1",
       [req.params.id],
@@ -56564,6 +56570,10 @@ app.post("/api/invite-requests/:id/process", async (req, res) => {
 // Also support the admin invite management endpoint pattern (InviteManagementDashboard format)
 app.get("/api/invites/admin/requests", async (req, res) => {
   try {
+    // Slice 9X.55 — Sikkerhetsfix: krev admin/instruktør-sesjon.
+    // Endepunktet returnerer PII (e-post, telefon, org-nr) + PROFF-screening
+    // for alle invitasjons-forespørsler, så det MÅ være beskyttet.
+    if (!requireInviteRequestApproverSession(req, res)) return;
     const result = await pool.query(
       "SELECT * FROM invite_requests ORDER BY created_at DESC",
     );
@@ -56594,11 +56604,15 @@ app.get("/api/invites/admin/requests", async (req, res) => {
 
 app.put("/api/invites/admin/requests/:inviteId/status", async (req, res) => {
   try {
+    // Slice 9X.55 — Sikkerhetsfix: kritisk endepunkt — uten auth kunne
+    // hvem som helst godkjenne søknader, trigge NDA-e-post via auto-broen,
+    // og dermed gi tester-tilgang til Creatorhubn.
+    if (!requireInviteRequestApproverSession(req, res)) return;
     const { inviteId } = req.params;
     const { status, adminNotes } = req.body;
 
     const result = await pool.query(
-      `UPDATE invite_requests 
+      `UPDATE invite_requests
        SET status = $1, admin_notes = $2, processed_at = NOW(), updated_at = NOW()
        WHERE id = $3
        RETURNING *`,
@@ -56655,6 +56669,9 @@ app.post(
   "/api/invites/admin/requests/:inviteId/send-invite",
   async (req, res) => {
     try {
+      // Slice 9X.55 — Sikkerhetsfix: send-invite trigger e-post utgående
+      // til søkere på vegne av oss; må være beskyttet.
+      if (!requireInviteRequestApproverSession(req, res)) return;
       const { inviteId } = req.params;
       const result = await pool.query(
         `UPDATE invite_requests SET invite_sent_at = NOW(), invite_sent_count = COALESCE(invite_sent_count, 0) + 1, updated_at = NOW() WHERE id = $1 RETURNING *`,
@@ -61105,6 +61122,8 @@ app.post("/api/admin-provisioning/create-user", async (req, res) => {
 // GET /api/invite-requests — list invite requests (optionally filter by source)
 app.get("/api/invite-requests", async (req, res) => {
   try {
+    // Slice 9X.55 — Sikkerhetsfix: duplikat-rute med samme PII-lekkasje.
+    if (!requireInviteRequestApproverSession(req, res)) return;
     const source =
       typeof req.query.source === "string" ? req.query.source : null;
     const status =
@@ -89771,7 +89790,10 @@ setupWeddingAssistantCollabRoutes({ app, pool, getPricingUserId });
 setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
-setupAdminNotificationsRoutes({ app, pool, getPricingUserId });
+// Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
+// faktisk er beskyttet. User-endepunktene (inbox/seen/act) trenger ikke
+// admin og hopper sjekken inne i route-filen.
+setupAdminNotificationsRoutes({ app, pool, getPricingUserId, requireAdminSession });
 
 // Slice 9X.49 — Brief-notater + AI-sammendrag.
 setupWeddingAssistantBriefNotesRoutes({ app, pool, getPricingUserId });
