@@ -41,12 +41,12 @@ export type { CreativeSuggestionsPanelProps } from './CreativeSuggestionsPanel';
 export {
   getNeighborWindow,
   getNavigationFlags,
-} from './continuityStrip';
+} from './continuityStripHelpers';
 export type {
   StripFrame,
   ContinuityWindow,
   ContinuityNavigationFlags,
-} from './continuityStrip';
+} from './continuityStripHelpers';
 export { ContinuityStrip } from './ContinuityStrip';
 export type {
   ContinuityStripProps,

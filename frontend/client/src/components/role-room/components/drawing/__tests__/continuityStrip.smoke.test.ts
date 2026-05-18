@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, it } from 'vitest';
-import { getNeighborWindow, getNavigationFlags } from '../continuityStrip';
+import { getNeighborWindow, getNavigationFlags } from '../continuityStripHelpers';
 
 describe('Sprint A.7 — continuityStrip.getNeighborWindow', () => {
   const frames = [

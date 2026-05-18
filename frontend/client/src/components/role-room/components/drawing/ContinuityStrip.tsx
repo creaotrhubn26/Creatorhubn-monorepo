@@ -10,7 +10,7 @@
 import React from 'react';
 import { Box, Stack, Typography, Tooltip } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
-import { getNeighborWindow, getNavigationFlags } from './continuityStrip';
+import { getNeighborWindow, getNavigationFlags } from './continuityStripHelpers';
 
 export interface ContinuityStripFrame {
   id: string;
