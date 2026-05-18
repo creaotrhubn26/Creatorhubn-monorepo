@@ -34,6 +34,7 @@ import {
   Close as CloseIcon,
   People as PeopleIcon,
   CheckCircle as CheckCircleIcon,
+  Science as ScienceIcon,
 } from '@mui/icons-material';
 import { apiRequest } from "@/lib/queryClient";
 // import { debounce } from "lodash"; // Removed to avoid type errors
@@ -147,6 +148,11 @@ export function InviteRequestForm({
     website: "",
     message: "",
   });
+
+  // Slice 9X.55 — Når profession='prototype_tester' spør vi i tillegg om
+  // hvilken faktisk profesjon søkeren har, slik at vi får kartlegging på
+  // tvers av tester-pool-en (fotograf, videograf, osv).
+  const [testerProfession, setTesterProfession] = useState<string>('');
 
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
@@ -278,12 +284,24 @@ export function InviteRequestForm({
         selectedPlan: selectedPlan?.name
       });
 
-      // Close the modal after a short delay to show success message
+      // Slice 9X.55 — Prototype-testere skal IKKE redirectes til Stripe-flyt;
+      // de venter på admin-godkjenning og får NDA-lenke på e-post.
+      const isPrototypeTester =
+        selectedPlan?.id === 'prototype_tester' ||
+        (selectedPlan as any)?.tier === 'prototype_tester' ||
+        formData.profession === 'prototype_tester' ||
+        source === 'prototype_tester_pricing';
+
+      // Lukk modalen etter en kort delay som viser suksess-melding
       setTimeout(() => {
         onClose();
         setSubmitSuccess(false); // Reset for next use
-        
-        // Redirect to subscription selection
+
+        if (isPrototypeTester) {
+          // Bli på landingen; suksess-skjermen har allerede gitt beskjed.
+          return;
+        }
+        // Vanlig flyt: redirect til subscription-selection
         window.location.href = `/subscription-selection?profession=${formData.profession}&requestId=${response?.requestId || response?.id}`;
       }, 3000);
     },
@@ -414,9 +432,16 @@ export function InviteRequestForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Slice 9X.55 — Prepend tester-profesjon til message-feltet så admin
+    // ser hvilken faktisk profesjon søkeren har. Lagres uten ny DB-kolonne.
+    const messageWithMeta = formData.profession === 'prototype_tester' && testerProfession
+      ? `[Tester-profesjon: ${professionLabels[testerProfession as keyof typeof professionLabels] || testerProfession}]\n\n${formData.message || ''}`
+      : formData.message;
+
     // Include selected subscription plan in submission
     const submissionData = {
       ...formData,
+      message: messageWithMeta,
       selectedPlan: selectedPlan?.id || null,
       planName: selectedPlan?.name || null,
       planPrice: selectedPlan?.price || null,
@@ -490,6 +515,13 @@ export function InviteRequestForm({
     prototype_tester: getProfessionLabel('prototype_tester'),
   };
 
+  // Slice 9X.55 — Design-løft: match landing-siden (mørk gradient, #ffba6c
+  // accent, Space Grotesk, pill-knapper). Spesialvariant hvis prototype-tester.
+  const isPrototypeTesterFlow =
+    selectedPlan?.id === 'prototype_tester' ||
+    (selectedPlan as any)?.tier === 'prototype_tester' ||
+    source === 'prototype_tester_pricing';
+
   return (
     <Dialog
       open={isOpen}
@@ -498,48 +530,103 @@ export function InviteRequestForm({
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: "16px",
-          maxHeight: "90vh",
+          borderRadius: "24px",
+          maxHeight: "92vh",
+          background:
+            'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+          color: '#fff5e8',
+          border: '1px solid rgba(255,186,108,0.18)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
+          // Lyse felter beholder MUI-default; vi overstyrer kun container-stil
+          '& .MuiInputLabel-root': { color: 'rgba(246,242,234,0.72)' },
+          '& .MuiInputLabel-root.Mui-focused': { color: '#ffba6c' },
+          '& .MuiOutlinedInput-root': {
+            color: '#fff5e8',
+            '& fieldset': { borderColor: 'rgba(255,255,255,0.18)' },
+            '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.4)' },
+            '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+          },
+          '& .MuiSelect-icon': { color: 'rgba(246,242,234,0.72)' },
+          '& .MuiStepLabel-label': { color: 'rgba(246,242,234,0.72)' },
+          '& .MuiStepLabel-label.Mui-active': { color: '#ffba6c', fontWeight: 600 },
+          '& .MuiStepLabel-label.Mui-completed': { color: '#fff5e8' },
+          '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.18)' },
+          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#ffba6c' },
+          '& .MuiTypography-root': { color: 'inherit' },
+          '& .MuiDivider-root': { borderColor: 'rgba(255,255,255,0.08)' },
       }}}
     >
       <DialogTitle
         sx={{
-          pb: 1,
-          background: "linear-gradient(135deg, #FF8A00 0%, #E52E71 100%)",
-          color: "white",
-          position: "relative",
-          textAlign: "center"}}
+          pb: 2,
+          background:
+            'linear-gradient(135deg, rgba(255,186,108,0.18) 0%, rgba(255,186,108,0.04) 100%)',
+          color: '#fff5e8',
+          position: 'relative',
+          textAlign: 'center',
+          borderBottom: '1px solid rgba(255,186,108,0.18)',
+        }}
       >
         <Box
           sx={{
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 0.5,
-            py: 1}}
+            gap: 1,
+            py: 1.5,
+          }}
         >
           <Box
             component="img"
             src="/creatorhub-wordmark-light.png"
             alt="CreatorHub Norge"
-            sx={{
-              width: 80,
-              height: 30,
-              filter: "brightness(0) invert(1)", // Make logo white
-              opacity: 0.15}}
+            sx={{ width: 110, height: 'auto', opacity: 0.95 }}
           />
-          <Typography variant="h5" component="div" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
-            Be om tilgang til CreatorHub Norge
+          {isPrototypeTesterFlow && (
+            <Typography
+              sx={{
+                fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                fontSize: '0.72rem',
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                color: '#ffba6c',
+                mt: 0.5,
+              }}
+            >
+              Plass-begrenset · Prototype-tester
+            </Typography>
+          )}
+          <Typography
+            variant="h5"
+            component="div"
+            sx={{
+              fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: '#fff5e8',
+            }}
+          >
+            {isPrototypeTesterFlow
+              ? 'Søk om plass i prototype-tester-programmet'
+              : 'Be om tilgang til CreatorHub Norge'}
           </Typography>
+          {isPrototypeTesterFlow && (
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(246,242,234,0.72)', maxWidth: 480, lineHeight: 1.6 }}
+            >
+              CreatorHub-teamet gjennomgår alle søknader personlig. Du får svar på e-post innen 1–3 virkedager.
+            </Typography>
+          )}
         </Box>
         <IconButton
           onClick={onClose}
           sx={{
-            position: "absolute",
-            right: 8,
-            top: 8,
-            color: "white",
-            "&:hover": { backgroundColor: "rgba(255,255,255,0.12)" }
+            position: 'absolute',
+            right: 12,
+            top: 12,
+            color: 'rgba(246,242,234,0.72)',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)', color: '#fff5e8' },
           }}
         >
           <CloseIcon />
@@ -643,16 +730,36 @@ export function InviteRequestForm({
                   </FormControl>
 
                   {formData.profession === "prototype_tester" && (
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                        🧪 Prototype Tester Program
-                      </Typography>
-                      <Typography variant="body2">
-                        Som prototype tester får du tidlig tilgang til nye
-                        funksjoner og verktøy. Du vil være med på å forme fremtiden
-                        til CreatorHub Norge!
-                      </Typography>
-                    </Alert>
+                    <>
+                      <Alert severity="info" icon={<ScienceIcon fontSize="small" />} sx={{ mt: 2 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                          Prototype Tester Program
+                        </Typography>
+                        <Typography variant="body2">
+                          Som prototype tester får du tidlig tilgang til nye
+                          funksjoner og verktøy. Du vil være med på å forme fremtiden
+                          til CreatorHub Norge.
+                        </Typography>
+                      </Alert>
+
+                      <FormControl fullWidth required sx={{ mt: 2 }}>
+                        <InputLabel>Din faktiske profesjon</InputLabel>
+                        <Select
+                          value={testerProfession}
+                          onChange={(e) => setTesterProfession(e.target.value)}
+                          label="Din faktiske profesjon"
+                        >
+                          {Object.entries(professionLabels)
+                            .filter(([key]) => key !== 'prototype_tester')
+                            .map(([key, label]) => (
+                              <MenuItem key={key} value={key}>{label}</MenuItem>
+                            ))}
+                        </Select>
+                        <Typography variant="caption" sx={{ mt: 0.5, color: 'rgba(246,242,234,0.6)' }}>
+                          Hjelper oss å fordele testere riktig på tvers av plattformens funksjoner.
+                        </Typography>
+                      </FormControl>
+                    </>
                   )}
                 </Box>
               )}
@@ -1015,16 +1122,47 @@ export function InviteRequestForm({
       </DialogContent>
 
       {!submitSuccess && (
-        <DialogActions sx={{ p: 3, pt: 1, justifyContent: 'space-between' }}>
+        <DialogActions
+          sx={{
+            p: 3,
+            pt: 2,
+            justifyContent: 'space-between',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(255,255,255,0.02)',
+          }}
+        >
           <Box>
             {activeStep > 0 && (
-              <Button onClick={handleBack} variant="outlined" sx={{ mr: 1 }}>
+              <Button
+                onClick={handleBack}
+                variant="outlined"
+                sx={{
+                  mr: 1,
+                  borderRadius: '999px',
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 2.5,
+                  color: '#fff5e8',
+                  borderColor: 'rgba(255,255,255,0.18)',
+                  '&:hover': { borderColor: '#fff5e8', bgcolor: 'rgba(255,255,255,0.04)' },
+                }}
+              >
                 Tilbake
               </Button>
             )}
           </Box>
           <Box>
-            <Button onClick={onClose} variant="text" sx={{ mr: 1 }}>
+            <Button
+              onClick={onClose}
+              variant="text"
+              sx={{
+                mr: 1,
+                color: 'rgba(246,242,234,0.6)',
+                textTransform: 'none',
+                fontWeight: 500,
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff5e8' },
+              }}
+            >
               Avbryt
             </Button>
             {activeStep < steps.length - 1 ? (
@@ -1033,9 +1171,16 @@ export function InviteRequestForm({
                 onClick={handleNext}
                 disabled={!isStepValid(activeStep)}
                 sx={{
-                  background: isEnterprisePlan ? 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)' : 'linear-gradient(135deg, #FF8A00 0%, #E52E71 100%)','&:hover': {
-                    background: isEnterprisePlan ? 'linear-gradient(135deg, #7b1fa2 0%, #6a1b9a 100%)' : 'linear-gradient(135deg, #E67A00 0%, #C82461 100%)',
-                  }}}
+                  borderRadius: '999px',
+                  px: 3,
+                  py: 1.1,
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  bgcolor: '#ffba6c',
+                  color: '#150d05',
+                  '&:hover': { bgcolor: '#ffc788' },
+                  '&.Mui-disabled': { bgcolor: 'rgba(255,186,108,0.3)', color: 'rgba(21,13,5,0.5)' },
+                }}
               >
                 Neste
               </Button>
@@ -1046,17 +1191,24 @@ export function InviteRequestForm({
                 variant="contained"
                 disabled={submitMutation.isPending}
                 sx={{
-                  background: isEnterprisePlan ? 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)' : 'linear-gradient(135deg, #FF8A00 0%, #E52E71 100%)', '&:hover': {
-                    background: isEnterprisePlan ? 'linear-gradient(135deg, #7b1fa2 0%, #6a1b9a 100%)' : 'linear-gradient(135deg, #E67A00 0%, #C82461 100%)',
-                  }}}
+                  borderRadius: '999px',
+                  px: 3,
+                  py: 1.1,
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  bgcolor: '#ffba6c',
+                  color: '#150d05',
+                  '&:hover': { bgcolor: '#ffc788' },
+                  '&.Mui-disabled': { bgcolor: 'rgba(255,186,108,0.3)', color: 'rgba(21,13,5,0.5)' },
+                }}
               >
                 {submitMutation.isPending ? (
                   <>
-                    <CircularProgress size={20} sx={{ mr: 1, color: 'white' }} />
-                    Sender...
+                    <CircularProgress size={18} sx={{ mr: 1, color: '#150d05' }} />
+                    Sender…
                   </>
                 ) : (
-                 'Send forespørsel'
+                  isPrototypeTesterFlow ? 'Send søknad' : 'Send forespørsel'
                 )}
               </Button>
             )}

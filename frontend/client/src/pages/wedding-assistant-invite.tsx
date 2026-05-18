@@ -44,6 +44,7 @@ import {
   AttachMoney as MoneyIcon,
   Gavel as ContractIcon,
   PrivacyTip as GdprIcon,
+  AutoAwesome as SparkleIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { trackEvent } from '@/utils/ga4-client-tracking';
@@ -189,7 +190,7 @@ const WeddingAssistantInvite: React.FC = () => {
       <Container maxWidth="sm" sx={{ py: 4 }}>
         <Card>
           <CardContent>
-            <Typography variant="h5" gutterBottom>Takk! 🎉</Typography>
+            <Typography variant="h5" gutterBottom>Takk!</Typography>
             <Typography variant="body1" sx={{ mb: 2 }}>
               Du har akseptert oppdraget for <b>{invite.coupleName}</b> ({new Date(invite.weddingDate).toLocaleDateString('nb-NO')}).
             </Typography>
@@ -204,9 +205,12 @@ const WeddingAssistantInvite: React.FC = () => {
 
             {invite.referralInviteSent && (
               <Paper variant="outlined" sx={{ p: 2, mt: 3, bgcolor: 'primary.light', borderColor: 'primary.main' }}>
-                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                  ✨ {invite.primaryPhotographer} bruker Creatorhubn
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
+                  <SparkleIcon fontSize="small" color="primary" />
+                  <Typography variant="subtitle2">
+                    {invite.primaryPhotographer} bruker Creatorhubn
+                  </Typography>
+                </Stack>
                 <Typography variant="body2" sx={{ mb: 1.5 }}>
                   Verktøyet som ga deg denne sub-kontrakten, AI-brief og delt Drive-mappe — det kan du selv bruke
                   på dine bryllup. Prøv gratis i 30 dager, ingen kort.

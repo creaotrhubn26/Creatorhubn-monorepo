@@ -136,7 +136,7 @@ const TesterStatusBanner: React.FC = () => {
                 color={status.isOnTrack ? 'success' : 'warning'}
               />
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {status.isOnTrack ? 'Du er på rute 👍' : `Logg ${(status.expectedFeedbacks ?? 0) - (status.feedbackCount ?? 0)} til for å være ajour`}
+                {status.isOnTrack ? 'Du er på rute' : `Logg ${(status.expectedFeedbacks ?? 0) - (status.feedbackCount ?? 0)} til for å være ajour`}
               </Typography>
             </Stack>
             <Button size="small" variant="outlined" startIcon={<FeedbackIcon />} onClick={handleOpenFeedback}>
@@ -155,7 +155,7 @@ const TesterStatusBanner: React.FC = () => {
       <Dialog open={showWelcome} onClose={() => setShowWelcome(false)} fullWidth maxWidth="sm">
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <TesterIcon color="primary" />
-          Velkommen som prototype-tester! 🎉
+          Velkommen som prototype-tester
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>

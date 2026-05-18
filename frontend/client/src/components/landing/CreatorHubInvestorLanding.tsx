@@ -1981,8 +1981,8 @@ export default function CreatorHubInvestorLanding({
                   </Typography>
                   <Typography sx={{ color: 'rgba(246,242,234,0.7)', lineHeight: 1.6, fontSize: '0.92rem' }}>
                     {locale === 'no'
-                      ? 'Send en søknad så gjennomgår Daniel den personlig. Du får tilgang før offentlig lansering og kan forme verktøyet i ekte jobb.'
-                      : 'Submit an application and Daniel reviews each one personally. Get access before public launch and help shape the product in real work.'}
+                      ? 'Send en søknad så gjennomgår CreatorHub den personlig. Du får tilgang før offentlig lansering og kan forme verktøyet i ekte jobb.'
+                      : 'Submit an application and CreatorHub reviews each one personally. Get access before public launch and help shape the product in real work.'}
                   </Typography>
                 </Stack>
                 <Button
@@ -2286,7 +2286,7 @@ export default function CreatorHubInvestorLanding({
         <InviteRequestForm
           isOpen={prototypeTesterFormOpen}
           onClose={() => setPrototypeTesterFormOpen(false)}
-          selectedRole="photographer"
+          selectedRole="prototype_tester"
           selectedPlan={{
             id: 'prototype_tester',
             name: 'Prototype Tester',

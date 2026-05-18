@@ -92,7 +92,7 @@ function getMailer(): nodemailer.Transporter | null {
 function buildInviteEmailHtml(name: string, inviteUrl: string, personalMessage: string | null): string {
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
-      <h2 style="margin:0 0 16px;">Hei ${escapeHtml(name)} 👋</h2>
+      <h2 style="margin:0 0 16px;">Hei ${escapeHtml(name)},</h2>
       <p style="font-size:15px;line-height:1.6;">
         Søknaden din om å bli prototype-tester i Creatorhubn er <b>godkjent</b>!
       </p>
@@ -212,7 +212,7 @@ export async function createInviteFromApprovedRequest(
       mailer.sendMail({
         from: `"Creatorhubn" <${mailUser}>`,
         to: email,
-        subject: "Du er godkjent som prototype-tester i Creatorhubn 🎉",
+        subject: "Du er godkjent som prototype-tester i Creatorhubn",
         html: buildInviteEmailHtml(name, inviteUrl, null),
       }).catch((err) => console.error("[prototype-tester-invite] mail failed:", err?.message || err));
     } else {
@@ -280,7 +280,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         mailer.sendMail({
           from: `"Creatorhubn" <${mailUser}>`,
           to: email,
-          subject: "Du er invitert som prototype-tester i Creatorhubn 🎉",
+          subject: "Du er invitert som prototype-tester i Creatorhubn",
           html: buildInviteEmailHtml(name, inviteUrl, personalMessage),
         }).catch((err) => console.error("[prototype-tester-invite] mail failed:", err?.message || err));
       }

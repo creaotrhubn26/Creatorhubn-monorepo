@@ -141,7 +141,7 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
         <Card>
           <CardContent sx={{ textAlign: 'center', py: 6 }}>
             <CheckIcon sx={{ fontSize: 72, color: 'success.main' }} />
-            <Typography variant="h5" sx={{ mt: 2 }}>Velkommen som tester! 🎉</Typography>
+            <Typography variant="h5" sx={{ mt: 2 }}>Velkommen som tester!</Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
               Du redirectes til dashbordet om noen sekunder…
             </Typography>
@@ -163,13 +163,13 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
             </Stack>
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Hei {invite.name}! Daniel har godkjent søknaden din. Før du får tilgang må du
+            Hei {invite.name}! CreatorHub har godkjent søknaden din. Før du får tilgang må du
             gå gjennom forpliktelses-vilkårene og signere NDA-en.
           </Typography>
 
           {invite.personalMessage && (
             <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: 'action.hover' }}>
-              <Typography variant="caption" color="text.secondary">Personlig melding fra Daniel:</Typography>
+              <Typography variant="caption" color="text.secondary">Personlig melding fra CreatorHub:</Typography>
               <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic' }}>"{invite.personalMessage}"</Typography>
             </Paper>
           )}

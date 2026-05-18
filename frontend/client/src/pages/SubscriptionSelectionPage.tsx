@@ -83,6 +83,16 @@ export default function SubscriptionSelectionPage() {
   const requestedProfession = urlParams.get('profession') || 'creatorhub';
   const profession = requestedProfession || 'creatorhub';
   const initialPlanId = urlParams.get('plan');
+
+  // Slice 9X.55 — Prototype-testere skal aldri se Stripe-checkout.
+  // Hvis noen lander her med plan=prototype_tester, send dem tilbake til
+  // forsiden — den ekte flyten er InviteRequestForm + admin-godkjenning.
+  useEffect(() => {
+    if (initialPlanId === 'prototype_tester' || requestedProfession === 'prototype_tester') {
+      navigate('/?prototype_tester_pending=1');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const initialBillingCycle = urlParams.get('billing') === 'yearly' ? 'yearly' : 'monthly';
   const requestId = urlParams.get('requestId');
   const fromInvite = urlParams.get('fromInvite') === 'true';
