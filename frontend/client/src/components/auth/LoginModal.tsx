@@ -23,7 +23,7 @@ import {
   Close,
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
-import { startCreatorHubGoogleLogin } from '@/lib/creatorhubGoogleAuth';
+import { startCreatorHubGoogleLogin, consumeCreatorHubGoogleLoginError } from '@/lib/creatorhubGoogleAuth';
 import { useAuth } from '@/hooks/useAuth';
 
 interface LoginModalProps {
@@ -97,7 +97,13 @@ export function LoginModal({
       return;
     }
 
-    setError(initialError);
+    // Slice 9X.59 — Rydd opp i evt. stale Google-OAuth-feil fra forrige
+    // forsøk slik at modalen ikke viser gammel "redirect_uri_mismatch"
+    // etter at problemet er fikset i Google Cloud Console. Consume
+    // tømmer sessionStorage som side-effekt.
+    const staleGoogleError = consumeCreatorHubGoogleLoginError();
+
+    setError(initialError ?? staleGoogleError ?? null);
     setLoginType(initialLoginType);
   }, [initialError, initialLoginType, open]);
 
@@ -109,6 +115,10 @@ export function LoginModal({
 
     setIsLoading(true);
     setError(null);
+    // Rydd evt. stale Google-error fra sessionStorage før nytt forsøk,
+    // slik at hvis dette nye forsøket lykkes, kan ingen gammel feil dukke
+    // opp på nytt etter redirect tilbake.
+    consumeCreatorHubGoogleLoginError();
 
     try {
       console.log(`🔐 Attempting Google login with type: ${loginType}...`);
