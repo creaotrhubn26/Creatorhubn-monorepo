@@ -2796,6 +2796,29 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     );
   }
   if (!isAuthenticated || !userId) {
+    // Slice 9X.60 — Race-condition-fix: useAuth.checkAuthStatus kan motta
+    // 200 + authenticated:false i et kort vindu rett etter Google-login
+    // (in-memory session-cache wiped ved Render-restart, DB-fallback enda
+    // ikke kjørt). Hvis localStorage fortsatt har en token, IKKE redirect
+    // til /login (det skaper en bounce). Vis spinner — useAuth re-prøver,
+    // og enten kommer state tilbake til authenticated:true eller bruker
+    // logger ut eksplisitt.
+    let hasStoredToken = false;
+    try {
+      hasStoredToken =
+        typeof window !== 'undefined' &&
+        !!window.localStorage.getItem('creatorhub_auth_token');
+    } catch { /* ignore */ }
+
+    if (hasStoredToken) {
+      console.warn('[UniversalDashboard] Auth race-window: token finnes i localStorage men isAuthenticated/userId mangler. Viser spinner i stedet for å bounce til /login.');
+      return (
+        <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
     if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
       window.location.href = '/login';
     }

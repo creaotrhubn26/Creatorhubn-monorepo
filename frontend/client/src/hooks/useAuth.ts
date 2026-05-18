@@ -239,6 +239,12 @@ export function useAuth() {
     }
 
     if (storedToken) {
+      // Slice 9X.60 — KUN clear stored session ved harde auth-feil (401/403).
+      // Et 200 + { authenticated: false } kan komme i kort race-vindu etter
+      // login (in-memory cache wiped på Render-restart, DB-fallback enda
+      // ikke kjørt). Hvis vi clearer her, bouncer brukeren tilbake til
+      // /login selv om token egentlig er gyldig. Holder stored session
+      // og lar syncFromStorage fallback ta over hvis nødvendig.
       let shouldClearStoredSession = false;
       try {
         const resp = await fetch(authUrl('/api/auth/user'), {
@@ -256,8 +262,11 @@ export function useAuth() {
             });
             return;
           }
-          shouldClearStoredSession = true;
+          // 200 + authenticated:false → IKKE clear. Vi behandler det som
+          // en race; faller tilbake til storedUser nedenfor hvis tilstede.
+          console.warn('[useAuth] /api/auth/user returnerte authenticated:false med 200 OK. Beholder stored session som fallback.');
         } else if (resp.status === 401 || resp.status === 403) {
+          // Hard auth-feil: token er ugyldig — clear.
           shouldClearStoredSession = true;
         }
       } catch {
