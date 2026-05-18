@@ -94,6 +94,7 @@ import FeatureCustomizationPanel from './FeatureCustomizationPanel';
 import UserManagementPanel from './UserManagementPanel';
 import InviteManagementDashboard from './InviteManagementDashboard';
 import AdminNotificationManager from './AdminNotificationManager';
+import AdminConfigStatusCard from './AdminConfigStatusCard';
 import BillingManagementPanel from './BillingManagementPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
@@ -1729,7 +1730,14 @@ export default function AdminDashboard({
       case 'brukere-roller':
         return <UserManagementPanel {...sharedPanelProps} />;
       case 'invite-requests':
-        return <InviteManagementDashboard />;
+        return (
+          <>
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 2 }}>
+              <AdminConfigStatusCard />
+            </Box>
+            <InviteManagementDashboard />
+          </>
+        );
       case 'send-notifications':
         return <AdminNotificationManager />;
       case 'community':

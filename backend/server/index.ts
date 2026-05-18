@@ -481,6 +481,7 @@ import {
   runOfferCreationSweep,
   handleTesterEnterpriseOfferWebhook,
 } from "./tester-enterprise-offer-routes";
+import { setupAdminConfigCheckRoutes } from "./admin-config-check-routes";
 import { setupWeddingAssistantBriefNotesRoutes } from "./wedding-assistant-brief-notes";
 import { setupWeddingAssistantGdprRoutes } from "./wedding-assistant-gdpr-routes";
 import {
@@ -89843,6 +89844,9 @@ setInterval(() => {
     }
   });
 }, 60 * 60 * 1000); // hver time
+
+// Slice 9X.58 — Admin config-check (Stripe + Gmail + schema-tilstand)
+setupAdminConfigCheckRoutes({ app, pool, requireAdminSession });
 
 // Slice 9X.49 — Brief-notater + AI-sammendrag.
 setupWeddingAssistantBriefNotesRoutes({ app, pool, getPricingUserId });
