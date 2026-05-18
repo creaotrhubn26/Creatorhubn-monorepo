@@ -467,6 +467,17 @@ import { setupWeddingExpensesRoutes } from "./wedding-expenses-routes";
 import { setupWeddingInvoiceRoutes } from "./wedding-invoice-routes";
 import { setupWeddingGalleryDeliveryRoutes } from "./wedding-gallery-delivery-routes";
 import { setupWebPushRoutes, sendPushToUser } from "./web-push-routes";
+import { setupWeddingAssistantsRoutes } from "./wedding-assistants-routes";
+import { setupWeddingAssistantDriveRoutes, pollAllAssistantFolders } from "./wedding-assistant-drive-routes";
+import { setupWeddingAssistantSubcontractRoutes, persistSubcontractSnapshot } from "./wedding-assistant-subcontract";
+import { setupWeddingAssistantCollabRoutes } from "./wedding-assistant-collab-routes";
+import {
+  setupPrototypeTesterInvitesRoutes,
+  createInviteFromApprovedRequest,
+} from "./prototype-tester-invites-routes";
+import { setupAdminNotificationsRoutes } from "./admin-notifications-routes";
+import { setupWeddingAssistantBriefNotesRoutes } from "./wedding-assistant-brief-notes";
+import { setupWeddingAssistantGdprRoutes } from "./wedding-assistant-gdpr-routes";
 import {
   createScopedAuthMiddleware,
   parseAuthMode,
@@ -56598,10 +56609,40 @@ app.put("/api/invites/admin/requests/:inviteId/status", async (req, res) => {
       return res.status(404).json({ error: "Invite request not found" });
     }
 
+    // Slice 9X.53 — Auto-bro: når en prototype-tester-søknad godkjennes,
+    // opprett tester-invitasjonen automatisk og send NDA + program-vilkår-e-post.
+    const row = result.rows[0];
+    let testerInvite: any = null;
+    const isPrototypeTester =
+      status === "approved" &&
+      (row.selected_plan === "prototype_tester" ||
+       row.plan_name === "Prototype Tester" ||
+       row.source === "prototype_tester_pricing");
+    if (isPrototypeTester) {
+      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const fullName = [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email;
+      // Hybrid C-modell: admin kan sende med grantedPlan + grantedFeatures
+      // i samme PUT-request. Hvis ikke sendt, brukes Tester All-Access.
+      const grantedPlan = typeof req.body?.grantedPlan === "string" ? req.body.grantedPlan : "tester_all_access";
+      const grantedFeatures = Array.isArray(req.body?.grantedFeatures) ? req.body.grantedFeatures : [];
+      testerInvite = await createInviteFromApprovedRequest(
+        pool,
+        String(row.id),
+        row.email,
+        fullName,
+        null,
+        [],
+        baseUrl,
+        grantedPlan,
+        grantedFeatures,
+      );
+    }
+
     const screening = await getInviteRequestProffScreening(String(inviteId));
     res.json({
       success: true,
       request: mapInviteRow(result.rows[0], screening),
+      testerInvite: testerInvite || null,
     });
   } catch (error) {
     console.error("Error updating invite status:", error);
@@ -89713,6 +89754,38 @@ setupWeddingGalleryDeliveryRoutes({ app, pool, getPricingUserId });
 
 // Slice 9X.43 — Web Push (VAPID) for PWA-varsler.
 setupWebPushRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.44 — Assistent-fotografer + profit-split.
+setupWeddingAssistantsRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.45 — Auto-delt Drive-mappe for assistent-leveranse + polling.
+setupWeddingAssistantDriveRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.46 — Sub-kontrakt mellom hovedfotograf og assistent.
+setupWeddingAssistantSubcontractRoutes({ app, pool });
+
+// Slice 9X.47 + 9X.48 — Rolodex over tidligere samarbeid + brief-Meet.
+setupWeddingAssistantCollabRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
+setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
+setupAdminNotificationsRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.49 — Brief-notater + AI-sammendrag.
+setupWeddingAssistantBriefNotesRoutes({ app, pool, getPricingUserId });
+
+// Slice 9X.50 — GDPR for assistent (samtykke + sletting + anonymisering).
+setupWeddingAssistantGdprRoutes({ app, pool, getPricingUserId, requireAdminSession });
+
+// Slice 9X.45 — Background-poller for assistent-Drive-mapper (hver 5 min).
+// Lett kall — bare for assistenter med drive_folder_id satt + accepted.
+setInterval(() => {
+  pollAllAssistantFolders(pool).catch((err) =>
+    console.warn("[assistant-drive] poll feilet:", err),
+  );
+}, 5 * 60 * 1000);
 
 // ============================================
 // Pricing Categories (DB: pricing_categories)

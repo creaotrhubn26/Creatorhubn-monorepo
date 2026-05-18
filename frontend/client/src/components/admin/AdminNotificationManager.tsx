@@ -57,7 +57,9 @@ interface NotificationFormData {
   message: string;
   type: 'info' | 'warning' | 'success' | 'error' | 'announcement';
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  targetAudience: 'all' | 'photographers' | 'videographers' | 'music_producers' | 'vendors';
+  targetAudience: 'all' | 'photographers' | 'videographers' | 'music_producers' | 'vendors' | 'prototype_testers';
+  actionType?: 'open_url' | 'extend_program' | 'acknowledge' | null;
+  actionPayload?: Record<string, any>;
   expiresAt?: Date | null;
   scheduledFor?: Date | null;
   actionButton?: string;

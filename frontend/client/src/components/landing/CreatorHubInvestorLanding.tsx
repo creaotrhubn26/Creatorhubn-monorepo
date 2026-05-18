@@ -28,6 +28,7 @@ import { motion } from 'framer-motion';
 import { useLocation } from 'wouter';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import LoginModal from '@/components/auth/LoginModal';
+const InviteRequestForm = React.lazy(() => import('@/components/InviteRequestForm'));
 import { GdprNotice } from '@/components/common/GdprNotice';
 import { useLanguage } from '@/components/language-provider';
 import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
@@ -535,6 +536,7 @@ export default function CreatorHubInvestorLanding({
 }: CreatorHubInvestorLandingProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [prototypeTesterFormOpen, setPrototypeTesterFormOpen] = useState(false);
   const [pricingBillingCycle, setPricingBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [publicPricingPlans, setPublicPricingPlans] = useState<CreatorHubPublicPricingPlan[] | null>(null);
   const [, setLocation] = useLocation();
@@ -1938,6 +1940,81 @@ export default function CreatorHubInvestorLanding({
                   </Stack>
                 </Box>
               </Box>
+
+              {/* Slice 9X.53 — Prototype-tester rad: lavmælt CTA for plass-begrenset gruppe */}
+              <Box
+                sx={{
+                  mt: 2,
+                  borderRadius: '20px',
+                  border: '1px dashed rgba(255,186,108,0.32)',
+                  background: 'rgba(255,186,108,0.04)',
+                  p: { xs: 2, md: 2.4 },
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) auto' },
+                  gap: { xs: 2, md: 3 },
+                  alignItems: 'center',
+                }}
+              >
+                <Stack spacing={0.6}>
+                  <Typography
+                    sx={{
+                      fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                      fontSize: '0.72rem',
+                      letterSpacing: '0.18em',
+                      textTransform: 'uppercase',
+                      color: 'rgba(255,186,108,0.82)',
+                    }}
+                  >
+                    {locale === 'no' ? 'Plass-begrenset' : 'Limited spots'}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                      fontSize: { xs: '1.15rem', md: '1.35rem' },
+                      fontWeight: 700,
+                      color: '#fbf5ee',
+                    }}
+                  >
+                    {locale === 'no'
+                      ? 'Prototype-tester — tidlig tilgang mot ærlig tilbakemelding'
+                      : 'Prototype tester — early access in exchange for honest feedback'}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(246,242,234,0.7)', lineHeight: 1.6, fontSize: '0.92rem' }}>
+                    {locale === 'no'
+                      ? 'Send en søknad så gjennomgår Daniel den personlig. Du får tilgang før offentlig lansering og kan forme verktøyet i ekte jobb.'
+                      : 'Submit an application and Daniel reviews each one personally. Get access before public launch and help shape the product in real work.'}
+                  </Typography>
+                </Stack>
+                <Button
+                  onClick={() => {
+                    setPrototypeTesterFormOpen(true);
+                    if (typeof window !== 'undefined' && (window as any).gtag) {
+                      (window as any).gtag('event', 'prototype_tester_cta_clicked', {
+                        source: 'landing_pricing_section',
+                      });
+                    }
+                  }}
+                  variant="outlined"
+                  endIcon={<ArrowForward />}
+                  sx={{
+                    alignSelf: { xs: 'flex-start', md: 'center' },
+                    borderRadius: '999px',
+                    py: 1.1,
+                    px: 2.4,
+                    fontWeight: 700,
+                    textTransform: 'none',
+                    color: '#150d05',
+                    bgcolor: '#ffba6c',
+                    borderColor: '#ffba6c',
+                    '&:hover': {
+                      bgcolor: '#ffc788',
+                      borderColor: '#ffc788',
+                    },
+                  }}
+                >
+                  {locale === 'no' ? 'Søk om plass' : 'Apply for a spot'}
+                </Button>
+              </Box>
             </Box>
           </MotionDiv>
         </Container>
@@ -2205,6 +2282,19 @@ export default function CreatorHubInvestorLanding({
           context="general"
           initialLoginType="general"
           redirectTo="/dashboard"
+        />
+        <InviteRequestForm
+          isOpen={prototypeTesterFormOpen}
+          onClose={() => setPrototypeTesterFormOpen(false)}
+          selectedRole="photographer"
+          selectedPlan={{
+            id: 'prototype_tester',
+            name: 'Prototype Tester',
+            tier: 'prototype_tester',
+            price: 0,
+            currency: 'NOK',
+          }}
+          source="prototype_tester_pricing"
         />
       </Suspense>
 

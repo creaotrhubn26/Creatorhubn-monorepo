@@ -95,6 +95,9 @@ import PriceAdministration from '@/pages/price-administration';
 import BusinessBrandingPage from '@/pages/BusinessBrandingPage';
 import AdminInviteSystem from '@/pages/admin-invite-system';
 import AcceptTesterInvite from '@/pages/AcceptTesterInvite';
+import AcceptPrototypeTesterInvite from '@/pages/AcceptPrototypeTesterInvite';
+import TesterStatusBanner from '@/components/tester/TesterStatusBanner';
+import UserNotificationModal from '@/components/notifications/UserNotificationModal';
 // import CompanyProfilesPage from '@/pages/company-profiles'; // File doesn't exist
 // import LogoIntegrationDemo from '@/pages/logo-integration-demo'; // Removed
 // import LogoTestSimple from '@/pages/logo-test-simple'; // Removed
@@ -202,6 +205,8 @@ import WeddingClientFormPage from '@/pages/wedding-client-form';
 import PhotographerWeddingDay from '@/pages/photographer-wedding-day';
 import PhotographerWeddingWalkthrough from '@/pages/photographer-wedding-walkthrough';
 import PhotographerWeddingInvoice from '@/pages/photographer-wedding-invoice';
+import WeddingAssistantInvite from '@/pages/wedding-assistant-invite';
+import AssistantRolodexPage from '@/pages/AssistantRolodexPage';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
@@ -585,6 +590,8 @@ function App() {
                     pathname+search ved browser back/forward. Pure
                     side-effect — rendrer ingenting. */}
                 <ScrollRestoration />
+                <TesterStatusBanner />
+                <UserNotificationModal />
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
@@ -704,6 +711,8 @@ function App() {
                   <Route path="/photographer/wedding-day/:weddingId" component={PhotographerWeddingDay} />
                   <Route path="/photographer/wedding/:weddingId/pre" component={PhotographerWeddingWalkthrough} />
                   <Route path="/photographer/wedding/:weddingId/invoice" component={PhotographerWeddingInvoice} />
+                  <Route path="/wedding/assistant-invite/:token" component={WeddingAssistantInvite} />
+                  <Route path="/photographer/assistants" component={AssistantRolodexPage} />
                   <Route
                     path="/videographer-dashboard-material"
                     component={() => <SmartDashboardRoute profession="videographer" />}
@@ -842,6 +851,7 @@ function App() {
                   <Route path="/contracts/:contractId" component={ContractView} />
                   <Route path="/admin-invite-system" component={AdminInviteSystem as React.ComponentType<any>} />
                   <Route path="/role-room/accept-invite" component={AcceptTesterInvite} />
+                  <Route path="/prototype-tester/accept-invite" component={AcceptPrototypeTesterInvite} />
                   {/* <Route path="/company-profiles" component={CompanyProfilesPage} /> */}
                   {/* <Route path="/logo-integration-demo" component={LogoIntegrationDemo} /> */}
                   {/* <Route path="/logo-test-simple" component={LogoTestSimple} /> */}

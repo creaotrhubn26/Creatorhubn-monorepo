@@ -76,6 +76,7 @@ import {
   Event,
   Search,
   Psychology,
+  HowToReg,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
 import {
@@ -91,6 +92,8 @@ import AdminCommunicationPanel from './AdminCommunicationPanel';
 import FeatureManagement from './feature-management';
 import FeatureCustomizationPanel from './FeatureCustomizationPanel';
 import UserManagementPanel from './UserManagementPanel';
+import InviteManagementDashboard from './InviteManagementDashboard';
+import AdminNotificationManager from './AdminNotificationManager';
 import BillingManagementPanel from './BillingManagementPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
@@ -875,6 +878,8 @@ export default function AdminDashboard({
   const adminTabs = [
     { id: 'overblikk', label: 'Overblikk', icon: Dashboard },
     { id: 'brukere-roller', label: 'Brukere & Roller', icon: ManageAccounts },
+    { id: 'invite-requests', label: 'Tilgangsforespørsler', icon: HowToReg },
+    { id: 'send-notifications', label: 'Send varslinger', icon: Campaign },
     { id: 'community', label: 'Community', icon: Group },
     { id: 'innhold-assets', label: 'Innhold & Assets', icon: Folder },
     { id: 'kunder-prosjekter', label: 'Kunder/Prosjekter', icon: Group },
@@ -920,7 +925,7 @@ export default function AdminDashboard({
     {
       label: 'Oversikt',
       items: adminTabs.filter((tab) =>
-        ['overblikk', 'brukere-roller', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon'].includes(tab.id),
+        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon'].includes(tab.id),
       ),
     },
     {
@@ -947,6 +952,8 @@ export default function AdminDashboard({
   const adminTabDescriptions: Record<string, string> = {
     overblikk: 'Monitorer aktivitet, nøkkeltall og operativ helse i én arbeidsflate.',
     'brukere-roller': 'Administrer brukere, roller og tilgangsnivåer for hele plattformen.',
+    'invite-requests': 'Godkjenn eller avvis nye tilgangs-søknader (inkludert prototype-testere fra pricing-siden).',
+    'send-notifications': 'Send in-app varslinger til segmenterte brukergrupper (inkl. aktive prototype-testere).',
     community: 'Følg medlemsvekst, moderering og community-aktiviteter.',
     'innhold-assets': 'Hold kontroll på CreatorHub CMS, assets og publiseringsflyt.',
     'kunder-prosjekter': 'Se kunder, prosjekter og leveranser i samme operative oversikt.',
@@ -1721,6 +1728,10 @@ export default function AdminDashboard({
         return renderOverviewPanel();
       case 'brukere-roller':
         return <UserManagementPanel {...sharedPanelProps} />;
+      case 'invite-requests':
+        return <InviteManagementDashboard />;
+      case 'send-notifications':
+        return <AdminNotificationManager />;
       case 'community':
         return <CommunityManagementDashboard />;
       case 'innhold-assets':
