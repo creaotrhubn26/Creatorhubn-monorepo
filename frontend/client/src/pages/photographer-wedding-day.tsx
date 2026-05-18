@@ -22,6 +22,8 @@ import { enqueueOrFetch, onQueueChange, replayQueue } from '@/lib/offlineQueue';
 import MileagePanel from '@/components/photographer/MileagePanel';
 import ExpenseQuickCapture from '@/components/wedding/ExpenseQuickCapture';
 import GalleryDeliveryPanel from '@/components/wedding/GalleryDeliveryPanel';
+import AssistantsPanel from '@/components/wedding/AssistantsPanel';
+import AssistantNeedsNudge from '@/components/wedding/AssistantNeedsNudge';
 import { useWeddingWebSocket } from '@/hooks/useWeddingWebSocket';
 
 interface LiveEvent {
@@ -734,6 +736,12 @@ export default function PhotographerWeddingDay() {
         {/* Slice 9X.42 — Galleri-leveranse-status */}
         <Box sx={{ mt: 3 }}>
           <GalleryDeliveryPanel weddingId={weddingId} />
+        </Box>
+
+        {/* Slice 9X.44 + 9X.52 — Assistent-fotografer + nudge */}
+        <Box sx={{ mt: 3 }}>
+          <AssistantNeedsNudge weddingId={weddingId} />
+          <AssistantsPanel weddingId={weddingId} />
         </Box>
       </Box>
 

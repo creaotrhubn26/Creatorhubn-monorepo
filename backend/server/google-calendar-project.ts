@@ -56,7 +56,7 @@ function decryptToken(value: string | null | undefined): string | null {
   }
 }
 
-async function loadGoogleCredentials(pool: Pool, userId: string): Promise<{
+export async function loadGoogleCredentials(pool: Pool, userId: string): Promise<{
   oauthClient: InstanceType<typeof google.auth.OAuth2>;
   googleEmail: string | null;
 } | null> {
