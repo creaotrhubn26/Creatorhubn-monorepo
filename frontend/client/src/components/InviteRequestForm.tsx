@@ -153,6 +153,10 @@ export function InviteRequestForm({
   // hvilken faktisk profesjon søkeren har, slik at vi får kartlegging på
   // tvers av tester-pool-en (fotograf, videograf, osv).
   const [testerProfession, setTesterProfession] = useState<string>('');
+  // Slice 9X.56 — Søker kan be om team-test (1-5 personer). Master får
+  // tilgang etter godkjenning; inviterer resten selv fra dashboard.
+  const [isTeamApplication, setIsTeamApplication] = useState<boolean>(false);
+  const [teamSize, setTeamSize] = useState<number>(2);
 
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
@@ -432,10 +436,18 @@ export function InviteRequestForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Slice 9X.55 — Prepend tester-profesjon til message-feltet så admin
-    // ser hvilken faktisk profesjon søkeren har. Lagres uten ny DB-kolonne.
-    const messageWithMeta = formData.profession === 'prototype_tester' && testerProfession
-      ? `[Tester-profesjon: ${professionLabels[testerProfession as keyof typeof professionLabels] || testerProfession}]\n\n${formData.message || ''}`
+    // Slice 9X.55 + 9X.56 — Prepend strukturerte tags så admin/auto-broen
+    // får tak i tester-profesjon og evt. team-størrelse uten egne DB-kolonner.
+    const metaTags: string[] = [];
+    if (formData.profession === 'prototype_tester' && testerProfession) {
+      const label = professionLabels[testerProfession as keyof typeof professionLabels] || testerProfession;
+      metaTags.push(`[Tester-profesjon: ${label}]`);
+    }
+    if (formData.profession === 'prototype_tester' && isTeamApplication) {
+      metaTags.push(`[Team: ${teamSize} medlemmer]`);
+    }
+    const messageWithMeta = metaTags.length > 0
+      ? `${metaTags.join(' ')}\n\n${formData.message || ''}`
       : formData.message;
 
     // Include selected subscription plan in submission
@@ -759,6 +771,61 @@ export function InviteRequestForm({
                           Hjelper oss å fordele testere riktig på tvers av plattformens funksjoner.
                         </Typography>
                       </FormControl>
+
+                      {/* Slice 9X.56 — Team-valg */}
+                      <Box sx={{ mt: 2, p: 2, border: '1px dashed rgba(255,186,108,0.32)', borderRadius: '12px' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: '#ffba6c' }}>
+                          Er du alene eller del av et team?
+                        </Typography>
+                        <Box
+                          component="label"
+                          sx={{ display: 'flex', gap: 1.5, alignItems: 'center', cursor: 'pointer', py: 0.5 }}
+                        >
+                          <input
+                            type="radio"
+                            name="team-application"
+                            checked={!isTeamApplication}
+                            onChange={() => setIsTeamApplication(false)}
+                          />
+                          <Box>
+                            <Typography variant="body2">Bare meg</Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.6)' }}>
+                              Du tester alene. Får 12 mnd gratis Professional etter perioden.
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Box
+                          component="label"
+                          sx={{ display: 'flex', gap: 1.5, alignItems: 'center', cursor: 'pointer', py: 0.5 }}
+                        >
+                          <input
+                            type="radio"
+                            name="team-application"
+                            checked={isTeamApplication}
+                            onChange={() => setIsTeamApplication(true)}
+                          />
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body2">Team (du + inntil 4 medlemmer)</Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.6)' }}>
+                              Du blir team-master. Inviterer resten selv fra dashboard. Alle har felles slutt-dato.
+                            </Typography>
+                          </Box>
+                        </Box>
+                        {isTeamApplication && (
+                          <FormControl size="small" sx={{ mt: 1.5, maxWidth: 220 }}>
+                            <InputLabel>Antall personer (inkl. deg)</InputLabel>
+                            <Select
+                              value={teamSize}
+                              onChange={(e) => setTeamSize(Number(e.target.value))}
+                              label="Antall personer (inkl. deg)"
+                            >
+                              {[2, 3, 4, 5].map((n) => (
+                                <MenuItem key={n} value={n}>{n} personer</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+                      </Box>
                     </>
                   )}
                 </Box>

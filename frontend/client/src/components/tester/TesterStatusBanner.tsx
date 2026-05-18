@@ -41,6 +41,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { TESTER_PROGRAM_TERMS } from '@/lib/tester-program-terms';
 import { resolveTesterAccess, getTierLabel } from '@/lib/tester-access-tiers';
 import { trackEvent } from '@/utils/ga4-client-tracking';
+import TeamInvitePanel from './TeamInvitePanel';
 
 interface TesterStatus {
   isTester: boolean;
@@ -54,6 +55,9 @@ interface TesterStatus {
   benefitGranted?: boolean;
   grantedPlan?: string;
   grantedFeatures?: string[];
+  teamRole?: 'individual' | 'master' | 'member';
+  masterInviteId?: string | null;
+  maxTeamSize?: number;
 }
 
 const DISMISS_KEY = 'tester-banner-dismissed-day';
@@ -61,6 +65,7 @@ const DISMISS_KEY = 'tester-banner-dismissed-day';
 const TesterStatusBanner: React.FC = () => {
   const [status, setStatus] = useState<TesterStatus | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [showTeamPanel, setShowTeamPanel] = useState(false);
   const [bannerDismissedToday, setBannerDismissedToday] = useState(false);
 
   useEffect(() => {
@@ -129,6 +134,12 @@ const TesterStatusBanner: React.FC = () => {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} sx={{ width: '100%' }}>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
               <Typography variant="body2"><b>Prototype-tester</b></Typography>
+              {status.teamRole === 'master' && (
+                <Chip size="small" color="primary" variant="outlined" label="Team-master" />
+              )}
+              {status.teamRole === 'member' && (
+                <Chip size="small" variant="outlined" label="Team-medlem" />
+              )}
               <Chip size="small" label={`${status.daysRemaining ?? 0} dager igjen`} variant="outlined" />
               <Chip
                 size="small"
@@ -139,9 +150,16 @@ const TesterStatusBanner: React.FC = () => {
                 {status.isOnTrack ? 'Du er på rute' : `Logg ${(status.expectedFeedbacks ?? 0) - (status.feedbackCount ?? 0)} til for å være ajour`}
               </Typography>
             </Stack>
-            <Button size="small" variant="outlined" startIcon={<FeedbackIcon />} onClick={handleOpenFeedback}>
-              Gi feedback
-            </Button>
+            <Stack direction="row" spacing={1}>
+              {status.teamRole === 'master' && (
+                <Button size="small" variant="text" onClick={() => setShowTeamPanel(true)}>
+                  Administrer team
+                </Button>
+              )}
+              <Button size="small" variant="outlined" startIcon={<FeedbackIcon />} onClick={handleOpenFeedback}>
+                Gi feedback
+              </Button>
+            </Stack>
           </Stack>
           <LinearProgress
             variant="determinate"
@@ -222,6 +240,13 @@ const TesterStatusBanner: React.FC = () => {
                 </Typography>
               </Stack>
             </Box>
+
+            {status.teamRole === 'master' && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Ditt team</Typography>
+                <TeamInvitePanel />
+              </Box>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -235,6 +260,17 @@ const TesterStatusBanner: React.FC = () => {
           >
             Logg første feedback
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Team-admin-dialog — åpnes fra banner-knappen */}
+      <Dialog open={showTeamPanel} onClose={() => setShowTeamPanel(false)} fullWidth maxWidth="md">
+        <DialogTitle>Administrer ditt tester-team</DialogTitle>
+        <DialogContent dividers>
+          <TeamInvitePanel />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowTeamPanel(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
     </>

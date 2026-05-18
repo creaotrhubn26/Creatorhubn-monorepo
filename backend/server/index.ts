@@ -56639,6 +56639,20 @@ app.put("/api/invites/admin/requests/:inviteId/status", async (req, res) => {
       // i samme PUT-request. Hvis ikke sendt, brukes Tester All-Access.
       const grantedPlan = typeof req.body?.grantedPlan === "string" ? req.body.grantedPlan : "tester_all_access";
       const grantedFeatures = Array.isArray(req.body?.grantedFeatures) ? req.body.grantedFeatures : [];
+      // Slice 9X.56 — Parse team-størrelse fra message hvis tilstede.
+      // InviteRequestForm prepender "[Team: X medlemmer]" når søker er team-master.
+      let teamSize = 1;
+      if (typeof row.message === "string") {
+        const m = row.message.match(/\[Team:\s*(\d+)\s*medlemmer?\]/i);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (Number.isFinite(n)) teamSize = Math.min(5, Math.max(1, n));
+        }
+      }
+      // Admin kan også overstyre i PUT-body
+      if (Number.isFinite(req.body?.teamSize)) {
+        teamSize = Math.min(5, Math.max(1, Number(req.body.teamSize)));
+      }
       testerInvite = await createInviteFromApprovedRequest(
         pool,
         String(row.id),
@@ -56649,6 +56663,7 @@ app.put("/api/invites/admin/requests/:inviteId/status", async (req, res) => {
         baseUrl,
         grantedPlan,
         grantedFeatures,
+        teamSize,
       );
     }
 

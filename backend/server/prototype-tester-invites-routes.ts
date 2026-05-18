@@ -72,6 +72,20 @@ async function ensureSchema(pool: any): Promise<void> {
   ]) {
     await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
   }
+  // Slice 9X.56 — Team-flyt: master kan invitere opptil max_team_size-1
+  // andre medlemmer. Alle deler aligned program_ends_at fra master sin start.
+  for (const col of [
+    `team_role VARCHAR(20) NOT NULL DEFAULT 'individual'`,
+    `master_invite_id UUID`,
+    `max_team_size INTEGER NOT NULL DEFAULT 1`,
+  ]) {
+    await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_prototype_tester_invites_master
+       ON prototype_tester_invites (master_invite_id)
+       WHERE master_invite_id IS NOT NULL`,
+  ).catch(() => undefined);
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_prototype_tester_invites_email
        ON prototype_tester_invites (LOWER(email))`,
@@ -145,6 +159,9 @@ function rowToInvite(r: any): any {
     benefitGranted: r.benefit_granted,
     grantedPlan: r.granted_plan || "tester_all_access",
     grantedFeatures: r.granted_features || [],
+    teamRole: r.team_role || "individual",
+    masterInviteId: r.master_invite_id || null,
+    maxTeamSize: r.max_team_size || 1,
   };
 }
 
@@ -152,6 +169,19 @@ function rowToInvite(r: any): any {
  * Auto-bro: kalles av invite-approval-flow i index.ts.
  * Eksportert som standalone så index.ts kan importere den.
  */
+// Slice 9X.56 — Parse team-størrelse fra message-feltet.
+// InviteRequestForm prepender "[Team: X medlemmer]" når søker er team-master.
+function parseTeamSizeFromMessage(message: string | null): number {
+  if (!message) return 1;
+  const m = message.match(/\[Team:\s*(\d+)\s*medlemmer?\]/i);
+  if (!m) return 1;
+  const n = parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(5, Math.max(1, n)); // Hard-cap maks 5
+}
+
+const MAX_TEAM_SIZE = 5;
+
 export async function createInviteFromApprovedRequest(
   pool: any,
   inviteRequestId: string,
@@ -162,6 +192,7 @@ export async function createInviteFromApprovedRequest(
   baseUrl: string = "https://creatorhubn.com",
   grantedPlan: string = "tester_all_access",
   grantedFeatures: string[] = [],
+  teamSize: number = 1,
 ): Promise<{ id: string; token: string; inviteUrl: string } | null> {
   try {
     await ensureSchema(pool);
@@ -183,11 +214,14 @@ export async function createInviteFromApprovedRequest(
 
     const token = crypto.randomBytes(24).toString("hex");
     const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
+    const clampedTeamSize = Math.min(MAX_TEAM_SIZE, Math.max(1, teamSize));
+    const isTeamMaster = clampedTeamSize > 1;
     const ins = await pool.query(
       `INSERT INTO prototype_tester_invites
          (token, email, name, testing_areas, invite_request_id, nda_version,
-          program_terms_version, expires_at, invited_by, granted_plan, granted_features)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb)
+          program_terms_version, expires_at, invited_by, granted_plan,
+          granted_features, team_role, max_team_size)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
        RETURNING id, token`,
       [
         token,
@@ -201,6 +235,8 @@ export async function createInviteFromApprovedRequest(
         invitedBy,
         grantedPlan,
         JSON.stringify(grantedFeatures),
+        isTeamMaster ? "master" : "individual",
+        clampedTeamSize,
       ],
     );
     const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
@@ -360,7 +396,24 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
 
       const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || (req as any).ip || null;
       const startsAt = new Date();
-      const endsAt = new Date(startsAt.getTime() + PROGRAM_DURATION_WEEKS * 7 * 24 * 60 * 60 * 1000);
+      let endsAt = new Date(startsAt.getTime() + PROGRAM_DURATION_WEEKS * 7 * 24 * 60 * 60 * 1000);
+
+      // Slice 9X.56 — Aligned team-end-date: hvis dette er et team-medlem,
+      // arv master's program_ends_at slik at alle slutter samtidig.
+      const inviteFull = await pool.query(
+        `SELECT master_invite_id FROM prototype_tester_invites WHERE id = $1 LIMIT 1`,
+        [inv.id],
+      );
+      const masterId = inviteFull.rows[0]?.master_invite_id;
+      if (masterId) {
+        const masterR = await pool.query(
+          `SELECT program_ends_at FROM prototype_tester_invites WHERE id = $1 AND status = 'accepted' LIMIT 1`,
+          [masterId],
+        );
+        if (masterR.rowCount > 0 && masterR.rows[0].program_ends_at) {
+          endsAt = new Date(masterR.rows[0].program_ends_at);
+        }
+      }
 
       const upd = await pool.query(
         `UPDATE prototype_tester_invites
@@ -427,10 +480,215 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         expectedFeedbacks,
         isOnTrack: row.feedback_count >= expectedFeedbacks * 0.7,
         benefitGranted: row.benefit_granted,
+        grantedPlan: row.granted_plan || "tester_all_access",
+        grantedFeatures: row.granted_features || [],
+        teamRole: row.team_role || "individual",
+        masterInviteId: row.master_invite_id || null,
+        maxTeamSize: row.max_team_size || 1,
       });
     } catch (err) {
       console.error("GET /prototype-tester-invites/me/status:", err);
       res.json({ isTester: false });
+    }
+  });
+
+  // ─── GET /api/prototype-tester-invites/me/team ──────────────
+  // Slice 9X.56 — Master ser sitt team: medlemmer + plasser igjen.
+  app.get("/api/prototype-tester-invites/me/team", async (req, res) => {
+    try {
+      const uid = getPricingUserId(req);
+      if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
+      await ensureSchema(pool);
+      const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
+      if (userR.rowCount === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
+      const email = String(userR.rows[0].email).toLowerCase();
+
+      const masterR = await pool.query(
+        `SELECT id, max_team_size, team_role, program_ends_at, granted_plan, granted_features
+           FROM prototype_tester_invites
+          WHERE LOWER(email) = $1 AND status = 'accepted' AND team_role = 'master'
+          ORDER BY program_started_at DESC LIMIT 1`,
+        [email],
+      );
+      if (masterR.rowCount === 0) {
+        return res.json({ isMaster: false, members: [], slotsRemaining: 0, maxTeamSize: 0 });
+      }
+      const master = masterR.rows[0];
+
+      const membersR = await pool.query(
+        `SELECT id, email, name, status, accepted_at, invited_at AS created_at, program_ends_at
+           FROM prototype_tester_invites
+          WHERE master_invite_id = $1
+          ORDER BY created_at ASC`,
+        [master.id],
+      );
+      const usedSlots = membersR.rowCount + 1; // +1 = master selv
+      const slotsRemaining = Math.max(0, master.max_team_size - usedSlots);
+      res.json({
+        isMaster: true,
+        masterId: master.id,
+        maxTeamSize: master.max_team_size,
+        slotsRemaining,
+        sharedProgramEndsAt: master.program_ends_at,
+        members: membersR.rows.map((r: any) => ({
+          id: r.id,
+          email: r.email,
+          name: r.name,
+          status: r.status,
+          invitedAt: r.created_at,
+          acceptedAt: r.accepted_at,
+          programEndsAt: r.program_ends_at,
+        })),
+      });
+    } catch (err) {
+      console.error("GET /prototype-tester-invites/me/team:", err);
+      res.status(500).json({ error: "Kunne ikke hente team" });
+    }
+  });
+
+  // ─── POST /api/prototype-tester-invites/me/team/invite ──────
+  // Master inviterer team-medlem. Arver granted_plan, granted_features og
+  // sharedProgramEndsAt automatisk. NDA-e-post sendes hvis mailer er satt.
+  app.post("/api/prototype-tester-invites/me/team/invite", async (req, res) => {
+    try {
+      const uid = getPricingUserId(req);
+      if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
+      await ensureSchema(pool);
+
+      const body = req.body ?? {};
+      const memberEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      const memberName = typeof body.name === "string" ? body.name.trim() : "";
+      if (!memberEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(memberEmail)) {
+        return res.status(400).json({ error: "Gyldig e-post påkrevd" });
+      }
+      if (!memberName || memberName.length < 2) {
+        return res.status(400).json({ error: "Navn påkrevd (min 2 tegn)" });
+      }
+
+      const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
+      if (userR.rowCount === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
+      const masterEmail = String(userR.rows[0].email).toLowerCase();
+
+      const masterR = await pool.query(
+        `SELECT id, max_team_size, granted_plan, granted_features, program_ends_at
+           FROM prototype_tester_invites
+          WHERE LOWER(email) = $1 AND status = 'accepted' AND team_role = 'master'
+          ORDER BY program_started_at DESC LIMIT 1`,
+        [masterEmail],
+      );
+      if (masterR.rowCount === 0) {
+        return res.status(403).json({ error: "Du er ikke registrert som team-master" });
+      }
+      const master = masterR.rows[0];
+
+      // Sjekk at det er plass igjen
+      const countR = await pool.query(
+        `SELECT COUNT(*)::int AS used FROM prototype_tester_invites WHERE master_invite_id = $1`,
+        [master.id],
+      );
+      const usedSlots = countR.rows[0].used + 1; // +1 for master selv
+      if (usedSlots >= master.max_team_size) {
+        return res.status(409).json({ error: "Teamet er fullt — du har brukt alle plassene" });
+      }
+
+      // Sjekk for duplikat på e-post
+      const dup = await pool.query(
+        `SELECT id FROM prototype_tester_invites
+          WHERE LOWER(email) = $1 AND status IN ('pending','accepted')
+          LIMIT 1`,
+        [memberEmail],
+      );
+      if ((dup.rowCount ?? 0) > 0) {
+        return res.status(409).json({ error: "Denne e-posten har allerede en aktiv invitasjon" });
+      }
+
+      const token = crypto.randomBytes(24).toString("hex");
+      const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
+      const ins = await pool.query(
+        `INSERT INTO prototype_tester_invites
+           (token, email, name, nda_version, program_terms_version, expires_at,
+            invited_by, granted_plan, granted_features, team_role,
+            master_invite_id, max_team_size)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'member', $10, 1)
+         RETURNING id, token`,
+        [
+          token,
+          memberEmail,
+          memberName,
+          NDA_VERSION,
+          PROGRAM_TERMS_VERSION,
+          expiresAt.toISOString(),
+          uid,
+          master.granted_plan,
+          JSON.stringify(master.granted_features || []),
+          master.id,
+        ],
+      );
+
+      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
+
+      const mailer = getMailer();
+      if (mailer) {
+        const mailUser = process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "";
+        mailer.sendMail({
+          from: `"Creatorhubn" <${mailUser}>`,
+          to: memberEmail,
+          subject: "Du er invitert som prototype-tester (team-medlem)",
+          html: buildInviteEmailHtml(
+            memberName,
+            inviteUrl,
+            `Du har blitt invitert som team-medlem. Når du signerer NDA-en blir du del av det aktive prototype-tester-teamet (program slutter ${new Date(master.program_ends_at).toLocaleDateString("nb-NO")}).`,
+          ),
+        }).catch((err) => console.error("[team-invite] mail failed:", err?.message || err));
+      }
+
+      res.status(201).json({
+        id: ins.rows[0].id,
+        token: ins.rows[0].token,
+        inviteUrl,
+        sharedProgramEndsAt: master.program_ends_at,
+        mailerConfigured: !!mailer,
+      });
+    } catch (err) {
+      console.error("POST /me/team/invite:", err);
+      res.status(500).json({ error: "Kunne ikke invitere team-medlem" });
+    }
+  });
+
+  // ─── DELETE /api/prototype-tester-invites/me/team/:memberId ───
+  // Master kan trekke tilbake en team-invitasjon FØR medlemmet har signert.
+  app.delete("/api/prototype-tester-invites/me/team/:memberId", async (req, res) => {
+    try {
+      const uid = getPricingUserId(req);
+      if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
+      await ensureSchema(pool);
+      const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
+      if (userR.rowCount === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
+      const email = String(userR.rows[0].email).toLowerCase();
+
+      const masterR = await pool.query(
+        `SELECT id FROM prototype_tester_invites
+          WHERE LOWER(email) = $1 AND status = 'accepted' AND team_role = 'master'
+          LIMIT 1`,
+        [email],
+      );
+      if (masterR.rowCount === 0) return res.status(403).json({ error: "Du er ikke team-master" });
+
+      // Bare trekk tilbake hvis medlemmet ennå ikke har signert
+      const del = await pool.query(
+        `DELETE FROM prototype_tester_invites
+          WHERE id = $1 AND master_invite_id = $2 AND status = 'pending'
+        RETURNING id`,
+        [req.params.memberId, masterR.rows[0].id],
+      );
+      if (del.rowCount === 0) {
+        return res.status(404).json({ error: "Fant ikke ventende invitasjon — kan ikke trekke tilbake etter signering" });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /me/team/:memberId:", err);
+      res.status(500).json({ error: "Kunne ikke trekke tilbake" });
     }
   });
 }
