@@ -155,8 +155,10 @@ export function InviteRequestForm({
   const [testerProfession, setTesterProfession] = useState<string>('');
   // Slice 9X.56 — Søker kan be om team-test (1-5 personer). Master får
   // tilgang etter godkjenning; inviterer resten selv fra dashboard.
-  const [isTeamApplication, setIsTeamApplication] = useState<boolean>(false);
-  const [teamSize, setTeamSize] = useState<number>(2);
+  // NB: navngitt 'testerTeamSize' for å unngå kollisjon med eksisterende
+  // 'teamSize' lenger ned (brukt for Enterprise-pricing-kalkulator).
+  const [isTesterTeamApplication, setIsTesterTeamApplication] = useState<boolean>(false);
+  const [testerTeamSize, setTesterTeamSize] = useState<number>(2);
 
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
@@ -443,8 +445,8 @@ export function InviteRequestForm({
       const label = professionLabels[testerProfession as keyof typeof professionLabels] || testerProfession;
       metaTags.push(`[Tester-profesjon: ${label}]`);
     }
-    if (formData.profession === 'prototype_tester' && isTeamApplication) {
-      metaTags.push(`[Team: ${teamSize} medlemmer]`);
+    if (formData.profession === 'prototype_tester' && isTesterTeamApplication) {
+      metaTags.push(`[Team: ${testerTeamSize} medlemmer]`);
     }
     const messageWithMeta = metaTags.length > 0
       ? `${metaTags.join(' ')}\n\n${formData.message || ''}`
@@ -783,9 +785,9 @@ export function InviteRequestForm({
                         >
                           <input
                             type="radio"
-                            name="team-application"
-                            checked={!isTeamApplication}
-                            onChange={() => setIsTeamApplication(false)}
+                            name="tester-team-application"
+                            checked={!isTesterTeamApplication}
+                            onChange={() => setIsTesterTeamApplication(false)}
                           />
                           <Box>
                             <Typography variant="body2">Bare meg</Typography>
@@ -800,9 +802,9 @@ export function InviteRequestForm({
                         >
                           <input
                             type="radio"
-                            name="team-application"
-                            checked={isTeamApplication}
-                            onChange={() => setIsTeamApplication(true)}
+                            name="tester-team-application"
+                            checked={isTesterTeamApplication}
+                            onChange={() => setIsTesterTeamApplication(true)}
                           />
                           <Box sx={{ flex: 1 }}>
                             <Typography variant="body2">Team (du + inntil 4 medlemmer)</Typography>
@@ -811,12 +813,12 @@ export function InviteRequestForm({
                             </Typography>
                           </Box>
                         </Box>
-                        {isTeamApplication && (
+                        {isTesterTeamApplication && (
                           <FormControl size="small" sx={{ mt: 1.5, maxWidth: 220 }}>
                             <InputLabel>Antall personer (inkl. deg)</InputLabel>
                             <Select
-                              value={teamSize}
-                              onChange={(e) => setTeamSize(Number(e.target.value))}
+                              value={testerTeamSize}
+                              onChange={(e) => setTesterTeamSize(Number(e.target.value))}
                               label="Antall personer (inkl. deg)"
                             >
                               {[2, 3, 4, 5].map((n) => (
