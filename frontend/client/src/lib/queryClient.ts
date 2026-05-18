@@ -238,8 +238,22 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
   const response = await fetch(fullUrl, requestOptions);
 
   if (!response.ok) {
+    // Slice 9X.60 iter 3 — Tidligere: HVER 401 fra HVILKEN SOM HELST endpoint
+    // ryddet auth-state. Dette kicket bruker ut fra dashboard hvis ÉN spesifikk
+    // query (f.eks. /api/onboarding/status, /api/admin/x, role-baserte
+    // endepunkter) returnerte 401. Resultatet var bounce-loop etter login.
+    //
+    // Ny logikk: clear KUN hvis 401 kommer fra auth-spesifikke endepunkter
+    // som faktisk indikerer at sesjonen er ugyldig (ikke bare "denne
+    // ressursen krever annen permission"). For andre 401-er logger vi en
+    // advarsel og lar useAuth selv avgjøre via /api/auth/user.
     if (response.status === 401) {
-      clearClientAuthState();
+      const isAuthEndpoint = /\/(auth|session)\/(user|me|status|validate|refresh)\b/i.test(normalizedUrl);
+      if (isAuthEndpoint) {
+        clearClientAuthState();
+      } else if (typeof console !== 'undefined') {
+        console.warn(`[apiRequest] 401 fra ${normalizedUrl} — behandles som permission-issue, ikke logout. Sjekk om endpoint krever en annen rolle.`);
+      }
     }
 
     const errorText = await response.text();
