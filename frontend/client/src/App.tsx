@@ -97,6 +97,7 @@ import AdminInviteSystem from '@/pages/admin-invite-system';
 import AcceptTesterInvite from '@/pages/AcceptTesterInvite';
 import AcceptPrototypeTesterInvite from '@/pages/AcceptPrototypeTesterInvite';
 import TesterStatusBanner from '@/components/tester/TesterStatusBanner';
+import EnterpriseOfferModal from '@/components/tester/EnterpriseOfferModal';
 import UserNotificationModal from '@/components/notifications/UserNotificationModal';
 // import CompanyProfilesPage from '@/pages/company-profiles'; // File doesn't exist
 // import LogoIntegrationDemo from '@/pages/logo-integration-demo'; // Removed
@@ -591,6 +592,7 @@ function App() {
                     side-effect — rendrer ingenting. */}
                 <ScrollRestoration />
                 <TesterStatusBanner />
+                <EnterpriseOfferModal />
                 <UserNotificationModal />
                 <Switch>
                   {/* Login route */}

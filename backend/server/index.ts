@@ -476,6 +476,11 @@ import {
   createInviteFromApprovedRequest,
 } from "./prototype-tester-invites-routes";
 import { setupAdminNotificationsRoutes } from "./admin-notifications-routes";
+import {
+  setupTesterEnterpriseOfferRoutes,
+  runOfferCreationSweep,
+  handleTesterEnterpriseOfferWebhook,
+} from "./tester-enterprise-offer-routes";
 import { setupWeddingAssistantBriefNotesRoutes } from "./wedding-assistant-brief-notes";
 import { setupWeddingAssistantGdprRoutes } from "./wedding-assistant-gdpr-routes";
 import {
@@ -964,6 +969,10 @@ app.post(
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded": {
           const session = event.data.object as Stripe.Checkout.Session;
+          // Slice 9X.57 — Sjekk om dette er en tester→Enterprise-konvertering
+          // FØR de andre handlerne, siden client_reference_id-mønsteret er unikt.
+          const testerOfferHandled = await handleTesterEnterpriseOfferWebhook(pool, session);
+          if (testerOfferHandled) break;
           // Also accept agent add-on checkouts on the CreatorHub webhook so
           // Stripe accounts that only have a single webhook registered
           // still work end-to-end.
@@ -89809,6 +89818,31 @@ setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId });
 // faktisk er beskyttet. User-endepunktene (inbox/seen/act) trenger ikke
 // admin og hopper sjekken inne i route-filen.
 setupAdminNotificationsRoutes({ app, pool, getPricingUserId, requireAdminSession });
+
+// Slice 9X.57 — Konvertering: team-prototype-testere → Enterprise.
+// 3 mnd gratis + 25 % rabatt i 12 mnd, trigger 14 dager før program slutter.
+setupTesterEnterpriseOfferRoutes({
+  app,
+  pool,
+  getPricingUserId,
+  stripeClient: getCreatorHubStripeClient(),
+  enterprisePriceIdMonthly: getCreatorHubStripePriceId("enterprise", "monthly") || null,
+  enterprisePriceIdYearly: getCreatorHubStripePriceId("enterprise", "yearly") || null,
+});
+
+// Sweep ved oppstart + hver time. Idempotent (CONFLICT på unique index).
+setTimeout(() => {
+  void runOfferCreationSweep(pool).then((r) => {
+    console.log(`[tester-enterprise] startup sweep: created=${r.created} errors=${r.errors}`);
+  });
+}, 60_000); // 60s grace etter startup
+setInterval(() => {
+  void runOfferCreationSweep(pool).then((r) => {
+    if (r.created > 0 || r.errors > 0) {
+      console.log(`[tester-enterprise] interval sweep: created=${r.created} errors=${r.errors}`);
+    }
+  });
+}, 60 * 60 * 1000); // hver time
 
 // Slice 9X.49 — Brief-notater + AI-sammendrag.
 setupWeddingAssistantBriefNotesRoutes({ app, pool, getPricingUserId });
