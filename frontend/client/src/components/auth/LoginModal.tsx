@@ -98,12 +98,12 @@ export function LoginModal({
     }
 
     // Slice 9X.59 — Rydd opp i evt. stale Google-OAuth-feil fra forrige
-    // forsøk slik at modalen ikke viser gammel "redirect_uri_mismatch"
+    // forsøk slik at modalen IKKE viser gammel "redirect_uri_mismatch"
     // etter at problemet er fikset i Google Cloud Console. Consume
-    // tømmer sessionStorage som side-effekt.
-    const staleGoogleError = consumeCreatorHubGoogleLoginError();
+    // returnerer + tømmer sessionStorage; vi forkaster returnen.
+    consumeCreatorHubGoogleLoginError();
 
-    setError(initialError ?? staleGoogleError ?? null);
+    setError(initialError ?? null);
     setLoginType(initialLoginType);
   }, [initialError, initialLoginType, open]);
 

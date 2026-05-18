@@ -171,13 +171,19 @@ function readStoredJson<T>(key: string): T | null {
   }
 }
 
+// Slice 9X.59 — Lagre med timestamp så vi kan ignorere gamle feil ved
+// neste mount. Hindrer at "redirect_uri_mismatch" fra forrige forsøk
+// dukker opp etter at brukeren har fikset config og logget vellykket inn.
+const ERROR_TTL_MS = 30_000;
+
 function writeGoogleLoginError(message: string): void {
   if (typeof window === 'undefined') {
     return;
   }
 
   try {
-    window.sessionStorage.setItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY, message);
+    const payload = JSON.stringify({ message, ts: Date.now() });
+    window.sessionStorage.setItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY, payload);
   } catch {
     // Ignore storage failures.
   }
@@ -862,10 +868,28 @@ export function consumeCreatorHubGoogleLoginError(): string | null {
   }
 
   try {
-    const value = window.sessionStorage.getItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
-    if (value) {
-      window.sessionStorage.removeItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
-      return value;
+    const raw = window.sessionStorage.getItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
+    if (!raw) return null;
+    // Alltid rydd — selv om feilen er for gammel til å vises.
+    window.sessionStorage.removeItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
+
+    // Forsøk å parse strukturert payload (new format med timestamp).
+    // Faller tilbake til legacy plain-string for bakoverkompatibilitet.
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.ts && parsed.message) {
+        const ageMs = Date.now() - Number(parsed.ts);
+        if (ageMs > ERROR_TTL_MS) {
+          // Feilen er for gammel — sannsynligvis fra et tidligere forsøk
+          // som ble fulgt av vellykket innlogging. Ikke vis.
+          return null;
+        }
+        return String(parsed.message);
+      }
+    } catch {
+      // Ikke JSON — legacy-format. Vis ikke (vi vet ikke alder, og
+      // gammel cache er mer sannsynlig enn fersk feil).
+      return null;
     }
   } catch {
     // Ignore storage failures.
