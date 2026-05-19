@@ -1,5 +1,14 @@
 // @ts-nocheck
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
+
+// Slice 9X.66 — Lazy-imports for quick-action-modaler. Komponentene
+// lastes kun når modalen åpnes første gang.
+const PhotographerProjectsList = React.lazy(() => import('@/pages/photographer-projects-list'));
+const PhotographerClientsList = React.lazy(() => import('@/pages/photographer-clients-list'));
+const PhotographerProfitability = React.lazy(() => import('@/pages/photographer-profitability'));
+const PhotographerPrintOrders = React.lazy(() => import('@/pages/photographer-print-orders'));
+const PhotographerEquipment = React.lazy(() => import('@/pages/photographer-equipment'));
+const PhotographerSettings = React.lazy(() => import('@/pages/photographer-settings'));
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import {
@@ -1188,6 +1197,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     showEditProjectModal: false,
     showDeleteProjectDialog: false
 });
+
+  // Slice 9X.66 — Quick-action-modaler: åpner sider som modal i stedet
+  // for full-page-navigasjon. Tillater rask kontekst-bytte uten å miste
+  // dashboard-state.
+  type QuickModal = 'projects' | 'clients' | 'profitability' | 'print-orders' | 'equipment' | 'settings' | null;
+  const [quickModal, setQuickModal] = useState<QuickModal>(null);
 
   // Interface preferences state with localStorage + database persistence
   const [interfacePrefs, setInterfacePrefs] = useState(() => {
@@ -4646,7 +4661,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
                     <Paper
                       sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => window.location.assign('/photographer/projects')}
+                      onClick={() => setQuickModal('projects')}
                     >
                       <Stack direction="row" alignItems="center" spacing={1.5}>
                         <Folder color="primary" />
@@ -4660,7 +4675,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
                     <Paper
                       sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => window.location.assign('/photographer/clients')}
+                      onClick={() => setQuickModal('clients')}
                     >
                       <Stack direction="row" alignItems="center" spacing={1.5}>
                         <Group color="primary" />
@@ -4674,7 +4689,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
                     <Paper
                       sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => window.location.assign('/photographer/profitability')}
+                      onClick={() => setQuickModal('profitability')}
                     >
                       <Stack direction="row" alignItems="center" spacing={1.5}>
                         <TrendingUp color="success" />
@@ -4688,7 +4703,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
                     <Paper
                       sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => window.location.assign('/photographer/print-orders')}
+                      onClick={() => setQuickModal('print-orders')}
                     >
                       <Stack direction="row" alignItems="center" spacing={1.5}>
                         <LocalShipping color="primary" />
@@ -4702,7 +4717,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
                     <Paper
                       sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => window.location.assign('/photographer/equipment')}
+                      onClick={() => setQuickModal('equipment')}
                     >
                       <Stack direction="row" alignItems="center" spacing={1.5}>
                         <CameraAlt color="primary" />
@@ -4716,7 +4731,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
                     <Paper
                       sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => window.location.assign('/photographer/settings')}
+                      onClick={() => setQuickModal('settings')}
                     >
                       <Stack direction="row" alignItems="center" spacing={1.5}>
                         <Settings color="primary" />
@@ -4728,6 +4743,41 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </Paper>
                   </Grid2>
                 </Grid2>
+
+                {/* Slice 9X.66 — Quick-action-modal-wrapper */}
+                <Dialog
+                  open={quickModal !== null}
+                  onClose={() => setQuickModal(null)}
+                  fullWidth
+                  maxWidth="xl"
+                  PaperProps={{ sx: { minHeight: '85vh' } }}
+                >
+                  <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+                    {quickModal === 'projects' && 'Prosjekter'}
+                    {quickModal === 'clients' && 'Klienter'}
+                    {quickModal === 'profitability' && 'Lønnsomhet'}
+                    {quickModal === 'print-orders' && 'Print-ordrer'}
+                    {quickModal === 'equipment' && 'Utstyr'}
+                    {quickModal === 'settings' && 'Innstillinger'}
+                    <IconButton onClick={() => setQuickModal(null)} size="small" aria-label="Lukk">
+                      <Close />
+                    </IconButton>
+                  </DialogTitle>
+                  <DialogContent dividers sx={{ p: 0 }}>
+                    <Suspense fallback={
+                      <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
+                        <CircularProgress />
+                      </Box>
+                    }>
+                      {quickModal === 'projects' && <PhotographerProjectsList />}
+                      {quickModal === 'clients' && <PhotographerClientsList />}
+                      {quickModal === 'profitability' && <PhotographerProfitability />}
+                      {quickModal === 'print-orders' && <PhotographerPrintOrders />}
+                      {quickModal === 'equipment' && <PhotographerEquipment />}
+                      {quickModal === 'settings' && <PhotographerSettings />}
+                    </Suspense>
+                  </DialogContent>
+                </Dialog>
               </Box>
             )}
 
