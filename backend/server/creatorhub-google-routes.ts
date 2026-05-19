@@ -379,13 +379,35 @@ async function resolveCreatorHubGoogleLoginUser(
   googleEmail: string,
 ): Promise<CreatorHubResolvedUser | null> {
   const normalizedEmail = googleEmail.trim().toLowerCase();
-  const result = await pool.query(
-    `SELECT id, email, username, first_name, last_name, role, profession, company_name
-     FROM users
-     WHERE LOWER(email) = LOWER($1)
-     LIMIT 1`,
-    [normalizedEmail],
-  );
+
+  // Slice 9X.62 — Defensiv SELECT: noen prod-DB-er har ikke 'profession'-
+  // eller 'company_name'-kolonner på users. Forsøk full SELECT først;
+  // fall tilbake til minimal SELECT hvis kolonnene mangler. Hindrer at
+  // hele Google-login-flyten kollapser med "column ... does not exist".
+  let result: { rows: Array<Record<string, unknown>>; rowCount?: number };
+  try {
+    result = await pool.query(
+      `SELECT id, email, username, first_name, last_name, role, profession, company_name
+       FROM users
+       WHERE LOWER(email) = LOWER($1)
+       LIMIT 1`,
+      [normalizedEmail],
+    );
+  } catch (err: any) {
+    if (err?.code === '42703') {
+      // "column does not exist" — fall back til minimal SELECT
+      console.warn('[creatorhub-google] users-tabell mangler kolonner — bruker minimal SELECT:', err.message);
+      result = await pool.query(
+        `SELECT id, email, username, first_name, last_name, role
+         FROM users
+         WHERE LOWER(email) = LOWER($1)
+         LIMIT 1`,
+        [normalizedEmail],
+      );
+    } else {
+      throw err;
+    }
+  }
 
   const row = result.rows[0] as Record<string, unknown> | undefined;
   if (!row) {
