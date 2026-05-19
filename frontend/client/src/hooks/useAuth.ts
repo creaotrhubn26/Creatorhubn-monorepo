@@ -117,7 +117,6 @@ function storeUserIdentity(user: User) {
 }
 
 function clearStoredAuth() {
-  console.error('[AUTH_DEBUG_v5] clearStoredAuth() KALT — wiper localStorage. Stack:', new Error().stack);
   try {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
@@ -240,15 +239,18 @@ export function useAuth() {
     }
 
     if (storedToken) {
+      // Slice 9X.60 — KUN clear stored session ved harde auth-feil (401/403).
+      // Et 200 + { authenticated: false } kan komme i kort race-vindu etter
+      // login (in-memory cache wiped på Render-restart, DB-fallback enda
+      // ikke kjørt). Hvis vi clearer der, bouncer brukeren tilbake til
+      // /login selv om token egentlig er gyldig.
       let shouldClearStoredSession = false;
       try {
         const resp = await fetch(authUrl('/api/auth/user'), {
           headers: { 'Authorization': `Bearer ${storedToken}` }
         });
-        console.log('[AUTH_DEBUG_v5] /api/auth/user response', { status: resp.status, ok: resp.ok });
         if (resp.ok) {
           const data = await resp.json();
-          console.log('[AUTH_DEBUG_v5] /api/auth/user data', { authenticated: data.authenticated, hasUser: !!data.user, userId: data.user?.id });
           if (data.authenticated && data.user) {
             storeAuth(storedToken, data.user);
             broadcastState({
@@ -259,13 +261,11 @@ export function useAuth() {
             });
             return;
           }
-          console.warn('[AUTH_DEBUG_v5] 200 + authenticated:false → beholder stored session');
+          // 200 + authenticated:false → behold stored session som fallback
         } else if (resp.status === 401 || resp.status === 403) {
-          console.error('[AUTH_DEBUG_v5] HARD ' + resp.status + ' fra /api/auth/user → clearer session', new Error().stack);
           shouldClearStoredSession = true;
         }
-      } catch (e) {
-        console.error('[AUTH_DEBUG_v5] /api/auth/user kastet exception', e);
+      } catch {
         if (storedUser) {
           broadcastState({
             user: storedUser,

@@ -40,7 +40,7 @@ export function useRealtimeNotifications(
 
     try {
       // Use secure WebSocket in production, regular in development
-      const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws/events`;
       
       const ws = new WebSocket(wsUrl);

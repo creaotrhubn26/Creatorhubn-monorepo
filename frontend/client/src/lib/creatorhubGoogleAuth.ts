@@ -529,8 +529,6 @@ export function clearCreatorHubAuthSession(options?: { dispatch?: boolean }): vo
     return;
   }
 
-  console.error('[AUTH_DEBUG_v5] clearCreatorHubAuthSession() KALT — wiper CREATORHUB-keys i localStorage. Stack:', new Error().stack);
-
   clearValidatedSessionCache();
 
   try {

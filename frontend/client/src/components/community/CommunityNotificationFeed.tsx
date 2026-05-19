@@ -69,7 +69,7 @@ export default function CommunityNotificationFeed({ userId, maxHeight = 400 }: C
     fetchNotifications();
 
     // Connect to WebSocket for real-time notifications
-    const ws = new WebSocket(`${window.location.protocol === 'https: ' ? 'wss:' : 'ws:'}//${window.location.host}/ws/events`);
+    const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/events`);
     wsRef.current = ws;
 
     ws.onopen = () => {

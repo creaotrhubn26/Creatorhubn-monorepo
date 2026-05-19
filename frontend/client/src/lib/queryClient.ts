@@ -14,8 +14,6 @@ function clearClientAuthState() {
     return;
   }
 
-  console.error('[AUTH_DEBUG_v5] clearClientAuthState() KALT — wiper ALLE auth-keys i localStorage. Stack:', new Error().stack);
-
   try {
     for (const key of AUTH_STORAGE_KEYS) {
       window.localStorage.removeItem(key);
@@ -250,14 +248,14 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
     // ressursen krever annen permission"). For andre 401-er logger vi en
     // advarsel og lar useAuth selv avgjøre via /api/auth/user.
     if (response.status === 401) {
+      // Slice 9X.60 — Clear KUN på 401 fra auth-spesifikke endepunkter.
+      // Andre 401-er er permission-issues (rolle-/feature-flag-baserte
+      // queries), ikke logout-grunn. Tidligere: enhver 401 wipet hele
+      // sesjonen → user bouncet etter login fordi /api/onboarding/status
+      // eller lignende returnerte 401.
       const isAuthEndpoint = /\/(auth|session)\/(user|me|status|validate|refresh)\b/i.test(normalizedUrl);
-      // SLICE_9X_60_BUILD_MARKER_v4 — synlig string for å verifisere at
-      // bundle inkluderer denne fixen. Hvis du ser denne i deployd bundle
-      // er fix-en LIVE; hvis ikke, har Vercel cache-issue og bundle er stale.
       if (isAuthEndpoint) {
         clearClientAuthState();
-      } else if (typeof console !== 'undefined') {
-        console.warn(`[apiRequest][SLICE_9X_60_v4] 401 fra ${normalizedUrl} — behandles som permission-issue, ikke logout.`);
       }
     }
 
