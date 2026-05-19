@@ -18,6 +18,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import MyContributionsPanel from '@/components/photographer/MyContributionsPanel';
 import PushSettingsCard from '@/components/wedding/PushSettingsCard';
+import GoogleWorkspaceSessionBadge from '@/components/universal/GoogleWorkspaceSessionBadge';
 
 interface PhotographerProfile {
   id: string;
@@ -570,10 +571,21 @@ export default function PhotographerSettings() {
         {/* INTEGRASJONER */}
         <Grid2 size={{ xs: 12 }}>
           <Paper sx={{ p: 3 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <AccountBalance /> Integrasjoner
-              </Typography>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+              <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" useFlexGap>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AccountBalance /> Integrasjoner
+                </Typography>
+                {/* Slice 9X.64 — Google-SSO status-pill (flyttet fra dashboard).
+                    Real-time: refetchInterval 30s + refetchOnWindowFocus. */}
+                {data?.profile?.id && (
+                  <GoogleWorkspaceSessionBadge
+                    userId={String(data.profile.id)}
+                    tone="creatorhub"
+                    compact
+                  />
+                )}
+              </Stack>
               <Button
                 size="small"
                 endIcon={<OpenInNew />}

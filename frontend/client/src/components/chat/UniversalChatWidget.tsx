@@ -952,12 +952,15 @@ const getChatWebSocketUrl = (
     ? import.meta.env.VITE_API_PROXY_TARGET.trim()
     : '';
 
+  // Slice 9X.69 — Skip WS-connection i prod hvis ikke VITE_WS_URL er satt.
+  // Vercel rewrite gjelder ikke /ws, så wss://creatorhubn.com/ws… går til
+  // edge som ikke har WS-handler → spammer "WebSocket failed" i console.
+  const isProd = !import.meta.env.DEV && !['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (isProd && !configuredWsUrl) {
+    return null;
+  }
   const baseUrl = configuredWsUrl
-    || (
-      import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(window.location.hostname)
-        ? (configuredApiTarget || 'http://127.0.0.1:3003').replace(/^http/i, 'ws')
-        : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
-    );
+    || (configuredApiTarget || 'http://127.0.0.1:3003').replace(/^http/i, 'ws');
 
   try {
     const url = new URL(baseUrl);
@@ -5275,30 +5278,35 @@ export default function UniversalChatWidget({
       )
     : academyQuickLinks;
   const widgetAccent = getProfessionColor();
+  // Slice 9X.68 — Dark-mode-tilpasset chat-design så det matcher det
+  // mørke dashboard-temaet i stedet for å vises som en lys "popup" på
+  // mørk side. Aksent-fargen (widgetAccent) er fortsatt brukerens
+  // profession-color (orange for fotograf), men shells og surfaces er
+  // nå mørke med subtil glød fra accent-fargen.
   const chatWidgetDesign = {
     accent: widgetAccent,
     accentSoft: getColorWithAlpha(widgetAccent, 0.08),
     accentMuted: getColorWithAlpha(widgetAccent, 0.18),
-    border: getColorWithAlpha(widgetAccent, 0.28),
-    headerGradient: `linear-gradient(132deg, ${getColorWithAlpha(widgetAccent, 0.98)} 0%, ${getColorWithAlpha(widgetAccent, 0.8)} 60%, #0f172a 140%)`,
-    shellGradient: 'linear-gradient(170deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)',
-    shellShadow: `0 20px 58px ${getColorWithAlpha(widgetAccent, 0.26)}`,
-    cardShadow: `0 10px 30px ${getColorWithAlpha(widgetAccent, 0.14)}`,
+    border: getColorWithAlpha(widgetAccent, 0.32),
+    headerGradient: `linear-gradient(132deg, ${getColorWithAlpha(widgetAccent, 0.45)} 0%, ${getColorWithAlpha(widgetAccent, 0.15)} 60%, rgba(15,10,7,0.96) 140%)`,
+    shellGradient: `radial-gradient(circle at top, ${getColorWithAlpha(widgetAccent, 0.14)} 0%, rgba(15,10,7,0.98) 38%, #0a0807 100%)`,
+    shellShadow: `0 28px 64px ${getColorWithAlpha(widgetAccent, 0.32)}`,
+    cardShadow: `0 12px 32px ${getColorWithAlpha(widgetAccent, 0.18)}`,
   };
   const isWorkspacePanel = !isCompactViewport && Boolean(openLayout);
   const isNarrowWorkspace = isWorkspacePanel && widgetSize.width < 620;
   const isCompactHeaderWorkspace = isWorkspacePanel && widgetSize.width < 760;
   const isMediumWorkspace = isWorkspacePanel && !isNarrowWorkspace && widgetSize.width < 1040;
   const workspaceDisplayName = enhancedProfessionConfig?.displayName || professionConfig?.displayName || 'CreatorHub';
-  const workspaceShellBorder = 'rgba(15,23,42,0.1)';
-  const workspaceCardBorder = 'rgba(15,23,42,0.08)';
-  const workspaceShellBackground = 'linear-gradient(180deg, rgba(239,242,246,0.98) 0%, rgba(231,235,240,0.98) 100%)';
-  const workspaceSurface = 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%)';
-  const workspaceMutedSurface = 'linear-gradient(180deg, rgba(249,250,251,0.98) 0%, rgba(243,244,246,0.98) 100%)';
-  const workspacePanelShadow = '0 30px 70px rgba(15,23,42,0.18)';
-  const workspaceCardShadow = '0 16px 34px rgba(15,23,42,0.06)';
-  const workspaceHeaderText = '#0f172a';
-  const workspaceSubtleText = '#64748b';
+  const workspaceShellBorder = `1px solid ${getColorWithAlpha(widgetAccent, 0.22)}`;
+  const workspaceCardBorder = 'rgba(255,255,255,0.08)';
+  const workspaceShellBackground = `radial-gradient(circle at top, ${getColorWithAlpha(widgetAccent, 0.12)} 0%, rgba(20,16,11,0.97) 40%, #0a0807 100%)`;
+  const workspaceSurface = 'linear-gradient(180deg, rgba(30,24,17,0.95) 0%, rgba(20,16,11,0.95) 100%)';
+  const workspaceMutedSurface = 'linear-gradient(180deg, rgba(24,19,13,0.95) 0%, rgba(18,14,9,0.95) 100%)';
+  const workspacePanelShadow = '0 32px 72px rgba(0,0,0,0.55)';
+  const workspaceCardShadow = '0 16px 34px rgba(0,0,0,0.32)';
+  const workspaceHeaderText = '#fff5e8';
+  const workspaceSubtleText = 'rgba(246,242,234,0.68)';
   const workspaceShellAnimation = isCompactViewport
     ? (workspaceTransitionState === 'closing'
         ? 'mobileChatWindowOut 240ms cubic-bezier(0.32, 0.02, 0.2, 1) forwards'
@@ -7199,7 +7207,7 @@ export default function UniversalChatWidget({
             </IconButton>
           </Box>
 
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: '#f7f8fb' }}>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: 'rgba(20,16,11,0.6)' }}>
             {internalActionPanelContent}
           </Box>
         </Paper>
@@ -7937,7 +7945,7 @@ export default function UniversalChatWidget({
   } as const;
 
   const mobileInternalListView = (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f7f8fb' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(20,16,11,0.6)' }}>
       <Box sx={{ px: 2, pt: 2.2, pb: 1.4, bgcolor: 'white', borderBottom: '1px solid rgba(226,232,240,0.9)' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
           <Box>
@@ -8356,7 +8364,7 @@ export default function UniversalChatWidget({
               <Close sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: '#f7f8fb' }}>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: 'rgba(20,16,11,0.6)' }}>
             {emailActionPanelContent}
           </Box>
         </Paper>
@@ -8825,7 +8833,7 @@ export default function UniversalChatWidget({
   );
 
   const mobileGoogleListView = (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f7f8fb' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(20,16,11,0.6)' }}>
       <Box sx={{ px: 2, pt: 2.2, pb: 1.4, bgcolor: 'white', borderBottom: '1px solid rgba(226,232,240,0.9)' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
           <Box>
@@ -9117,7 +9125,7 @@ export default function UniversalChatWidget({
   ) : null;
 
   const mobileEvendiListView = (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f7f8fb' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(20,16,11,0.6)' }}>
       <Box sx={{ px: 2, pt: 2.2, pb: 1.4, bgcolor: 'white', borderBottom: '1px solid rgba(226,232,240,0.9)' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
           <Box>
@@ -9857,7 +9865,7 @@ export default function UniversalChatWidget({
       };
 
   const mobileUtilityScreen = (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f7f8fb' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(20,16,11,0.6)' }}>
       <Box sx={{ px: 2, pt: 2.2, pb: 1.4, bgcolor: 'white', borderBottom: '1px solid rgba(226,232,240,0.9)' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
           <Box>
@@ -10060,7 +10068,7 @@ export default function UniversalChatWidget({
   ] as const;
 
   const mobileShell = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', bgcolor: '#f7f8fb' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', bgcolor: 'rgba(20,16,11,0.6)' }}>
       <Box sx={{ flex: 1, minHeight: 0, pb: isMobileDetailView ? 0 : 11 }}>
         {activeTab === TAB_CREATORHUB
           ? (isMobileDetailView ? mobileInternalDetailView : mobileInternalListView)
@@ -10163,7 +10171,7 @@ export default function UniversalChatWidget({
                 ? `1px solid ${workspaceShellBorder}`
                 : `1px solid ${chatWidgetDesign.border}`,
             background: isCompactViewport
-              ? '#f7f8fb'
+              ? `radial-gradient(circle at top, ${getColorWithAlpha(professionColor, 0.16)} 0%, rgba(15,10,7,0.97) 38%, #0a0807 100%)`
               : isWorkspacePanel
                 ? workspaceShellBackground
                 : chatWidgetDesign.shellGradient,
@@ -12816,7 +12824,7 @@ export default function UniversalChatWidget({
         <DialogContent
           sx={{
             p: 1.2,
-            bgcolor: '#f7f8fb',
+            bgcolor: 'rgba(20,16,11,0.6)',
             minHeight: 0,
           }}
         >
@@ -12871,7 +12879,7 @@ export default function UniversalChatWidget({
         <DialogContent
           sx={{
             p: 1.2,
-            bgcolor: '#f7f8fb',
+            bgcolor: 'rgba(20,16,11,0.6)',
             minHeight: 0,
           }}
         >

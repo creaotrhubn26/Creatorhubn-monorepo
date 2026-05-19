@@ -2481,10 +2481,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 }, [profession, enableAIAnalysis, enableAutoTagging, onItemUpdate]);
 
   // Real-time Collaboration - WebSocket Connection
+  // Slice 9X.69 — Hardkodet localhost:3001 → bruker VITE_COLLAB_SERVER_URL
+  // hvis satt, ellers skip i prod (collab-server eksisterer ikke som prod-
+  // tjeneste enda; spam-feilen flommet console på Stines dashboard).
   useEffect(() => {
     if (!enableRealTimeSync || !collaborationSessionId) return;
-
-    const ws = new WebSocket(`ws://localhost:3001/collaboration/${collaborationSessionId}`);
+    const collabBase = (import.meta as any).env?.VITE_COLLAB_SERVER_URL;
+    if (!collabBase) return; // ingen collab-server konfigurert → ikke prøv
+    const wsProto = collabBase.startsWith('https') ? 'wss' : 'ws';
+    const wsHost = collabBase.replace(/^https?:\/\//, '');
+    const ws = new WebSocket(`${wsProto}://${wsHost}/collaboration/${collaborationSessionId}`);
     
     ws.onopen = () => {
       console.log('Collaboration WebSocket connected');

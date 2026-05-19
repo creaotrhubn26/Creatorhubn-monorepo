@@ -23,10 +23,17 @@ const getRealTimeWebSocketUrl = (userIdentifier?: string | null): string | null 
     ? import.meta.env.VITE_API_PROXY_TARGET.trim()
     : '';
 
+  // Slice 9X.69 — Prod-fix: hvis vi ikke har en eksplisitt VITE_WS_URL,
+  // ikke prøv å koble til en WS via Vercel-domenet (Vercel rewrite for
+  // /api/* gjelder ikke WS). Backend må eksponere WS via egen subdomain
+  // eller env-var. Inntil videre returnerer vi null så ingen tilkobling
+  // forsøkes — Stines console spammet WS-feil hvert sekund.
+  const isProd = !import.meta.env.DEV && !['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (isProd && !configuredWsUrl) {
+    return null;
+  }
   const baseUrl = configuredWsUrl || (
-    import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(window.location.hostname)
-      ? (configuredApiTarget || 'http://127.0.0.1:3003').replace(/^http/i, 'ws')
-      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+    (configuredApiTarget || 'http://127.0.0.1:3003').replace(/^http/i, 'ws')
   );
 
   try {

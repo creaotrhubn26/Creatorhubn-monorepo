@@ -46,8 +46,12 @@ export default function SplitSheetCollaborationProvider({
   useEffect(() => {
     if (!splitSheetId || !user?.id) return;
 
-    // Connect to WebSocket
-    const wsUrl = `ws://localhost:3001/ws/split-sheets/${splitSheetId}?userId=${user.id}`;
+    // Slice 9X.69 — bruker env-var i stedet for hardkodet localhost.
+    const collabBase = (import.meta as any).env?.VITE_COLLAB_SERVER_URL;
+    if (!collabBase) return;
+    const wsProto = collabBase.startsWith('https') ? 'wss' : 'ws';
+    const wsHost = collabBase.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProto}://${wsHost}/ws/split-sheets/${splitSheetId}?userId=${user.id}`;
     const websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {

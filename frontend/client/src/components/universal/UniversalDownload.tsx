@@ -421,10 +421,14 @@ export function UniversalDownload({
 }, [profession, enableAIAnalysis, enableAutoTagging, onItemUpdate]);
 
   // Real-time Collaboration - WebSocket Connection
+  // Slice 9X.69 — Hardkodet localhost:3001 → bruker env-var hvis satt.
   React.useEffect(() => {
     if (!enableRealTimeSync || !collaborationSessionId) return;
-
-    const ws = new WebSocket(`ws://localhost:3001/collaboration/${collaborationSessionId}`);
+    const collabBase = (import.meta as any).env?.VITE_COLLAB_SERVER_URL;
+    if (!collabBase) return;
+    const wsProto = collabBase.startsWith('https') ? 'wss' : 'ws';
+    const wsHost = collabBase.replace(/^https?:\/\//, '');
+    const ws = new WebSocket(`${wsProto}://${wsHost}/collaboration/${collaborationSessionId}`);
     
     ws.onopen = () => {
       console.log('Download Collaboration WebSocket connected');
