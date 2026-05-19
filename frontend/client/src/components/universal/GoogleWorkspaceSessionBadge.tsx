@@ -80,8 +80,12 @@ export default function GoogleWorkspaceSessionBadge({
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/google-workspace/storage/${encodeURIComponent(normalizedUserId)}`, { headers });
     },
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
+    // Slice 9X.64 — Real-time: poll hvert 30 sek + refetch når bruker
+    // kommer tilbake til faneblad. Da reflekterer pillet status raskt
+    // hvis bruker har koblet til/koblet fra Google i admin/annen fane.
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const connected = Boolean(data?.googleDriveConnected);

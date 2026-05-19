@@ -3627,12 +3627,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   >
                     {customBranding.tagline || `Du har ${projects?.length || 0} aktive prosjekter og ${recentMeetingNotes?.length || 0} nye notater`}
                   </Typography>
-                  <Box sx={{ mt: 1.2, display: 'flex', justifyContent: { xs: 'center', sm: 'flex-start' } }}>
-                    <GoogleWorkspaceSessionBadge
-                      userId={userId}
-                      tone="creatorhub"
-                    />
-                  </Box>
+                  {/* Slice 9X.64 — Fjernet GoogleWorkspaceSessionBadge fra dashboard.
+                      Flyttet til /photographer/settings som compact status-pill.
+                      Bruker skal ikke møte "Trenger oppmerksomhet"-card på dashboard. */}
                 </Box>
                 <Box sx={{ 
                   display: 'flex', 
@@ -3770,30 +3767,38 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       {getProjectCreationText(isSmallScreen)}
                     </Button>
                   )}
-                  <IconButton 
-                    size={isSmallScreen ? "small" : "medium"}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleOpenEmailWorkspace(selectedClient || null);
-                    }}
-                    sx={{ 
-                      bgcolor: `${customBranding.color}10`,
-                      minHeight: { xs: 36, sm: 44 }, // WCAG: Touch target size
-                      '&:hover': { 
-                        bgcolor: customBranding.color + '20' 
-                      }, '&:focus': {
-                        outline: `2px solid ${customBranding.color}`,
-                        outlineOffset: '2px'
-                }
-                }}
-                    aria-label={`E-post senter${unreadEmailCount > 0 ? ` - ${unreadEmailCount} uleste meldinger` : ', '}`}
-                    tabIndex={0}
-                  >
-                    <Badge badgeContent={unreadEmailCount} color="error">
-                      <Email />
-                    </Badge>
-                  </IconButton>
+                  {/* Slice 9X.65 — UX-fix: ikoner var nær usynlige på mørk
+                      dashboard. La eksplisitt color + sterkere border for kontrast. */}
+                  <Tooltip title={`E-post${unreadEmailCount > 0 ? ` (${unreadEmailCount} uleste)` : ''}`}>
+                    <IconButton
+                      size={isSmallScreen ? "small" : "medium"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleOpenEmailWorkspace(selectedClient || null);
+                      }}
+                      sx={{
+                        bgcolor: `${customBranding.color}1a`,
+                        color: customBranding.color,
+                        border: `1px solid ${customBranding.color}40`,
+                        minHeight: { xs: 36, sm: 44 },
+                        '&:hover': {
+                          bgcolor: `${customBranding.color}33`,
+                          borderColor: customBranding.color,
+                        },
+                        '&:focus': {
+                          outline: `2px solid ${customBranding.color}`,
+                          outlineOffset: '2px'
+                        }
+                      }}
+                      aria-label={`E-post senter${unreadEmailCount > 0 ? ` - ${unreadEmailCount} uleste meldinger` : ''}`}
+                      tabIndex={0}
+                    >
+                      <Badge badgeContent={unreadEmailCount} color="error">
+                        <Email />
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
                   
                   {/* Client Activity Notification Icon */}
                   <Tooltip title={
@@ -3801,24 +3806,29 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       ? `${pendingTimelineChanges} timeline changes, ${pendingSubmissions} new submissions, ${urgentDeadlines} urgent deadlines, ${unreadComments} new comments, ${recentDownloads} recent downloads`
                       : 'No urgent client activity'
                   }>
-                    <IconButton 
+                    <IconButton
                       size={isSmallScreen ? "small" : "medium"}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        // Open client activity modal
                         setShowClientActivityModal(true);
                       }}
                       sx={{
-                        bgcolor: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#ff00001a' : `${customBranding.color}10`,
+                        bgcolor: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#ff00001a' : `${customBranding.color}1a`,
+                        color: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#f44336' : customBranding.color,
+                        border: `1px solid ${(pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#f44336' : customBranding.color}40`,
                         minHeight: { xs: 36, sm: 44 },
-                        animation: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? 'pulse 2s infinite' : 'none','@keyframes pulse': {
-                          '0%, 100%': { boxShadow: '0 0 0 0 rgba(255, 0, 0, 0.7)' }, '50%': { boxShadow: '0 0 0 8px rgba(255, 0, 0, 0)' }
-                        }, '&:hover': {
-                          bgcolor: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#ff000033' : customBranding.color + '20'
+                        animation: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? 'pulse 2s infinite' : 'none',
+                        '@keyframes pulse': {
+                          '0%, 100%': { boxShadow: '0 0 0 0 rgba(255, 0, 0, 0.7)' },
+                          '50%': { boxShadow: '0 0 0 8px rgba(255, 0, 0, 0)' }
+                        },
+                        '&:hover': {
+                          bgcolor: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#ff000033' : `${customBranding.color}33`,
+                          borderColor: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#f44336' : customBranding.color,
                         }
                       }}
-                      aria-label={`Client activity${totalClientActivity > 0 ? ` - ${totalClientActivity} updates` : ', '}`}
+                      aria-label={`Klient-aktivitet${totalClientActivity > 0 ? ` - ${totalClientActivity} oppdateringer` : ''}`}
                       tabIndex={0}
                     >
                       <Badge
@@ -3826,7 +3836,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         color={(pendingTimelineChanges > 0 || urgentDeadlines > 0) ? "error" : "primary"}
                         max={99}
                       >
-                        <Notifications sx={{ color: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#f44336' : 'inherit' }} />
+                        <Notifications />
                       </Badge>
                     </IconButton>
                   </Tooltip>
@@ -3841,9 +3851,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         setLocation('/photographer/clients');
                       }}
                       sx={{
-                        bgcolor: `${customBranding.color}10`,
+                        bgcolor: `${customBranding.color}1a`,
+                        color: customBranding.color,
+                        border: `1px solid ${customBranding.color}40`,
                         minHeight: { xs: 36, sm: 44 },
-                        '&:hover': { bgcolor: customBranding.color + '20' },
+                        '&:hover': {
+                          bgcolor: `${customBranding.color}33`,
+                          borderColor: customBranding.color,
+                        },
                       }}
                       aria-label="Klienter (CRM)"
                       tabIndex={0}
@@ -3866,10 +3881,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         setLocation('/photographer/print-orders');
                       }}
                       sx={{
-                        bgcolor: pendingPrintOrders > 0 ? '#ff8c001a' : `${customBranding.color}10`,
+                        bgcolor: pendingPrintOrders > 0 ? '#ff8c001a' : `${customBranding.color}1a`,
+                        color: pendingPrintOrders > 0 ? '#ff8c00' : customBranding.color,
+                        border: `1px solid ${pendingPrintOrders > 0 ? '#ff8c00' : customBranding.color}40`,
                         minHeight: { xs: 36, sm: 44 },
                         '&:hover': {
-                          bgcolor: pendingPrintOrders > 0 ? '#ff8c0033' : customBranding.color + '20',
+                          bgcolor: pendingPrintOrders > 0 ? '#ff8c0033' : `${customBranding.color}33`,
+                          borderColor: pendingPrintOrders > 0 ? '#ff8c00' : customBranding.color,
                         },
                       }}
                       aria-label={`Print-bestillinger${pendingPrintOrders > 0 ? ` - ${pendingPrintOrders} venter` : ''}`}
