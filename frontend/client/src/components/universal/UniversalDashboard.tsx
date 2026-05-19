@@ -2789,6 +2789,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // useAuth henter — komponenter videre nede slipper å håndtere
   // "guest"-state og queries fyrer ikke før vi har en ekte ID.
   if (authLoading) {
+    console.log('[DASHBOARD_DEBUG_v5] authLoading=true, viser spinner');
     return (
       <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <CircularProgress />
@@ -2796,22 +2797,30 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     );
   }
   if (!isAuthenticated || !userId) {
-    // Slice 9X.60 — Race-condition-fix: useAuth.checkAuthStatus kan motta
-    // 200 + authenticated:false i et kort vindu rett etter Google-login
-    // (in-memory session-cache wiped ved Render-restart, DB-fallback enda
-    // ikke kjørt). Hvis localStorage fortsatt har en token, IKKE redirect
-    // til /login (det skaper en bounce). Vis spinner — useAuth re-prøver,
-    // og enten kommer state tilbake til authenticated:true eller bruker
-    // logger ut eksplisitt.
     let hasStoredToken = false;
+    let storedUserSnapshot: string | null = null;
     try {
       hasStoredToken =
         typeof window !== 'undefined' &&
         !!window.localStorage.getItem('creatorhub_auth_token');
+      storedUserSnapshot = window.localStorage.getItem('creatorhub_auth_user');
     } catch { /* ignore */ }
 
+    // FULL diagnostic dump
+    console.warn('[DASHBOARD_DEBUG_v5] Bounce-decision', {
+      isAuthenticated,
+      userId,
+      userIdType: typeof userId,
+      currentUser: currentUser ? { id: currentUser.id, email: currentUser.email, role: currentUser.role } : null,
+      userSession: userSession ? { userId: (userSession as any).userId, email: (userSession as any).email } : null,
+      hasStoredToken,
+      storedUserExists: !!storedUserSnapshot,
+      storedUserParsed: storedUserSnapshot ? (() => { try { const u = JSON.parse(storedUserSnapshot); return { id: u.id, email: u.email, role: u.role }; } catch { return 'parse-failed'; } })() : null,
+      pathname: typeof window !== 'undefined' ? window.location.pathname : 'ssr',
+    });
+
     if (hasStoredToken) {
-      console.warn('[UniversalDashboard] Auth race-window: token finnes i localStorage men isAuthenticated/userId mangler. Viser spinner i stedet for å bounce til /login.');
+      console.warn('[DASHBOARD_DEBUG_v5] Holder igjen pga stored token → viser spinner, IKKE bounce');
       return (
         <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <CircularProgress />
@@ -2819,6 +2828,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       );
     }
 
+    console.error('[DASHBOARD_DEBUG_v5] BOUNCER til /login fordi ingen stored token. Stack:', new Error().stack);
     if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
       window.location.href = '/login';
     }

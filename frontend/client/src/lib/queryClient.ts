@@ -14,6 +14,8 @@ function clearClientAuthState() {
     return;
   }
 
+  console.error('[AUTH_DEBUG_v5] clearClientAuthState() KALT — wiper ALLE auth-keys i localStorage. Stack:', new Error().stack);
+
   try {
     for (const key of AUTH_STORAGE_KEYS) {
       window.localStorage.removeItem(key);
