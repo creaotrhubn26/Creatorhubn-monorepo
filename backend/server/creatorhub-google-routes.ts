@@ -713,10 +713,23 @@ export function createCreatorHubGoogleRouter(
     creatorHubGoogleOauthStateStore.delete(stateId!);
 
     try {
+      // Slice 9X.61 — Bygg redirect_uri fra oauthState.browserOrigin (lagret
+      // ved /oauth/start) i stedet for config.redirectUri (som er request-
+      // derived). Token exchange MÅ bruke SAMME redirect_uri som ble sendt
+      // til Google ved auth-start, ellers svarer Google redirect_uri_mismatch.
+      //
+      // Bug-en oppsto fordi callback-en kommer fra Google (Referer =
+      // accounts.google.com), så resolveGoogleWorkspaceRequestOrigin
+      // returnerte 'https://accounts.google.com' — som ble brukt som
+      // redirect_uri i token-exchange. Mismatch med originalen
+      // (https://creatorhubn.com/...) → Google avviste.
+      const tokenExchangeRedirectUri = oauthState.browserOrigin
+        ? `${oauthState.browserOrigin}/api/creatorhub/google/oauth/callback`
+        : config.redirectUri!;
       const oauthClient = new google.auth.OAuth2(
         config.clientId!,
         config.clientSecret!,
-        config.redirectUri!,
+        tokenExchangeRedirectUri,
       );
       const tokenResult = await oauthClient.getToken(code);
       oauthClient.setCredentials(tokenResult.tokens);
