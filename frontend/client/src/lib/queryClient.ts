@@ -249,10 +249,13 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
     // advarsel og lar useAuth selv avgjøre via /api/auth/user.
     if (response.status === 401) {
       const isAuthEndpoint = /\/(auth|session)\/(user|me|status|validate|refresh)\b/i.test(normalizedUrl);
+      // SLICE_9X_60_BUILD_MARKER_v4 — synlig string for å verifisere at
+      // bundle inkluderer denne fixen. Hvis du ser denne i deployd bundle
+      // er fix-en LIVE; hvis ikke, har Vercel cache-issue og bundle er stale.
       if (isAuthEndpoint) {
         clearClientAuthState();
       } else if (typeof console !== 'undefined') {
-        console.warn(`[apiRequest] 401 fra ${normalizedUrl} — behandles som permission-issue, ikke logout. Sjekk om endpoint krever en annen rolle.`);
+        console.warn(`[apiRequest][SLICE_9X_60_v4] 401 fra ${normalizedUrl} — behandles som permission-issue, ikke logout.`);
       }
     }
 
