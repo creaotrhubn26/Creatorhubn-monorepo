@@ -410,90 +410,58 @@ Svar med profesjonell og vennlig tone.
         </Alert>
       )}
 
-      {/* Comprehensive Dashboard Stats */}
+      {/* Slice 9X.67 — Dashboard stats. Tidligere: theming.getThemedCardSx()
+          overrident hver enkelt card's egen bakgrunn med pale-grønn fra
+          academy-temaet (det er hva default-theming returnerer når profession
+          ikke matcher en kjent tema-key). Nå bygger vi konsistent dark-card
+          med eksplisitt accent per card, og bra kontrast i begge moduser. */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
-        {/* Email Stats */}
-        <Box sx={{ flex: '1 1 200px', minWidth: 200}}>
-          <Card sx={{ 
-            background: `linear-gradient(45deg, ${customBranding?.color || '#ff8c00'}20, ${customBranding?.color || '#ff8c00'}10)`,
-            border: `1px solid ${customBranding?.color || '#ff8c00'}30`,
-            height: '100%'
-      ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <InboxIcon sx={{ color: customBranding?.color || '#ff8c00', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: customBranding?.color || '#ff8c00', fontWeight: 700 }}>
-                {stats.newInquiries}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Nye Forespørsler
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-        
-        <Box sx={{ flex: '1 1 200px', minWidth: 200}}>
-          <Card sx={{ 
-            background: 'rgba(6, 175, 80, 0.1)',
-            border: '1px solid rgba(6, 175, 80, 0.3)',
-            height: '100%'
-      ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <ReplyIcon sx={{ color: '#4caf50', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#4caf50', fontWeight: 700 }}>
-                {stats.repliedInquiries}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Besvarte
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-        
-        {/* Submissions Stats */}
-        <Box sx={{ flex: '1 1 200px', minWidth: 200}}>
-          <Card sx={{ 
-            background: 'rgba(3, 150, 243, 0.1)',
-            border: '1px solid rgba(3, 150, 243, 0.3)',
-            height: '100%'
-      ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <AssignmentIcon sx={{ color: '#2196f0', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#2196f0', fontWeight: 700 }}>
-                {submissions.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {professionConfig ? `${professionConfig.displayName} Forespørsler` : 'Kundeforespørsler'}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-        
-        <Box sx={{ flex: '1 1 200px', minWidth: 200}}>
-          <Card sx={{ 
-            background: 'rgba(25, 1520.1)',
-            border: '1px solid rgba(25, 1520.3)',
-            height: '100%'
-      ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <TrendingUpIcon sx={{ color: '#ff9800', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#ff9800', fontWeight: 700 }}>
-                {stats.highPriority}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Høy Prioritet
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
+        {([
+          { label: 'Nye Forespørsler', value: stats.newInquiries, color: customBranding?.color || '#ff8c00', icon: <InboxIcon /> },
+          { label: 'Besvarte', value: stats.repliedInquiries, color: '#4caf50', icon: <ReplyIcon /> },
+          { label: professionConfig ? `${professionConfig.displayName} Forespørsler` : 'Kundeforespørsler', value: submissions.length, color: '#2196f3', icon: <AssignmentIcon /> },
+          { label: 'Høy Prioritet', value: stats.highPriority, color: '#ff9800', icon: <TrendingUpIcon /> },
+        ] as const).map((stat) => (
+          <Box key={stat.label} sx={{ flex: '1 1 200px', minWidth: 200 }}>
+            <Card sx={{
+              background: `linear-gradient(135deg, ${stat.color}26, ${stat.color}10)`,
+              border: `1px solid ${stat.color}55`,
+              height: '100%',
+              boxShadow: 'none',
+            }}>
+              <CardContent sx={{ p: 2, textAlign: 'center' }}>
+                {React.cloneElement(stat.icon, {
+                  sx: { color: stat.color, fontSize: 28, mb: 1 },
+                })}
+                <Typography variant="h4" sx={{ color: stat.color, fontWeight: 700 }}>
+                  {stat.value}
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'text.primary', opacity: 0.85, fontWeight: 500 }}>
+                  {stat.label}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Box>
+        ))}
       </Box>
 
       {/* Enhanced Filter Tabs with more functionality */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  2 }}>
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb:  1 }}>
-          <Typography variant="h6" sx={{  color: customBranding?.color || '#ff8c00' }}>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb:  1 }} flexWrap="wrap" useFlexGap>
+          {/* Slice 9X.67 — Tittel: var nær usynlig pga lavkontrast accent-farge
+              direkte på mørk bg. La til text-shadow + fontWeight for synlighet. */}
+          <Typography variant="h6" sx={{
+            color: customBranding?.color || '#ff8c00',
+            fontWeight: 700,
+            textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+          }}>
             Kundeforespørsler & Kommunikasjon
           </Typography>
-          <Chip size="small" label={`${professions.length} profesjoner`} />
+          {/* Bug-fix: professions kan være undefined under loading → viste
+              "undefined profesjoner". Bruker safe-fallback. */}
+          {Array.isArray(professions) && professions.length > 0 && (
+            <Chip size="small" label={`${professions.length} ${professions.length === 1 ? 'profesjon' : 'profesjoner'}`} />
+          )}
           {selectedProject?.name && <Chip size="small" color="primary" label={`Prosjekt: ${selectedProject.name}`} />}
           {selectedClient?.name && <Chip size="small" color="secondary" label={`Klient: ${selectedClient.name}`} />}
           <Button size="small"
