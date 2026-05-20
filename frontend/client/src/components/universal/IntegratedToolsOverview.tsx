@@ -129,7 +129,7 @@ const IntegratedToolsOverview: React.FC<IntegratedToolsOverviewProps> = ({
 
   if (compact) {
     return (
-      <Card sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.96)', mb:  2 ,  ...theming.getThemedCardSx() }}>
+      <Card sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', mb:  2 ,  ...theming.getThemedCardSx() }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 600, mb:  1 }}>
           Tilgjengelige Verktøy
         </Typography>
@@ -204,7 +204,7 @@ const IntegratedToolsOverview: React.FC<IntegratedToolsOverviewProps> = ({
         
         {/* Core Platform Tools */}
         <Grid size={{ xs:  12, md:  6 }}>
-          <Card sx={{ height: '100%', bgcolor: 'rgba(255,255,255,0.96)' ,  ...theming.getThemedCardSx() }}>
+          <Card sx={{ height: '100%', bgcolor: 'rgba(255,255,255,0.04)' ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                 {theming.getThemedIcon('build')}
@@ -242,7 +242,7 @@ const IntegratedToolsOverview: React.FC<IntegratedToolsOverviewProps> = ({
 
         {/* Professional-Specific Tools */}
         <Grid size={{ xs:  12, md:  6 }}>
-          <Card sx={{ height: '100%', bgcolor: 'rgba(255,255,255,0.96)' ,  ...theming.getThemedCardSx() }}>
+          <Card sx={{ height: '100%', bgcolor: 'rgba(255,255,255,0.04)' ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                 {theming.getThemedIcon('group')}
@@ -396,7 +396,7 @@ const IntegratedToolsOverview: React.FC<IntegratedToolsOverviewProps> = ({
 
         {/* Administrative Tools */}
         <Grid size={{ xs: 12 }}>
-          <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)' ,  ...theming.getThemedCardSx() }}>
+          <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)' ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                 {theming.getThemedIcon('settings')}

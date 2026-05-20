@@ -32,6 +32,7 @@ import {
   OpenInNew as OpenInNewIcon,
   LocationOn as LocationIcon,
   Flag as FlagIcon,
+  PlayCircleOutline as PlayCircleIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -124,9 +125,12 @@ function deadlineColor(iso: string): string {
 interface Props {
   onAddNew?: () => void;
   onCardClick?: (app: JobApp) => void;
+  /** Når satt: viser "Tren på intervju"-knapp på hvert kort som
+   *  åpner Mock Interview pre-koblet til søknaden. */
+  onPracticeInterview?: (app: JobApp) => void;
 }
 
-export const JobApplicationKanban: React.FC<Props> = ({ onAddNew, onCardClick }) => {
+export const JobApplicationKanban: React.FC<Props> = ({ onAddNew, onCardClick, onPracticeInterview }) => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [showWithdrawn, setShowWithdrawn] = useState(false);
@@ -389,6 +393,25 @@ export const JobApplicationKanban: React.FC<Props> = ({ onAddNew, onCardClick })
                                         <FlagIcon sx={{ fontSize: 16, color: '#DC2626' }} />
                                       </Tooltip>
                                     )}
+                                    {onPracticeInterview && (
+                                      <Tooltip title="Tren på intervju for denne stillingen">
+                                        <IconButton
+                                          size="small"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onPracticeInterview(app);
+                                          }}
+                                          sx={{
+                                            p: 0.4,
+                                            ml: 'auto',
+                                            bgcolor: '#FFF8E1',
+                                            '&:hover': { bgcolor: '#F5B82E', color: '#fff' },
+                                          }}
+                                        >
+                                          <PlayCircleIcon sx={{ fontSize: 16, color: '#7A5A0B' }} />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
                                     {app.jobUrl && (
                                       <Tooltip title="Åpne stillingsannonse">
                                         <IconButton
@@ -397,7 +420,7 @@ export const JobApplicationKanban: React.FC<Props> = ({ onAddNew, onCardClick })
                                           target="_blank"
                                           rel="noopener"
                                           onClick={(e) => e.stopPropagation()}
-                                          sx={{ p: 0, ml: 'auto' }}
+                                          sx={{ p: 0, ml: onPracticeInterview ? 0 : 'auto' }}
                                         >
                                           <OpenInNewIcon sx={{ fontSize: 14 }} />
                                         </IconButton>

@@ -176,7 +176,7 @@ export default function AdministrationHub({
                 border: '1px solid',
                 borderColor: 'divider',
                 overflow: 'hidden',
-                bgcolor: 'background.paper',
+                bgcolor: 'rgba(255,255,255,0.04)',
               }}
             >
               <MuiTabs

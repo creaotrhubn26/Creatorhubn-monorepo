@@ -3646,41 +3646,90 @@ Regler:
       console.warn("[interview-session] competence extraction failed", err);
     }
 
-    // STEG 2 — generer første spørsmål basert på CV + JD + kompetansekrav
+    // STEG 2 — generer første spørsmål basert på CV + JD + kompetansekrav.
+    // Case-modus har egen system-prompt — Claude opptrer som intervjuer
+    // som presenterer case og skyver bruker mot strukturert tilnærming.
     try {
       const competenceContext = competenceRequirements.length
         ? `\nKOMPETANSEKRAV vi vil at kandidaten demonstrerer:\n${competenceRequirements.map((r) => `  • ${r.label} — ${r.why}`).join("\n")}`
         : "";
+
+      const casePrompt = asString(body.casePrompt);
+      const isCaseMode = mode === "case";
+
+      const systemPrompt = isCaseMode
+        ? [
+            "Du er en kresen case-intervjuer (tenk McKinsey / BCG / produktleder hos store norske selskap).",
+            "Du presenterer ÉN konkret case for kandidaten og leder dem gjennom intervjuet.",
+            "",
+            "Case-intervjuet har 5-6 faser:",
+            "  1. CASE-PRESENTASJON — du gir scenariet, fakta, oppgaven",
+            "  2. AVKLARING — kandidaten skal stille avklarende spørsmål FØR de svarer",
+            "  3. STRUKTUR — kandidaten foreslår rammeverk (Profit Tree, MECE, 4P, Porter, etc)",
+            "  4. ANALYSE — kandidaten jobber seg gjennom rammeverket med hypoteser",
+            "  5. ANBEFALING — kandidaten konkluderer med konkret anbefaling",
+            "  6. UTFORDRING — du presser dem ('hva med X? Hvordan beregner du dette?')",
+            "",
+            "Du er KRESEN. Du:",
+            "  • Gir IKKE bort svaret eller løsningen",
+            "  • Lar IKKE kandidaten slippe unna med vage svar — du presser konkret",
+            "  • Påpeker rammeverk-feil tidlig ('grenene dine overlapper')",
+            "  • Spør 'hvordan beregner du det?' når kandidaten bruker tall",
+            "  • Holder tidstrykket realistisk",
+            "",
+            "Det FØRSTE 'spørsmålet' er CASE-PRESENTASJONEN: 3-5 setninger med scenario, fakta og oppgave.",
+            "",
+            "Returner KUN JSON i dette formatet:",
+            '{"category": "case_presentation", "question": "Den fulle case-presentasjonen", "targets": []}',
+            "Ingen markdown.",
+          ].join("\n")
+        : [
+            "Du er en erfaren norsk intervju-coach. Du gjennomfører en intervjutrening.",
+            `Du skal stille ${totalQuestions} spørsmål totalt — varier mellom:`,
+            "  • behavioral (STAR-format: tidligere situasjon)",
+            "  • technical (yrkes-spesifikk kunnskap)",
+            "  • competence (overførbare ferdigheter)",
+            "  • situational (hypotetisk scenario)",
+            "",
+            "Hvert spørsmål skal være designet for å avdekke OM kandidaten",
+            "har en eller flere av de definerte kompetansekravene.",
+            "",
+            "Returner KUN JSON med dette formatet for FØRSTE spørsmål:",
+            '{"category": "behavioral|technical|competence|situational", "question": "Spørsmålet ditt", "targets": ["kompetanse_key_1"]}',
+            "Ingen markdown, ingen forklaring, kun JSON.",
+          ].join("\n");
+
+      const userPromptParts = isCaseMode
+        ? [
+            jobTitle ? `STILLING: ${jobTitle}` : "",
+            company ? `SELSKAP: ${company}` : "",
+            casePrompt
+              ? `\nCASE-PROMPT FRA BRUKER (basis for caset):\n${casePrompt}`
+              : `JOBBESKRIVELSE:\n${jdText}`,
+            competenceContext,
+            `\nKANDIDATENS CV:\n${summarizeResumeForAI(full)}`,
+            "",
+            casePrompt
+              ? "Bruk brukerens case-prompt som utgangspunkt og lag en presentasjon kandidaten kan jobbe med."
+              : "Lag en realistisk case som passer stillingen (markedsstørrelse / lønnsomhet / produktstrategi / M&A / estimering — avhengig av bransje).",
+            "Hold caset stramt: 3-5 setninger med kontekst, tall, og en åpen oppgave.",
+          ]
+        : [
+            jobTitle ? `STILLING: ${jobTitle}` : "",
+            company ? `SELSKAP: ${company}` : "",
+            `JOBBESKRIVELSE:\n${jdText}`,
+            competenceContext,
+            `\nKANDIDATENS CV:\n${summarizeResumeForAI(full)}`,
+            "",
+            `Generer DET FØRSTE intervjuspørsmålet. Det bør være åpnings-`,
+            `vennlig (myk start), gjerne behavioral. Bruk konkrete detaljer`,
+            `fra kandidatens CV i spørsmålet.`,
+          ];
+
       const ai = await callClaude({
-        system: [
-          "Du er en erfaren norsk intervju-coach. Du gjennomfører en intervjutrening.",
-          `Du skal stille ${totalQuestions} spørsmål totalt — varier mellom:`,
-          "  • behavioral (STAR-format: tidligere situasjon)",
-          "  • technical (yrkes-spesifikk kunnskap)",
-          "  • competence (overførbare ferdigheter)",
-          "  • situational (hypotetisk scenario)",
-          "",
-          "Hvert spørsmål skal være designet for å avdekke OM kandidaten",
-          "har en eller flere av de definerte kompetansekravene.",
-          "",
-          "Returner KUN JSON med dette formatet for FØRSTE spørsmål:",
-          '{"category": "behavioral|technical|competence|situational", "question": "Spørsmålet ditt", "targets": ["kompetanse_key_1"]}',
-          "Ingen markdown, ingen forklaring, kun JSON.",
-        ].join("\n"),
-        user: [
-          jobTitle ? `STILLING: ${jobTitle}` : "",
-          company ? `SELSKAP: ${company}` : "",
-          `JOBBESKRIVELSE:\n${jdText}`,
-          competenceContext,
-          `\nKANDIDATENS CV:\n${summarizeResumeForAI(full)}`,
-          "",
-          `Generer DET FØRSTE intervjuspørsmålet. Det bør være åpnings-`,
-          `vennlig (myk start), gjerne behavioral. Bruk konkrete detaljer`,
-          `fra kandidatens CV i spørsmålet.`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        maxTokens: 600,
+        system: systemPrompt,
+        user: userPromptParts.filter(Boolean).join("\n"),
+        maxTokens: isCaseMode ? 1000 : 600,
       });
       const parsed = tryParseJson<{
         category?: string;
@@ -3788,35 +3837,63 @@ Regler:
       .join("\n\n");
 
     const isLastQuestion = currentIdx + 1 >= totalQs;
+    const isCaseMode = sess.mode === "case";
 
     try {
       const ai = await callClaude({
-        system: [
-          "Du er en norsk intervju-coach. Gi konstruktiv feedback på kandidatens siste svar,",
-          "deretter still neste spørsmål (eller avslutt hvis dette var siste).",
-          "",
-          "Returner KUN JSON i dette formatet:",
-          isLastQuestion
-            ? `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "isFinal": true}`
-            : `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "category": "behavioral|technical|competence|situational", "nextQuestion": "neste spørsmål", "isFinal": false}`,
-          "",
-          "Feedback skal være:",
-          "  • Konkret (peke på faktiske setninger)",
-          "  • Bygd på STAR-metoden (Situasjon, Oppgave, Handling, Resultat)",
-          "  • Foreslå EN forbedring, ikke en liste",
-          "Neste spørsmål skal:",
-          "  • Variere kategori fra forrige",
-          "  • Bygge på kandidatens svar (utforske dypere)",
-          "  • Knytte til JD-en",
-          "Ingen markdown.",
-        ].join("\n"),
+        system: isCaseMode
+          ? [
+              "Du er en kresen case-intervjuer (McKinsey/BCG-stil). Du leder kandidaten",
+              "gjennom et case-intervju i fasene: avklaring → struktur → analyse → anbefaling.",
+              "",
+              "Vurder kandidatens siste svar med høye krav:",
+              "  • Stiller kandidaten avklarende spørsmål FØR de hopper til struktur? (godt)",
+              "  • Bruker de et eksplisitt rammeverk (Profit Tree, MECE, 4P, Porter)?",
+              "  • Er rammeverket MECE (Mutually Exclusive, Collectively Exhaustive)?",
+              "  • Begrunner de hver hypotese, eller gjetter de?",
+              "  • Bygger de en logisk struktur ELLER hopper mellom poenger?",
+              "  • Konkluderer de tydelig med en anbefaling og resonnement?",
+              "",
+              "Vær KRESEN. IKKE gi bort løsningen. Press kandidaten:",
+              "  • Hvis svaret er vagt: 'hvordan vil du beregne det?'",
+              "  • Hvis rammeverket har overlapp: 'grenene dine her overlapper — hva skjer hvis...'",
+              "  • Hvis de har en hypotese: 'hva ville fått deg til å forkaste den hypotesen?'",
+              "  • Hvis de bruker tall: 'hvor kommer det tallet fra?'",
+              "",
+              "Returner KUN JSON i dette formatet:",
+              isLastQuestion
+                ? `{"feedback": "kresen feedback (3-4 setninger) — pek konkret på rammeverk/logikk-feil", "score": 0-10, "isFinal": true}`
+                : `{"feedback": "kresen feedback (2-3 setninger)", "score": 0-10, "category": "clarification|structure|analysis|recommendation|challenge", "nextQuestion": "neste oppfølgings-spørsmål eller utfordring", "isFinal": false}`,
+              "Ingen markdown.",
+            ].join("\n")
+          : [
+              "Du er en norsk intervju-coach. Gi konstruktiv feedback på kandidatens siste svar,",
+              "deretter still neste spørsmål (eller avslutt hvis dette var siste).",
+              "",
+              "Returner KUN JSON i dette formatet:",
+              isLastQuestion
+                ? `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "isFinal": true}`
+                : `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "category": "behavioral|technical|competence|situational", "nextQuestion": "neste spørsmål", "isFinal": false}`,
+              "",
+              "Feedback skal være:",
+              "  • Konkret (peke på faktiske setninger)",
+              "  • Bygd på STAR-metoden (Situasjon, Oppgave, Handling, Resultat)",
+              "  • Foreslå EN forbedring, ikke en liste",
+              "Neste spørsmål skal:",
+              "  • Variere kategori fra forrige",
+              "  • Bygge på kandidatens svar (utforske dypere)",
+              "  • Knytte til JD-en",
+              "Ingen markdown.",
+            ].join("\n"),
         user: [
           `STILLING: ${sess.job_title ?? ""}`,
-          `JOBBESKRIVELSE: ${sess.job_description}`,
+          isCaseMode
+            ? `CASE/JOBBESKRIVELSE: ${sess.job_description}`
+            : `JOBBESKRIVELSE: ${sess.job_description}`,
           fullCv ? `\nCV: ${summarizeResumeForAI(fullCv).slice(0, 1500)}` : "",
           `\nINTERVJU-HISTORIKK:\n${conversation}`,
           "",
-          `Spørsmål ${currentIdx + 1} av ${totalQs}. ${isLastQuestion ? "DETTE ER SISTE SVAR." : ""}`,
+          `Tur ${currentIdx + 1} av ${totalQs}. ${isLastQuestion ? "DETTE ER SISTE SVAR." : ""}`,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -3992,26 +4069,43 @@ Regler:
         })
         .join("\n\n");
       const isLastQuestion = currentIdx + 1 >= totalQs;
+      const isCaseModeAudio = sess.mode === "case";
 
       try {
         const ai = await callClaude({
-          system: [
-            "Du er en norsk intervju-coach. Kandidaten svarte med tale; vi har transkribert det.",
-            "Bemerk eksplisitt om svaret virker øvet, naturlig eller fragmentert.",
-            "Gi konstruktiv feedback på siste svar, deretter still neste spørsmål (eller avslutt).",
-            "",
-            "Returner KUN JSON i dette formatet:",
-            isLastQuestion
-              ? `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "isFinal": true}`
-              : `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "category": "behavioral|technical|competence|situational", "nextQuestion": "neste spørsmål", "isFinal": false}`,
-            "",
-            "Feedback skal være:",
-            "  • Konkret (peke på faktiske setninger)",
-            "  • Bygd på STAR-metoden",
-            "  • Vurdere taleflyt (svaret kommer fra audio-transkripsjon — kommenter naturlighet hvis relevant)",
-            "  • Foreslå EN forbedring, ikke en liste",
-            "Ingen markdown.",
-          ].join("\n"),
+          system: isCaseModeAudio
+            ? [
+                "Du er en kresen case-intervjuer (McKinsey/BCG-stil). Kandidaten svarte",
+                "med tale — vi har transkribert det. Vurder svaret med høye krav:",
+                "  • Avklarer kandidaten først eller hopper de til struktur?",
+                "  • Bruker de et eksplisitt rammeverk?",
+                "  • Begrunner de tall og hypoteser?",
+                "  • Holder de logisk struktur eller hopper de?",
+                "",
+                "Vær KRESEN — IKKE gi bort løsningen. Bemerk også taleflyt.",
+                "",
+                "Returner KUN JSON:",
+                isLastQuestion
+                  ? `{"feedback": "kresen feedback", "score": 0-10, "isFinal": true}`
+                  : `{"feedback": "kresen feedback", "score": 0-10, "category": "clarification|structure|analysis|recommendation|challenge", "nextQuestion": "neste utfordring", "isFinal": false}`,
+              ].join("\n")
+            : [
+                "Du er en norsk intervju-coach. Kandidaten svarte med tale; vi har transkribert det.",
+                "Bemerk eksplisitt om svaret virker øvet, naturlig eller fragmentert.",
+                "Gi konstruktiv feedback på siste svar, deretter still neste spørsmål (eller avslutt).",
+                "",
+                "Returner KUN JSON i dette formatet:",
+                isLastQuestion
+                  ? `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "isFinal": true}`
+                  : `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "category": "behavioral|technical|competence|situational", "nextQuestion": "neste spørsmål", "isFinal": false}`,
+                "",
+                "Feedback skal være:",
+                "  • Konkret (peke på faktiske setninger)",
+                "  • Bygd på STAR-metoden",
+                "  • Vurdere taleflyt (svaret kommer fra audio-transkripsjon — kommenter naturlighet hvis relevant)",
+                "  • Foreslå EN forbedring, ikke en liste",
+                "Ingen markdown.",
+              ].join("\n"),
           user: [
             `STILLING: ${sess.job_title ?? ""}`,
             `JOBBESKRIVELSE: ${sess.job_description}`,

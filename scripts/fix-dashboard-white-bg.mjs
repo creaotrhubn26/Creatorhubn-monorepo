@@ -15,6 +15,8 @@ const FILES = [
   'DriveOperationsWorkspacePanel.tsx',
   'IntegratedToolsOverview.tsx',
   'AdministrationHub.tsx',
+  'misc/CameraEquipmentManager.tsx',
+  'IntegratedToolsOverview.tsx',
 ];
 
 const REPLACEMENTS = [
@@ -23,8 +25,8 @@ const REPLACEMENTS = [
   // bgcolor: '#fff' / '#ffffff' / '#FFF' (med eller uten quotes)
   { pattern: /bgcolor:\s*['"]#fff['"]/g,                 replace: "bgcolor: 'rgba(255,255,255,0.04)'" },
   { pattern: /bgcolor:\s*['"]#ffffff['"]/gi,             replace: "bgcolor: 'rgba(255,255,255,0.04)'" },
-  // bgcolor: 'rgba(255,255,255,0.X)' for X = 7,8,9
-  { pattern: /bgcolor:\s*['"]rgba\(255,\s*255,\s*255,\s*0\.[789]\)['"]/g,
+  // bgcolor: 'rgba(255,255,255,0.X)' for X = 7,8,9 + 0.95/0.96/0.98
+  { pattern: /bgcolor:\s*['"]rgba\(255,\s*255,\s*255,\s*0\.[789][0-9]?\)['"]/g,
     replace: "bgcolor: 'rgba(255,255,255,0.04)'" },
   // background: 'white' / "white"
   { pattern: /background:\s*['"]white['"]/g,             replace: "background: 'rgba(255,255,255,0.04)'" },
@@ -36,6 +38,10 @@ const REPLACEMENTS = [
     replace: "background: 'rgba(255,255,255,0.04)'" },
   // Soft pastels som '#fff3e0' (light orange paper)
   { pattern: /bgcolor:\s*['"]#fff3e0['"]/g,              replace: "bgcolor: 'rgba(255,186,108,0.08)'" },
+  // bgcolor: 'background.paper' (MUI default — ThemeProvider setter den
+  // til rgba(255,255,255,0.04), men inline overstyrelser bryter — fjern dem)
+  { pattern: /bgcolor:\s*['"]background\.paper['"]/g,    replace: "bgcolor: 'rgba(255,255,255,0.04)'" },
+  { pattern: /backgroundColor:\s*['"]background\.paper['"]/g, replace: "backgroundColor: 'rgba(255,255,255,0.04)'" },
 ];
 
 let totalEdits = 0;

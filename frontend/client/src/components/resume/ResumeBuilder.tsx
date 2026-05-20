@@ -3719,8 +3719,9 @@ export default function ResumeBuilder() {
 
   // Cover letter library
   const [showCoverLetterLibrary, setShowCoverLetterLibrary] = useState(false);
-  // Mock interview
+  // Mock interview — kan åpnes med valgfri job-application-binding
   const [showMockInterview, setShowMockInterview] = useState(false);
+  const [mockInterviewAppId, setMockInterviewAppId] = useState<string | null>(null);
   // Referrals
   const [showReferralDialog, setShowReferralDialog] = useState(false);
   // Job Kanban + milestones
@@ -6630,8 +6631,12 @@ export default function ResumeBuilder() {
         {showMockInterview && (
           <NextRoleMockInterview
             open={showMockInterview}
-            onClose={() => setShowMockInterview(false)}
+            onClose={() => {
+              setShowMockInterview(false);
+              setMockInterviewAppId(null);
+            }}
             resumeId={selectedResume?.id ?? null}
+            jobApplicationId={mockInterviewAppId}
           />
         )}
         {showReferralDialog && (
@@ -6663,6 +6668,11 @@ export default function ResumeBuilder() {
                     company: app.company,
                   })
                 }
+                onPracticeInterview={(app) => {
+                  setMockInterviewAppId(app.id);
+                  setShowKanbanDialog(false);
+                  setShowMockInterview(true);
+                }}
               />
             </DialogContent>
           </Dialog>

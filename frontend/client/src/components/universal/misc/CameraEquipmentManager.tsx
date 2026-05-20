@@ -503,7 +503,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 
   return (
     <Box sx={{ p:  3, maxWidth: 120, mx: 'auto'}}>
-      <Paper sx={{ p:  4, mb:  4, bgcolor: 'background.paper', borderRadius: 2, boxShadow:  3 ,  ...theming.getThemedCardSx() }}>
+      <Paper sx={{ p:  4, mb:  4, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, boxShadow:  3 ,  ...theming.getThemedCardSx() }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
           <PhotoCamera sx={{ fontSize:  32, color: 'primary.main'}} />
           <Typography variant="h4" sx={{  fontWeight: 600, color: theming.colors.primary }}>
@@ -1168,7 +1168,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         {/* Memory Card Selector - Improved , *, /}
         <Grid xs={12} lg={4}>
           <Box sx={{ position: 'sticky', top: 20}}>
-            <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius:  1 }}>
+            <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius:  1 }}>
               <Typography variant="body2" color="text.secondary">
                 🎯 Smart minnekort forslag
               </Typography>

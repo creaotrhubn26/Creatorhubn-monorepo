@@ -9862,7 +9862,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Typography>
             
             {/* Selected Images Summary */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.paper' }}>
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
               <Typography variant="h6" gutterBottom>Valgte elementer</Typography>
               <Typography variant="body1">
                 {selectedImages.size} {profession === 'photographer' ? 'bilder' : 'elementer'} valgt
@@ -9966,7 +9966,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Typography>
             
             {/* Selected Images Summary */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.paper' }}>
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
               <Typography variant="h6" gutterBottom>Valgte bilder</Typography>
               <Typography variant="body1">
                 {selectedImages.size === 1 
