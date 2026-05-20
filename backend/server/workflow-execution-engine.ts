@@ -310,16 +310,115 @@ function registerDefaultActions() {
     }),
   });
 
-  // Kontrakt
+  // Kontrakt — Slice 9X.79: ekte AI-utkast via Claude Haiku
   registerAction({
     id: 'generate-contract',
-    name: 'Generer kontrakt',
-    mode: 'manual',
-    handler: async () => ({
-      completed: false,
-      requiresManualConfirmation: true,
-      data: { actionUrl: '/contracts/new' },
-    }),
+    name: 'Generer kontrakt-utkast',
+    mode: 'ai',
+    handler: async (ctx) => {
+      const projectId   = pickContext(ctx, 'project_id', 'projectId');
+      const clientName  = pickContext(ctx, 'client_name', 'clientName');
+      const clientEmail = pickContext(ctx, 'client_email', 'clientEmail');
+      const projectType = pickContext(ctx, 'project_type', 'projectType') || 'bryllup';
+
+      // Hvis vi har project_id, hent priser fra DB for å berike prompten
+      let servicePrice: number | null = null;
+      let eventDate: string | null = null;
+      let location: string | null = null;
+      if (projectId) {
+        try {
+          const r = await ctx.pool.query(
+            `SELECT service_price, event_date, location FROM projects
+              WHERE id = $1 AND user_id = $2 LIMIT 1`,
+            [projectId, ctx.userId],
+          );
+          if (r.rows[0]) {
+            servicePrice = r.rows[0].service_price != null ? Number(r.rows[0].service_price) : null;
+            eventDate    = r.rows[0].event_date || null;
+            location     = r.rows[0].location || null;
+          }
+        } catch {
+          /* fall back to context-only */
+        }
+      }
+
+      try {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) {
+          return {
+            completed: false,
+            requiresManualConfirmation: true,
+            data: { actionUrl: '/contracts/new', note: 'ANTHROPIC_API_KEY mangler — opprett kontrakt manuelt' },
+          };
+        }
+        const client = new Anthropic({ apiKey });
+        const prompt = `Skriv et profesjonelt norsk kontrakt-utkast for følgende fotograf-oppdrag.
+Format: Markdown med tydelige seksjoner. Ikke inkluder fotografens navn (det fylles inn senere) — bruk [FOTOGRAFENS NAVN] som placeholder.
+
+Klient: ${clientName || '[Klientnavn]'}
+${clientEmail ? `E-post: ${clientEmail}` : ''}
+Prosjekt-type: ${projectType}
+${eventDate ? `Dato: ${eventDate}` : ''}
+${location ? `Sted: ${location}` : ''}
+${servicePrice ? `Honorar: ${servicePrice.toLocaleString('nb-NO')} kr` : ''}
+
+Seksjoner som skal med (kortfattet, max 1-2 setninger hver):
+1. Parter
+2. Oppdrag (beskriv hva fotografen leverer)
+3. Honorar & betaling
+4. Leveranse (antall bilder, leveranseform, deadline)
+5. Avbestilling
+6. Bruksrett (kunde + fotograf)
+7. Personvern (GDPR)
+
+Bruk myk, profesjonell tone. Norsk bokmål.`;
+
+        const response = await client.messages.create({
+          model: process.env.SMARTFLYT_CONTRACT_MODEL || 'claude-haiku-4-5-20251001',
+          max_tokens: 1200,
+          temperature: 0.3,
+          messages: [{ role: 'user', content: prompt }],
+        });
+
+        // Best-effort cost-logging — ikke blokker om det feiler
+        try {
+          const { logAIUsage } = await import('./ai-usage-tracker.js');
+          logAIUsage(response as any, { feature: 'smartflyt/generate-contract' }).catch(() => undefined);
+        } catch {
+          /* tracker ikke tilgjengelig — kontinuer */
+        }
+
+        const block = response.content[0];
+        const draft = (block && block.type === 'text') ? block.text.trim() : '';
+        if (!draft) {
+          return {
+            completed: false,
+            requiresManualConfirmation: true,
+            data: { actionUrl: '/contracts/new', note: 'AI returnerte tomt utkast — opprett manuelt' },
+          };
+        }
+
+        return {
+          completed: true,
+          data: {
+            draftMarkdown: draft,
+            generatedAt: new Date().toISOString(),
+            model: response.model,
+            projectId,
+            clientName,
+            note: 'AI-generert kontrakt-utkast — kopier/lim inn i kontrakt-editor',
+            actionUrl: '/contracts/new',
+          },
+        };
+      } catch (err: any) {
+        return {
+          completed: false,
+          requiresManualConfirmation: true,
+          data: { actionUrl: '/contracts/new', note: `AI feilet: ${err.message?.slice(0, 100)}` },
+        };
+      }
+    },
   });
 }
 

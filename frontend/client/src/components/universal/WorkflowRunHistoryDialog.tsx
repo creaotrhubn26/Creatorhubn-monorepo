@@ -231,6 +231,39 @@ const WorkflowRunHistoryDialog: React.FC<Props> = ({ open, onClose, userId }) =>
                                       {s.error_message}
                                     </Typography>
                                   )}
+                                  {/* Slice 9X.79 — AI-generert kontrakt-utkast inline */}
+                                  {s.result_data?.draftMarkdown && (
+                                    <Box sx={{
+                                      mt: 0.5, p: 1, borderRadius: 1,
+                                      bgcolor: 'rgba(155,135,245,0.06)',
+                                      border: '1px solid rgba(155,135,245,0.20)',
+                                    }}>
+                                      <Typography variant="caption" sx={{ color: '#9b87f5', fontWeight: 700, display: 'block', mb: 0.5 }}>
+                                        ✨ AI-generert utkast ({s.result_data.model || 'claude'})
+                                      </Typography>
+                                      <Box
+                                        component="pre"
+                                        sx={{
+                                          fontFamily: '"SF Mono", Menlo, monospace',
+                                          fontSize: '0.7rem',
+                                          color: 'rgba(246,242,234,0.85)',
+                                          whiteSpace: 'pre-wrap',
+                                          margin: 0,
+                                          maxHeight: 240,
+                                          overflowY: 'auto',
+                                        }}
+                                      >
+                                        {s.result_data.draftMarkdown}
+                                      </Box>
+                                      <Button
+                                        size="small"
+                                        onClick={() => navigator.clipboard.writeText(s.result_data.draftMarkdown)}
+                                        sx={{ mt: 0.5, fontSize: '0.65rem', textTransform: 'none', color: '#9b87f5' }}
+                                      >
+                                        Kopier til utklippstavle
+                                      </Button>
+                                    </Box>
+                                  )}
                                 </TableCell>
                                 <TableCell sx={{ width: 80, py: 0.5 }}>
                                   {s.execution_mode && (
