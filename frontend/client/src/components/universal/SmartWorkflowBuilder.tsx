@@ -548,59 +548,100 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
     }
   };
 
+  // Slice 9X.79 — runId-tracking per workflow, polling fra engine
+  const [workflowRuns, setWorkflowRuns] = useState<Record<string, { runId: string; stepStatuses: any[] }>>({});
+
   const executeWorkflow = async (workflowId: string) => {
     const workflow = workflows.find((w) => w.id === workflowId);
     if (!workflow) return;
 
     setRunningWorkflows((prev) => new Set(prev).add(workflowId));
-    
+
     // Broadcast workflow start
     broadcastWorkflowUpdate('started', {
       workflowId,
       workflowName: workflow.name,
-      totalSteps: workflow.steps.length
+      totalSteps: workflow.steps.length,
     });
 
-    // Execute each step sequentially
-    for (let i = 0; i < workflow.steps.length; i++) {
-      const step = workflow.steps[i];
-      try {
-        const authHeaders = await auth.getAuthHeader();
-        const response = await apiRequest('/api/workflow/execute', {
+    // Slice 9X.79 — bruk ekte execution-engine istedenfor placeholder-loop
+    try {
+      const startRes: any = await apiRequest(
+        `/api/orchestration/workflows/${userId}/${workflowId}/execute`,
+        {
           method: 'POST',
-          headers: authHeaders,
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: step.action.id,
-            params: step.params || {},
+            workflowName: workflow.name,
             profession,
-            timestamp: Date.now(),
+            steps: workflow.steps.map((s) => ({
+              action_id: s.action.id,
+              action_name: s.action.name,
+            })),
+            context: {},
           }),
-        });
+        },
+      );
 
-        const result = await response.json();
-        console.log(`✅ Workflow step completed: ${step.action.name}`, result);
-        
-        // Broadcast step completion
-        broadcastWorkflowUpdate('step-completed', {
-          workflowId,
-          stepIndex: i,
-          stepName: step.action.name,
-          result
-        });
-
-        // Small delay between steps
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      } catch (error) {
-        console.error(`❌ Workflow step failed: ${step.action.name}`, error);
-        
-        // Broadcast step failure
-        broadcastWorkflowUpdate('step-failed', {
-          workflowId,
-          stepIndex: i,
-          stepName: step.action.name,
-          error: String(error)
-        });
+      if (!startRes?.success || !startRes.runId) {
+        throw new Error(startRes?.error || 'start_failed');
       }
+
+      const runId = startRes.runId;
+      setWorkflowRuns((prev) => ({ ...prev, [workflowId]: { runId, stepStatuses: [] } }));
+
+      // Polling — engine kjører i bakgrunnen, vi henter status hvert 1.5s
+      const pollInterval = setInterval(async () => {
+        try {
+          const status: any = await apiRequest(`/api/orchestration/workflows/runs/${runId}`);
+          if (!status?.success) return;
+          const run = status.run;
+          const steps = status.steps || [];
+          setWorkflowRuns((prev) => ({ ...prev, [workflowId]: { runId, stepStatuses: steps } }));
+
+          // Broadcast progressive updates
+          steps.forEach((step: any, i: number) => {
+            if (step.status === 'completed' || step.status === 'failed') {
+              broadcastWorkflowUpdate(step.status === 'completed' ? 'step-completed' : 'step-failed', {
+                workflowId,
+                stepIndex: i,
+                stepName: step.action_name,
+                executionMode: step.execution_mode,
+              });
+            }
+          });
+
+          if (['completed', 'failed', 'partial'].includes(run.status)) {
+            clearInterval(pollInterval);
+            setRunningWorkflows((prev) => {
+              const updated = new Set(prev);
+              updated.delete(workflowId);
+              return updated;
+            });
+          }
+        } catch (err) {
+          console.warn('[workflow-poll] feilet:', err);
+        }
+      }, 1500);
+
+      // Safety: avbryt etter 5 min
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setRunningWorkflows((prev) => {
+          const updated = new Set(prev);
+          updated.delete(workflowId);
+          return updated;
+        });
+      }, 5 * 60 * 1000);
+      return;
+    } catch (error) {
+      console.error('❌ Workflow start feilet:', error);
+      broadcastWorkflowUpdate('step-failed', {
+        workflowId,
+        stepIndex: 0,
+        stepName: 'Workflow start',
+        error: String(error),
+      });
     }
 
     setRunningWorkflows((prev) => {
