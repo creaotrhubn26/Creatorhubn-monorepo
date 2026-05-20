@@ -95963,6 +95963,55 @@ app.post(
   },
 );
 
+// Slice 9X.79 — Planlagte workflows
+app.get(
+  "/api/orchestration/workflows/:userId/schedules",
+  async (req, res) => {
+    try {
+      const { listSchedules } = await import('./workflow-scheduler.js');
+      const rows = await listSchedules(pool, req.params.userId);
+      res.json({ success: true, data: rows });
+    } catch (err: any) {
+      if (err?.code === '42P01') return res.json({ success: true, data: [] });
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.put(
+  "/api/orchestration/workflows/:userId/:workflowId/schedule",
+  async (req, res) => {
+    try {
+      const { upsertSchedule } = await import('./workflow-scheduler.js');
+      const row = await upsertSchedule(pool, {
+        workflowId: req.params.workflowId,
+        userId: req.params.userId,
+        profession: req.body?.profession,
+        scheduleType: req.body?.scheduleType,
+        scheduleHour: Number(req.body?.scheduleHour ?? 9),
+        scheduleDow: req.body?.scheduleDow !== undefined ? Number(req.body.scheduleDow) : null,
+        enabled: req.body?.enabled !== false,
+      });
+      res.json({ success: true, data: row });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.delete(
+  "/api/orchestration/workflows/:userId/:workflowId/schedule",
+  async (req, res) => {
+    try {
+      const { deleteSchedule } = await import('./workflow-scheduler.js');
+      await deleteSchedule(pool, req.params.userId, req.params.workflowId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
 // Slice 9X.79 — Hent run-historikk for en bruker
 app.get(
   "/api/orchestration/workflows/:userId/runs",
@@ -109419,6 +109468,32 @@ void driveBatchWorker;
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  // Slice 9X.79 — SmartFlyt scheduler-loop (poller every 60s)
+  void (async () => {
+    try {
+      const { startSchedulerLoop } = await import('./workflow-scheduler.js');
+      startSchedulerLoop(pool, async (userId: string, workflowId: string) => {
+        try {
+          const rows = await db
+            .select()
+            .from(schema.editingWorkflows)
+            .where(eq(schema.editingWorkflows.userId, userId));
+          const w = rows.find((r: any) => r.id === workflowId || r.workflowId === workflowId);
+          if (!w) return null;
+          let steps = w.steps;
+          if (typeof steps === 'string') {
+            try { steps = JSON.parse(steps); } catch { steps = []; }
+          }
+          return { ...w, steps };
+        } catch {
+          return null;
+        }
+      });
+      console.log('[workflow-scheduler] loop started');
+    } catch (err: any) {
+      console.warn('[workflow-scheduler] could not start:', err.message);
+    }
+  })();
   maybeStartRoleRoomGoogleRedirectBridge();
   maybeStartRoleRoomLinkedInRedirectBridge();
   maybeStartRoleRoomCommercialReminderSweep();

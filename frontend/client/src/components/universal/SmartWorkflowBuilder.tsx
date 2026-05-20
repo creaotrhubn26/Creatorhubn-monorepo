@@ -8,7 +8,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import WorkflowRunHistoryDialog from './WorkflowRunHistoryDialog';
+import WorkflowScheduleDialog from './WorkflowScheduleDialog';
 import { Snackbar } from '@mui/material';
+import { Schedule as ScheduleIcon } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
@@ -554,6 +556,21 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
   const [workflowRuns, setWorkflowRuns] = useState<Record<string, { runId: string; stepStatuses: any[] }>>({});
   const [showRunHistory, setShowRunHistory] = useState(false);
   const [snackbar, setSnackbar] = useState<{ msg: string; severity: 'success' | 'info' | 'warning' | 'error' } | null>(null);
+
+  // Slice 9X.79 — planleggings-dialog
+  const [scheduleDialogForWorkflow, setScheduleDialogForWorkflow] = useState<{ id: string; name: string } | null>(null);
+
+  // Slice 9X.79 — eksisterende planleggings-rader (vises som pille på kortet)
+  const { data: schedulesData } = useQuery({
+    queryKey: ['workflow-schedules', userId],
+    queryFn: async () => apiRequest(`/api/orchestration/workflows/${userId}/schedules`),
+    enabled: !!userId && userId !== 'anonymous',
+  });
+  const scheduleByWorkflow = useMemo(() => {
+    const map: Record<string, any> = {};
+    (schedulesData?.data || []).forEach((s: any) => { map[s.workflow_id] = s; });
+    return map;
+  }, [schedulesData]);
 
   // Slice 9X.79 — siste-kjøring per workflow (oversikt på kortet)
   const { data: recentRunsData } = useQuery({
@@ -1250,6 +1267,37 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 }}
                               />
                             )}
+                            {/* Slice 9X.79 — planleggings-pille */}
+                            {scheduleByWorkflow[workflow.id]?.enabled && (() => {
+                              const sch = scheduleByWorkflow[workflow.id];
+                              const dowLabels = ['søn','man','tir','ons','tor','fre','lør'];
+                              const when = sch.schedule_type === 'daily'
+                                ? `daglig ${String(sch.schedule_hour).padStart(2,'0')}:00`
+                                : sch.schedule_type === 'weekly'
+                                  ? `${dowLabels[sch.schedule_dow ?? 1]} ${String(sch.schedule_hour).padStart(2,'0')}:00`
+                                  : `den ${sch.schedule_dow ?? 1}. ${String(sch.schedule_hour).padStart(2,'0')}:00`;
+                              return (
+                                <Tooltip title={`Planlagt — neste ${new Date(sch.next_run_at).toLocaleString('nb-NO')}`}>
+                                  <Chip
+                                    size="small"
+                                    icon={<ScheduleIcon sx={{ fontSize: '0.85rem' }} />}
+                                    label={when}
+                                    onClick={() => setScheduleDialogForWorkflow({ id: workflow.id, name: workflow.name })}
+                                    sx={{
+                                      height: 24,
+                                      fontSize: '0.7rem',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      bgcolor: 'rgba(155,135,245,0.12)',
+                                      border: '1px solid rgba(155,135,245,0.32)',
+                                      color: '#9b87f5',
+                                      '& .MuiChip-icon': { color: '#9b87f5' },
+                                    }}
+                                  />
+                                </Tooltip>
+                              );
+                            })()}
+
                             {/* Slice 9X.79 — siste-kjøring-pille */}
                             {!runningWorkflows.has(workflow.id) && lastRunByWorkflow[workflow.id] && (() => {
                               const last = lastRunByWorkflow[workflow.id];
@@ -1357,6 +1405,22 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 {runningWorkflows.has(workflow.id) ? 'Kjører' : 'Start'}
                               </Button>
                             </Box>
+                          </Tooltip>
+
+                          {/* Slice 9X.79 — Planlegg-knapp */}
+                          <Tooltip title={scheduleByWorkflow[workflow.id] ? 'Endre planlegging' : 'Planlegg automatisk kjøring'}>
+                            <IconButton
+                              size="small"
+                              onClick={() => setScheduleDialogForWorkflow({ id: workflow.id, name: workflow.name })}
+                              sx={{
+                                color: '#9b87f5',
+                                bgcolor: 'rgba(155,135,245,0.10)',
+                                border: '1px solid rgba(155,135,245,0.22)',
+                                '&:hover': { bgcolor: 'rgba(155,135,245,0.20)' },
+                              }}
+                            >
+                              <ScheduleIcon fontSize="small" />
+                            </IconButton>
                           </Tooltip>
 
                           <Tooltip title="Arkiver workflow">
@@ -1755,6 +1819,18 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
         onClose={() => setShowRunHistory(false)}
         userId={userId || ''}
       />
+
+      {/* Slice 9X.79 — Planleggings-dialog */}
+      {scheduleDialogForWorkflow && (
+        <WorkflowScheduleDialog
+          open={!!scheduleDialogForWorkflow}
+          onClose={() => setScheduleDialogForWorkflow(null)}
+          userId={userId || ''}
+          workflowId={scheduleDialogForWorkflow.id}
+          workflowName={scheduleDialogForWorkflow.name}
+          profession={profession}
+        />
+      )}
 
       {/* Slice 9X.79 — toast/snackbar ved start + ferdig */}
       <Snackbar
