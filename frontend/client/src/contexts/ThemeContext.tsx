@@ -457,7 +457,9 @@ const getContrastRatio = (foreground: string, background: string): number => {
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [themeConfig, setThemeConfigState] = useState<ThemeConfig>(defaultThemeConfig);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Slice 9X.72 — default DARK matcher dashboard-mui-theme. Bruker-preferanse
+  // fra /api/user/ui-preferences overstyrer senere ved load.
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [isSystemTheme, setIsSystemTheme] = useState(false);
 
   const loadTheme = useCallback(() => {
@@ -755,11 +757,21 @@ export const useTheme = (): ThemeContextType => {
     return context;
   }
 
+  // Slice 9X.72 — fallback når ingen ThemeProvider er montert.
+  // Default DARK matcher dashboard-mui-theme.
   const defaultTheme = createTheme({
     palette: {
-      mode: 'light',
+      mode: 'dark',
       primary: { main: defaultThemeConfig.primaryColor },
       secondary: { main: defaultThemeConfig.secondaryColor },
+      background: {
+        default: '#0a0807',
+        paper: 'rgba(255,255,255,0.04)',
+      },
+      text: {
+        primary: '#fff5e8',
+        secondary: 'rgba(246,242,234,0.72)',
+      },
     },
   });
 
