@@ -19,6 +19,7 @@
  */
 
 import crypto from "crypto";
+import { logAIUsage } from './ai-usage-tracker.js';
 import type {
   AIAgent,
   AIAgentInput,
@@ -432,6 +433,7 @@ export const breakdownAgent: AIAgent = {
         tool_choice: { type: "tool", name: BREAKDOWN_TOOL_SCHEMA.name },
         messages: [{ role: "user", content: buildUserPrompt(breakdownInput) }],
       });
+      logAIUsage(response as any, { feature: 'role-room/script-breakdown' }).catch(() => undefined);
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === BREAKDOWN_TOOL_SCHEMA.name,

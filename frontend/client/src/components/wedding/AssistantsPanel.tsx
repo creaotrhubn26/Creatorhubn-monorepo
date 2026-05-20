@@ -49,6 +49,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { trackEvent } from '@/utils/ga4-client-tracking';
+import { assistantEvents } from '@/utils/creatorhub-events';
 import AssistantDetailDialog from './AssistantDetailDialog';
 
 interface Assistant {
@@ -363,6 +364,7 @@ const InviteAssistantDialog: React.FC<InviteDialogProps> = ({ open, weddingId, o
         compensation_type: compType,
         referral_offered: inviteToCreatorhubn,
       });
+      assistantEvents.invited(weddingId, email.trim());
       const url = r.inviteUrl ? `${window.location.origin}${r.inviteUrl}` : null;
       setInviteUrl(url);
       if (!url) {

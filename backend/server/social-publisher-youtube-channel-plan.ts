@@ -26,6 +26,7 @@
  */
 
 import type { Pool } from 'pg';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 export interface YouTubeChannelPlanVideoIdea {
   title: string;
@@ -362,6 +363,7 @@ async function requestClaudeChannelPlan(
         setTimeout(() => reject(new Error('claude_channel_plan_timeout')), 45_000),
       ),
     ]);
+    logAIUsage(response as any, { feature: 'role-room/youtube-plan' }).catch(() => undefined);
 
     const blocks = (response as any).content ?? [];
     const text = blocks

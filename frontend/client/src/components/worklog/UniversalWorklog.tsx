@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
+import { worklogEvents } from '@/utils/creatorhub-events';
 import { useTheming } from '../../utils/theming-helper';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
@@ -731,11 +732,12 @@ export default function UniversalWorklog({
       });
     },
     onSuccess: (data) => {
+      worklogEvents.entryCreated(Number(data?.hours || data?.duration || 0), projectId);
       queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId] });
       resetForm();
       setShowCreateDialog(false);
       showSuccessToast('Arbeidslogg-oppføring lagt til!');
-      
+
       // Call callback handlers
       if (onWorklogCreate) {
         onWorklogCreate(data);

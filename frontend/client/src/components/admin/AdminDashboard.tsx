@@ -77,6 +77,8 @@ import {
   Search,
   Psychology,
   HowToReg,
+  Storefront,
+  Palette,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
 import {
@@ -85,6 +87,7 @@ import {
   isKnownUnavailableApiEndpoint,
 } from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
+import MarketplaceAppConfigManager from './MarketplaceAppConfigManager';
 import VendorTypeManager from '../vendor/VendorTypeManager';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
@@ -95,6 +98,10 @@ import UserManagementPanel from './UserManagementPanel';
 import InviteManagementDashboard from './InviteManagementDashboard';
 import AdminNotificationManager from './AdminNotificationManager';
 import AdminConfigStatusCard from './AdminConfigStatusCard';
+import AdminPaymentStatusCard from './AdminPaymentStatusCard';
+import AdminAnalyticsHub from './AdminAnalyticsHub';
+import AdminAICostDashboard from './AdminAICostDashboard';
+import AdminDesignTokensPanel from './AdminDesignTokensPanel';
 import BillingManagementPanel from './BillingManagementPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
@@ -888,6 +895,10 @@ export default function AdminDashboard({
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
+    { id: 'marketplace-apps', label: 'Marketplace-apper', icon: Storefront },
+    { id: 'analytics-hub', label: 'Analytics Hub', icon: Assessment },
+    { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
+    { id: 'design-tokens', label: 'Design-tokens', icon: Palette },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
     { id: 'tidum-tilganger', label: 'Tidum', icon: Business },
@@ -1732,8 +1743,9 @@ export default function AdminDashboard({
       case 'invite-requests':
         return (
           <>
-            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 2 }}>
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
               <AdminConfigStatusCard />
+              <AdminPaymentStatusCard />
             </Box>
             <InviteManagementDashboard />
           </>
@@ -1786,6 +1798,14 @@ export default function AdminDashboard({
             initialSection={priceManagementSection}
           />
         );
+      case 'marketplace-apps':
+        return <MarketplaceAppConfigManager />;
+      case 'analytics-hub':
+        return <AdminAnalyticsHub />;
+      case 'ai-cost':
+        return <AdminAICostDashboard />;
+      case 'design-tokens':
+        return <AdminDesignTokensPanel />;
       case 'reports':
         return <ReportsPanel onFileDownload={onFileDownload} />;
       case 'academy':

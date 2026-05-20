@@ -52,6 +52,7 @@ import {
   summarizeKpis,
 } from "./role-room-kpi-tracking.js";
 import { fetchAllPlatformKpis } from "./role-room-kpi-connectors.js";
+import { logAIUsage } from "./ai-usage-tracker.js";
 import {
   aggregateByPillar,
   aggregateByPlatform,
@@ -852,6 +853,7 @@ Returner KUN JSON: { "positive": "svar på rosende kommentar", "question": "svar
         temperature: 0.4,
         messages: [{ role: "user", content: userMessage }],
       });
+      logAIUsage(response, { feature: 'role-room/comment-templates' }).catch(() => undefined);
       const block = response.content?.[0];
       if (!block || block.type !== "text") {
         return res.status(502).json({ success: false, error: "Claude returnerte ingen tekst." });
@@ -931,6 +933,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         temperature: 0.9, // Høyere temp for variasjon
         messages: [{ role: "user", content: userMessage }],
       });
+      logAIUsage(response, { feature: 'role-room/post-regenerate' }).catch(() => undefined);
       const block = response.content?.[0];
       if (!block || block.type !== "text") {
         return res.status(502).json({ success: false, error: "Claude returnerte ingen tekst." });
@@ -1290,6 +1293,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
         temperature: 0.7,
         messages: [{ role: "user", content: userMessage }],
       });
+      logAIUsage(response, { feature: 'role-room/post-tone-adjust' }).catch(() => undefined);
       const block = response.content?.[0];
       if (!block || block.type !== "text") {
         return res.status(502).json({ success: false, error: "Claude returnerte ingen tekst." });

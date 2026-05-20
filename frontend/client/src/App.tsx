@@ -187,6 +187,8 @@ import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import PrivacyPolicy from '@/pages/privacy-policy';
 import TermsAndConditions from '@/pages/terms-and-conditions';
+import PublicCV from '@/pages/public-cv';
+import NextRoleLanding from '@/pages/nextrole-landing';
 import CreatorhubInnovationPage from '@/pages/CreatorhubInnovationPage';
 import GoogleVerificationDemoPage from '@/pages/GoogleVerificationDemoPage';
 import PhotographerClientsList from '@/pages/photographer-clients-list';
@@ -795,6 +797,8 @@ function App() {
                   <Route path="/settings" component={() => <SmartDashboardRoute />} />
                   <Route path="/smart-meeting-notes" component={SmartMeetingNotesPage} />
                   <Route path="/resume-builder" component={ResumeBuilder} />
+                  <Route path="/cv/:slug" component={PublicCV as React.ComponentType<any>} />
+                  <Route path="/nextrole" component={NextRoleLanding as React.ComponentType<any>} />
                   <Route path="/showcase-admin" component={ShowcaseAdminRouteWrapper as React.ComponentType<any>} />
                   {/* Plugin management routes removed - file doesn't exist */}
                   <Route path="/request-access" component={RequestAccess as React.ComponentType<any>} />

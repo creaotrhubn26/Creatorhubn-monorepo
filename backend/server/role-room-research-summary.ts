@@ -13,6 +13,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { RoleRoomAgentNormalizedPayload } from "./role-room-agent.js";
+import { logAIUsage } from './ai-usage-tracker.js';
 
 const SUMMARY_MODEL = process.env.ROLE_ROOM_SUMMARY_MODEL || "claude-haiku-4-5-20251001";
 const SUMMARY_MAX_TOKENS = 250;
@@ -69,6 +70,7 @@ Fokuser på: hvem de er, hva som differensierer dem, og hvilken markedsmulighet 
       temperature: 0.3,
       messages: [{ role: "user", content: userMessage }],
     });
+    logAIUsage(response as any, { feature: 'role-room/research-summary' }).catch(() => undefined);
     const block = response.content[0];
     if (!block || block.type !== "text") return null;
     const text = block.text.trim();

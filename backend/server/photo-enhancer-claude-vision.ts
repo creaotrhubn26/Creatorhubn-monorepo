@@ -25,6 +25,7 @@
  */
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 export type IntensityProfile = 'subtle' | 'normal' | 'strong';
 
@@ -797,6 +798,7 @@ export async function suggestPortraitRecipe(
         },
       ],
     });
+    logAIUsage(response as any, { feature: 'photo/suggest-recipe' }).catch(() => undefined);
 
     const toolUse = (response.content ?? []).find(
       (block: any) =>
@@ -1195,6 +1197,7 @@ export async function suggestInpaintRecipe(
         },
       ],
     });
+    logAIUsage(response as any, { feature: 'photo/plan-inpaint' }).catch(() => undefined);
 
     const toolUse = (response.content ?? []).find(
       (block: any) =>
@@ -1517,6 +1520,7 @@ export async function detectDistractions(
         },
       ],
     });
+    logAIUsage(response as any, { feature: 'photo/detect-distractions' }).catch(() => undefined);
 
     const toolUse = (response.content ?? []).find(
       (block: any) =>

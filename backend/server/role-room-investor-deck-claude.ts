@@ -7,6 +7,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { logAIUsage } from './ai-usage-tracker.js';
 import {
   getSectionDef,
   type InvestorSection,
@@ -85,6 +86,7 @@ export async function generateInvestorSection(
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userPrompt }],
   });
+  logAIUsage(response as any, { feature: 'role-room/investor-deck' }).catch(() => undefined);
 
   // Extract text content
   const body = response.content

@@ -50,14 +50,17 @@ export default function ResumeExporter({
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
 
+  // Bruker MUI-tema-palette (error/primary/text/warning) i stedet for
+  // hardkodede hex-farger så ikonene følger CreatorHub-temaet og dark-
+  // mode-veksling hvis det aktiveres senere.
   const exportFormats = [
     {
       value: 'pdf',
       label: 'PDF',
-      icon: <PdfIcon sx={{ fontSize: 40, color: '#d32f2f' }} />,
+      icon: <PdfIcon sx={{ fontSize: 40, color: 'error.main' }} />,
       description: 'Profesjonelt format for jobbsøknader',
       recommended: true,
-      pros: ['Universelt akseptert', 'Beholder formatering','Print-ready','Kan ikke endres'],
+      pros: ['Universelt akseptert', 'Beholder formatering', 'Klar for utskrift', 'Kan ikke endres'],
       cons: ['Ikke redigerbart'],
       fileSize: '~200 KB',
       atsScore: 100,
@@ -65,33 +68,33 @@ export default function ResumeExporter({
     {
       value: 'docx',
       label: 'Microsoft Word (DOCX)',
-      icon: <DocxIcon sx={{ fontSize: 40, color: '#2b579a' }} />,
+      icon: <DocxIcon sx={{ fontSize: 40, color: 'primary.main' }} />,
       description: 'Redigerbart format for videre tilpasning',
       recommended: false,
-      pros: ['Redigerbart','Kompatibelt med Word','Kan tilpasses videre'],
-      cons: ['Formatering kan endre seg','Krever Word/LibreOffice'],
+      pros: ['Redigerbart', 'Kompatibelt med Word', 'Kan tilpasses videre'],
+      cons: ['Formatering kan endre seg', 'Krever Word/LibreOffice'],
       fileSize: '~100 KB',
       atsScore: 95,
     },
     {
       value: 'txt',
-      label: 'Plain Text (TXT)',
-      icon: <TxtIcon sx={{ fontSize: 40, color: '#616161' }} />,
+      label: 'Ren tekst (TXT)',
+      icon: <TxtIcon sx={{ fontSize: 40, color: 'text.secondary' }} />,
       description: 'Enkel tekst for maksimal ATS-kompatibilitet',
       recommended: false,
-      pros: ['Maksimal ATS-kompatibilitet','Ingen formatering','Universelt'],
-      cons: ['Ingen visuell design','Grunnleggende'],
+      pros: ['Maksimal ATS-kompatibilitet', 'Ingen formatering', 'Universelt'],
+      cons: ['Ingen visuell design', 'Grunnleggende'],
       fileSize: '~10 KB',
       atsScore: 100,
     },
     {
       value: 'json',
       label: 'JSON',
-      icon: <JsonIcon sx={{ fontSize: 40, color: '#ff9800' }} />,
+      icon: <JsonIcon sx={{ fontSize: 40, color: 'warning.main' }} />,
       description: 'Strukturert data for backup og import',
       recommended: false,
-      pros: ['Full dataeksport','Import/eksport','Maskinlesbart'],
-      cons: ['Ikke for jobbsøknader','Teknisk format'],
+      pros: ['Full dataeksport', 'Import/eksport', 'Maskinlesbart'],
+      cons: ['Ikke for jobbsøknader', 'Teknisk format'],
       fileSize: '~50 KB',
       atsScore: 0,
     },
@@ -208,7 +211,7 @@ export default function ResumeExporter({
                           {/* Cons */}
                           <Box sx={{ flex: 1 }}>
                             <Typography variant="caption" color="error.main" fontWeight={600}>
-                              ⚠ Ulemper:
+                              Ulemper:
                             </Typography>
                             <Box component="ul" sx={{ fontSize: '12px', pl: 2, mt: 0.5 }}>
                               {format.cons.map((con, i) => (
@@ -264,12 +267,30 @@ export default function ResumeExporter({
           </Alert>
         )}
 
-        {/* Export Progress */}
+        {/* Export Progress — vises mens server genererer PDF/DOCX.
+           Tidligere stod knappen bare i deaktivert tilstand uten å fortelle
+           brukeren hva som faktisk skjer. */}
         {isExporting && (
           <Box sx={{ mt: 3 }}>
-            <LinearProgress />
-            <Typography variant="body2" sx={{ mt: 1, textAlign: 'center' }}>
-              Eksporterer CV...
+            <LinearProgress
+              color={
+                selectedFormat === 'pdf'
+                  ? 'error'
+                  : selectedFormat === 'docx'
+                  ? 'primary'
+                  : selectedFormat === 'json'
+                  ? 'warning'
+                  : 'inherit'
+              }
+            />
+            <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', color: 'text.secondary' }}>
+              {selectedFormat === 'pdf'
+                ? 'Genererer PDF — dette tar et øyeblikk …'
+                : selectedFormat === 'docx'
+                ? 'Bygger Word-dokument …'
+                : selectedFormat === 'json'
+                ? 'Pakker dataene …'
+                : 'Eksporterer CV …'}
             </Typography>
           </Box>
         )}

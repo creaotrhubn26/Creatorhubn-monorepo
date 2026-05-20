@@ -185,6 +185,21 @@ services:
         sync: false
       - key: GMAIL_APP_PASSWORD
         sync: false
+      # GMAIL_USER er navn på avsender-konto (matcher GMAIL_APP_PASSWORD).
+      # Brukes som fallback hvis GOOGLE_ADMIN_EMAIL ikke er satt.
+      - key: GMAIL_USER
+        sync: false
+      # ── NextRole ────────────────────────────────────────────────
+      # Custom from-adresse for transaksjonelle NextRole-e-poster.
+      # Default = "NextRole <{GMAIL_USER}>" hvis ikke satt.
+      - key: NEXTROLE_FROM_EMAIL
+        sync: false
+      # Delt secret for intern cron-trigger — POSTes til
+      # /api/internal/next-role/check-trial-expiry daglig fra creatorhub-
+      # nextrole-cron-jobben under. Render genererer en sterk verdi første
+      # gang servicen provisjoneres.
+      - key: NEXTROLE_CRON_SECRET
+        generateValue: true
       - key: ROLE_ROOM_LINKEDIN_CLIENT_ID
         sync: false
       - key: ROLE_ROOM_LINKEDIN_CLIENT_SECRET
@@ -323,6 +338,28 @@ services:
         value: "https://goapi.poweroffice.net/Demo/OAuth/Token"
       - key: POWEROFFICE_BASE_URL
         value: "https://goapi.poweroffice.net/demo/v2"
+  # ─────────────────────────────────────────────────────────────────
+  # NextRole trial-expiry cron — kjører daglig 09:00 UTC og POSTer til
+  # backendens interne endepunkt. Endepunktet finner brukere med
+  # ~3 dager igjen av trial og sender trialExpiringEmail.
+  # ─────────────────────────────────────────────────────────────────
+  - type: cron
+    name: creatorhub-nextrole-cron
+    runtime: docker
+    dockerfilePath: ./Dockerfile.cron
+    dockerContext: .
+    plan: free
+    schedule: "0 9 * * *"
+    branch: main
+    envVars:
+      - key: BACKEND_URL
+        value: "https://creatorhub-backend.onrender.com"
+      - key: NEXTROLE_CRON_SECRET
+        fromService:
+          name: creatorhub-backend
+          type: web
+          envVarKey: NEXTROLE_CRON_SECRET
+
   - type: web
     name: creatorhub-gfpgan-runner
     runtime: docker

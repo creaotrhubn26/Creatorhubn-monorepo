@@ -26,6 +26,7 @@ import {
   storeCachedResponse,
 } from './role-room-agent-cache.js';
 import { appendMessage, createThread } from './role-room-agent-threads.js';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 const FEED_THREAD_TITLE_PREFIX = 'feed-planner:';
 const FEED_THREAD_HISTORY_LIMIT = 8;
@@ -456,6 +457,7 @@ export async function recommendFeedPost(
       ],
       messages,
     });
+    logAIUsage(response as any, { feature: 'role-room/feed-recommend' }).catch(() => undefined);
 
     let text = '';
     for (const block of response.content ?? []) {

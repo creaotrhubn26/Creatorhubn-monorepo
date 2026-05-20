@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 110" width="400" height="110">
+  <!-- NextRole logo — fallback-SVG som matcher branded PNG. Den endelige
+       brand-asset er /nextrole-logo.png (silhuett gjennom dør). Denne
+       SVG-en brukes som lett-vekt alternativ i steder hvor PNG ikke
+       passer (inline mail-templates, OpenGraph fallback, osv.). -->
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D4A23B"/>
+      <stop offset="100%" stop-color="#B8860B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Door-frame mark (forenklet) -->
+  <g transform="translate(8, 12)">
+    <!-- Dør-åpning -->
+    <path d="M 0 86 L 0 8 L 60 0 L 60 86 Z" fill="url(#gold)" opacity="0.95"/>
+    <path d="M 8 80 L 8 14 L 52 8 L 52 80 Z" fill="#FAF8F2"/>
+    <!-- Silhuetter (forenklet) -->
+    <ellipse cx="22" cy="30" rx="5" ry="5" fill="#1F2937"/>
+    <path d="M 17 36 Q 17 56 19 78 L 25 78 Q 27 56 27 36 Z" fill="#1F2937"/>
+    <ellipse cx="38" cy="32" rx="4.5" ry="4.5" fill="#1F2937"/>
+    <path d="M 33 38 Q 33 56 35 78 L 41 78 Q 43 56 43 38 Z" fill="#1F2937"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="92" y="58" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-weight="800" font-size="44" fill="#1F2937" letter-spacing="-1">
+    Next<tspan fill="url(#gold)">Role</tspan>
+  </text>
+  <text x="92" y="82" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-weight="500" font-size="11" fill="#6B7280" letter-spacing="2">
+    by CreatorHub
+  </text>
+</svg>

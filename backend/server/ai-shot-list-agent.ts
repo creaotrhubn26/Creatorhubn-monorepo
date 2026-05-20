@@ -23,6 +23,7 @@
  */
 
 import crypto from "crypto";
+import { logAIUsage } from './ai-usage-tracker.js';
 import type {
   AIAgent,
   AIAgentInput,
@@ -252,6 +253,7 @@ export const shotListAgent: AIAgent = {
           content: buildUserPrompt(agentInput),
         }],
       });
+      logAIUsage(response as any, { feature: 'role-room/shot-list' }).catch(() => undefined);
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === SHOT_LIST_TOOL_SCHEMA.name,

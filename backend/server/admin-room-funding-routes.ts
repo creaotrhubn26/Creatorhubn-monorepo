@@ -20,6 +20,7 @@
 
 import type { AdminRoomRoutesDeps } from "./_shared";
 import { asString, asNumberOrNull, asJsonbArray, asJsonbObject } from "./_shared";
+import { logAIUsage } from "./ai-usage-tracker.js";
 
 export function setupAdminFundingRoutes(deps: AdminRoomRoutesDeps): void {
   const {
@@ -100,12 +101,19 @@ Skrivestil:
         planContext ? `Forretningskontekst:\n${planContext}` : "",
       ].filter(Boolean).join("\n");
 
+      const aiStartedAt = Date.now();
       const response = await client.messages.create({
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 2500,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
+      logAIUsage(response as any, {
+        feature: 'admin-funding-app-draft',
+        route: '/api/admin-room/funding/generate',
+        userId: session.userId,
+        durationMs: Date.now() - aiStartedAt,
+      }).catch(() => undefined);
 
       type ContentBlock = { type: string; text?: string };
       const generatedText = (response.content as ContentBlock[])

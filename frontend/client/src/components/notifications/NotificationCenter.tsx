@@ -7,6 +7,7 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { notificationEvents } from '../../utils/creatorhub-events';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -283,6 +284,8 @@ export default function NotificationCenter({
   );
 
   const markAsRead = (notificationId: string) => {
+    const notif = notifications.find((n) => n.id === notificationId);
+    notificationEvents.clicked(notif?.type || 'unknown', 'mark_read');
     setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)));
     fetch(`/api/notifications/${notificationId}/read`, { method: 'PUT', credentials: 'include' }).catch(() => {});
   };

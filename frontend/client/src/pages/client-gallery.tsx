@@ -9,6 +9,7 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
+import { galleryEvents } from '@/utils/creatorhub-events';
 import { useParams, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -229,6 +230,11 @@ export default function ClientGallery({}: ClientGalleryProps) {
     queryFn: () => apiRequest(`/api/client/gallery/${accessToken}`),
     enabled: !!accessToken,
 });
+
+  // GA4 — track when client opens the gallery (once per gallery load)
+  useEffect(() => {
+    if (gallery?.id) galleryEvents.viewedByClient(gallery.id, accessToken);
+  }, [gallery?.id, accessToken]);
 
   // Slice 9P — profession-aware terminology. Backend exposes the
   // photographer's profession; we use it to render "foto-galleri"
@@ -545,6 +551,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
       updateSelectionMutation.mutate({ imageId, selectionType: 'rejected' });
       setSelectedImages(newSelected);
   } else {
+      galleryEvents.itemSelected(gallery?.id || '', imageId);
       // Check if adding this image would exceed contracted amount
       if (
         newSelected.size >= contractedImages &&
@@ -589,6 +596,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
   // Handle proceeding to checkout (called from FAB)
   const handleProceedToCheckout = () => {
+    galleryEvents.quoteRequested(gallery?.id || '', undefined);
     // Check if terms have been accepted first
     if (!hasAcceptedTerms) {
       setTermsAcceptanceOpen(true);
@@ -1016,6 +1024,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 fullWidth
                 disabled={busyDownloading}
                 onClick={async () => {
+                  galleryEvents.downloadRequested(gallery?.id || '', selectedImages.size);
                   setDownloadError(null);
                   setBusyDownloading(true);
                   try {

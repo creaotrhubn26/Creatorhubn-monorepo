@@ -15,6 +15,7 @@
  * existing fallback payload path. Never throws.
  */
 
+import { logAIUsage } from './ai-usage-tracker.js';
 import type {
   RoleRoomAgentAgreementSuggestion,
   RoleRoomAgentBrregCompany,
@@ -223,6 +224,7 @@ export async function requestClaudeBootstrap(
       text: JSON.stringify(userPayload),
     });
 
+    const bootstrapStartedAt = Date.now();
     const response = await Promise.race([
       client.messages.create({
         model,
@@ -247,6 +249,12 @@ export async function requestClaudeBootstrap(
         setTimeout(() => reject(new Error('claude_bootstrap_timeout')), 60_000),
       ),
     ]);
+
+    // Slice 9X.71 — cost-tracking (fire-and-forget)
+    logAIUsage(response as any, {
+      feature: 'role-room-bootstrap',
+      durationMs: Date.now() - bootstrapStartedAt,
+    }).catch(() => undefined);
 
     const blocks = (response as any)?.content ?? [];
     let text = '';

@@ -1,3 +1,4 @@
+import { logAIUsage } from './ai-usage-tracker.js';
 /**
  * ai-story-development-agent.ts
  *
@@ -276,6 +277,7 @@ export const storyDevelopmentAgent: AIAgent = {
           }),
         }],
       });
+      logAIUsage(response as any, { feature: 'role-room/story-development' }).catch(() => undefined);
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === STORY_DEV_TOOL_SCHEMA.name,

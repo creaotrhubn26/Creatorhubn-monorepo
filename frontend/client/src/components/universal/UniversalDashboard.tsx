@@ -269,10 +269,17 @@ import VendorOrchestrator from './VendorOrchestrator';
 
 // Import Split Sheet Manager
 import SplitSheetManager from './split-sheets/SplitSheetManager';
+import SplitSheetRoleWizard from './split-sheets/SplitSheetRoleWizard';
+import SplitSheetEarningsOverview from './split-sheets/SplitSheetEarningsOverview';
+import TeamMembersDirectory, { loadTeamMembers } from './split-sheets/TeamMembersDirectory';
+import TeamOnboardingWizard from '../team/TeamOnboardingWizard';
+import IndividualOnboardingWizard from '../onboarding/IndividualOnboardingWizard';
+import { dashboardEvents, marketplaceEvents, splitSheetEvents } from '@/utils/creatorhub-events';
 
 // Import AI Enhancement Systems
 import AudioEnhancementSuite from '../enhancement/AudioEnhancementSuite';
 import { useProfessionConfigs, type ProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useDashboardTokens } from '@/hooks/useDashboardTokens';
 
 // Import Community System
 import CommunityHub from '../community/CommunityHub';
@@ -959,6 +966,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
    * Tab visibility is tracked and analytics are captured for all tab interactions.
    */
   const availableTabs = useMemo(() => {
+    // Slice 9X.70 — Marketplace-installerte apper. Default false; settes
+    // av "Installer" i marketplace-modalen (handleMarketplaceInstall).
+    const evendiInstalled = (() => {
+      try { return typeof window !== 'undefined' && window.localStorage.getItem('evendi-installed') === 'true'; } catch { return false; }
+    })();
+    // The Role Room krever bekreftet workspace-tilgang. Backend gating
+    // har vist seg upålitelig under loading, så vi krever strict true.
+    const roleRoomVisible = roleRoomAccess.hasWorkspaceAccess === true;
     const tabs = config.tabs.filter(tab => {
       if (tab.id === 'email-center') {
         return false;
@@ -984,8 +999,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'overview': true, // Always available
         'projects': true, // Always available
         'academy': isMentor || profession === 'enterprise', // Academy for mentors/instructors and enterprise teams
-        'split-sheets': false, // Split sheets moved to Prisadministrasjon sub-tab for all professions
-        'wedding-timeline': true, // Always available
+        // Slice 9X.70 — split-sheets aktiveres for profesjoner som tjener på honorar-deling.
+        // Music producer, videograf, fotograf og enterprise har alle team-arbeid.
+        'split-sheets': ['music_producer', 'videographer', 'photographer', 'enterprise'].includes(profession),
+        // Slice 9X.70 — Evendi gates på marketplace-install. Stine og andre som ikke har
+        // installert betalt-modulen skal ikke se denne fanen.
+        'wedding-timeline': evendiInstalled,
         'showcase-admin': true, // Always available
         'publishing': true,
         'showcase-viewer': true, // Available for professions without Showcase Admin tab
@@ -1003,7 +1022,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'support': true,
         'settings': true, // Always available
         'administration': true, // Pricing administration for all professions
-        'role-room': roleRoomAccess.hasWorkspaceAccess, // Only after install + paid/active access
+        'role-room': roleRoomVisible, // Strict: kun synlig etter bekreftet installasjon + aktiv betaling
         'integration-test': isAdmin // Only for admins
       };
 
@@ -1408,8 +1427,92 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
   // Split Sheets modal state
   const [showSplitSheetsModal, setShowSplitSheetsModal] = useState(false);
+  const [showSplitSheetWizard, setShowSplitSheetWizard] = useState(false);
+  const [splitSheetModalTab, setSplitSheetModalTab] = useState<'stats' | 'team'>('stats');
+  // Slice 9X.74 — pre-fylt data fra inquiry-event
+  const [wizardPrefill, setWizardPrefill] = useState<{
+    projectName?: string;
+    projectAmount?: number;
+    initialParticipants?: any[];
+    source?: 'manual' | 'inquiry-suggestion' | 'team-onboarding';
+  }>({});
+  const [localSplitSheets, setLocalSplitSheets] = useState<any[]>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('split-sheet-entries') : null;
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+
+  // Slice 9X.75 — team-onboarding-wizard
+  const [showTeamOnboarding, setShowTeamOnboarding] = useState(false);
+  useEffect(() => {
+    // Auto-trigger for nye enterprise-team som ikke har medlemmer i direktoratet
+    if (profession !== 'enterprise') return;
+    try {
+      const completed = window.localStorage.getItem('team-onboarding-completed');
+      if (completed) return;
+      const members = loadTeamMembers();
+      if (members.length === 0) {
+        // Vent 1.5s slik at dashbordet er ferdig-lastet før wizarden popper opp
+        const t = setTimeout(() => setShowTeamOnboarding(true), 1500);
+        return () => clearTimeout(t);
+      }
+    } catch {}
+  }, [profession]);
+
+  // Slice 9X.77 — individual-onboarding-wizard (solo-brukere)
+  const [showIndividualOnboarding, setShowIndividualOnboarding] = useState(false);
+  useEffect(() => {
+    // Auto-trigger for solo-brukere som ikke er enterprise
+    if (profession === 'enterprise') return;
+    try {
+      const completed = window.localStorage.getItem('individual-onboarding-completed');
+      if (completed) return;
+      // Sjekk om onboardingProfile har businessName — hvis ja, anta at de er ferdig
+      if ((onboardingProfile as any)?.businessName) {
+        window.localStorage.setItem('individual-onboarding-completed', '1');
+        return;
+      }
+      // Vent 2s for å unngå konflikt med team-onboarding-trigger
+      const t = setTimeout(() => setShowIndividualOnboarding(true), 2000);
+      return () => clearTimeout(t);
+    } catch {}
+  }, [profession, onboardingProfile]);
+
+  // Slice 9X.74 — lytt på inquiry → split sheet-event
+  useEffect(() => {
+    const handler = (e: any) => {
+      const detail = e?.detail || {};
+      // Hent team-medlemmer fra direktoratet og foreslå disse
+      let initialParticipants: any[] = [];
+      try {
+        const raw = window.localStorage.getItem('team-members-directory');
+        const members = raw ? JSON.parse(raw) : [];
+        // Ta de 4 sist-brukte (eller alle hvis færre)
+        initialParticipants = (Array.isArray(members) ? members : [])
+          .slice(0, 4)
+          .map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            roleId: m.defaultRoleId,
+          }));
+      } catch {}
+      setWizardPrefill({
+        projectName: detail.projectName,
+        projectAmount: Number(detail.projectAmount) || 0,
+        initialParticipants,
+        source: 'inquiry-suggestion',
+      });
+      setShowSplitSheetWizard(true);
+    };
+    window.addEventListener('inquiry:suggest-split-sheet', handler);
+    return () => window.removeEventListener('inquiry:suggest-split-sheet', handler);
+  }, []);
 
   const setTabValue = (value: number) => {
+    const tabId = config?.tabs?.[value]?.id;
+    if (tabId) dashboardEvents.tabChanged(tabId, profession);
     setUrlMainTab(value);
     updateTabStateLocal('main', value);
   };
@@ -2157,11 +2260,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     };
 }, [onboardingProfile, brandingData, config]);
 
+  // Slice 9X.72 — sentralisert design-tokens. Henter accent + helpers basert
+  // på profesjons-color, med fallback til CMS-overrides (Visual CMS-styrt).
+  // Gjør at alt i dashboardet kan referere én kilde til sannhet, og at
+  // Daniel kan endre farger/border-radius i admin uten kode-deploy.
+  const dt = useDashboardTokens(customBranding.color);
+
   const dashboardSectionCardSx = useMemo(
     () => ({
       borderRadius: 4,
-      border: `1px solid ${alpha(customBranding.color, 0.08)}`,
-      backgroundColor: alpha('#ffffff', 0.96),
+      border: `1px solid ${alpha(customBranding.color, 0.18)}`,
+      // Slice 9X.72 — bruker dark token istedenfor hvit alpha
+      backgroundColor: dt.tokens.bg.elevated,
+      color: dt.tokens.text.primary,
       boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
     }),
     [customBranding.color],
@@ -2508,25 +2619,46 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         };
       case 'not_installed':
       default:
+        // Slice 9X.70 — språk endret fra "Ikke installert" (ble lest som
+        // "utsolgt") til tydelig abonnements-CTA.
         return {
-          statusLabel: 'Ikke installert',
-          statusDescription: 'Installer appen og fullfør abonnementet for å låse opp The Role Room i CreatorHub.',
-          ctaLabel: 'Installer og velg abonnement',
-          accentColor: '#6366f1',
+          statusLabel: 'Tilgjengelig som abonnement',
+          statusDescription: 'Få tilgang ved å starte abonnement fra Marketplace. Inkluderer casting, crew og produksjonsplanlegging.',
+          ctaLabel: 'Start abonnement',
+          accentColor: '#10b981',
         };
     }
   }, [roleRoomAccess]);
 
   const handleMarketplaceInstall = useCallback(async (appId: string) => {
-    if (appId === 'resume-builder') {
+    if (appId === 'resume-builder' || appId === 'next-role') {
       setMarketplaceInstallNotice({
         severity: 'success',
-        message: 'ResumeBuilder installeres. Du blir sendt videre...',
+        message: 'NextRole installeres. Du blir sendt videre...',
       });
+      // GA4 — conversion event for marketplace funnel
+      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'nextrole_install_clicked', {
+          app_id: 'next-role',
+          source: 'marketplace',
+        });
+      }
       setTimeout(() => {
         setShowMarketplace(false);
         window.location.href = '/resume-builder';
       }, 800);
+      return;
+    }
+
+    // Slice 9X.70 — Evendi install gates fane + dashboard-block. Default
+    // er ikke-installert, så Stine (foto, ingen Evendi) ikke ser noe.
+    if (appId === 'evendi' || appId === 'wedding-timeline') {
+      try { window.localStorage.setItem('evendi-installed', 'true'); } catch {}
+      marketplaceEvents.installCompleted('evendi');
+      setMarketplaceInstallNotice({
+        severity: 'success',
+        message: 'Evendi er installert. Last siden på nytt for å se fanen.',
+      });
       return;
     }
 
@@ -2667,28 +2799,31 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         border: `1px solid ${customBranding.color}30`,
       }
     },
-    // Glass effect card
+    // Glass effect card — Slice 9X.72 dark theme
     glassCard: {
-      background: 'rgba(255, 255, 255, 0.85)',
+      background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.06)}, rgba(15,10,7,0.94))`,
       backdropFilter: 'blur(20px)',
       WebkitBackdropFilter: 'blur(20px)',
-      border: '1px solid rgba(255, 255, 255, 0.3)',
+      border: `1px solid ${alpha(customBranding.color, 0.18)}`,
       borderRadius: 4,
+      color: '#fff5e8',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       '&:hover': {
-        background: 'rgba(255, 255, 255, 0.95)',
+        background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.10)}, rgba(15,10,7,0.96))`,
         transform: 'translateY(-2px)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.1)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.32)',
+        borderColor: alpha(customBranding.color, 0.32),
       }
     },
-    // Primary action button with gradient
+    // Primary action button — pill med accent-gradient
     primaryButton: {
-      background: `linear-gradient(135deg, ${customBranding.color} 0%, ${theme.palette.primary.dark} 100%)`,
-      color: 'white',
-      borderRadius: 3,
-      fontWeight: 600,
+      background: `linear-gradient(135deg, ${customBranding.color} 0%, ${alpha(customBranding.color, 0.85)} 100%)`,
+      color: '#150d05',
+      borderRadius: '999px',
+      fontWeight: 700,
+      textTransform: 'none' as const,
       px: 3,
-      py: 1.5,
+      py: 1.25,
       boxShadow: `0 4px 15px ${customBranding.color}40`,
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       '&:hover': {
@@ -2699,28 +2834,31 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         transform: 'translateY(0)',
       }
     },
-    // Secondary/outline button
+    // Secondary/outline button — pill med accent-ramme
     secondaryButton: {
-      borderColor: customBranding.color,
-      color: customBranding.color,
+      borderColor: alpha(customBranding.color, 0.32),
+      color: '#fff5e8',
       borderWidth: '1.5px',
-      borderRadius: 3,
-      fontWeight: 600,
+      borderRadius: '999px',
+      fontWeight: 700,
+      textTransform: 'none' as const,
       transition: 'all 0.2s ease',
       '&:hover': {
         borderWidth: '1.5px',
-        background: `${customBranding.color}08`,
+        borderColor: customBranding.color,
+        background: `${customBranding.color}10`,
         transform: 'translateY(-1px)',
       }
     },
-    // Modern dialog styling
+    // Modern dialog — Slice 9X.72 dark gradient
     dialogPaper: {
-      borderRadius: 5,
-      bgcolor: 'rgba(255, 255, 255, 0.98)',
+      borderRadius: '24px',
+      background: `radial-gradient(circle at top, ${alpha(customBranding.color, 0.10)} 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)`,
+      color: '#fff5e8',
       backdropFilter: 'blur(20px)',
       backgroundImage: 'none',
-      border: `1px solid ${customBranding.color}15`,
-      boxShadow: '0 24px 80px rgba(0,0,0,0.15)',
+      border: `1px solid ${alpha(customBranding.color, 0.18)}`,
+      boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
       overflow: 'hidden',
     },
     responsivePadding: {
@@ -2735,12 +2873,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       color: customBranding.color,
       fontWeight: 600
     },
-    // Stats card style
+    // Stats card — Slice 9X.72 dark theme
     statsCard: {
-      background: 'rgba(255, 255, 255, 0.9)',
+      background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.06)}, rgba(15,10,7,0.85))`,
       backdropFilter: 'blur(16px)',
       borderRadius: 4,
-      border: '1px solid rgba(255, 255, 255, 0.5)',
+      border: `1px solid ${alpha(customBranding.color, 0.18)}`,
+      color: '#fff5e8',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       overflow: 'hidden',
       position: 'relative',
@@ -2757,7 +2896,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       },
       '&:hover': {
         transform: 'translateY(-6px)',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.12)',
+        boxShadow: '0 16px 48px rgba(0,0,0,0.32)',
+        borderColor: alpha(customBranding.color, 0.32),
         '&::before': {
           opacity: 1,
         }
@@ -2774,18 +2914,18 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       justifyContent: 'center',
       transition: 'all 0.2s ease',
     },
-    // Tab container style
+    // Tab container — Slice 9X.72 dark theme
     tabsContainer: {
-      background: 'rgba(255, 255, 255, 0.8)',
+      background: 'rgba(255,255,255,0.04)',
       backdropFilter: 'blur(12px)',
       borderRadius: 3,
       p: 0.5,
-      border: '1px solid rgba(0,0,0,0.04)',
+      border: `1px solid ${alpha(customBranding.color, 0.18)}`,
     },
-    // Animated gradient background
+    // Animated gradient background — Slice 9X.72 dark theme
     animatedBg: {
       background: `
-        linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 25%, #FFEDD5 50%, #FED7AA 75%, ${customBranding.color}15 100%)
+        linear-gradient(135deg, ${alpha(customBranding.color, 0.10)} 0%, rgba(15,10,7,0.96) 40%, ${alpha(customBranding.color, 0.05)} 100%)
       `,
       backgroundSize: '400% 400%',
       animation: 'gradientShift 15s ease infinite',
@@ -3278,122 +3418,65 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           </DialogActions>
         </Dialog>
 
-        {/* Split Sheets Oversikt Modal */}
-        <Dialog 
-          open={showSplitSheetsModal} 
-          onClose={() => setShowSplitSheetsModal(false)} 
-          maxWidth="lg" 
+        {/* Split Sheets Oversikt Modal — Slice 9X.70 redesign */}
+        <Dialog
+          open={showSplitSheetsModal}
+          onClose={() => setShowSplitSheetsModal(false)}
+          maxWidth="lg"
           fullWidth
           PaperProps={{
             sx: {
-              ...sharedStyles.glassCard,
-              maxHeight: '90vh'
+              borderRadius: '24px',
+              background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+              color: '#fff5e8',
+              border: '1px solid rgba(255,186,108,0.18)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
+              maxHeight: '92vh',
             }
           }}
         >
-          <DialogTitle sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 1,
-            fontWeight: 600,
-            borderBottom: '1px solid',
-            borderColor: 'divider'
+          <Box sx={{
+            px: 3,
+            pt: 3,
+            pb: 2,
+            background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.02))',
+            borderBottom: '1px solid rgba(255,186,108,0.18)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            justifyContent: 'space-between',
           }}>
-            <AccountBalance sx={{ color: '#9f7aea' }} />
-            Split Sheets Oversikt
-            {splitSheetStats.total > 0 && (
-              <Badge 
-                badgeContent={splitSheetStats.pending}
-                color={splitSheetStats.pending > 0 ? "error" : "primary"}
-                sx={{
-                  ml: 'auto',
-                  '& .MuiBadge-badge': {
-                    animation: splitSheetStats.pending > 0 ? 'pulse 2s infinite' : 'none'
-                  }
-                }}
-              >
-                <Chip 
-                  label={`${splitSheetStats.total} total`}
-                  color="primary"
-                  size="small"
-                  sx={{ fontWeight: 600 }}
-                />
-              </Badge>
-            )}
-          </DialogTitle>
-          <DialogContent dividers sx={{ p: { xs: 2, md: 3 } }}>
-            {/* Statistics */}
-            <Grid2 container spacing={2} sx={{ mb: 3 }}>
-              <Grid2 size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.paper', borderRadius: 2 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#9f7aea' }}>
-                    {splitSheetStats.total}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Totalt Split Sheets
-                  </Typography>
-                </Paper>
-              </Grid2>
-              <Grid2 size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.paper', borderRadius: 2 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
-                    {splitSheetStats.pending}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Venter på signaturer
-                  </Typography>
-                </Paper>
-              </Grid2>
-              <Grid2 size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.paper', borderRadius: 2 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
-                    {splitSheetStats.completed}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Fullført
-                  </Typography>
-                </Paper>
-              </Grid2>
-              <Grid2 size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.paper', borderRadius: 2 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
-                    {splitSheetStats.draft}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Utkast
-                  </Typography>
-                </Paper>
-              </Grid2>
-            </Grid2>
-
-            {/* Quick Actions */}
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+                <AccountBalance />
+              </Avatar>
+              <Box>
+                <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+                  Split Sheets
+                </Typography>
+                <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700 }}>
+                  Honorar-fordeling i team
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
-                size="small"
-                variant="contained"
                 startIcon={<Add />}
-                onClick={() => {
-                  if (communication) {
-                    communication.sendMessage({
-                      from: 'universal-dashboard',
-                      to: 'split-sheet-manager',
-                      type: 'action:create-split-sheet',
-                      data: {},
-                      priority: 'medium'
-                    });
-                  }
-                  const splitSheetTabIndex = availableTabs.findIndex(tab => tab.id === 'split-sheets');
-                  if (splitSheetTabIndex >= 0) {
-                    setShowSplitSheetsModal(false);
-                    setTabValue(splitSheetTabIndex);
-                  }
+                onClick={() => { setShowSplitSheetsModal(false); setShowSplitSheetWizard(true); }}
+                sx={{
+                  borderRadius: '999px',
+                  px: 2.5,
+                  py: 1,
+                  bgcolor: '#ffba6c',
+                  color: '#150d05',
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: '#ffc788' },
                 }}
-                sx={{ bgcolor: '#9f7aea','&:hover': { bgcolor: '#8e6ed6' } }}
               >
-                Opprett Split Sheet
+                Nytt split sheet
               </Button>
               <Button
-                size="small"
                 variant="outlined"
                 onClick={() => {
                   const splitSheetTabIndex = availableTabs.findIndex(tab => tab.id === 'split-sheets');
@@ -3402,23 +3485,144 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     setTabValue(splitSheetTabIndex);
                   }
                 }}
-                sx={{ color: '#9f7aea', borderColor: alpha('#9f7aea', 0.3) }}
+                sx={{
+                  borderRadius: '999px',
+                  px: 2.5,
+                  py: 1,
+                  textTransform: 'none',
+                  color: '#fff5e8',
+                  borderColor: 'rgba(255,186,108,0.32)',
+                  '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                }}
               >
-                Administrer Split Sheets
+                Admin
               </Button>
+              <IconButton
+                onClick={() => setShowSplitSheetsModal(false)}
+                sx={{ color: 'rgba(246,242,234,0.72)' }}
+              >
+                <Close />
+              </IconButton>
             </Box>
+          </Box>
 
-            {/* Info message */}
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                Åpne Split Sheets-fanen for fullstendig oversikt over alle split sheets, signaturer og betalinger.
-              </Typography>
-            </Alert>
+          <Box sx={{ px: 3, pt: 2, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <MuiTabs
+              value={splitSheetModalTab}
+              onChange={(_, v) => setSplitSheetModalTab(v)}
+              sx={{
+                minHeight: 40,
+                '& .MuiTab-root': {
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  color: 'rgba(246,242,234,0.62)',
+                  minHeight: 40,
+                  py: 0.5,
+                  '&.Mui-selected': { color: '#ffba6c' },
+                },
+                '& .MuiTabs-indicator': { backgroundColor: '#ffba6c', height: 3, borderRadius: 2 },
+              }}
+            >
+              <Tab value="stats" label="Statistikk & honorar" />
+              <Tab value="team" label="Team-direktorat" />
+            </MuiTabs>
+          </Box>
+          <DialogContent dividers sx={{ p: { xs: 2, md: 3 }, borderColor: 'rgba(255,255,255,0.06)' }}>
+            {splitSheetModalTab === 'stats' && (
+              <SplitSheetEarningsOverview
+                sheets={(() => {
+                  const apiMapped = (splitSheets || []).map((ss: any) => ({
+                    id: ss.id,
+                    projectName: ss.title || ss.project_name || 'Uten navn',
+                    projectAmount: Number(ss.total_amount || ss.amount || 0),
+                    createdAt: ss.created_at || ss.createdAt || new Date().toISOString(),
+                    model: ss.split_model,
+                    participants: Array.isArray(ss.contributors) ? ss.contributors.map((c: any) => ({
+                      id: c.id,
+                      name: c.name || c.full_name || 'Uten navn',
+                      email: c.email,
+                      roleLabel: c.role || c.role_label,
+                      sharePct: Number(c.percentage || c.share_pct || 0),
+                      shareKr: Number(c.amount || c.share_kr || (Number(c.percentage || 0) / 100) * Number(ss.total_amount || 0)),
+                    })) : [],
+                  })).filter((s: any) => s.participants.length > 0);
+                  return [...apiMapped, ...localSplitSheets];
+                })()}
+              />
+            )}
+            {splitSheetModalTab === 'team' && (
+              <Box>
+                <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1.5 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => { setShowSplitSheetsModal(false); setShowTeamOnboarding(true); }}
+                    sx={{
+                      borderRadius: '999px', px: 2, py: 0.75,
+                      textTransform: 'none',
+                      color: '#fff5e8',
+                      borderColor: 'rgba(255,186,108,0.32)',
+                      '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                    }}
+                  >
+                    Kjør onboarding på nytt
+                  </Button>
+                </Stack>
+                <TeamMembersDirectory profession={profession} />
+              </Box>
+            )}
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowSplitSheetsModal(false)}>Lukk</Button>
-          </DialogActions>
         </Dialog>
+
+        {/* Slice 9X.75 — Team-onboarding-wizard (auto-trigger for nye enterprise) */}
+        <TeamOnboardingWizard
+          open={showTeamOnboarding}
+          onClose={() => setShowTeamOnboarding(false)}
+          profession={profession}
+          ownerEmail={userEmail}
+          ownerName={userSession?.firstName ? `${userSession.firstName} ${userSession.lastName || ''}`.trim() : undefined}
+          onComplete={(data) => {
+            console.log('[team-onboarding] completed:', data);
+          }}
+        />
+
+        {/* Slice 9X.77 — Individual-onboarding-wizard (auto-trigger for solo) */}
+        <IndividualOnboardingWizard
+          open={showIndividualOnboarding}
+          onClose={() => setShowIndividualOnboarding(false)}
+          initialProfession={profession}
+          ownerEmail={userEmail}
+          onComplete={(data) => {
+            console.log('[individual-onboarding] completed:', data);
+          }}
+        />
+
+        {/* Split Sheet Wizard — rolle-basert vekting */}
+        <SplitSheetRoleWizard
+          open={showSplitSheetWizard}
+          onClose={() => { setShowSplitSheetWizard(false); setWizardPrefill({}); }}
+          profession={profession}
+          projectName={wizardPrefill.projectName}
+          projectAmount={wizardPrefill.projectAmount}
+          initialParticipants={wizardPrefill.initialParticipants}
+          source={wizardPrefill.source}
+          onSave={(data) => {
+            const entry = {
+              id: `local-${Date.now()}`,
+              projectName: data.projectName,
+              projectAmount: data.projectAmount,
+              createdAt: new Date().toISOString(),
+              model: data.model,
+              participants: data.participants,
+            };
+            const next = [entry, ...localSplitSheets];
+            setLocalSplitSheets(next);
+            try { window.localStorage.setItem('split-sheet-entries', JSON.stringify(next)); } catch {}
+            setWizardPrefill({});
+            // Re-open overview so brukeren ser sin nye splitt
+            setShowSplitSheetsModal(true);
+          }}
+        />
 
         {/* Header - WCAG Compliant */}
         <Box 
@@ -3539,7 +3743,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           <MuiCard 
             sx={{ 
               mb: { xs: 2, md: 4 },
-              background: 'rgba(255, 255, 255, 0.88)',
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.05)}, rgba(15,10,7,0.84))`,
               backdropFilter: 'blur(24px)',
               WebkitBackdropFilter: 'blur(24px)',
               border: '1px solid rgba(255, 255, 255, 0.5)',
@@ -3690,48 +3894,50 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   >
                     {isSmallScreen ? 'Notater' : 'Møtenotater'}
                   </Button>
-                  <Button 
+                  <Button
                     variant="outlined"
                     size={isSmallScreen ? "small" : "medium"}
                     startIcon={<Store />}
-                    onClick={() => setShowMarketplace(true)}
+                    onClick={() => { marketplaceEvents.opened('dashboard_button'); setShowMarketplace(true); }}
                     sx={{
-                      color: '#F59E0B',
-                      borderColor: alpha('#F59E0B', 0.3),
+                      // Slice 9X.72 — bruker profesjons-aktiv accent istedenfor hardkodet #F59E0B
+                      color: customBranding.color,
+                      borderColor: alpha(customBranding.color, 0.3),
                       fontSize: { xs: '0.75rem', sm: '0.875rem' },
                       minHeight: { xs: 36, sm: 44 },
                       '&:hover': {
-                        bgcolor: '#F59E0B' + '10',
-                        borderColor: '#F59E0B'
+                        bgcolor: alpha(customBranding.color, 0.08),
+                        borderColor: customBranding.color,
                       },
                       '&:focus': {
-                        outline: `2px solid #F59E0B`,
-                        outlineOffset: '2px'
-                      }
+                        outline: `2px solid ${customBranding.color}`,
+                        outlineOffset: '2px',
+                      },
                     }}
                     aria-label={isSmallScreen ? 'Marketplace' : 'Åpne Marketplace'}
                     tabIndex={0}
                   >
                     {isSmallScreen ? 'Marked' : 'Marketplace'}
                   </Button>
-                  <Button 
+                  <Button
                     variant="outlined"
                     size={isSmallScreen ? "small" : "medium"}
                     startIcon={<AccountBalance />}
-                    onClick={() => setShowSplitSheetsModal(true)}
+                    onClick={() => { dashboardEvents.splitSheetsModalOpened(profession); setShowSplitSheetsModal(true); }}
                     sx={{
-                      color: '#9f7aea',
-                      borderColor: alpha('#9f7aea', 0.3),
+                      // Slice 9X.72 — bruker profesjons-aktiv accent istedenfor hardkodet #9f7aea
+                      color: customBranding.color,
+                      borderColor: alpha(customBranding.color, 0.3),
                       fontSize: { xs: '0.75rem', sm: '0.875rem' },
                       minHeight: { xs: 36, sm: 44 },
                       '&:hover': {
-                        bgcolor: '#9f7aea' + '10',
-                        borderColor: '#9f7aea'
+                        bgcolor: alpha(customBranding.color, 0.08),
+                        borderColor: customBranding.color,
                       },
                       '&:focus': {
-                        outline: `2px solid #9f7aea`,
-                        outlineOffset: '2px'
-                      }
+                        outline: `2px solid ${customBranding.color}`,
+                        outlineOffset: '2px',
+                      },
                     }}
                     aria-label={isSmallScreen ? 'Split Sheets' : 'Split Sheets Oversikt'}
                     tabIndex={0}
@@ -3980,7 +4186,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           <Grid2 size={{ xs: 6, sm: 6, md: 3 }}>
             <MuiCard sx={{ 
               height: '100%',
-              background: 'rgba(255, 255, 255, 0.9)',
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.05)}, rgba(15,10,7,0.86))`,
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
               border: '1px solid rgba(255, 255, 255, 0.5)',
@@ -4061,7 +4267,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           <Grid2 size={{ xs: 6, sm: 6, md: 3 }}>
             <MuiCard sx={{ 
               height: '100%',
-              background: 'rgba(255, 255, 255, 0.9)',
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.05)}, rgba(15,10,7,0.86))`,
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
               border: '1px solid rgba(255, 255, 255, 0.5)',
@@ -4133,7 +4339,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           <Grid2 size={{ xs: 6, sm: 6, md: 3 }}>
             <MuiCard sx={{ 
               height: '100%',
-              background: 'rgba(255, 255, 255, 0.9)',
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.05)}, rgba(15,10,7,0.86))`,
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
               border: '1px solid rgba(255, 255, 255, 0.5)',
@@ -4205,7 +4411,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           <Grid2 size={{ xs: 6, sm: 6, md: 3 }}>
             <MuiCard sx={{ 
               height: '100%',
-              background: 'rgba(255, 255, 255, 0.9)',
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.05)}, rgba(15,10,7,0.86))`,
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
               border: '1px solid rgba(255, 255, 255, 0.5)',
@@ -4220,29 +4426,30 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 left: 0,
                 right: 0,
                 height: '3px',
-                background: `linear-gradient(90deg, #F59E0B 0%, #FBBF24 100%)`,
+                // Slice 9X.72 — bruker profesjons-accent
+                background: `linear-gradient(90deg, ${customBranding.color} 0%, ${alpha(customBranding.color, 0.7)} 100%)`,
                 opacity: 0,
                 transition: 'opacity 0.3s ease',
               },
-              '&:hover': { 
+              '&:hover': {
                 transform: 'translateY(-6px)',
-                boxShadow: '0 16px 48px rgba(0,0,0,0.12)',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.32)',
                 '&::before': { opacity: 1 }
               }
             }}>
               <MuiCardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-                <Box sx={{ 
-                  display: 'flex', 
+                <Box sx={{
+                  display: 'flex',
                   flexDirection: { xs: 'column', sm: 'row' },
                   alignItems: { xs: 'center', sm: 'flex-start' },
                   gap: { xs: 1.5, sm: 2 },
                   textAlign: { xs: 'center', sm: 'left' }
                 }}>
-                  <Box sx={{ 
+                  <Box sx={{
                     p: { xs: 1, sm: 1.5 },
                     borderRadius: 3,
-                    bgcolor: 'rgba(245, 158, 11, 0.12)',
-                    color: '#F59E0B',
+                    bgcolor: alpha(customBranding.color, 0.12),
+                    color: customBranding.color,
                     minWidth: 'fit-content',
                     display: 'flex',
                     alignItems: 'center',
@@ -4275,11 +4482,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           </Grid2>
         </Grid2>
 
-        {(evendiBookings.length > 0 || evendiAnalytics) && (
+        {/* Slice 9X.70 — gates på marketplace-install i tillegg til data-eksistens */}
+        {(() => { try { return window.localStorage.getItem('evendi-installed') === 'true'; } catch { return false; } })() && (evendiBookings.length > 0 || evendiAnalytics) && (
           <MuiCard
             sx={{
               mb: { xs: 3, md: 4 },
-              background: 'rgba(255, 255, 255, 0.92)',
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.06)}, rgba(15,10,7,0.88))`,
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
               border: '1px solid rgba(255, 255, 255, 0.5)',
@@ -4872,7 +5080,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </Grid2>
                   ) : (!upcomingProjects || upcomingProjects.length === 0) ? (
                     <MuiCard sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
+                      background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(15,10,7,0.92) 100%)`,
                       backdropFilter: 'blur(10px)',
                       border: `1px solid ${alpha(customBranding.color, 0.2)}`,
                       borderRadius: 3,
@@ -4911,7 +5119,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           <Grid2 size={{ xs: 12, sm: 6 }} key={project.id}>
                             <MuiCard
                               sx={{
-                                background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
+                                background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(15,10,7,0.92) 100%)`,
                                 backdropFilter: 'blur(10px)',
                                 border: `1px solid ${alpha(urgencyColor, 0.2)}`,
                                 borderRadius: 3,
@@ -4962,7 +5170,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             {locationIntelligence.weatherData && (
               <Box sx={{ mb: 3 }}>
                 <MuiCard sx={{ 
-                  background: 'rgba(255, 255, 255, 0.9)',
+                  background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.05)}, rgba(15,10,7,0.86))`,
                   backdropFilter: 'blur(16px)',
                   WebkitBackdropFilter: 'blur(16px)',
                   border: '1px solid rgba(99, 102, 241, 0.15)',
@@ -5620,7 +5828,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                               <Fade in timeout={300 + index * 100}>
                                 <MuiCard
                                   sx={{
-                                    background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
+                                    background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(15,10,7,0.92) 100%)`,
                                     backdropFilter: 'blur(10px)',
                                     border: `1px solid ${alpha(statusColor, 0.2)}`,
                                     borderRadius: 3,
@@ -5826,7 +6034,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       </Grid2>
                     ) : (
                       <MuiCard sx={{
-                        background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
+                        background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(15,10,7,0.92) 100%)`,
                         backdropFilter: 'blur(10px)',
                         border: `1px solid ${alpha(customBranding.color, 0.2)}`,
                         borderRadius: 3,
@@ -5918,7 +6126,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </Box>
 
                     <MuiCard sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
+                      background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(15,10,7,0.92) 100%)`,
                       backdropFilter: 'blur(10px)',
                       border: `1px solid ${alpha(customBranding.color, 0.2)}`,
                       borderRadius: 3,
@@ -6287,9 +6495,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       p: { xs: 2, md: 2.5 },
                       mb: 3,
                       borderRadius: 4,
-                      border: `1px solid ${alpha(customBranding.color, 0.12)}`,
-                      background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(255,255,255,0.98) 58%, ${alpha('#0f172a', 0.02)} 100%)`,
-                      boxShadow: `0 20px 46px ${alpha('#0f172a', 0.06)}`,
+                      border: `1px solid ${alpha(customBranding.color, 0.18)}`,
+                      // Slice 9X.72 — dark-theme refactor (var: hvit gradient i midten)
+                      background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.10)} 0%, rgba(15,10,7,0.92) 58%, ${alpha(customBranding.color, 0.04)} 100%)`,
+                      color: '#fff5e8',
+                      boxShadow: `0 20px 46px rgba(0,0,0,0.32)`,
                     }}
                   >
                     <Stack spacing={2}>
@@ -7088,7 +7298,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                             Utvid funksjonaliteten din med kraftige verktøy og integrasjoner. Alle verktøyene er testet og klar for produksjon.
                           </Typography>
                           
-                          {/* Featured App: ResumeBuilder */}
+                          {/* Featured App: NextRole by CreatorHub */}
                           <Box sx={{ mb: 3 }}>
                             <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
                               ⭐ Featured App
@@ -8053,7 +8263,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         fullWidth
         PaperProps={{
           sx: {
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.98) 100%)',
+            // Slice 9X.72 — dark theme
+            background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.10)} 0%, rgba(15,10,7,0.96) 100%)`,
             backdropFilter: 'blur(10px)',
           }
         }}
@@ -8427,7 +8638,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         </Box>
       )}
 
-      {/* Marketplace Dialog */}
+      {/* Marketplace Dialog — Slice 9X.70 redesign for å matche dashboard-tema */}
       <Dialog
         open={showMarketplace}
         onClose={() => setShowMarketplace(false)}
@@ -8436,42 +8647,64 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         PaperProps={{
           sx: {
             minHeight: '80vh',
-            maxHeight: '90vh',
-            borderRadius: 3,
-            overflow: 'hidden'
+            maxHeight: '92vh',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+            color: '#fff5e8',
+            border: '1px solid rgba(255,186,108,0.18)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
           }
         }}
       >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
+        <Box sx={{
+          px: 3,
+          pt: 3,
+          pb: 2,
+          display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-          color: 'white',
-          py: 2
+          background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.02))',
+          borderBottom: '1px solid rgba(255,186,108,0.18)',
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Store />
-            <Typography component="div" variant="h6" fontWeight={600}>
-              Marketplace - Oppdag Nye Verktøy
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+              <Store />
+            </Avatar>
+            <Box>
+              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+                Marketplace
+              </Typography>
+              <Typography component="div" variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
+                Oppdag nye verktøy
+              </Typography>
+            </Box>
           </Box>
           <IconButton
             onClick={() => setShowMarketplace(false)}
-            sx={{ color: 'white' }}
+            sx={{ color: 'rgba(246,242,234,0.72)' }}
             aria-label="Lukk marketplace"
           >
             <Close />
           </IconButton>
-        </DialogTitle>
+        </Box>
         <DialogContent sx={{ p: 0, overflow: 'auto' }}>
           <Box sx={{ p: 3 }}>
             {marketplaceInstallNotice && (
-              <Alert severity={marketplaceInstallNotice.severity} sx={{ mb: 2 }}>
+              <Alert
+                severity={marketplaceInstallNotice.severity}
+                sx={{
+                  mb: 2,
+                  bgcolor: 'rgba(255,186,108,0.08)',
+                  color: '#fff5e8',
+                  border: '1px solid rgba(255,186,108,0.22)',
+                  '& .MuiAlert-icon': { color: '#ffba6c' },
+                }}
+              >
                 {marketplaceInstallNotice.message}
               </Alert>
             )}
-            <CreatorHubMarketplace 
+            <CreatorHubMarketplace
               profession={profession}
               userId={userId}
               onSelect={handleMarketplaceInstall}

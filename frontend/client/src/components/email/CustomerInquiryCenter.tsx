@@ -54,6 +54,7 @@ import {
   PersonAdd as PersonAddIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { inquiryEvents } from '@/utils/creatorhub-events';
 import SmartEmailComposer from './SmartEmailComposer';
 // Import dynamic profession system
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
@@ -187,6 +188,7 @@ export default function CustomerInquiryCenter({
 
   // Handle compose actions
   const handleReply = (email: EmailMessage) => {
+    inquiryEvents.replied(email.id, 'email');
     // Set up email for Smart Composer with proper reply formatting
     const replyEmail = {
       ...email,
@@ -350,11 +352,26 @@ Svar med profesjonell og vennlig tone.
       summary: `${email.subject} (${email.from?.email || 'ukjent e-post'})`,
     });
 
+    inquiryEvents.convertedToProject(email.id, undefined, projectData?.budget);
     if (onCreateProjectFromSubmission) {
       onCreateProjectFromSubmission(projectData);
     } else {
       console.log('Creating project from inquiry:', projectData);
     }
+
+    // Slice 9X.74 — foreslå split sheet etter konvertering.
+    // UniversalDashboard lytter på event'en og åpner wizarden pre-fylt.
+    try {
+      window.dispatchEvent(new CustomEvent('inquiry:suggest-split-sheet', {
+        detail: {
+          projectName: projectData?.projectName || email.subject || 'Nytt prosjekt',
+          projectAmount: Number(projectData?.budget) || 0,
+          inquiryId: email.id,
+          clientName: email.from?.name || '',
+        },
+      }));
+      inquiryEvents.splitSheetSuggested(email.id);
+    } catch {}
   };
 
   const handleToggleStar = (emailId: string) => {
@@ -630,6 +647,28 @@ Svar med profesjonell og vennlig tone.
                             sx={{ bgcolor: brandColor }}
                           >
                             Opprett Prosjekt
+                          </Button>
+                          {/* Slice 9X.74 — direkte split-sheet-forslag uten å konvertere */}
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              try {
+                                window.dispatchEvent(new CustomEvent('inquiry:suggest-split-sheet', {
+                                  detail: {
+                                    projectName: email.subject || 'Nytt prosjekt',
+                                    projectAmount: 0, // brukeren fyller inn selv
+                                    inquiryId: email.id,
+                                    clientName: email.from?.name || '',
+                                  },
+                                }));
+                                inquiryEvents.splitSheetSuggested(email.id);
+                              } catch {}
+                            }}
+                            sx={{ borderColor: brandColor, color: brandColor }}
+                          >
+                            Foreslå split sheet
                           </Button>
                         </Stack>
                       </Stack>

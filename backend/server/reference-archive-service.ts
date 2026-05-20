@@ -14,6 +14,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { buildCaptureR2Config } from './capture-upload-service.js';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 const MAX_IMAGE_BASE64_BYTES = 6 * 1024 * 1024; // ~4.5 MB decoded
 
@@ -237,6 +238,7 @@ export async function analyseFrame(input: AnalyseFrameInput): Promise<AnalyseFra
         },
       ],
     });
+    logAIUsage(response as any, { feature: 'role-room/reference-archive' }).catch(() => undefined);
     const toolUse = (response.content ?? []).find(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (b: any) => b?.type === 'tool_use' && b?.name === 'tag_reference_frame',

@@ -12,6 +12,7 @@
  */
 
 import type { Pool } from 'pg';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 // ── Readiness gate ──────────────────────────────────────────────────────
 
@@ -413,6 +414,7 @@ export async function generateMarketingPlan(input: {
       ],
       messages: [{ role: 'user', content: userMessage }],
     });
+    logAIUsage(response, { feature: 'role-room/marketing-plan' }).catch(() => undefined);
     let text = '';
     for (const block of response.content ?? []) {
       if (block.type === 'text' && typeof block.text === 'string') text += block.text;

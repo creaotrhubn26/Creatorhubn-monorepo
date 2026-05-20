@@ -6,6 +6,7 @@ import {
   type AssetSignalsJson,
 } from '../migrations/capture-schema.js';
 import { updateAssetSignals } from './capture-assets-service.js';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 type Db = NodePgDatabase<Record<string, unknown>>;
 
@@ -480,6 +481,7 @@ export async function analyzePhoto(
         },
       ],
     });
+    logAIUsage(response as any, { feature: 'role-room/capture-analyze' }).catch(() => undefined);
 
     const toolUse = (response.content ?? []).find(
       (block: any) => block?.type === 'tool_use' && block?.name === 'photo_analysis',

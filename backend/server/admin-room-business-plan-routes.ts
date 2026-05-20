@@ -25,6 +25,7 @@
  */
 
 import type { AdminRoomRoutesDeps } from "./_shared";
+import { logAIUsage } from "./ai-usage-tracker.js";
 
 const BUSINESS_PLAN_TEXT_FIELDS = [
   "exec_summary",
@@ -156,12 +157,19 @@ Holy Crust (Oslo).`;
         planSummary ? `\nKontekst fra andre seksjoner:\n${planSummary}` : null,
       ].filter(Boolean).join("\n");
 
+      const aiStartedAt = Date.now();
       const response = await client.messages.create({
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 1500,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
+      logAIUsage(response as any, {
+        feature: 'admin-business-plan-section',
+        route: '/api/admin-room/business-plan/generate',
+        userId: session.userId,
+        durationMs: Date.now() - aiStartedAt,
+      }).catch(() => undefined);
 
       type ContentBlock = { type: string; text?: string };
       const generatedText = (response.content as ContentBlock[])

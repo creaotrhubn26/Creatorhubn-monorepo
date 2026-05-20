@@ -17,6 +17,7 @@ import {
   setEventSentiment,
 } from './social-events.js';
 import { modelIdForTier } from './role-room-agent-cache.js';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 const SWEEP_INTERVAL_MS = 60_000;
 const BATCH_SIZE = 25;
@@ -110,6 +111,7 @@ export async function scoreSentimentBatch(
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
     });
+    logAIUsage(response as any, { feature: 'role-room/sentiment-worker' }).catch(() => undefined);
     const text = response.content
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map((b) => b.text)

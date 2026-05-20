@@ -19,6 +19,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { BrandProfile } from "./role-room-website-analyzer.js";
+import { logAIUsage } from './ai-usage-tracker.js';
 
 // ─────────────────────────────────────────────────────────
 // Public types
@@ -409,6 +410,7 @@ export async function generateWeekPlan(
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });
+    logAIUsage(response as any, { feature: 'role-room/content-strategy' }).catch(() => undefined);
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)

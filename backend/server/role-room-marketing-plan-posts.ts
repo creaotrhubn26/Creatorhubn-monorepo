@@ -14,6 +14,7 @@
 import crypto from 'node:crypto';
 import type { Pool } from 'pg';
 import type { MarketingPlanStrategy, PersistedPillar } from './role-room-marketing-plan.js';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-5';
 const VALID_FORMATS = new Set([
@@ -249,6 +250,7 @@ export async function generatePlanPosts(input: {
       ],
       messages: [{ role: 'user', content: buildUserMessage(input.strategy, input.pillars, input.horizonDays) }],
     });
+    logAIUsage(response, { feature: 'role-room/marketing-posts' }).catch(() => undefined);
     let text = '';
     for (const block of response.content ?? []) {
       if (block.type === 'text' && typeof block.text === 'string') text += block.text;

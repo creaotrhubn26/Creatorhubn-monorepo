@@ -157,9 +157,11 @@ export const PrivacyPolicyDialog: React.FC<{
             1. Innledning
           </Typography>
           <Typography variant="body2" paragraph>
-            CreatorHub Norge ("vi", "oss") er forpliktet til å beskytte ditt personvern. 
-            Denne erklæringen forklarer hvordan vi samler inn, bruker og beskytter dine personlige opplysninger 
-            i samsvar med GDPR (REGULATION (EU) 2016/679).
+            CreatorHub Norge ("vi", "oss") er forpliktet til å beskytte ditt personvern.
+            Denne erklæringen forklarer hvordan vi samler inn, bruker og beskytter dine
+            personlige opplysninger i samsvar med GDPR (forordning (EU) 2016/679),
+            personopplysningsloven, Datatilsynets veileder for kunstig intelligens, og
+            Forbrukertilsynets retningslinjer for AI-funksjoner i forbrukertjenester.
           </Typography>
 
           <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
@@ -180,35 +182,83 @@ export const PrivacyPolicyDialog: React.FC<{
           <Typography variant="body2" component="ul" sx={{ ml: 2 }} paragraph>
             <li><strong>Kontoinformasjon:</strong> Navn, e-postadresse, passordhash</li>
             <li><strong>Profil:</strong> Telefon, adresse, LinkedIn/GitHub profiler</li>
-            <li><strong>CV-data:</strong> Arbeidserfaringer, utdanning, ferdigheter, prosjekter</li>
-            <li><strong>Jobbsøkingsdata:</strong> Jobbapplikasjoner, frister, intervjuer</li>
+            <li><strong>CV-data:</strong> Arbeidserfaringer, utdanning, ferdigheter, prosjekter, språk, sertifiseringer, profilbilde</li>
+            <li><strong>Importerte dokumenter:</strong> Tekstinnhold fra eksisterende CV-er du laster opp (PDF/DOCX)</li>
+            <li><strong>Jobbsøkingsdata:</strong> Jobbsøknader, frister, intervjuer, søknadsbrev</li>
+            <li><strong>AI-resultater:</strong> ATS-analyser, keyword-match, AI-genererte sammendrag og søknadsbrev</li>
             <li><strong>Bruksdata:</strong> IP-adresse, enhetsinformasjon, bruksmønstre</li>
-            <li><strong>Cookies:</strong> For sessjon og preferanser</li>
+            <li><strong>Cookies:</strong> For sesjon og preferanser</li>
           </Typography>
 
           <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-            4. Juridisk Grunnlag
+            4. Juridisk grunnlag
           </Typography>
           <Typography variant="body2" paragraph>
             Vi behandler dine personlige opplysninger basert på:
           </Typography>
           <Typography variant="body2" component="ul" sx={{ ml: 2 }} paragraph>
-            <li>Ditt samtykke (f.eks. ved registrering)</li>
-            <li>Oppfyllelse av kontrakt (levering av Tjenesten)</li>
-            <li>Oppfyllelse av juridiske forpliktelser</li>
-            <li>Våre legitime interesser</li>
+            <li><strong>Ditt samtykke</strong> (GDPR art. 6 nr. 1 bokstav a) — f.eks. ved registrering og når du aktivt sender CV-innhold til AI-funksjonene</li>
+            <li><strong>Oppfyllelse av kontrakt</strong> (art. 6 nr. 1 b) — levering av selve NextRole</li>
+            <li><strong>Oppfyllelse av juridiske forpliktelser</strong> (art. 6 nr. 1 c)</li>
+            <li><strong>Legitim interesse</strong> (art. 6 nr. 1 f) — produktforbedring uten å påvirke dine grunnleggende rettigheter</li>
           </Typography>
 
           <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-            5. Deling av Data
+            5. Bruk av kunstig intelligens (Claude / Anthropic)
+          </Typography>
+          <Alert severity="info" sx={{ my: 1.5 }}>
+            NextRole bruker Anthropic Claude som AI-leverandør for funksjoner du selv aktiverer.
+            Vi sender CV-innhold til Anthropic kun når du klikker en AI-knapp.
+          </Alert>
+          <Typography variant="body2" paragraph>
+            <strong>Hvilke funksjoner bruker AI?</strong>
+          </Typography>
+          <Typography variant="body2" component="ul" sx={{ ml: 2 }} paragraph>
+            <li><strong>CV-import:</strong> Tekst fra opplastede PDF/DOCX-CV-er sendes til Claude for strukturering</li>
+            <li><strong>ATS-analyse:</strong> CV-innhold + valgfri jobbeskrivelse sendes til Claude for skåring</li>
+            <li><strong>AI-sammendrag:</strong> Erfaring + utdanning sendes for å generere profesjonelt sammendrag</li>
+            <li><strong>AI-omskriving:</strong> Enkelt-erfaringer sendes for å forbedre formuleringer</li>
+            <li><strong>Søknadsbrev:</strong> CV-innhold + jobbeskrivelse sendes for å generere brev</li>
+            <li><strong>Grammatikk-sjekk:</strong> CV-tekst sendes for korrekturlesing</li>
+            <li><strong>Oversettelse:</strong> CV-innhold sendes for NO↔EN-oversettelse</li>
+            <li><strong>Intervjuforberedelse:</strong> CV-innhold + jobbeskrivelse sendes for å generere spørsmål</li>
+          </Typography>
+          <Typography variant="body2" paragraph>
+            <strong>Hvem er prosessoren?</strong> Anthropic PBC, San Francisco, USA. Anthropic er
+            en databehandler (GDPR art. 28) for CreatorHub. Data overføres utenfor EØS og
+            beskyttes av Standardklausuler (SCC) godkjent av EU-kommisjonen, samt Anthropics
+            forpliktelse om at API-innhold ikke brukes til modelltrening (zero-retention etter
+            standardpolicy).
+          </Typography>
+          <Typography variant="body2" paragraph>
+            <strong>Datalagring hos Anthropic:</strong> API-input/-output lagres maksimalt 30 dager
+            for misbruksdeteksjon, og benyttes ikke til trening av Claude-modeller. Se
+            Anthropics Privacy Policy: <Link href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">anthropic.com/legal/privacy</Link>.
+          </Typography>
+          <Typography variant="body2" paragraph>
+            <strong>Dine rettigheter ved AI-behandling:</strong>
+          </Typography>
+          <Typography variant="body2" component="ul" sx={{ ml: 2 }} paragraph>
+            <li>Du kan når som helst velge å <em>ikke</em> bruke AI-funksjonene — alle CRUD-funksjoner i NextRole fungerer uten AI</li>
+            <li>Du har rett til å protestere mot automatiserte avgjørelser (GDPR art. 22). AI-resultatene er <strong>forslag</strong> — du tar selv den endelige beslutningen om hva som lagres i CV-en din</li>
+            <li>Du kan be om sletting av lagrede AI-analyser via "Data-administrasjon"-dialogen</li>
+            <li>Du kan klage til Datatilsynet (<Link href="https://datatilsynet.no" target="_blank" rel="noopener">datatilsynet.no</Link>) eller Forbrukertilsynet (<Link href="https://forbrukertilsynet.no" target="_blank" rel="noopener">forbrukertilsynet.no</Link>) hvis du mener AI-behandlingen er i strid med ditt personvern</li>
+          </Typography>
+          <Typography variant="body2" paragraph>
+            <strong>AI-transparens:</strong> AI-genererte felter er tydelig markert i NextRole (f.eks. "Auto-importert" eller "AI-generert"). Vi bruker ikke AI til å ta beslutninger med rettslig virkning eller tilsvarende vesentlig påvirkning på deg.
+          </Typography>
+
+          <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+            6. Deling av data
           </Typography>
           <Typography variant="body2" paragraph>
             Vi deler dine data med:
           </Typography>
           <Typography variant="body2" component="ul" sx={{ ml: 2 }} paragraph>
-            <li><strong>Tjenesteleverandører:</strong> Hosting, sikkerhet, analyse</li>
+            <li><strong>Anthropic PBC (USA):</strong> Som AI-databehandler ved bruk av AI-funksjoner — se pkt. 5</li>
+            <li><strong>Tjenesteleverandører:</strong> Hosting (Vercel/Render), database (Postgres), e-post (transaksjonelle utsendelser)</li>
             <li><strong>Offentlige myndigheter:</strong> Når lovpålagt</li>
-            <li><strong>Andre brukere:</strong> Kun hvis du deler CV offentlig</li>
+            <li><strong>Andre brukere:</strong> Kun hvis du selv deler CV offentlig</li>
           </Typography>
 
           <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>

@@ -46,6 +46,8 @@ type TermsBrand = {
   summary: string;
   allowed: string[];
   prohibited: string[];
+  /** Valgfri AI-disclosure som rendres som egen seksjon. */
+  aiNotice?: string[];
 };
 
 function getTermsBrand(): TermsBrand {
@@ -94,18 +96,28 @@ function getTermsBrand(): TermsBrand {
     supportEmail: PUBLIC_BRAND_LINKS.creatorhub.email,
     socialLabel: 'Følg CreatorHub',
     intro:
-      'Ved å bruke CreatorHub Norge aksepterer du disse vilkårene for medlemskap, betaling, prosjekter, community, integrasjoner og annen bruk av plattformen.',
+      'Ved å bruke CreatorHub Norge aksepterer du disse vilkårene for medlemskap, betaling, prosjekter, ResumeBuilder, AI-funksjoner, community, integrasjoner og annen bruk av plattformen.',
     summary:
-      'CreatorHub leveres av Creatorhub AS og samler prosjektstyring, kundeopplevelse, læring, abonnementsflyt og community i én plattform.',
+      'CreatorHub leveres av Creatorhub AS og samler prosjektstyring, kundeopplevelse, ResumeBuilder, læring, abonnementsflyt og community i én plattform. AI-funksjoner leveres ved hjelp av Anthropic Claude som databehandler.',
     allowed: [
       'Bruke plattformen til prosjekter, samarbeid, læring, kundearbeid og andre legitime arbeidsflyter.',
       'Laste opp eget materiale og bruke integrasjoner du selv har rettigheter til å koble til.',
+      'Bruke ResumeBuilder til å lage, importere og eksportere CV-er, samt bruke AI-funksjonene for analyse, sammendrag, søknadsbrev og oversettelse.',
       'Bruke abonnements- og kjøpsflyten slik den er beskrevet i gjeldende plan, tilbud eller bestillingsside.',
+      'Velge fritt om du vil bruke AI-funksjonene. Alle kjernefunksjoner i CreatorHub fungerer uten AI-funksjoner aktivert.',
     ],
     prohibited: [
       'Laste opp ulovlig innhold, krenkende materiale eller filer du ikke har rettigheter til.',
       'Misbruke plattformen til spam, scraping, phishing, reverse engineering eller omgåelse av sikkerhet.',
+      'Bruke AI-funksjonene til å generere villedende, diskriminerende eller på annen måte ulovlig innhold.',
+      'Sende personopplysninger om andre personer enn deg selv til AI-funksjoner uten gyldig rettsgrunnlag.',
       'Dele konto, få uautorisert tilgang til andres data eller manipulere betalings- og abonnementsflyt.',
+    ],
+    aiNotice: [
+      'CreatorHub bruker Anthropic PBC (USA) som AI-databehandler for funksjonene i ResumeBuilder, Academy og produktassistenten. Når du aktiverer en AI-funksjon, sendes det relevante innholdet til Anthropic via API.',
+      'Anthropic lagrer API-data maksimalt 30 dager for misbruksdeteksjon og bruker det ikke til trening av Claude-modellene. Overføring skjer på grunnlag av Standardklausuler (SCC) godkjent av EU-kommisjonen.',
+      'AI-genererte forslag (ATS-scorer, sammendrag, søknadsbrev, oversettelser, intervjuspørsmål) er kun forslag. Du bestemmer selv hva som lagres eller publiseres. CreatorHub tar ikke automatiserte beslutninger med rettslig virkning eller tilsvarende vesentlig påvirkning (GDPR art. 22).',
+      'Du har rett til å klage til Datatilsynet (datatilsynet.no) og Forbrukertilsynet (forbrukertilsynet.no) hvis du mener AI-funksjonene er i strid med personvern eller forbrukervern. Se også Personvernerklæringen for full beskrivelse av AI-behandlingen.',
     ],
   };
 }
@@ -375,11 +387,33 @@ const TermsAndConditions: React.FC = () => {
             </List>
           </Box>
 
+          {brand.aiNotice && brand.aiNotice.length > 0 && (
+            <>
+              <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 1 }}>
+                  6. AI-funksjoner og dine rettigheter
+                </Typography>
+                <Typography variant="body2" sx={{ color: mutedColor, mb: 2 }}>
+                  I tråd med Datatilsynets veileder for kunstig intelligens og Forbrukertilsynets retningslinjer.
+                </Typography>
+                <List>
+                  {brand.aiNotice.map((item) => (
+                    <ListItem key={item} disableGutters sx={{ alignItems: 'flex-start' }}>
+                      <Info sx={{ color: brand.accent, mr: 2, mt: 0.4 }} />
+                      <ListItemText primary={item} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            </>
+          )}
+
           <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
-              6. Innhold, eierskap og lisens
+              7. Innhold, eierskap og lisens
             </Typography>
             <List>
               <ListItem disableGutters><ListItemText primary="Ditt innhold" secondary="Du beholder rettighetene til materiale du laster opp eller oppretter, med mindre annet er uttrykkelig avtalt." /></ListItem>

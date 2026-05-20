@@ -25,6 +25,11 @@
 // The import is written using a loose import pattern so the rest of the
 // backend still compiles if the package is not yet installed during local dev.
 // Once npm install runs, replace the dynamic import with a static one.
+
+// Slice 9X.71 — cost-tracking via samme system som CreatorHub-resten.
+// Lazy import for å unngå circular import-problemer ved boot.
+import { logAIUsage } from './ai-usage-tracker.js';
+
 type ClaudeMessageParam = {
   role: 'user' | 'assistant';
   content: string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }>;
@@ -50,6 +55,16 @@ export interface RunClaudeAgentInput {
   maxTokens?: number;
   /** Override the model (default from env). */
   model?: string;
+  /**
+   * Slice 9X.71 — Cost-tracking. Identifiserer hvilken Role Room-feature
+   * som utløste kallet (f.eks. 'role-room/breakdown', 'role-room/casting-suggest').
+   * Vises i admin AI-cost-dashboard. Default: 'role-room-agent-unspecified'.
+   */
+  feature?: string;
+  /** User-ID for per-bruker-rapportering */
+  userId?: string | null;
+  /** HTTP-route hvis kallet kommer fra en route-handler */
+  route?: string;
 }
 
 export interface RunClaudeAgentResult {
@@ -135,6 +150,15 @@ export async function runClaudeAgent(input: RunClaudeAgentInput): Promise<RunCla
     tools: input.tools,
   });
   const latencyMs = Date.now() - start;
+
+  // Slice 9X.71 — cost-tracking (fire-and-forget)
+  logAIUsage(response as any, {
+    feature: input.feature || 'role-room-agent-unspecified',
+    route: input.route,
+    userId: input.userId || null,
+    durationMs: latencyMs,
+    metadata: { hasTools: !!input.tools?.length },
+  }).catch(() => undefined);
 
   // Concatenate text blocks; collect any tool_use blocks so the caller can
   // show a confirmation dialog before actually invoking the tool.

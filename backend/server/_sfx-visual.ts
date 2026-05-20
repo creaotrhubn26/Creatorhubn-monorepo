@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 // Holdt i sync med frontend/.../sfxCategories.ts. Kategorier som er
 // tilgjengelige for Claude å velge fra.
@@ -293,6 +294,7 @@ export async function detectVisualSfx(
         },
       ],
     });
+    logAIUsage(response as any, { feature: 'role-room/sfx-visual' }).catch(() => undefined);
   } catch (err: any) {
     const status = err?.status ?? err?.response?.status;
     const retryable = status === 429 || (status && status >= 500);

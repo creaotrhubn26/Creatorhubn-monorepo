@@ -18,6 +18,7 @@
  */
 
 import type { Pool } from 'pg';
+import { logAIUsage } from './ai-usage-tracker.js';
 
 export type RoleRoomFeedStrategyPlatform = 'instagram' | 'tiktok' | 'linkedin';
 
@@ -287,6 +288,7 @@ Svar KUN med gyldig JSON på dette skjemaet, ingen markdown:
         },
       ],
     });
+    logAIUsage(response as any, { feature: 'role-room/feed-strategy' }).catch(() => undefined);
 
     let text = '';
     for (const block of response.content ?? []) {

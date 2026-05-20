@@ -24,6 +24,7 @@ import * as cheerio from "cheerio";
 import { createHash } from "node:crypto";
 import { Vibrant } from "node-vibrant/node";
 import Anthropic from "@anthropic-ai/sdk";
+import { logAIUsage } from './ai-usage-tracker.js';
 
 // ─────────────────────────────────────────────────────────
 // Public types
@@ -565,6 +566,7 @@ async function refineWithClaude(s: StaticSignals): Promise<ClaudeRefinement> {
     max_tokens: 800,
     messages: [{ role: "user", content: userPrompt }],
   });
+  logAIUsage(response as any, { feature: 'role-room/website-analyzer' }).catch(() => undefined);
 
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

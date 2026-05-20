@@ -42,20 +42,24 @@ import {
   LocationOn as LocationIcon,
   Flag as PriorityIcon,
   Refresh as RefreshIcon,
+  FileDownload as FileDownloadIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
 
-// Norwegian Job Sources
+// Norske jobbkilder. `color` er bevisst hardkodet hex — dette er
+// hver tjenestes BRAND-farge brukt som identifikator-chip. Skal IKKE
+// erstattes av theme.palette, men holdes i én konstant for sentral
+// vedlikehold. `other` faller tilbake på en nøytral grå.
 const NORWEGIAN_JOB_SOURCES = [
-  { value: 'finn.no', label: 'Finn.no', url: 'https://www.finn.no/job/fulltime/search.html', color: '#06befb' },
-  { value: 'nav.no', label: 'NAV', url: 'https://arbeidsplassen.nav.no', color: '#c30000' },
-  { value: 'linkedin', label: 'LinkedIn', url: 'https://www.linkedin.com/jobs', color: '#0077b5' },
-  { value: 'jobbnorge.no', label: 'Jobbnorge', url: 'https://www.jobbnorge.no', color: '#003d5c' },
-  { value: 'karrierestart.no', label: 'Karrierestart', url: 'https://www.karrierestart.no', color: '#00a651' },
-  { value: 'glassdoor', label: 'Glassdoor', url: 'https://www.glassdoor.com/Job/norway-jobs-SRCH_IL.0,6_IN177.htm', color: '#0caa41' },
-  { value: 'indeed', label: 'Indeed', url: 'https://no.indeed.com', color: '#2164f3' },
+  { value: 'finn.no', label: 'Finn.no', url: 'https://www.finn.no/job/fulltime/search.html', color: '#06BEFB' },
+  { value: 'nav.no', label: 'NAV', url: 'https://arbeidsplassen.nav.no', color: '#C30000' },
+  { value: 'linkedin', label: 'LinkedIn', url: 'https://www.linkedin.com/jobs', color: '#0077B5' },
+  { value: 'jobbnorge.no', label: 'Jobbnorge', url: 'https://www.jobbnorge.no', color: '#003D5C' },
+  { value: 'karrierestart.no', label: 'Karrierestart', url: 'https://www.karrierestart.no', color: '#00A651' },
+  { value: 'glassdoor', label: 'Glassdoor', url: 'https://www.glassdoor.com/Job/norway-jobs-SRCH_IL.0,6_IN177.htm', color: '#0CAA41' },
+  { value: 'indeed', label: 'Indeed', url: 'https://no.indeed.com', color: '#2164F3' },
   { value: 'other', label: 'Annet', url: '', color: '#757575' },
-];
+] as const;
 
 const STATUS_OPTIONS = [
   { value: 'saved', label: 'Lagret', color: 'default' as const },
@@ -385,11 +389,17 @@ export default function JobApplicationTracker() {
                 onClick={() => handleOpenJobSite(source.url)}
                 sx={{
                   bgcolor: source.color,
-                  color: 'white', '&:hover': {
+                  color: '#fff',
+                  fontWeight: 600,
+                  borderRadius: 1.5,
+                  transition: 'transform 120ms ease, opacity 120ms ease',
+                  '&:hover': {
                     bgcolor: source.color,
-                    opacity: 0.8,
-                  }}}
-                icon={<SearchIcon sx={{ color: 'white !important' }} />}
+                    opacity: 0.88,
+                    transform: 'translateY(-1px)',
+                  },
+                }}
+                icon={<SearchIcon sx={{ color: '#fff !important' }} />}
               />
             ))}
           </Stack>
@@ -397,7 +407,7 @@ export default function JobApplicationTracker() {
       </Card>
 
       {/* Actions */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -411,6 +421,48 @@ export default function JobApplicationTracker() {
           onClick={() => queryClient.invalidateQueries({ queryKey: ['job-applications'] })}
         >
           Oppdater
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<FileDownloadIcon />}
+          disabled={applications.length === 0}
+          onClick={() => {
+            // CSV-eksport — UTF-8 med BOM så Excel åpner med æøå korrekt.
+            const headers = [
+              'Tittel', 'Selskap', 'Sted', 'Kilde', 'Status', 'Søknadsdato',
+              'Intervjudato', 'Frist', 'Tilbudsdato', 'Prioritet', 'Notater', 'URL'
+            ];
+            const escape = (v: unknown) => {
+              const s = v === null || v === undefined ? '' : String(v);
+              return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+            };
+            const dateOnly = (v: string | undefined) => v ? v.slice(0, 10) : '';
+            const rows = applications.map((a) => [
+              a.jobTitle, a.company, a.location ?? '', a.source ?? '', a.status,
+              dateOnly(a.appliedDate), dateOnly(a.interviewDate),
+              dateOnly((a as any).deadline ?? (a as any).followUpDate),
+              dateOnly(a.offerDate), a.priority, a.notes ?? '', a.jobUrl ?? '',
+            ].map(escape).join(','));
+            const csv = '﻿' + [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `jobbsoknader-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            // GA4 — engagement event
+            if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+              (window as any).gtag('event', 'nextrole_jobs_csv_exported', {
+                user_id: user?.id,
+                count: applications.length,
+              });
+            }
+          }}
+        >
+          Eksporter CSV
         </Button>
       </Box>
 

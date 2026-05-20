@@ -17,6 +17,7 @@ import {
   type RoleRoomAiConsentScope,
 } from './role-room-ai-consent.js';
 import { logAiCall } from './role-room-ai-audit.js';
+import { logAIUsage } from './ai-usage-tracker.js';
 import {
   buildBackendPseudonymMap,
   countScrubbed,
@@ -327,6 +328,13 @@ export async function handleAgentStream(
     const finalMessage = await stream.finalMessage();
     inputTokens = finalMessage?.usage?.input_tokens ?? 0;
     outputTokens = finalMessage?.usage?.output_tokens ?? 0;
+
+    // Slice 9X.71 — cost-tracking (fire-and-forget)
+    logAIUsage(finalMessage as any, {
+      feature: 'role-room-agent-stream',
+      route: '/api/role-room/agent/stream',
+      userId: (req as any).session?.userId || (req.headers['x-user-id'] as string) || null,
+    }).catch(() => undefined);
 
     // Extract tool_use blocks from the final message. Anthropic returns
     // these alongside any text the agent produced before deciding to

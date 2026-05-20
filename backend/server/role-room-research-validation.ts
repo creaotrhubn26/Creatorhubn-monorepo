@@ -15,6 +15,7 @@
  */
 
 import type { RoleRoomAgentNormalizedPayload } from "./role-room-agent.js";
+import { logAIUsage } from './ai-usage-tracker.js';
 
 export type ValidationSeverity = "critical" | "warning" | "info";
 export type ValidationCategory =
@@ -549,6 +550,7 @@ export async function evaluateContentStoryLogicVagueness(
 keyPromise: "${keyPromise.slice(0, 500)}"`,
       }],
     });
+    logAIUsage(response as any, { feature: 'role-room/research-validation' }).catch(() => undefined);
     const block = response.content[0];
     if (!block || block.type !== "text") return [];
     const parsed = JSON.parse(block.text.trim().replace(/^```json\n?|\n?```$/g, "")) as { score?: number; improvement?: string };

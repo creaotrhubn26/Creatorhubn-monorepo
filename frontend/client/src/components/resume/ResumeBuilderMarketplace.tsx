@@ -52,6 +52,8 @@ import {
   Image as ImageIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
+import { marketplaceEvents } from '../../utils/creatorhub-events';
 import fikenLogo from '../../assets/integrations/fiken-logo.svg';
 import tripletexLogo from '../../assets/integrations/tripletex-logo.svg';
 
@@ -90,6 +92,26 @@ interface AppStoreItem {
     label: string;
   }[];
   ctaLabel?: string;
+  logoSrc?: string;
+  logoAlt?: string;
+  /**
+   * Slice 9X.70 — abonnements-tiers for apper med flere planer.
+   * Marketplace vil rendre dem som kort under prisen og markere ett som
+   * "Anbefalt for deg" basert på brukerens profesjon. Reason-feltet
+   * forklarer hvorfor systemet anbefaler den planen.
+   */
+  subscriptionTiers?: Array<{
+    id: string;
+    name: string;
+    price: string;
+    /** Hvem dette passer for — vises i selve kortet */
+    bestFor: string;
+    features: string[];
+    /** Profesjoner som får "Anbefalt"-badge for denne planen */
+    recommendedFor?: string[];
+    /** Vises som forklaring under "Anbefalt"-badgen */
+    recommendationReason?: string;
+  }>;
 }
 
 interface CreatorHubMarketplaceProps {
@@ -298,30 +320,89 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
   const [marketplaceStats, setMarketplaceStats] = useState<MarketplaceStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
-  const apps: AppStoreItem[] = [
+  const hardcodedApps: AppStoreItem[] = [
     {
-      id: 'resume-builder',
-      name: 'ResumeBuilder',
-      category: 'Career',
-      rating: 4.9,
-      reviews: 2547,
-      description: 'Profesjonelle CV-er med AI-assistanse',
-      longDescription: 'Lag imponerende CV-er som får deg lagt merke til. AI-skriving, ATS-optimalisering og automatisk import av prosjekter.',
+      id: 'next-role',
+      name: 'NextRole',
+      category: 'Karriere',
+      rating: 4.8,
+      reviews: 127,
+      description: 'Å søke jobb har aldri vært enklere.',
+      longDescription:
+        'AI-drevet CV-bygger og jobbsøk-pakke på norsk. 15 maler, 8 fargeskjemaer, AI-assistert skriving (Claude), PDF-import, GitHub-import, ATS-optimalisering, søknadsbrev, intervjuforberedelse, oversettelse til engelsk, offentlig CV-deling, versjonshistorikk. Bygget av CreatorHub for norske jobbsøkere.',
       featured: true,
-      downloadCount: 125000,
-      monthlyGrowth: 15,
+      trending: true,
+      downloadCount: 1247,
+      monthlyGrowth: 84,
       features: [
-        { icon: <DocumentIcon />, text: '7+ profesjonelle maler' },
-        { icon: <AIIcon />, text: 'AI-assistert skriving' },
-        { icon: <AnalyzeIcon />, text: 'ATS-optimalisering' },
-        { icon: <UploadIcon />, text: 'Automatisk import' },
-        { icon: <VersionIcon />, text: 'Versjonskontroll' },
-        { icon: <DriveIcon />, text: 'Google Drive-integrasjon' },
+        { icon: <DocumentIcon />, text: '15 profesjonelle maler + 8 farger' },
+        { icon: <AIIcon />, text: 'AI-CV: import, omskriv, oversett' },
+        { icon: <AnalyzeIcon />, text: 'ATS-score + keyword-match' },
+        { icon: <UploadIcon />, text: 'PDF/DOCX-import med Claude' },
+        { icon: <VersionIcon />, text: 'Versjon-historikk + restore' },
+        { icon: <DriveIcon />, text: 'Offentlig CV-lenke + deling' },
       ],
       mediaGallery: marketplaceGalleryById['resume-builder'],
-      pricing: { free: true, price: 149, currency: 'kr/mnd' },
-      gradientStart: '#ff8c00',
-      gradientEnd: '#14b8a6',
+      pricing: {
+        free: false,
+        price: 49,
+        currency: 'kr/mnd',
+        displayPrice: '49 kr / mnd',
+        note: '14 dagers gratis prøveperiode med alle Pro-features — ingen kort kreves',
+      },
+      subscriptionTiers: [
+        {
+          id: 'trial',
+          name: '14 dagers prøveperiode',
+          price: 'Gratis i 14 dager',
+          bestFor: 'Prøv ALLE Pro-features uten kort — så velg pakken som passer',
+          features: [
+            'Alle Pro-features låst opp i 14 dager',
+            'Ingen kortinformasjon nødvendig',
+            'Auto-konverterer til Standard (49 kr/mnd) etter — kanselleres når som helst',
+          ],
+        },
+        {
+          id: 'standard',
+          name: 'Standard',
+          price: '49 kr / mnd',
+          bestFor: 'Aktive jobbsøkere — kampanjepris ut 2026',
+          recommendedFor: ['photographer', 'videographer', 'developer', 'designer', 'marketing', 'consultant', 'creator'],
+          recommendationReason: 'Du jobber i en bransje der profesjonell CV gjør forskjellen. Standard gir deg alt du trenger for å lande neste rolle.',
+          features: [
+            '5 CV-er (master + tilpasninger per stilling)',
+            'Alle 15 maler + 8 fargeskjemaer',
+            'AI: sammendrag, omskriv-bullets, ATS-analyse',
+            'PDF/DOCX-import (Claude leser eksisterende CV)',
+            'Offentlig CV-deling med trygg lenke',
+            'Eksport i PDF, DOCX, TXT',
+            'Jobbsøknadssporing',
+            'LinkedIn- og Vitnemålsportalen-import',
+          ],
+        },
+        {
+          id: 'pro',
+          name: 'Pro',
+          price: '99 kr / mnd',
+          bestFor: 'Bytter jobb ofte eller jobber internasjonalt',
+          features: [
+            'Alt i Standard pluss:',
+            'Ubegrenset antall CV-er',
+            'AI søknadsbrev-generator (norsk + engelsk)',
+            'AI intervjuforberedelse',
+            'Engelsk versjon av CV-en med ett klikk',
+            'Versjon-historikk med restore',
+            'GitHub-import av prosjekter',
+            'CSV-/JSON-eksport',
+            'Prioritert AI-rate-limit (50/min, 500/dag)',
+            'Tidlig tilgang til nye funksjoner',
+          ],
+        },
+      ],
+      logoSrc: '/NextRole_Iconapp.png',
+      logoAlt: 'NextRole logo',
+      gradientStart: '#1F2937',
+      gradientEnd: '#F5B82E',
       categoryIcon: <BriefcaseIcon />,
     },
     {
@@ -508,8 +589,79 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       gradientStart: '#F59E0B',
       gradientEnd: '#D946EF',
       categoryIcon: <GroupsIcon />,
+      logoSrc: '/TheRoleRoom_App_Logo.png',
+      logoAlt: 'The Role Room',
+      subscriptionTiers: [
+        {
+          id: 'individual',
+          name: 'Innholdsprodusent',
+          price: '495 kr / mnd',
+          bestFor: 'Solo-skaper som lager video- og foto-innhold for kunder eller egne kanaler.',
+          features: [
+            'Brief + storyboarding-verktøy',
+            'Egen produksjonsplan & sjekklister',
+            'Inntil 3 aktive prosjekter',
+            'Leveranse-tracker mot kunde',
+          ],
+          recommendedFor: ['photographer', 'videographer', 'music_producer', 'vendor'],
+          recommendationReason:
+            'Du jobber som individuell skaper. Innholdsprodusent-planen gir deg brief, storyboard og leveranse-flyt — uten kompleksiteten i et helt casting-system du ikke trenger.',
+        },
+        {
+          id: 'production-team',
+          name: 'Produksjonsteam',
+          price: '1 495 kr / mnd',
+          bestFor: 'Film-, TV- og kommersielle produksjoner med skuespillere, crew og flere scener.',
+          features: [
+            'Full casting-modul (auditions, callbacks)',
+            'Crew- og scene-styring',
+            'Ubegrensede prosjekter',
+            'Team-roller, rettigheter og approval-flyt',
+          ],
+          recommendedFor: ['enterprise', 'admin'],
+          recommendationReason:
+            'Du er del av et team. Produksjonsteam-planen håndterer skuespillere, crew og scener på film/TV-nivå — designet for produksjoner med flere personer som koordinerer.',
+        },
+        {
+          id: 'education',
+          name: 'Utdanningsinstitusjon',
+          price: 'Tilpasset tilbud',
+          bestFor: 'Film- og medie-skoler med klasse-basert storyboarding og student-evalueringer.',
+          features: [
+            'Klasse-tilgang med læringsmål',
+            'Student-portfolio & eksamen',
+            'Lærer-dashboard',
+            'Volum-rabatt',
+          ],
+          recommendedFor: ['education_institution'],
+          recommendationReason:
+            'Skoler får en egen modus for klasse-basert undervisning, student-portfolios og lærer-evaluering.',
+        },
+      ],
     },
   ];
+
+  // Slice 9X.70 — admin-styrt marketplace. Apper hentes fra
+  // /api/marketplace/apps (admin-konfigurert). Faller tilbake på hardkodet
+  // liste hvis backend ikke svarer eller tabellen er tom.
+  const { data: apiAppsData } = useQuery({
+    queryKey: ['marketplace-apps-public'],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest('/api/marketplace/apps');
+        return (res?.data || []) as AppStoreItem[];
+      } catch { return []; }
+    },
+    staleTime: 30_000,
+  });
+  const apps: AppStoreItem[] = useMemo(() => {
+    const apiApps = apiAppsData || [];
+    if (apiApps.length === 0) return hardcodedApps;
+    // Admin-konfig overstyrer hardkodet pr. id; nye admin-apper kommer i tillegg.
+    const adminIds = new Set(apiApps.map((a) => a.id));
+    const hardcodedFallback = hardcodedApps.filter((a) => !adminIds.has(a.id));
+    return [...apiApps, ...hardcodedFallback];
+  }, [apiAppsData, hardcodedApps]);
 
   const categories = ['all', 'Career', 'Showcase', 'Legal', 'Finance', 'Business', 'Productivity'];
 
@@ -730,9 +882,19 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 color: '#fff',
                 backdropFilter: 'blur(14px)',
                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16)',
+                overflow: 'hidden',
               }}
             >
-              {app.categoryIcon}
+              {app.logoSrc ? (
+                <Box
+                  component="img"
+                  src={app.logoSrc}
+                  alt={app.logoAlt || app.name}
+                  sx={{ width: 40, height: 40, objectFit: 'contain' }}
+                />
+              ) : (
+                app.categoryIcon
+              )}
             </Box>
 
             {app.partnerLogos && app.partnerLogos.length > 0 && (
@@ -970,13 +1132,19 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     </Typography>
                   </>
                 ) : (
+                  // Slice 9X.70 — Stine så ikke prisen. Gjør chippen større
+                  // og mer prominent slik at "Fra 495 kr/mnd" leses tydelig.
                   <Chip
                     label={app.pricing.displayPrice || `Fra ${app.pricing.price} ${app.pricing.currency}`}
-                    size="small"
                     sx={{
-                      background: '#F3E5F5',
-                      color: '#6A1B9A',
-                      fontWeight: 700,
+                      background: `linear-gradient(135deg, ${app.gradientStart}22, ${app.gradientEnd}22)`,
+                      color: app.gradientStart,
+                      fontWeight: 800,
+                      fontSize: '0.92rem',
+                      px: 1.5,
+                      py: 2,
+                      height: 'auto',
+                      border: `1.5px solid ${app.gradientStart}55`,
                     }}
                   />
                 )}
@@ -997,6 +1165,87 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   {app.pricing.note}
                 </Typography>
               )}
+
+              {/* Slice 9X.70 — abonnements-tier-velger med "Anbefalt"-badge */}
+              {app.subscriptionTiers && app.subscriptionTiers.length > 0 && (
+                <Box sx={{ width: '100%', mt: 1 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: '#555', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1, display: 'block' }}
+                  >
+                    Velg plan
+                  </Typography>
+                  <Stack spacing={1}>
+                    {app.subscriptionTiers.map((tier) => {
+                      const isRecommended = profession ? (tier.recommendedFor || []).includes(profession) : false;
+                      return (
+                        <Box
+                          key={tier.id}
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2,
+                            border: isRecommended ? `2px solid ${app.gradientStart}` : '1px solid #e5e7eb',
+                            background: isRecommended ? `${app.gradientStart}08` : '#ffffff',
+                            position: 'relative',
+                            transition: 'all 0.2s',
+                            '&:hover': { borderColor: app.gradientStart, transform: 'translateY(-1px)' },
+                          }}
+                        >
+                          {isRecommended && (
+                            <Chip
+                              label="Anbefalt for deg"
+                              size="small"
+                              sx={{
+                                position: 'absolute',
+                                top: -10,
+                                right: 12,
+                                bgcolor: app.gradientStart,
+                                color: '#fff',
+                                fontWeight: 700,
+                                fontSize: '0.65rem',
+                                height: 20,
+                              }}
+                            />
+                          )}
+                          <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.5 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 800, color: '#1a1a1a' }}>
+                              {tier.name}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              sx={{ fontWeight: 800, color: app.gradientStart, fontFamily: '"Space Grotesk", sans-serif' }}
+                            >
+                              {tier.price}
+                            </Typography>
+                          </Stack>
+                          <Typography variant="caption" sx={{ color: '#555', display: 'block', mb: 0.75, lineHeight: 1.4 }}>
+                            {tier.bestFor}
+                          </Typography>
+                          <Stack spacing={0.25}>
+                            {tier.features.map((f) => (
+                              <Stack key={f} direction="row" spacing={0.5} alignItems="flex-start">
+                                <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: app.gradientStart, mt: 0.7, flexShrink: 0 }} />
+                                <Typography variant="caption" sx={{ color: '#666', fontSize: '0.72rem', lineHeight: 1.45 }}>
+                                  {f}
+                                </Typography>
+                              </Stack>
+                            ))}
+                          </Stack>
+                          {isRecommended && tier.recommendationReason && (
+                            <Box sx={{ mt: 1, p: 1, borderRadius: 1, bgcolor: `${app.gradientStart}14`, border: `1px solid ${app.gradientStart}33` }}>
+                              <Typography variant="caption" sx={{ color: '#444', fontStyle: 'italic', lineHeight: 1.45, display: 'block' }}>
+                                <strong style={{ color: app.gradientStart }}>Hvorfor anbefalt: </strong>
+                                {tier.recommendationReason}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              )}
+
               {appState?.statusLabel ? (
                 <Box
                   sx={{
@@ -1037,7 +1286,10 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               fullWidth
               variant="contained"
               size={featured ? 'medium' : 'small'}
-              onClick={() => onSelect?.(app.id)}
+              onClick={() => {
+                marketplaceEvents.installClicked(app.id, appState?.ctaLabel || app.ctaLabel);
+                onSelect?.(app.id);
+              }}
               startIcon={<GetAppIcon />}
               sx={{
                 background: `linear-gradient(135deg, ${app.gradientStart} 0%, ${app.gradientEnd} 100%)`,

@@ -23,6 +23,7 @@
  */
 
 import crypto from "crypto";
+import { logAIUsage } from './ai-usage-tracker.js';
 import type {
   AIAgent,
   AIAgentInput,
@@ -265,6 +266,7 @@ export const castingStubAgent: AIAgent = {
           }),
         }],
       });
+      logAIUsage(response as any, { feature: 'role-room/casting-suggest' }).catch(() => undefined);
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === ROLE_STUB_TOOL_SCHEMA.name,

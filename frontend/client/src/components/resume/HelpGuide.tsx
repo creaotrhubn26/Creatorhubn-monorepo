@@ -1,6 +1,9 @@
 /**
- * In-App Help & Guide System for Resume Builder
- * Provides contextual help, tooltips, and guided tours
+ * Hjelp- og guide-system for ResumeBuilder
+ * Gir kontekstuell hjelp, tooltips og guidede gjennomganger
+ *
+ * All brukervendt tekst skal være på norsk (bokmål) for å matche
+ * resten av CreatorHub. Kategori-IDer beholdes som diskrete strenger.
  */
 
 import React, { useState } from 'react';
@@ -46,13 +49,21 @@ import {
 } from '@mui/icons-material';
 
 // ============================================================================
-// HELP CONTENT DEFINITIONS
+// HJELPE-INNHOLD
 // ============================================================================
+
+type HelpCategory =
+  | 'Kom i gang'
+  | 'CV-seksjoner'
+  | 'AI-funksjoner'
+  | 'Jobbsporing'
+  | 'Publisering'
+  | 'Tips';
 
 interface HelpTopic {
   id: string;
   title: string;
-  category: 'Getting Started' | 'CV Sections' | 'AI Features' | 'Job Tracking' | 'Publishing' | 'Tips';
+  category: HelpCategory;
   icon: React.ReactNode;
   description: string;
   steps?: string[];
@@ -62,486 +73,499 @@ interface HelpTopic {
 }
 
 const HELP_TOPICS: HelpTopic[] = [
-  // Getting Started
+  // Kom i gang
   {
     id: 'getting-started',
-    title: 'Getting Started with CV Builder',
-    category: 'Getting Started',
+    title: 'Kom i gang med NextRole',
+    category: 'Kom i gang',
     icon: <HelpIcon />,
-    description: 'Learn the basics of creating your first CV',
+    description: 'Lær de grunnleggende stegene for å lage din første CV.',
     steps: [
-      'Click "Lag ny CV" to create a new resume',
-      'Enter a title (e.g., "Senior Developer CV")',
-      'Fill in your personal information',
-      'Choose a template and color scheme',
-      'Start adding sections',
+      'Klikk "Lag ny CV" for å starte en ny CV',
+      'Skriv inn en tittel (f.eks. "Senior fotograf-CV")',
+      'Fyll inn dine personlige opplysninger',
+      'Velg en mal og fargevalg',
+      'Begynn å fylle ut seksjonene',
     ],
     tips: [
-      'You can have multiple CVs for different job roles',
-      'Changes are auto-saved every 30 seconds',
-      'Use the search bar to find and filter your CVs',
+      'Du kan ha flere CV-er for ulike stillinger',
+      'Endringer lagres automatisk hvert 30. sekund',
+      'Bruk søkefeltet for å finne og filtrere CV-ene dine',
     ],
   },
 
-  // CV Sections
+  // CV-seksjoner
   {
     id: 'personal-info',
-    title: 'Personal Information',
-    category: 'CV Sections',
+    title: 'Personlige opplysninger',
+    category: 'CV-seksjoner',
     icon: <InfoIcon />,
-    description: 'Add your professional details that appear at the top of your CV',
+    description:
+      'Legg til de profesjonelle detaljene som vises øverst på CV-en din.',
     steps: [
-      'Enter your full name',
-      'Add professional email and phone',
-      'Include your location',
-      'Add links: website, LinkedIn, GitHub, portfolio',
-      'Write a professional headline or summary (2-3 sentences)',
-      'Upload a professional photo (optional)',
+      'Skriv inn fullt navn',
+      'Legg til profesjonell e-post og telefon',
+      'Oppgi sted (by/land)',
+      'Legg til lenker: nettside, LinkedIn, GitHub, portefølje',
+      'Skriv en profesjonell tittel eller sammendrag (2–3 setninger)',
+      'Last opp et profesjonelt bilde (valgfritt)',
     ],
     tips: [
-      'Use a professional photo (head and shoulders)',
-      'Email should be professional (not party nicknames)',
-      'LinkedIn URL helps recruiters verify your profile',
-      'GitHub links showcase your projects',
+      'Bruk et profesjonelt portrettbilde',
+      'E-postadressen bør være profesjonell (unngå kallenavn)',
+      'LinkedIn-lenke hjelper rekrutterer å verifisere profilen din',
+      'GitHub-lenke viser fram prosjektene dine',
     ],
-    example: 'E.g., "Full-stack developer with 8+ years experience building scalable web applications"',
+    example:
+      'F.eks.: «Full-stack-utvikler med 8+ års erfaring i å bygge skalerbare web-applikasjoner»',
   },
 
   {
     id: 'work-experience',
-    title: 'Work Experience',
-    category: 'CV Sections',
+    title: 'Arbeidserfaring',
+    category: 'CV-seksjoner',
     icon: <WorkIcon />,
-    description: 'Showcase your professional background and achievements',
+    description: 'Vis fram din profesjonelle bakgrunn og dine resultater.',
     steps: [
-      'Click "Legg til erfaring" (Add Experience)',
-      'Enter job title and company name',
-      'Add location and employment dates',
-      'Check "Nåværende jobb" if you still work there',
-      'Write 3-5 achievements using action verbs',
-      'Include metrics and results',
+      'Klikk "Legg til erfaring"',
+      'Skriv inn stillingstittel og bedriftsnavn',
+      'Legg til sted og ansettelses-datoer',
+      'Huk av "Nåværende jobb" hvis du fortsatt jobber der',
+      'Skriv 3–5 prestasjoner med aktive verb',
+      'Inkluder tall og resultater',
     ],
     tips: [
-      'Use power words: Led, Developed, Implemented, Increased, Managed',
-      'Always quantify achievements (e.g., "Increased sales by 30%")',
-      'List most recent job first',
-      'Focus on impact, not just duties',
-      'Tailor descriptions to match job posting keywords',
+      'Bruk handlingsverb: Ledet, Utviklet, Implementerte, Økte, Forvaltet',
+      'Tallfest prestasjoner (f.eks. "Økte salget med 30 %")',
+      'List nyeste jobb først',
+      'Fokuser på effekt, ikke bare oppgaver',
+      'Tilpass beskrivelsene til nøkkelord i stillingsannonsen',
     ],
     example:
-      'E.g., "Led team of 5 developers to deliver 3 major features on time, increasing customer retention by 25%"',
+      'F.eks.: «Ledet team på 5 utviklere som leverte 3 hovedfunksjoner i tide, og økte kundebevaring med 25 %»',
   },
 
   {
     id: 'education',
-    title: 'Education & Credentials',
-    category: 'CV Sections',
+    title: 'Utdanning og kvalifikasjoner',
+    category: 'CV-seksjoner',
     icon: <SchoolIcon />,
-    description: 'Add your academic qualifications and certifications',
+    description: 'Legg til akademiske kvalifikasjoner og sertifiseringer.',
     steps: [
-      'Click "Legg til utdanning" (Add Education)',
-      'Enter degree/qualification name',
-      'Add field of study and institution',
-      'Include graduation date',
-      'Add GPA if it was 3.5 or higher',
-      'Optionally add notes about achievements',
+      'Klikk "Legg til utdanning"',
+      'Skriv inn grad/kvalifikasjon',
+      'Legg til fagretning og institusjon',
+      'Inkluder uteksamineringsdato',
+      'Legg til karaktersnitt hvis det var 3,5 eller høyere',
+      'Legg gjerne til notater om prestasjoner',
     ],
     tips: [
-      'Start with highest degree (Master/Bachelor first)',
-      'Include relevant coursework if recently graduated',
-      'Mention honors/scholarships if notable',
-      'Use Vitnemålsportalen import for automatic data',
+      'Start med høyeste grad (master/bachelor først)',
+      'Inkluder relevante emner hvis du nylig er uteksaminert',
+      'Nevn utmerkelser/stipend som er verdt å fremheve',
+      'Bruk Vitnemålsportalen-import for automatisk uthenting',
     ],
   },
 
   {
     id: 'skills',
-    title: 'Skills & Expertise',
-    category: 'CV Sections',
+    title: 'Ferdigheter og kompetanse',
+    category: 'CV-seksjoner',
     icon: <SkillIcon />,
-    description: 'Highlight your technical and soft skills',
+    description: 'Fremhev tekniske og personlige ferdigheter.',
     steps: [
-      'Click "Legg til ferdighet" (Add Skill)',
-      'Enter skill name (e.g., "React", "Leadership")',
-      'Select skill category (Technical, Language, Soft Skills)',
-      'Set proficiency level (1-5)',
-      'Add 10-15 relevant skills total',
+      'Klikk "Legg til ferdighet"',
+      'Skriv inn ferdighet (f.eks. "Lightroom", "Ledelse")',
+      'Velg kategori (Teknisk, Språk, Personlige)',
+      'Sett nivå (1–5)',
+      'Legg til 10–15 relevante ferdigheter totalt',
     ],
     tips: [
-      'Match skills to job description keywords',
-      'Put most important skills first',
-      'Include mix of technical and soft skills',
-      'Be honest about proficiency levels',
-      'Use AI to generate skill suggestions from your experience',
+      'Match ferdigheter til nøkkelord i stillingsannonsen',
+      'Sett de viktigste ferdighetene først',
+      'Inkluder en blanding av tekniske og personlige',
+      'Vær ærlig om nivå',
+      'Bruk AI for å foreslå ferdigheter ut fra erfaringen din',
     ],
-    example: 'React (5), Node.js (4), Leadership (4), Project Management (3)',
+    example: 'Lightroom (5), Photoshop (4), Ledelse (4), Prosjektledelse (3)',
   },
 
   {
     id: 'certifications',
-    title: 'Certifications & Credentials',
-    category: 'CV Sections',
+    title: 'Sertifiseringer og kurs',
+    category: 'CV-seksjoner',
     icon: <CertIcon />,
-    description: 'Add professional certifications and licenses',
+    description: 'Legg til profesjonelle sertifiseringer og lisenser.',
     steps: [
-      'Click "Legg til sertifisering" (Add Certification)',
-      'Enter certification name',
-      'Add issuing organization',
-      'Include issue date and expiry date (if applicable)',
-      'Add credential ID and verification URL',
+      'Klikk "Legg til sertifisering"',
+      'Skriv inn sertifiseringens navn',
+      'Legg til utstedende organisasjon',
+      'Inkluder utstedelsesdato og evt. utløpsdato',
+      'Legg til ID og verifikasjons-URL hvis tilgjengelig',
     ],
     tips: [
-      'Include only relevant, non-expired certifications',
-      'Add direct link to verify credentials',
-      'Include credential ID for verification',
-      'LinkedIn import can populate many certifications automatically',
+      'Inkluder kun relevante og gyldige sertifiseringer',
+      'Legg til direkte lenke for verifikasjon',
+      'Inkluder ID for verifikasjon',
+      'LinkedIn-import kan hente mange sertifiseringer automatisk',
     ],
   },
 
   {
     id: 'projects',
-    title: 'Projects & Portfolio',
-    category: 'CV Sections',
+    title: 'Prosjekter og portefølje',
+    category: 'CV-seksjoner',
     icon: <ProjectIcon />,
-    description: 'Showcase your best work and side projects',
+    description: 'Vis fram dine beste arbeider og sideprosjekter.',
     steps: [
-      'Click "Legg til prosjekt" (Add Project)',
-      'Enter project name and description',
-      'List technologies used',
-      'Add project dates',
-      'Include link to live project or GitHub repo',
-      'Optionally add screenshots from Google Drive',
+      'Klikk "Legg til prosjekt"',
+      'Skriv inn prosjektnavn og beskrivelse',
+      'List opp teknologier som ble brukt',
+      'Legg til prosjekt-datoer',
+      'Inkluder lenke til prosjektet eller GitHub-repo',
+      'Legg gjerne til skjermbilder fra Google Drive',
     ],
     tips: [
-      'Include 3-5 best projects',
-      'Focus on projects relevant to target job',
-      'Include GitHub links for code verification',
-      'Add screenshots to showcase visually impressive work',
-      'Import directly from GitHub for automatic formatting',
+      'Inkluder 3–5 av dine beste prosjekter',
+      'Fokuser på prosjekter som er relevante for stillingen',
+      'Inkluder GitHub-lenker for kodeverifikasjon',
+      'Legg til skjermbilder for visuelt sterke prosjekter',
+      'Importer direkte fra GitHub for automatisk formatering',
     ],
   },
 
-  // AI Features
+  // AI-funksjoner
   {
     id: 'ai-resume-generation',
-    title: 'Generate CV with AI',
-    category: 'AI Features',
+    title: 'Generer CV med AI',
+    category: 'AI-funksjoner',
     icon: <AIIcon />,
-    description: 'Let AI help write professional job descriptions and achievements',
+    description:
+      'La Claude hjelpe deg å skrive profesjonelle beskrivelser og prestasjoner.',
     steps: [
-      'Click "Generer CV med AI" button',
-      'Provide job title and years of experience',
-      'List key skills you want to highlight',
-      'Give brief overview of your background',
-      'Review AI suggestions',
-      'Edit and customize as needed',
-      'Click "Inkluder i CV" to add to your resume',
+      'Klikk "Generer CV med AI"',
+      'Oppgi stillingstittel og antall års erfaring',
+      'List opp nøkkelferdighetene du vil fremheve',
+      'Gi et kort sammendrag av bakgrunnen din',
+      'Gå gjennom AI-forslagene',
+      'Tilpass og rediger etter behov',
+      'Klikk "Inkluder i CV" for å legge til',
     ],
     tips: [
-      'Use AI for first draft, then personalize',
-      'Include specific metrics AI suggests',
-      'Customize AI text with your own examples',
-      'Add quantifiable results from your own experience',
+      'Bruk AI til førsteutkast, og finpuss selv etterpå',
+      'Behold spesifikke tall AI foreslår',
+      'Tilpass AI-teksten med dine egne eksempler',
+      'Legg til målbare resultater fra egen erfaring',
     ],
     example:
-      'Input: "Senior React Developer, 8 years". AI generates: "Led development of high-performance React applications serving 500K+ daily users..."',
+      'Input: «Senior fotograf, 8 år». AI genererer: «Ledet produksjon av høykvalitets bryllups- og portrettfotografering for over 200 klienter ...»',
   },
 
   {
     id: 'ai-cover-letter',
-    title: 'Generate Cover Letter with AI',
-    category: 'AI Features',
+    title: 'Generer søknadsbrev med AI',
+    category: 'AI-funksjoner',
     icon: <AIIcon />,
-    description: 'Create personalized cover letters for specific job applications',
+    description: 'Lag personlige søknadsbrev til spesifikke stillinger.',
     steps: [
-      'Click "Generer søknadsbrev med AI"',
-      'Enter job title and company name',
-      'List 3-5 most relevant skills',
-      'Review generated cover letter',
-      'Personalize with specific examples',
-      'Save to job application',
+      'Klikk "Generer søknadsbrev med AI"',
+      'Skriv inn stillingstittel og selskapsnavn',
+      'List opp 3–5 mest relevante ferdigheter',
+      'Gå gjennom det genererte brevet',
+      'Tilpass med spesifikke eksempler',
+      'Lagre til jobbsøknaden',
     ],
     tips: [
-      'Use generated letter as template, then customize',
-      'Add specific projects or achievements relevant to company',
-      'Research company culture and reference it',
-      'Keep cover letter concise (1 page)',
+      'Bruk det genererte brevet som mal, og tilpass det selv',
+      'Legg til spesifikke prosjekter som er relevante for selskapet',
+      'Undersøk selskapets kultur og referer til den',
+      'Hold søknadsbrevet kort (1 side)',
     ],
   },
 
   {
     id: 'ai-rewrite',
-    title: 'AI Text Enhancement',
-    category: 'AI Features',
+    title: 'AI-tekstforbedring',
+    category: 'AI-funksjoner',
     icon: <AIIcon />,
-    description: 'Improve writing quality and professionalism of any section',
+    description: 'Forbedre skrivekvalitet og profesjonalitet i enhver seksjon.',
     steps: [
-      'Select text in any description field',
-      'Click AI Rewrite button (pencil icon)',
-      'Review improved version',
-      'Accept or try different style',
-      'Adjust manually as needed',
+      'Velg tekst i et beskrivelses-felt',
+      'Klikk AI-omskriv-knappen (blyantikon)',
+      'Gå gjennom den forbedrede versjonen',
+      'Aksepter eller prøv en annen stil',
+      'Juster manuelt etter behov',
     ],
     tips: [
-      'Use for job descriptions and achievements',
-      'Try different suggestions',
-      'Combine AI suggestions with your own examples',
-      'Maintain authentic voice while improving clarity',
+      'Bruk for stillingsbeskrivelser og prestasjoner',
+      'Prøv ulike forslag',
+      'Kombiner AI-forslagene med egne eksempler',
+      'Behold autentisk stemme og forbedre tydeligheten',
     ],
   },
 
-  // Job Tracking
+  // Jobbsporing
   {
     id: 'job-import',
-    title: 'Import Jobs from finn.no',
-    category: 'Job Tracking',
+    title: 'Importer jobber fra finn.no',
+    category: 'Jobbsporing',
     icon: <WorkIcon />,
-    description: 'Track job applications and connect them to job postings',
+    description: 'Spor jobbsøknader og koble dem mot stillingsannonser.',
     steps: [
-      'Find job on finn.no',
-      'Copy the job URL',
-      'Click "Legg til søknad" in Job Tracker',
-      'Paste URL and click "Importer fra finn.no"',
-      'System extracts: title, company, deadline',
-      'Verify and save',
+      'Finn jobben på finn.no',
+      'Kopier stillings-URL-en',
+      'Klikk "Legg til søknad" i jobbtrackeren',
+      'Lim inn URL og klikk "Importer fra finn.no"',
+      'Systemet henter ut: tittel, selskap, søknadsfrist',
+      'Verifiser og lagre',
     ],
     tips: [
-      'System auto-extracts deadline from job posting',
-      'Always use full URL, not shortened version',
-      'Import as soon as you apply',
-      'Add notes about why you applied',
+      'Systemet finner søknadsfristen automatisk',
+      'Bruk alltid full URL, ikke kortet versjon',
+      'Importer så snart du søker',
+      'Legg til notater om hvorfor du søkte',
     ],
   },
 
   {
     id: 'job-analysis',
-    title: 'Analyze Job vs Your CV',
-    category: 'Job Tracking',
+    title: 'Analyser jobb mot CV',
+    category: 'Jobbsporing',
     icon: <SpeedIcon />,
-    description: 'Get AI analysis of how well your CV matches a job posting',
+    description:
+      'Få AI-analyse av hvor godt CV-en din matcher en stillingsannonse.',
     steps: [
-      'After importing job, click "Analyser jobb & få AI-forslag"',
-      'System compares job requirements with your CV',
-      'View Match Percentage and skill gaps',
-      'See recommended keywords to add',
-      'Update your CV based on suggestions',
-      'Re-analyze to see improved match %',
+      'Etter import, klikk "Analyser jobb og få AI-forslag"',
+      'Systemet sammenligner stillingens krav med CV-en din',
+      'Se match-prosent og kompetansegap',
+      'Se anbefalte nøkkelord å legge til',
+      'Oppdater CV-en basert på forslagene',
+      'Kjør analysen på nytt for å se forbedret match',
     ],
     tips: [
-      'Aim for 70%+ match before applying',
-      'Update CV with missing keywords',
-      'Focus on hard skills mentioned in job',
-      'Add relevant experience even if title differs',
+      'Sikt på 70 % match eller mer før du søker',
+      'Oppdater CV med manglende nøkkelord',
+      'Fokuser på harde ferdigheter nevnt i stillingen',
+      'Legg til relevant erfaring selv om tittelen er ulik',
     ],
   },
 
   {
     id: 'interview-prep',
-    title: 'Interview Preparation',
-    category: 'Job Tracking',
+    title: 'Intervjuforberedelse',
+    category: 'Jobbsporing',
     icon: <CheckIcon />,
-    description: 'Prepare for interviews with AI-generated guidance',
+    description: 'Forbered intervjuer med AI-generert veiledning.',
     steps: [
-      'Mark job as "Intervju" (Interviewing)',
-      'Set interview date and time',
-      'Click "Forbered intervju" (Prepare Interview)',
-      'Review AI-generated questions and answers',
-      'Study key points about role and company',
-      'Check interview preparation checklist',
-      'Practice before interview date',
+      'Sett jobbstatus til "Intervju"',
+      'Sett intervjudato og -tid',
+      'Klikk "Forbered intervju"',
+      'Gå gjennom AI-genererte spørsmål og svar',
+      'Studer nøkkelpunkter om rollen og selskapet',
+      'Sjekk forberedelses-listen',
+      'Øv før intervjudatoen',
     ],
     tips: [
-      'Use STAR method for answers (Situation, Task, Action, Result)',
-      'Research company before interview',
-      'Prepare 2-3 questions to ask interviewer',
-      'Practice talking through your projects',
+      'Bruk STAR-metoden (Situasjon, Oppgave, Handling, Resultat)',
+      'Undersøk selskapet før intervjuet',
+      'Forbered 2–3 spørsmål til intervjueren',
+      'Øv på å forklare prosjekter høyt',
     ],
   },
 
   {
     id: 'deadline-tracking',
-    title: 'Deadline Tracking & Reminders',
-    category: 'Job Tracking',
+    title: 'Frist-varsling',
+    category: 'Jobbsporing',
     icon: <SpeedIcon />,
-    description: 'Never miss application deadlines with visual alerts',
+    description: 'Mister aldri en søknadsfrist med visuelle varsler.',
     steps: [
-      'Import job from finn.no (deadline auto-extracted)',
-      'Orange alert banner shows for jobs within 7 days',
-      'Red alert for deadlines today or tomorrow',
-      'Click alert to edit and apply immediately',
-      'Update status after applying',
+      'Importer jobb fra finn.no (frist hentes automatisk)',
+      'Oransje varsel vises for jobber innen 7 dager',
+      'Rødt varsel for frister i dag eller i morgen',
+      'Klikk varselet for å redigere og søke',
+      'Oppdater status etter at du har søkt',
     ],
     tips: [
-      'Apply early in deadline window',
-      'Use deadline reminders as motivation',
-      'Set phone reminders for interviews',
-      'Update status so you don\'t lose track',
+      'Søk tidlig i frist-vinduet',
+      'Bruk varsler som motivasjon',
+      'Sett telefon-påminnelser for intervjuer',
+      'Oppdater status så du ikke mister oversikten',
     ],
   },
 
-  // Publishing
+  // Publisering
   {
     id: 'template-selection',
-    title: 'Choose CV Template',
-    category: 'Publishing',
+    title: 'Velg CV-mal',
+    category: 'Publisering',
     icon: <InfoIcon />,
-    description: 'Select and customize your CV template and appearance',
+    description: 'Velg og tilpass CV-mal og utseende.',
     steps: [
-      'Click "Velg CV-mal" (Select Template)',
-      'Preview each template',
-      'Check ATS Score for each (higher is better)',
-      'Select your preferred template',
-      'Change color scheme if desired',
-      'Preview final result',
+      'Klikk "Velg CV-mal"',
+      'Forhåndsvis hver mal',
+      'Sjekk ATS-score per mal (høyere er bedre)',
+      'Velg foretrukket mal',
+      'Endre fargeskjema etter ønske',
+      'Forhåndsvis sluttresultatet',
     ],
     tips: [
-      'ATS-Optimized template best for automated screening',
-      'Modern template looks great for portfolios',
-      'Classic template best for traditional industries',
-      'Choose readable fonts and good contrast',
+      'ATS-optimaliserte maler er best for automatisk screening',
+      'Moderne mal passer godt for portefølje-roller',
+      'Klassisk mal passer i tradisjonelle bransjer',
+      'Velg lesbar font og god kontrast',
     ],
   },
 
   {
     id: 'public-resume',
-    title: 'Make Your CV Public',
-    category: 'Publishing',
+    title: 'Publiser CV offentlig',
+    category: 'Publisering',
     icon: <SecurityIcon />,
-    description: 'Share your CV publicly with employers and recruiters',
+    description: 'Del CV-en din offentlig med arbeidsgivere og rekrutterere.',
     steps: [
-      'Click "Publiser CV" (Publish Resume)',
-      'Toggle "Gjør CV offentlig" (Make Public)',
-      'Click "Kopier lenke" (Copy Link)',
-      'Share link with employers',
-      'View counts show who visited (if enabled)',
-      'Toggle off to unpublish anytime',
+      'Klikk "Publiser CV"',
+      'Slå på "Gjør CV offentlig"',
+      'Klikk "Kopier lenke"',
+      'Del lenken med arbeidsgivere',
+      'Visnings-teller viser besøk (hvis aktivert)',
+      'Slå av når som helst for å avpublisere',
     ],
     tips: [
-      'Public CV doesn\'t show job applications',
-      'Only shows: experience, skills, projects, contact',
-      'You can republish/unpublish anytime',
-      'Keep public CV professional and up-to-date',
-      'Track views to see recruiter interest',
+      'Offentlig CV viser ikke jobbsøknadene dine',
+      'Viser kun: erfaring, ferdigheter, prosjekter, kontakt',
+      'Du kan publisere/avpublisere når som helst',
+      'Hold den offentlige CV-en profesjonell og oppdatert',
+      'Spor visninger for å se interesse fra rekrutterere',
     ],
   },
 
   {
     id: 'export-cv',
-    title: 'Export Your CV',
-    category: 'Publishing',
+    title: 'Eksporter CV',
+    category: 'Publisering',
     icon: <InfoIcon />,
-    description: 'Download your CV in multiple formats',
+    description: 'Last ned CV-en i flere formater.',
     steps: [
-      'Click "Eksporter" (Export)',
-      'Choose format: PDF, Word, Text, HTML, or JSON',
-      'Download file',
-      'Use for applications or printing',
+      'Klikk "Eksporter"',
+      'Velg format: PDF, Word, tekst eller JSON',
+      'Last ned filen',
+      'Bruk til søknader eller utskrift',
     ],
     tips: [
-      'PDF is most universal format',
-      'Word format for further editing',
-      'Some companies ask for specific format - provide it',
-      'Always export before major changes as backup',
+      'PDF er det mest universelle formatet',
+      'Word-format for videre redigering',
+      'Noen selskaper ber om spesifikt format — gi dem det de ber om',
+      'Eksporter alltid før store endringer som sikkerhetskopi',
     ],
   },
 
   // Tips
   {
     id: 'ats-optimization',
-    title: 'ATS Optimization Tips',
+    title: 'ATS-optimalisering',
     category: 'Tips',
     icon: <LightbulbIcon />,
-    description: 'Make your CV pass Applicant Tracking Systems',
+    description: 'Få CV-en gjennom Applicant Tracking Systems.',
     steps: [
-      'Use ATS-Optimized template',
-      'Include keywords from job description',
-      'Use clear section headings',
-      'Avoid graphics in experience section',
-      'Use standard fonts',
-      'Include exact job titles and company names',
+      'Bruk ATS-optimalisert mal',
+      'Inkluder nøkkelord fra stillingsannonsen',
+      'Bruk tydelige seksjonsoverskrifter',
+      'Unngå grafikk i erfaringsseksjonen',
+      'Bruk vanlige fonter',
+      'Inkluder eksakte stillingstitler og selskapsnavn',
     ],
     tips: [
-      'ATS systems scan for specific keywords',
-      'Mirror job description language',
-      'Use common technical terms',
-      'Avoid creative formatting',
-      'Test your ATS score for template',
+      'ATS-systemer skanner etter spesifikke nøkkelord',
+      'Speil språket i stillingsannonsen',
+      'Bruk vanlige bransjebegreper',
+      'Unngå kreativ formatering',
+      'Test ATS-scoren til malen du har valgt',
     ],
   },
 
   {
     id: 'cv-best-practices',
-    title: 'CV Best Practices',
+    title: 'Beste praksis for CV',
     category: 'Tips',
     icon: <LightbulbIcon />,
-    description: 'General guidelines for a strong resume',
+    description: 'Generelle retningslinjer for en sterk CV.',
     steps: [
-      'Keep to 1-2 pages (maximum 3 for very senior)',
-      'Use consistent formatting',
-      'Include relevant information only',
-      'Tailor to job description',
-      'Proofread carefully for typos',
-      'Use recent experience prominently',
+      'Hold deg til 1–2 sider (maks 3 for svært erfarne)',
+      'Bruk konsistent formatering',
+      'Inkluder kun relevant informasjon',
+      'Tilpass til stillingsannonsen',
+      'Korrekturles nøye for skrivefeil',
+      'Fremhev nyere erfaring',
     ],
     tips: [
-      'Most important: measurable achievements',
-      'Focus on what you accomplished, not just tasks',
-      'Use action verbs and specific metrics',
-      'Keep descriptions concise',
-      'Use professional email and phone number',
+      'Det viktigste: målbare resultater',
+      'Fokuser på hva du oppnådde, ikke bare oppgavene',
+      'Bruk handlingsverb og spesifikke tall',
+      'Hold beskrivelsene konsise',
+      'Bruk profesjonell e-post og telefon',
     ],
   },
 
   {
     id: 'common-mistakes',
-    title: 'Avoid Common Mistakes',
+    title: 'Unngå vanlige feil',
     category: 'Tips',
     icon: <LightbulbIcon />,
-    description: 'Mistakes that can hurt your chances',
+    description: 'Feil som kan skade sjansene dine.',
     steps: [
-      'Don\'t use unprofessional email address',
-      'Don\'t include outdated information',
-      'Don\'t lie about skills or experience',
-      'Don\'t use inconsistent formatting',
-      'Don\'t include typos or grammar errors',
-      'Don\'t make CV too long or cluttered',
+      'Ikke bruk uprofesjonell e-post',
+      'Ikke ta med utdatert informasjon',
+      'Ikke lyv om ferdigheter eller erfaring',
+      'Ikke bruk inkonsistent formatering',
+      'Ikke ha skrive- eller grammatikkfeil',
+      'Ikke gjør CV-en for lang eller rotete',
     ],
     tips: [
-      'Test every link and contact info',
-      'Have someone proofread',
-      'Use spell checker',
-      'Keep consistent spacing and fonts',
-      'Update dates regularly',
+      'Test hver lenke og kontaktinfo',
+      'Be noen om å korrekturlese',
+      'Bruk stavekontroll',
+      'Behold konsistent spacing og font',
+      'Oppdater datoer regelmessig',
     ],
   },
 ];
 
 // ============================================================================
-// CONTEXTUAL HELP TOOLTIPS
+// KONTEKSTUELL HJELP TIL SKJEMA-FELT
 // ============================================================================
 
 export const FIELD_HELP_TEXT = {
-  fullName: 'Your full professional name as it appears on official documents',
-  email: 'Professional email address. Employers will contact you here.',
-  phone: 'Phone number where you can be reached. Include country code (+47 for Norway)',
-  location: 'City and country. E.g., "Oslo, Norge"',
-  summary: 'Professional headline or summary. 1-3 sentences about your expertise.',
-  jobTitle: 'Your job title at this position. E.g., "Senior Software Engineer"',
-  company: 'Company name where you worked',
-  startDate: 'Date you started this position (MM/DD/YYYY)',
-  endDate: 'Date you left this position. Leave blank if still employed.',
-  description: 'List 3-5 key achievements or responsibilities using action verbs.',
-  skills: 'Add 10-15 relevant skills. Include technical and soft skills.',
-  certificationName: 'Official name of certification or license',
-  certificationOrg: 'Organization that issued the certification',
-  projectName: 'Name of the project (personal or professional)',
-  projectDescription: 'Brief description of what the project does and your role',
-  github: 'Link to your GitHub profile: https://github.com/yourname',
-  linkedin: 'Link to your LinkedIn profile',
+  fullName:
+    'Ditt fulle profesjonelle navn slik det fremgår av offisielle dokumenter.',
+  email:
+    'Profesjonell e-postadresse. Arbeidsgivere vil kontakte deg her.',
+  phone:
+    'Telefonnummer du kan nås på. Inkluder landskode (+47 for Norge).',
+  location: 'By og land. F.eks. «Oslo, Norge».',
+  summary:
+    'Profesjonell tittel eller sammendrag. 1–3 setninger om din kompetanse.',
+  jobTitle:
+    'Din stillingstittel i denne rollen. F.eks. «Senior fotograf».',
+  company: 'Selskap du jobbet i.',
+  startDate: 'Dato du startet i stillingen (DD.MM.ÅÅÅÅ).',
+  endDate:
+    'Dato du sluttet i stillingen. La stå blank hvis du fortsatt er ansatt.',
+  description:
+    'List 3–5 nøkkelprestasjoner eller -oppgaver med aktive verb.',
+  skills:
+    'Legg til 10–15 relevante ferdigheter. Inkluder tekniske og personlige.',
+  certificationName: 'Offisielt navn på sertifisering eller lisens.',
+  certificationOrg: 'Organisasjon som utstedte sertifiseringen.',
+  projectName: 'Navn på prosjekt (privat eller profesjonelt).',
+  projectDescription:
+    'Kort beskrivelse av hva prosjektet gjør og hvilken rolle du hadde.',
+  github: 'Lenke til GitHub-profil: https://github.com/dittnavn',
+  linkedin: 'Lenke til LinkedIn-profil.',
 };
 
 // ============================================================================
-// COMPONENTS
+// KOMPONENTER
 // ============================================================================
 
 interface HelpGuideProps {
@@ -552,19 +576,29 @@ interface HelpGuideProps {
 export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => {
   const [expandedTopic, setExpandedTopic] = useState<string | false>(false);
   const [selectedCategory, setSelectedCategory] = useState<
-    'All' | 'Getting Started' | 'CV Sections' | 'AI Features' | 'Job Tracking' | 'Publishing' | 'Tips'
-  >('All');
+    'Alle' | HelpCategory
+  >('Alle');
 
   const filteredTopics =
-    selectedCategory === 'All' ? HELP_TOPICS : HELP_TOPICS.filter((t) => t.category === selectedCategory);
+    selectedCategory === 'Alle'
+      ? HELP_TOPICS
+      : HELP_TOPICS.filter((t) => t.category === selectedCategory);
 
-  const categories = ['All', 'Getting Started', 'CV Sections', 'AI Features', 'Job Tracking', 'Publishing', 'Tips'] as const;
+  const categories: ('Alle' | HelpCategory)[] = [
+    'Alle',
+    'Kom i gang',
+    'CV-seksjoner',
+    'AI-funksjoner',
+    'Jobbsporing',
+    'Publisering',
+    'Tips',
+  ];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <HelpIcon />
-        Resume Builder Help & Guide
+        Hjelp og guide for NextRole
         <Box sx={{ flexGrow: 1 }} />
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
@@ -573,7 +607,7 @@ export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => 
 
       <DialogContent>
         <Stack spacing={2}>
-          {/* Category Filter */}
+          {/* Kategori-filter */}
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {categories.map((cat) => (
               <Chip
@@ -588,13 +622,15 @@ export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => 
 
           <Divider />
 
-          {/* Help Topics */}
+          {/* Hjelpe-emner */}
           <Box>
             {filteredTopics.map((topic) => (
               <Accordion
                 key={topic.id}
                 expanded={expandedTopic === topic.id}
-                onChange={() => setExpandedTopic(expandedTopic === topic.id ? false : topic.id)}
+                onChange={() =>
+                  setExpandedTopic(expandedTopic === topic.id ? false : topic.id)
+                }
               >
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -603,29 +639,38 @@ export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => 
                       <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                         {topic.title}
                       </Typography>
-                      <Chip label={topic.category} size="small" variant="outlined" sx={{ mt: 0.5 }} />
+                      <Chip
+                        label={topic.category}
+                        size="small"
+                        variant="outlined"
+                        sx={{ mt: 0.5 }}
+                      />
                     </Box>
                   </Box>
                 </AccordionSummary>
 
                 <AccordionDetails sx={{ pt: 0 }}>
                   <Stack spacing={2}>
-                    {/* Description */}
                     <Typography variant="body2" color="textSecondary">
                       {topic.description}
                     </Typography>
 
-                    {/* Steps */}
                     {topic.steps && (
                       <Box>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                          Steps:
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 600, mb: 1 }}
+                        >
+                          Slik gjør du:
                         </Typography>
                         <List dense>
                           {topic.steps.map((step, idx) => (
                             <ListItem key={idx} disableGutters>
                               <ListItemIcon sx={{ minWidth: 32 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ fontWeight: 600 }}
+                                >
                                   {idx + 1}.
                                 </Typography>
                               </ListItemIcon>
@@ -636,14 +681,35 @@ export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => 
                       </Box>
                     )}
 
-                    {/* Tips */}
                     {topic.tips && (
-                      <Paper sx={{ p: 1.5, bgcolor: 'info.lighter', border: '1px solid', borderColor: 'info.light' }}>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                          <TipsIcon sx={{ mt: 0.5, color: 'info.main', flexShrink: 0 }} />
+                      <Paper
+                        sx={{
+                          p: 1.5,
+                          bgcolor: 'info.lighter',
+                          border: '1px solid',
+                          borderColor: 'info.light',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            gap: 1,
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <TipsIcon
+                            sx={{
+                              mt: 0.5,
+                              color: 'info.main',
+                              flexShrink: 0,
+                            }}
+                          />
                           <Box>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                              Pro Tips:
+                            <Typography
+                              variant="subtitle2"
+                              sx={{ fontWeight: 600, mb: 0.5 }}
+                            >
+                              Tips:
                             </Typography>
                             <ul style={{ margin: 0, paddingLeft: 20 }}>
                               {topic.tips.map((tip, idx) => (
@@ -657,16 +723,29 @@ export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => 
                       </Paper>
                     )}
 
-                    {/* Example */}
                     {topic.example && (
-                      <Paper sx={{ p: 1.5, bgcolor: 'success.lighter', border: '1px solid', borderColor: 'success.light' }}>
+                      <Paper
+                        sx={{
+                          p: 1.5,
+                          bgcolor: 'success.lighter',
+                          border: '1px solid',
+                          borderColor: 'success.light',
+                        }}
+                      >
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                          <CheckIcon sx={{ color: 'success.main', flexShrink: 0 }} />
+                          <CheckIcon
+                            sx={{ color: 'success.main', flexShrink: 0 }}
+                          />
                           <Box>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                              Example:
+                            <Typography
+                              variant="subtitle2"
+                              sx={{ fontWeight: 600, mb: 0.5 }}
+                            >
+                              Eksempel:
                             </Typography>
-                            <Typography variant="caption">{topic.example}</Typography>
+                            <Typography variant="caption">
+                              {topic.example}
+                            </Typography>
                           </Box>
                         </Box>
                       </Paper>
@@ -681,7 +760,7 @@ export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => 
 
       <DialogActions>
         <Button onClick={onClose} variant="contained">
-          Got it!
+          Forstått
         </Button>
       </DialogActions>
     </Dialog>
@@ -689,8 +768,7 @@ export const HelpGuideDialog: React.FC<HelpGuideProps> = ({ open, onClose }) => 
 };
 
 /**
- * Help Icon Button with Tooltip
- * Use throughout the app for contextual help
+ * Hjelp-ikon med tooltip — brukes for kontekstuell hjelp.
  */
 interface ContextualHelpProps {
   title: string;
@@ -698,7 +776,11 @@ interface ContextualHelpProps {
   size?: 'small' | 'medium';
 }
 
-export const ContextualHelp: React.FC<ContextualHelpProps> = ({ title, content, size = 'small' }) => {
+export const ContextualHelp: React.FC<ContextualHelpProps> = ({
+  title,
+  content,
+  size = 'small',
+}) => {
   return (
     <Tooltip
       title={
@@ -712,22 +794,29 @@ export const ContextualHelp: React.FC<ContextualHelpProps> = ({ title, content, 
       arrow
       placement="top"
     >
-      <HelpIcon sx={{ fontSize: size === 'small' ? 18 : 24, color: 'info.main', cursor: 'help' }} />
+      <HelpIcon
+        sx={{
+          fontSize: size === 'small' ? 18 : 24,
+          color: 'info.main',
+          cursor: 'help',
+        }}
+      />
     </Tooltip>
   );
 };
 
 /**
- * Field Help Tooltip
+ * Felt-hjelp tooltip
  */
-export const FieldHelper: React.FC<{ fieldKey: keyof typeof FIELD_HELP_TEXT }> = ({ fieldKey }) => {
+export const FieldHelper: React.FC<{ fieldKey: keyof typeof FIELD_HELP_TEXT }> = ({
+  fieldKey,
+}) => {
   const helpText = FIELD_HELP_TEXT[fieldKey];
   return <ContextualHelp title={fieldKey} content={helpText} size="small" />;
 };
 
 /**
- * Tip Alert Component
- * Shows helpful tips at the top of sections
+ * Tips-varsel — viser nyttige tips øverst i seksjoner.
  */
 interface TipAlertProps {
   title: string;
@@ -735,7 +824,11 @@ interface TipAlertProps {
   onDismiss?: () => void;
 }
 
-export const TipAlert: React.FC<TipAlertProps> = ({ title, content, onDismiss }) => {
+export const TipAlert: React.FC<TipAlertProps> = ({
+  title,
+  content,
+  onDismiss,
+}) => {
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed) return null;
@@ -759,17 +852,26 @@ export const TipAlert: React.FC<TipAlertProps> = ({ title, content, onDismiss })
 };
 
 /**
- * Quick Tips Sidebar
- * Shows context-specific tips for current page
+ * Hurtigtips-sidekolonne — viser kontekst-spesifikke tips på siden.
  */
 interface QuickTipsProps {
   tips: string[];
   title?: string;
 }
 
-export const QuickTips: React.FC<QuickTipsProps> = ({ tips, title = 'Quick Tips' }) => {
+export const QuickTips: React.FC<QuickTipsProps> = ({
+  tips,
+  title = 'Hurtigtips',
+}) => {
   return (
-    <Paper sx={{ p: 2, bgcolor: 'warning.lighter', border: '1px solid', borderColor: 'warning.light' }}>
+    <Paper
+      sx={{
+        p: 2,
+        bgcolor: 'warning.lighter',
+        border: '1px solid',
+        borderColor: 'warning.light',
+      }}
+    >
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1 }}>
         <TipsIcon sx={{ color: 'warning.main', flexShrink: 0, mt: 0.5 }} />
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
@@ -796,7 +898,7 @@ export const QuickTips: React.FC<QuickTipsProps> = ({ tips, title = 'Quick Tips'
 };
 
 /**
- * Help Button for Floating Action
+ * Flytende hjelp-knapp
  */
 interface HelpButtonProps {
   onClick: () => void;
@@ -804,7 +906,7 @@ interface HelpButtonProps {
 
 export const HelpButton: React.FC<HelpButtonProps> = ({ onClick }) => {
   return (
-    <Tooltip title="Open Help Guide" placement="left">
+    <Tooltip title="Åpne hjelp og guide" placement="left">
       <IconButton
         onClick={onClick}
         sx={{

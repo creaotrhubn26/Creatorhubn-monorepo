@@ -223,7 +223,13 @@
       (function setInitialBrandFavicon() {
         var pathname = window.location.pathname || '/';
         var isAcademyRoute = /^\/academy(?:$|[/-])/.test(pathname);
-        var faviconHref = isAcademyRoute ? '/academy-favicon.svg' : '/creatorhub-icon.png';
+        // NextRole-rutene viser NextRole-mark; ellers academy- eller CreatorHub-favicon.
+        var isNextRoleRoute = /^\/(nextrole|resume-builder|cv)\b/.test(pathname);
+        var faviconHref = isNextRoleRoute
+          ? '/NextRole_Iconapp.png'
+          : isAcademyRoute
+          ? '/academy-favicon.svg'
+          : '/creatorhub-icon.png';
         var faviconType = faviconHref.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
         var rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
 

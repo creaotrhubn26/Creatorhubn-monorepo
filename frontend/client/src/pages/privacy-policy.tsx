@@ -124,7 +124,7 @@ function getPrivacyBrand(): LegalBrand {
     supportEmail: PUBLIC_BRAND_LINKS.creatorhub.email,
     socialLabel: 'Følg CreatorHub',
     summary:
-      'CreatorHub samler prosjektstyring, kundeopplevelse, abonnementsflyt, Academy og community i én plattform. Creatorhub AS er behandlingsansvarlig for personopplysninger som behandles i løsningen.',
+      'CreatorHub samler prosjektstyring, kundeopplevelse, abonnementsflyt, ResumeBuilder, Academy og community i én plattform. Creatorhub AS er behandlingsansvarlig for personopplysninger som behandles i løsningen, i samsvar med GDPR (forordning (EU) 2016/679), personopplysningsloven, Datatilsynets veileder for AI og Forbrukertilsynets retningslinjer for AI i forbrukertjenester.',
     categories: [
       {
         title: 'Konto- og kontaktinformasjon',
@@ -139,8 +139,12 @@ function getPrivacyBrand(): LegalBrand {
         detail: 'Prosjekter, filer, oppgaver, klientinformasjon, meldinger, læringsdata og community-aktivitet du velger å lagre i plattformen.',
       },
       {
+        title: 'CV- og jobbsøkingsdata (ResumeBuilder)',
+        detail: 'Arbeidserfaring, utdanning, ferdigheter, språk, sertifiseringer, profilbilde, importerte CV-er (PDF/DOCX), AI-genererte sammendrag og søknadsbrev, samt jobbsøknader du sporer.',
+      },
+      {
         title: 'Integrasjons- og AI-data',
-        detail: 'Data fra Google Workspace, betalingssystemer, bedriftsoppslag og AI-drevne forslag når du bruker slike funksjoner.',
+        detail: 'Data fra Google Workspace, LinkedIn, Vitnemålsportalen, betalingssystemer og — ved bruk av AI-funksjoner — innhold sendt til Anthropic Claude (se egen seksjon under «AI-funksjoner»).',
       },
       {
         title: 'Teknisk og sikkerhetsrelatert informasjon',
@@ -157,8 +161,16 @@ function getPrivacyBrand(): LegalBrand {
         detail: 'For å gjennomføre kjøp, sende kvitteringer, gi support og håndtere kundeforhold. Rettslig grunnlag: GDPR art. 6.1.b.',
       },
       {
-        title: 'Integrasjoner og AI-forslag',
-        detail: 'For å koble til tjenester du selv aktiverer og generere utkast eller anbefalinger. Rettslig grunnlag: GDPR art. 6.1.b / 6.1.a.',
+        title: 'AI-funksjoner (Anthropic Claude som databehandler)',
+        detail: 'Når du aktivt bruker AI-funksjoner i ResumeBuilder eller andre moduler (CV-import, ATS-analyse, sammendrag, søknadsbrev, oversettelse, intervjuforberedelse osv.), sendes det relevante innholdet til Anthropic PBC (USA) for behandling. Anthropic er databehandler etter art. 28, data overføres med Standardklausuler (SCC) og lagres maksimalt 30 dager hos Anthropic uten å brukes til modelltrening. Rettslig grunnlag: GDPR art. 6.1.a (samtykke ved klikk) eller 6.1.b. Du kan til enhver tid la være å bruke AI-funksjonene.',
+      },
+      {
+        title: 'Automatiserte beslutninger og din rett til å protestere',
+        detail: 'AI-genererte ATS-scorer, sammendrag, søknadsbrev og andre forslag er kun forslag — du tar selv den endelige beslutningen. Vi tar ikke automatiserte avgjørelser med rettslig virkning eller tilsvarende vesentlig påvirkning (GDPR art. 22). Du kan klage til Datatilsynet (datatilsynet.no) eller Forbrukertilsynet (forbrukertilsynet.no).',
+      },
+      {
+        title: 'Integrasjoner du selv aktiverer',
+        detail: 'For å koble til tjenester du selv aktiverer (Google, LinkedIn, Vitnemålsportalen) og generere utkast eller anbefalinger. Rettslig grunnlag: GDPR art. 6.1.b / 6.1.a.',
       },
       {
         title: 'Sikkerhet og misbruksforebygging',

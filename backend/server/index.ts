@@ -326,7 +326,19 @@ import {
   revokeClientPortalSession,
 } from "./role-room-client-portal.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
+import { registerMarketplaceAppConfigRoutes } from "./marketplace-app-config-routes.js";
+import { trackStripeEvent } from "./ga4-measurement-protocol.js";
+import { registerAIUsageRoutes } from "./ai-usage-routes.js";
+import { configureAIUsageTracker } from "./ai-usage-tracker.js";
+import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
+import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
 import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
+import { setupResumeRoutes } from "./resume-routes";
+import {
+  setupNextRoleRoutes,
+  handleNextRoleCheckoutCompleted,
+  handleNextRoleSubscriptionDeleted,
+} from "./nextrole-routes";
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
@@ -873,6 +885,9 @@ app.post(
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded": {
           const session = event.data.object as Stripe.Checkout.Session;
+          // Sjekk NextRole først (egen app_id-metadata).
+          const nextRoleResult = await handleNextRoleCheckoutCompleted(pool, session);
+          if (nextRoleResult.matched) break;
           // Route agent add-on checkouts to our handler first. If the
           // metadata tag doesn't match, the commercial sync runs as usual.
           const agentResult = await handleAgentCheckoutSessionCompleted(pool, session);
@@ -897,6 +912,9 @@ app.post(
         }
         case "customer.subscription.deleted": {
           const subscription = event.data.object as Stripe.Subscription;
+          // NextRole-håndtering først.
+          const nextRoleResult = await handleNextRoleSubscriptionDeleted(pool, subscription);
+          if (nextRoleResult.matched) break;
           const agentResult = await handleAgentSubscriptionRevoked(
             pool,
             subscription,
@@ -983,17 +1001,33 @@ app.post(
           }
           break;
         }
-        case "invoice.paid":
-          await syncCreatorHubStripeInvoice(
-            event.data.object as Stripe.Invoice,
-          );
+        case "invoice.paid": {
+          const invoice = event.data.object as Stripe.Invoice;
+          await syncCreatorHubStripeInvoice(invoice);
+          // Slice 9X.70 — GA4 server-side track for renewal-revenue
+          const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id || '';
+          trackStripeEvent(customerId, 'subscription_renewed', {
+            amount: (invoice.amount_paid || 0) / 100,
+            currency: invoice.currency || 'nok',
+            invoice_id: invoice.id,
+            subscription_id: typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id || '',
+            value: (invoice.amount_paid || 0) / 100,
+          });
           break;
+        }
         case "invoice.payment_failed": {
           const invoice = event.data.object as Stripe.Invoice;
           const agentResult = await handleAgentPaymentFailed(pool, invoice);
           if (!agentResult.matched) {
             await clearCreatorHubStripeSubscription(invoice);
           }
+          const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id || '';
+          trackStripeEvent(customerId, 'invoice_payment_failed', {
+            amount: (invoice.amount_due || 0) / 100,
+            currency: invoice.currency || 'nok',
+            invoice_id: invoice.id,
+            attempt_count: invoice.attempt_count || 0,
+          });
           break;
         }
         case "customer.subscription.deleted": {
@@ -1006,6 +1040,25 @@ app.post(
           if (!agentResult.matched) {
             await clearCreatorHubStripeSubscription(subscription);
           }
+          const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id || '';
+          trackStripeEvent(customerId, 'subscription_canceled', {
+            subscription_id: subscription.id,
+            canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+            cancel_reason: subscription.cancellation_details?.reason || null,
+          });
+          break;
+        }
+        case "customer.subscription.created": {
+          const subscription = event.data.object as Stripe.Subscription;
+          const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id || '';
+          const item = subscription.items?.data?.[0];
+          trackStripeEvent(customerId, 'subscription_started', {
+            subscription_id: subscription.id,
+            price_id: item?.price?.id || '',
+            amount: (item?.price?.unit_amount || 0) / 100,
+            interval: item?.price?.recurring?.interval || '',
+            trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+          });
           break;
         }
         // Slice 10.2 — gallery checkout completion. We only act when
@@ -1466,6 +1519,11 @@ function requireInviteRequestApproverSession(
 }
 
 registerTidumAdminRoutes(app, pool, requireAdminSession);
+registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession);
+configureAIUsageTracker(pool);
+registerAIUsageRoutes(app, pool, requireAdminSession);
+registerDesignTokensRoutes(app, pool, requireAdminSession);
+registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
@@ -18078,6 +18136,23 @@ setupRoleNavConfigRoutes({
   getActiveSessionFromRequest,
   requireAdminRoomAccess,
   logAdminActivity,
+});
+
+// ── ResumeBuilder — komplett /api/resumes-suite (CRUD + AI + export)
+// Bruker getActiveSessionFromRequest direkte (ikke admin-scope) siden
+// alle brukere kan ha CV-er. Per-rad-eierskap håndteres i routes via
+// WHERE user_id = $.
+setupResumeRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+});
+
+// ── NextRole — entitlement-API, trial-aktivering, cron-trigger
+setupNextRoleRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
 });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {

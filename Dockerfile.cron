@@ -1,0 +1,14 @@
+# Dockerfile.cron — minimalt image for NextRole trial-expiry cron
+#
+# Render kjører dette én gang per "schedule"-trigger (daglig 09:00 UTC).
+# Vi gjør bare ett HTTP-kall mot backend-en og avslutter.
+
+FROM alpine:3.20
+
+RUN apk add --no-cache curl
+
+WORKDIR /app
+COPY scripts/cron/nextrole-trial-expiry.sh /app/run.sh
+RUN chmod +x /app/run.sh
+
+CMD ["/app/run.sh"]

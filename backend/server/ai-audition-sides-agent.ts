@@ -1,3 +1,4 @@
+import { logAIUsage } from './ai-usage-tracker.js';
 /**
  * ai-audition-sides-agent.ts
  *
@@ -195,6 +196,7 @@ export const auditionSidesAgent: AIAgent = {
           }),
         }],
       });
+      logAIUsage(response as any, { feature: 'role-room/audition-sides' }).catch(() => undefined);
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === AUDITION_SIDES_TOOL_SCHEMA.name,

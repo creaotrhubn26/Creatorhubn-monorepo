@@ -49,6 +49,7 @@ import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { TESTER_PROGRAM_TERMS, PROGRAM_TERMS_VERSION, programTermsAsText } from '@/lib/tester-program-terms';
 import { trackEvent } from '@/utils/ga4-client-tracking';
+import { testerEvents } from '@/utils/creatorhub-events';
 
 interface Invite {
   id: string;
@@ -110,6 +111,7 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
       trackEvent('prototype_tester_nda_signed', {
         program_terms_version: PROGRAM_TERMS_VERSION,
       });
+      testerEvents.sessionStarted(token);
       setSuccess(true);
       // Sett flag som velkomst-modalen leser
       try { sessionStorage.setItem('prototype-tester-just-signed', '1'); } catch { /* ignore */ }

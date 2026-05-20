@@ -33,6 +33,7 @@ import type {
 import { listTakesForShot } from "./coverage-take-service.js";
 import { listAnalysesForTakes } from "./coverage-analysis-pipeline.js";
 import type { Pool } from "pg";
+import { logAIUsage } from './ai-usage-tracker.js';
 
 const SUGGESTION_TYPE_BEST_TAKE = "coverage.best-take";
 
@@ -118,6 +119,7 @@ async function generateRationale(input: ClaudeRationaleInput): Promise<string | 
       tool_choice: { type: "tool", name: "explain_take_ranking" },
       messages: [{ role: "user", content: userPrompt }],
     });
+    logAIUsage(response as any, { feature: 'role-room/coverage-best-take' }).catch(() => undefined);
 
     const tb = (response.content ?? []).find(
       (b: any) => b?.type === "tool_use" && b?.name === "explain_take_ranking",

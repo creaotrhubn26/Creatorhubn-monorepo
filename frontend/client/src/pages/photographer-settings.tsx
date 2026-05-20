@@ -19,6 +19,7 @@ import { apiRequest } from '@/lib/queryClient';
 import MyContributionsPanel from '@/components/photographer/MyContributionsPanel';
 import PushSettingsCard from '@/components/wedding/PushSettingsCard';
 import GoogleWorkspaceSessionBadge from '@/components/universal/GoogleWorkspaceSessionBadge';
+import UserAIUsageCard from '@/components/settings/UserAIUsageCard';
 
 interface PhotographerProfile {
   id: string;
@@ -661,6 +662,11 @@ export default function PhotographerSettings() {
         {/* Slice 9X.43 — Push-varsler */}
         <Grid2 size={{ xs: 12, md: 6 }}>
           <PushSettingsCard />
+        </Grid2>
+
+        {/* Slice 9X.71 — Brukerens AI-forbruk */}
+        <Grid2 size={{ xs: 12 }}>
+          <UserAIUsageCard />
         </Grid2>
       </Grid2>
 

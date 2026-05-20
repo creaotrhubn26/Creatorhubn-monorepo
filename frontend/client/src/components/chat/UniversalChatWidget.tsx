@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
+import { chatEvents } from '@/utils/creatorhub-events';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   clearCreatorHubGoogleIntentFromUrl,
@@ -1923,6 +1924,7 @@ export default function UniversalChatWidget({
     const content = trimmedMessage || buildAttachmentSummaryText(pendingGoogleDriveAttachments);
 
     if (!content) return;
+    chatEvents.messageSent('internal', content.length, attachments.length > 0);
 
     try {
       const messageData: ChatMessageType = {

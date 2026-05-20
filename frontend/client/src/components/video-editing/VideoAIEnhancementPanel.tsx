@@ -2,6 +2,7 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import { aiEvents } from '@/utils/creatorhub-events';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '../../contexts/ProjectContext';
@@ -327,17 +328,28 @@ export default function VideoAIEnhancementPanel({
       });
     }, 500);
 
-      await enhanceVideoMutation.mutateAsync({
-        videoUrl,
-        modelName: selectedModel,
-        enhancementType,
-        quality: enhancementQuality >= 80 ? 'high' : enhancementQuality >= 60 ? 'balanced' : 'fast',
-        targetResolution,
-        targetFrameRate: targetFrameRate,
-        videoStandard,
-        colorSpace,
-        codec
-    });
+      const aiStartedAt = Date.now();
+      aiEvents.started('video', enhancementType || 'enhance');
+      try {
+        await enhanceVideoMutation.mutateAsync({
+          videoUrl,
+          modelName: selectedModel,
+          enhancementType,
+          quality: enhancementQuality >= 80 ? 'high' : enhancementQuality >= 60 ? 'balanced' : 'fast',
+          targetResolution,
+          targetFrameRate: targetFrameRate,
+          videoStandard,
+          colorSpace,
+          codec
+        });
+        aiEvents.completed('video', enhancementType || 'enhance', {
+          durationMs: Date.now() - aiStartedAt,
+          success: true,
+        });
+      } catch (e: any) {
+        aiEvents.failed('video', enhancementType || 'enhance', e?.code || e?.message);
+        throw e;
+      }
 
       setProcessingProgress(100);
       clearInterval(progressInterval);

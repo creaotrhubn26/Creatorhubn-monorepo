@@ -68,6 +68,7 @@ import { EmailDesigner } from '../EmailDesigner/EmailDesigner';
 import { ADMIN_EMAIL_DESIGNER_PRESETS } from './emailDesignerPresets';
 import { getAllProfessionFeatures } from '../../../../shared/profession-feature-matrix';
 import { UserFolderAccessViewer } from './UserFolderAccessViewer';
+import UserInstallationsPanel from './UserInstallationsPanel';
 import AcademyAdminPanel from './AcademyAdminPanel';
 import EnterpriseInquiriesPanel from './EnterpriseInquiriesPanel';
 
@@ -2518,6 +2519,11 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               )}
             </CardContent>
           </Card>
+
+          {/* Slice 9X.70 — installasjoner + Stripe-abonnement per bruker */}
+          <Box sx={{ mt: 3 }}>
+            <UserInstallationsPanel users={users} />
+          </Box>
         </Box>
       )}
 

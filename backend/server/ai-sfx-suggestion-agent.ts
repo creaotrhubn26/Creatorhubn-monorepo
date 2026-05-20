@@ -30,6 +30,7 @@ import type {
 import { listTakesForScene } from "./coverage-take-service.js";
 import { listAnalysesForTakes } from "./coverage-analysis-pipeline.js";
 import type { Pool } from "pg";
+import { logAIUsage } from './ai-usage-tracker.js';
 
 const SUGGESTION_TYPE_SFX = "post.sfx-suggestion";
 const MODEL_VERSION = "claude-sonnet-4-6";
@@ -272,6 +273,7 @@ export function createSfxSuggestionAgent(pool: Pool): AIAgent {
             ),
           }],
         });
+        logAIUsage(response as any, { feature: 'role-room/sfx-suggest' }).catch(() => undefined);
 
         const tb = (response.content ?? []).find(
           (b: any) => b?.type === "tool_use" && b?.name === SFX_TOOL_SCHEMA.name,
