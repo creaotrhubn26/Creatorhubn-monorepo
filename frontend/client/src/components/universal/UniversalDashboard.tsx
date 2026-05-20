@@ -160,6 +160,7 @@ import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import ProfessionAdapter from './ProfessionAdapter';
 import SmartWorkflowBuilder from './SmartWorkflowBuilder'; // Visual workflow builder with action buttons
+import SmartFlytPendingBanner from './SmartFlytPendingBanner'; // Slice 9X.79 — aktiv-run-banner
 import FloatingActionButtons from './misc/FloatingActionButtons';
 import CreatorHubPhotoEnhancer from './misc/CreatorHubPhotoEnhancer';
 
@@ -3114,6 +3115,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         {/* Admin Dashboard Switcher */}
         {renderAdminDashboardSwitcher()}
 
+        {/* Slice 9X.79 — SmartFlyt pending-banner (kun synlig ved awaiting_manual) */}
+        <SmartFlytPendingBanner userId={userId} />
+
         {/* Project Creation Dialog (Submission → Project, eller manuelt fra "Nytt prosjekt"-knapp) */}
         {uiSettings.submissionProjectData && (
         <Dialog
@@ -5594,6 +5598,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
                     {/* Smart arbeidsflyt — keyboard-activated workflow automation */}
                     <Box
+                      id="smart-flyt-section"
                       sx={{
                         position: 'relative',
                         '&:before': {
