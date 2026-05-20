@@ -595,6 +595,8 @@ const PricingCards: React.FC<{ onChoose: (tierId: string) => void; loading: stri
 // ════════════════════════════════════════════════════════════════════
 
 const SPLASH_SHOWN_KEY = 'nextrole:splash-shown-session';
+const REFERRAL_CODE_KEY = 'nextrole:referral-code';
+const REFERRAL_REDEEMED_KEY = 'nextrole:referral-redeemed';
 
 const NextRoleLanding: React.FC = () => {
   const theme = useTheme();
@@ -612,8 +614,73 @@ const NextRoleLanding: React.FC = () => {
     }
   }, [showSplash]);
 
+  // Fang ?ref=KODE fra URL-en og lagre i sessionStorage. Når brukeren
+  // har logget inn og fullfører checkout, sender backend-webhooken
+  // bonusen automatisk. Hvis brukeren allerede er logget inn nå,
+  // kaller vi redeem-endepunktet med en gang så de slipper å starte
+  // checkout før koden er knyttet til kontoen.
+  const [referralBanner, setReferralBanner] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const refParam = params.get('ref');
+    if (refParam && /^[A-Z0-9]{6,16}$/i.test(refParam)) {
+      const normalized = refParam.toUpperCase();
+      window.sessionStorage.setItem(REFERRAL_CODE_KEY, normalized);
+      setReferralBanner(normalized);
+      if (typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'nextrole_referral_landing', { code: normalized });
+      }
+    } else {
+      const stored = window.sessionStorage.getItem(REFERRAL_CODE_KEY);
+      if (stored) setReferralBanner(stored);
+    }
+  }, []);
+
+  // Når bruker er innlogget OG vi har en kode i sessionStorage som
+  // ikke er løst inn ennå, send redeem-kall best-effort.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!user?.id) return;
+    const code = window.sessionStorage.getItem(REFERRAL_CODE_KEY);
+    const alreadyRedeemed = window.sessionStorage.getItem(REFERRAL_REDEEMED_KEY);
+    if (!code || alreadyRedeemed === '1') return;
+    (async () => {
+      try {
+        await apiRequest('/api/marketplace/next-role/referrals/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+          body: JSON.stringify({ code }),
+        });
+        window.sessionStorage.setItem(REFERRAL_REDEEMED_KEY, '1');
+        if (typeof (window as any).gtag === 'function') {
+          (window as any).gtag('event', 'nextrole_referral_redeemed', { code });
+        }
+      } catch (err) {
+        // 409 already_redeemed eller 400 cannot_redeem_own_code — bare
+        // marker som ferdig så vi ikke retry-er ved hver render.
+        const status = (err as { status?: number })?.status;
+        if (status === 409 || status === 400 || status === 404) {
+          window.sessionStorage.setItem(REFERRAL_REDEEMED_KEY, '1');
+        }
+      }
+    })();
+  }, [user?.id]);
+
   const handleChoose = async (tierId: string) => {
     setLoading(tierId);
+    // GA4 — funnel-event: bruker har klikket på en pricing-CTA. Vi
+    // tracker BEGIN_CHECKOUT som GA4-standard event slik at det havner
+    // i e-handelsrapportene, OG en nextrole-spesifikk variant for
+    // dashboarding på tvers av tier-IDene.
+    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+      (window as any).gtag('event', 'begin_checkout', {
+        currency: 'NOK',
+        value: tierId === 'pro' ? 99 : tierId === 'standard' ? 49 : 0,
+        items: [{ item_id: 'nextrole-' + tierId, item_name: 'NextRole ' + tierId, price: tierId === 'pro' ? 99 : 49, quantity: 1 }],
+      });
+      (window as any).gtag('event', 'nextrole_checkout_clicked', { tier_id: tierId });
+    }
     try {
       const res = await apiRequest('/api/marketplace/apps/next-role/checkout', {
         method: 'POST',
@@ -624,10 +691,16 @@ const NextRoleLanding: React.FC = () => {
         body: JSON.stringify({ tierId }),
       });
       if (res?.url) {
+        if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+          (window as any).gtag('event', 'nextrole_checkout_redirect', { tier_id: tierId });
+        }
         window.location.href = res.url;
       }
     } catch (err) {
       console.error('Checkout-feil:', err);
+      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'nextrole_checkout_error', { tier_id: tierId });
+      }
       alert('Klarte ikke starte checkout. Prøv igjen om et øyeblikk.');
     } finally {
       setLoading(null);
@@ -641,9 +714,73 @@ const NextRoleLanding: React.FC = () => {
     }
   }, []);
 
+  // SEO-tags vedlikeholdes for SPA-navigasjon (initial-load håndteres
+  // av path-aware override-skriptet i index.html). Vi restaurerer tags
+  // på unmount så bytte til en annen rute ikke etterlater "feil"
+  // CreatorHub-tags i DOM-en.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const origin = window.location.origin || 'https://creatorhubn.com';
+    const title = 'NextRole — Bygg CV som faktisk gir jobbintervju';
+    const description =
+      'NextRole er den smarte CV-byggeren fra CreatorHub. AI-tilpasset CV og søknadsbrev mot konkret stillingsannonse, ATS-optimalisert, 15+ design og 14 dagers gratis test.';
+    const image = origin + '/nextrole-og.png';
+    const url = origin + '/nextrole';
+    const prevTitle = document.title;
+    const setAttr = (selector: string, attr: string, value: string) => {
+      const el = document.querySelector(selector);
+      if (el) el.setAttribute(attr, value);
+    };
+    document.title = title;
+    setAttr('meta[name="description"]', 'content', description);
+    setAttr('link[rel="canonical"]', 'href', url);
+    setAttr('meta[property="og:site_name"]', 'content', 'NextRole by CreatorHub');
+    setAttr('meta[property="og:title"]', 'content', title);
+    setAttr('meta[property="og:description"]', 'content', description);
+    setAttr('meta[property="og:url"]', 'content', url);
+    setAttr('meta[property="og:image"]', 'content', image);
+    setAttr('meta[name="twitter:title"]', 'content', title);
+    setAttr('meta[name="twitter:description"]', 'content', description);
+    setAttr('meta[name="twitter:image"]', 'content', image);
+    return () => {
+      document.title = prevTitle;
+    };
+  }, []);
+
   return (
     <Box sx={{ bgcolor: '#fff' }}>
       {showSplash && <NextRoleSplash onComplete={() => setShowSplash(false)} />}
+
+      {/* Referral-banner — vises hvis bruker har landet via en
+          /nextrole?ref=KODE-lenke. Forsterker grunnen til å registrere
+          seg ved å vise hva de får. */}
+      {referralBanner && (
+        <Box
+          sx={{
+            background: 'linear-gradient(90deg, #1F2937 0%, #2D3848 100%)',
+            color: '#FFF8E1',
+            py: 1.2,
+            px: 2,
+            textAlign: 'center',
+            borderBottom: '2px solid #F5B82E',
+          }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            <Box component="span" sx={{ color: '#F5B82E', fontWeight: 800 }}>
+              Du er invitert
+            </Box>
+            {' — registrer deg og fullfør første betaling, så får du '}
+            <Box component="span" sx={{ color: '#F5B82E', fontWeight: 800 }}>
+              1 ekstra måned gratis
+            </Box>
+            {' (kode: '}
+            <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1.5 }}>
+              {referralBanner}
+            </Box>
+            {')'}
+          </Typography>
+        </Box>
+      )}
 
       {/* HERO */}
       <Box

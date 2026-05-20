@@ -38,6 +38,7 @@ import {
   sendNextRolePaymentReceiptEmail,
   sendNextRoleTrialExpiringEmail,
 } from "./nextrole-email-service";
+import { applyReferralRewardsOnCheckout } from "./nextrole-referrals";
 
 export interface NextRoleRoutesDeps {
   app: express.Application;
@@ -183,6 +184,21 @@ export async function handleNextRoleCheckoutCompleted(
         : session.invoice?.id,
       nextBillingDate,
     });
+  }
+
+  // Hvis brukeren har en pending referral-innløsning, gi bonus til
+  // både inviter og redeemer. Idempotent — gjør ingenting hvis allerede
+  // utløst eller hvis ingen referral finnes.
+  try {
+    const reward = await applyReferralRewardsOnCheckout(pool, userId);
+    if (reward.applied) {
+      console.info("[nextrole-webhook] referral reward applied", {
+        redeemer: userId,
+        referrer: reward.referrerUserId,
+      });
+    }
+  } catch (err) {
+    console.error("[nextrole-webhook] referral reward failed (non-fatal)", err);
   }
 
   return { matched: true, message: `nextrole_${tierId}_purchased` };

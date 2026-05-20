@@ -21,6 +21,10 @@ import {
   renderTrialStartedEmail,
   renderTrialExpiringEmail,
   renderPaymentReceiptEmail,
+  renderDripDay3TipsEmail,
+  renderDripDay7SocialProofEmail,
+  renderDripDay13LastCallEmail,
+  renderPostTrialWinbackEmail,
 } from "./nextrole-email-templates";
 
 interface SendResult {
@@ -152,5 +156,55 @@ export async function sendNextRolePaymentReceiptEmail(
       ...opts,
     }),
     "payment-receipt",
+  );
+}
+
+// ── Drip-templates ──────────────────────────────────────────────────
+
+interface DripInput {
+  firstName: string;
+  trialEndsAt: Date;
+  daysActive: number;
+  resumesBuilt?: number;
+  hasUsedAiAnalysis?: boolean;
+}
+
+export async function sendNextRoleDripDay3TipsEmail(
+  to: string,
+  input: DripInput,
+): Promise<SendResult> {
+  return sendRendered(to, renderDripDay3TipsEmail(input), "drip-day3-tips");
+}
+
+export async function sendNextRoleDripDay7SocialProofEmail(
+  to: string,
+  input: DripInput,
+): Promise<SendResult> {
+  return sendRendered(
+    to,
+    renderDripDay7SocialProofEmail(input),
+    "drip-day7-social",
+  );
+}
+
+export async function sendNextRoleDripDay13LastCallEmail(
+  to: string,
+  input: DripInput,
+): Promise<SendResult> {
+  return sendRendered(
+    to,
+    renderDripDay13LastCallEmail(input),
+    "drip-day13-lastcall",
+  );
+}
+
+export async function sendNextRolePostTrialWinbackEmail(
+  to: string,
+  input: DripInput,
+): Promise<SendResult> {
+  return sendRendered(
+    to,
+    renderPostTrialWinbackEmail(input),
+    "post-trial-winback",
   );
 }

@@ -21,8 +21,18 @@ import {
 } from './templates/ResumeTemplates';
 import NextRoleStatsBanner from './NextRoleStatsBanner';
 import NextRoleTrialBanner from './NextRoleTrialBanner';
+import NextRoleSalaryBanner from './NextRoleSalaryBanner';
 import NextRoleUpsellModal, { UpsellFeature } from './NextRoleUpsellModal';
 import NextRoleOnboardingTour from './NextRoleOnboardingTour';
+const NextRoleCoverLetterLibrary = React.lazy(() => import('./NextRoleCoverLetterLibrary'));
+// Lazy-load tunge Pro-feature-dialoger. De er sjeldent åpnet og laster
+// inn ekstra kode (Claude-chat-UI, share-API, etc.) som vi ikke vil
+// inkludere i initial-bundle. Reduserer Time-to-Interactive på mobil.
+const NextRoleMockInterview = React.lazy(() => import('./NextRoleMockInterview'));
+const NextRoleReferralDialog = React.lazy(() => import('./NextRoleReferralDialog'));
+const JobApplicationKanban = React.lazy(() => import('./JobApplicationKanban'));
+const JobApplicationMilestonesDialog = React.lazy(() => import('./JobApplicationMilestonesDialog'));
+import UpcomingDeadlinesWidget from './UpcomingDeadlinesWidget';
 import { useNextRoleEntitlements } from '@/hooks/useNextRoleEntitlements';
 import {
   TermsAndConditionsDialog,
@@ -119,6 +129,9 @@ import {
   Cancel as CancelIcon,
   ErrorOutline as ErrorOutlineIcon,
   CheckCircleOutline as CheckCircleOutlineIcon,
+  CardGiftcard as CardGiftcardIcon,
+  WorkOutline as WorkOutlineIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 
 // ============================================================================
@@ -409,10 +422,18 @@ export default function ResumeBuilder() {
 
   // Live preview-panel — kan skjules på smale skjermer. Lagres i
   // localStorage så preferansen overlever refresh.
+  // På mobil starter live-preview AV — det er en tung render som tar
+  // halve skjermen og sliter ut svake enheter. Bruker kan slå på selv.
+  const isMobileViewport =
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-width: 899.95px)').matches
+      : false;
   const [showLivePreview, setShowLivePreview] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
     const stored = window.localStorage.getItem('resumeBuilder:showLivePreview');
-    return stored === null ? true : stored === 'true';
+    // Hvis brukeren ikke har eksplisitt valgt: default false på mobil, true ellers
+    if (stored === null) return !isMobileViewport;
+    return stored === 'true';
   });
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -3696,6 +3717,16 @@ export default function ResumeBuilder() {
     }
   }, [user?.id, queryClient, analytics]);
 
+  // Cover letter library
+  const [showCoverLetterLibrary, setShowCoverLetterLibrary] = useState(false);
+  // Mock interview
+  const [showMockInterview, setShowMockInterview] = useState(false);
+  // Referrals
+  const [showReferralDialog, setShowReferralDialog] = useState(false);
+  // Job Kanban + milestones
+  const [showKanbanDialog, setShowKanbanDialog] = useState(false);
+  const [milestoneDialogApp, setMilestoneDialogApp] = useState<{ id: string; jobTitle?: string; company?: string } | null>(null);
+
   // Versjon-historikk — POST /versions, GET /versions, /restore.
   const [showVersionHistoryDialog, setShowVersionHistoryDialog] = useState(false);
   const [versions, setVersions] = useState<Array<{ id: string; versionNumber: number; label: string | null; createdAt: string; notes?: string | null }>>([]);
@@ -4976,6 +5007,43 @@ export default function ResumeBuilder() {
                     </Button>
                     <Button
                       variant="outlined"
+                      startIcon={<TemplateIcon />}
+                      onClick={() => setShowCoverLetterLibrary(true)}
+                      title="Se alle AI-genererte søknadsbrev"
+                    >
+                      Søknadsbrev
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<AIIcon />}
+                      onClick={() => setShowMockInterview(true)}
+                      title="AI-intervjutrening basert på CV og stillingsannonse"
+                    >
+                      Intervjutrening
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<WorkOutlineIcon />}
+                      onClick={() => setShowKanbanDialog(true)}
+                      title="Se og administrer jobbsøknadene dine med deadlines"
+                    >
+                      Mine søknader
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<CardGiftcardIcon />}
+                      onClick={() => setShowReferralDialog(true)}
+                      title="Inviter en venn — begge får 1 måned gratis"
+                      sx={{
+                        borderColor: '#F5B82E',
+                        color: '#7A5A0B',
+                        '&:hover': { borderColor: '#D49B1A', bgcolor: '#FFF8E1' },
+                      }}
+                    >
+                      Inviter venn
+                    </Button>
+                    <Button
+                      variant="outlined"
                       startIcon={<HistoryIcon />}
                       onClick={async () => {
                         setShowVersionHistoryDialog(true);
@@ -5031,6 +5099,27 @@ export default function ResumeBuilder() {
 
                 {/* Trial-banner (vises kun for trial-brukere) */}
                 <NextRoleTrialBanner />
+
+                {/* Kommende deadlines på tvers av alle søknader */}
+                <UpcomingDeadlinesWidget
+                  onMilestoneClick={(m) => {
+                    setMilestoneDialogApp({
+                      id: m.applicationId,
+                      jobTitle: m.jobTitle,
+                      company: m.company,
+                    });
+                  }}
+                />
+
+                {/* SSB lønnsestimat basert på CV-ens profesjonelle tittel */}
+                <NextRoleSalaryBanner
+                  jobTitle={
+                    selectedResume?.personalInfo?.professionalTitle ??
+                    selectedResume?.targetJobTitle ??
+                    null
+                  }
+                  dismissKey={selectedResume?.id}
+                />
 
                 {/* Stats-banner med SSB/NAV/ATS-fakta */}
                 <NextRoleStatsBanner />
@@ -5937,9 +6026,12 @@ export default function ResumeBuilder() {
 
                   {/* Live-preview-kolonne — sticky panel som rendrer
                      selectedResume gjennom valgt template. Oppdaterer
-                     mens brukeren skriver. */}
+                     mens brukeren skriver. Skjules helt på mobil
+                     (xs: 'none') for å unngå tung dobbeltrender —
+                     brukeren kan bytte mellom editor/preview via
+                     toggle-knappen øverst. */}
                   {showLivePreview && (
-                    <Grid item xs={12} md={5}>
+                    <Grid item xs={12} md={5} sx={{ display: { xs: 'none', md: 'block' } }}>
                       <Box
                         sx={{
                           position: 'sticky',
@@ -6524,6 +6616,67 @@ export default function ResumeBuilder() {
 
       {/* Onboarding-tour — første gang i editoren */}
       {selectedResume && <NextRoleOnboardingTour />}
+
+      {/* Lazy-loaded Pro-dialoger. Suspense unngår blank skjerm mens
+          chunk-en lastes. Hvert dialog rendrer kun når åpnet → ingen
+          ekstra last for brukere som aldri åpner dem. */}
+      <React.Suspense fallback={null}>
+        {showCoverLetterLibrary && (
+          <NextRoleCoverLetterLibrary
+            open={showCoverLetterLibrary}
+            onClose={() => setShowCoverLetterLibrary(false)}
+          />
+        )}
+        {showMockInterview && (
+          <NextRoleMockInterview
+            open={showMockInterview}
+            onClose={() => setShowMockInterview(false)}
+            resumeId={selectedResume?.id ?? null}
+          />
+        )}
+        {showReferralDialog && (
+          <NextRoleReferralDialog
+            open={showReferralDialog}
+            onClose={() => setShowReferralDialog(false)}
+          />
+        )}
+        {showKanbanDialog && (
+          <Dialog
+            open={showKanbanDialog}
+            onClose={() => setShowKanbanDialog(false)}
+            maxWidth="xl"
+            fullWidth
+            PaperProps={{ sx: { height: '90vh' } }}
+          >
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>Mine søknader</Typography>
+              <IconButton onClick={() => setShowKanbanDialog(false)} size="small">
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ p: 1, overflow: 'auto' }}>
+              <JobApplicationKanban
+                onCardClick={(app) =>
+                  setMilestoneDialogApp({
+                    id: app.id,
+                    jobTitle: app.jobTitle,
+                    company: app.company,
+                  })
+                }
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+        {milestoneDialogApp && (
+          <JobApplicationMilestonesDialog
+            open={!!milestoneDialogApp}
+            applicationId={milestoneDialogApp.id}
+            jobTitle={milestoneDialogApp.jobTitle}
+            company={milestoneDialogApp.company}
+            onClose={() => setMilestoneDialogApp(null)}
+          />
+        )}
+      </React.Suspense>
 
       {/* CV-import Dialog (PDF/DOCX → Claude) */}
       <Dialog

@@ -2188,10 +2188,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   variant={profession === key ? "contained" : "outlined"}
                   startIcon={enhancedConfig.icon}
                   onClick={() => {
-                    trackButtonClick('profession_change', { 
-                      from_profession: profession, 
+                    trackButtonClick('profession_change', {
+                      from_profession: profession,
                       to_profession: key,
-                      dashboard: 'universal', 
+                      dashboard: 'universal',
                       component: 'profession_selector'
                     });
                     setLocation(`/?profession=${key}`);
@@ -2202,6 +2202,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     borderColor: profession === key ? customBranding.color : 'rgba(0,0,0,0.12)',
                     borderRadius: 2.5,
                     px: 2.5,
+                    // Slice 9X.77 — profession-icon beholder profession-color
+                    // (rød for video, blå for music_producer osv) selv når aktiv
+                    '& .MuiButton-startIcon': {
+                      color: enhancedConfig.color,
+                    },
                     py: 1,
                     fontWeight: 600,
                     transition: 'all 0.2s ease',
@@ -2226,47 +2231,44 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     );
 };
   
+  // Slice 9X.72/77 — design-tokens FØRST, så customBranding kan bruke
+  // global accent fra CMS.
+  const dt = useDashboardTokens();
+
   // Apply custom branding from both onboarding profile and business branding settings
   const customBranding = useMemo(() => {
     // Merge data from branding settings (priority) and onboarding profile (fallback)
     const brandingInfo = brandingData || {};
     const onboardingInfo = onboardingProfile || {};
-    
+
     // Helper to ensure we always get a string (not an object)
     const getStringValue = (value: unknown): string | null => {
       if (typeof value === 'string' && value.trim()) return value;
       return null;
     };
-    
-    const businessNameRaw = getStringValue((brandingInfo as any).businessName) 
-      || getStringValue((onboardingInfo as any).businessName) 
+
+    const businessNameRaw = getStringValue((brandingInfo as any).businessName)
+      || getStringValue((onboardingInfo as any).businessName)
       || getStringValue(config?.name)
       || 'CreatorHub';
-    
-    // DEBUG: Log what we're getting
-    console.log('[CustomBranding Debug]', {
-      brandingInfo,
-      onboardingInfo,
-      configName: config?.name,
-      configNameType: typeof config?.name,
-      businessNameRaw,
-      businessNameRawType: typeof businessNameRaw
-    });
-    
+
+    // Slice 9X.77 — color = GLOBAL accent (CMS-styrt), samme for alle
+    // profesjoner. iconColor = profession-specifik (kun for ikon-rendering).
+    const globalAccent = dt.accent;
+    const professionIconColor = (brandingInfo as any).brandingColor
+      || (onboardingInfo as any).brandingColor
+      || config?.color
+      || '#ff8c00';
+
     return {
-      color: (brandingInfo as any).brandingColor || (onboardingInfo as any).brandingColor || config?.color || '#ff8c00',
+      color: globalAccent,
+      iconColor: professionIconColor,
       businessName: businessNameRaw,
       tagline: (brandingInfo as any).tagline || (onboardingInfo as any).tagline || null,
       profilePhoto: (onboardingInfo as any).profilePhoto || null,
-      customLogo: (brandingInfo as any).customLogo || (onboardingInfo as any).customLogo || null
+      customLogo: (brandingInfo as any).customLogo || (onboardingInfo as any).customLogo || null,
     };
-}, [onboardingProfile, brandingData, config]);
-
-  // Slice 9X.72 — sentralisert design-tokens. Henter accent + helpers basert
-  // på profesjons-color, med fallback til CMS-overrides (Visual CMS-styrt).
-  // Gjør at alt i dashboardet kan referere én kilde til sannhet, og at
-  // Daniel kan endre farger/border-radius i admin uten kode-deploy.
-  const dt = useDashboardTokens(customBranding.color);
+}, [onboardingProfile, brandingData, config, dt.accent]);
 
   const dashboardSectionCardSx = useMemo(
     () => ({
@@ -3789,13 +3791,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 alignItems: { xs: 'center', sm: 'flex-start' },
                 gap: 2,
                 mb: 2 }}>
-                <Avatar 
+                <Avatar
                   src={customBranding.profilePhoto}
-                  sx={{ 
-                    bgcolor: customBranding.color, 
+                  sx={{
+                    // Slice 9X.77 — profession-icon-avatar bruker iconColor
+                    // (forskjellig per profesjon), ikke global accent
+                    bgcolor: customBranding.iconColor,
                     width: { xs: 48, sm: 56 },
                     height: { xs: 48, sm: 56 },
-                    border: `2px solid ${customBranding.color}`
+                    border: `2px solid ${customBranding.iconColor}`,
                   }}
                 >
                   {!customBranding.profilePhoto && config.icon}

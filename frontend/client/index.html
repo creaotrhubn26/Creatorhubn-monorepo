@@ -77,6 +77,101 @@
         setAttr('meta[name="twitter:image"]', 'content', image);
       })();
     </script>
+    <script>
+      // Path-aware SEO override for NextRole-rutene. Når brukeren lander
+      // direkte på /nextrole, /resume-builder eller /cv/:slug rewrite vi
+      // title, canonical og Open Graph før React mounter — slik at både
+      // sosiale crawlers og Google ser produkt-spesifikke tags. React-
+      // siden vedlikeholder også disse via useEffect for SPA-navigasjon.
+      (function () {
+        var path = (location.pathname || '/').toLowerCase();
+        var isNextRole = /^\/(nextrole|resume-builder|cv)\b/.test(path);
+        if (!isNextRole) return;
+        var origin = location.origin || 'https://creatorhubn.com';
+        var title = 'NextRole — Bygg CV som faktisk gir jobbintervju';
+        var description = 'NextRole er den smarte CV-byggeren fra CreatorHub. AI-tilpasset CV og søknadsbrev mot konkret stillingsannonse, ATS-optimalisert, 15+ design og 14 dagers gratis test.';
+        var image = origin + '/nextrole-og.png';
+        document.title = title;
+        function setAttr(selector, attr, value) {
+          var el = document.querySelector(selector);
+          if (el) el.setAttribute(attr, value);
+        }
+        setAttr('meta[name="description"]', 'content', description);
+        setAttr('link[rel="canonical"]', 'href', origin + '/nextrole');
+        setAttr('meta[property="og:site_name"]', 'content', 'NextRole by CreatorHub');
+        setAttr('meta[property="og:title"]', 'content', title);
+        setAttr('meta[property="og:description"]', 'content', description);
+        setAttr('meta[property="og:url"]', 'content', origin + '/nextrole');
+        setAttr('meta[property="og:image"]', 'content', image);
+        setAttr('meta[name="twitter:title"]', 'content', title);
+        setAttr('meta[name="twitter:description"]', 'content', description);
+        setAttr('meta[name="twitter:image"]', 'content', image);
+
+        // Legg til NextRole SoftwareApplication schema som ekstra LD-JSON.
+        var nrSchema = {
+          '@context': 'https://schema.org',
+          '@type': 'SoftwareApplication',
+          '@id': origin + '/nextrole#software',
+          name: 'NextRole by CreatorHub',
+          description: description,
+          url: origin + '/nextrole',
+          image: image,
+          applicationCategory: 'BusinessApplication',
+          applicationSubCategory: 'JobApplicationAssistant',
+          operatingSystem: 'Web',
+          inLanguage: 'nb-NO',
+          offers: [
+            {
+              '@type': 'Offer',
+              name: 'NextRole Standard',
+              price: '49',
+              priceCurrency: 'NOK',
+              availability: 'https://schema.org/InStock',
+              priceSpecification: {
+                '@type': 'UnitPriceSpecification',
+                price: '49',
+                priceCurrency: 'NOK',
+                unitText: 'MONTH',
+                billingDuration: 'P1M',
+              },
+            },
+            {
+              '@type': 'Offer',
+              name: 'NextRole Pro',
+              price: '99',
+              priceCurrency: 'NOK',
+              availability: 'https://schema.org/InStock',
+              priceSpecification: {
+                '@type': 'UnitPriceSpecification',
+                price: '99',
+                priceCurrency: 'NOK',
+                unitText: 'MONTH',
+                billingDuration: 'P1M',
+              },
+            },
+          ],
+          featureList: [
+            'AI-tilpasset CV mot konkret stillingsannonse',
+            'AI-søknadsbrev med tone-mapping og bedriftsspesifikk kontekst',
+            'AI Mock Interview — chat-basert intervjutrening',
+            '15+ ATS-optimaliserte CV-design',
+            'Import fra LinkedIn-dataeksport, PDF/DOCX og GitHub',
+            'Eksport til PDF, DOCX og delbar offentlig CV-side',
+            '14 dagers gratis prøveperiode',
+          ],
+          publisher: {
+            '@type': 'Organization',
+            '@id': origin + '/#organization',
+            name: 'CreatorHub Norge',
+          },
+        };
+        var nrScript = document.createElement('script');
+        nrScript.type = 'application/ld+json';
+        nrScript.setAttribute('data-seo-ld', 'nextrole-software');
+        nrScript.text = JSON.stringify(nrSchema);
+        document.head.appendChild(nrScript);
+      })();
+    </script>
     <script type="application/ld+json" data-seo-ld="organization">
       {
         "@context": "https://schema.org",

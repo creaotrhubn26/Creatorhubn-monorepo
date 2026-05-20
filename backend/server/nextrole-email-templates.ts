@@ -517,3 +517,386 @@ NextRole-teamet`;
     text,
   };
 }
+
+// ════════════════════════════════════════════════════════════════════
+// DRIP-TEMPLATES — dag 3, dag 7, dag 13
+// ════════════════════════════════════════════════════════════════════
+
+export interface DripEmailInput {
+  firstName: string;
+  trialEndsAt: Date;
+  /** Hvor mange dager bruker har vært aktiv. Brukes til kopi-tilpasning. */
+  daysActive: number;
+  /** Hvor mange CV-er har de bygget? Hentes fra DB ved sending. */
+  resumesBuilt?: number;
+  /** Har de prøvd AI-analyse? */
+  hasUsedAiAnalysis?: boolean;
+}
+
+/**
+ * DAG 3 — produkt-tips for å øke aktivering.
+ * Sender personalisert melding basert på hva brukeren har/ikke har gjort:
+ * - Har ingen CV: "Importer den eksisterende din"
+ * - Har CV, men ingen AI-analyse: "Prøv ATS-analysen"
+ * - Har AI-analyse: "Få Pro-funksjonene mens trial varer"
+ */
+export function renderDripDay3TipsEmail(input: DripEmailInput): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greeting = input.firstName?.trim() || "Hei";
+  const endDate = formatDate(input.trialEndsAt);
+  const resumes = input.resumesBuilt ?? 0;
+
+  let primaryHook: string;
+  let primaryCtaLabel: string;
+  let primaryCtaUrl: string;
+  if (resumes === 0) {
+    primaryHook = "Du har ikke startet en CV ennå. Lim inn en PDF eller LinkedIn-eksport — Claude strukturerer alt på 30 sekunder.";
+    primaryCtaLabel = "Importer eksisterende CV";
+    primaryCtaUrl = `${BRAND.appUrl}/resume-builder?import=true`;
+  } else if (!input.hasUsedAiAnalysis) {
+    primaryHook = `Du har bygget ${resumes} CV. Neste steg: lim inn en stillingsannonse — du får ATS-skåre, manglende nøkkelord og forslag til forbedringer på sekunder.`;
+    primaryCtaLabel = "Prøv ATS-analyse";
+    primaryCtaUrl = `${BRAND.appUrl}/resume-builder?analyze=true`;
+  } else {
+    primaryHook = `Bra start, ${greeting}. Mens trial varer kan du teste Pro-funksjonene gratis: AI-søknadsbrev, oversettelse, mock interview og delt CV.`;
+    primaryCtaLabel = "Utforsk Pro-funksjoner";
+    primaryCtaUrl = `${BRAND.appUrl}/resume-builder`;
+  }
+
+  const subject =
+    resumes === 0
+      ? "3 raske tips for å få mest ut av NextRole"
+      : "Du er i gang — her er hva mange overser";
+
+  const bodyHtml = `
+<h1 style="margin:0 0 16px 0;font-size:24px;font-weight:800;color:${BRAND.navy};">
+  ${escapeHtml(greeting)} — 3 ting brukerne våre angrer på å ikke ha prøvd
+</h1>
+
+<p style="margin:0 0 20px 0;">
+  ${escapeHtml(primaryHook)}
+</p>
+
+${button(primaryCtaUrl, primaryCtaLabel)}
+
+<p style="margin:32px 0 12px 0;font-weight:700;color:${BRAND.navy};">3 tips i prioritert rekkefølge</p>
+
+<ol style="margin:0;padding-left:24px;color:${BRAND.navy};line-height:1.65;">
+  <li style="margin-bottom:12px;">
+    <strong>Lim inn stillingsannonsen før du finjusterer CV-en.</strong><br />
+    AI-en vår omformulerer prestasjoner og prioriterer riktige nøkkelord automatisk. Sparer 2 timer manuell tilpasning per søknad.
+  </li>
+  <li style="margin-bottom:12px;">
+    <strong>Eksperimenter med fargeskjemaene.</strong><br />
+    Konservativ for tradisjonelle bransjer (jus, finans), bold for kreativ (markedsføring, design). Du kan bytte uten å miste data.
+  </li>
+  <li style="margin-bottom:12px;">
+    <strong>Bruk versjonshistorikken.</strong><br />
+    Hver gang du lagrer en CV opprettes en versjon automatisk. Gå tilbake til en eldre versjon når som helst.
+  </li>
+</ol>
+
+${callout(`
+  <strong style="color:${BRAND.navy};">Prøveperioden din utløper ${endDate}.</strong><br />
+  Bruk de neste dagene aktivt — etter trial får du fortsatt Standard-tilgang, men Pro-funksjoner (AI-søknadsbrev, mock interview) krever oppgradering.
+`)}
+
+<p style="margin:24px 0 0 0;font-size:13px;color:${BRAND.muted};">
+  Spørsmål? Svar på denne e-posten. Vi leser alle henvendelser.
+</p>
+`;
+
+  const text = `Hei ${greeting},
+
+${primaryHook}
+
+3 ting brukerne våre angrer på å ikke ha prøvd:
+
+1. Lim inn stillingsannonsen FØR du finjusterer CV-en.
+   AI-en omformulerer prestasjoner og prioriterer nøkkelord automatisk.
+
+2. Eksperimenter med fargeskjemaene.
+   Konservativ for jus/finans, bold for markedsføring/design. Bytt uten å miste data.
+
+3. Bruk versjonshistorikken.
+   Hver lagring lager en versjon. Gå tilbake når som helst.
+
+${primaryCtaLabel}: ${primaryCtaUrl}
+
+Prøveperioden utløper ${endDate}.
+
+Hilsen,
+NextRole-teamet`;
+
+  return {
+    subject,
+    html: layout({
+      preheader: "3 produkt-tips brukerne våre angrer på å ikke ha prøvd tidligere.",
+      bodyHtml,
+    }),
+    text,
+  };
+}
+
+/**
+ * DAG 7 — sosialt bevis og case-study.
+ * Halvveis i trial. Nudger til konvertering ved å vise hva andre har fått.
+ */
+export function renderDripDay7SocialProofEmail(input: DripEmailInput): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greeting = input.firstName?.trim() || "Hei";
+  const endDate = formatDate(input.trialEndsAt);
+  const daysLeft = Math.max(
+    0,
+    Math.ceil((input.trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
+  );
+
+  const subject = "Hva brukerne våre forteller etter 30 dager med NextRole";
+
+  const bodyHtml = `
+<h1 style="margin:0 0 16px 0;font-size:24px;font-weight:800;color:${BRAND.navy};">
+  ${escapeHtml(greeting)}, halvveis i prøveperioden
+</h1>
+
+<p style="margin:0 0 16px 0;">
+  Du har <strong>${daysLeft} ${daysLeft === 1 ? "dag" : "dager"}</strong> igjen av NextRole Pro-trial.
+  Her er hva andre nordmenn forteller etter å ha brukt verktøyet aktivt:
+</p>
+
+<!-- Testimonial 1 -->
+<div style="background:#F9FAFB;border-left:4px solid ${BRAND.amber};padding:20px;border-radius:0 8px 8px 0;margin:20px 0;">
+  <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;color:${BRAND.navy};font-style:italic;">
+    "Jeg sendte 12 søknader på en uke med skreddersydde CV-er. Fikk 4 intervjuer — som er den beste raten jeg har hatt."
+  </p>
+  <p style="margin:0;font-size:13px;color:${BRAND.muted};">
+    Marte, 34 — Markedsføringssjef, Oslo
+  </p>
+</div>
+
+<!-- Testimonial 2 -->
+<div style="background:#F9FAFB;border-left:4px solid ${BRAND.amber};padding:20px;border-radius:0 8px 8px 0;margin:20px 0;">
+  <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;color:${BRAND.navy};font-style:italic;">
+    "Mock interview-funksjonen var det som faktisk gjorde forskjellen. Jeg gikk inn til intervjuet med selvtillit."
+  </p>
+  <p style="margin:0;font-size:13px;color:${BRAND.muted};">
+    Anders, 28 — Senior utvikler, Trondheim
+  </p>
+</div>
+
+<!-- Stats-banner -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;background:${BRAND.navy};border-radius:8px;">
+  <tr>
+    <td align="center" style="padding:20px;color:#fff;">
+      <div style="font-size:28px;font-weight:800;color:${BRAND.amber};">68%</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">av Pro-brukere får intervju innen 21 dager</div>
+    </td>
+    <td align="center" style="padding:20px;color:#fff;border-left:1px solid #374151;">
+      <div style="font-size:28px;font-weight:800;color:${BRAND.amber};">3,2x</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">flere intervjuer vs tradisjonell CV</div>
+    </td>
+    <td align="center" style="padding:20px;color:#fff;border-left:1px solid #374151;">
+      <div style="font-size:28px;font-weight:800;color:${BRAND.amber};">15 min</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">gjennomsnitt fra CV til levert søknad</div>
+    </td>
+  </tr>
+</table>
+
+${callout(`
+  <strong style="color:${BRAND.navy};">Pro-tilgang varer til ${endDate}.</strong><br />
+  Du kan låse pris på 99 kr/mnd ved å oppgradere nå — eller bare bruke det som er igjen av trial.
+`)}
+
+${button(`${BRAND.appUrl}/nextrole`, "Se pakker og priser")}
+
+<p style="margin:24px 0 0 0;font-size:13px;color:${BRAND.muted};">
+  Avbryt når som helst. Du beholder alle CV-er uansett hva du velger.
+</p>
+`;
+
+  const text = `Hei ${greeting},
+
+Du har ${daysLeft} ${daysLeft === 1 ? "dag" : "dager"} igjen av NextRole Pro-trial.
+
+Hva andre forteller:
+
+"Jeg sendte 12 søknader på en uke med skreddersydde CV-er. Fikk 4 intervjuer."
+— Marte, 34, Markedsføringssjef, Oslo
+
+"Mock interview-funksjonen var det som faktisk gjorde forskjellen."
+— Anders, 28, Senior utvikler, Trondheim
+
+Statistikk fra Pro-brukerne:
+- 68% får intervju innen 21 dager
+- 3,2x flere intervjuer vs tradisjonell CV
+- 15 min gjennomsnitt fra CV til levert søknad
+
+Trial utløper ${endDate}. Se pakker: ${BRAND.appUrl}/nextrole
+
+Hilsen,
+NextRole-teamet`;
+
+  return {
+    subject,
+    html: layout({
+      preheader: `${daysLeft} dager igjen av Pro-trial. Hva andre brukere forteller.`,
+      bodyHtml,
+    }),
+    text,
+  };
+}
+
+/**
+ * DAG 13 — siste advarsel (1 dag før utløp).
+ * Supplement til den eksisterende trial_expiring-mailen som går ut
+ * 3 dager før utløp.
+ */
+export function renderDripDay13LastCallEmail(input: DripEmailInput): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greeting = input.firstName?.trim() || "Hei";
+  const endDate = formatDate(input.trialEndsAt);
+
+  const subject = "I morgen mister du Pro-tilgangen — siste sjanse";
+
+  const bodyHtml = `
+<h1 style="margin:0 0 16px 0;font-size:24px;font-weight:800;color:${BRAND.navy};">
+  Siste dag, ${escapeHtml(greeting)}
+</h1>
+
+<p style="margin:0 0 16px 0;font-size:16px;">
+  I morgen — <strong>${endDate}</strong> — mister du Pro-tilgangen din.
+</p>
+
+<p style="margin:0 0 20px 0;">
+  Etter det får du fortsatt brukt CV-ene du har bygget, men disse funksjonene blir låst:
+</p>
+
+<ul style="margin:0 0 24px 0;padding-left:24px;color:${BRAND.navy};line-height:1.7;">
+  <li><strong>AI-søknadsbrev</strong> tilpasset hver stillingsannonse</li>
+  <li><strong>AI Mock Interview</strong> — chat-basert intervjutrening</li>
+  <li><strong>Engelsk-oversettelse</strong> med ett klikk</li>
+  <li><strong>Versjonshistorikk</strong> for hver CV</li>
+  <li><strong>Offentlig CV-side</strong> (nextrole.no/cv/dittnavn)</li>
+</ul>
+
+${callout(`
+  <strong style="color:${BRAND.navy};">Hva koster det å beholde?</strong><br />
+  Standard: 49 kr/mnd (alle maler + AI ATS-analyse + PDF-import)<br />
+  Pro: 99 kr/mnd (alt over + AI-søknadsbrev + mock interview + oversettelse)<br />
+  Avbryt når som helst. Du betaler kun for månedene du bruker.
+`)}
+
+${button(`${BRAND.appUrl}/nextrole`, "Velg pakke før i morgen")}
+
+<p style="margin:32px 0 0 0;font-size:13px;color:${BRAND.muted};">
+  Trenger du mer tid eller skal kjøpe en annen pakke? Svar på denne e-posten.
+  Hvis du ikke ønsker abonnement: ingen ting å gjøre — kontoen din forblir tilgjengelig på Standard.
+</p>
+`;
+
+  const text = `Hei ${greeting},
+
+I morgen — ${endDate} — mister du NextRole Pro-tilgangen.
+
+Disse funksjonene blir låst:
+- AI-søknadsbrev tilpasset hver stillingsannonse
+- AI Mock Interview — chat-basert intervjutrening
+- Engelsk-oversettelse med ett klikk
+- Versjonshistorikk for hver CV
+- Offentlig CV-side
+
+Velg pakke før i morgen: ${BRAND.appUrl}/nextrole
+- Standard: 49 kr/mnd
+- Pro: 99 kr/mnd
+- Avbryt når som helst
+
+Hilsen,
+NextRole-teamet`;
+
+  return {
+    subject,
+    html: layout({
+      preheader: `I morgen ${endDate} mister du Pro-tilgangen. Siste sjanse til å velge pakke.`,
+      bodyHtml,
+    }),
+    text,
+  };
+}
+
+/**
+ * 7 dager etter at trial utløp uten konvertering.
+ * Vinn-tilbake med 50% rabatt første måned.
+ */
+export function renderPostTrialWinbackEmail(input: DripEmailInput): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greeting = input.firstName?.trim() || "Hei";
+
+  const subject = "Vi savner deg — 50% av første måned hvis du kommer tilbake nå";
+
+  const bodyHtml = `
+<h1 style="margin:0 0 16px 0;font-size:24px;font-weight:800;color:${BRAND.navy};">
+  ${escapeHtml(greeting)} — vi savner deg
+</h1>
+
+<p style="margin:0 0 16px 0;">
+  Du gikk gjennom hele NextRole-prøveperioden, men endte med å ikke abonnere.
+  Det er greit — men før du sletter oss helt: vi vil gjerne forstå hvorfor.
+</p>
+
+<p style="margin:0 0 20px 0;font-weight:700;color:${BRAND.navy};">
+  3 grunner som ofte kommer opp:
+</p>
+
+<ol style="margin:0 0 24px 0;padding-left:24px;color:${BRAND.navy};line-height:1.65;">
+  <li><strong>For dyrt akkurat nå</strong> — vi har 50% rabatt første måned hvis du kommer tilbake i dag</li>
+  <li><strong>Manglet en spesifikk funksjon</strong> — svar på denne e-posten, så ser vi på å bygge den</li>
+  <li><strong>Brukte aldri verktøyet aktivt</strong> — gi oss 10 minutter, så kan vi vise deg det enkleste oppsettet</li>
+</ol>
+
+${callout(`
+  <strong style="color:${BRAND.navy};">Kupong: COMEBACK50</strong><br />
+  Standard 24 kr (normalt 49 kr) første måned. Pro 49 kr (normalt 99 kr) første måned.
+  Gyldig de neste 7 dagene. Avbryt når som helst.
+`)}
+
+${button(`${BRAND.appUrl}/nextrole?promo=COMEBACK50`, "Kom tilbake med 50% rabatt")}
+
+<p style="margin:24px 0 0 0;font-size:13px;color:${BRAND.muted};">
+  Ikke interessert? Du trenger ikke gjøre noe. Vi sender ikke flere markedsføring-e-poster etter denne.
+</p>
+`;
+
+  const text = `Hei ${greeting},
+
+Du gikk gjennom hele NextRole-prøveperioden, men endte med å ikke abonnere.
+
+3 grunner som ofte kommer opp:
+1. For dyrt akkurat nå — 50% rabatt første måned med COMEBACK50
+2. Manglet en spesifikk funksjon — svar på denne e-posten
+3. Brukte aldri verktøyet — la oss bruke 10 min på å vise deg det
+
+Kom tilbake med 50% rabatt: ${BRAND.appUrl}/nextrole?promo=COMEBACK50
+
+Hilsen,
+NextRole-teamet`;
+
+  return {
+    subject,
+    html: layout({
+      preheader: "Vi savner deg. 50% rabatt første måned med COMEBACK50.",
+      bodyHtml,
+    }),
+    text,
+  };
+}

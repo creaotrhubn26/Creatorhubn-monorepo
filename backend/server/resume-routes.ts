@@ -90,6 +90,24 @@ const cvImportUpload = multer({
   },
 });
 
+// Multer-config for trening-opptak (audio + video). 50 MB tak slik at
+// 2-3 minutter med 720p video fra MediaRecorder ligger godt innenfor.
+// Aksepterer webm/ogg/mp4/m4a — det MediaRecorder typisk produserer.
+const trainingMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const base = (file.mimetype ?? "").split(";")[0].trim().toLowerCase();
+    const allowed = [
+      "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg",
+      "audio/wav", "audio/x-wav",
+      "video/webm", "video/mp4",
+    ];
+    if (allowed.includes(base) || allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error(`Ugyldig MIME: ${file.mimetype}`));
+  },
+});
+
 // Multer-config for LinkedIn data-eksport (ZIP-fil opp til 50 MB).
 const linkedInZipUpload = multer({
   storage: multer.memoryStorage(),
@@ -119,6 +137,11 @@ import {
   readOptionalIsoDate,
 } from "./_shared";
 import { parseLinkedInExport } from "./nextrole-linkedin-import";
+import {
+  uploadTrainingMedia,
+  transcribeAudioWithWhisper,
+  isTranscriptionError,
+} from "./nextrole-audio-service";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -3524,6 +3547,714 @@ Regler:
         .status(500)
         .json({ error: "AI-søknadsbrev feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
     }
+  });
+
+  // ── AI Mock Interview ─────────────────────────────────────────────
+  //
+  // Pro-feature: chat-basert intervjutrening. Flyt:
+  //   POST /api/interview-sessions   start ny sesjon → returnerer
+  //                                  session-id + første spørsmål
+  //   POST /:id/answer               bruker svarer → AI gir feedback
+  //                                  og neste spørsmål
+  //   POST /:id/complete             marker som fullført → AI gir
+  //                                  samlet sammendrag
+  //   GET  /:id                      hent full sesjon (alle messages)
+  //   GET  /                         list brukerens sesjoner
+  //   DELETE /:id                    slett
+
+  app.post("/api/interview-sessions", async (req, res) => {
+    const session = requireSession(req, res);
+    if (!session) return;
+    if (!enforceAiRateLimit(session.userId, res)) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const resumeId = asString(body.resumeId);
+    const jobDescription = asString(body.jobDescription);
+    if (!resumeId || !jobDescription) {
+      res.status(400).json({ error: "resumeId og jobDescription er påkrevd" });
+      return;
+    }
+    const full = await loadFullResume(pool, resumeId, session.userId);
+    if (!full) {
+      res.status(404).json({ error: "CV ikke funnet" });
+      return;
+    }
+    let jobTitle = asString(body.jobTitle);
+    let company = asString(body.company);
+    let jdText = jobDescription;
+    const jobApplicationId = asString(body.jobApplicationId);
+    const mode = asString(body.mode) || "qa_text";
+
+    // Hvis bruker valgte en jobbsøknad fra Kanban — auto-populer
+    // JD/tittel/selskap fra raden. Bruker-angitte verdier overrider.
+    if (jobApplicationId) {
+      const appRow = await pool.query(
+        `SELECT job_title, company, notes, job_url
+           FROM job_applications
+          WHERE id = $1 AND user_id = $2`,
+        [jobApplicationId, session.userId],
+      );
+      if (appRow.rowCount) {
+        const a = appRow.rows[0];
+        jobTitle = jobTitle || (a.job_title as string | null) || "";
+        company = company || (a.company as string | null) || "";
+        // Hvis bruker ikke ga JD eksplisitt, fall tilbake på notes
+        // (mange brukere limer hele annonsen inn der).
+        if (!jobDescription && a.notes) jdText = a.notes as string;
+      }
+    }
+
+    const totalQuestions = Math.max(
+      4, Math.min(12, (asNumberOrNull(body.totalQuestions) ?? 8) as number),
+    );
+
+    // STEG 1 — ekstraher kompetansekrav fra JD. Vises som checklist
+    // i frontend og brukes som eksplisitte scoring-kriterier i feedback.
+    let competenceRequirements: { key: string; label: string; why: string }[] = [];
+    try {
+      const reqAi = await callClaude({
+        system: [
+          "Du er en ekspert på norsk arbeidsmarked. Du leser en stillingsannonse",
+          "og ekstraherer de 4-6 viktigste KOMPETANSEKRAVENE arbeidsgiver vil se",
+          "kandidaten demonstrere — både tekniske og myke ferdigheter.",
+          "",
+          "Returner KUN JSON i dette formatet:",
+          '{"requirements": [{"key": "kort_snake_case", "label": "Norsk visningstekst (3-6 ord)", "why": "1 setning om hvorfor denne stillingen krever det"}]}',
+          "",
+          "Eksempler på gode 'key'-verdier: customer_service, sales_understanding,",
+          "data_analysis, team_leadership, problem_solving, technical_depth_python.",
+          "Hold listen 4-6 elementer. Prioriter konkrete fremfor generelle.",
+          "Ingen markdown.",
+        ].join("\n"),
+        user: [
+          jobTitle ? `STILLING: ${jobTitle}` : "",
+          company ? `SELSKAP: ${company}` : "",
+          `\nANNONSE:\n${jdText}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        maxTokens: 600,
+      });
+      const reqParsed = tryParseJson<{
+        requirements?: { key: string; label: string; why: string }[];
+      }>(reqAi.text);
+      competenceRequirements = Array.isArray(reqParsed?.requirements)
+        ? reqParsed.requirements.slice(0, 8)
+        : [];
+    } catch (err) {
+      // Ikke-fatal — vi fortsetter uten kompetanse-checklist.
+      console.warn("[interview-session] competence extraction failed", err);
+    }
+
+    // STEG 2 — generer første spørsmål basert på CV + JD + kompetansekrav
+    try {
+      const competenceContext = competenceRequirements.length
+        ? `\nKOMPETANSEKRAV vi vil at kandidaten demonstrerer:\n${competenceRequirements.map((r) => `  • ${r.label} — ${r.why}`).join("\n")}`
+        : "";
+      const ai = await callClaude({
+        system: [
+          "Du er en erfaren norsk intervju-coach. Du gjennomfører en intervjutrening.",
+          `Du skal stille ${totalQuestions} spørsmål totalt — varier mellom:`,
+          "  • behavioral (STAR-format: tidligere situasjon)",
+          "  • technical (yrkes-spesifikk kunnskap)",
+          "  • competence (overførbare ferdigheter)",
+          "  • situational (hypotetisk scenario)",
+          "",
+          "Hvert spørsmål skal være designet for å avdekke OM kandidaten",
+          "har en eller flere av de definerte kompetansekravene.",
+          "",
+          "Returner KUN JSON med dette formatet for FØRSTE spørsmål:",
+          '{"category": "behavioral|technical|competence|situational", "question": "Spørsmålet ditt", "targets": ["kompetanse_key_1"]}',
+          "Ingen markdown, ingen forklaring, kun JSON.",
+        ].join("\n"),
+        user: [
+          jobTitle ? `STILLING: ${jobTitle}` : "",
+          company ? `SELSKAP: ${company}` : "",
+          `JOBBESKRIVELSE:\n${jdText}`,
+          competenceContext,
+          `\nKANDIDATENS CV:\n${summarizeResumeForAI(full)}`,
+          "",
+          `Generer DET FØRSTE intervjuspørsmålet. Det bør være åpnings-`,
+          `vennlig (myk start), gjerne behavioral. Bruk konkrete detaljer`,
+          `fra kandidatens CV i spørsmålet.`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        maxTokens: 600,
+      });
+      const parsed = tryParseJson<{
+        category?: string;
+        question?: string;
+        targets?: string[];
+      }>(ai.text);
+      if (!parsed?.question) {
+        res.status(502).json({ error: "Kunne ikke generere intervjuspørsmål" });
+        return;
+      }
+      // Opprett sesjon
+      const sessionInsert = await pool.query(
+        `INSERT INTO interview_sessions (
+           user_id, resume_id, job_application_id, job_title, company,
+           job_description, total_questions, language, mode,
+           competence_requirements
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) RETURNING *`,
+        [
+          session.userId, resumeId, jobApplicationId || null,
+          jobTitle, company, jdText, totalQuestions,
+          full.resume.language ?? "no",
+          mode,
+          competenceRequirements.length
+            ? JSON.stringify(competenceRequirements)
+            : null,
+        ],
+      );
+      const sessionId = sessionInsert.rows[0].id as string;
+      // Lagre første spørsmål
+      await pool.query(
+        `INSERT INTO interview_messages (
+           session_id, role, category, content, question_idx, tokens_input, tokens_output
+         ) VALUES ($1, 'question', $2, $3, 0, $4, $5)`,
+        [sessionId, parsed.category ?? "behavioral", parsed.question, ai.inputTokens, ai.outputTokens],
+      );
+      res.status(201).json({
+        sessionId,
+        questionIdx: 0,
+        totalQuestions,
+        category: parsed.category ?? "behavioral",
+        question: parsed.question,
+        competenceRequirements,
+        mode,
+        jobTitle,
+        company,
+      });
+    } catch (err) {
+      console.error("interview-session create error", err);
+      res.status(500).json({
+        error: "Kunne ikke starte intervju",
+        detail: String((err as Error)?.message ?? err).slice(0, 200),
+      });
+    }
+  });
+
+  app.post("/api/interview-sessions/:id/answer", async (req, res) => {
+    const session = requireSession(req, res);
+    if (!session) return;
+    if (!enforceAiRateLimit(session.userId, res)) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const answer = asString(body.answer);
+    if (!answer) {
+      res.status(400).json({ error: "answer er påkrevd" });
+      return;
+    }
+    const sessionResult = await pool.query(
+      `SELECT * FROM interview_sessions WHERE id = $1 AND user_id = $2`,
+      [req.params.id, session.userId],
+    );
+    if (!sessionResult.rowCount) {
+      res.status(404).json({ error: "Sesjon ikke funnet" });
+      return;
+    }
+    const sess = sessionResult.rows[0];
+    if (sess.status !== "in_progress") {
+      res.status(400).json({ error: "Sesjonen er ikke aktiv" });
+      return;
+    }
+    const currentIdx = sess.current_question_idx as number;
+    const totalQs = sess.total_questions as number;
+
+    // Lagre brukerens svar
+    await pool.query(
+      `INSERT INTO interview_messages (session_id, role, content, question_idx)
+       VALUES ($1, 'answer', $2, $3)`,
+      [sess.id, answer, currentIdx],
+    );
+
+    // Hent CV-kontekst + alle tidligere meldinger for å bygge full kontekst
+    const fullCv = await loadFullResume(pool, sess.resume_id, session.userId);
+    const messagesResult = await pool.query(
+      `SELECT role, category, content, question_idx
+         FROM interview_messages
+        WHERE session_id = $1
+        ORDER BY created_at ASC`,
+      [sess.id],
+    );
+    const conversation = messagesResult.rows
+      .map((m) => {
+        if (m.role === "question") return `[INTERVJUER]: ${m.content}`;
+        if (m.role === "answer") return `[KANDIDAT]: ${m.content}`;
+        return `[FEEDBACK]: ${m.content}`;
+      })
+      .join("\n\n");
+
+    const isLastQuestion = currentIdx + 1 >= totalQs;
+
+    try {
+      const ai = await callClaude({
+        system: [
+          "Du er en norsk intervju-coach. Gi konstruktiv feedback på kandidatens siste svar,",
+          "deretter still neste spørsmål (eller avslutt hvis dette var siste).",
+          "",
+          "Returner KUN JSON i dette formatet:",
+          isLastQuestion
+            ? `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "isFinal": true}`
+            : `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "category": "behavioral|technical|competence|situational", "nextQuestion": "neste spørsmål", "isFinal": false}`,
+          "",
+          "Feedback skal være:",
+          "  • Konkret (peke på faktiske setninger)",
+          "  • Bygd på STAR-metoden (Situasjon, Oppgave, Handling, Resultat)",
+          "  • Foreslå EN forbedring, ikke en liste",
+          "Neste spørsmål skal:",
+          "  • Variere kategori fra forrige",
+          "  • Bygge på kandidatens svar (utforske dypere)",
+          "  • Knytte til JD-en",
+          "Ingen markdown.",
+        ].join("\n"),
+        user: [
+          `STILLING: ${sess.job_title ?? ""}`,
+          `JOBBESKRIVELSE: ${sess.job_description}`,
+          fullCv ? `\nCV: ${summarizeResumeForAI(fullCv).slice(0, 1500)}` : "",
+          `\nINTERVJU-HISTORIKK:\n${conversation}`,
+          "",
+          `Spørsmål ${currentIdx + 1} av ${totalQs}. ${isLastQuestion ? "DETTE ER SISTE SVAR." : ""}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        maxTokens: 1200,
+      });
+      const parsed = tryParseJson<{
+        feedback?: string;
+        score?: number;
+        category?: string;
+        nextQuestion?: string;
+        isFinal?: boolean;
+      }>(ai.text);
+
+      if (!parsed) {
+        res.status(502).json({ error: "Kunne ikke parse AI-respons" });
+        return;
+      }
+
+      // Lagre feedback
+      await pool.query(
+        `INSERT INTO interview_messages (
+           session_id, role, content, question_idx,
+           feedback_score, tokens_input, tokens_output
+         ) VALUES ($1, 'feedback', $2, $3, $4, $5, $6)`,
+        [sess.id, parsed.feedback ?? "", currentIdx,
+         parsed.score ?? null, ai.inputTokens, ai.outputTokens],
+      );
+
+      // Lagre neste spørsmål (hvis ikke siste)
+      const nextIdx = currentIdx + 1;
+      if (!isLastQuestion && parsed.nextQuestion) {
+        await pool.query(
+          `INSERT INTO interview_messages (session_id, role, category, content, question_idx)
+           VALUES ($1, 'question', $2, $3, $4)`,
+          [sess.id, parsed.category ?? "behavioral", parsed.nextQuestion, nextIdx],
+        );
+      }
+
+      // Oppdater sesjon
+      await pool.query(
+        `UPDATE interview_sessions SET current_question_idx = $1, updated_at = NOW() WHERE id = $2`,
+        [nextIdx, sess.id],
+      );
+
+      res.json({
+        feedback: parsed.feedback,
+        score: parsed.score,
+        questionIdx: nextIdx,
+        isFinal: isLastQuestion || !parsed.nextQuestion,
+        nextQuestion: parsed.nextQuestion,
+        nextCategory: parsed.category,
+      });
+    } catch (err) {
+      console.error("interview-session answer error", err);
+      res.status(500).json({
+        error: "AI-feedback feilet",
+        detail: String((err as Error)?.message ?? err).slice(0, 200),
+      });
+    }
+  });
+
+  // POST audio-svar — multipart/form-data med 'audio'-felt.
+  // Transkriberer via OpenAI Whisper og kjører deretter samme
+  // feedback-logikk som tekst-svaret. Returnerer samme respons +
+  // transcript + signed audio URL for playback.
+  app.post(
+    "/api/interview-sessions/:id/answer-audio",
+    trainingMediaUpload.single("audio"),
+    async (req, res) => {
+      const session = requireSession(req, res);
+      if (!session) return;
+      if (!enforceAiRateLimit(session.userId, res)) return;
+
+      const file = (req as express.Request & {
+        file?: { buffer: Buffer; mimetype: string; size: number };
+      }).file;
+      if (!file?.buffer?.byteLength) {
+        res.status(400).json({ error: "audio er påkrevd" });
+        return;
+      }
+
+      const sessionResult = await pool.query(
+        `SELECT * FROM interview_sessions WHERE id = $1 AND user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!sessionResult.rowCount) {
+        res.status(404).json({ error: "Sesjon ikke funnet" });
+        return;
+      }
+      const sess = sessionResult.rows[0];
+      if (sess.status !== "in_progress") {
+        res.status(400).json({ error: "Sesjonen er ikke aktiv" });
+        return;
+      }
+      const currentIdx = sess.current_question_idx as number;
+      const totalQs = sess.total_questions as number;
+
+      // 1) Transkriber via Whisper FØRST — hvis det feiler vil vi
+      //    ikke laste opp og bruke R2-lagring unødvendig.
+      const transcription = await transcribeAudioWithWhisper({
+        buffer: file.buffer,
+        filename: `answer-${currentIdx}.${file.mimetype.split(";")[0].endsWith("webm") ? "webm" : "audio"}`,
+        mime: file.mimetype,
+        preferredLanguage: sess.language ?? "no",
+      });
+      if (isTranscriptionError(transcription)) {
+        res.status(502).json({
+          error: "transkripsjon_feilet",
+          detail: transcription.error,
+        });
+        return;
+      }
+      const transcript = transcription.text;
+      if (!transcript) {
+        res.status(400).json({
+          error: "Ingen tale registrert i opptaket. Prøv igjen.",
+        });
+        return;
+      }
+
+      // 2) Last opp lydfilen til R2 i bakgrunnen (best-effort — vi
+      //    fortsetter selv om opplastingen feiler så bruker ikke
+      //    blokkeres). Returnerer signed URL hvis vellykket.
+      let audioR2Key: string | null = null;
+      let audioUrl: string | null = null;
+      try {
+        const uploaded = await uploadTrainingMedia({
+          buffer: file.buffer,
+          mime: file.mimetype,
+          kind: "audio",
+          userId: session.userId,
+          sessionId: sess.id,
+        });
+        if (uploaded.ok) {
+          audioR2Key = uploaded.key;
+          audioUrl = uploaded.url;
+        }
+      } catch (err) {
+        console.warn("[interview-audio] R2 upload failed (non-fatal)", err);
+      }
+
+      // 3) Lagre brukerens svar (med transkripsjon + audio-meta)
+      await pool.query(
+        `INSERT INTO interview_messages (
+           session_id, role, content, question_idx,
+           audio_url, audio_r2_key, duration_ms, transcript_lang
+         ) VALUES ($1, 'answer', $2, $3, $4, $5, $6, $7)`,
+        [
+          sess.id,
+          transcript,
+          currentIdx,
+          audioUrl,
+          audioR2Key,
+          transcription.durationMs,
+          transcription.language,
+        ],
+      );
+
+      // 4) Hent CV + samtale-kontekst og kjør samme AI-feedback-logikk
+      const fullCv = await loadFullResume(pool, sess.resume_id, session.userId);
+      const messagesResult = await pool.query(
+        `SELECT role, category, content, question_idx
+           FROM interview_messages
+          WHERE session_id = $1
+          ORDER BY created_at ASC`,
+        [sess.id],
+      );
+      const conversation = messagesResult.rows
+        .map((m) => {
+          if (m.role === "question") return `[INTERVJUER]: ${m.content}`;
+          if (m.role === "answer") return `[KANDIDAT]: ${m.content}`;
+          return `[FEEDBACK]: ${m.content}`;
+        })
+        .join("\n\n");
+      const isLastQuestion = currentIdx + 1 >= totalQs;
+
+      try {
+        const ai = await callClaude({
+          system: [
+            "Du er en norsk intervju-coach. Kandidaten svarte med tale; vi har transkribert det.",
+            "Bemerk eksplisitt om svaret virker øvet, naturlig eller fragmentert.",
+            "Gi konstruktiv feedback på siste svar, deretter still neste spørsmål (eller avslutt).",
+            "",
+            "Returner KUN JSON i dette formatet:",
+            isLastQuestion
+              ? `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "isFinal": true}`
+              : `{"feedback": "kort feedback (2-3 setninger) på siste svar", "score": 0-10, "category": "behavioral|technical|competence|situational", "nextQuestion": "neste spørsmål", "isFinal": false}`,
+            "",
+            "Feedback skal være:",
+            "  • Konkret (peke på faktiske setninger)",
+            "  • Bygd på STAR-metoden",
+            "  • Vurdere taleflyt (svaret kommer fra audio-transkripsjon — kommenter naturlighet hvis relevant)",
+            "  • Foreslå EN forbedring, ikke en liste",
+            "Ingen markdown.",
+          ].join("\n"),
+          user: [
+            `STILLING: ${sess.job_title ?? ""}`,
+            `JOBBESKRIVELSE: ${sess.job_description}`,
+            fullCv ? `\nCV: ${summarizeResumeForAI(fullCv).slice(0, 1500)}` : "",
+            `\nINTERVJU-HISTORIKK:\n${conversation}`,
+            "",
+            `Spørsmål ${currentIdx + 1} av ${totalQs}. ${isLastQuestion ? "DETTE ER SISTE SVAR." : ""}`,
+            transcription.durationMs
+              ? `\nTaletid: ${(transcription.durationMs / 1000).toFixed(1)} sek`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          maxTokens: 1200,
+        });
+        const parsed = tryParseJson<{
+          feedback?: string;
+          score?: number;
+          category?: string;
+          nextQuestion?: string;
+          isFinal?: boolean;
+        }>(ai.text);
+
+        if (!parsed) {
+          res.status(502).json({ error: "Kunne ikke parse AI-respons" });
+          return;
+        }
+
+        await pool.query(
+          `INSERT INTO interview_messages (
+             session_id, role, content, question_idx,
+             feedback_score, tokens_input, tokens_output
+           ) VALUES ($1, 'feedback', $2, $3, $4, $5, $6)`,
+          [sess.id, parsed.feedback ?? "", currentIdx,
+           parsed.score ?? null, ai.inputTokens, ai.outputTokens],
+        );
+
+        const nextIdx = currentIdx + 1;
+        if (!isLastQuestion && parsed.nextQuestion) {
+          await pool.query(
+            `INSERT INTO interview_messages (session_id, role, category, content, question_idx)
+             VALUES ($1, 'question', $2, $3, $4)`,
+            [sess.id, parsed.category ?? "behavioral", parsed.nextQuestion, nextIdx],
+          );
+        }
+        await pool.query(
+          `UPDATE interview_sessions SET current_question_idx = $1, updated_at = NOW() WHERE id = $2`,
+          [nextIdx, sess.id],
+        );
+
+        res.json({
+          transcript,
+          durationMs: transcription.durationMs,
+          audioUrl,
+          feedback: parsed.feedback,
+          score: parsed.score,
+          questionIdx: nextIdx,
+          isFinal: isLastQuestion || !parsed.nextQuestion,
+          nextQuestion: parsed.nextQuestion,
+          nextCategory: parsed.category,
+        });
+      } catch (err) {
+        console.error("interview-session answer-audio error", err);
+        res.status(500).json({
+          error: "AI-feedback feilet",
+          detail: String((err as Error)?.message ?? err).slice(0, 200),
+        });
+      }
+    },
+  );
+
+  app.post("/api/interview-sessions/:id/complete", async (req, res) => {
+    const session = requireSession(req, res);
+    if (!session) return;
+    if (!enforceAiRateLimit(session.userId, res)) return;
+
+    const sessionResult = await pool.query(
+      `SELECT * FROM interview_sessions WHERE id = $1 AND user_id = $2`,
+      [req.params.id, session.userId],
+    );
+    if (!sessionResult.rowCount) {
+      res.status(404).json({ error: "Sesjon ikke funnet" });
+      return;
+    }
+    const sess = sessionResult.rows[0];
+
+    // Hent alle Q/A/feedback
+    const messages = await pool.query(
+      `SELECT role, content, feedback_score, question_idx FROM interview_messages
+        WHERE session_id = $1 ORDER BY created_at ASC`,
+      [sess.id],
+    );
+
+    const conversation = messages.rows
+      .map((m) => {
+        if (m.role === "question") return `Q${(m.question_idx ?? 0) + 1}: ${m.content}`;
+        if (m.role === "answer") return `Svar: ${m.content}`;
+        return `Feedback (${m.feedback_score}/10): ${m.content}`;
+      })
+      .join("\n\n");
+
+    // Generer samlet sammendrag
+    try {
+      const ai = await callClaude({
+        system: [
+          "Du er en norsk intervju-coach. Gi samlet vurdering av intervjutreningen.",
+          'Returner KUN JSON: {"overallScore": 0-100, "summary": "2-3 setninger", "strengths": ["..","..",".."], "improvements": ["..","..",".."]}',
+          "Ingen markdown.",
+        ].join("\n"),
+        user: `STILLING: ${sess.job_title ?? ""}\n\nINTERVJU:\n${conversation}\n\nGi samlet vurdering, 3 styrker, 3 forbedrings-områder.`,
+        maxTokens: 1500,
+      });
+      const parsed = tryParseJson<{
+        overallScore?: number;
+        summary?: string;
+        strengths?: string[];
+        improvements?: string[];
+      }>(ai.text);
+
+      const overallScore = typeof parsed?.overallScore === "number"
+        ? Math.max(0, Math.min(100, parsed.overallScore))
+        : null;
+
+      await pool.query(
+        `UPDATE interview_sessions
+            SET status = 'completed',
+                overall_score = $1,
+                overall_feedback = $2,
+                strengths = $3,
+                improvement_areas = $4,
+                completed_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $5`,
+        [
+          overallScore,
+          parsed?.summary ?? null,
+          parsed?.strengths ?? [],
+          parsed?.improvements ?? [],
+          sess.id,
+        ],
+      );
+
+      res.json({
+        sessionId: sess.id,
+        overallScore,
+        summary: parsed?.summary,
+        strengths: parsed?.strengths ?? [],
+        improvements: parsed?.improvements ?? [],
+      });
+    } catch (err) {
+      console.error("interview-session complete error", err);
+      res.status(500).json({
+        error: "Kunne ikke fullføre vurdering",
+        detail: String((err as Error)?.message ?? err).slice(0, 200),
+      });
+    }
+  });
+
+  app.get("/api/interview-sessions/:id", async (req, res) => {
+    const session = requireSession(req, res);
+    if (!session) return;
+    const sessionResult = await pool.query(
+      `SELECT * FROM interview_sessions WHERE id = $1 AND user_id = $2`,
+      [req.params.id, session.userId],
+    );
+    if (!sessionResult.rowCount) {
+      res.status(404).json({ error: "Sesjon ikke funnet" });
+      return;
+    }
+    const sess = sessionResult.rows[0];
+    const messages = await pool.query(
+      `SELECT id, role, category, content, question_idx, feedback_score, created_at
+         FROM interview_messages
+        WHERE session_id = $1
+        ORDER BY created_at ASC`,
+      [sess.id],
+    );
+    res.json({
+      session: {
+        id: sess.id,
+        resumeId: sess.resume_id,
+        jobTitle: sess.job_title,
+        company: sess.company,
+        status: sess.status,
+        currentQuestionIdx: sess.current_question_idx,
+        totalQuestions: sess.total_questions,
+        overallScore: sess.overall_score,
+        overallFeedback: sess.overall_feedback,
+        strengths: sess.strengths ?? [],
+        improvementAreas: sess.improvement_areas ?? [],
+        createdAt: toIso(sess.created_at),
+        completedAt: sess.completed_at ? toIso(sess.completed_at) : null,
+      },
+      messages: messages.rows.map((m) => ({
+        id: m.id,
+        role: m.role,
+        category: m.category,
+        content: m.content,
+        questionIdx: m.question_idx,
+        feedbackScore: m.feedback_score,
+        createdAt: toIso(m.created_at),
+      })),
+    });
+  });
+
+  app.get("/api/interview-sessions", async (req, res) => {
+    const session = requireSession(req, res);
+    if (!session) return;
+    const r = await pool.query(
+      `SELECT id, job_title, company, status, current_question_idx,
+              total_questions, overall_score, created_at, completed_at
+         FROM interview_sessions
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 50`,
+      [session.userId],
+    );
+    res.json(
+      r.rows.map((s) => ({
+        id: s.id,
+        jobTitle: s.job_title,
+        company: s.company,
+        status: s.status,
+        progress: `${s.current_question_idx}/${s.total_questions}`,
+        overallScore: s.overall_score,
+        createdAt: toIso(s.created_at),
+        completedAt: s.completed_at ? toIso(s.completed_at) : null,
+      })),
+    );
+  });
+
+  app.delete("/api/interview-sessions/:id", async (req, res) => {
+    const session = requireSession(req, res);
+    if (!session) return;
+    const r = await pool.query(
+      `DELETE FROM interview_sessions WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [req.params.id, session.userId],
+    );
+    if (!r.rowCount) {
+      res.status(404).json({ error: "Sesjon ikke funnet" });
+      return;
+    }
+    res.json({ ok: true });
   });
 
   // ── Cover Letter Library ──────────────────────────────────────────
