@@ -9,8 +9,9 @@ import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import WorkflowRunHistoryDialog from './WorkflowRunHistoryDialog';
 import WorkflowScheduleDialog from './WorkflowScheduleDialog';
+import WorkflowTriggerDialog from './WorkflowTriggerDialog';
 import { Snackbar } from '@mui/material';
-import { Schedule as ScheduleIcon } from '@mui/icons-material';
+import { Schedule as ScheduleIcon, Bolt as BoltIcon } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
@@ -557,8 +558,23 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
   const [showRunHistory, setShowRunHistory] = useState(false);
   const [snackbar, setSnackbar] = useState<{ msg: string; severity: 'success' | 'info' | 'warning' | 'error' } | null>(null);
 
-  // Slice 9X.79 — planleggings-dialog
+  // Slice 9X.79 — planleggings- og trigger-dialog
   const [scheduleDialogForWorkflow, setScheduleDialogForWorkflow] = useState<{ id: string; name: string } | null>(null);
+  const [triggerDialogForWorkflow, setTriggerDialogForWorkflow] = useState<{ id: string; name: string } | null>(null);
+
+  // Slice 9X.79 — trigger-counts per workflow (vises som pille på kortet)
+  const { data: triggersData } = useQuery({
+    queryKey: ['workflow-triggers', userId],
+    queryFn: async () => apiRequest(`/api/orchestration/workflows/${userId}/triggers`),
+    enabled: !!userId && userId !== 'anonymous',
+  });
+  const triggerCountByWorkflow = useMemo(() => {
+    const map: Record<string, number> = {};
+    (triggersData?.data || []).forEach((t: any) => {
+      if (t.enabled) map[t.workflow_id] = (map[t.workflow_id] || 0) + 1;
+    });
+    return map;
+  }, [triggersData]);
 
   // Slice 9X.79 — eksisterende planleggings-rader (vises som pille på kortet)
   const { data: schedulesData } = useQuery({
@@ -1267,6 +1283,28 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 }}
                               />
                             )}
+                            {/* Slice 9X.79 — trigger-pille */}
+                            {triggerCountByWorkflow[workflow.id] > 0 && (
+                              <Tooltip title="Auto-startet av events">
+                                <Chip
+                                  size="small"
+                                  icon={<BoltIcon sx={{ fontSize: '0.85rem' }} />}
+                                  label={`${triggerCountByWorkflow[workflow.id]} trigger`}
+                                  onClick={() => setTriggerDialogForWorkflow({ id: workflow.id, name: workflow.name })}
+                                  sx={{
+                                    height: 24,
+                                    fontSize: '0.7rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    bgcolor: 'rgba(245,158,11,0.12)',
+                                    border: '1px solid rgba(245,158,11,0.32)',
+                                    color: '#f59e0b',
+                                    '& .MuiChip-icon': { color: '#f59e0b' },
+                                  }}
+                                />
+                              </Tooltip>
+                            )}
+
                             {/* Slice 9X.79 — planleggings-pille */}
                             {scheduleByWorkflow[workflow.id]?.enabled && (() => {
                               const sch = scheduleByWorkflow[workflow.id];
@@ -1405,6 +1443,22 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 {runningWorkflows.has(workflow.id) ? 'Kjører' : 'Start'}
                               </Button>
                             </Box>
+                          </Tooltip>
+
+                          {/* Slice 9X.79 — Trigger-knapp (event-baserte) */}
+                          <Tooltip title={triggerCountByWorkflow[workflow.id] > 0 ? 'Endre auto-triggere' : 'Auto-start ved events'}>
+                            <IconButton
+                              size="small"
+                              onClick={() => setTriggerDialogForWorkflow({ id: workflow.id, name: workflow.name })}
+                              sx={{
+                                color: '#f59e0b',
+                                bgcolor: 'rgba(245,158,11,0.10)',
+                                border: '1px solid rgba(245,158,11,0.22)',
+                                '&:hover': { bgcolor: 'rgba(245,158,11,0.20)' },
+                              }}
+                            >
+                              <BoltIcon fontSize="small" />
+                            </IconButton>
                           </Tooltip>
 
                           {/* Slice 9X.79 — Planlegg-knapp */}
@@ -1828,6 +1882,18 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
           userId={userId || ''}
           workflowId={scheduleDialogForWorkflow.id}
           workflowName={scheduleDialogForWorkflow.name}
+          profession={profession}
+        />
+      )}
+
+      {/* Slice 9X.79 — Trigger-dialog */}
+      {triggerDialogForWorkflow && (
+        <WorkflowTriggerDialog
+          open={!!triggerDialogForWorkflow}
+          onClose={() => setTriggerDialogForWorkflow(null)}
+          userId={userId || ''}
+          workflowId={triggerDialogForWorkflow.id}
+          workflowName={triggerDialogForWorkflow.name}
           profession={profession}
         />
       )}

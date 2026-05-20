@@ -25159,6 +25159,28 @@ app.post("/api/photographer/projects", async (req, res) => {
     }
 
     res.status(201).json({ id: newProjectId });
+
+    // Slice 9X.79 — Event-trigger: nytt prosjekt opprettet
+    void (async () => {
+      try {
+        const { fireWorkflowTrigger } = await import('./workflow-triggers.js');
+        await fireWorkflowTrigger({
+          pool,
+          eventType: 'project.created',
+          userId: photographerId,
+          payload: {
+            project_id: newProjectId,
+            project_type: projectType || null,
+            client_id: effectiveClientId,
+            client_email: trimmedEmail || null,
+            client_name: trimmedName || null,
+            from_submission: !!submissionId,
+          },
+        });
+      } catch (e: any) {
+        console.warn('[workflow-triggers] project.created fire failed:', e.message);
+      }
+    })();
   } catch (err) {
     console.error('[photographer-projects] create failed:', err);
     res.status(500).json({ error: 'create_project_failed' });
@@ -57431,6 +57453,30 @@ app.post("/api/submissions", async (req, res) => {
         priority: priority || 'medium',
       },
     });
+
+    // Slice 9X.79 — Event-triggers: fire-and-forget, blokkerer ikke responsen
+    if (vendorId) {
+      void (async () => {
+        try {
+          const { fireWorkflowTrigger } = await import('./workflow-triggers.js');
+          await fireWorkflowTrigger({
+            pool,
+            eventType: 'submission.received',
+            userId: vendorId,
+            payload: {
+              submission_id: String(submission.id),
+              project_type: projectType || null,
+              budget: budget || null,
+              priority: priority || 'medium',
+              client_email: email,
+              client_name: name,
+            },
+          });
+        } catch (e: any) {
+          console.warn('[workflow-triggers] submission.received fire failed:', e.message);
+        }
+      })();
+    }
 
     res.status(201).json({
       success: true,
@@ -96005,6 +96051,57 @@ app.delete(
     try {
       const { deleteSchedule } = await import('./workflow-scheduler.js');
       await deleteSchedule(pool, req.params.userId, req.params.workflowId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+// Slice 9X.79 — Event-baserte triggere
+app.get(
+  "/api/orchestration/workflows/:userId/triggers",
+  async (req, res) => {
+    try {
+      const { listTriggers, SUPPORTED_EVENTS } = await import('./workflow-triggers.js');
+      const rows = await listTriggers(pool, req.params.userId);
+      res.json({ success: true, data: rows, supportedEvents: SUPPORTED_EVENTS });
+    } catch (err: any) {
+      if (err?.code === '42P01') {
+        const { SUPPORTED_EVENTS } = await import('./workflow-triggers.js');
+        return res.json({ success: true, data: [], supportedEvents: SUPPORTED_EVENTS });
+      }
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.put(
+  "/api/orchestration/workflows/:userId/:workflowId/triggers/:eventType",
+  async (req, res) => {
+    try {
+      const { upsertTrigger } = await import('./workflow-triggers.js');
+      const row = await upsertTrigger(pool, {
+        workflowId: req.params.workflowId,
+        userId: req.params.userId,
+        profession: req.body?.profession,
+        eventType: req.params.eventType as any,
+        conditions: req.body?.conditions || {},
+        enabled: req.body?.enabled !== false,
+      });
+      res.json({ success: true, data: row });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.delete(
+  "/api/orchestration/workflows/:userId/:workflowId/triggers/:eventType",
+  async (req, res) => {
+    try {
+      const { deleteTrigger } = await import('./workflow-triggers.js');
+      await deleteTrigger(pool, req.params.userId, req.params.workflowId, req.params.eventType as any);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
