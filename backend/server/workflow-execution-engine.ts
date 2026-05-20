@@ -89,43 +89,115 @@ const aiPlaceholderHandler = (featureName: string): ActionHandler => async (ctx)
   };
 };
 
+// Slice 9X.79 — hjelper for å trekke ut data fra både event-payload og
+// direkte context-keys, slik at event-trigget run kan auto-fylle handlers.
+function pickContext(ctx: ActionHandlerContext, ...keys: string[]): string | null {
+  const payload = (ctx.workflowContext?.event_payload as Record<string, any>) || {};
+  for (const key of keys) {
+    if (payload[key] != null && payload[key] !== '') return String(payload[key]);
+    if ((ctx.workflowContext as any)?.[key] != null && (ctx.workflowContext as any)[key] !== '') {
+      return String((ctx.workflowContext as any)[key]);
+    }
+  }
+  return null;
+}
+
 // Liste over actions vi har bygget faktiske handlers for
 function registerDefaultActions() {
-  // Project-CRUD: bruker eksisterende /api/photographer/projects-endepoint
+  // Project-CRUD: bruker korrekt projects-tabell (ikke photographer_projects)
+  // og leser fra event_payload når trigget av submission.received
   registerAction({
     id: 'create-project',
     name: 'Opprett prosjekt',
     mode: 'auto',
     handler: async (ctx) => {
-      const title = ctx.workflowContext.projectTitle || `Nytt prosjekt ${new Date().toISOString().slice(0, 10)}`;
+      const eventPayload = (ctx.workflowContext?.event_payload as Record<string, any>) || {};
+      const title = pickContext(ctx, 'project_title', 'projectTitle', 'client_name', 'clientName')
+        || `Auto-prosjekt ${new Date().toISOString().slice(0, 10)}`;
+      const clientName = pickContext(ctx, 'client_name', 'clientName');
+      const clientId   = pickContext(ctx, 'client_id', 'clientId');
+      const projectType = pickContext(ctx, 'project_type', 'projectType') || 'wedding';
+
       try {
         const result = await ctx.pool.query(
-          `INSERT INTO photographer_projects (photographer_id, title, status, created_at)
-           VALUES ($1, $2, 'draft', NOW()) RETURNING id, title`,
-          [ctx.userId, title],
+          `INSERT INTO projects
+             (user_id, title, name, profession, client_id, client_name,
+              project_type, status, phase, project_data,
+              created_at, updated_at)
+           VALUES ($1, $2, $2, COALESCE($3, 'photographer'),
+                   $4, $5, $6, 'active', 'planning',
+                   $7::jsonb, NOW()::text, NOW()::text)
+           RETURNING id, title`,
+          [
+            ctx.userId,
+            title,
+            (ctx.workflowContext?.profession as string) || null,
+            clientId || null,
+            clientName || null,
+            projectType,
+            JSON.stringify({ source: 'smartflyt', trigger: ctx.workflowContext?.trigger || 'manual', ...eventPayload }),
+          ],
         );
-        return { completed: true, data: { projectId: result.rows[0].id, title: result.rows[0].title } };
+        return {
+          completed: true,
+          data: {
+            projectId: result.rows[0].id,
+            title: result.rows[0].title,
+            usedEventPayload: ctx.workflowContext?.trigger === 'event',
+          },
+        };
       } catch (err: any) {
         return { completed: false, error: err.message };
       }
     },
   });
 
-  // Client-CRUD
+  // Client-CRUD: bruker korrekt clients-tabell med photographer_id
   registerAction({
     id: 'create-client',
     name: 'Opprett klient',
     mode: 'auto',
     handler: async (ctx) => {
-      const name = ctx.workflowContext.clientName || 'Ny klient';
-      const email = ctx.workflowContext.clientEmail || null;
+      const email = pickContext(ctx, 'client_email', 'clientEmail', 'email');
+      if (!email) {
+        // Uten email kan vi ikke opprette klient — engine markerer som awaiting_manual
+        // så Stine kan fylle inn selv via UI.
+        return {
+          completed: false,
+          requiresManualConfirmation: true,
+          data: {
+            note: 'Mangler klient-e-post — opprett manuelt via Kontakt-modulen',
+            actionUrl: '/contacts/new',
+          },
+        };
+      }
+      const fullName = pickContext(ctx, 'client_name', 'clientName') || '';
+      const [first, ...rest] = fullName.split(' ').filter(Boolean);
+      const last = rest.join(' ');
+      const phone = pickContext(ctx, 'client_phone', 'clientPhone');
+
       try {
         const result = await ctx.pool.query(
-          `INSERT INTO photographer_clients (photographer_id, name, email, created_at)
-           VALUES ($1, $2, $3, NOW()) RETURNING id, name`,
-          [ctx.userId, name, email],
+          `INSERT INTO clients
+             (photographer_id, email, first_name, last_name, phone,
+              created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+           ON CONFLICT (photographer_id, email) DO UPDATE
+             SET first_name = COALESCE(NULLIF(EXCLUDED.first_name, ''), clients.first_name),
+                 last_name  = COALESCE(NULLIF(EXCLUDED.last_name,  ''), clients.last_name),
+                 phone      = COALESCE(EXCLUDED.phone, clients.phone),
+                 updated_at = NOW()
+           RETURNING id, email, (xmax = 0) AS was_inserted`,
+          [ctx.userId, email.toLowerCase(), first || '', last || '', phone || null],
         );
-        return { completed: true, data: { clientId: result.rows[0].id, name: result.rows[0].name } };
+        return {
+          completed: true,
+          data: {
+            clientId: result.rows[0].id,
+            email: result.rows[0].email,
+            wasInserted: result.rows[0].was_inserted === true,
+          },
+        };
       } catch (err: any) {
         return { completed: false, error: err.message };
       }
@@ -134,19 +206,43 @@ function registerDefaultActions() {
 
   registerAction({ id: 'new-client', name: 'Ny klient', mode: 'auto', handler: ACTION_REGISTRY.get('create-client')!.handler });
 
-  // Send e-post: peker til Gmail-flyt (krever Stine bekrefter mottager)
+  // Send e-post: peker til Gmail-flyt med forhåndsfylte felter når mulig
   registerAction({
     id: 'send-client-email',
     name: 'Send e-post til klient',
     mode: 'manual',
-    handler: async (ctx) => ({
-      completed: false,
-      requiresManualConfirmation: true,
-      data: {
-        note: 'Åpne e-post-modulen for å sende. Vi husker at dette steget skal gjøres.',
-        actionUrl: '/email-center',
-      },
-    }),
+    handler: async (ctx) => {
+      const toEmail = pickContext(ctx, 'client_email', 'clientEmail', 'email');
+      const clientName = pickContext(ctx, 'client_name', 'clientName');
+      const eventType = (ctx.workflowContext?.event_type as string) || null;
+
+      // Smart subject basert på event-type
+      let suggestedSubject = 'Hei fra ' + (ctx.workflowContext?.profession || 'CreatorHub');
+      if (eventType === 'submission.received') {
+        suggestedSubject = `Takk for forespørselen${clientName ? ', ' + clientName : ''}!`;
+      } else if (eventType === 'project.status_changed') {
+        suggestedSubject = 'Oppdatering på prosjektet ditt';
+      } else if (eventType === 'invoice.paid') {
+        suggestedSubject = 'Takk for betalingen — bekreftelse';
+      }
+
+      const params = new URLSearchParams();
+      if (toEmail) params.set('to', toEmail);
+      params.set('subject', suggestedSubject);
+      const actionUrl = `/email-center${params.toString() ? '?' + params.toString() : ''}`;
+
+      return {
+        completed: false,
+        requiresManualConfirmation: true,
+        data: {
+          note: toEmail
+            ? `Pre-fylt e-post til ${toEmail} — gå gjennom og send`
+            : 'Åpne e-post-modulen for å velge mottaker og sende',
+          actionUrl,
+          prefill: { to: toEmail, subject: suggestedSubject, clientName },
+        },
+      };
+    },
   });
 
   // Drive-upload: peker til Drive-flyt
