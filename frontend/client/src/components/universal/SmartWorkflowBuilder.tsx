@@ -631,7 +631,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
             }
           });
 
-          if (['completed', 'failed', 'partial'].includes(run.status)) {
+          if (['completed', 'failed', 'partial', 'cancelled'].includes(run.status)) {
             clearInterval(pollInterval);
             setRunningWorkflows((prev) => {
               const updated = new Set(prev);
@@ -645,6 +645,8 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
               setSnackbar({ msg: `"${workflow.name}" ferdig — ${done}/${steps.length} steg`, severity: 'success' });
             } else if (run.status === 'failed') {
               setSnackbar({ msg: `"${workflow.name}" feilet (${failed} feilet)`, severity: 'error' });
+            } else if (run.status === 'cancelled') {
+              // Cancel-knappen viste allerede sin egen snackbar — ikke duplikat
             } else {
               setSnackbar({ msg: `"${workflow.name}" delvis ferdig — ${awaiting} venter manuell`, severity: 'warning' });
             }
@@ -1255,6 +1257,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 completed: { c: '#10b981', bg: 'rgba(16,185,129,0.10)', bd: 'rgba(16,185,129,0.32)', label: '✓ Sist OK' },
                                 partial:   { c: '#f59e0b', bg: 'rgba(245,158,11,0.10)', bd: 'rgba(245,158,11,0.32)', label: '⏳ Sist delvis' },
                                 failed:    { c: '#ef4444', bg: 'rgba(239,68,68,0.10)', bd: 'rgba(239,68,68,0.32)', label: '✗ Sist feilet' },
+                                cancelled: { c: '#6b7280', bg: 'rgba(107,114,128,0.12)', bd: 'rgba(107,114,128,0.32)', label: '⊘ Sist avbrutt' },
                               };
                               const conf = colorMap[last.status] || { c: '#6b7280', bg: 'rgba(107,114,128,0.10)', bd: 'rgba(107,114,128,0.32)', label: last.status };
                               const diffMin = Math.floor((Date.now() - new Date(last.created_at).getTime()) / 60_000);
@@ -1283,6 +1286,49 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                         </Box>
 
                         <Stack direction="row" spacing={1}>
+                          {/* Slice 9X.79 — Stopp-knapp synlig når runet kjører */}
+                          {runningWorkflows.has(workflow.id) && workflowRuns[workflow.id]?.runId && (
+                            <Tooltip title="Avbryt kjørende workflow (resterende steg blir skipped)">
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={async () => {
+                                  const runId = workflowRuns[workflow.id]?.runId;
+                                  if (!runId) return;
+                                  try {
+                                    const res: any = await apiRequest(
+                                      `/api/orchestration/workflows/runs/${runId}/cancel`,
+                                      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+                                    );
+                                    if (res?.success) {
+                                      setRunningWorkflows((prev) => {
+                                        const next = new Set(prev);
+                                        next.delete(workflow.id);
+                                        return next;
+                                      });
+                                      setSnackbar({
+                                        msg: res.alreadyDone ? 'Runet var allerede ferdig' : `"${workflow.name}" avbrutt`,
+                                        severity: 'warning',
+                                      });
+                                      queryClient.invalidateQueries({ queryKey: ['workflow-recent-runs', userId] });
+                                    }
+                                  } catch (e: any) {
+                                    setSnackbar({ msg: e?.message || 'Kunne ikke avbryte', severity: 'error' });
+                                  }
+                                }}
+                                sx={{
+                                  minWidth: 'auto',
+                                  px: 2,
+                                  borderColor: '#ef4444',
+                                  color: '#ef4444',
+                                  '&:hover': { borderColor: '#dc2626', bgcolor: 'rgba(239,68,68,0.08)' },
+                                }}
+                              >
+                                Stopp
+                              </Button>
+                            </Tooltip>
+                          )}
+
                           <Tooltip title={runningWorkflows.has(workflow.id) ? 'Workflow kjører...' : 'Start workflow'}>
                             <Box>
                               <Button
@@ -1365,6 +1411,8 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                             statusBadge = { label: '✗ Feilet', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
                           } else if (liveStatus === 'awaiting_manual') {
                             statusBadge = { label: '👆 Manuelt', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' };
+                          } else if (liveStatus === 'skipped') {
+                            statusBadge = { label: '⊘ Hoppet over', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' };
                           } else if (executionMode === 'auto') {
                             statusBadge = { label: '🤖 Auto', color: '#10b981', bg: 'rgba(16,185,129,0.10)' };
                           } else if (executionMode === 'ai') {

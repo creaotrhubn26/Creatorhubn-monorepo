@@ -53,6 +53,8 @@ const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }>
   failed: { label: '✗ Feilet', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
   running: { label: '⏳ Kjører', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
   queued: { label: '⏸ I kø', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
+  cancelled: { label: '⊘ Avbrutt', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
+  skipped: { label: '⊘ Hoppet over', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
 };
 
 const WorkflowRunHistoryDialog: React.FC<Props> = ({ open, onClose, userId }) => {

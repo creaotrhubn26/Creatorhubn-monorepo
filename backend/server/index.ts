@@ -95949,6 +95949,20 @@ app.post(
   },
 );
 
+// Slice 9X.79 — Avbryt en kjørende run
+app.post(
+  "/api/orchestration/workflows/runs/:runId/cancel",
+  async (req, res) => {
+    try {
+      const { cancelRun } = await import('./workflow-execution-engine.js');
+      const result = await cancelRun(pool, req.params.runId);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  },
+);
+
 // Slice 9X.79 — Hent run-historikk for en bruker
 app.get(
   "/api/orchestration/workflows/:userId/runs",

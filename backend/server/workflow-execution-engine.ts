@@ -344,6 +344,21 @@ async function executeWorkflowRun(runId: string, opts: ExecuteOptions): Promise<
   let failed = 0;
 
   for (let i = 0; i < opts.steps.length; i++) {
+    // Slice 9X.79 — sjekk om brukeren har trykket "Stopp" siden forrige steg
+    const cancelCheck = await opts.pool.query(
+      `SELECT status FROM workflow_runs WHERE id = $1`,
+      [runId],
+    );
+    if (cancelCheck.rows[0]?.status === 'cancelled') {
+      // Marker alle gjenværende pending-steg som skipped og avslutt
+      await opts.pool.query(
+        `UPDATE workflow_run_steps SET status = 'skipped', completed_at = NOW()
+           WHERE run_id = $1 AND status = 'pending'`,
+        [runId],
+      );
+      return;
+    }
+
     const step = opts.steps[i];
     const def = ACTION_REGISTRY.get(step.action_id);
 
@@ -453,6 +468,37 @@ export async function confirmManualStep(pool: Pool, runId: string, stepIndex: nu
       [runId],
     );
   }
+}
+
+/**
+ * Slice 9X.79 — Avbryt en kjørende run. Markerer runet som 'cancelled'
+ * slik at executeWorkflowRun-loopen avslutter ved neste polling-sjekk.
+ * Steg som ikke har startet markeres 'skipped'. Steget som kjører
+ * akkurat nå får lov til å fullføre naturlig (vi kan ikke kille det
+ * mid-handler), men nye steg blir ikke startet.
+ */
+export async function cancelRun(pool: Pool, runId: string): Promise<{ alreadyDone: boolean }> {
+  await ensureSchema(pool);
+  const cur = await pool.query(
+    `SELECT status FROM workflow_runs WHERE id = $1`,
+    [runId],
+  );
+  if (cur.rows.length === 0) throw new Error('run not found');
+  const currentStatus = cur.rows[0].status;
+  if (['completed', 'failed', 'partial', 'cancelled'].includes(currentStatus)) {
+    return { alreadyDone: true };
+  }
+
+  await pool.query(
+    `UPDATE workflow_runs SET status = 'cancelled', completed_at = NOW() WHERE id = $1`,
+    [runId],
+  );
+  await pool.query(
+    `UPDATE workflow_run_steps SET status = 'skipped', completed_at = NOW()
+       WHERE run_id = $1 AND status = 'pending'`,
+    [runId],
+  );
+  return { alreadyDone: false };
 }
 
 /**
