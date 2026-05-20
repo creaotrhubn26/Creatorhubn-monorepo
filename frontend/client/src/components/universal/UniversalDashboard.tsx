@@ -1464,23 +1464,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   }, [profession]);
 
   // Slice 9X.77 — individual-onboarding-wizard (solo-brukere)
+  // NB: useEffect-en som leser onboardingProfile er flyttet til ETTER
+  // onboardingProfile-deklarasjonen for å unngå TDZ-feil i prod-bundle
+  // (dependency-array-evaluering før useQuery-resultatet er deklarert).
   const [showIndividualOnboarding, setShowIndividualOnboarding] = useState(false);
-  useEffect(() => {
-    // Auto-trigger for solo-brukere som ikke er enterprise
-    if (profession === 'enterprise') return;
-    try {
-      const completed = window.localStorage.getItem('individual-onboarding-completed');
-      if (completed) return;
-      // Sjekk om onboardingProfile har businessName — hvis ja, anta at de er ferdig
-      if ((onboardingProfile as any)?.businessName) {
-        window.localStorage.setItem('individual-onboarding-completed', '1');
-        return;
-      }
-      // Vent 2s for å unngå konflikt med team-onboarding-trigger
-      const t = setTimeout(() => setShowIndividualOnboarding(true), 2000);
-      return () => clearTimeout(t);
-    } catch {}
-  }, [profession, onboardingProfile]);
 
   // Slice 9X.74 — lytt på inquiry → split sheet-event
   useEffect(() => {
@@ -2136,6 +2123,23 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     queryFn: () => apiRequest(`/api/onboarding/profile/${userId}`),
     enabled: !!userId && userId !== 'guest'
 });
+
+  // Slice 9X.77 — individual-onboarding-wizard auto-trigger (flyttet hit
+  // fra rundt linje 1466 for å unngå TDZ — leser onboardingProfile som
+  // deklareres rett over).
+  useEffect(() => {
+    if (profession === 'enterprise') return;
+    try {
+      const completed = window.localStorage.getItem('individual-onboarding-completed');
+      if (completed) return;
+      if ((onboardingProfile as any)?.businessName) {
+        window.localStorage.setItem('individual-onboarding-completed', '1');
+        return;
+      }
+      const t = setTimeout(() => setShowIndividualOnboarding(true), 2000);
+      return () => clearTimeout(t);
+    } catch {}
+  }, [profession, onboardingProfile]);
 
   // Fetch business branding settings for real-time updates
   const { data: brandingData } = useQuery({
