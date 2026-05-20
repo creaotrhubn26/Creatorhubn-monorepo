@@ -33,6 +33,7 @@ import {
   LocationOn as LocationIcon,
   Flag as FlagIcon,
   PlayCircleOutline as PlayCircleIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -128,9 +129,13 @@ interface Props {
   /** Når satt: viser "Tren på intervju"-knapp på hvert kort som
    *  åpner Mock Interview pre-koblet til søknaden. */
   onPracticeInterview?: (app: JobApp) => void;
+  /** Når satt: viser "Importer fra arbeidsplassen.no"-knapp */
+  onImportFromArbeidsplassen?: () => void;
 }
 
-export const JobApplicationKanban: React.FC<Props> = ({ onAddNew, onCardClick, onPracticeInterview }) => {
+export const JobApplicationKanban: React.FC<Props> = ({
+  onAddNew, onCardClick, onPracticeInterview, onImportFromArbeidsplassen,
+}) => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [showWithdrawn, setShowWithdrawn] = useState(false);
@@ -246,22 +251,34 @@ export const JobApplicationKanban: React.FC<Props> = ({ onAddNew, onCardClick, o
             />
           )}
         </Stack>
-        {onAddNew && (
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={onAddNew}
-            sx={{
-              bgcolor: '#F5B82E',
-              '&:hover': { bgcolor: '#D49B1A' },
-              color: '#1F2937',
-              fontWeight: 700,
-            }}
-          >
-            Ny søknad
-          </Button>
-        )}
+        <Stack direction="row" spacing={1}>
+          {onImportFromArbeidsplassen && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DownloadIcon />}
+              onClick={onImportFromArbeidsplassen}
+            >
+              Importer fra NAV
+            </Button>
+          )}
+          {onAddNew && (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={onAddNew}
+              sx={{
+                bgcolor: '#F5B82E',
+                '&:hover': { bgcolor: '#D49B1A' },
+                color: '#1F2937',
+                fontWeight: 700,
+              }}
+            >
+              Ny søknad
+            </Button>
+          )}
+        </Stack>
       </Stack>
 
       <DragDropContext onDragEnd={handleDragEnd}>

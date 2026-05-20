@@ -312,7 +312,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
   const [reviewSubmitLoading, setReviewSubmitLoading] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewForm, setReviewForm] = useState({
-    rating: 5,
+    rating: 0,
     title: '',
     comment: '',
     userName: '',
@@ -325,15 +325,15 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       id: 'next-role',
       name: 'NextRole',
       category: 'Karriere',
-      rating: 4.8,
-      reviews: 127,
+      rating: 0,
+      reviews: 0,
       description: 'Å søke jobb har aldri vært enklere.',
       longDescription:
         'AI-drevet CV-bygger og jobbsøk-pakke på norsk. 15 maler, 8 fargeskjemaer, AI-assistert skriving (Claude), PDF-import, GitHub-import, ATS-optimalisering, søknadsbrev, intervjuforberedelse, oversettelse til engelsk, offentlig CV-deling, versjonshistorikk. Bygget av CreatorHub for norske jobbsøkere.',
       featured: true,
-      trending: true,
-      downloadCount: 1247,
-      monthlyGrowth: 84,
+      trending: false,
+      downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
         { icon: <DocumentIcon />, text: '15 profesjonelle maler + 8 farger' },
         { icon: <AIIcon />, text: 'AI-CV: import, omskriv, oversett' },
@@ -409,13 +409,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       id: 'portfolio-pro',
       name: 'Portfolio Pro',
       category: 'Showcase',
-      rating: 4.8,
-      reviews: 1823,
+      rating: 0,
+      reviews: 0,
       description: 'Imponerende porteføljer som konverterer',
       longDescription: 'Bygget for kreative fagfolk. Vis frem dine beste prosjekter med moderne design og interaktive elementer.',
-      trending: true,
-      downloadCount: 98000,
-      monthlyGrowth: 22,
+      trending: false,
+      downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
         { icon: <DocumentIcon />, text: 'Responsivt design' },
         { icon: <AIIcon />, text: 'SEO-optimalisert' },
@@ -432,12 +432,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       id: 'contract-genius',
       name: 'Contract Genius',
       category: 'Legal',
-      rating: 4.7,
-      reviews: 956,
+      rating: 0,
+      reviews: 0,
       description: 'Automatiserte juridiske avtaler',
       longDescription: 'Opprett profesjonelle kontrakter på minutter. Maler for alle situasjoner, inkludert e‑signering.',
-      downloadCount: 45000,
-      monthlyGrowth: 8,
+      downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
         { icon: <DocumentIcon />, text: 'Avtalmaler' },
         { icon: <AIIcon />, text: 'E-signering' },
@@ -486,13 +486,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       id: 'invoice-pro',
       name: 'Invoice Pro',
       category: 'Finance',
-      rating: 4.9,
-      reviews: 3210,
+      rating: 0,
+      reviews: 0,
       description: 'Profesjonelle fakturaer på sekunder',
       longDescription: 'Effektiviser fakturering med automatisk sporing, påminnelser og integrasjoner med regnskapssystemer.',
       featured: true,
-      downloadCount: 156000,
-      monthlyGrowth: 12,
+      downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
         { icon: <DocumentIcon />, text: 'Automatisk fakturering' },
         { icon: <AnalyzeIcon />, text: 'Betalingssporing' },
@@ -508,13 +508,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       id: 'client-management',
       name: 'Client Hub',
       category: 'Business',
-      rating: 4.8,
-      reviews: 1547,
+      rating: 0,
+      reviews: 0,
       description: 'Alt-i-ett klientadministrasjon',
       longDescription: 'Administrer alle klientinteraksjoner på ett sted: e-post, avtaler, prosjekter og betalinger.',
-      trending: true,
-      downloadCount: 87000,
-      monthlyGrowth: 18,
+      trending: false,
+      downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
         { icon: <DocumentIcon />, text: 'CRM-system' },
         { icon: <AIIcon />, text: 'Automatisering' },
@@ -530,12 +530,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       id: 'time-tracker',
       name: 'Time Tracker',
       category: 'Productivity',
-      rating: 4.6,
-      reviews: 1102,
+      rating: 0,
+      reviews: 0,
       description: 'Tidsregistrering og timeadministrasjon',
       longDescription: 'Spor timer automatisk, generer timesedler og analyser tidsbruk – integrert med prosjekter.',
-      downloadCount: 65000,
-      monthlyGrowth: 25,
+      downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
         { icon: <DocumentIcon />, text: 'Automatisk sporing' },
         { icon: <AnalyzeIcon />, text: 'Timesedler' },
@@ -551,13 +551,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       id: 'role-room',
       name: 'The Role Room',
       category: 'Business',
-      rating: 4.9,
-      reviews: 412,
+      rating: 0,
+      reviews: 0,
       description: 'Casting, crew & produksjonsplanlegging',
       longDescription: 'Komplett casting-system for film, TV og teater. Administrer roller, kandidater, crew, tidsplaner og produksjonsdetaljer — alt koblet til Creatorhub-prosjekter.',
       featured: true,
-      downloadCount: 34000,
-      monthlyGrowth: 30,
+      downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
         { icon: <GroupsIcon />, text: 'Rolleforvaltning & casting' },
         { icon: <DocumentIcon />, text: 'Kandidat-administrasjon' },
@@ -855,13 +855,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 }}
               />
             )}
-            {app.trending && (
+            {app.trending && app.monthlyGrowth && app.monthlyGrowth > 0 && (
               <Chip
                 icon={<TrendingIcon />}
                 label={`+${app.monthlyGrowth}% denne måneden`}
                 size="small"
                 sx={{
-                  background: 'rgba(255, 255, 255, 0.95)',
+                  background: 'rgba(255,186,108,0.18)',
                   color: app.gradientStart,
                   fontWeight: 700,
                   fontSize: '0.7rem',
@@ -1044,14 +1044,18 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   </Typography>
                 </>
               ) : (
-                <>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: '#1a1a1a', display: 'block', mb: 0.25 }}>
-                    Tjeneste og oppsett
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem' }}>
-                    Leveres som implementasjonsprosjekt
-                  </Typography>
-                </>
+                // Slice 9X.78 — "Ny app"-badge istedenfor mock-stjerner
+                <Chip
+                  label="Ny app — venter på vurderinger"
+                  size="small"
+                  sx={{
+                    bgcolor: 'rgba(255,186,108,0.18)',
+                    color: '#ffba6c',
+                    fontWeight: 700,
+                    fontSize: '0.66rem',
+                    height: 22,
+                  }}
+                />
               )}
             </Box>
 

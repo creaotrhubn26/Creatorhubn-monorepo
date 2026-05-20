@@ -32,6 +32,9 @@ const NextRoleMockInterview = React.lazy(() => import('./NextRoleMockInterview')
 const NextRoleReferralDialog = React.lazy(() => import('./NextRoleReferralDialog'));
 const NextRoleVideoPresentation = React.lazy(() => import('./NextRoleVideoPresentation'));
 const NextRoleGdprDialog = React.lazy(() => import('./NextRoleGdprDialog'));
+const IndustryTemplatePicker = React.lazy(() => import('./IndustryTemplatePicker'));
+const ArbeidsplassenImportDialog = React.lazy(() => import('./ArbeidsplassenImportDialog'));
+const PublicCvAnalyticsDialog = React.lazy(() => import('./PublicCvAnalyticsDialog'));
 const JobApplicationKanban = React.lazy(() => import('./JobApplicationKanban'));
 const JobApplicationMilestonesDialog = React.lazy(() => import('./JobApplicationMilestonesDialog'));
 import UpcomingDeadlinesWidget from './UpcomingDeadlinesWidget';
@@ -135,6 +138,8 @@ import {
   WorkOutline as WorkOutlineIcon,
   Close as CloseIcon,
   Videocam as VideocamIcon,
+  Lightbulb as LightbulbIcon,
+  Public as PublicIcon,
 } from '@mui/icons-material';
 
 // ============================================================================
@@ -3730,6 +3735,12 @@ export default function ResumeBuilder() {
   const [videoPresentationAppId, setVideoPresentationAppId] = useState<string | null>(null);
   // GDPR
   const [showGdprDialog, setShowGdprDialog] = useState(false);
+  // Bransje-templates
+  const [showIndustryPicker, setShowIndustryPicker] = useState(false);
+  // arbeidsplassen.no-import
+  const [showArbeidsplassen, setShowArbeidsplassen] = useState(false);
+  // Public CV analytics
+  const [showCvAnalytics, setShowCvAnalytics] = useState(false);
   // Referrals
   const [showReferralDialog, setShowReferralDialog] = useState(false);
   // Job Kanban + milestones
@@ -5038,6 +5049,24 @@ export default function ResumeBuilder() {
                     >
                       Video-pitch
                     </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<LightbulbIcon />}
+                      onClick={() => setShowIndustryPicker(true)}
+                      title="Pre-fylte achievement-eksempler etter bransje og rolle"
+                    >
+                      Bransje-eksempler
+                    </Button>
+                    {selectedResume?.isPublic && (
+                      <Button
+                        variant="outlined"
+                        startIcon={<PublicIcon />}
+                        onClick={() => setShowCvAnalytics(true)}
+                        title="Statistikk over hvem som har sett din offentlige CV"
+                      >
+                        Visnings-statistikk
+                      </Button>
+                    )}
                     <Button
                       variant="outlined"
                       startIcon={<WorkOutlineIcon />}
@@ -6672,6 +6701,94 @@ export default function ResumeBuilder() {
             onClose={() => setShowGdprDialog(false)}
           />
         )}
+        {showArbeidsplassen && (
+          <ArbeidsplassenImportDialog
+            open={showArbeidsplassen}
+            onClose={() => setShowArbeidsplassen(false)}
+            onImported={() => setShowArbeidsplassen(false)}
+          />
+        )}
+        {showCvAnalytics && (
+          <PublicCvAnalyticsDialog
+            open={showCvAnalytics}
+            onClose={() => setShowCvAnalytics(false)}
+            resumeId={selectedResume?.id ?? null}
+            resumeTitle={selectedResume?.title}
+          />
+        )}
+        {showIndustryPicker && (
+          <IndustryTemplatePicker
+            open={showIndustryPicker}
+            onClose={() => setShowIndustryPicker(false)}
+            onInsertAchievements={(achievements) => {
+              // Sett inn på siste arbeidserfaring hvis den finnes,
+              // ellers opprett en ny erfaring som starter-mal.
+              if (!selectedResume) return;
+              const existing = [...((selectedResume.experiences ?? []) as any[])];
+              let updated: Resume;
+              if (existing.length > 0) {
+                const last = { ...existing[existing.length - 1] };
+                last.achievements = [
+                  ...((last.achievements ?? []) as string[]),
+                  ...achievements,
+                ];
+                existing[existing.length - 1] = last;
+                updated = { ...selectedResume, experiences: existing } as Resume;
+              } else {
+                updated = {
+                  ...selectedResume,
+                  experiences: [
+                    {
+                      id: `exp-${Date.now()}`,
+                      jobTitle: '',
+                      company: '',
+                      location: '',
+                      employmentType: 'full-time',
+                      startDate: '',
+                      endDate: null,
+                      isCurrent: false,
+                      description: '',
+                      achievements,
+                    } as any,
+                  ],
+                } as Resume;
+              }
+              setSelectedResume(updated);
+              updateResumeMutation.mutate({
+                id: selectedResume.id,
+                data: { experiences: updated.experiences } as Partial<Resume>,
+              });
+            }}
+            onInsertSkills={(skills) => {
+              if (!selectedResume) return;
+              const existingSkills = (selectedResume.skills ?? []) as any[];
+              const existingNames = existingSkills.map((s) =>
+                typeof s === 'string' ? s : (s.name ?? ''),
+              );
+              const toAdd = skills.filter((s) => !existingNames.includes(s));
+              const merged = [...existingSkills, ...toAdd];
+              const updated = { ...selectedResume, skills: merged } as Resume;
+              setSelectedResume(updated);
+              updateResumeMutation.mutate({
+                id: selectedResume.id,
+                data: { skills: merged } as Partial<Resume>,
+              });
+            }}
+            onInsertJobTitle={(title) => {
+              if (!selectedResume) return;
+              const newPersonal = {
+                ...(selectedResume.personalInfo ?? {}),
+                professionalTitle: title,
+              };
+              const updated = { ...selectedResume, personalInfo: newPersonal } as Resume;
+              setSelectedResume(updated);
+              updateResumeMutation.mutate({
+                id: selectedResume.id,
+                data: { personalInfo: newPersonal } as Partial<Resume>,
+              });
+            }}
+          />
+        )}
         {showReferralDialog && (
           <NextRoleReferralDialog
             open={showReferralDialog}
@@ -6706,6 +6823,7 @@ export default function ResumeBuilder() {
                   setShowKanbanDialog(false);
                   setShowMockInterview(true);
                 }}
+                onImportFromArbeidsplassen={() => setShowArbeidsplassen(true)}
               />
             </DialogContent>
           </Dialog>

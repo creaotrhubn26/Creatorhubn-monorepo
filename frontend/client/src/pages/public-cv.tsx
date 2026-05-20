@@ -48,6 +48,12 @@ const PublicCV: React.FC = () => {
       .then((res) => {
         setData(res);
         setError(null);
+        // Detaljert view-tracking (bygger nextrole_public_cv_views-rader
+        // for analytics-dashboardet til eieren). Best-effort, feiler stille.
+        fetch(`/api/public/resumes/${encodeURIComponent(slug)}/track-view`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(() => undefined);
         // GA4 — public CV view (telles allerede i DB, men dette gir
         // funnel-data om hvor besøkere kommer fra)
         if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
