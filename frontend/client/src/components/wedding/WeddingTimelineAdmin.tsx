@@ -1293,7 +1293,7 @@ export default function EvendiTimelineAdmin({
           {evendiMeetingContextAvailable ? (
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <CardContent sx={{ p: 2.25 }}>
                     <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
                       Siste synk
@@ -1316,7 +1316,7 @@ export default function EvendiTimelineAdmin({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <CardContent sx={{ p: 2.25 }}>
                     <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
                       Kunde og lokasjon
@@ -1349,7 +1349,7 @@ export default function EvendiTimelineAdmin({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <CardContent sx={{ p: 2.25 }}>
                     <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
                       Hva Evendi bruker
@@ -1372,7 +1372,7 @@ export default function EvendiTimelineAdmin({
 
               {(planningBrief?.summary || latestMeetingSync?.briefSummary) && (
                 <Grid item xs={12} md={6}>
-                  <Card sx={{ height: '100%', border: '1px solid rgba(245,124,0,0.14)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                  <Card sx={{ height: '100%', border: '1px solid rgba(245,124,0,0.14)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                     <CardContent sx={{ p: 2.25 }}>
                       <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
                         Prosjektbrief fra forespørsel
@@ -1387,7 +1387,7 @@ export default function EvendiTimelineAdmin({
 
               {(planningBrief?.requests || latestMeetingSync?.specialRequests) && (
                 <Grid item xs={12} md={6}>
-                  <Card sx={{ height: '100%', border: '1px solid rgba(34,197,94,0.14)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                  <Card sx={{ height: '100%', border: '1px solid rgba(34,197,94,0.14)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                     <CardContent sx={{ p: 2.25 }}>
                       <Typography variant="overline" sx={{ color: '#166534', fontWeight: 700 }}>
                         Kundeønsker og spesielle hensyn
@@ -1450,7 +1450,7 @@ export default function EvendiTimelineAdmin({
       )}
 
       {/* Prosjektvelger og kulturtilpasning */}
-      <Card sx={{ mb:  3, bgcolor: 'rgba(255,255,255,0.96)', border: '1px solid rgba(15,23,42,0.08)',  ...theming.getThemedCardSx() }}>
+      <Card sx={{ mb:  3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(15,23,42,0.08)',  ...theming.getThemedCardSx() }}>
         <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
           <Typography variant="h6" sx={{  mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap:  1  }}>
             <Event sx={{ color: '#f57c00'}} />
@@ -2788,7 +2788,7 @@ export default function EvendiTimelineAdmin({
           <Box sx={{ p:  3 }}>
             {timeline ? (
               <Box>
-                <Box sx={{ mb:  3, p: 2, bgcolor: '#fff3e0', borderRadius:  1 }}>
+                <Box sx={{ mb:  3, p: 2, bgcolor: 'rgba(255,186,108,0.08)', borderRadius:  1 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <CalendarToday sx={{ color: theming.colors.primary }} />
                     <Typography variant="h6" sx={{ color: theming.colors.primary }}>
@@ -3193,7 +3193,7 @@ export default function EvendiTimelineAdmin({
                     sx={{
                       width: 200,
                       height: 200,
-                      bgcolor: 'white',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                       p: 2,
                       borderRadius: 2,
                       display: 'flex',

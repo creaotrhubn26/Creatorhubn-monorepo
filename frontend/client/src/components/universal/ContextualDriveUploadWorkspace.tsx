@@ -732,11 +732,11 @@ export default function ContextualDriveUploadWorkspace({
               </Box>
 
               <Stack direction="row" spacing={1}>
-                <IconButton sx={{ bgcolor: 'rgba(255,255,255,0.9)', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}>
+                <IconButton sx={{ bgcolor: 'rgba(255,255,255,0.04)', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}>
                   <NotificationsNone />
                 </IconButton>
                 <IconButton
-                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.04)', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}
                   onClick={() => {
                     void driveContextQuery.refetch();
                     void folderFilesQuery.refetch();
@@ -757,7 +757,7 @@ export default function ContextualDriveUploadWorkspace({
               sx={{
                 borderRadius: 4,
                 borderColor: 'rgba(15,23,42,0.08)',
-                bgcolor: 'rgba(255,255,255,0.82)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 p: 1.5,
               }}
             >
@@ -971,7 +971,7 @@ export default function ContextualDriveUploadWorkspace({
                 onClick={openFilePicker}
                 startIcon={<CloudUpload />}
                 sx={{
-                  bgcolor: '#fff',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   color: '#f97316',
                   boxShadow: 'none',
                   '&:hover': { bgcolor: '#fff7ef', boxShadow: 'none' },
@@ -1336,7 +1336,7 @@ export default function ContextualDriveUploadWorkspace({
             sx={{
               borderRadius: 3.5,
               borderColor: 'rgba(15, 23, 42, 0.08)',
-              bgcolor: 'rgba(255,255,255,0.88)',
+              bgcolor: 'rgba(255,255,255,0.04)',
               p: 2,
             }}
           >
@@ -1622,7 +1622,7 @@ export default function ContextualDriveUploadWorkspace({
                   sx={{
                     borderRadius: 3,
                     borderColor: 'rgba(15, 23, 42, 0.10)',
-                    bgcolor: 'rgba(255,255,255,0.92)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     p: 1.5,
                   }}
                 >
@@ -1763,7 +1763,7 @@ export default function ContextualDriveUploadWorkspace({
                         py: 1.25,
                         borderRadius: 3,
                         border: '1px solid rgba(15, 23, 42, 0.07)',
-                        bgcolor: 'rgba(255,255,255,0.92)',
+                        bgcolor: 'rgba(255,255,255,0.04)',
                       }}
                     >
                       <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>

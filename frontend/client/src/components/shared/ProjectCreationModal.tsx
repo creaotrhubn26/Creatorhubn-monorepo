@@ -290,7 +290,7 @@ export function ProjectCreationModal({
               startAdornment: <Description sx={{ color: '#ff8c00', mr:  1 }} />}}
             sx={{
               '& .MuiOutlinedInput-root': {
-                bgcolor: 'rgba(255,255,255,0.96)', '&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                bgcolor: 'rgba(255,255,255,0.04)', '&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
             }}}
           />
 
@@ -305,7 +305,7 @@ export function ProjectCreationModal({
               startAdornment: <Category sx={{ color: '#ff8c00', mr:  1 }} />}}
             sx={{
               '& .MuiOutlinedInput-root': {
-                bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
             }}}
           >
             {categories.map((category) => (
@@ -327,7 +327,7 @@ export function ProjectCreationModal({
             }}
             sx={{
               '& .MuiOutlinedInput-root': {
-                bgcolor: 'rgba(255,255,255,0.9)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 '&:hover fieldset': { borderColor: '#ff8c00' },
                 '&.Mui-focused fieldset': { borderColor: '#ff8c00' },
               },
@@ -345,7 +345,7 @@ export function ProjectCreationModal({
             variant="outlined"
             sx={{
               '& .MuiOutlinedInput-root': {
-                bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
             }}}
           />
 
@@ -364,7 +364,7 @@ export function ProjectCreationModal({
               InputProps={{
                 startAdornment: <CalendarToday sx={{ color: '#ff8c00', mr:  1 }} />}}
               sx={{
-                flex: 1, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                flex: 1, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
               }}}
             />
 
@@ -381,7 +381,7 @@ export function ProjectCreationModal({
               InputProps={{
                 startAdornment: <AccessTime sx={{ color: '#ff8c00', mr:  1 }} />}}
               sx={{
-                flex: 1, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                flex: 1, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
               }}}
             />
           </Box>
@@ -400,7 +400,7 @@ export function ProjectCreationModal({
                   startAdornment: <Group sx={{ color: '#ff8c00', mr:  1 }} />}}
                 sx={{
                   '& .MuiOutlinedInput-root': {
-                    bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                    bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
                 }}}
               />
               <Button
@@ -510,7 +510,7 @@ export function ProjectCreationModal({
                         )}}
                       sx={{
                         '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                          bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
                       }}}
                     />
 
@@ -534,7 +534,7 @@ export function ProjectCreationModal({
                         )}}
                       sx={{
                         '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                          bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
                       }}}
                     />
                   </Box>
@@ -553,7 +553,7 @@ export function ProjectCreationModal({
                       fullWidth
                       sx={{
                         '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                          bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
                       }}}
                     >
                       <MenuItem value="none">Ingen beskyttelse</MenuItem>
@@ -576,7 +576,7 @@ export function ProjectCreationModal({
                       fullWidth
                       sx={{
                         '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(255,255,255,0.96)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
+                          bgcolor: 'rgba(255,255,255,0.04)','&:hover fieldset': { borderColor: '#ff8c00',},'&.Mui-focused fieldset': { borderColor: '#ff8c00',},
                       }}}
                     />
                   </Box>

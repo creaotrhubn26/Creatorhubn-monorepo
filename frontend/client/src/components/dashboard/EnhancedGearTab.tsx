@@ -1545,7 +1545,7 @@ export function EnhancedGearTab({
               }}
               sx={{ 
                 '& .MuiOutlinedInput-root': {
-                  backgroundColor: 'background.paper',
+                  backgroundColor: 'rgba(255,255,255,0.04)',
                   borderRadius: 2
                 }
               }}
@@ -2001,7 +2001,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : userEquipment.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
           <Camera sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Ingen utstyr registrert
@@ -2360,7 +2360,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : maintenanceSchedule.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
           <Schedule sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Ingen planlagt vedlikehold
@@ -2460,7 +2460,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : equipmentRentals.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
           <ShoppingCart sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Ingen aktive utleier
@@ -2570,7 +2570,7 @@ export function EnhancedGearTab({
         <Grid container spacing={3}>
           {/* Price Trends Overview */}
           <Grid item xs={12} md={4}>
-            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.9)' }}>
+            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.04)' }}>
               <ShoppingCart sx={{ color: config.color, fontSize: 32, mb: 2 }} />
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theming.colors.primary }}>
                 Pristrender
@@ -2588,7 +2588,7 @@ export function EnhancedGearTab({
           </Grid>
 
           <Grid item xs={12} md={4}>
-            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.9)' }}>
+            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.04)' }}>
               <TrendingUp sx={{ color: '#4caf50', fontSize: 32, mb: 2 }} />
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theming.colors.primary }}>
                 Gjennomsnittlig rating
@@ -2607,7 +2607,7 @@ export function EnhancedGearTab({
           </Grid>
 
           <Grid item xs={12} md={4}>
-            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.9)' }}>
+            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.04)' }}>
               <AttachMoney sx={{ color: config.color, fontSize: 32, mb: 2 }} />
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theming.colors.primary }}>
                 Prisspenn
@@ -2722,7 +2722,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : lensDatabase.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
           <Camera sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Laster objektivdatabase...
@@ -2802,7 +2802,7 @@ export function EnhancedGearTab({
       <Grid container spacing={3}>
         {/* Software Updates Section */}
         <Grid item xs={12}>
-          <Card sx={{ bgcolor: 'rgba(255,255,255,0.9)', mb: 3 }}>
+          <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', mb: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>

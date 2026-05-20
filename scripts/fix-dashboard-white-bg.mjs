@@ -17,6 +17,14 @@ const FILES = [
   'universal/AdministrationHub.tsx',
   'universal/misc/CameraEquipmentManager.tsx',
   'chat/UniversalChatWidget.tsx',
+  'shared/ProjectCreationModal.tsx',
+  'meetings/NotebookLmWorkspaceCard.tsx',
+  'dashboard/EnhancedGearTab.tsx',
+  'universal/ContextualDriveUploadWorkspace.tsx',
+  'wedding/WeddingTimelineAdmin.tsx',
+  'role-room/components/EquipmentManagementPanel.tsx',
+  'role-room/components/LocationManagementPanel.tsx',
+  'davinci-resolve/SmartScriptDownloader.tsx',
 ];
 
 const REPLACEMENTS = [

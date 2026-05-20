@@ -184,7 +184,7 @@ export function NotebookLmWorkspaceCard({
                         size="small"
                         label={status.googleEmail}
                         sx={{
-                          bgcolor: 'rgba(255,255,255,0.74)',
+                          bgcolor: 'rgba(255,255,255,0.04)',
                           border: '1px solid rgba(120, 96, 52, 0.12)',
                           color: '#5a4630',
                         }}
@@ -227,7 +227,7 @@ export function NotebookLmWorkspaceCard({
                         minHeight: dense ? 96 : 112,
                         borderRadius: 2.5,
                         border: '1px solid rgba(120, 96, 52, 0.12)',
-                        bgcolor: 'rgba(255,255,255,0.78)',
+                        bgcolor: 'rgba(255,255,255,0.04)',
                       }}
                     >
                       <Stack spacing={0.8}>
@@ -282,10 +282,10 @@ export function NotebookLmWorkspaceCard({
                       </Typography>
                       <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                         {status?.scope?.projectTitle ? (
-                          <Chip size="small" label={`Prosjekt: ${status.scope.projectTitle}`} sx={{ bgcolor: 'rgba(255,255,255,0.76)' }} />
+                          <Chip size="small" label={`Prosjekt: ${status.scope.projectTitle}`} sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} />
                         ) : null}
                         {status?.scope?.clientName ? (
-                          <Chip size="small" label={`Klient: ${status.scope.clientName}`} sx={{ bgcolor: 'rgba(255,255,255,0.76)' }} />
+                          <Chip size="small" label={`Klient: ${status.scope.clientName}`} sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} />
                         ) : null}
                         <Chip
                           size="small"
@@ -305,7 +305,7 @@ export function NotebookLmWorkspaceCard({
                         p: 2,
                         borderRadius: 3,
                         border: '1px solid rgba(120, 96, 52, 0.12)',
-                        bgcolor: 'rgba(255,255,255,0.76)',
+                        bgcolor: 'rgba(255,255,255,0.04)',
                       }}
                     >
                       <Stack spacing={1.25}>
@@ -377,7 +377,7 @@ export function NotebookLmWorkspaceCard({
                             p: 1.5,
                             borderRadius: 2.5,
                             border: '1px solid rgba(120, 96, 52, 0.1)',
-                            bgcolor: 'rgba(255,255,255,0.82)',
+                            bgcolor: 'rgba(255,255,255,0.04)',
                           }}
                         >
                           <Stack spacing={1}>
@@ -480,7 +480,7 @@ export function NotebookLmWorkspaceCard({
               sx={{
                 borderColor: 'rgba(120, 96, 52, 0.18)',
                 color: '#5f4725',
-                bgcolor: 'rgba(255,255,255,0.72)',
+                bgcolor: 'rgba(255,255,255,0.04)',
               }}
             >
               Åpne NotebookLM
@@ -497,7 +497,7 @@ export function NotebookLmWorkspaceCard({
                 sx={{
                   borderColor: 'rgba(120, 96, 52, 0.18)',
                   color: '#5f4725',
-                  bgcolor: 'rgba(255,255,255,0.72)',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                 }}
               >
                 Arbeidsdokument
@@ -515,7 +515,7 @@ export function NotebookLmWorkspaceCard({
                 sx={{
                   borderColor: 'rgba(120, 96, 52, 0.18)',
                   color: '#5f4725',
-                  bgcolor: 'rgba(255,255,255,0.72)',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                 }}
               >
                 Kildemappe
@@ -533,7 +533,7 @@ export function NotebookLmWorkspaceCard({
                 sx={{
                   borderColor: 'rgba(120, 96, 52, 0.18)',
                   color: '#5f4725',
-                  bgcolor: 'rgba(255,255,255,0.72)',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                 }}
               >
                 Siste møtenotat

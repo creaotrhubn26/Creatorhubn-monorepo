@@ -6781,7 +6781,7 @@ export function EquipmentManagementPanel({
                       width: 22,
                       height: 22,
                       borderRadius: '50%',
-                      bgcolor: '#fff',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                       position: 'absolute',
                       top: 2,
                       left: formData.isGlobal ? 24 : 2,
@@ -7670,7 +7670,7 @@ export function EquipmentManagementPanel({
                   width: 22,
                   height: 22,
                   borderRadius: '50%',
-                  bgcolor: '#fff',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   position: 'absolute',
                   top: 2,
                   left: templateFormData.is_global ? 26 : 2,
@@ -10088,7 +10088,7 @@ export function EquipmentManagementPanel({
                     width: { xs: 220, sm: 260 },
                     height: { xs: 220, sm: 260 },
                     borderRadius: 1,
-                    bgcolor: '#fff',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     p: 1,
                   }}
                 />

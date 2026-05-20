@@ -377,18 +377,18 @@ const SmartScriptDownloader: React.FC<SmartScriptDownloaderProps> = ({
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
             <Chip
               label={`Project: ${projectTypes.find(p => p.key === propProjectType)?.name}`}
-              sx={{ bgcolor: 'white', color: 'primary.main' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: 'primary.main' }}
             />
             {propCulture && (
               <Chip
                 label={`Culture: ${propCulture}`}
-                sx={{ bgcolor: 'white', color: 'primary.main' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: 'primary.main' }}
               />
             )}
             {propCurrentPhase && (
               <Chip
                 label={`Phase: ${propCurrentPhase}`}
-                sx={{ bgcolor: 'white', color: 'primary.main' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: 'primary.main' }}
               />
             )}
           </Box>
@@ -415,8 +415,8 @@ const SmartScriptDownloader: React.FC<SmartScriptDownloaderProps> = ({
                   }}
                   sx={{
                     ...theming.getThemedButtonSx(),
-                    bgcolor: 'white',
-                    color: 'primary.main', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }}}
+                    bgcolor: 'rgba(255,255,255,0.04)',
+                    color: 'primary.main', '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' }}}
                 >
                   Download All Wedding Scripts
                 </Button>
@@ -665,19 +665,19 @@ const SmartScriptDownloader: React.FC<SmartScriptDownloaderProps> = ({
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
             <Chip
               label={`Project: ${projectTypes.find(p => p.key === selectedProjectType)?.name}`}
-              sx={{ bgcolor: 'white', color: 'primary.main' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: 'primary.main' }}
             />
             <Chip
               label={`Camera: ${selectedCameraBrand}`}
-              sx={{ bgcolor: 'white', color: 'primary.main' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: 'primary.main' }}
             />
             <Chip
               label={`LOG: ${selectedLogFormat}`}
-              sx={{ bgcolor: 'white', color: 'primary.main' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: 'primary.main' }}
             />
             <Chip
               label={`Types: ${selectedScriptTypes.join(', ')}`}
-              sx={{ bgcolor: 'white', color:'primary.main' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)', color:'primary.main' }}
             />
           </Box>
         </Paper>
