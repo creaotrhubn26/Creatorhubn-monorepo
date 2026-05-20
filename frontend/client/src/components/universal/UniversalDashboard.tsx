@@ -35,6 +35,8 @@ import {
   readCreatorHubGoogleCallbackIntent,
 } from '@/lib/creatorhubGoogleAuth';
 import { UniversalDashboardProvider, useUniversalDashboard } from './UniversalDashboardContext';
+import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
+import { buildDashboardTheme } from '@/utils/dashboard-mui-theme';
 import { ProjectProvider } from '@/contexts/ProjectContext';
 import { SettingsProvider } from '@/contexts/SettingsContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
@@ -8748,12 +8750,28 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 };
 
 // Performance: Add React.memo for component optimization
+// Slice 9X.72 — wrapper med MUI ThemeProvider for å tvinge dark-tema
+// på MUI-defaults (background.paper, text.primary, Card, Paper, Chip,
+// Dialog, osv.) overalt — også dialogs som mountes via Portal.
+const DashboardThemedShell: React.FC<{ profession: UniversalDashboardProps['profession'] }> = ({ profession }) => {
+  // Hent profession-color for å bygge tema. useProfessionConfigs har
+  // samme prioritering som customBranding lengre ned i treet, så vi
+  // bruker localProfessionConfigs som fallback for å unngå hook-i-hook.
+  const accent = (localProfessionConfigs as any)?.[profession || 'photographer']?.color || '#ffba6c';
+  const theme = React.useMemo(() => buildDashboardTheme(accent), [accent]);
+  return (
+    <MuiThemeProvider theme={theme}>
+      <UniversalDashboardContent profession={profession} />
+    </MuiThemeProvider>
+  );
+};
+
 export default React.memo(function UniversalDashboard({ profession ='photographer' }: UniversalDashboardProps) {
   return (
     <UniversalDashboardProvider>
       <CommunicationStatusProvider>
         <FileManagementStatusProvider>
-          <UniversalDashboardContent profession={profession} />
+          <DashboardThemedShell profession={profession} />
         </FileManagementStatusProvider>
       </CommunicationStatusProvider>
     </UniversalDashboardProvider>
