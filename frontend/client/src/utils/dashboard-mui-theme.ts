@@ -20,7 +20,43 @@
 import { createTheme } from '@mui/material/styles';
 import type { ThemeOptions } from '@mui/material/styles';
 
-export function buildDashboardTheme(accent: string = '#ffba6c') {
+/**
+ * Slice 9X.72 — alle theme-verdier kan overstyres av CMS via
+ * useDashboardTokens. Hooket sender oss tokens som inneholder
+ * accent + tekst-farger + radius + font. Vi flyter dem inn i MUI-tema.
+ */
+interface DashboardThemeOptions {
+  accent?: string;
+  textPrimary?: string;
+  textSecondary?: string;
+  fontDisplay?: string;
+  radius?: number;
+}
+
+export function buildDashboardTheme(arg: string | DashboardThemeOptions = '#ffba6c') {
+  // Bakoverkompatibel: hvis bare accent-string blir gitt, bruk defaults
+  const tokens: Required<DashboardThemeOptions> = typeof arg === 'string'
+    ? {
+        accent: arg,
+        textPrimary: '#fff5e8',
+        textSecondary: 'rgba(246,242,234,0.72)',
+        fontDisplay: '"Space Grotesk", sans-serif',
+        radius: 12,
+      }
+    : {
+        accent: arg.accent || '#ffba6c',
+        textPrimary: arg.textPrimary || '#fff5e8',
+        textSecondary: arg.textSecondary || 'rgba(246,242,234,0.72)',
+        fontDisplay: arg.fontDisplay || '"Space Grotesk", sans-serif',
+        radius: arg.radius ?? 12,
+      };
+
+  const { accent, textPrimary, textSecondary, fontDisplay, radius } = tokens;
+  // Avled accent-alpha for borders (24-bit hex → rgba med 0.18 alpha)
+  const accentBorder = accent.startsWith('#') && accent.length === 7
+    ? `rgba(${parseInt(accent.slice(1, 3), 16)},${parseInt(accent.slice(3, 5), 16)},${parseInt(accent.slice(5, 7), 16)},0.18)`
+    : 'rgba(255,186,108,0.18)';
+
   const opts: ThemeOptions = {
     palette: {
       mode: 'dark',
@@ -33,19 +69,19 @@ export function buildDashboardTheme(accent: string = '#ffba6c') {
         paper: 'rgba(255,255,255,0.04)',
       },
       text: {
-        primary: '#fff5e8',
-        secondary: 'rgba(246,242,234,0.72)',
+        primary: textPrimary,
+        secondary: textSecondary,
         disabled: 'rgba(246,242,234,0.32)',
       },
-      divider: 'rgba(255,186,108,0.18)',
+      divider: accentBorder,
     },
     typography: {
       fontFamily: '"Inter", -apple-system, sans-serif',
-      h1: { fontFamily: '"Space Grotesk", sans-serif', fontWeight: 800 },
-      h2: { fontFamily: '"Space Grotesk", sans-serif', fontWeight: 800 },
-      h3: { fontFamily: '"Space Grotesk", sans-serif', fontWeight: 800 },
-      h4: { fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700 },
-      h5: { fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700 },
+      h1: { fontFamily: fontDisplay, fontWeight: 800 },
+      h2: { fontFamily: fontDisplay, fontWeight: 800 },
+      h3: { fontFamily: fontDisplay, fontWeight: 800 },
+      h4: { fontFamily: fontDisplay, fontWeight: 700 },
+      h5: { fontFamily: fontDisplay, fontWeight: 700 },
       h6: { fontWeight: 700 },
     },
     components: {
@@ -55,8 +91,8 @@ export function buildDashboardTheme(accent: string = '#ffba6c') {
           root: {
             backgroundColor: 'rgba(255,255,255,0.04)',
             backgroundImage: 'none',
-            border: `1px solid rgba(255,186,108,0.18)`,
-            color: '#fff5e8',
+            border: `1px solid ${accentBorder}`,
+            color: textPrimary,
           },
         },
       },
@@ -199,7 +235,7 @@ export function buildDashboardTheme(accent: string = '#ffba6c') {
       },
     },
     shape: {
-      borderRadius: 12,
+      borderRadius: radius,
     },
   };
   return createTheme(opts);

@@ -8750,15 +8750,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 };
 
 // Performance: Add React.memo for component optimization
-// Slice 9X.72 — wrapper med MUI ThemeProvider for å tvinge dark-tema
-// på MUI-defaults (background.paper, text.primary, Card, Paper, Chip,
-// Dialog, osv.) overalt — også dialogs som mountes via Portal.
+// Slice 9X.72/77 — MUI ThemeProvider med CMS-styrt accent.
+// Profession-color brukes IKKE som global accent (per Slice 9X.77 — bare
+// ikoner skal være forskjellige per profesjon, ikke hele temaet).
 const DashboardThemedShell: React.FC<{ profession: UniversalDashboardProps['profession'] }> = ({ profession }) => {
-  // Hent profession-color for å bygge tema. useProfessionConfigs har
-  // samme prioritering som customBranding lengre ned i treet, så vi
-  // bruker localProfessionConfigs som fallback for å unngå hook-i-hook.
-  const accent = (localProfessionConfigs as any)?.[profession || 'photographer']?.color || '#ffba6c';
-  const theme = React.useMemo(() => buildDashboardTheme(accent), [accent]);
+  // useDashboardTokens henter CMS-overrides; ignorerer professionAccent
+  // som primær accent-kilde — bruker kun CMS eller default-orange.
+  const dt = useDashboardTokens();
+  const theme = React.useMemo(() => buildDashboardTheme({
+    accent: dt.accent,
+    textPrimary: dt.tokens.text.primary,
+    textSecondary: dt.tokens.text.secondary,
+    fontDisplay: dt.tokens.font.display,
+    radius: typeof dt.tokens.radius.md === 'number' ? dt.tokens.radius.md : 12,
+  }), [dt.accent, dt.tokens]);
   return (
     <MuiThemeProvider theme={theme}>
       <UniversalDashboardContent profession={profession} />

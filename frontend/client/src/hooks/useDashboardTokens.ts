@@ -39,6 +39,15 @@ interface AdminTokenOverrides {
   fontDisplay?: string;
 }
 
+/**
+ * Slice 9X.77 — accent-fargen er IKKE lenger profesjons-spesifikk for
+ * dashboard-temaet. Brukeren ønsker at hele dashboardet skal ha samme
+ * accent uansett profesjon — bare ikonene per profesjon beholder sin
+ * unike farge (vises via getUserProfessionColor i ikon-rendering).
+ *
+ * `professionAccent` beholdes som API-kontrakt for bakoverkompatibilitet,
+ * men brukes BARE som siste fallback hvis CMS ikke har globalAccent satt.
+ */
 export function useDashboardTokens(professionAccent?: string) {
   // Hent admin-overrides (CMS-styrt). Cache i 60s for å unngå mange kall.
   const { data: adminOverrides } = useQuery<AdminTokenOverrides>({
@@ -56,11 +65,13 @@ export function useDashboardTokens(professionAccent?: string) {
   });
 
   return useMemo(() => {
-    // Resolveringsrekkefølge: admin → profesjons-color → default
+    // Slice 9X.77 — global accent uavhengig av profession.
+    // Resolveringsrekkefølge: CMS-override → default '#ffba6c'.
+    // Profession-color brukes bare som siste fallback hvis hverken er satt.
     const accent =
       adminOverrides?.accentColor
-      || professionAccent
-      || '#ffba6c';
+      || '#ffba6c'
+      || professionAccent;
 
     const merged = {
       ...defaultTokens,
