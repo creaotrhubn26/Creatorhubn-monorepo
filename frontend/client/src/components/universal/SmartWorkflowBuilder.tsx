@@ -1268,7 +1268,32 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                           borderRadius: 1
                         }
                       }}>
-                        {workflow.steps.map((step, index) => (
+                        {workflow.steps.map((step, index) => {
+                          // Slice 9X.79 — live status fra engine-polling
+                          const run = workflowRuns[workflow.id];
+                          const stepStatus = run?.stepStatuses?.[index];
+                          const liveStatus = stepStatus?.status;
+                          const executionMode = stepStatus?.execution_mode;
+
+                          // Bestem badge basert på status + mode
+                          let statusBadge: { label: string; color: string; bg: string } | null = null;
+                          if (liveStatus === 'completed') {
+                            statusBadge = { label: '✓ Ferdig', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
+                          } else if (liveStatus === 'running') {
+                            statusBadge = { label: '⏳ Kjører', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+                          } else if (liveStatus === 'failed') {
+                            statusBadge = { label: '✗ Feilet', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                          } else if (liveStatus === 'awaiting_manual') {
+                            statusBadge = { label: '👆 Manuelt', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' };
+                          } else if (executionMode === 'auto') {
+                            statusBadge = { label: '🤖 Auto', color: '#10b981', bg: 'rgba(16,185,129,0.10)' };
+                          } else if (executionMode === 'ai') {
+                            statusBadge = { label: '✨ AI', color: '#9b87f5', bg: 'rgba(155,135,245,0.15)' };
+                          } else if (executionMode === 'manual') {
+                            statusBadge = { label: '👆 Manuelt', color: '#3b82f6', bg: 'rgba(59,130,246,0.10)' };
+                          }
+
+                          return (
                           <Box
                             key={step.id}
                             sx={{
@@ -1287,7 +1312,11 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 width: 20,
                                 height: 20,
                                 borderRadius: '50%',
-                                background: `linear-gradient(135deg, ${step.action.color} 0%, ${alpha(step.action.color, 0.7)} 100%)`,
+                                background: liveStatus === 'completed'
+                                  ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                                  : liveStatus === 'failed'
+                                    ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                                    : `linear-gradient(135deg, ${step.action.color} 0%, ${alpha(step.action.color, 0.7)} 100%)`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -1298,7 +1327,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 zIndex: 1
                               }}
                             >
-                              {index + 1}
+                              {liveStatus === 'completed' ? '✓' : liveStatus === 'failed' ? '!' : (index + 1)}
                             </Box>
 
                             {/* Step content */}
@@ -1315,6 +1344,8 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 color: step.action.color,
                                 fontWeight: 500,
                                 fontSize: '0.8rem',
+                                opacity: liveStatus === 'completed' ? 0.7 : 1,
+                                textDecoration: liveStatus === 'completed' ? 'line-through' : 'none',
                                 '& .MuiChip-icon': {
                                   color: step.action.color,
                                   fontSize: '1rem'
@@ -1325,8 +1356,55 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 }
                               }}
                             />
+
+                            {/* Slice 9X.79 — execution-mode + live status badge */}
+                            {statusBadge && (
+                              <Chip
+                                label={statusBadge.label}
+                                size="small"
+                                sx={{
+                                  height: 22,
+                                  fontSize: '0.66rem',
+                                  fontWeight: 700,
+                                  bgcolor: statusBadge.bg,
+                                  color: statusBadge.color,
+                                  border: `1px solid ${alpha(statusBadge.color, 0.32)}`,
+                                  flexShrink: 0,
+                                }}
+                              />
+                            )}
+
+                            {/* Manuell bekreft-knapp når awaiting_manual */}
+                            {liveStatus === 'awaiting_manual' && run?.runId && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={async () => {
+                                  try {
+                                    await apiRequest(
+                                      `/api/orchestration/workflows/runs/${run.runId}/steps/${index}/confirm`,
+                                      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+                                    );
+                                  } catch (e) {
+                                    console.error('confirm failed:', e);
+                                  }
+                                }}
+                                sx={{
+                                  height: 22,
+                                  px: 1,
+                                  fontSize: '0.66rem',
+                                  textTransform: 'none',
+                                  borderColor: '#10b981',
+                                  color: '#10b981',
+                                  '&:hover': { bgcolor: 'rgba(16,185,129,0.08)' },
+                                }}
+                              >
+                                Bekreft fullført
+                              </Button>
+                            )}
                           </Box>
-                        ))}
+                          );
+                        })}
                       </Box>
 
                       {/* Progress bar for running workflows */}
