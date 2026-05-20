@@ -32,7 +32,8 @@ interface SendMPOptions {
 export async function sendGA4Event(opts: SendMPOptions): Promise<void> {
   const measurementId = process.env.GA4_MEASUREMENT_ID
     || process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID
-    || process.env.VITE_GA4_MEASUREMENT_ID;
+    || process.env.VITE_GA4_MEASUREMENT_ID
+    || process.env.GOOGLE_ANALYTICS_ID; // Slice 9X.70 — fallback til eksisterende navn
   const apiSecret = process.env.GA4_API_SECRET;
 
   if (!measurementId || !apiSecret) {
