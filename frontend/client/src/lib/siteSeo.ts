@@ -59,6 +59,8 @@ const CREATORHUB_PUBLIC_CANONICAL_PATHS = new Set([
   '/terms-and-conditions',
   '/cookie-policy',
   '/data-deletion',
+  // NextRole — markedsføringsside for CV-byggeren. Skal indekseres.
+  '/nextrole',
 ]);
 
 const CREATORHUB_NOINDEX_PATTERNS = [
@@ -231,6 +233,13 @@ function buildCreatorHubSeo(pathname: string): SeoMetadata {
         title: 'Sletting av data | CreatorHub Norge',
         description:
           'Les hvordan du ber om sletting av personopplysninger og hvilke data CreatorHub beholder etter lovpålagte krav.',
+      };
+    case '/nextrole':
+      return {
+        ...base,
+        title: 'NextRole — Bygg CV som faktisk gir jobbintervju | CreatorHub',
+        description:
+          'NextRole er den smarte CV-byggeren fra CreatorHub. AI-tilpasset CV og søknadsbrev mot konkret stillingsannonse, ATS-optimalisert, 15+ design, 14 dagers gratis test.',
       };
     default:
       return {
