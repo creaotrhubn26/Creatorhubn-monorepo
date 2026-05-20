@@ -1084,11 +1084,13 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
             <Grid container spacing={2}>
               {workflows.map((workflow, _workflowIndex) => (
                 <Grid size={{ xs: 12, lg: 6 }} key={workflow.id}>
-                  <Card sx={{ 
-                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
+                  <Card sx={{
+                    // Slice 9X.72 — dark theme
+                    background: 'linear-gradient(135deg, rgba(255,186,108,0.06) 0%, rgba(15,10,7,0.86) 100%)',
                     backdropFilter: 'blur(20px)',
                     WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(99, 102, 241, 0.15)',
+                    border: '1px solid rgba(255,186,108,0.18)',
+                    color: '#fff5e8',
                     borderRadius: 3,
                     overflow: 'hidden',
                     position: 'relative',

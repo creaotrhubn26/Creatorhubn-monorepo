@@ -4487,39 +4487,51 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           <MuiCard
             sx={{
               mb: { xs: 3, md: 4 },
-              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.06)}, rgba(15,10,7,0.88))`,
+              // Slice 9X.72 — dark theme
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)}, rgba(15,10,7,0.92))`,
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255, 255, 255, 0.5)',
+              border: `1px solid ${alpha(customBranding.color, 0.18)}`,
               borderRadius: 4,
               overflow: 'hidden',
+              color: '#fff5e8',
             }}
           >
             <MuiCardContent sx={{ p: { xs: 2, sm: 3 } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <CalendarToday sx={{ color: customBranding.color }} />
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff5e8', fontFamily: '"Space Grotesk", sans-serif' }}>
                   Evendi Bookinger
                 </Typography>
               </Box>
 
               <Grid2 container spacing={{ xs: 1.5, md: 2 }} sx={{ mb: 2 }}>
                 <Grid2 size={{ xs: 12, sm: 4 }}>
-                  <Paper sx={{ p: 2, borderRadius: 3, bgcolor: `${customBranding.color}10` }}>
-                    <Typography variant="subtitle2" color="text.secondary">
+                  <Paper sx={{
+                    p: 2, borderRadius: 3,
+                    bgcolor: alpha(customBranding.color, 0.08),
+                    border: `1px solid ${alpha(customBranding.color, 0.18)}`,
+                    color: '#fff5e8',
+                  }}>
+                    <Typography variant="subtitle2" sx={{ color: 'rgba(246,242,234,0.72)' }}>
                       Totale bookinger
                     </Typography>
-                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff5e8', fontFamily: '"Space Grotesk", sans-serif' }}>
                       {evendiBookingSummary.totalBookings}
                     </Typography>
                   </Paper>
                 </Grid2>
                 <Grid2 size={{ xs: 12, sm: 4 }}>
-                  <Paper sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(16, 185, 129, 0.12)' }}>
-                    <Typography variant="subtitle2" color="text.secondary">
+                  <Paper sx={{
+                    p: 2, borderRadius: 3,
+                    bgcolor: 'rgba(16,185,129,0.12)',
+                    border: '1px solid rgba(16,185,129,0.32)',
+                    color: '#fff5e8',
+                  }}>
+                    <Typography variant="subtitle2" sx={{ color: 'rgba(246,242,234,0.72)' }}>
                       Inntekt (Evendi)
                     </Typography>
-                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#10b981', fontFamily: '"Space Grotesk", sans-serif' }}>
                       {evendiBookingSummary.totalRevenue.toLocaleString('no-NO')} kr
                     </Typography>
                   </Paper>
@@ -4989,29 +5001,31 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               </Box>
             )}
 
-            {/* Unified Customer Inquiry & Email Center - Floating Overlay */}
+            {/* Slice 9X.72 — Customer Inquiry & Email Center — dark theme */}
             <Box sx={{
               mb: { xs: 3, md: 4 },
               position: 'relative',
               zIndex: 10,
-              backgroundColor: 'background.paper',
-              borderRadius: 2,
+              background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(15,10,7,0.92) 100%)`,
+              borderRadius: 3,
               p: { xs: 2, md: 3 },
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-              backdropFilter: 'blur(10px)',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.32)',
+              backdropFilter: 'blur(20px)',
               border: '1px solid',
-              borderColor: 'divider'
+              borderColor: alpha(customBranding.color, 0.18),
+              color: '#fff5e8',
             }}>
-              <Typography variant="h6" 
-                sx={{ 
+              <Typography variant="h6"
+                sx={{
                   mb: 2,
-                  fontWeight: 600, 
-                  display: 'flex', 
-                  alignItems: 'center', 
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: 1,
                   fontSize: { xs: '1.1rem', sm: '1.25rem' },
-                  color: theming.colors.primary
-                  }}>
+                  color: '#fff5e8',
+                  fontFamily: '"Space Grotesk", sans-serif',
+                }}>
                 <Email sx={{ color: customBranding.color }} />
                 Kundeforespørsler & Kommunikasjon
               </Typography>
@@ -5480,25 +5494,26 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 )}
 
 
-                {/* Professional Orchestration System - Modern Design */}
+                {/* Slice 9X.72 — Smart Arbeidsflyt — dark theme */}
                 <MuiCard
                   component="section"
                   role="region"
                   aria-label="Smart arbeidsflyt system"
-                  sx={{ 
+                  sx={{
                     mt: { xs: 3, md: 4 },
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, rgba(16, 185, 129, 0.03) 100%)',
+                    background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(15,10,7,0.92) 100%)`,
                     backdropFilter: 'blur(20px)',
                     WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(99, 102, 241, 0.12)',
+                    border: `1px solid ${alpha(customBranding.color, 0.18)}`,
                     borderRadius: 4,
                     overflow: 'hidden',
                     position: 'relative',
+                    color: '#fff5e8',
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     '&:hover': {
-                      borderColor: 'rgba(99, 102, 241, 0.25)',
-                      boxShadow: `0 8px 32px ${alpha('#6366F1', 0.12)}`,
-                      transform: 'translateY(-2px)'
+                      borderColor: alpha(customBranding.color, 0.32),
+                      boxShadow: `0 12px 40px rgba(0,0,0,0.32)`,
+                      transform: 'translateY(-2px)',
                     },
                     '&:before': {
                       content: '""',
@@ -5507,28 +5522,26 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       left: 0,
                       right: 0,
                       height: '3px',
-                      background: 'linear-gradient(90deg, #6366F1 0%, #10B981 50%, #F59E0B 100%)',
-                    }
+                      background: `linear-gradient(90deg, ${customBranding.color} 0%, ${alpha(customBranding.color, 0.7)} 100%)`,
+                    },
                   }}
                 >
                   <MuiCardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
-                    <Box sx={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
+                    <Box sx={{
+                      display: 'flex',
+                      alignItems: 'center',
                       justifyContent: 'space-between',
-                      mb: 3
+                      mb: 3,
                     }}>
-                      <Typography variant="h5" 
-                        sx={{ 
-                          fontWeight: 700, 
-                          display: 'flex', 
-                          alignItems: 'center', 
+                      <Typography variant="h5"
+                        sx={{
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
                           gap: 1.5,
                           fontSize: { xs: '1.25rem', sm: '1.5rem' },
-                          background: 'linear-gradient(135deg, #6366F1 0%, #10B981 100%)',
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent',
-                          backgroundClip: 'text'
+                          color: customBranding.color,
+                          fontFamily: '"Space Grotesk", sans-serif',
                         }}
                         component="h4"
                         aria-level={4}
@@ -5541,39 +5554,39 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                             width: 40,
                             height: 40,
                             borderRadius: 2,
-                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%)',
-                            border: '1px solid rgba(99, 102, 241, 0.2)'
+                            background: alpha(customBranding.color, 0.18),
+                            border: `1px solid ${alpha(customBranding.color, 0.32)}`,
                           }}
                         >
-                          <Build 
-                            sx={{ 
+                          <Build
+                            sx={{
                               fontSize: '1.25rem',
-                              color: '#6366F1'
+                              color: customBranding.color,
                             }}
                             aria-hidden="true"
                           />
                         </Box>
                         Smart Arbeidsflyt
                       </Typography>
-                      
-                      <Chip 
+
+                      <Chip
                         icon={<AutoAwesome sx={{ fontSize: '1rem' }} />}
                         label="AI-drevet"
                         size="small"
                         sx={{
-                          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)',
-                          border: '1px solid rgba(99, 102, 241, 0.3)',
-                          color: '#6366F1',
-                          fontWeight: 600,
+                          background: alpha(customBranding.color, 0.18),
+                          border: `1px solid ${alpha(customBranding.color, 0.32)}`,
+                          color: customBranding.color,
+                          fontWeight: 700,
                           fontSize: '0.75rem',
                           '& .MuiChip-icon': {
-                            color: '#10B981'
-                          }
+                            color: customBranding.color,
+                          },
                         }}
                       />
                     </Box>
-                    
-                    {/* Smart arbeidsflyt - keyboard-activated workflow automation */}
+
+                    {/* Smart arbeidsflyt — keyboard-activated workflow automation */}
                     <Box
                       sx={{
                         position: 'relative',
@@ -5584,10 +5597,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           left: -16,
                           right: -16,
                           bottom: -16,
-                          background: 'radial-gradient(circle at top right, rgba(99, 102, 241, 0.05) 0%, transparent 70%)',
+                          background: `radial-gradient(circle at top right, ${alpha(customBranding.color, 0.05)} 0%, transparent 70%)`,
                           pointerEvents: 'none',
-                          zIndex: 0
-                        }
+                          zIndex: 0,
+                        },
                       }}
                     >
                       <SmartWorkflowBuilder profession={profession} />
