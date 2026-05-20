@@ -4,7 +4,7 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import WorkflowRunHistoryDialog from './WorkflowRunHistoryDialog';
@@ -555,6 +555,21 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
   const [showRunHistory, setShowRunHistory] = useState(false);
   const [snackbar, setSnackbar] = useState<{ msg: string; severity: 'success' | 'info' | 'warning' | 'error' } | null>(null);
 
+  // Slice 9X.79 — siste-kjøring per workflow (oversikt på kortet)
+  const { data: recentRunsData } = useQuery({
+    queryKey: ['workflow-recent-runs', userId],
+    queryFn: async () => apiRequest(`/api/orchestration/workflows/${userId}/runs?limit=50`),
+    enabled: !!userId && userId !== 'anonymous',
+    refetchInterval: 15_000,
+  });
+  const lastRunByWorkflow = useMemo(() => {
+    const map: Record<string, any> = {};
+    (recentRunsData?.data || []).forEach((r: any) => {
+      if (!map[r.workflow_id]) map[r.workflow_id] = r;
+    });
+    return map;
+  }, [recentRunsData]);
+
   const executeWorkflow = async (workflowId: string) => {
     const workflow = workflows.find((w) => w.id === workflowId);
     if (!workflow) return;
@@ -633,6 +648,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
             } else {
               setSnackbar({ msg: `"${workflow.name}" delvis ferdig — ${awaiting} venter manuell`, severity: 'warning' });
             }
+            queryClient.invalidateQueries({ queryKey: ['workflow-recent-runs', userId] });
           }
         } catch (err) {
           console.warn('[workflow-poll] feilet:', err);
@@ -1232,6 +1248,37 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 }}
                               />
                             )}
+                            {/* Slice 9X.79 — siste-kjøring-pille */}
+                            {!runningWorkflows.has(workflow.id) && lastRunByWorkflow[workflow.id] && (() => {
+                              const last = lastRunByWorkflow[workflow.id];
+                              const colorMap: Record<string, { c: string; bg: string; bd: string; label: string }> = {
+                                completed: { c: '#10b981', bg: 'rgba(16,185,129,0.10)', bd: 'rgba(16,185,129,0.32)', label: '✓ Sist OK' },
+                                partial:   { c: '#f59e0b', bg: 'rgba(245,158,11,0.10)', bd: 'rgba(245,158,11,0.32)', label: '⏳ Sist delvis' },
+                                failed:    { c: '#ef4444', bg: 'rgba(239,68,68,0.10)', bd: 'rgba(239,68,68,0.32)', label: '✗ Sist feilet' },
+                              };
+                              const conf = colorMap[last.status] || { c: '#6b7280', bg: 'rgba(107,114,128,0.10)', bd: 'rgba(107,114,128,0.32)', label: last.status };
+                              const diffMin = Math.floor((Date.now() - new Date(last.created_at).getTime()) / 60_000);
+                              const when = diffMin < 1 ? 'nå' : diffMin < 60 ? `${diffMin}m` : diffMin < 1440 ? `${Math.floor(diffMin / 60)}t` : `${Math.floor(diffMin / 1440)}d`;
+                              return (
+                                <Tooltip title={`Klikk for å se historikk · ${last.steps_completed}/${last.steps_total} steg · ${when} siden`}>
+                                  <Chip
+                                    size="small"
+                                    onClick={() => setShowRunHistory(true)}
+                                    label={`${conf.label} · ${when}`}
+                                    sx={{
+                                      height: 24,
+                                      fontSize: '0.7rem',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      bgcolor: conf.bg,
+                                      border: `1px solid ${conf.bd}`,
+                                      color: conf.c,
+                                      '&:hover': { bgcolor: conf.bg, opacity: 0.85 },
+                                    }}
+                                  />
+                                </Tooltip>
+                              );
+                            })()}
                           </Box>
                         </Box>
 
