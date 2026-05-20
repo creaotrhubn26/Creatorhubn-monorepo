@@ -347,6 +347,8 @@ import { setupNextRoleVideoPresentationRoutes } from "./nextrole-video-presentat
 import { setupNextRoleGdprRoutes } from "./nextrole-gdpr";
 import { setupNextRoleArbeidsplassenRoutes } from "./nextrole-arbeidsplassen";
 import { setupNextRolePublicCvAnalyticsRoutes } from "./nextrole-public-cv-analytics";
+import { setupNextRoleEducationVerificationRoutes } from "./nextrole-education-verification";
+import { setupNextRoleCareerMentorRoutes } from "./nextrole-career-mentor";
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
@@ -18174,6 +18176,8 @@ setupNextRoleVideoPresentationRoutes({ app, pool, getActiveSessionFromRequest })
 setupNextRoleGdprRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleArbeidsplassenRoutes({ app, getActiveSessionFromRequest });
 setupNextRolePublicCvAnalyticsRoutes({ app, pool, getActiveSessionFromRequest });
+setupNextRoleEducationVerificationRoutes({ app, pool, getActiveSessionFromRequest });
+setupNextRoleCareerMentorRoutes({ app, pool, getActiveSessionFromRequest });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
   try {
@@ -95852,36 +95856,82 @@ app.delete(
   },
 );
 
-// Execute custom workflow
+// Slice 9X.79 — Ekte workflow-execution via engine (ikke simulering)
 app.post(
   "/api/orchestration/workflows/:userId/:workflowId/execute",
-  (req, res) => {
+  async (req, res) => {
     const { userId, workflowId } = req.params;
-    const { context } = req.body;
+    const { context, steps: bodySteps, workflowName } = req.body || {};
 
+    // Finn workflow fra in-memory dict (custom) eller bruk steps fra body
+    // (frontend kan sende predefined-workflow-steps direkte)
     const workflow = customWorkflows[userId]?.find(
       (w) => w.id.toString() === workflowId,
     );
+    const steps = workflow?.actions || workflow?.steps || bodySteps || [];
 
-    if (!workflow) {
-      return res.status(404).json({
-        success: false,
-        message: "Workflow not found",
-      });
+    if (!steps.length) {
+      return res.status(400).json({ success: false, error: 'no_steps' });
     }
 
-    // Simulate workflow execution
-    const executionId = `exec_${Date.now()}`;
+    const normalizedSteps = steps.map((s: any) => ({
+      action_id: s.action?.id || s.action_id || s.id,
+      action_name: s.action?.name || s.action_name || s.name,
+    }));
 
-    res.json({
-      success: true,
-      executionId,
-      workflowId,
-      status: "started",
-      message: `Workflow "${workflow.name}" started`,
-      stepsTotal: workflow.actions?.length || 0,
-      timestamp: new Date().toISOString(),
-    });
+    try {
+      const { startWorkflowRun } = await import('./workflow-execution-engine.js');
+      const { runId, stepsTotal } = await startWorkflowRun({
+        pool,
+        userId,
+        workflowId,
+        workflowName: workflowName || workflow?.name || 'Workflow',
+        profession: req.body?.profession,
+        steps: normalizedSteps,
+        context: context || {},
+      });
+      res.json({
+        success: true,
+        runId,
+        workflowId,
+        status: 'queued',
+        message: `Workflow startet — kjører ${stepsTotal} steg`,
+        stepsTotal,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      console.error('[workflow-execute] failed:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+// Slice 9X.79 — Hent run-status for frontend polling
+app.get(
+  "/api/orchestration/workflows/runs/:runId",
+  async (req, res) => {
+    try {
+      const { getRunStatus } = await import('./workflow-execution-engine.js');
+      const data = await getRunStatus(pool, req.params.runId);
+      if (!data) return res.status(404).json({ success: false, error: 'not_found' });
+      res.json({ success: true, ...data });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+// Slice 9X.79 — Bekreft manuelt steg
+app.post(
+  "/api/orchestration/workflows/runs/:runId/steps/:stepIndex/confirm",
+  async (req, res) => {
+    try {
+      const { confirmManualStep } = await import('./workflow-execution-engine.js');
+      await confirmManualStep(pool, req.params.runId, parseInt(req.params.stepIndex, 10), req.body?.note);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
   },
 );
 

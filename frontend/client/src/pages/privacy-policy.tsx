@@ -475,7 +475,89 @@ const PrivacyPolicy: React.FC = () => {
 
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
-              8. Klage til Datatilsynet
+              8. NextRole — spesifikk databehandling
+            </Typography>
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              NextRole er CV-byggeren vår. Følgende databehandling skjer i tillegg
+              til det som er beskrevet over:
+            </Typography>
+            <Paper sx={panelSx}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                CV-innhold, søknadsbrev og jobbsøknader
+              </Typography>
+              <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+                Informasjon du legger inn i CV-en din (kontaktdata, utdanning,
+                arbeidserfaring, ferdigheter), AI-genererte søknadsbrev og
+                jobbsøknads-data (stillinger du følger, deadlines, intervjuforberedelser)
+                lagres på din konto. Du har rett til å laste ned eller slette dette via
+                <strong> "NextRole-data"</strong>-knappen i appen.
+              </Typography>
+
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                Vedlagte dokumenter (vitnemål, karakterutskrifter)
+              </Typography>
+              <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+                Hvis du laster opp vitnemål eller karakterutskrift som PDF/bilde
+                for å markere utdanning som verifisert, lagres dokumentet kryptert
+                på vår skylagring (Cloudflare R2 i EU). Vi bruker det KUN til å
+                vise badge på CV-en din. Dokumentet vises ikke offentlig — kun
+                arbeidsgiver du selv deler CV-en med kan se det via signed URL
+                med 24t levetid. Du kan slette opplastet vitnemål når som helst.
+                Aktiv samtykke kreves ved hver opplasting.
+              </Typography>
+
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                Verifiseringslenker
+              </Typography>
+              <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+                Hvis du legger inn en offentlig verifiseringslenke for utdanningen
+                din, lagrer vi URL-en som tekst på din CV. Den vises offentlig
+                hvis du publiserer CV-en — arbeidsgiver kan da klikke seg videre
+                til tredjepart for å verifisere. Vi henter ikke innholdet bak lenken.
+              </Typography>
+
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                AI-behandling (Anthropic Claude og OpenAI Whisper)
+              </Typography>
+              <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+                CV-tekst, stillingsannonser og intervjusvar sendes til Anthropic
+                Claude (CV-analyse, søknadsbrev, mock interview) og OpenAI Whisper
+                (transkripsjon av lydopptak). Begge leverandører har avtale om
+                ingen lagring av prompts/svar utover 30 dager (Anthropic Enterprise/
+                OpenAI Zero Data Retention). Vi sender ikke ID-nummer eller
+                fødselsnummer til AI-leverandørene.
+              </Typography>
+
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                Lyd- og video-opptak (intervjutrening, video-presentasjon)
+              </Typography>
+              <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+                Når du bruker voice mock interview eller video-presentasjon,
+                lagres opptaket midlertidig (24 timer) på vår skylagring for
+                AI-analyse. Transkripsjonen og feedback-rapporten beholdes
+                permanent som del av treningshistorikken din, men selve
+                lyd-/video-filen slettes etter 24t. Du kan slette hele
+                treningssesjonen manuelt når som helst.
+              </Typography>
+
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                Offentlig CV — visning-statistikk
+              </Typography>
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                Hvis du publiserer CV-en din offentlig (<code>nextrole.no/cv/...</code>),
+                logger vi anonymisert visning-statistikk: dato, land (fra
+                Cloudflare-header), kortet referrer, og pseudonymisert IP-hash
+                (SHA-256 med salt — vi kan ikke se ekte IP). Bruker-agent
+                klassifiseres som mobile/desktop/bot. Ingen PII fra besøkende.
+              </Typography>
+            </Paper>
+          </Box>
+
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              9. Klage til Datatilsynet
             </Typography>
             <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
               Hvis du mener behandlingen vår bryter personvernlovgivningen, kan du kontakte oss først eller sende klage til Datatilsynet.

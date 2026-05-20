@@ -35,6 +35,8 @@ const NextRoleGdprDialog = React.lazy(() => import('./NextRoleGdprDialog'));
 const IndustryTemplatePicker = React.lazy(() => import('./IndustryTemplatePicker'));
 const ArbeidsplassenImportDialog = React.lazy(() => import('./ArbeidsplassenImportDialog'));
 const PublicCvAnalyticsDialog = React.lazy(() => import('./PublicCvAnalyticsDialog'));
+const EducationVerificationDialog = React.lazy(() => import('./EducationVerificationDialog'));
+const SigridCareerMentor = React.lazy(() => import('./SigridCareerMentor'));
 const JobApplicationKanban = React.lazy(() => import('./JobApplicationKanban'));
 const JobApplicationMilestonesDialog = React.lazy(() => import('./JobApplicationMilestonesDialog'));
 import UpcomingDeadlinesWidget from './UpcomingDeadlinesWidget';
@@ -140,6 +142,7 @@ import {
   Videocam as VideocamIcon,
   Lightbulb as LightbulbIcon,
   Public as PublicIcon,
+  VerifiedUser as VerifiedIcon,
 } from '@mui/icons-material';
 
 // ============================================================================
@@ -3741,6 +3744,10 @@ export default function ResumeBuilder() {
   const [showArbeidsplassen, setShowArbeidsplassen] = useState(false);
   // Public CV analytics
   const [showCvAnalytics, setShowCvAnalytics] = useState(false);
+  // Education verification
+  const [showEducationVerification, setShowEducationVerification] = useState(false);
+  // Sigrid — karrierementer
+  const [showSigrid, setShowSigrid] = useState(false);
   // Referrals
   const [showReferralDialog, setShowReferralDialog] = useState(false);
   // Job Kanban + milestones
@@ -5056,6 +5063,32 @@ export default function ResumeBuilder() {
                       title="Pre-fylte achievement-eksempler etter bransje og rolle"
                     >
                       Bransje-eksempler
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<VerifiedIcon />}
+                      onClick={() => setShowEducationVerification(true)}
+                      title="Last opp vitnemål eller verifiseringslenke for utdanning"
+                    >
+                      Verifiser utdanning
+                    </Button>
+                    <Button
+                      variant="contained"
+                      startIcon={
+                        <Avatar sx={{
+                          bgcolor: '#F5B82E', color: '#1F2937',
+                          width: 22, height: 22, fontSize: 12, fontWeight: 800,
+                        }}>S</Avatar>
+                      }
+                      onClick={() => setShowSigrid(true)}
+                      title="Snakk med Sigrid — datadrevet karrierementer"
+                      sx={{
+                        bgcolor: '#1F2937',
+                        '&:hover': { bgcolor: '#0F172A' },
+                        color: '#fff',
+                      }}
+                    >
+                      Snakk med Sigrid
                     </Button>
                     {selectedResume?.isPublic && (
                       <Button
@@ -6714,6 +6747,21 @@ export default function ResumeBuilder() {
             onClose={() => setShowCvAnalytics(false)}
             resumeId={selectedResume?.id ?? null}
             resumeTitle={selectedResume?.title}
+          />
+        )}
+        {showEducationVerification && (
+          <EducationVerificationDialog
+            open={showEducationVerification}
+            onClose={() => setShowEducationVerification(false)}
+            resumeId={selectedResume?.id ?? null}
+            educations={(selectedResume?.education ?? []) as any}
+          />
+        )}
+        {showSigrid && (
+          <SigridCareerMentor
+            open={showSigrid}
+            onClose={() => setShowSigrid(false)}
+            resumeId={selectedResume?.id ?? null}
           />
         )}
         {showIndustryPicker && (
