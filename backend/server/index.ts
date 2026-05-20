@@ -1023,6 +1023,33 @@ app.post(
             subscription_id: typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id || '',
             value: (invoice.amount_paid || 0) / 100,
           });
+          // Slice 9X.79 — Event-trigger: invoice.paid
+          void (async () => {
+            try {
+              const subId = typeof invoice.subscription === 'string'
+                ? invoice.subscription
+                : invoice.subscription?.id || '';
+              if (!subId) return;
+              const rec = await readCreatorHubStripeCheckoutRecordBySubscriptionId(subId);
+              if (!rec?.userId) return;
+              const { fireWorkflowTrigger } = await import('./workflow-triggers.js');
+              await fireWorkflowTrigger({
+                pool,
+                eventType: 'invoice.paid',
+                userId: rec.userId,
+                payload: {
+                  invoice_id: invoice.id,
+                  subscription_id: subId,
+                  amount_paid: (invoice.amount_paid || 0) / 100,
+                  currency: invoice.currency || 'nok',
+                  plan_id: rec.planId,
+                  billing_cycle: rec.billingCycle,
+                },
+              });
+            } catch (e: any) {
+              console.warn('[workflow-triggers] invoice.paid fire failed:', e.message);
+            }
+          })();
           break;
         }
         case "invoice.payment_failed": {
@@ -24460,7 +24487,7 @@ app.post("/api/photographer/clients", async (req, res) => {
          postal_code = COALESCE(EXCLUDED.postal_code, clients.postal_code),
          notes       = COALESCE(EXCLUDED.notes,       clients.notes),
          updated_at  = NOW()
-       RETURNING id`,
+       RETURNING id, (xmax = 0) AS was_inserted`,
       [
         photographerId,
         trimmedEmail,
@@ -24474,7 +24501,30 @@ app.post("/api/photographer/clients", async (req, res) => {
       ],
     );
     const id = result.rows[0]?.id as string;
+    const wasInserted = result.rows[0]?.was_inserted === true;
     res.status(201).json({ id });
+
+    // Slice 9X.79 — Event-trigger: ny klient (kun ved faktisk insert)
+    if (wasInserted) {
+      void (async () => {
+        try {
+          const { fireWorkflowTrigger } = await import('./workflow-triggers.js');
+          await fireWorkflowTrigger({
+            pool,
+            eventType: 'client.created',
+            userId: photographerId,
+            payload: {
+              client_id: id,
+              client_email: trimmedEmail,
+              client_name: `${(firstName || '').trim()} ${(lastName || '').trim()}`.trim() || null,
+              city: city || null,
+            },
+          });
+        } catch (e: any) {
+          console.warn('[workflow-triggers] client.created fire failed:', e.message);
+        }
+      })();
+    }
   } catch (err) {
     console.error('[crm] create client failed:', err);
     res.status(500).json({ error: 'create_client_failed' });
@@ -25330,6 +25380,15 @@ app.patch("/api/photographer/projects/:projectId", async (req, res) => {
       );
       if (owned.rowCount === 0) return res.status(403).json({ error: 'client_not_owned' });
     }
+    // Slice 9X.79 — Fang previous status så vi kan trigge bare ved faktisk endring
+    let previousStatus: string | null = null;
+    if (typeof status === 'string' && status.trim()) {
+      const before = await pool.query(
+        `SELECT status FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+        [projectId, photographerId],
+      );
+      previousStatus = (before.rows[0]?.status as string) || null;
+    }
     const result = await pool.query(
       `UPDATE projects SET
          title          = COALESCE($1, title),
@@ -25406,6 +25465,28 @@ app.patch("/api/photographer/projects/:projectId", async (req, res) => {
     }
 
     res.json({ success: true });
+
+    // Slice 9X.79 — Event-trigger: status endret
+    if (typeof status === 'string' && status.trim() && status.trim() !== previousStatus) {
+      void (async () => {
+        try {
+          const { fireWorkflowTrigger } = await import('./workflow-triggers.js');
+          await fireWorkflowTrigger({
+            pool,
+            eventType: 'project.status_changed',
+            userId: photographerId,
+            payload: {
+              project_id: projectId,
+              old_status: previousStatus,
+              new_status: status.trim(),
+              project_type: projectType || null,
+            },
+          });
+        } catch (e: any) {
+          console.warn('[workflow-triggers] project.status_changed fire failed:', e.message);
+        }
+      })();
+    }
   } catch (err) {
     console.error('[photographer-projects] update failed:', err);
     res.status(500).json({ error: 'update_project_failed' });
