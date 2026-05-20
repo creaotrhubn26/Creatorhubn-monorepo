@@ -343,6 +343,8 @@ import { setupNextRoleReferralRoutes } from "./nextrole-referrals";
 import { setupNextRoleDripRoutes } from "./nextrole-drip";
 import { setupNextRoleSalaryRoutes } from "./nextrole-salary";
 import { setupNextRoleMilestonesRoutes } from "./nextrole-milestones";
+import { setupNextRoleVideoPresentationRoutes } from "./nextrole-video-presentations";
+import { setupNextRoleGdprRoutes } from "./nextrole-gdpr";
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
@@ -18166,6 +18168,8 @@ setupNextRoleReferralRoutes({
 setupNextRoleDripRoutes({ app, pool });
 setupNextRoleSalaryRoutes({ app, pool });
 setupNextRoleMilestonesRoutes({ app, pool, getActiveSessionFromRequest });
+setupNextRoleVideoPresentationRoutes({ app, pool, getActiveSessionFromRequest });
+setupNextRoleGdprRoutes({ app, pool, getActiveSessionFromRequest });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
   try {

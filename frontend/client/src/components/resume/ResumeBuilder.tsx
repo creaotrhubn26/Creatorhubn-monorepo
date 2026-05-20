@@ -30,6 +30,8 @@ const NextRoleCoverLetterLibrary = React.lazy(() => import('./NextRoleCoverLette
 // inkludere i initial-bundle. Reduserer Time-to-Interactive på mobil.
 const NextRoleMockInterview = React.lazy(() => import('./NextRoleMockInterview'));
 const NextRoleReferralDialog = React.lazy(() => import('./NextRoleReferralDialog'));
+const NextRoleVideoPresentation = React.lazy(() => import('./NextRoleVideoPresentation'));
+const NextRoleGdprDialog = React.lazy(() => import('./NextRoleGdprDialog'));
 const JobApplicationKanban = React.lazy(() => import('./JobApplicationKanban'));
 const JobApplicationMilestonesDialog = React.lazy(() => import('./JobApplicationMilestonesDialog'));
 import UpcomingDeadlinesWidget from './UpcomingDeadlinesWidget';
@@ -132,6 +134,7 @@ import {
   CardGiftcard as CardGiftcardIcon,
   WorkOutline as WorkOutlineIcon,
   Close as CloseIcon,
+  Videocam as VideocamIcon,
 } from '@mui/icons-material';
 
 // ============================================================================
@@ -3722,6 +3725,11 @@ export default function ResumeBuilder() {
   // Mock interview — kan åpnes med valgfri job-application-binding
   const [showMockInterview, setShowMockInterview] = useState(false);
   const [mockInterviewAppId, setMockInterviewAppId] = useState<string | null>(null);
+  // Video-presentasjon
+  const [showVideoPresentation, setShowVideoPresentation] = useState(false);
+  const [videoPresentationAppId, setVideoPresentationAppId] = useState<string | null>(null);
+  // GDPR
+  const [showGdprDialog, setShowGdprDialog] = useState(false);
   // Referrals
   const [showReferralDialog, setShowReferralDialog] = useState(false);
   // Job Kanban + milestones
@@ -5021,6 +5029,14 @@ export default function ResumeBuilder() {
                       title="AI-intervjutrening basert på CV og stillingsannonse"
                     >
                       Intervjutrening
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<VideocamIcon />}
+                      onClick={() => setShowVideoPresentation(true)}
+                      title="Tren på video-presentasjon ('fortell om deg selv')"
+                    >
+                      Video-pitch
                     </Button>
                     <Button
                       variant="outlined"
@@ -6637,6 +6653,23 @@ export default function ResumeBuilder() {
             }}
             resumeId={selectedResume?.id ?? null}
             jobApplicationId={mockInterviewAppId}
+          />
+        )}
+        {showVideoPresentation && (
+          <NextRoleVideoPresentation
+            open={showVideoPresentation}
+            onClose={() => {
+              setShowVideoPresentation(false);
+              setVideoPresentationAppId(null);
+            }}
+            resumeId={selectedResume?.id ?? null}
+            jobApplicationId={videoPresentationAppId}
+          />
+        )}
+        {showGdprDialog && (
+          <NextRoleGdprDialog
+            open={showGdprDialog}
+            onClose={() => setShowGdprDialog(false)}
           />
         )}
         {showReferralDialog && (
@@ -8567,6 +8600,13 @@ export default function ResumeBuilder() {
             aria-label="Administrer dine data"
           >
             Dine Data (GDPR)
+          </Button>
+          <Button
+            size="small"
+            onClick={() => setShowGdprDialog(true)}
+            aria-label="Last ned eller slett NextRole-data"
+          >
+            NextRole-data
           </Button>
           <Button
             size="small"

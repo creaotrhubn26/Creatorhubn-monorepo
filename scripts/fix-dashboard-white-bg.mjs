@@ -7,16 +7,16 @@
 import fs from 'fs';
 import path from 'path';
 
-const ROOT = '/Users/danielqazi/Creatorhubn-monorepo/frontend/client/src/components/universal';
+const ROOT = '/Users/danielqazi/Creatorhubn-monorepo/frontend/client/src/components';
 const FILES = [
-  'UniversalShowcase.tsx',
-  'UniversalSettingsPanel.tsx',
-  'HelpdeskSystem.tsx',
-  'DriveOperationsWorkspacePanel.tsx',
-  'IntegratedToolsOverview.tsx',
-  'AdministrationHub.tsx',
-  'misc/CameraEquipmentManager.tsx',
-  'IntegratedToolsOverview.tsx',
+  'universal/UniversalShowcase.tsx',
+  'universal/UniversalSettingsPanel.tsx',
+  'universal/HelpdeskSystem.tsx',
+  'universal/DriveOperationsWorkspacePanel.tsx',
+  'universal/IntegratedToolsOverview.tsx',
+  'universal/AdministrationHub.tsx',
+  'universal/misc/CameraEquipmentManager.tsx',
+  'chat/UniversalChatWidget.tsx',
 ];
 
 const REPLACEMENTS = [
