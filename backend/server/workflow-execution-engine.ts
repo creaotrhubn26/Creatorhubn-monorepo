@@ -456,6 +456,109 @@ export async function confirmManualStep(pool: Pool, runId: string, stepIndex: nu
 }
 
 /**
+ * Slice 9X.79 — Re-kjør ett enkelt feilet steg uten å resette hele runet.
+ * Stine kan trykke "Prøv igjen" på et failed step (f.eks. netverkfeil mot
+ * Drive) og bare det steget kjøres på nytt. Run-status oppdateres etterpå.
+ */
+export async function retryStep(pool: Pool, runId: string, stepIndex: number): Promise<{ status: string; error?: string }> {
+  await ensureSchema(pool);
+
+  const stepRes = await pool.query(
+    `SELECT s.action_id, s.status, r.user_id, r.context
+       FROM workflow_run_steps s
+       JOIN workflow_runs r ON r.id = s.run_id
+      WHERE s.run_id = $1 AND s.step_index = $2`,
+    [runId, stepIndex],
+  );
+  if (stepRes.rows.length === 0) throw new Error('step not found');
+  const { action_id, status: currentStatus, user_id, context } = stepRes.rows[0];
+
+  if (currentStatus !== 'failed') {
+    throw new Error(`step is not in failed state (current: ${currentStatus})`);
+  }
+
+  const def = ACTION_REGISTRY.get(action_id);
+  if (!def) throw new Error(`action ${action_id} not registered`);
+
+  const startedAt = Date.now();
+  await pool.query(
+    `UPDATE workflow_run_steps
+       SET status = 'running', started_at = NOW(),
+           error_message = NULL, completed_at = NULL, duration_ms = NULL
+     WHERE run_id = $1 AND step_index = $2`,
+    [runId, stepIndex],
+  );
+
+  let finalStepStatus: string;
+  let errMsg: string | null = null;
+  try {
+    const result = await def.handler({
+      userId: user_id,
+      runId,
+      stepIndex,
+      stepData: {},
+      workflowContext: context || {},
+      pool,
+    });
+
+    finalStepStatus = result.completed
+      ? 'completed'
+      : result.requiresManualConfirmation
+        ? 'awaiting_manual'
+        : 'failed';
+    errMsg = result.error || null;
+
+    await pool.query(
+      `UPDATE workflow_run_steps
+         SET status = $1, result_data = $2, error_message = $3,
+             completed_at = NOW(), duration_ms = $4
+       WHERE run_id = $5 AND step_index = $6`,
+      [finalStepStatus, JSON.stringify(result.data || {}), errMsg,
+       Date.now() - startedAt, runId, stepIndex],
+    );
+  } catch (err: any) {
+    finalStepStatus = 'failed';
+    errMsg = err.message?.slice(0, 500);
+    await pool.query(
+      `UPDATE workflow_run_steps
+         SET status = 'failed', error_message = $1, completed_at = NOW(),
+             duration_ms = $2
+       WHERE run_id = $3 AND step_index = $4`,
+      [errMsg, Date.now() - startedAt, runId, stepIndex],
+    );
+  }
+
+  // Rekompiler run-aggregater
+  const agg = await pool.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+       COUNT(*) FILTER (WHERE status = 'failed')    AS failed,
+       COUNT(*) FILTER (WHERE status IN ('awaiting_manual','running','pending')) AS open
+     FROM workflow_run_steps WHERE run_id = $1`,
+    [runId],
+  );
+  const completedN = parseInt(agg.rows[0].completed, 10);
+  const failedN    = parseInt(agg.rows[0].failed, 10);
+  const openN      = parseInt(agg.rows[0].open, 10);
+
+  let runStatus: string;
+  if (openN > 0) runStatus = openN === 1 && finalStepStatus === 'running' ? 'running' : 'partial';
+  else if (failedN > 0 && completedN === 0) runStatus = 'failed';
+  else if (failedN > 0) runStatus = 'partial';
+  else runStatus = 'completed';
+
+  await pool.query(
+    `UPDATE workflow_runs
+       SET status = $1, steps_completed = $2, steps_failed = $3,
+           completed_at = CASE WHEN $1 IN ('completed','failed','partial') THEN NOW() ELSE completed_at END
+     WHERE id = $4`,
+    [runStatus, completedN, failedN, runId],
+  );
+
+  return { status: finalStepStatus, error: errMsg || undefined };
+}
+
+/**
  * Hent run + steps for frontend polling.
  */
 export async function getRunStatus(pool: Pool, runId: string): Promise<any> {

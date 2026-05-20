@@ -95935,6 +95935,20 @@ app.post(
   },
 );
 
+// Slice 9X.79 — Re-kjør et feilet steg
+app.post(
+  "/api/orchestration/workflows/runs/:runId/steps/:stepIndex/retry",
+  async (req, res) => {
+    try {
+      const { retryStep } = await import('./workflow-execution-engine.js');
+      const result = await retryStep(pool, req.params.runId, parseInt(req.params.stepIndex, 10));
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  },
+);
+
 // Slice 9X.79 — Hent run-historikk for en bruker
 app.get(
   "/api/orchestration/workflows/:userId/runs",

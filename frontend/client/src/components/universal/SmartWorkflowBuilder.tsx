@@ -1502,6 +1502,59 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 Bekreft fullført
                               </Button>
                             )}
+
+                            {/* Slice 9X.79 — Prøv-igjen-knapp på failed step */}
+                            {liveStatus === 'failed' && run?.runId && (
+                              <Tooltip title={stepStatus?.error_message || 'Re-kjør dette steget'}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<PlayArrow sx={{ fontSize: '0.85rem !important' }} />}
+                                  onClick={async () => {
+                                    try {
+                                      const res: any = await apiRequest(
+                                        `/api/orchestration/workflows/runs/${run.runId}/steps/${index}/retry`,
+                                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+                                      );
+                                      if (res?.success) {
+                                        setSnackbar({
+                                          msg: res.status === 'completed' ? 'Steget gikk gjennom denne gangen' : `Steg-status: ${res.status}`,
+                                          severity: res.status === 'completed' ? 'success' : res.status === 'failed' ? 'error' : 'info',
+                                        });
+                                        queryClient.invalidateQueries({ queryKey: ['workflow-recent-runs', userId] });
+                                        // Pull oppdaterte step-statuser inn i live-state slik at badgen oppdateres umiddelbart
+                                        try {
+                                          const fresh: any = await apiRequest(`/api/orchestration/workflows/runs/${run.runId}`);
+                                          if (fresh?.success) {
+                                            setWorkflowRuns((prev) => ({
+                                              ...prev,
+                                              [workflow.id]: { runId: run.runId, stepStatuses: fresh.steps || [] },
+                                            }));
+                                          }
+                                        } catch {
+                                          /* graceful — polling tar det etterpå */
+                                        }
+                                      } else {
+                                        setSnackbar({ msg: res?.error || 'Re-kjøring feilet', severity: 'error' });
+                                      }
+                                    } catch (e: any) {
+                                      setSnackbar({ msg: e?.message || 'Re-kjøring feilet', severity: 'error' });
+                                    }
+                                  }}
+                                  sx={{
+                                    height: 22,
+                                    px: 1,
+                                    fontSize: '0.66rem',
+                                    textTransform: 'none',
+                                    borderColor: '#f59e0b',
+                                    color: '#f59e0b',
+                                    '&:hover': { bgcolor: 'rgba(245,158,11,0.08)' },
+                                  }}
+                                >
+                                  Prøv igjen
+                                </Button>
+                              </Tooltip>
+                            )}
                           </Box>
                           );
                         })}
