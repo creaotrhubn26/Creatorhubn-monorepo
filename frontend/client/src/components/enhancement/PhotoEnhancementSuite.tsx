@@ -73,6 +73,7 @@ import {
   FolderOutlined,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import SmartFlytCullingPanel from './SmartFlytCullingPanel';
 
 // Helper to get basename from path (for Lightroom file paths)
 const path = {
@@ -1978,6 +1979,11 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
           </Typography>
         </Alert>
       </Paper>
+
+	    {/* Slice 9X.79 — SmartFlyt-culling-panel (siste auto-culling-resultat) */}
+	    <Box sx={{ px: 3 }}>
+	      <SmartFlytCullingPanel userId={String(userId || currentUserId || '')} />
+	    </Box>
 
 	    <Box sx={{ flex: 1, display: 'flex' }}>
 	      {/* Main Content */}

@@ -96190,6 +96190,44 @@ app.delete(
   },
 );
 
+// Slice 9X.79 — Siste auto-culling-resultat for Photo Enhancer-panel
+app.get(
+  "/api/orchestration/workflows/:userId/latest-culling",
+  async (req, res) => {
+    try {
+      const userId = req.params.userId;
+      const r = await pool.query(
+        `SELECT s.result_data, s.completed_at, r.workflow_name, r.id AS run_id
+           FROM workflow_run_steps s
+           JOIN workflow_runs r ON r.id = s.run_id
+          WHERE r.user_id = $1
+            AND s.action_id = 'auto-culling'
+            AND s.status = 'completed'
+            AND s.result_data ? 'counts'
+          ORDER BY s.completed_at DESC
+          LIMIT 1`,
+        [userId],
+      );
+      if (r.rows.length === 0) {
+        return res.json({ success: true, data: null });
+      }
+      const row = r.rows[0];
+      res.json({
+        success: true,
+        data: {
+          runId: row.run_id,
+          workflowName: row.workflow_name,
+          completedAt: row.completed_at,
+          ...row.result_data,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === '42P01') return res.json({ success: true, data: null });
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
 // Slice 9X.79 — Hent run-historikk for en bruker
 app.get(
   "/api/orchestration/workflows/:userId/runs",

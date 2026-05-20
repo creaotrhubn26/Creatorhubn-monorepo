@@ -82,6 +82,7 @@ import {
   SUBJECT_KINDS,
 } from '../../../lib/enhancer-session/module-contract';
 import type { ExportPreset, StarRating } from '../../../lib/enhancer-session/types';
+import SmartFlytCullingPanel from '../../enhancement/SmartFlytCullingPanel';
 
 type SupportedProfession = 'photographer' | 'videographer' | 'music_producer' | 'musicproducer' | 'vendor';
 type ViewMode = 'single' | 'side-by-side' | 'slider';
@@ -1374,8 +1375,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   // the photographer can tap \ and see before/after without mouse work.
   const compareOverrideUrl = compareHeld && enhancedImageUrl ? originalImageUrl : '';
 
+  // Slice 9X.79 — userId for SmartFlyt-culling-panel
+  const enhancerUserId = (typeof window !== 'undefined' && window.localStorage.getItem('userId')) || '';
+
   return (
     <Box>
+      {/* Slice 9X.79 — Siste auto-culling-resultat fra SmartFlyt */}
+      <SmartFlytCullingPanel userId={enhancerUserId} />
+
       <Grid container spacing={2}>
         <Grid item xs={12} md={4}>
           <Card>
