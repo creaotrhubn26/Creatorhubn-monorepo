@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import WorkflowRunHistoryDialog from './WorkflowRunHistoryDialog';
+import { Snackbar } from '@mui/material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
@@ -552,6 +553,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
   // Slice 9X.79 — runId-tracking per workflow, polling fra engine
   const [workflowRuns, setWorkflowRuns] = useState<Record<string, { runId: string; stepStatuses: any[] }>>({});
   const [showRunHistory, setShowRunHistory] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ msg: string; severity: 'success' | 'info' | 'warning' | 'error' } | null>(null);
 
   const executeWorkflow = async (workflowId: string) => {
     const workflow = workflows.find((w) => w.id === workflowId);
@@ -591,6 +593,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
 
       const runId = startRes.runId;
       setWorkflowRuns((prev) => ({ ...prev, [workflowId]: { runId, stepStatuses: [] } }));
+      setSnackbar({ msg: `Startet "${workflow.name}" (${workflow.steps.length} steg)`, severity: 'info' });
 
       // Polling — engine kjører i bakgrunnen, vi henter status hvert 1.5s
       const pollInterval = setInterval(async () => {
@@ -620,6 +623,16 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
               updated.delete(workflowId);
               return updated;
             });
+            const done = steps.filter((s: any) => s.status === 'completed').length;
+            const failed = steps.filter((s: any) => s.status === 'failed').length;
+            const awaiting = steps.filter((s: any) => s.status === 'awaiting_manual').length;
+            if (run.status === 'completed') {
+              setSnackbar({ msg: `"${workflow.name}" ferdig — ${done}/${steps.length} steg`, severity: 'success' });
+            } else if (run.status === 'failed') {
+              setSnackbar({ msg: `"${workflow.name}" feilet (${failed} feilet)`, severity: 'error' });
+            } else {
+              setSnackbar({ msg: `"${workflow.name}" delvis ferdig — ${awaiting} venter manuell`, severity: 'warning' });
+            }
           }
         } catch (err) {
           console.warn('[workflow-poll] feilet:', err);
@@ -1394,6 +1407,26 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                               />
                             )}
 
+                            {/* Slice 9X.79 — actionUrl-knapp (åpne riktig modul) */}
+                            {liveStatus === 'awaiting_manual' && stepStatus?.result_data?.actionUrl && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                href={stepStatus.result_data.actionUrl}
+                                sx={{
+                                  height: 22,
+                                  px: 1,
+                                  fontSize: '0.66rem',
+                                  textTransform: 'none',
+                                  borderColor: '#3b82f6',
+                                  color: '#3b82f6',
+                                  '&:hover': { bgcolor: 'rgba(59,130,246,0.08)' },
+                                }}
+                              >
+                                Åpne →
+                              </Button>
+                            )}
+
                             {/* Manuell bekreft-knapp når awaiting_manual */}
                             {liveStatus === 'awaiting_manual' && run?.runId && (
                               <Button
@@ -1427,22 +1460,45 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                         })}
                       </Box>
 
-                      {/* Progress bar for running workflows */}
-                      {runningWorkflows.has(workflow.id) && (
-                        <Box sx={{ mt: 2 }}>
-                          <LinearProgress 
-                            sx={{
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                              '& .MuiLinearProgress-bar': {
-                                background: 'linear-gradient(90deg, #6366F1 0%, #10B981 100%)',
-                                borderRadius: 3
-                              }
-                            }}
-                          />
-                        </Box>
-                      )}
+                      {/* Slice 9X.79 — progress + tellere */}
+                      {(() => {
+                        const run = workflowRuns[workflow.id];
+                        if (!run?.stepStatuses?.length) return null;
+                        const total = run.stepStatuses.length;
+                        const done = run.stepStatuses.filter((s: any) => s.status === 'completed').length;
+                        const failed = run.stepStatuses.filter((s: any) => s.status === 'failed').length;
+                        const awaiting = run.stepStatuses.filter((s: any) => s.status === 'awaiting_manual').length;
+                        const pct = total > 0 ? (done / total) * 100 : 0;
+                        return (
+                          <Box sx={{ mt: 2 }}>
+                            <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)', fontWeight: 700 }}>
+                                {done}/{total} fullført
+                                {awaiting > 0 && <span style={{ color: '#3b82f6' }}> · {awaiting} venter</span>}
+                                {failed > 0 && <span style={{ color: '#ef4444' }}> · {failed} feilet</span>}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.5)' }}>
+                                {Math.round(pct)}%
+                              </Typography>
+                            </Stack>
+                            <LinearProgress
+                              variant="determinate"
+                              value={pct}
+                              sx={{
+                                height: 6,
+                                borderRadius: 3,
+                                backgroundColor: 'rgba(255,255,255,0.06)',
+                                '& .MuiLinearProgress-bar': {
+                                  background: failed > 0
+                                    ? 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)'
+                                    : 'linear-gradient(90deg, #ffba6c 0%, #10b981 100%)',
+                                  borderRadius: 3,
+                                },
+                              }}
+                            />
+                          </Box>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 </Grid>
@@ -1550,6 +1606,27 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
         open={showRunHistory}
         onClose={() => setShowRunHistory(false)}
         userId={userId || ''}
+      />
+
+      {/* Slice 9X.79 — toast/snackbar ved start + ferdig */}
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={snackbar?.severity === 'success' ? 4000 : 6000}
+        onClose={() => setSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        message={snackbar?.msg}
+        ContentProps={{
+          sx: {
+            bgcolor: snackbar?.severity === 'success' ? 'rgba(16,185,129,0.95)'
+              : snackbar?.severity === 'error' ? 'rgba(239,68,68,0.95)'
+              : snackbar?.severity === 'warning' ? 'rgba(245,158,11,0.95)'
+              : 'rgba(59,130,246,0.95)',
+            color: '#fff',
+            fontWeight: 600,
+            borderRadius: 2,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.32)',
+          },
+        }}
       />
     </Box>
 );
