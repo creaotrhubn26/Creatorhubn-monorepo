@@ -26,6 +26,7 @@ import type express from "express";
 import type { Pool } from "pg";
 import multer from "multer";
 import { uploadTrainingMedia, transcribeAudioWithWhisper, isTranscriptionError } from "./nextrole-audio-service";
+import { scrubPII } from "./nextrole-pii-filter";
 
 // Lokal Claude-helper med vision-støtte (callClaude i resume-routes
 // godtar kun string-content). Identisk modell-valg og auth som der.
@@ -367,13 +368,13 @@ export function setupNextRoleVideoPresentationRoutes(
             text: [
               "Vurder denne video-presentasjonen som AI-coach. Skriv resultatet som JSON.",
               "",
-              `PROMPT KANDIDATEN SVARTE PÅ:\n"${sess.prompt_text}"`,
-              sess.job_title ? `\nSØKER STILLING: ${sess.job_title}` : "",
-              sess.company ? `\nSELSKAP: ${sess.company}` : "",
+              `PROMPT KANDIDATEN SVARTE PÅ:\n"${scrubPII(sess.prompt_text)}"`,
+              sess.job_title ? `\nSØKER STILLING: ${scrubPII(sess.job_title)}` : "",
+              sess.company ? `\nSELSKAP: ${scrubPII(sess.company)}` : "",
               sess.jd_notes
-                ? `\nSTILLINGSANNONSE (utdrag):\n${sess.jd_notes.slice(0, 1500)}`
+                ? `\nSTILLINGSANNONSE (utdrag):\n${scrubPII(sess.jd_notes.slice(0, 1500))}`
                 : "",
-              `\nKANDIDATENS TRANSKRIBERTE SVAR:\n"${transcription.text}"`,
+              `\nKANDIDATENS TRANSKRIBERTE SVAR:\n"${scrubPII(transcription.text)}"`,
               transcription.durationMs
                 ? `\nTaletid: ${(transcription.durationMs / 1000).toFixed(1)} sek`
                 : "",

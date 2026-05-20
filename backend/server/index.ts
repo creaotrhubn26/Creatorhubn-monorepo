@@ -95935,6 +95935,34 @@ app.post(
   },
 );
 
+// Slice 9X.79 — Hent run-historikk for en bruker
+app.get(
+  "/api/orchestration/workflows/:userId/runs",
+  async (req, res) => {
+    try {
+      const userId = req.params.userId;
+      const limit = Math.min(parseInt((req.query.limit as string) || '20', 10), 100);
+      const result = await pool.query(
+        `SELECT r.id, r.workflow_id, r.workflow_name, r.status, r.profession,
+                r.steps_total, r.steps_completed, r.steps_failed,
+                r.started_at, r.completed_at, r.created_at,
+                EXTRACT(EPOCH FROM (COALESCE(r.completed_at, NOW()) - r.started_at)) AS duration_sec,
+                (SELECT COUNT(*) FROM workflow_run_steps s
+                  WHERE s.run_id = r.id AND s.status = 'awaiting_manual') AS awaiting_count
+           FROM workflow_runs r
+           WHERE r.user_id = $1
+           ORDER BY r.created_at DESC
+           LIMIT $2`,
+        [userId, limit],
+      );
+      res.json({ success: true, data: result.rows });
+    } catch (err: any) {
+      if (err?.code === '42P01') return res.json({ success: true, data: [] });
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
 // System metrics endpoint
 app.get("/api/system/metrics", (req, res) => {
   res.json({

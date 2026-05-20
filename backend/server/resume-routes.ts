@@ -142,6 +142,7 @@ import {
   transcribeAudioWithWhisper,
   isTranscriptionError,
 } from "./nextrole-audio-service";
+import { scrubPII, extractCityOnly } from "./nextrole-pii-filter";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -673,45 +674,49 @@ function tryParseJson<T = unknown>(text: string): T | null {
 }
 
 function summarizeResumeForAI(full: FullResume): string {
+  // PII-filter — sender ALDRI rå personal_info-JSONB til AI.
+  // Allowlist-felt + scrubbing av fri-tekst + by-bare extraction.
   const r = full.resume;
   const p = (r.personalInfo as Record<string, string | undefined>) ?? {};
+
   const lines = [
-    `Tittel/Rolle: ${p.professionalTitle ?? r.targetJobTitle ?? r.title}`,
-    p.summary ? `Sammendrag: ${p.summary}` : "",
-    p.location ? `Sted: ${p.location}` : "",
+    `Tittel/Rolle: ${scrubPII(p.professionalTitle ?? r.targetJobTitle ?? r.title ?? "")}`,
+    p.summary ? `Sammendrag: ${scrubPII(p.summary.slice(0, 400))}` : "",
+    p.location ? `By: ${extractCityOnly(p.location)}` : "",
     r.targetIndustry ? `Målbransje: ${r.targetIndustry}` : "",
   ].filter(Boolean);
+
   if (full.experiences.length) {
     lines.push("\nERFARING:");
     full.experiences.forEach((e) => {
+      const startStr = (e.startDate as string)?.slice(0, 7) ?? "?";
+      const endStr = e.isCurrent ? "nå" : ((e.endDate as string)?.slice(0, 7) ?? "");
       lines.push(
-        `- ${e.jobTitle} hos ${e.company} (${(e.startDate as string)?.slice(0, 7)} → ${
-          e.isCurrent ? "nå" : (e.endDate as string)?.slice(0, 7) ?? ""
-        })`,
+        `- ${scrubPII(e.jobTitle ?? "")} hos ${scrubPII(e.company ?? "")} (${startStr} → ${endStr})`,
       );
-      if (e.description) lines.push(`  ${e.description}`);
+      if (e.description) lines.push(`  ${scrubPII(e.description.slice(0, 300))}`);
       const ach = (e.achievements as string[]) ?? [];
-      ach.slice(0, 5).forEach((a) => lines.push(`  • ${a}`));
+      ach.slice(0, 5).forEach((a) => lines.push(`  • ${scrubPII(a)}`));
     });
   }
   if (full.education.length) {
     lines.push("\nUTDANNING:");
     full.education.forEach((e) =>
       lines.push(
-        `- ${e.degree}${e.fieldOfStudy ? ` i ${e.fieldOfStudy}` : ""}, ${e.institution}`,
+        `- ${scrubPII(e.degree ?? "")}${e.fieldOfStudy ? ` i ${scrubPII(e.fieldOfStudy)}` : ""}, ${scrubPII(e.institution ?? "")}`,
       ),
     );
   }
   if (full.skills.length) {
     lines.push("\nFERDIGHETER:");
     lines.push(
-      full.skills.map((s) => `${s.name} (${s.proficiencyLevel}%)`).join(", "),
+      full.skills.map((s) => `${scrubPII(s.name ?? "")} (${s.proficiencyLevel}%)`).join(", "),
     );
   }
   if (full.certifications.length) {
     lines.push("\nSERTIFISERINGER:");
     full.certifications.forEach((c) =>
-      lines.push(`- ${c.name} — ${c.issuer}`),
+      lines.push(`- ${scrubPII(c.name ?? "")} — ${scrubPII(c.issuer ?? "")}`),
     );
   }
   if (full.languages.length) {
@@ -725,8 +730,8 @@ function summarizeResumeForAI(full: FullResume): string {
   if (full.projects.length) {
     lines.push("\nPROSJEKTER:");
     full.projects.forEach((p_) => {
-      lines.push(`- ${p_.title}${p_.role ? ` (${p_.role})` : ""}`);
-      if (p_.description) lines.push(`  ${p_.description}`);
+      lines.push(`- ${scrubPII(p_.title ?? "")}${p_.role ? ` (${scrubPII(p_.role)})` : ""}`);
+      if (p_.description) lines.push(`  ${scrubPII(p_.description.slice(0, 200))}`);
     });
   }
   return lines.join("\n");

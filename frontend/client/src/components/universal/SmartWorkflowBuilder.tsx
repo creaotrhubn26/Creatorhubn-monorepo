@@ -7,6 +7,7 @@ import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import WorkflowRunHistoryDialog from './WorkflowRunHistoryDialog';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
@@ -550,6 +551,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
 
   // Slice 9X.79 — runId-tracking per workflow, polling fra engine
   const [workflowRuns, setWorkflowRuns] = useState<Record<string, { runId: string; stepStatuses: any[] }>>({});
+  const [showRunHistory, setShowRunHistory] = useState(false);
 
   const executeWorkflow = async (workflowId: string) => {
     const workflow = workflows.find((w) => w.id === workflowId);
@@ -714,21 +716,39 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
         </Alert>
       )}
 
-      <Typography variant="h4" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  2  }}>
-        {professionIcon || <AutoAwesome sx={{ color: '#32cd32'}} />}
-        Smart Arbeidsflyt
-        {dynamicProfessionData && (
-          <Chip 
-            label={dynamicProfessionData.displayName} 
-            size="small" 
-            sx={{ 
-              backgroundColor: dynamicProfessionData.iconColor + '20',
-              color: dynamicProfessionData.iconColor,
-              fontWeight: 600
-            }} 
-          />
-        )}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0 }}>
+          {professionIcon || <AutoAwesome sx={{ color: '#32cd32'}} />}
+          Smart Arbeidsflyt
+          {dynamicProfessionData && (
+            <Chip
+              label={dynamicProfessionData.displayName}
+              size="small"
+              sx={{
+                backgroundColor: dynamicProfessionData.iconColor + '20',
+                color: dynamicProfessionData.iconColor,
+                fontWeight: 600,
+              }}
+            />
+          )}
+        </Typography>
+        {/* Slice 9X.79 — Run-historikk-knapp */}
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setShowRunHistory(true)}
+          sx={{
+            borderRadius: '999px',
+            px: 2,
+            textTransform: 'none',
+            color: '#fff5e8',
+            borderColor: 'rgba(255,186,108,0.32)',
+            '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+          }}
+        >
+          Historikk
+        </Button>
+      </Box>
       
       <Typography variant="subtitle1" color="text.secondary" sx={{ mb:  2 }}>
         Automatiser hele {dynamicProfessionData?.displayName?.toLowerCase() || 'din'}-prosessen med ett klikk
@@ -1524,6 +1544,13 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
           <Button onClick={saveWorkflow} variant="contained" sx={theming.getThemedButtonSx()}>Lagre</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Slice 9X.79 — Run-historikk-dialog */}
+      <WorkflowRunHistoryDialog
+        open={showRunHistory}
+        onClose={() => setShowRunHistory(false)}
+        userId={userId || ''}
+      />
     </Box>
 );
 };

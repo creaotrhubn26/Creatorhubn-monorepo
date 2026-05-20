@@ -36,6 +36,10 @@ import {
   WbSunny as SunIcon,
   Refresh as RefreshIcon,
   ArrowForward as ArrowIcon,
+  ShieldOutlined as ShieldIcon,
+  ExpandMore as ExpandMoreIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -100,6 +104,84 @@ interface Props {
 function formatNok(amount: number): string {
   return amount.toLocaleString('no-NO', { maximumFractionDigits: 0 });
 }
+
+// ── PII-disclosure-panel ──────────────────────────────────────────
+// Henter eksakt hva som sendes og ikke sendes til AI, og viser det
+// som ekspanderbar kortliste i onboarding. Brukeren ser nøyaktig
+// hvilke felt som forlater serveren.
+
+const PiiDisclosurePanel: React.FC = () => {
+  const [expanded, setExpanded] = useState(false);
+  const { data } = useQuery<{ sent: string[]; notSent: string[] }>({
+    queryKey: ['pii-disclosure'],
+    queryFn: async () =>
+      (await apiRequest('/api/nextrole/career-mentor/pii-disclosure')) as { sent: string[]; notSent: string[] },
+  });
+
+  if (!data) return null;
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        mt: 3,
+        p: 1.5,
+        bgcolor: '#F9FAFB',
+        borderColor: '#E5E7EB',
+      }}
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        onClick={() => setExpanded((e) => !e)}
+        sx={{ cursor: 'pointer' }}
+      >
+        <ShieldIcon sx={{ fontSize: 18, color: '#6B7280' }} />
+        <Typography variant="caption" sx={{ fontWeight: 700, flex: 1, color: '#374151' }}>
+          Hva Sigrid faktisk ser av din profil
+        </Typography>
+        <ExpandMoreIcon
+          sx={{
+            fontSize: 18,
+            color: 'text.disabled',
+            transform: expanded ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.2s',
+          }}
+        />
+      </Stack>
+      {expanded && (
+        <Box sx={{ mt: 1.5 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, color: '#10B981' }}>
+            SENDES TIL AI
+          </Typography>
+          <Stack spacing={0.3} sx={{ mb: 1.5 }}>
+            {data.sent.map((s, i) => (
+              <Stack key={i} direction="row" spacing={0.5} alignItems="center">
+                <CheckCircleIcon sx={{ fontSize: 14, color: '#10B981' }} />
+                <Typography variant="caption">{s}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+          <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, color: '#DC2626' }}>
+            SENDES IKKE
+          </Typography>
+          <Stack spacing={0.3}>
+            {data.notSent.map((s, i) => (
+              <Stack key={i} direction="row" spacing={0.5} alignItems="center">
+                <CancelIcon sx={{ fontSize: 14, color: '#DC2626' }} />
+                <Typography variant="caption">{s}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+          <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'text.secondary', fontStyle: 'italic' }}>
+            Fri-tekst (rolle-beskrivelser, achievements) blir automatisk scrubbet for fødselsnumre, telefon, e-post og adresser før den sendes.
+          </Typography>
+        </Box>
+      )}
+    </Paper>
+  );
+};
 
 export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId }) => {
   const { user } = useAuth();
@@ -380,7 +462,7 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
       <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', p: 0 }}>
         {/* ── ONBOARDING ── */}
         {phase === 'onboarding' && (
-          <Box sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <Box sx={{ p: 4, flex: 1, overflowY: 'auto' }}>
             <Box sx={{ textAlign: 'center', mb: 4 }}>
               <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
                 Hei. Før vi starter — hvilken type tilbakemelding vil du ha?
@@ -423,6 +505,9 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
                 );
               })}
             </Stack>
+
+            {/* PII-disclosure — vises som collapse for de som vil sjekke */}
+            <PiiDisclosurePanel />
           </Box>
         )}
 

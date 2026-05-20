@@ -29,6 +29,11 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import {
+  sanitizeProfileForAI,
+  formatSanitizedForPrompt,
+  PII_DISCLOSURE,
+} from "./nextrole-pii-filter";
 
 export interface NextRoleCareerMentorDeps {
   app: express.Application;
@@ -205,7 +210,7 @@ async function loadCvContext(
   userId: string,
   resumeId?: string | null,
 ): Promise<string> {
-  // Hent CV (enten den valgte eller den senest oppdaterte)
+  // Hent CV — enten den valgte eller senest oppdatert
   const resumeQ = resumeId
     ? await pool.query(
         `SELECT * FROM resumes WHERE id = $1 AND user_id = $2 LIMIT 1`,
@@ -219,11 +224,10 @@ async function loadCvContext(
     return "[KANDIDATEN HAR INGEN CV ENNÅ — fokuser på interesser, livssituasjon og generelle preferanser før du foreslår yrker.]";
   }
   const r = resumeQ.rows[0];
-  const p = (r.personal_info as Record<string, string | undefined>) ?? {};
 
-  const [exp, edu, skills] = await Promise.all([
+  const [exp, edu, skills, langs] = await Promise.all([
     pool.query(
-      `SELECT job_title, company, start_date, end_date, is_current, description
+      `SELECT job_title, company, start_date, end_date, is_current, description, achievements
          FROM resume_experiences WHERE resume_id = $1
          ORDER BY start_date DESC LIMIT 8`,
       [r.id],
@@ -239,58 +243,34 @@ async function loadCvContext(
          ORDER BY display_order LIMIT 30`,
       [r.id],
     ),
+    pool.query(
+      `SELECT name FROM resume_languages WHERE resume_id = $1
+         ORDER BY display_order LIMIT 10`,
+      [r.id],
+    ).catch(() => ({ rows: [] as { name: string }[] })),
   ]);
 
-  // Antall år erfaring
-  let totalMonths = 0;
-  for (const e of exp.rows as Array<{
-    start_date: Date | null;
-    end_date: Date | null;
-    is_current: boolean | null;
-  }>) {
-    if (!e.start_date) continue;
-    const end = e.is_current ? new Date() : (e.end_date ?? new Date());
-    const months =
-      (end.getFullYear() - e.start_date.getFullYear()) * 12 +
-      (end.getMonth() - e.start_date.getMonth());
-    if (months > 0) totalMonths += months;
-  }
-  const years = Math.round(totalMonths / 12);
+  // Pass alt gjennom PII-filteret (allowlist + scrubbing)
+  const sanitized = sanitizeProfileForAI({
+    resume: r,
+    experiences: exp.rows as Array<{
+      job_title: string; company: string;
+      start_date: Date | null; end_date: Date | null;
+      is_current: boolean; description: string | null;
+      achievements: string[] | null;
+    }>,
+    education: edu.rows as Array<{
+      degree: string; field_of_study: string | null; institution: string;
+    }>,
+    skills: skills.rows as Array<{ name: string }>,
+    languages: langs.rows as Array<{ name: string }>,
+  });
 
-  const lines: string[] = [
-    `Profesjonell tittel: ${p.professionalTitle ?? r.target_job_title ?? r.title ?? "ukjent"}`,
-    `Erfaring: ${years} år totalt`,
-    p.location ? `Sted: ${p.location}` : "",
-    r.target_industry ? `Målbransje: ${r.target_industry}` : "",
-  ].filter(Boolean);
-
-  if (exp.rowCount) {
-    lines.push("\nSiste roller:");
-    for (const e of exp.rows.slice(0, 5) as Array<{
-      job_title: string;
-      company: string;
-      start_date: Date | null;
-      is_current: boolean;
-    }>) {
-      const start = e.start_date?.toISOString().slice(0, 7) ?? "?";
-      lines.push(`  - ${e.job_title} hos ${e.company} (fra ${start}${e.is_current ? ", nå" : ""})`);
-    }
-  }
-
-  if (edu.rowCount) {
-    lines.push("\nUtdanning:");
-    for (const e of edu.rows as Array<{ degree: string; field_of_study: string | null; institution: string }>) {
-      lines.push(`  - ${e.degree}${e.field_of_study ? ` i ${e.field_of_study}` : ""} fra ${e.institution}`);
-    }
-  }
-
-  if (skills.rowCount) {
-    const topSkills = (skills.rows as Array<{ name: string }>).slice(0, 15).map((s) => s.name).join(", ");
-    lines.push(`\nFerdigheter: ${topSkills}`);
-  }
-
-  return lines.join("\n");
+  return formatSanitizedForPrompt(sanitized);
 }
+
+// Re-eksporter PII-disclosure så frontend kan vise det
+export { PII_DISCLOSURE };
 
 // ── Markedskontext (norsk arbeidsmarked) ──────────────────────────
 
@@ -387,6 +367,11 @@ export function setupNextRoleCareerMentorRoutes(
     if (!session) return;
     const prefs = await getUserPrefs(pool, session.userId);
     res.json(prefs);
+  });
+
+  // GET PII disclosure — eksakt hva som sendes og ikke sendes til AI
+  app.get("/api/nextrole/career-mentor/pii-disclosure", (_req, res) => {
+    res.json(PII_DISCLOSURE);
   });
 
   // PATCH preferences
