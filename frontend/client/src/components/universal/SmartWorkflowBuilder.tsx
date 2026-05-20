@@ -588,6 +588,14 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
     return map;
   }, [schedulesData]);
 
+  // Slice 9X.79 — AI-kostnad fra SmartFlyt (siste 30 dager)
+  const { data: aiCostData } = useQuery({
+    queryKey: ['smartflyt-ai-cost', userId],
+    queryFn: async () => apiRequest(`/api/orchestration/workflows/${userId}/ai-cost?days=30`),
+    enabled: !!userId && userId !== 'anonymous',
+    refetchInterval: 60_000,
+  });
+
   // Slice 9X.79 — siste-kjøring per workflow (oversikt på kortet)
   const { data: recentRunsData } = useQuery({
     queryKey: ['workflow-recent-runs', userId],
@@ -796,6 +804,26 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
             />
           )}
         </Typography>
+        {/* Slice 9X.79 — AI-kostnad-pille (siste 30 dager fra SmartFlyt) */}
+        {aiCostData?.data?.callCount > 0 && (
+          <Tooltip title={`Siste ${aiCostData.data.days} dager · ${aiCostData.data.inputTokens.toLocaleString('nb-NO')} input + ${aiCostData.data.outputTokens.toLocaleString('nb-NO')} output tokens · $${aiCostData.data.totalUsd.toFixed(4)}`}>
+            <Chip
+              size="small"
+              icon={<AutoAwesome sx={{ fontSize: '0.85rem' }} />}
+              label={`${aiCostData.data.callCount} AI-kall · ${aiCostData.data.totalNok.toFixed(2)} kr`}
+              sx={{
+                height: 28,
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                bgcolor: 'rgba(155,135,245,0.12)',
+                border: '1px solid rgba(155,135,245,0.32)',
+                color: '#9b87f5',
+                '& .MuiChip-icon': { color: '#9b87f5' },
+              }}
+            />
+          </Tooltip>
+        )}
+
         {/* Slice 9X.79 — Run-historikk-knapp */}
         <Button
           size="small"

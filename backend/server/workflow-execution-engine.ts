@@ -500,7 +500,11 @@ Bruk myk, profesjonell tone. Norsk bokmål.`;
         // Best-effort cost-logging — ikke blokker om det feiler
         try {
           const { logAIUsage } = await import('./ai-usage-tracker.js');
-          logAIUsage(response as any, { feature: 'smartflyt/generate-contract' }).catch(() => undefined);
+          logAIUsage(response as any, {
+            feature: 'smartflyt/generate-contract',
+            userId: ctx.userId,
+            route: `workflow/${ctx.runId}/step/${ctx.stepIndex}`,
+          }).catch(() => undefined);
         } catch {
           /* tracker ikke tilgjengelig — kontinuer */
         }

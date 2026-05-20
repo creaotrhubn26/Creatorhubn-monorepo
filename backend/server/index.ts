@@ -96190,6 +96190,49 @@ app.delete(
   },
 );
 
+// Slice 9X.79 — AI-kostnad fra SmartFlyt for header-widget
+app.get(
+  "/api/orchestration/workflows/:userId/ai-cost",
+  async (req, res) => {
+    try {
+      const userId = req.params.userId;
+      const days = Math.min(parseInt((req.query.days as string) || '30', 10), 90);
+      const r = await pool.query(
+        `SELECT
+           COUNT(*)::int                       AS call_count,
+           COALESCE(SUM(cost_usd), 0)::float8 AS total_usd,
+           COALESCE(SUM(input_tokens), 0)::int  AS input_tokens,
+           COALESCE(SUM(output_tokens), 0)::int AS output_tokens
+         FROM ai_usage_log
+         WHERE user_id = $1
+           AND feature LIKE 'smartflyt/%'
+           AND created_at >= NOW() - ($2 || ' days')::interval`,
+        [userId, String(days)],
+      );
+      const row = r.rows[0] || {};
+      // USD → NOK med rough 11 (vises kun som indikator, ikke regnskap)
+      const totalUsd = Number(row.total_usd) || 0;
+      const totalNok = totalUsd * 11;
+      res.json({
+        success: true,
+        data: {
+          days,
+          callCount: row.call_count || 0,
+          totalUsd,
+          totalNok,
+          inputTokens: row.input_tokens || 0,
+          outputTokens: row.output_tokens || 0,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === '42P01') {
+        return res.json({ success: true, data: { days: 30, callCount: 0, totalUsd: 0, totalNok: 0, inputTokens: 0, outputTokens: 0 } });
+      }
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
 // Slice 9X.79 — Siste auto-culling-resultat for Photo Enhancer-panel
 app.get(
   "/api/orchestration/workflows/:userId/latest-culling",
