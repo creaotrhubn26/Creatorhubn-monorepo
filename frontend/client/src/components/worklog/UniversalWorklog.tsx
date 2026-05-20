@@ -341,7 +341,9 @@ export default function UniversalWorklog({
   const config = {
     ...baseConfig,
     color: professionTheme?.primaryColor || baseConfig.color,
-    title: `${baseConfig.title} Worklog`
+    // Slice 9X.72 — baseConfig.title har allerede "Worklog" i seg (f.eks.
+    // "Fotografering Worklog"), så vi unngår dupliseringen.
+    title: baseConfig.title,
   };
   
   const IconComponent = config.icon;
@@ -1675,11 +1677,15 @@ export default function UniversalWorklog({
                         icon={item.icon}
                         label={`${item.label}: ${item.value}`}
                         sx={{
-                          bgcolor: item.tone,
-                          color: 'text.primary',
+                          // Slice 9X.72 — bytt fra item.tone (lyst-tema) til accent
+                          bgcolor: alpha(config.color, 0.12),
+                          color: '#fff5e8',
+                          border: `1px solid ${alpha(config.color, 0.32)}`,
                           borderRadius: 999,
                           height: 34,
+                          fontWeight: 600,
                           '& .MuiChip-icon': { color: config.color },
+                          '& .MuiChip-label': { color: '#fff5e8' },
                         }}
                       />
                     ))}
@@ -1687,10 +1693,13 @@ export default function UniversalWorklog({
                       <Chip
                         label={`Siste energi: ${latestMood.icon} ${latestMood.label}`}
                         sx={{
-                          bgcolor: alpha(latestMood.color, 0.16),
-                          color: latestMood.color,
+                          bgcolor: alpha(latestMood.color, 0.18),
+                          color: '#fff5e8',
+                          border: `1px solid ${alpha(latestMood.color, 0.5)}`,
                           borderRadius: 999,
                           height: 34,
+                          fontWeight: 600,
+                          '& .MuiChip-label': { color: '#fff5e8' },
                         }}
                       />
                     )}
