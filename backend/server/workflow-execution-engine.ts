@@ -265,11 +265,127 @@ function registerDefaultActions() {
   registerAction({ id: 'backup-project', name: 'Backup prosjekt', mode: 'manual', handler: ACTION_REGISTRY.get('upload-to-drive')!.handler });
   registerAction({ id: 'import-footage', name: 'Importer opptak', mode: 'manual', handler: ACTION_REGISTRY.get('upload-to-drive')!.handler });
 
-  // AI-actions — peker til AI-modul (engine kan ikke direkte kalle Anthropic
-  // siden vi mangler bruker-input/prompt-konfigurasjon i engine-context)
+  // Auto-culling — Slice 9X.79: bruker eksisterende capture-culling-service.
+  // AI-kostnaden er allerede dekket av capture-analyze-service som fyller
+  // signals.ai. Denne handleren er ren kompute (klassifisering).
+  registerAction({
+    id: 'auto-culling',
+    name: 'Automatisk culling',
+    mode: 'ai',
+    handler: async (ctx) => {
+      const projectId = pickContext(ctx, 'project_id', 'projectId');
+      if (!projectId) {
+        return {
+          completed: false,
+          requiresManualConfirmation: true,
+          data: {
+            note: 'Mangler project_id i context — kjør auto-culling fra et prosjekt-trigget run',
+            actionUrl: '/photo-enhancement',
+          },
+        };
+      }
+
+      try {
+        // Hent alle capture_sessions for prosjektet (samme bruker)
+        const sessionsRes = await ctx.pool.query(
+          `SELECT id FROM capture_sessions
+             WHERE project_id = $1 AND owner_user_id = $2
+             ORDER BY created_at DESC`,
+          [projectId, ctx.userId],
+        );
+        if (sessionsRes.rows.length === 0) {
+          return {
+            completed: false,
+            requiresManualConfirmation: true,
+            data: {
+              note: 'Ingen capture-sessions på dette prosjektet — last opp bilder via iPad Capture-appen først',
+              actionUrl: '/photo-enhancement',
+            },
+          };
+        }
+
+        const { classifySession } = await import('./capture-culling-service.js');
+        const sessionSummaries: Array<{ sessionId: string; hero: number; keep: number; weak: number; reject: number; total: number }> = [];
+        let totalAssets = 0;
+        let totalHero = 0;
+        let totalKeep = 0;
+        let totalWeak = 0;
+        let totalReject = 0;
+        let sessionsWithoutAi = 0;
+
+        for (const sessionRow of sessionsRes.rows) {
+          const assetsRes = await ctx.pool.query(
+            `SELECT id, rating, rejected, flagged_for_client, signals
+               FROM capture_assets
+              WHERE session_id = $1
+              ORDER BY capture_time ASC`,
+            [sessionRow.id],
+          );
+          const assets = assetsRes.rows.map((r) => ({
+            id: r.id,
+            rating: r.rating ?? 0,
+            rejected: r.rejected ?? false,
+            flaggedForClient: r.flagged_for_client ?? false,
+            signals: r.signals ?? {},
+          }));
+
+          // Tell sessions hvor ingen assets har AI-signaler enda (gjør at
+          // handleren kan be brukeren kjøre Vision via Capture først)
+          if (assets.length > 0 && !assets.some((a) => (a.signals as any)?.ai)) {
+            sessionsWithoutAi++;
+          }
+
+          const summary = classifySession(assets as any, { strictness: 'balanced' });
+          sessionSummaries.push({
+            sessionId: sessionRow.id,
+            total: summary.total,
+            hero: summary.hero.length,
+            keep: summary.keep.length,
+            weak: summary.weak.length,
+            reject: summary.reject.length,
+          });
+          totalAssets += summary.total;
+          totalHero   += summary.hero.length;
+          totalKeep   += summary.keep.length;
+          totalWeak   += summary.weak.length;
+          totalReject += summary.reject.length;
+        }
+
+        if (totalAssets === 0) {
+          return {
+            completed: false,
+            requiresManualConfirmation: true,
+            data: {
+              note: 'Capture-sessions er tomme — last opp bilder før culling',
+              actionUrl: '/photo-enhancement',
+            },
+          };
+        }
+
+        return {
+          completed: true,
+          data: {
+            note: sessionsWithoutAi > 0
+              ? `Culling gjort — ${sessionsWithoutAi} sessions mangler AI-signaler (run Vision via Capture-appen for bedre resultat)`
+              : `Culling ferdig — ${totalReject} avvist, ${totalKeep + totalHero} beholdt`,
+            actionUrl: '/photo-enhancement',
+            projectId,
+            sessionsProcessed: sessionsRes.rows.length,
+            totalAssets,
+            counts: { hero: totalHero, keep: totalKeep, weak: totalWeak, reject: totalReject },
+            sessionSummaries,
+            sessionsWithoutAi,
+          },
+        };
+      } catch (err: any) {
+        return { completed: false, error: err.message };
+      }
+    },
+  });
+
+  // Resterende AI-actions — fortsatt placeholders, ventes wired per profession
   for (const ai of [
     { id: 'creatorhub-enhance', name: 'CreatorHub Photo Enhancer', feature: 'photo/enhance' },
-    { id: 'auto-culling', name: 'Automatisk culling', feature: 'photo/auto-cull' },
     { id: 'auto-sync-audio', name: 'Auto-sync lyd', feature: 'video/sync-audio' },
     { id: 'auto-highlights', name: 'Auto høydepunkter', feature: 'video/highlights' },
     { id: 'color-grading', name: 'Color grading', feature: 'video/color-grade' },

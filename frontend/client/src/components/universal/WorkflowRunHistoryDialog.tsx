@@ -231,6 +231,30 @@ const WorkflowRunHistoryDialog: React.FC<Props> = ({ open, onClose, userId }) =>
                                       {s.error_message}
                                     </Typography>
                                   )}
+                                  {/* Slice 9X.79 — Culling-resultat inline */}
+                                  {s.result_data?.counts && s.result_data?.sessionsProcessed != null && (
+                                    <Box sx={{
+                                      mt: 0.5, p: 1, borderRadius: 1,
+                                      bgcolor: 'rgba(155,135,245,0.06)',
+                                      border: '1px solid rgba(155,135,245,0.20)',
+                                    }}>
+                                      <Typography variant="caption" sx={{ color: '#9b87f5', fontWeight: 700, display: 'block', mb: 0.5 }}>
+                                        ✨ Culling-resultat ({s.result_data.sessionsProcessed} sessions · {s.result_data.totalAssets} bilder)
+                                      </Typography>
+                                      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                        <Chip size="small" label={`${s.result_data.counts.hero} hero`}   sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 700 }} />
+                                        <Chip size="small" label={`${s.result_data.counts.keep} keep`}   sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(76,201,240,0.18)', color: '#4cc9f0', fontWeight: 700 }} />
+                                        <Chip size="small" label={`${s.result_data.counts.weak} weak`}   sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', fontWeight: 700 }} />
+                                        <Chip size="small" label={`${s.result_data.counts.reject} reject`} sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(239,68,68,0.18)',  color: '#ef4444', fontWeight: 700 }} />
+                                      </Stack>
+                                      {s.result_data.sessionsWithoutAi > 0 && (
+                                        <Typography variant="caption" sx={{ display: 'block', color: '#f59e0b', mt: 0.5 }}>
+                                          ⚠ {s.result_data.sessionsWithoutAi} sessions mangler Vision-signaler — kjør via Capture for bedre resultat
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  )}
+
                                   {/* Slice 9X.79 — AI-generert kontrakt-utkast inline */}
                                   {s.result_data?.draftMarkdown && (
                                     <Box sx={{
