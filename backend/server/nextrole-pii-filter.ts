@@ -32,7 +32,13 @@
 
 // ── Disclosure-tekst (brukes i UI for åpenhet) ────────────────────
 
+// Versjon — bump denne hvis sent/notSent endres slik at brukere må
+// gjennomgå listen på nytt. Lagres på user_prefs.pii_acknowledged_version
+// så vi vet om de har sett gjeldende versjon.
+export const PII_DISCLOSURE_VERSION = "1.0";
+
 export const PII_DISCLOSURE = {
+  version: PII_DISCLOSURE_VERSION,
   sent: [
     "Profesjonell tittel",
     "Antall års erfaring",
@@ -40,6 +46,7 @@ export const PII_DISCLOSURE = {
     "Utdanningsnivå og fag",
     "Ferdigheter",
     "Beskrivelser av tidligere roller (scrubbet for personlig info)",
+    "Selskaps- og institusjonsnavn fra CV",
   ],
   notSent: [
     "Fullt navn",
@@ -50,6 +57,24 @@ export const PII_DISCLOSURE = {
     "Eksakt gateadresse",
     "Kontonumre",
     "LinkedIn-lenke (med personlig brukernavn)",
+  ],
+  aiProviders: [
+    {
+      name: "Anthropic Claude",
+      purpose: "Karriere-mentor (Sigrid), CV-analyse, søknadsbrev, intervjutrening",
+      retention: "Anthropic Enterprise — ingen lagring av prompts/svar utover 30 dager",
+    },
+    {
+      name: "OpenAI Whisper",
+      purpose: "Transkripsjon av lyd-/video-opptak fra intervjutrening og video-pitch",
+      retention: "Zero Data Retention-avtale — ingen lagring",
+    },
+  ],
+  yourRights: [
+    "Trekke samtykke når som helst (slett kontoen via Personvern → Slett NextRole-data)",
+    "Laste ned alle data NextRole har om deg (Personvern → Last ned ZIP)",
+    "Slette enkelt-sesjoner (mock interview, video, samtaler med Sigrid) individuelt",
+    "Få re-anerkjennelse hvis vi utvider hva som sendes (versjon bumper)",
   ],
 };
 

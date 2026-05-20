@@ -25,8 +25,60 @@
 import type express from "express";
 import type { Pool } from "pg";
 import multer from "multer";
+import { spawn } from "child_process";
+import { writeFile, readFile, unlink, mkdtemp } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
 import { uploadTrainingMedia, transcribeAudioWithWhisper, isTranscriptionError } from "./nextrole-audio-service";
 import { scrubPII } from "./nextrole-pii-filter";
+
+// ── Ekte server-side video-trim med ffmpeg ────────────────────────
+// Tar inn en buffer + start/slutt-sekunder, returnerer en buffer med
+// trimmet video. Bruker stream copy (-c copy) for å unngå re-encoding
+// — raskt og uten kvalitetstap.
+async function trimVideoBuffer(input: {
+  buffer: Buffer;
+  mime: string;
+  startSec: number;
+  endSec: number;
+}): Promise<Buffer> {
+  if (input.endSec <= input.startSec) {
+    throw new Error("trim: endSec må være > startSec");
+  }
+  const ext = input.mime.includes("mp4") ? "mp4" : "webm";
+  const tmpDir = await mkdtemp(path.join(tmpdir(), "nextrole-trim-"));
+  const inputPath = path.join(tmpDir, `input.${ext}`);
+  const outputPath = path.join(tmpDir, `output.${ext}`);
+
+  try {
+    await writeFile(inputPath, input.buffer);
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("ffmpeg", [
+        "-y", "-i", inputPath,
+        "-ss", String(input.startSec),
+        "-to", String(input.endSec),
+        "-c", "copy",
+        // Re-stream-friendly output flags så webm med opus blir gyldig:
+        "-avoid_negative_ts", "make_zero",
+        outputPath,
+      ], { stdio: ["ignore", "ignore", "pipe"] });
+      let stderr = "";
+      proc.stderr.on("data", (d) => { stderr += String(d); });
+      proc.on("error", reject);
+      proc.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(0, 500)}`));
+      });
+    });
+
+    return await readFile(outputPath);
+  } finally {
+    // Best-effort cleanup
+    await unlink(inputPath).catch(() => undefined);
+    await unlink(outputPath).catch(() => undefined);
+  }
+}
 
 // Lokal Claude-helper med vision-støtte (callClaude i resume-routes
 // godtar kun string-content). Identisk modell-valg og auth som der.
@@ -293,6 +345,45 @@ export function setupNextRoleVideoPresentationRoutes(
         keyframes = [];
       }
 
+      // Trim-parametre (sekunder). Hvis satt, klippes video FAKTISK
+      // via ffmpeg før Whisper og R2-lagring. Ingen fake-slider.
+      const trimStartSecRaw = req.body?.trimStartSec;
+      const trimEndSecRaw = req.body?.trimEndSec;
+      let videoBuffer = file.buffer;
+      let videoMime = file.mimetype;
+      let trimApplied = false;
+      if (
+        typeof trimStartSecRaw === "string" &&
+        typeof trimEndSecRaw === "string"
+      ) {
+        const startSec = Number(trimStartSecRaw);
+        const endSec = Number(trimEndSecRaw);
+        if (
+          Number.isFinite(startSec) &&
+          Number.isFinite(endSec) &&
+          endSec > startSec &&
+          startSec >= 0
+        ) {
+          try {
+            videoBuffer = await trimVideoBuffer({
+              buffer: file.buffer,
+              mime: file.mimetype,
+              startSec,
+              endSec,
+            });
+            trimApplied = true;
+            console.info("[video-presentations] trim applied", {
+              originalBytes: file.buffer.byteLength,
+              trimmedBytes: videoBuffer.byteLength,
+              startSec, endSec,
+            });
+          } catch (err) {
+            // Hvis trim feiler, fortsett med ren video heller enn å feile helt
+            console.warn("[video-presentations] trim failed, sending full video", err);
+          }
+        }
+      }
+
       // Hent sesjonen + ev. JD-kontekst
       const sessRow = await pool.query<
         SessionRow & { job_title?: string; company?: string; jd_notes?: string }
@@ -320,12 +411,12 @@ export function setupNextRoleVideoPresentationRoutes(
       );
 
       try {
-        // STEG 1 — last opp video til R2 (best-effort, vi fortsetter ved feil)
+        // STEG 1 — last opp (trimmet) video til R2 (best-effort)
         let videoR2Key: string | null = null;
         try {
           const uploaded = await uploadTrainingMedia({
-            buffer: file.buffer,
-            mime: file.mimetype,
+            buffer: videoBuffer,
+            mime: videoMime,
             kind: "video",
             userId: session.userId,
             sessionId: id,
@@ -335,11 +426,11 @@ export function setupNextRoleVideoPresentationRoutes(
           console.warn("[video-presentations] R2 upload failed", err);
         }
 
-        // STEG 2 — Whisper-transkripsjon (Whisper godtar webm/mp4 direkte)
+        // STEG 2 — Whisper-transkripsjon på TRIMMET buffer
         const transcription = await transcribeAudioWithWhisper({
-          buffer: file.buffer,
-          filename: `video-presentation-${id}.${file.mimetype.includes("mp4") ? "mp4" : "webm"}`,
-          mime: file.mimetype,
+          buffer: videoBuffer,
+          filename: `video-presentation-${id}${trimApplied ? "-trimmed" : ""}.${videoMime.includes("mp4") ? "mp4" : "webm"}`,
+          mime: videoMime,
           preferredLanguage: "no",
         });
         if (isTranscriptionError(transcription)) {
@@ -481,8 +572,8 @@ export function setupNextRoleVideoPresentationRoutes(
           [
             id,
             videoR2Key,
-            file.mimetype,
-            file.buffer.byteLength,
+            videoMime,
+            videoBuffer.byteLength,
             transcription.durationMs,
             transcription.text,
             transcription.language,
@@ -511,6 +602,98 @@ export function setupNextRoleVideoPresentationRoutes(
           error: "behandling_feilet",
           detail: String((err as Error)?.message ?? err).slice(0, 200),
         });
+      }
+    },
+  );
+
+  // POST generer follow-up-spørsmål basert på fullført sesjon
+  app.post(
+    "/api/video-presentations/:id/follow-up-questions",
+    async (req, res) => {
+      const session = requireSession(req, res);
+      if (!session) return;
+
+      // Hent fullført sesjon (må ha transkripsjon)
+      const r = await pool.query<
+        SessionRow & { job_title?: string; company?: string; jd_notes?: string }
+      >(
+        `SELECT vp.*,
+                ja.job_title AS job_title,
+                ja.company AS company,
+                ja.notes AS jd_notes
+           FROM nextrole_video_presentations vp
+           LEFT JOIN job_applications ja ON ja.id = vp.job_application_id
+          WHERE vp.id = $1 AND vp.user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!r.rowCount) {
+        res.status(404).json({ error: "sesjon_ikke_funnet" });
+        return;
+      }
+      const sess = r.rows[0];
+      if (sess.status !== "completed" || !sess.transcript) {
+        res.status(400).json({
+          error: "sesjon_ikke_fullført",
+          message: "Generer follow-up når video er ferdig analysert.",
+        });
+        return;
+      }
+
+      // Allerede generert? Returner cache
+      if (sess.follow_up_questions && Array.isArray(sess.follow_up_questions) && sess.follow_up_questions.length) {
+        res.json({ questions: sess.follow_up_questions });
+        return;
+      }
+
+      try {
+        const ai = await callClaude({
+          system: [
+            "Du er en erfaren norsk intervjuer. Du har akkurat hørt et video-svar fra kandidaten.",
+            "Generer 2-3 OPPFØLGNINGSSPØRSMÅL en ekte intervjuer ville stilt — basert på det",
+            "kandidaten konkret nevnte i svaret sitt.",
+            "",
+            "Gode oppfølgingsspørsmål:",
+            "  • Bygger på konkrete claim/eksempel kandidaten brukte",
+            "  • Tvinger dem til å gå dypere ('hvordan, ikke hva')",
+            "  • Tester konsistens ('du sa X — men hva med Y?')",
+            "  • Avslører hvis et eksempel var pyntet på",
+            "",
+            "Returner KUN JSON:",
+            `{"questions": [{"question": "Spørsmålet", "why": "Hvorfor en ekte intervjuer ville stilt dette"}]}`,
+            "Ingen markdown.",
+          ].join("\n"),
+          user: [
+            `OPPRINNELIG PROMPT: "${sess.prompt_text}"`,
+            sess.job_title ? `\nSTILLING: ${sess.job_title}` : "",
+            sess.company ? `\nSELSKAP: ${sess.company}` : "",
+            sess.jd_notes ? `\nJD: ${sess.jd_notes.slice(0, 800)}` : "",
+            `\nKANDIDATENS SVAR (transkribert):\n"${sess.transcript}"`,
+          ].filter(Boolean).join("\n"),
+          maxTokens: 800,
+        });
+
+        const parsed = tryParseJson<{
+          questions: { question: string; why: string }[];
+        }>(ai.text);
+        const questions = parsed?.questions?.slice(0, 3) ?? [];
+
+        if (questions.length === 0) {
+          res.status(502).json({ error: "kunne_ikke_generere" });
+          return;
+        }
+
+        await pool.query(
+          `UPDATE nextrole_video_presentations
+              SET follow_up_questions = $2::jsonb,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [sess.id, JSON.stringify(questions)],
+        );
+
+        res.json({ questions });
+      } catch (err) {
+        console.error("[video-presentations] follow-up failed", err);
+        res.status(500).json({ error: "internal_error" });
       }
     },
   );

@@ -24,6 +24,7 @@ import {
   Button, Box, Typography, TextField, Stack, Paper, Chip,
   CircularProgress, Alert, IconButton, Avatar, Tooltip,
   ToggleButtonGroup, ToggleButton, Menu, MenuItem, Divider,
+  Checkbox, FormControlLabel, Link as MuiLink,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -105,17 +106,25 @@ function formatNok(amount: number): string {
   return amount.toLocaleString('no-NO', { maximumFractionDigits: 0 });
 }
 
-// ── PII-disclosure-panel ──────────────────────────────────────────
-// Henter eksakt hva som sendes og ikke sendes til AI, og viser det
-// som ekspanderbar kortliste i onboarding. Brukeren ser nøyaktig
-// hvilke felt som forlater serveren.
+interface PiiDisclosure {
+  version: string;
+  sent: string[];
+  notSent: string[];
+  aiProviders: { name: string; purpose: string; retention: string }[];
+  yourRights: string[];
+}
 
-const PiiDisclosurePanel: React.FC = () => {
-  const [expanded, setExpanded] = useState(false);
-  const { data } = useQuery<{ sent: string[]; notSent: string[] }>({
+// ── PII-disclosure-PANEL — alltid synlig (ikke kollapset) ─────────
+// Viser fullt hvilke data som sendes/ikke sendes + AI-leverandører
+// + brukerens rettigheter. Brukerens samtykke-checkbox er ved siden av.
+
+const PiiDisclosurePanel: React.FC<{
+  showRights?: boolean;
+}> = ({ showRights = false }) => {
+  const { data } = useQuery<PiiDisclosure>({
     queryKey: ['pii-disclosure'],
     queryFn: async () =>
-      (await apiRequest('/api/nextrole/career-mentor/pii-disclosure')) as { sent: string[]; notSent: string[] },
+      (await apiRequest('/api/nextrole/career-mentor/pii-disclosure')) as PiiDisclosure,
   });
 
   if (!data) return null;
@@ -124,61 +133,97 @@ const PiiDisclosurePanel: React.FC = () => {
     <Paper
       variant="outlined"
       sx={{
-        mt: 3,
-        p: 1.5,
+        p: 2,
         bgcolor: '#F9FAFB',
         borderColor: '#E5E7EB',
       }}
     >
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1}
-        onClick={() => setExpanded((e) => !e)}
-        sx={{ cursor: 'pointer' }}
-      >
-        <ShieldIcon sx={{ fontSize: 18, color: '#6B7280' }} />
-        <Typography variant="caption" sx={{ fontWeight: 700, flex: 1, color: '#374151' }}>
-          Hva Sigrid faktisk ser av din profil
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <ShieldIcon sx={{ fontSize: 18, color: '#1F2937' }} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          Slik behandler vi data om deg
         </Typography>
-        <ExpandMoreIcon
-          sx={{
-            fontSize: 18,
-            color: 'text.disabled',
-            transform: expanded ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.2s',
-          }}
+        <Chip
+          label={`v${data.version}`}
+          size="small"
+          sx={{ height: 18, fontSize: 10, ml: 'auto' }}
         />
       </Stack>
-      {expanded && (
-        <Box sx={{ mt: 1.5 }}>
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+        <Box sx={{ flex: 1 }}>
           <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, color: '#10B981' }}>
             SENDES TIL AI
           </Typography>
-          <Stack spacing={0.3} sx={{ mb: 1.5 }}>
+          <Stack spacing={0.3}>
             {data.sent.map((s, i) => (
-              <Stack key={i} direction="row" spacing={0.5} alignItems="center">
-                <CheckCircleIcon sx={{ fontSize: 14, color: '#10B981' }} />
-                <Typography variant="caption">{s}</Typography>
+              <Stack key={i} direction="row" spacing={0.5} alignItems="flex-start">
+                <CheckCircleIcon sx={{ fontSize: 14, color: '#10B981', mt: 0.2 }} />
+                <Typography variant="caption" sx={{ lineHeight: 1.5 }}>{s}</Typography>
               </Stack>
             ))}
           </Stack>
+        </Box>
+        <Box sx={{ flex: 1 }}>
           <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, color: '#DC2626' }}>
-            SENDES IKKE
+            SENDES ALDRI
           </Typography>
           <Stack spacing={0.3}>
             {data.notSent.map((s, i) => (
-              <Stack key={i} direction="row" spacing={0.5} alignItems="center">
-                <CancelIcon sx={{ fontSize: 14, color: '#DC2626' }} />
-                <Typography variant="caption">{s}</Typography>
+              <Stack key={i} direction="row" spacing={0.5} alignItems="flex-start">
+                <CancelIcon sx={{ fontSize: 14, color: '#DC2626', mt: 0.2 }} />
+                <Typography variant="caption" sx={{ lineHeight: 1.5 }}>{s}</Typography>
               </Stack>
             ))}
           </Stack>
-          <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'text.secondary', fontStyle: 'italic' }}>
-            Fri-tekst (rolle-beskrivelser, achievements) blir automatisk scrubbet for fødselsnumre, telefon, e-post og adresser før den sendes.
-          </Typography>
         </Box>
+      </Stack>
+
+      <Divider sx={{ my: 1.5 }} />
+
+      <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>
+        AI-LEVERANDØRER
+      </Typography>
+      <Stack spacing={0.5} sx={{ mb: 1 }}>
+        {data.aiProviders.map((p, i) => (
+          <Box key={i}>
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>
+              {p.name} — {p.purpose}
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontStyle: 'italic' }}>
+              {p.retention}
+            </Typography>
+          </Box>
+        ))}
+      </Stack>
+
+      <Typography variant="caption" sx={{ display: 'block', mt: 1.5, fontStyle: 'italic', color: 'text.secondary' }}>
+        Fri-tekst (rolle-beskrivelser, achievements, summary) blir automatisk scrubbet
+        for fødselsnumre, telefon, e-post, kontonumre og gateadresser før det sendes.
+      </Typography>
+
+      {showRights && (
+        <>
+          <Divider sx={{ my: 1.5 }} />
+          <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>
+            DINE RETTIGHETER
+          </Typography>
+          <Stack spacing={0.3}>
+            {data.yourRights.map((r, i) => (
+              <Typography key={i} variant="caption" sx={{ display: 'block' }}>
+                • {r}
+              </Typography>
+            ))}
+          </Stack>
+        </>
       )}
+
+      <Typography variant="caption" sx={{ display: 'block', mt: 1.5 }}>
+        Detaljer:{' '}
+        <MuiLink href="/privacy-policy#nextrole" target="_blank" rel="noopener" sx={{ fontWeight: 600 }}>
+          Personvernerklæringen (§8 NextRole)
+        </MuiLink>
+      </Typography>
     </Paper>
   );
 };
@@ -187,8 +232,9 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [phase, setPhase] = useState<'onboarding' | 'chat'>('onboarding');
+  const [phase, setPhase] = useState<'pii-ack' | 'tone' | 'chat'>('pii-ack');
   const [tone, setTone] = useState<Tone>('balanced');
+  const [piiAcknowledged, setPiiAcknowledged] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MentorMessage[]>([]);
   const [input, setInput] = useState('');
@@ -198,12 +244,24 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Hent preferences ved åpning
-  const { data: prefs } = useQuery<{ feedbackTone: Tone; toneChangedAt: string | null }>({
+  const { data: prefs } = useQuery<{
+    feedbackTone: Tone;
+    toneChangedAt: string | null;
+    piiAcknowledgedAt: string | null;
+    piiAcknowledgedVersion: string | null;
+    piiAcknowledgedCurrent: boolean;
+  }>({
     queryKey: ['career-mentor-prefs', user?.id],
     queryFn: async () =>
       (await apiRequest('/api/nextrole/career-mentor/preferences', {
         headers: { 'x-user-id': user?.id || '' },
-      })) as { feedbackTone: Tone; toneChangedAt: string | null },
+      })) as {
+        feedbackTone: Tone;
+        toneChangedAt: string | null;
+        piiAcknowledgedAt: string | null;
+        piiAcknowledgedVersion: string | null;
+        piiAcknowledgedCurrent: boolean;
+      },
     enabled: open && !!user?.id,
   });
 
@@ -212,23 +270,49 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
     setMessages([]);
     setSessionId(null);
     setError(null);
-    // Hvis bruker allerede har valgt tone tidligere — hopp over onboarding
-    if (prefs?.toneChangedAt) {
+    setPiiAcknowledged(false);
+
+    // 1. Hvis bruker IKKE har anerkjent gjeldende PII-versjon → må starte med pii-ack
+    if (!prefs?.piiAcknowledgedCurrent) {
+      setPhase('pii-ack');
+    } else if (prefs?.toneChangedAt) {
+      // 2. PII OK + har valgt tone → hopp rett til chat
       setTone(prefs.feedbackTone);
       setPhase('chat');
       void startSession(prefs.feedbackTone);
     } else {
-      setPhase('onboarding');
+      // 3. PII OK men ikke valgt tone → tone-velger
+      setPhase('tone');
     }
-    trackGA4('nextrole_sigrid_opened', { resume_id: resumeId ?? null });
+    trackGA4('nextrole_sigrid_opened', {
+      resume_id: resumeId ?? null,
+      pii_already_acked: prefs?.piiAcknowledgedCurrent ?? false,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, prefs?.toneChangedAt]);
+  }, [open, prefs?.toneChangedAt, prefs?.piiAcknowledgedCurrent]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Logg PII-anerkjennelse, gå deretter til tone-velger
+  const handleAcknowledgePii = async () => {
+    if (!piiAcknowledged) return;
+    try {
+      await apiRequest('/api/nextrole/career-mentor/acknowledge-pii', {
+        method: 'POST',
+        headers: { 'x-user-id': user?.id || '', 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      queryClient.invalidateQueries({ queryKey: ['career-mentor-prefs'] });
+      trackGA4('nextrole_pii_acknowledged');
+    } catch (err) {
+      console.error('PII-anerkjennelse feilet', err);
+    }
+    setPhase('tone');
+  };
 
   // Lagre tone-preferanse og start sesjon
   const handleSelectTone = async (selected: Tone) => {
@@ -460,12 +544,46 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
         <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', p: 0 }}>
-        {/* ── ONBOARDING ── */}
-        {phase === 'onboarding' && (
+        {/* ── FASE 1: PII-ANERKJENNELSE (alltid synlig) ── */}
+        {phase === 'pii-ack' && (
+          <Box sx={{ p: 3, flex: 1, overflowY: 'auto' }}>
+            <Box sx={{ textAlign: 'center', mb: 3 }}>
+              <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
+                Hei. Før vi starter — viktig om dataene dine
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Sigrid bruker AI for å gi karriereråd basert på profilen din.
+                Slik håndterer vi dataene dine:
+              </Typography>
+            </Box>
+
+            <PiiDisclosurePanel showRights />
+
+            <Paper variant="outlined" sx={{ p: 2, mt: 2, bgcolor: '#FFF8E1', borderColor: '#F5B82E' }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={piiAcknowledged}
+                    onChange={(e) => setPiiAcknowledged(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    Jeg har lest og forstår hvilke data Sigrid (og NextRole sine andre AI-funksjoner) bruker.
+                  </Typography>
+                }
+              />
+            </Paper>
+          </Box>
+        )}
+
+        {/* ── FASE 2: TONE-VALG ── */}
+        {phase === 'tone' && (
           <Box sx={{ p: 4, flex: 1, overflowY: 'auto' }}>
             <Box sx={{ textAlign: 'center', mb: 4 }}>
               <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
-                Hei. Før vi starter — hvilken type tilbakemelding vil du ha?
+                Hvilken type tilbakemelding vil du ha?
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Du kan endre dette når som helst underveis.
@@ -505,9 +623,6 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
                 );
               })}
             </Stack>
-
-            {/* PII-disclosure — vises som collapse for de som vil sjekke */}
-            <PiiDisclosurePanel />
           </Box>
         )}
 
@@ -684,10 +799,58 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
                   Send
                 </Button>
               </Stack>
+
+              {/* Permanent PII-fotnote — alltid synlig under input */}
+              <Stack
+                direction="row"
+                spacing={0.5}
+                alignItems="center"
+                sx={{ mt: 1.2, color: 'text.disabled' }}
+              >
+                <ShieldIcon sx={{ fontSize: 12 }} />
+                <Typography variant="caption" sx={{ fontSize: 11 }}>
+                  Sigrid ser kun: tittel, by, erfaring, utdanning, ferdigheter — aldri navn, e-post eller telefon.
+                </Typography>
+                <Tooltip title="Se full disclosure">
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setPhase('pii-ack');
+                      setPiiAcknowledged(false);
+                    }}
+                    sx={{
+                      fontSize: 10,
+                      textTransform: 'none',
+                      minWidth: 0,
+                      p: 0,
+                      ml: 0.5,
+                      color: '#3B82F6',
+                    }}
+                  >
+                    Detaljer
+                  </Button>
+                </Tooltip>
+              </Stack>
             </Box>
           </>
         )}
       </DialogContent>
+      {phase === 'pii-ack' && (
+        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button onClick={onClose}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleAcknowledgePii}
+            disabled={!piiAcknowledged}
+            sx={{
+              bgcolor: '#F5B82E', '&:hover': { bgcolor: '#D49B1A' },
+              color: '#1F2937', fontWeight: 700,
+            }}
+          >
+            Fortsett til tone-valg
+          </Button>
+        </DialogActions>
+      )}
     </Dialog>
   );
 };

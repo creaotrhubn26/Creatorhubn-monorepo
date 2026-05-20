@@ -64,6 +64,7 @@ interface SessionResult {
   strengths: string[];
   improvementAreas: string[];
   status: string;
+  followUpQuestions?: { question: string; why: string }[] | null;
 }
 
 interface Props {
@@ -84,6 +85,57 @@ function pickVideoMime(): string {
   return candidates.find((c) => MediaRecorder.isTypeSupported(c)) ?? '';
 }
 
+// ── Web Speech API for SANNTIDS-estimat ─────────────────────────
+// Browser-native talegjenkjennelse. Mindre nøyaktig enn Whisper,
+// men ekte sanntids-signal. Whisper kjører fortsatt etter opptak
+// for endelig scoring. UI markerer dette tydelig som "estimat".
+function getSpeechRecognitionClass():
+  | { new (): SpeechRecognition } | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as {
+    SpeechRecognition?: { new (): SpeechRecognition };
+    webkitSpeechRecognition?: { new (): SpeechRecognition };
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: ArrayLike<{
+    isFinal: boolean;
+    0: { transcript: string };
+  }>;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: ((ev: SpeechRecognitionEvent) => void) | null;
+  onerror: ((ev: Event) => void) | null;
+  onend: (() => void) | null;
+}
+
+// Norske fyllord brukt for live-detection
+const FILLER_WORDS = [
+  'eh', 'ehm', 'liksom', 'altså', 'sant',
+  'kanskje', 'liksom', 'ikke sant', 'på en måte',
+];
+
+function countFillerWords(text: string): number {
+  if (!text) return 0;
+  const low = text.toLowerCase();
+  let count = 0;
+  for (const f of FILLER_WORDS) {
+    const re = new RegExp(`\\b${f.replace(/\s/g, '\\s+')}\\b`, 'g');
+    const matches = low.match(re);
+    if (matches) count += matches.length;
+  }
+  return count;
+}
+
 const DELIVERY_LABELS: Record<string, string> = {
   speech_clarity: 'Tydelig tale',
   filler_words_count: 'Fyllord (antall)',
@@ -92,11 +144,306 @@ const DELIVERY_LABELS: Record<string, string> = {
   eye_contact: 'Øyekontakt',
 };
 
+// ── Progresjons-panel ────────────────────────────────────────────
+// Henter alle brukerens video-sesjoner og viser konkret utvikling:
+// total øvelser, score-trend, fyllord-trend, gjennomsnitt-score.
+//
+// Bygger på FAKTISKE data fra /api/video-presentations. Ingen fake
+// statistikk eller eksempel-tall.
+const VideoProgressionPanel: React.FC = () => {
+  const { user } = useAuth();
+  const { data, isLoading } = useQuery<{
+    sessions: Array<{
+      id: string;
+      promptText: string;
+      durationMs: number | null;
+      overallScore: number | null;
+      deliveryScores: Record<string, number> | null;
+      createdAt: string;
+      status: string;
+    }>;
+  }>({
+    queryKey: ['video-progression', user?.id],
+    queryFn: async () =>
+      (await apiRequest('/api/video-presentations', {
+        headers: { 'x-user-id': user?.id || '' },
+      })) as { sessions: any[] },
+    enabled: !!user?.id,
+  });
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        <CircularProgress sx={{ color: '#F5B82E' }} />
+      </Box>
+    );
+  }
+
+  const sessions = (data?.sessions ?? []).filter(
+    (s) => s.status === 'completed' && s.overallScore !== null,
+  );
+  // Eldste først for trend-visualisering
+  const sorted = [...sessions].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+
+  if (sorted.length === 0) {
+    return (
+      <Alert severity="info">
+        Du har ingen fullførte video-presentasjoner ennå. Etter første gjennomføring vises utviklingen din her.
+      </Alert>
+    );
+  }
+
+  const scores = sorted.map((s) => s.overallScore ?? 0);
+  const maxScore = Math.max(...scores, 100);
+  const totalSessions = sorted.length;
+  const bestScore = Math.max(...scores);
+  const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  const lastScore = scores[scores.length - 1] ?? 0;
+  const firstScore = scores[0] ?? 0;
+  const scoreImprovement = lastScore - firstScore;
+
+  // Filler-words trend (hvis vi har data)
+  const fillerCounts = sorted
+    .map((s) => s.deliveryScores?.filler_words_count)
+    .filter((n): n is number => typeof n === 'number');
+  const firstFillers = fillerCounts[0];
+  const lastFillers = fillerCounts[fillerCounts.length - 1];
+  const fillerDelta =
+    typeof firstFillers === 'number' && typeof lastFillers === 'number'
+      ? lastFillers - firstFillers
+      : null;
+
+  return (
+    <Stack spacing={2.5}>
+      <Stack direction="row" spacing={1}>
+        <Paper variant="outlined" sx={{ flex: 1, p: 1.5, textAlign: 'center' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>{totalSessions}</Typography>
+          <Typography variant="caption" color="text.secondary">Fullførte økter</Typography>
+        </Paper>
+        <Paper variant="outlined" sx={{ flex: 1, p: 1.5, textAlign: 'center', bgcolor: '#FFF8E1' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#7A5A0B' }}>{bestScore}</Typography>
+          <Typography variant="caption" color="text.secondary">Beste score</Typography>
+        </Paper>
+        <Paper variant="outlined" sx={{ flex: 1, p: 1.5, textAlign: 'center' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>{avgScore}</Typography>
+          <Typography variant="caption" color="text.secondary">Snitt-score</Typography>
+        </Paper>
+      </Stack>
+
+      {scoreImprovement !== 0 && totalSessions >= 2 && (
+        <Alert
+          severity={scoreImprovement > 0 ? 'success' : 'warning'}
+          icon={false}
+          sx={{ py: 1 }}
+        >
+          <Typography variant="body2">
+            <Box component="span" sx={{ fontWeight: 700 }}>
+              {scoreImprovement > 0 ? '+' : ''}{scoreImprovement} poeng
+            </Box>
+            {' '}fra første ({firstScore}/100) til siste ({lastScore}/100) øvelse.
+          </Typography>
+        </Alert>
+      )}
+
+      {fillerDelta !== null && fillerDelta !== 0 && (
+        <Alert
+          severity={fillerDelta < 0 ? 'success' : 'info'}
+          icon={false}
+          sx={{ py: 1 }}
+        >
+          <Typography variant="body2">
+            Fyllord: <Box component="span" sx={{ fontWeight: 700 }}>{firstFillers}</Box>
+            {' → '}
+            <Box component="span" sx={{ fontWeight: 700 }}>{lastFillers}</Box>
+            {fillerDelta < 0 ? ` (${fillerDelta} færre — godt jobbet)` : ` (${fillerDelta > 0 ? '+' : ''}${fillerDelta})`}
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Score-over-tid graf */}
+      <Box>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+          Score over tid
+        </Typography>
+        <Box sx={{
+          display: 'flex', alignItems: 'flex-end', gap: 0.5,
+          height: 120, p: 1.5,
+          bgcolor: '#FAFAFA', borderRadius: 1,
+          border: '1px solid', borderColor: 'divider',
+        }}>
+          {sorted.map((s, i) => {
+            const score = s.overallScore ?? 0;
+            const color = score >= 80 ? '#10B981' : score >= 60 ? '#F5B82E' : '#DC2626';
+            return (
+              <Tooltip
+                key={s.id}
+                title={`${new Date(s.createdAt).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}: ${score}/100`}
+              >
+                <Box
+                  sx={{
+                    flex: 1,
+                    minWidth: 8,
+                    height: `${Math.max(8, (score / maxScore) * 100)}%`,
+                    bgcolor: color,
+                    borderRadius: '2px 2px 0 0',
+                    cursor: 'pointer',
+                  }}
+                />
+              </Tooltip>
+            );
+          })}
+        </Box>
+        <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Eldste
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Nyeste
+          </Typography>
+        </Stack>
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+          Siste 10 økter
+        </Typography>
+        <Stack spacing={0.5}>
+          {[...sorted].reverse().slice(0, 10).map((s) => {
+            const score = s.overallScore ?? 0;
+            const color = score >= 80 ? '#10B981' : score >= 60 ? '#F5B82E' : '#DC2626';
+            return (
+              <Stack
+                key={s.id}
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                sx={{ py: 0.4, borderBottom: '1px solid', borderColor: 'divider' }}
+              >
+                <Chip
+                  label={`${score}`}
+                  size="small"
+                  sx={{ minWidth: 38, height: 22, fontWeight: 700, color, bgcolor: color + '22' }}
+                />
+                <Typography variant="caption" sx={{ flex: 1 }} noWrap>
+                  {s.promptText.slice(0, 70)}
+                  {s.promptText.length > 70 && '…'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {new Date(s.createdAt).toLocaleDateString('no-NO', {
+                    day: 'numeric', month: 'short',
+                  })}
+                </Typography>
+              </Stack>
+            );
+          })}
+        </Stack>
+      </Box>
+    </Stack>
+  );
+};
+
+// AI follow-up questions — generert basert på faktisk transkripsjon.
+// Lar bruker svare på dem som ny video-sesjon, slik at én video blir
+// til et reelt mini-intervju (ikke en one-shot).
+const FollowUpQuestions: React.FC<{ sessionId: string | undefined }> = ({ sessionId }) => {
+  const [questions, setQuestions] = React.useState<{ question: string; why: string }[] | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const { user } = useAuth();
+
+  const handleGenerate = async () => {
+    if (!sessionId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiRequest(
+        `/api/video-presentations/${sessionId}/follow-up-questions`,
+        {
+          method: 'POST',
+          headers: { 'x-user-id': user?.id || '', 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+      setQuestions(res.questions ?? []);
+      trackGA4('nextrole_video_followup_generated', {
+        session_id: sessionId,
+        count: (res.questions ?? []).length,
+      });
+    } catch (err) {
+      console.error('Follow-up generering feilet', err);
+      setError('Kunne ikke generere oppfølgings-spørsmål.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!sessionId) return null;
+
+  return (
+    <Box>
+      {!questions && !loading && (
+        <Paper variant="outlined" sx={{ p: 2, bgcolor: '#FFF8E1', borderColor: '#F5B82E' }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Vil du gå dypere?
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+            En ekte intervjuer ville stille oppfølgings-spørsmål basert på hva du sa.
+            Få 2-3 konkrete spørsmål du kan øve på.
+          </Typography>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleGenerate}
+            sx={{ bgcolor: '#F5B82E', color: '#1F2937', '&:hover': { bgcolor: '#D49B1A' }, fontWeight: 700 }}
+          >
+            Generer oppfølgings-spørsmål
+          </Button>
+        </Paper>
+      )}
+      {loading && (
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 1 }}>
+          <CircularProgress size={14} sx={{ color: '#F5B82E' }} />
+          <Typography variant="caption" color="text.secondary">
+            Genererer oppfølgings-spørsmål basert på svaret ditt …
+          </Typography>
+        </Stack>
+      )}
+      {error && <Alert severity="error">{error}</Alert>}
+      {questions && questions.length > 0 && (
+        <Box>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+            Oppfølgings-spørsmål
+          </Typography>
+          <Stack spacing={1}>
+            {questions.map((q, i) => (
+              <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  {q.question}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  {q.why}
+                </Typography>
+              </Paper>
+            ))}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.2, fontStyle: 'italic' }}>
+            Lukk dialogen og start ny video-presentasjon med ett av spørsmålene som prompt for å øve videre.
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 export const NextRoleVideoPresentation: React.FC<Props> = ({
   open, onClose, resumeId, jobApplicationId,
 }) => {
   const { user } = useAuth();
-  const [phase, setPhase] = useState<'setup' | 'recording' | 'preview' | 'analyzing' | 'result'>('setup');
+  const [phase, setPhase] = useState<'setup' | 'recording' | 'preview' | 'analyzing' | 'result' | 'history'>('setup');
 
   // Setup
   const [selectedAppId, setSelectedAppId] = useState<string>(jobApplicationId ?? '');
@@ -124,6 +471,14 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
+
+  // Live (estimat) — Web Speech API
+  const speechRecogRef = useRef<SpeechRecognition | null>(null);
+  const liveStartedAtRef = useRef<number>(0);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [liveFillerCount, setLiveFillerCount] = useState(0);
+  const [liveWordsPerMin, setLiveWordsPerMin] = useState(0);
+  const [liveAvailable, setLiveAvailable] = useState<boolean | null>(null);
 
   // Henter prompts + jobbsøknader
   const { data: prompts = [] } = useQuery<Prompt[]>({
@@ -179,7 +534,62 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
       window.clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
+    if (speechRecogRef.current) {
+      try { speechRecogRef.current.stop(); } catch { /* noop */ }
+      speechRecogRef.current = null;
+    }
   }, []);
+
+  // Start Web Speech API for live estimat. Trygt-fall hvis nettleser
+  // ikke støtter det — vi går videre uten live, og brukeren får full
+  // analyse fra Whisper etter opptak.
+  const startLiveSpeechRecognition = () => {
+    const Cls = getSpeechRecognitionClass();
+    if (!Cls) {
+      setLiveAvailable(false);
+      return;
+    }
+    setLiveAvailable(true);
+    try {
+      const rec = new Cls();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'nb-NO';
+      let accumulated = '';
+      rec.onresult = (ev) => {
+        let interim = '';
+        for (let i = ev.resultIndex; i < ev.results.length; i += 1) {
+          const r = ev.results[i];
+          if (r.isFinal) accumulated += r[0].transcript + ' ';
+          else interim += r[0].transcript;
+        }
+        const fullText = (accumulated + interim).trim();
+        setLiveTranscript(fullText);
+        setLiveFillerCount(countFillerWords(fullText));
+        const elapsedSec = (Date.now() - liveStartedAtRef.current) / 1000;
+        if (elapsedSec > 3) {
+          const wordCount = fullText.split(/\s+/).filter(Boolean).length;
+          setLiveWordsPerMin(Math.round((wordCount / elapsedSec) * 60));
+        }
+      };
+      rec.onerror = (ev) => {
+        console.warn('Web Speech error', ev);
+      };
+      rec.onend = () => {
+        // Hvis fortsatt i opptaksmodus → start på nytt (Web Speech
+        // pleier å auto-stoppe etter pauser)
+        if (mediaRecorderRef.current?.state === 'recording') {
+          try { rec.start(); } catch { /* noop */ }
+        }
+      };
+      rec.start();
+      speechRecogRef.current = rec;
+      liveStartedAtRef.current = Date.now();
+    } catch (err) {
+      console.warn('Web Speech start feilet', err);
+      setLiveAvailable(false);
+    }
+  };
 
   const startRecording = async () => {
     if (typeof MediaRecorder === 'undefined') {
@@ -247,6 +657,12 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
       mediaRecorderRef.current = rec;
       setRecording(true);
       setPhase('recording');
+      // Reset live-metrics
+      setLiveTranscript('');
+      setLiveFillerCount(0);
+      setLiveWordsPerMin(0);
+      // Start Web Speech for live estimat (best-effort)
+      startLiveSpeechRecognition();
       const startedAt = Date.now();
       recordingTimerRef.current = window.setInterval(() => {
         const ms = Date.now() - startedAt;
@@ -355,11 +771,23 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
         }
       }
 
-      // 2) Send video + keyframes til backend (FormData multipart)
+      // 2) Send video + keyframes + trim-parametre til backend.
+      //    Trim utføres FAKTISK server-side med ffmpeg — slideren er
+      //    ekte, ikke kosmetikk.
       const form = new FormData();
       const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
       form.append('video', recordedBlob, `video-${sessionId}.${ext}`);
       form.append('keyframes', JSON.stringify(keyframes));
+      // Bare send trim hvis bruker har faktisk trimmet (range avviker
+      // fra full lengde med minst 0.5 sek på en av sidene)
+      const [trimStart, trimEnd] = trimRange;
+      const fullLen = recordedDurationSec;
+      const userTrimmed =
+        trimStart > 0.5 || trimEnd < fullLen - 0.5;
+      if (userTrimmed) {
+        form.append('trimStartSec', String(trimStart));
+        form.append('trimEndSec', String(trimEnd));
+      }
 
       const res = await fetch(
         `/api/video-presentations/${sessionId}/upload`,
@@ -416,9 +844,38 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
         {/* SETUP */}
         {phase === 'setup' && (
           <Stack spacing={2}>
-            <Alert severity="info">
-              Tren på "fortell om deg selv"-presentasjon eller en annen pitch.
-              AI vurderer både innhold, taleflyt og kroppsspråk.
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Alert severity="info" sx={{ flex: 1, mr: 1 }}>
+                Tren på "fortell om deg selv"-presentasjon eller en annen pitch.
+                AI vurderer både innhold, taleflyt og kroppsspråk.
+              </Alert>
+              <Button
+                size="small"
+                onClick={() => setPhase('history')}
+                sx={{ minWidth: 110 }}
+              >
+                Min utvikling
+              </Button>
+            </Stack>
+
+            <Alert
+              severity="warning"
+              icon={false}
+              sx={{
+                py: 0.5, px: 1.5, fontSize: 12,
+                bgcolor: '#F9FAFB',
+                color: 'text.secondary',
+                border: '1px solid', borderColor: 'divider',
+                '& .MuiAlert-message': { p: 0 },
+              }}
+            >
+              <Typography variant="caption">
+                Videoen sendes til OpenAI Whisper for transkripsjon og Claude for analyse.
+                Selve video-filen slettes etter 24t; kun transkripsjon og feedback beholdes.{' '}
+                <Box component="a" href="/privacy-policy#nextrole" target="_blank" sx={{ color: '#3B82F6' }}>
+                  Detaljer
+                </Box>
+              </Typography>
             </Alert>
 
             {!jobApplicationId && (
@@ -495,53 +952,130 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
 
         {/* RECORDING */}
         {phase === 'recording' && (
-          <Stack spacing={2} alignItems="center">
-            <Box
-              sx={{
-                position: 'relative',
-                width: '100%',
-                maxWidth: 640,
-                aspectRatio: '16/9',
-                bgcolor: '#000',
-                borderRadius: 2,
-                overflow: 'hidden',
-              }}
-            >
-              <video
-                ref={videoRef}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                muted
-                playsInline
-              />
-              {recording && (
-                <Box sx={{
-                  position: 'absolute', top: 12, left: 12,
-                  display: 'flex', alignItems: 'center', gap: 0.8,
-                  bgcolor: 'rgba(0,0,0,0.6)', px: 1.2, py: 0.5, borderRadius: 4,
-                }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <Stack spacing={2} alignItems="center" sx={{ flex: 1 }}>
+              <Box
+                sx={{
+                  position: 'relative',
+                  width: '100%',
+                  maxWidth: 640,
+                  aspectRatio: '16/9',
+                  bgcolor: '#000',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                }}
+              >
+                <video
+                  ref={videoRef}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  muted
+                  playsInline
+                />
+                {recording && (
                   <Box sx={{
-                    width: 10, height: 10, borderRadius: '50%',
-                    bgcolor: '#DC2626',
-                    animation: 'pulse 1.2s infinite',
-                    '@keyframes pulse': {
-                      '0%, 100%': { opacity: 1, transform: 'scale(1)' },
-                      '50%': { opacity: 0.4, transform: 'scale(1.3)' },
-                    },
-                  }} />
-                  <Typography variant="caption" sx={{ color: '#fff', fontFamily: 'monospace', fontWeight: 700 }}>
-                    REC · {formatTime(recordingMs)} / {formatTime(targetDuration * 1000)}
+                    position: 'absolute', top: 12, left: 12,
+                    display: 'flex', alignItems: 'center', gap: 0.8,
+                    bgcolor: 'rgba(0,0,0,0.6)', px: 1.2, py: 0.5, borderRadius: 4,
+                  }}>
+                    <Box sx={{
+                      width: 10, height: 10, borderRadius: '50%',
+                      bgcolor: '#DC2626',
+                      animation: 'pulse 1.2s infinite',
+                      '@keyframes pulse': {
+                        '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                        '50%': { opacity: 0.4, transform: 'scale(1.3)' },
+                      },
+                    }} />
+                    <Typography variant="caption" sx={{ color: '#fff', fontFamily: 'monospace', fontWeight: 700 }}>
+                      REC · {formatTime(recordingMs)} / {formatTime(targetDuration * 1000)}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(100, (recordingMs / (targetDuration * 1000)) * 100)}
+                sx={{ width: '100%', height: 6, borderRadius: 3, '& .MuiLinearProgress-bar': { bgcolor: '#DC2626' } }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', textAlign: 'center' }}>
+                "{selectedPromptText}"
+              </Typography>
+            </Stack>
+
+            {/* Live-estimat-panel */}
+            <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
+              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#FAFAFA' }}>
+                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: '#1F2937' }}>
+                    Live estimat
                   </Typography>
-                </Box>
-              )}
+                  <Chip
+                    label="Web Speech"
+                    size="small"
+                    sx={{ height: 16, fontSize: 9 }}
+                  />
+                </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, fontSize: 10, fontStyle: 'italic' }}>
+                  Sanntids-estimat fra nettleseren — Whisper gjør endelig analyse etter opptak.
+                </Typography>
+
+                {liveAvailable === false && (
+                  <Alert severity="info" sx={{ p: 0.5, fontSize: 11 }} icon={false}>
+                    <Typography variant="caption">
+                      Nettleseren støtter ikke live-estimat. Full analyse kommer etter opptak.
+                    </Typography>
+                  </Alert>
+                )}
+
+                {liveAvailable !== false && (
+                  <Stack spacing={1.2}>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, fontWeight: 700 }}>
+                        ORD PER MINUTT
+                      </Typography>
+                      <Typography variant="h5" sx={{ fontWeight: 800, color:
+                        liveWordsPerMin === 0 ? 'text.disabled' :
+                        liveWordsPerMin < 110 ? '#F5B82E' :
+                        liveWordsPerMin > 180 ? '#DC2626' : '#10B981',
+                      }}>
+                        {liveWordsPerMin}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }}>
+                        {liveWordsPerMin === 0 ? 'starter …' :
+                         liveWordsPerMin < 110 ? 'for treg' :
+                         liveWordsPerMin > 180 ? 'for fort' : 'godt tempo'}
+                      </Typography>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, fontWeight: 700 }}>
+                        FYLLORD HITTIL
+                      </Typography>
+                      <Typography variant="h5" sx={{ fontWeight: 800, color:
+                        liveFillerCount === 0 ? '#10B981' :
+                        liveFillerCount <= 3 ? '#F5B82E' : '#DC2626',
+                      }}>
+                        {liveFillerCount}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }}>
+                        "eh", "ehm", "liksom", "altså", "sant"…
+                      </Typography>
+                    </Box>
+
+                    {liveTranscript && (
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, fontWeight: 700 }}>
+                          SISTE
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', maxHeight: 60, overflowY: 'auto', fontSize: 11, lineHeight: 1.4 }}>
+                          …{liveTranscript.slice(-180)}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                )}
+              </Paper>
             </Box>
-            <LinearProgress
-              variant="determinate"
-              value={Math.min(100, (recordingMs / (targetDuration * 1000)) * 100)}
-              sx={{ width: '100%', height: 6, borderRadius: 3, '& .MuiLinearProgress-bar': { bgcolor: '#DC2626' } }}
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', textAlign: 'center' }}>
-              "{selectedPromptText}"
-            </Typography>
           </Stack>
         )}
 
@@ -592,6 +1126,22 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
 
             {error && <Alert severity="error">{error}</Alert>}
           </Stack>
+        )}
+
+        {/* HISTORY (progresjon over tid) */}
+        {phase === 'history' && (
+          <Box>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                Min utvikling
+              </Typography>
+              <Box sx={{ flex: 1 }} />
+              <Button size="small" onClick={() => setPhase('setup')}>
+                Tilbake
+              </Button>
+            </Stack>
+            <VideoProgressionPanel />
+          </Box>
         )}
 
         {/* ANALYZING */}
@@ -697,6 +1247,9 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
                 </Typography>
               </Paper>
             )}
+
+            {/* AI follow-up questions — generert basert på faktisk svar */}
+            <FollowUpQuestions sessionId={result.id} />
           </Stack>
         )}
       </DialogContent>

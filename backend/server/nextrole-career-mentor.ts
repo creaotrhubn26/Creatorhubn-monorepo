@@ -29,10 +29,12 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import { createHash } from "crypto";
 import {
   sanitizeProfileForAI,
   formatSanitizedForPrompt,
   PII_DISCLOSURE,
+  PII_DISCLOSURE_VERSION,
 } from "./nextrole-pii-filter";
 
 export interface NextRoleCareerMentorDeps {
@@ -50,6 +52,10 @@ interface UserPrefs {
   feedbackTone: Tone;
   toneChangedAt: string | null;
   prefs: Record<string, unknown>;
+  piiAcknowledgedAt: string | null;
+  piiAcknowledgedVersion: string | null;
+  /** True hvis bruker har anerkjent gjeldende PII_DISCLOSURE_VERSION. */
+  piiAcknowledgedCurrent: boolean;
 }
 
 interface SessionRow {
@@ -171,19 +177,34 @@ async function getUserPrefs(pool: Pool, userId: string): Promise<UserPrefs> {
     feedback_tone: Tone;
     tone_changed_at: Date | null;
     prefs: Record<string, unknown>;
+    pii_acknowledged_at: Date | null;
+    pii_acknowledged_version: string | null;
   }>(
-    `SELECT feedback_tone, tone_changed_at, prefs
+    `SELECT feedback_tone, tone_changed_at, prefs,
+            pii_acknowledged_at, pii_acknowledged_version
        FROM nextrole_user_prefs WHERE user_id = $1`,
     [userId],
   );
   if (!r.rowCount) {
-    return { feedbackTone: "balanced", toneChangedAt: null, prefs: {} };
+    return {
+      feedbackTone: "balanced",
+      toneChangedAt: null,
+      prefs: {},
+      piiAcknowledgedAt: null,
+      piiAcknowledgedVersion: null,
+      piiAcknowledgedCurrent: false,
+    };
   }
   const row = r.rows[0];
   return {
     feedbackTone: row.feedback_tone,
     toneChangedAt: row.tone_changed_at?.toISOString() ?? null,
     prefs: row.prefs ?? {},
+    piiAcknowledgedAt: row.pii_acknowledged_at?.toISOString() ?? null,
+    piiAcknowledgedVersion: row.pii_acknowledged_version,
+    piiAcknowledgedCurrent:
+      row.pii_acknowledged_at !== null &&
+      row.pii_acknowledged_version === PII_DISCLOSURE_VERSION,
   };
 }
 
@@ -372,6 +393,40 @@ export function setupNextRoleCareerMentorRoutes(
   // GET PII disclosure — eksakt hva som sendes og ikke sendes til AI
   app.get("/api/nextrole/career-mentor/pii-disclosure", (_req, res) => {
     res.json(PII_DISCLOSURE);
+  });
+
+  // POST anerkjennelse av PII-disclosure — logges med versjon + IP-hash
+  // (audit-spor uten å lagre ekte IP). Brukes som gate før Sigrid /
+  // AI-funksjoner kan tas i bruk.
+  app.post("/api/nextrole/career-mentor/acknowledge-pii", async (req, res) => {
+    const session = requireSession(req, res);
+    if (!session) return;
+
+    // Hent ekte client IP (bak Cloudflare / proxy) og hash den
+    const cfIp = String(req.headers["cf-connecting-ip"] ?? "");
+    const xff = String(req.headers["x-forwarded-for"] ?? "");
+    const ip = cfIp || xff.split(",")[0]?.trim() || req.socket.remoteAddress || "";
+    const salt = process.env.NEXTROLE_CRON_SECRET ?? "nextrole-pii-ack-salt";
+    const ipHash = ip
+      ? createHash("sha256").update(`${ip}:${salt}`).digest("hex").slice(0, 48)
+      : null;
+
+    await pool.query(
+      `INSERT INTO nextrole_user_prefs (user_id, pii_acknowledged_at, pii_acknowledged_version, pii_acknowledged_ip_hash)
+       VALUES ($1, NOW(), $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET
+         pii_acknowledged_at = NOW(),
+         pii_acknowledged_version = EXCLUDED.pii_acknowledged_version,
+         pii_acknowledged_ip_hash = EXCLUDED.pii_acknowledged_ip_hash,
+         updated_at = NOW()`,
+      [session.userId, PII_DISCLOSURE_VERSION, ipHash],
+    );
+
+    res.json({
+      acknowledged: true,
+      version: PII_DISCLOSURE_VERSION,
+      at: new Date().toISOString(),
+    });
   });
 
   // PATCH preferences

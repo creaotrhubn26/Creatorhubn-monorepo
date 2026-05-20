@@ -464,6 +464,27 @@ export const NextRoleMockInterview: React.FC<Props> = ({
                 : 'Velg jobbsøknad fra Kanban — så ekstraherer AI kompetansekravene fra annonsen og lager skreddersydde spørsmål.'}
             </Alert>
 
+            <Alert
+              severity="warning"
+              icon={false}
+              sx={{
+                py: 0.5, px: 1.5, fontSize: 12,
+                bgcolor: '#F9FAFB',
+                color: 'text.secondary',
+                border: '1px solid', borderColor: 'divider',
+                '& .MuiAlert-message': { p: 0 },
+              }}
+            >
+              <Typography variant="caption">
+                Mock Interview sender CV-utdrag (tittel, by, erfaring, ferdigheter)
+                til AI — aldri navn, e-post eller telefon. Fri-tekst scrubbes for
+                fødselsnumre og adresser.{' '}
+                <Box component="a" href="/privacy-policy#nextrole" target="_blank" sx={{ color: '#3B82F6' }}>
+                  Detaljer
+                </Box>
+              </Typography>
+            </Alert>
+
             {/* Modus-toggle */}
             <Box>
               <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>
