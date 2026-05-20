@@ -689,7 +689,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 0: Bedriftsprofil */}
       <TabPanel value={settingsTabValue} index={getSettingsTabIndex('business')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Business sx={{ color: customBranding.color }} />
@@ -708,7 +708,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 1: Mine Funksjoner - Feature Access Overview */}
       <TabPanel value={settingsTabValue} index={getSettingsTabIndex('my-features')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Extension sx={{ color: customBranding.color }} />
@@ -848,7 +848,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
         <>
       {/* Tab 2: Prisadministrasjon */}
       <TabPanel value={settingsTabValue} index={2}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <AttachMoney sx={{ color: customBranding.color }} />
@@ -974,7 +974,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                         gap: 2,
                       }}
                     >
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Registrerte betalinger
                         </Typography>
@@ -982,7 +982,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           {paymentHistorySummary.totalPayments}
                         </Typography>
                       </Box>
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Betalt totalt
                         </Typography>
@@ -990,7 +990,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           {formatPaymentAmount(paymentHistorySummary.totalVolume, latestPayment?.currency || currentSubscription?.currency || 'NOK')}
                         </Typography>
                       </Box>
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Kvitteringer klare
                         </Typography>
@@ -998,7 +998,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           {paymentHistorySummary.receiptsReady}
                         </Typography>
                       </Box>
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Fakturaer og grunnlag
                         </Typography>
@@ -1055,7 +1055,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                               p: 2,
                               border: '1px solid #e8edf3',
                               borderRadius: 2,
-                              bgcolor: '#fff',
+                              bgcolor: 'rgba(255,255,255,0.04)',
                             }}
                           >
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
@@ -1228,7 +1228,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                             p: 2,
                             border: '1px solid #e8edf3',
                             borderRadius: 2,
-                            bgcolor: '#fff',
+                            bgcolor: 'rgba(255,255,255,0.04)',
                           }}
                         >
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
@@ -1359,7 +1359,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     {currentSubscription.subscriptionSelected && (
                       <>
                         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 2, mb: 2 }}>
-                          <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid #e0e0e0' }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600}}>
                               Månedlig beløp
                             </Typography>
@@ -1367,7 +1367,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                               {currentSubscription.amount || 0} {currentSubscription.currency || 'NOK'}
                             </Typography>
                           </Box>
-                          <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid #e0e0e0' }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600}}>
                               Neste fakturering
                             </Typography>
@@ -1381,7 +1381,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                                 : 'Ikke tilgjengelig'}
                             </Typography>
                           </Box>
-                          <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid #e0e0e0' }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600}}>
                               Tilgang til
                             </Typography>
@@ -1669,7 +1669,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 4: Profession Suites */}
       <TabPanel value={settingsTabValue} index={getSettingsTabIndex('profession-suites')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <SmartToy sx={{ color: customBranding.color }} />
@@ -1930,7 +1930,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       {/* Tab 5: Foto integrasjoner - ONLY for photographers */}
       {profession === 'photographer' && (
         <TabPanel value={settingsTabValue} index={getSettingsTabIndex('photo-integrations')}>
-          <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
+          <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
             <MuiCardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                 <PhotoLibrary sx={{ color: customBranding.color }} />
@@ -2115,7 +2115,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab FAQ: FAQ Veiledninger - UNIVERSAL FOR ALLE PROFESJONER */}
       <TabPanel value={settingsTabValue} index={getSettingsTabIndex('faq')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Quiz sx={{ color: customBranding.color }} />
@@ -2141,7 +2141,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab Preferences: Brukerpreferanser */}
       <TabPanel value={settingsTabValue} index={getSettingsTabIndex('preferences')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Settings sx={{ color: customBranding.color }} />
@@ -2447,7 +2447,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
           </Alert>
 
           {/* What You'll Lose - Dynamic from profession feature matrix */}
-          <Box sx={{ mb: 3, p: 2, bgcolor: '#fff3e0', borderRadius: 1, border: '1px solid #ffb74d' }}>
+          <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255,186,108,0.08)', borderRadius: 1, border: '1px solid #ffb74d' }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Warning color="warning" />
               Hva du mister tilgang til etter {currentSubscription?.accessUntil

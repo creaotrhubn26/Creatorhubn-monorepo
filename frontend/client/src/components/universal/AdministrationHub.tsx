@@ -77,7 +77,7 @@ export default function AdministrationHub({
           border: '3px solid',
           borderColor: 'primary.main',
           overflow: 'hidden',
-          bgcolor: 'white',
+          bgcolor: 'rgba(255,255,255,0.04)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.15)'
         }}
       >
@@ -114,7 +114,7 @@ export default function AdministrationHub({
               borderColor: 'transparent',
               '&.Mui-selected': {
                 color: 'primary.main',
-                bgcolor: 'white',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 borderColor: 'primary.main',
                 borderBottom: 'none'
               },

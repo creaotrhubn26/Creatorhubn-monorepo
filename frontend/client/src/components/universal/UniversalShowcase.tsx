@@ -6058,7 +6058,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         <DialogContent>
           <Box sx={{ mt: 2 }}>
             {/* Contract Summary */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: '#fff3e0', border: '1px solid #ff6f00' }}>
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,186,108,0.08)', border: '1px solid #ff6f00' }}>
               <Typography variant="h6" color="#ff6f00" gutterBottom>
                 📊 Contract Summary
               </Typography>
@@ -8705,7 +8705,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               borderColor: '#ff6f00', 
               color: '#ff6f00','&:hover': { 
                 borderColor: '#', 
-                bgcolor: '#fff3e0' 
+                bgcolor: 'rgba(255,186,108,0.08)' 
         } 
         }}
           >
