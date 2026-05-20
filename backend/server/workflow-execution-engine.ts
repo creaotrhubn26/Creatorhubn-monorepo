@@ -515,6 +515,76 @@ Bruk myk, profesjonell tone. Norsk bokmål.`;
           };
         }
 
+        // Slice 9X.79 — lagre direkte i contracts-tabellen som draft.
+        // Vises i kontrakt-modulen og kan signeres derfra.
+        let contractId: string | null = null;
+        let contractNumber: string | null = null;
+        try {
+          // Splitt markdown på "## "-overskrifter til contract-sections
+          const sections = draft
+            .split(/^##\s+/m)
+            .map((chunk) => chunk.trim())
+            .filter(Boolean)
+            .map((chunk) => {
+              const lines = chunk.split('\n');
+              const title = (lines[0] || 'Seksjon').replace(/^#+\s*/, '').trim();
+              const body = lines.slice(1).join('\n').trim();
+              return { title, content: body || title };
+            });
+          // Hvis utkastet ikke splittes (ingen ##) — pakk hele inn i én seksjon
+          const sectionsToStore = sections.length > 0
+            ? sections
+            : [{ title: 'Kontrakt-utkast', content: draft }];
+
+          contractNumber = `AI-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+          const contractTitle = `Kontrakt — ${clientName || 'klient'} (${projectType})`;
+
+          const inserted = await ctx.pool.query(
+            `INSERT INTO contracts (
+               id, user_id, client_id, project_id, contract_number,
+               contract_title, title, client_name, client_email,
+               customer_type, contract_type, project_type, project_description,
+               total_amount, profession, template_used, sections, content,
+               metadata, status, signature_status,
+               created_at, updated_at
+             ) VALUES (
+               gen_random_uuid(), $1, $2, $3, $4,
+               $5, $5, $6, $7,
+               'private', 'service_agreement', $8, $9,
+               $10, $11, 'smartflyt-ai', $12::jsonb, $13,
+               $14::jsonb, 'draft', 'not_started',
+               NOW(), NOW()
+             )
+             RETURNING id`,
+            [
+              ctx.userId,
+              pickContext(ctx, 'client_id', 'clientId'),
+              projectId,
+              contractNumber,
+              contractTitle,
+              clientName || null,
+              clientEmail || null,
+              projectType,
+              `AI-generert utkast — ${projectType}${eventDate ? ' · ' + eventDate : ''}`,
+              servicePrice || 0,
+              (ctx.workflowContext?.profession as string) || 'photographer',
+              JSON.stringify(sectionsToStore),
+              draft,
+              JSON.stringify({
+                generatedBy: 'smartflyt',
+                model: response.model,
+                runId: ctx.runId,
+                stepIndex: ctx.stepIndex,
+                generatedAt: new Date().toISOString(),
+              }),
+            ],
+          );
+          contractId = inserted.rows[0]?.id || null;
+        } catch (dbErr: any) {
+          console.warn('[smartflyt/generate-contract] insert feilet:', dbErr.message);
+          // Faller tilbake til inline-visning i run-historikk hvis insert feiler
+        }
+
         return {
           completed: true,
           data: {
@@ -523,8 +593,12 @@ Bruk myk, profesjonell tone. Norsk bokmål.`;
             model: response.model,
             projectId,
             clientName,
-            note: 'AI-generert kontrakt-utkast — kopier/lim inn i kontrakt-editor',
-            actionUrl: '/contracts/new',
+            contractId,
+            contractNumber,
+            note: contractId
+              ? `Kontrakt-utkast lagret som draft (${contractNumber}) — finn det i Kontrakt-modulen`
+              : 'AI-generert kontrakt-utkast — kopier/lim inn i kontrakt-editor',
+            actionUrl: contractId ? `/contracts/${contractId}` : '/contracts/new',
           },
         };
       } catch (err: any) {
