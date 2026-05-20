@@ -185,9 +185,39 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Public: motta event-log fra frontend (fire-and-forget) ────
   // Lar creatorhub-events.ts skrive til samme analytics_events-tabell
   // som backend bruker, slik at admin-overview-card kan vise lokale tall.
+  //
+  // Idempotent tabell-ensure ved første INSERT — produsenten har egen
+  // ensureAnalyticsEventsSchema i index.ts, men hvis den routen aldri
+  // er kalt vil tabellen ikke finnes. Vi lager den her som fallback.
+  let analyticsEventsTableEnsured = false;
+  async function ensureAnalyticsEventsTable() {
+    if (analyticsEventsTableEnsured) return;
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS analytics_events (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          event_type VARCHAR(64) NOT NULL,
+          entity_type VARCHAR(32),
+          entity_id VARCHAR(64),
+          actor_user_id VARCHAR(64),
+          metadata JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx
+          ON analytics_events (created_at DESC);
+        CREATE INDEX IF NOT EXISTS analytics_events_type_idx
+          ON analytics_events (event_type, created_at DESC);
+      `);
+      analyticsEventsTableEnsured = true;
+    } catch (err: any) {
+      console.warn('[analytics/event] ensure-table failed:', err.message);
+    }
+  }
+
   app.post("/api/analytics/event", async (req, res) => {
     const b = req.body || {};
     if (!b.eventType) return res.json({ success: false, error: 'missing_event_type' });
+    await ensureAnalyticsEventsTable();
     try {
       await pool.query(
         `INSERT INTO analytics_events (event_type, entity_type, entity_id, actor_user_id, metadata)
