@@ -536,6 +536,24 @@ async function runUncachedGoogleChatLiveHealthCheck(
     };
   } catch (error) {
     const normalized = normalizeGoogleChatAuthError(error);
+    // Slice 9X.80 — marker tilkoblingen som needs_reauth når Google sier
+    // refresh-tokenet ikke lenger er gyldig, så frontend kan vise banneret
+    if (normalized.status === 'expired'
+        && credentialSource.source === 'role_room_connection'
+        && (credentialSource as any).userId
+        && pool) {
+      try {
+        const { markConnectionNeedsReauth } = await import('./google-oauth-shared.js');
+        await markConnectionNeedsReauth(
+          pool,
+          (credentialSource as any).userId,
+          'role_room_google_connections',
+          'chat_health_refresh_expired',
+        ).catch(() => null);
+      } catch {
+        /* ignore — health check skal ikke kaste */
+      }
+    }
     return {
       connected: false,
       status: normalized.status,

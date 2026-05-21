@@ -86,10 +86,26 @@ async function loadGmailCredentials(pool: Pool, userId: string): Promise<{
   oauthClient.setCredentials(tokenSeed);
 
   if (refreshToken) {
-    const expiringSoon = !Number.isFinite(tokenSeed.expiry_date) || (tokenSeed.expiry_date ?? 0) <= Date.now() + 60_000;
+    // Slice 9X.80 — buffer 60s → 5 min + marker needs_reauth ved invalid_grant
+    const expiringSoon = !Number.isFinite(tokenSeed.expiry_date)
+      || (tokenSeed.expiry_date ?? 0) <= Date.now() + 5 * 60_000;
     if (expiringSoon) {
       oauthClient.setCredentials({ refresh_token: refreshToken });
-      await oauthClient.refreshAccessToken().catch(() => undefined);
+      try {
+        await oauthClient.refreshAccessToken();
+      } catch (refreshErr: any) {
+        const msg = `${refreshErr?.message || ''} ${
+          typeof refreshErr?.response?.data === 'string'
+            ? refreshErr.response.data
+            : JSON.stringify(refreshErr?.response?.data ?? {})
+        }`.toLowerCase();
+        if (msg.includes('invalid_grant') || msg.includes('invalid_rapt')
+            || msg.includes('reauth') || msg.includes('unauthorized_client')) {
+          const { markConnectionNeedsReauth } = await import('./google-oauth-shared.js');
+          await markConnectionNeedsReauth(pool, userId, 'role_room_google_connections', 'gmail_refresh_invalid_grant').catch(() => null);
+        }
+        console.warn('[chat-gmail-poller] refresh feilet for', userId, refreshErr?.message);
+      }
     }
   }
 
