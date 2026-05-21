@@ -20,6 +20,7 @@ import { google } from 'googleapis';
 import * as schema from '../migrations/schema.js';
 import crypto from 'crypto';
 import { Readable } from 'stream';
+import { decryptGoogleToken as sharedDecryptGoogleToken } from './google-oauth-shared.js';
 import { ensureContractsCompatibilitySchema } from './contract-google-signing.js';
 import {
   getGoogleWorkspaceOauthConfig,
@@ -380,36 +381,9 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
   };
 
+  // Slice 9X.80 — delegerer til shared dekryptor
   const decryptRoleRoomGoogleToken = (value: string | null | undefined): string | null => {
-    if (!value) {
-      return null;
-    }
-
-    const key = deriveRoleRoomGoogleEncryptionKey();
-    if (!key) {
-      return null;
-    }
-
-    const [version, ivPart, tagPart, encryptedPart] = value.split('.');
-    if (version !== 'v1' || !ivPart || !tagPart || !encryptedPart) {
-      return null;
-    }
-
-    try {
-      const decipher = crypto.createDecipheriv(
-        'aes-256-gcm',
-        key,
-        Buffer.from(ivPart, 'base64url'),
-      );
-      decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
-      const decrypted = Buffer.concat([
-        decipher.update(Buffer.from(encryptedPart, 'base64url')),
-        decipher.final(),
-      ]);
-      return decrypted.toString('utf8');
-    } catch {
-      return null;
-    }
+    return sharedDecryptGoogleToken(value);
   };
 
   const parseGoogleChatResponse = async (response: globalThis.Response): Promise<unknown> => {

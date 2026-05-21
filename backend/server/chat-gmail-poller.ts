@@ -37,23 +37,10 @@ function deriveServiceEncryptionKey(): Buffer | null {
   return crypto.createHash('sha256').update(secret).digest();
 }
 
+// Slice 9X.80 — delegerer til shared dekryptor
+import { decryptGoogleToken as _decryptGoogleToken } from './google-oauth-shared.js';
 function decryptToken(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const key = deriveServiceEncryptionKey();
-  if (!key) return null;
-  try {
-    const buf = Buffer.from(value, 'base64');
-    if (buf.length < 28) return null;
-    const iv = buf.subarray(0, 12);
-    const tag = buf.subarray(12, 28);
-    const ct = buf.subarray(28);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-    decipher.setAuthTag(tag);
-    const plain = Buffer.concat([decipher.update(ct), decipher.final()]);
-    return plain.toString('utf8');
-  } catch {
-    return null;
-  }
+  return _decryptGoogleToken(value);
 }
 
 async function loadGmailCredentials(pool: Pool, userId: string): Promise<{

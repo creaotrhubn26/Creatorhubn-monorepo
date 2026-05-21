@@ -150,36 +150,10 @@ function deriveRoleRoomServiceEncryptionKey(envKeyName: string): Buffer | null {
   return crypto.createHash('sha256').update(secret).digest();
 }
 
+// Slice 9X.80 — delegerer til shared dekryptor som støtter alle historiske formater
+import { decryptGoogleToken as _decryptGoogleToken } from './google-oauth-shared.js';
 function decryptRoleRoomGoogleToken(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const key = deriveRoleRoomServiceEncryptionKey('ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY');
-  if (!key) {
-    return null;
-  }
-
-  const [version, ivPart, tagPart, encryptedPart] = value.split('.');
-  if (version !== 'v1' || !ivPart || !tagPart || !encryptedPart) {
-    return null;
-  }
-
-  try {
-    const decipher = crypto.createDecipheriv(
-      'aes-256-gcm',
-      key,
-      Buffer.from(ivPart, 'base64url'),
-    );
-    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
-    const decrypted = Buffer.concat([
-      decipher.update(Buffer.from(encryptedPart, 'base64url')),
-      decipher.final(),
-    ]);
-    return decrypted.toString('utf8');
-  } catch {
-    return null;
-  }
+  return _decryptGoogleToken(value);
 }
 
 function isMissingRelationError(error: unknown): boolean {

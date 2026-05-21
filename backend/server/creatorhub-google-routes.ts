@@ -136,7 +136,9 @@ const CREATORHUB_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/youtube.upload',
 ] as const;
 
-const CREATORHUB_GOOGLE_STATE_TTL_MS = 15 * 60 * 1000;
+// Slice 9X.80 — bump fra 15 → 60 min så brukere som blir avbrutt
+// (telefon, tab-switch, nettverk-glitch) ikke får "utløpt"-feil.
+const CREATORHUB_GOOGLE_STATE_TTL_MS = 60 * 60 * 1000;
 const CREATORHUB_GOOGLE_OAUTH_APP: GoogleWorkspaceOauthApp = 'creatorhub';
 
 const creatorHubGoogleOauthStateStore = new Map<string, CreatorHubGoogleOauthState>();
@@ -210,21 +212,11 @@ function deriveEncryptionKey(): Buffer | null {
   return crypto.createHash('sha256').update(secret).digest();
 }
 
+// Slice 9X.80 — delegerer til shared kryptor som skriver v1-format
+// (kompatibelt med både gamle og nye dekrypterere)
+import { encryptGoogleToken as sharedEncryptGoogleToken } from './google-oauth-shared.js';
 function encryptGoogleToken(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const key = deriveEncryptionKey();
-  if (!key) {
-    return null;
-  }
-
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return `${iv.toString('base64url')}.${authTag.toString('base64url')}.${encrypted.toString('base64url')}`;
+  return sharedEncryptGoogleToken(value);
 }
 
 function sanitizeReturnPath(value: unknown): string {
