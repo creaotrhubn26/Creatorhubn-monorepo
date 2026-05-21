@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 import { useAuth } from '@/hooks/useAuth';
 import { useShowcaseSEO } from '@/hooks/useShowcaseSEO';
 import UniversalShowcase from '../components/universal/UniversalShowcase';
+import ShowcaseConversionFooter from '@/components/showcase/ShowcaseConversionFooter';
 
 export default function PhotoShowcase() {
   const { user } = useAuth();
@@ -22,6 +23,11 @@ export default function PhotoShowcase() {
         isOwner={true}
         compact={false}
         maxItems={20}
+      />
+      <ShowcaseConversionFooter
+        profession="photographer"
+        displayName={displayName}
+        contactEmail={user?.email || null}
       />
     </Box>
   );

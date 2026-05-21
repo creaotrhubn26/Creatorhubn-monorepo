@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 import { useAuth } from '@/hooks/useAuth';
 import { useShowcaseSEO } from '@/hooks/useShowcaseSEO';
 import UniversalShowcase from '../components/universal/UniversalShowcase';
+import ShowcaseConversionFooter from '@/components/showcase/ShowcaseConversionFooter';
 
 const MusicShowcase: React.FC = () => {
   const { user } = useAuth();
@@ -22,6 +23,11 @@ const MusicShowcase: React.FC = () => {
         isOwner={true}
         compact={false}
         maxItems={20}
+      />
+      <ShowcaseConversionFooter
+        profession="music_producer"
+        displayName={displayName}
+        contactEmail={user?.email || null}
       />
     </Box>
   );
