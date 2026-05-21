@@ -7442,9 +7442,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   if (_loadingFallback) return _loadingFallback;
 
   return (
-    <Box 
+    <Box
       ref={scrollContainerRef}
-      sx={{ 
+      sx={{
         minHeight: '100vh',
         bgcolor: '#06080d',
         background: `radial-gradient(circle at 74% 12%, ${alpha(accentColor, 0.22)}, rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, ${alpha(academyCoolAccent, 0.14)}, rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%), linear-gradient(135deg, #06080d 0%, #090d16 52%, #120d08 100%)`,
@@ -7456,6 +7456,32 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         '--showcase-surface': academySurface,
         '--showcase-surface-elevated': academySurfaceElevated,
         '--showcase-border': academyBorder,
+        // Slice 9X.81 — WCAG 2.3.3 / 2.3.1: respekter prefers-reduced-motion.
+        // Brukere som har slått på "redusert bevegelse" i OS får ingen scale-,
+        // translate-, eller fade-animasjoner som kan utløse vestibulære plager.
+        '@media (prefers-reduced-motion: reduce)': {
+          '*, *::before, *::after': {
+            animationDuration: '0.001ms !important',
+            animationIterationCount: '1 !important',
+            transitionDuration: '0.001ms !important',
+            scrollBehavior: 'auto !important',
+          },
+        },
+        // Slice 9X.81 — WCAG 2.5.5: 44x44px touch-targets på mobile.
+        // size="small" MUI-buttons er 32px default; bump opp til 44 på smalt
+        // viewport. Affekter ikke ToggleButtonGroup som er compact-by-design.
+        '@media (max-width: 600px)': {
+          '& .MuiButton-sizeSmall:not(.MuiToggleButton-root)': {
+            minHeight: '44px',
+          },
+          '& .MuiIconButton-sizeSmall': {
+            minWidth: '44px',
+            minHeight: '44px',
+          },
+          '& .MuiChip-clickable': {
+            minHeight: '32px',
+          },
+        },
         // Apply profession-specific styling
         '& .showcase-header': {
           background: `linear-gradient(135deg, ${professionTheme?.primaryColor || customTheme.palette.primary.main}20, ${professionTheme?.secondaryColor || customTheme.palette.secondary.main}20)`,
@@ -8392,13 +8418,14 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               size="small"
               sx={{ ml: 1 }}
             >
-              <ToggleButton value="grid" aria-label="grid view">
+              {/* Slice 9X.81 — norske aria-labels + title for tooltip på desktop */}
+              <ToggleButton value="grid" aria-label="Vis som rutenett" title="Rutenett">
                 <GridView sx={{ fontSize: 18 }} />
               </ToggleButton>
-              <ToggleButton value="list" aria-label="list view">
+              <ToggleButton value="list" aria-label="Vis som liste" title="Liste">
                 <ViewList sx={{ fontSize: 18 }} />
               </ToggleButton>
-              <ToggleButton value="masonry" aria-label="masonry view">
+              <ToggleButton value="masonry" aria-label="Vis som mursteinslayout" title="Mursteinslayout">
                 <PhotoLibrary sx={{ fontSize: 18 }} />
               </ToggleButton>
             </ToggleButtonGroup>
@@ -9238,25 +9265,34 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   </Typography>
                   
                   <Stack direction="row" spacing={1} flexWrap="wrap">
-                    {categoryGroup.days.map((day: any, dayIndex: number) => (
-                      <Chip
-                        key={dayIndex}
-                        label={`${day.name} (${day.hours}t)`}
-                        variant={selectedDayCategory === day.id ? "filled" : "outlined"}
-                        onClick={() => setSelectedDayCategory(
-                          selectedDayCategory === day.id ? null : day.id
-                        )}
-                        sx={{
-                          color: selectedDayCategory === day.id ? '#fff' : textSecondary,
-                          bgcolor: selectedDayCategory === day.id ? accentColor : 'transparent',
-                          borderColor: accentColor, '&:hover': {
-                            bgcolor: selectedDayCategory === day.id ? '#e64100' : 'rgba(255, 107, 53, 0.1)'
-                          },
-                          fontSize: '0.8rem',
-                          mb: 0.5
-                        }}
-                      />
-                    ))}
+                    {categoryGroup.days.map((day: any, dayIndex: number) => {
+                      const isSelected = selectedDayCategory === day.id;
+                      return (
+                        <Chip
+                          key={dayIndex}
+                          label={`${day.name} (${day.hours}t)`}
+                          variant={isSelected ? 'filled' : 'outlined'}
+                          // Slice 9X.81 — a11y: kunngjør valgt-state for skjermlesere,
+                          // og legg til ✓ slik at colorblind-brukere ser tegnet i tillegg
+                          // til farge.
+                          aria-pressed={isSelected}
+                          icon={isSelected ? <Box component="span" sx={{ pl: 0.5, fontSize: '0.85rem' }}>✓</Box> : undefined}
+                          onClick={() => setSelectedDayCategory(isSelected ? null : day.id)}
+                          sx={{
+                            color: isSelected ? '#fff' : textSecondary,
+                            bgcolor: isSelected ? accentColor : 'transparent',
+                            borderColor: accentColor,
+                            borderWidth: isSelected ? 2 : 1,
+                            fontWeight: isSelected ? 700 : 400,
+                            '&:hover': {
+                              bgcolor: isSelected ? '#e64100' : 'rgba(255, 107, 53, 0.1)'
+                            },
+                            fontSize: '0.8rem',
+                            mb: 0.5
+                          }}
+                        />
+                      );
+                    })}
                   </Stack>
                 </Box>
               ))}
