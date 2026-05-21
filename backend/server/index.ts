@@ -33536,6 +33536,9 @@ async function buildGoogleWorkspaceStorageSnapshot(
     driveConnectionDetailsResult,
     photosCountResult,
     emailCountResult,
+    // Slice 9X.80 — også sjekk role_room_google_connections-state så badge
+    // kan vise "Trenger oppmerksomhet" når Phase 3 markerte needs_reauth
+    roleRoomConnectionStateResult,
   ] = await Promise.all([
     pool
       .query(
@@ -33576,6 +33579,16 @@ async function buildGoogleWorkspaceStorageSnapshot(
         [normalizedUserId],
       )
       .catch(() => ({ rows: [{ emails: 0 }] })),
+    pool
+      .query(
+        `SELECT connection_state, last_error
+         FROM role_room_google_connections
+         WHERE user_id = $1
+         ORDER BY updated_at DESC NULLS LAST
+         LIMIT 1`,
+        [normalizedUserId],
+      )
+      .catch(() => ({ rows: [] as Array<{ connection_state?: string; last_error?: string }> })),
   ]);
 
   const driveBytes = Number(driveUsageResult.rows[0]?.total_bytes || 0);
@@ -33634,6 +33647,19 @@ async function buildGoogleWorkspaceStorageSnapshot(
   );
   let dataSource: "live-drive" | "database-estimate" = "database-estimate";
   let workspaceWarning: string | null = null;
+
+  // Slice 9X.80 — surface needs_reauth fra role_room_google_connections
+  // (Phase 3 setter denne ved invalid_grant). Badge'en viser "Trenger
+  // oppmerksomhet" + Re-koble-knapp basert på workspaceWarning.
+  const roleRoomConnRow = (roleRoomConnectionStateResult.rows[0] ?? {}) as {
+    connection_state?: string;
+    last_error?: string;
+  };
+  if (roleRoomConnRow.connection_state === 'needs_reauth') {
+    workspaceWarning = 'Google krever ny innlogging — klikk for å re-koble';
+    // Tving connected=false så knappen sier "Aktiver Google-SSO" istedenfor "Forny SSO"
+    googleDriveConnected = false;
+  }
 
   if (normalizedUserId !== "guest") {
     try {
