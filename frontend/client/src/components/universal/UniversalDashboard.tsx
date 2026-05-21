@@ -161,6 +161,7 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import ProfessionAdapter from './ProfessionAdapter';
 import SmartWorkflowBuilder from './SmartWorkflowBuilder'; // Visual workflow builder with action buttons
 import SmartFlytPendingBanner from './SmartFlytPendingBanner'; // Slice 9X.79 — aktiv-run-banner
+import ErrorBoundary from '@/components/common/ErrorBoundary'; // Slice 9X.81 — per-tab error isolation
 import FloatingActionButtons from './misc/FloatingActionButtons';
 import CreatorHubPhotoEnhancer from './misc/CreatorHubPhotoEnhancer';
 
@@ -538,23 +539,30 @@ function TabPanel(props: TabPanelProps) {
       {...other}
     >
       {value === index && (
-        <Box 
-          sx={{ 
+        <Box
+          sx={{
             p: { xs: 2, sm: 3, md: 4 },
             animation: 'fadeSlideIn 0.3s ease-out',
             '@keyframes fadeSlideIn': {
-              '0%': { 
-                opacity: 0, 
-                transform: 'translateY(10px)' 
+              '0%': {
+                opacity: 0,
+                transform: 'translateY(10px)'
               },
-              '100%': { 
-                opacity: 1, 
-                transform: 'translateY(0)' 
+              '100%': {
+                opacity: 1,
+                transform: 'translateY(0)'
               },
             }
           }}
         >
-          {children}
+          {/* Slice 9X.81 — Error boundary slik at ett tab-krasj ikke tar ned hele dashbordet */}
+          <ErrorBoundary
+            componentName={`UniversalDashboardTab-${index}`}
+            showDetails={false}
+            context={{ tabIndex: index }}
+          >
+            {children}
+          </ErrorBoundary>
         </Box>
       )}
     </div>
@@ -4813,14 +4821,24 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 }}
               >
                 {availableTabs.map((tab, index) => {
-                  return (
-                    <Tab 
+                  const isActive = tabValue === index;
+                  // Slice 9X.81 — Mobile: kun ikon (split('')[0] viste "P", "A" — uleselig).
+                  // aria-label sikrer at skjermlesere fortsatt får full tittel.
+                  // Tooltip viser label visuelt for sighted users.
+                  const tabNode = (
+                    <Tab
                       key={tab.id}
                       value={index}
-                      label={isSmallScreen ? tab.label.split('')[0] : tab.label}
+                      label={isSmallScreen ? undefined : tab.label}
                       icon={tab.icon}
+                      aria-label={tab.label}
+                      aria-current={isActive ? 'page' : undefined}
+                      sx={{
+                        // WCAG 2.5.5 — minimum 44x44px touch target
+                        minHeight: { xs: 44, sm: 48 },
+                        minWidth: { xs: 44, sm: 64 },
+                      }}
                       onClick={() => {
-                        // Track tab access with feature system
                         features.trackFeatureUsage(`dashboard-tab-${tab.id}`, 'clicked', {
                           tabIndex: index,
                           tabLabel: tab.label,
@@ -4828,7 +4846,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         });
                       }}
                     />
-                );
+                  );
+                  return isSmallScreen ? (
+                    <Tooltip key={tab.id} title={tab.label} placement="bottom">
+                      {tabNode}
+                    </Tooltip>
+                  ) : tabNode;
             })}
               </MuiTabs>
               
