@@ -83,6 +83,7 @@ import GallerySlideshow from '@/components/gallery/GallerySlideshow';
 import PrintOrderDialog from '@/components/gallery/PrintOrderDialog';
 import GalleryChapterBreak, { type GalleryChapter } from '@/components/gallery/GalleryChapterBreak';
 import GalleryChapterNav from '@/components/gallery/GalleryChapterNav';
+import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -324,6 +325,18 @@ export default function ClientGallery({}: ClientGalleryProps) {
       && !!gallery
       && (!gallery.requiresPassword || !!galleryPassword),
 });
+
+  // Slice 9X.82 (Bjarne) — fetch video-timecode-kommentarer
+  const { data: videoCommentsData } = useQuery({
+    queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
+    queryFn: () =>
+      apiRequest(`/api/client/gallery/${accessToken}/video-comments`, { headers: galleryHeaders }),
+    enabled: !!accessToken
+      && !!gallery
+      && (!gallery.requiresPassword || !!galleryPassword)
+      && Array.isArray((gallery as any)?.gallerySettings?.chapters)
+      && ((gallery as any).gallerySettings.chapters as any[]).some((c: any) => c?.videoUrl),
+  });
 
   // Fetch existing comments so the gallery can show prior notes on the
   // image detail view + comment counts. Mirrors the selections query
@@ -1201,15 +1214,58 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 const chapterIdx = imageToChapterIdx.get(image.id);
                 if (chapterIdx !== undefined && !renderedChapterIdxs.has(chapterIdx)) {
                   renderedChapterIdxs.add(chapterIdx);
+                  const ch = chapters[chapterIdx];
                   nodes.push(
-                    <Grid item xs={12} key={`chapter-${chapters[chapterIdx].id}`}>
+                    <Grid item xs={12} key={`chapter-${ch.id}`}>
                       <GalleryChapterBreak
-                        chapter={chapters[chapterIdx]}
+                        chapter={ch}
                         index={chapterIdx}
                         totalChapters={chapters.length}
                       />
                     </Grid>
                   );
+                  // Slice 9X.82 (Bjarne) — render CinematicVideoPlayer
+                  // når kapittel har videoUrl (videograf-leveranser).
+                  // videoCommentsForChapter + handleAddVideoComment
+                  // wires Frame.io-stil timecode-kommentarer.
+                  if (ch.videoUrl) {
+                    const chapterComments = (videoCommentsData?.comments || []).filter(
+                      (c: any) => c.chapterId === ch.id,
+                    );
+                    nodes.push(
+                      <Grid item xs={12} key={`chapter-video-${ch.id}`}>
+                        <Box sx={{ maxWidth: 1280, mx: 'auto', mb: 4 }}>
+                          <CinematicVideoPlayer
+                            src={ch.videoUrl}
+                            poster={ch.videoPoster}
+                            title={ch.title}
+                            subtitle={ch.intro}
+                            chapters={ch.videoMarkers || []}
+                            comments={chapterComments}
+                            clientName={gallery?.clientName || null}
+                            onAddComment={async ({ timecodeSec, comment }) => {
+                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                              if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
+                              await fetch(`/api/client/gallery/${encodeURIComponent(accessToken)}/video-comments`, {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({
+                                  chapterId: ch.id,
+                                  timecodeSec,
+                                  comment,
+                                  clientEmail: gallery?.clientEmail || '',
+                                  clientName: gallery?.clientName || '',
+                                }),
+                              });
+                              void queryClient.invalidateQueries({
+                                queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
+                              });
+                            }}
+                          />
+                        </Box>
+                      </Grid>
+                    );
+                  }
                 }
                 nodes.push(
                   <Grid item xs={12} key={image.id}>

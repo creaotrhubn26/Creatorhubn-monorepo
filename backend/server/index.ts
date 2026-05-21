@@ -22202,6 +22202,139 @@ app.get("/api/client/gallery/:accessToken/selections", async (req, res) => {
   }
 });
 
+// Slice 9X.82 (Bjarne) — Video-timecode-kommentarer (Frame.io-stil)
+// Klient kan kommentere på et spesifikt tidspunkt i video-leveransen.
+async function ensureVideoTimecodeCommentsSchema(): Promise<void> {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS video_timecode_comments (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gallery_id      VARCHAR(64) NOT NULL,
+        chapter_id      VARCHAR(64),
+        timecode_sec    NUMERIC(10,3) NOT NULL,
+        comment         TEXT NOT NULL,
+        client_email    VARCHAR(255) NOT NULL,
+        client_name     VARCHAR(255),
+        status          VARCHAR(32) NOT NULL DEFAULT 'open',
+        resolved_at     TIMESTAMPTZ,
+        resolved_by     VARCHAR(64),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_video_timecode_comments_gallery
+        ON video_timecode_comments (gallery_id, chapter_id, timecode_sec);
+    `);
+  } catch (e: any) {
+    console.warn('[video-comments] schema-ensure failed:', e.message);
+  }
+}
+
+app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const chapterId = typeof req.query.chapterId === 'string' ? req.query.chapterId : null;
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    await ensureVideoTimecodeCommentsSchema();
+    const params: any[] = [access.gallery.id];
+    let where = `gallery_id = $1`;
+    if (chapterId) { params.push(chapterId); where += ` AND chapter_id = $${params.length}`; }
+    const result = await pool.query(
+      `SELECT id, chapter_id, timecode_sec, comment, client_email, client_name,
+              status, resolved_at, created_at, updated_at
+         FROM video_timecode_comments
+        WHERE ${where}
+        ORDER BY timecode_sec ASC, created_at ASC`,
+      params,
+    );
+    res.json({
+      galleryId: access.gallery.id,
+      comments: result.rows.map((r: any) => ({
+        id: r.id,
+        chapterId: r.chapter_id,
+        timecodeSec: Number(r.timecode_sec),
+        comment: r.comment,
+        clientEmail: r.client_email,
+        clientName: r.client_name,
+        status: r.status,
+        resolvedAt: r.resolved_at,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (e) {
+    console.error("[video-comments] list failed", e);
+    res.status(500).json({ error: "list_failed" });
+  }
+});
+
+app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const timecodeSec = Number(req.body?.timecodeSec);
+  const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim().slice(0, 2000) : '';
+  const chapterId = typeof req.body?.chapterId === 'string' ? req.body.chapterId.slice(0, 64) : null;
+  const clientEmail = typeof req.body?.clientEmail === 'string' ? req.body.clientEmail.trim().toLowerCase() : '';
+  const clientName = typeof req.body?.clientName === 'string' ? req.body.clientName.trim().slice(0, 255) : '';
+  if (!Number.isFinite(timecodeSec) || timecodeSec < 0) return res.status(400).json({ error: "invalid_timecode" });
+  if (!comment) return res.status(400).json({ error: "comment_required" });
+  if (!clientEmail) return res.status(400).json({ error: "client_email_required" });
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    await ensureVideoTimecodeCommentsSchema();
+    const inserted = await pool.query(
+      `INSERT INTO video_timecode_comments
+         (gallery_id, chapter_id, timecode_sec, comment, client_email, client_name)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, created_at`,
+      [access.gallery.id, chapterId, timecodeSec, comment, clientEmail, clientName || null],
+    );
+
+    // Broadcast realtime så Bjarne ser kommentaren umiddelbart i sitt admin-view
+    try {
+      const ownerRow = await pool.query(
+        `SELECT photographer_id FROM photographer_client_galleries WHERE id = $1 LIMIT 1`,
+        [access.gallery.id],
+      );
+      const photographerId = ownerRow.rows[0]?.photographer_id;
+      if (photographerId) {
+        broadcastUserEvent(photographerId, {
+          kind: "video.comment-added",
+          galleryId: access.gallery.id,
+          chapterId,
+          timecodeSec,
+          comment,
+          clientEmail,
+          clientName: clientName || null,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (e: any) {
+      console.warn('[video-comments] broadcast failed:', e.message);
+    }
+
+    res.status(201).json({
+      success: true,
+      id: inserted.rows[0].id,
+      createdAt: inserted.rows[0].created_at,
+    });
+  } catch (e) {
+    console.error("[video-comments] create failed", e);
+    res.status(500).json({ error: "create_failed" });
+  }
+});
+
 // Slice 9X.82 — Klient submitter sitt endelig utvalg. Låser favoritt-listen
 // for klient (submitted_at != NULL) og sender e-post-varsel til fotograf
 // med curated summary. Bygger på eksisterende client_image_selections.
@@ -22756,8 +22889,26 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
             imageIds: Array.isArray(c.imageIds)
               ? c.imageIds.filter((id: any) => typeof id === 'string').slice(0, 500)
               : [],
+            // Slice 9X.82 (Bjarne) — video-chapter-felter
+            videoUrl: typeof c.videoUrl === 'string' && /^https?:\/\//.test(c.videoUrl)
+              ? c.videoUrl.slice(0, 1024)
+              : null,
+            videoPoster: typeof c.videoPoster === 'string' && /^https?:\/\//.test(c.videoPoster)
+              ? c.videoPoster.slice(0, 1024)
+              : null,
+            videoMarkers: Array.isArray(c.videoMarkers)
+              ? c.videoMarkers
+                  .filter((m: any) => m && typeof m === 'object' && Number.isFinite(Number(m.startSec)) && typeof m.title === 'string')
+                  .map((m: any) => ({
+                    startSec: Math.max(0, Number(m.startSec)),
+                    title: String(m.title).slice(0, 200),
+                    intro: typeof m.intro === 'string' ? m.intro.slice(0, 400) : null,
+                    romanNumeral: typeof m.romanNumeral === 'string' ? m.romanNumeral.slice(0, 8) : null,
+                  }))
+                  .slice(0, 30)
+              : [],
           }))
-          .slice(0, 20); // max 20 chapters per galleri
+          .slice(0, 20);
         next.chapters = cleaned;
         continue;
       }

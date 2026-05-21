@@ -25,6 +25,12 @@ export interface GalleryChapter {
   imageIds?: string[];
   /** Valgfri tekst-overskrift over tittel (f.eks. "I") */
   romanNumeral?: string | null;
+  /** Slice 9X.82 (Bjarne) — videoUrl rendres som CinematicVideoPlayer
+   *  inni chapter-seksjonen, brukes for video-leveranser. */
+  videoUrl?: string | null;
+  videoPoster?: string | null;
+  /** Underkapittel-markører på video-progress-bar */
+  videoMarkers?: Array<{ startSec: number; title: string; romanNumeral?: string | null; intro?: string | null }>;
 }
 
 interface Props {
