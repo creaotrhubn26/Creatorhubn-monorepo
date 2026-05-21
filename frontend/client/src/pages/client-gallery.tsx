@@ -81,6 +81,8 @@ import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
 import GallerySelectionSubmitDialog from '@/components/gallery/GallerySelectionSubmitDialog';
 import GallerySlideshow from '@/components/gallery/GallerySlideshow';
 import PrintOrderDialog from '@/components/gallery/PrintOrderDialog';
+import GalleryChapterBreak, { type GalleryChapter } from '@/components/gallery/GalleryChapterBreak';
+import GalleryChapterNav from '@/components/gallery/GalleryChapterNav';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -1179,10 +1181,38 @@ export default function ClientGallery({}: ClientGalleryProps) {
             </Alert>
           )}
 
-          {/* Images Grid */}
+          {/* Images Grid — Slice 9X.82: chapter-aware rendering. Når
+              gallerySettings.chapters er konfigurert, fletter vi
+              GalleryChapterBreak inn over første bilde i hvert kapittel. */}
           <Grid container spacing={viewMode === 'grid' ? 3 : 2}>
-            {filteredImages.map((image: GalleryImage) => (
-              <Grid item xs={12} key={image.id}>
+            {(() => {
+              const chapters: GalleryChapter[] = Array.isArray(gallery?.gallerySettings?.chapters)
+                ? gallery!.gallerySettings.chapters
+                : [];
+              const imageToChapterIdx = new Map<string, number>();
+              chapters.forEach((ch, idx) => {
+                (ch.imageIds || []).forEach((id) => {
+                  if (!imageToChapterIdx.has(id)) imageToChapterIdx.set(id, idx);
+                });
+              });
+              const renderedChapterIdxs = new Set<number>();
+              return filteredImages.flatMap((image: GalleryImage, imgPosition: number) => {
+                const nodes: React.ReactNode[] = [];
+                const chapterIdx = imageToChapterIdx.get(image.id);
+                if (chapterIdx !== undefined && !renderedChapterIdxs.has(chapterIdx)) {
+                  renderedChapterIdxs.add(chapterIdx);
+                  nodes.push(
+                    <Grid item xs={12} key={`chapter-${chapters[chapterIdx].id}`}>
+                      <GalleryChapterBreak
+                        chapter={chapters[chapterIdx]}
+                        index={chapterIdx}
+                        totalChapters={chapters.length}
+                      />
+                    </Grid>
+                  );
+                }
+                nodes.push(
+                  <Grid item xs={12} key={image.id}>
                 <MuiCard
                   sx={{
                     position: 'relative',
@@ -1361,7 +1391,10 @@ export default function ClientGallery({}: ClientGalleryProps) {
                   </CardActions>
                 </MuiCard>
               </Grid>
-            ))}
+                );
+                return nodes;
+              });
+            })()}
           </Grid>
         </Box>
       </Box>
@@ -2075,6 +2108,16 @@ export default function ClientGallery({}: ClientGalleryProps) {
           alt: img.imageTitle || '',
         }))}
       />
+
+      {/* Slice 9X.82 — Floating chapter-nav (vertikal desktop / horisontal mobile) */}
+      {Array.isArray(gallery?.gallerySettings?.chapters) && gallery!.gallerySettings.chapters.length >= 2 && (
+        <GalleryChapterNav
+          chapters={(gallery!.gallerySettings.chapters as GalleryChapter[]).map((c) => ({
+            id: c.id,
+            title: c.title,
+          }))}
+        />
+      )}
 
       {/* Slice 9X.82 — Per-bilde print-bestilling (Pic-Time editorial) */}
       {printOrderImage && (

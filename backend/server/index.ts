@@ -22736,10 +22736,31 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
       // Slice 9X.5 — pricing-package linkage; auto-fills contractedImages
       // from package.inclusions.images when changed.
       'packageId',
+      // Slice 9X.82 — Pic-Time story chapters. Array av { id, title, intro,
+      // imageIds, romanNumeral }. Validert nedenfor.
+      'chapters',
     ]);
     for (const [key, value] of Object.entries(patch)) {
       if (key === 'password') continue;
       if (!ALLOWED.has(key)) continue;
+      // Slice 9X.82 — validér chapters-shape før vi godtar
+      if (key === 'chapters') {
+        if (!Array.isArray(value)) continue;
+        const cleaned = (value as any[])
+          .filter((c) => c && typeof c === 'object' && typeof c.id === 'string' && typeof c.title === 'string')
+          .map((c) => ({
+            id: String(c.id).slice(0, 64),
+            title: String(c.title).slice(0, 200),
+            intro: typeof c.intro === 'string' ? c.intro.slice(0, 800) : null,
+            romanNumeral: typeof c.romanNumeral === 'string' ? c.romanNumeral.slice(0, 8) : null,
+            imageIds: Array.isArray(c.imageIds)
+              ? c.imageIds.filter((id: any) => typeof id === 'string').slice(0, 500)
+              : [],
+          }))
+          .slice(0, 20); // max 20 chapters per galleri
+        next.chapters = cleaned;
+        continue;
+      }
       next[key] = value;
     }
 
