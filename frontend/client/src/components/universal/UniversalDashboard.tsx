@@ -8645,61 +8645,89 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         profession={profession}
       />
 
-      {/* Academy Overlay */}
-      {showAcademy && (
-        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: dashboardFullscreenZIndex, bgcolor: 'background.default' }}>
-          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: dashboardFullscreenControlZIndex }}>
-            <Button variant="contained"
-              startIcon={<ArrowBack />}
-              onClick={() => setShowAcademy(false)}
-              sx={{ 
-                bgcolor: '#ff8c00', '&:hover': { 
-                  bgcolor: '#f57c00'
-                }
-              }}
-            >
-              TILBAKE TIL DASHBOARD
-            </Button>
-          </Box>
-          <AcademyProvider>
-            <AcademyDashboard />
-          </AcademyProvider>
+      {/* Slice 9X.81 — Academy fullscreen-overlay. Konvertert fra
+          custom position:fixed til MUI Dialog (fullScreen) for å få
+          ESC-key, backdrop, focus-trap, scroll-lock og aria-modal
+          gratis. Tilbake-knappen bevart i samme posisjon. */}
+      <Dialog
+        open={showAcademy}
+        onClose={() => setShowAcademy(false)}
+        fullScreen
+        aria-labelledby="academy-overlay-title"
+        PaperProps={{
+          sx: {
+            bgcolor: 'background.default',
+            zIndex: dashboardFullscreenZIndex,
+          },
+        }}
+      >
+        <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: dashboardFullscreenControlZIndex }}>
+          <Button
+            variant="contained"
+            startIcon={<ArrowBack />}
+            onClick={() => setShowAcademy(false)}
+            aria-label="Tilbake til dashboard"
+            sx={{
+              bgcolor: '#ff8c00',
+              '&:hover': { bgcolor: '#f57c00' },
+            }}
+          >
+            TILBAKE TIL DASHBOARD
+          </Button>
         </Box>
-      )}
+        <span id="academy-overlay-title" style={{ position: 'absolute', left: -9999 }}>
+          Academy
+        </span>
+        <AcademyProvider>
+          <AcademyDashboard />
+        </AcademyProvider>
+      </Dialog>
 
-      {/* Showcase Overlay */}
-      {showShowcase && (
-        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: dashboardFullscreenZIndex, bgcolor: 'background.default' }}>
-          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: dashboardFullscreenControlZIndex }}>
-            <Button variant="contained"
-              startIcon={<ArrowBack />}
-              onClick={() => setShowShowcase(false)}
-              sx={{ 
-                bgcolor: '#ff8c00',
-                '&:hover': { 
-                  bgcolor: '#1976d2'
-                }
-              }}
-            >
-              TILBAKE TIL DASHBOARD
-            </Button>
-          </Box>
-          <SettingsProvider>
-          <ThemeProvider>
-          <RealTimeProvider>
-          <VisualEditorProvider>
-          <UniversalShowcase 
-            profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
-            userId={userId}
-            isOwner={true}
-            adminMode={false}
-          />
-          </VisualEditorProvider>
-          </RealTimeProvider>
-          </ThemeProvider>
-          </SettingsProvider>
+      {/* Slice 9X.81 — Showcase fullscreen-overlay (samme Dialog-mønster) */}
+      <Dialog
+        open={showShowcase}
+        onClose={() => setShowShowcase(false)}
+        fullScreen
+        aria-labelledby="showcase-overlay-title"
+        PaperProps={{
+          sx: {
+            bgcolor: 'background.default',
+            zIndex: dashboardFullscreenZIndex,
+          },
+        }}
+      >
+        <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: dashboardFullscreenControlZIndex }}>
+          <Button
+            variant="contained"
+            startIcon={<ArrowBack />}
+            onClick={() => setShowShowcase(false)}
+            aria-label="Tilbake til dashboard"
+            sx={{
+              bgcolor: '#ff8c00',
+              '&:hover': { bgcolor: '#1976d2' },
+            }}
+          >
+            TILBAKE TIL DASHBOARD
+          </Button>
         </Box>
-      )}
+        <span id="showcase-overlay-title" style={{ position: 'absolute', left: -9999 }}>
+          Showcase
+        </span>
+        <SettingsProvider>
+          <ThemeProvider>
+            <RealTimeProvider>
+              <VisualEditorProvider>
+                <UniversalShowcase
+                  profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
+                  userId={userId}
+                  isOwner={true}
+                  adminMode={false}
+                />
+              </VisualEditorProvider>
+            </RealTimeProvider>
+          </ThemeProvider>
+        </SettingsProvider>
+      </Dialog>
 
       {/* Marketplace Dialog — Slice 9X.70 redesign for å matche dashboard-tema */}
       <Dialog
