@@ -285,6 +285,13 @@ function registerDefaultActions() {
         };
       }
 
+      // Slice 9X.79 — per-steg-config: brukeren kan velge strictness
+      const cfgStrictness = (ctx.stepData?.strictness as string | undefined)?.toLowerCase();
+      const strictness: 'conservative' | 'balanced' | 'aggressive' =
+        cfgStrictness === 'conservative' || cfgStrictness === 'aggressive'
+          ? (cfgStrictness as any)
+          : 'balanced';
+
       try {
         // Hent alle capture_sessions for prosjektet (samme bruker)
         const sessionsRes = await ctx.pool.query(
@@ -335,7 +342,7 @@ function registerDefaultActions() {
             sessionsWithoutAi++;
           }
 
-          const summary = classifySession(assets as any, { strictness: 'balanced' });
+          const summary = classifySession(assets as any, { strictness });
           sessionSummaries.push({
             sessionId: sessionRow.id,
             total: summary.total,
@@ -370,6 +377,7 @@ function registerDefaultActions() {
               : `Culling ferdig — ${totalReject} avvist, ${totalKeep + totalHero} beholdt`,
             actionUrl: '/photo-enhancement',
             projectId,
+            strictness,
             sessionsProcessed: sessionsRes.rows.length,
             totalAssets,
             counts: { hero: totalHero, keep: totalKeep, weak: totalWeak, reject: totalReject },
@@ -674,6 +682,8 @@ async function ensureSchema(pool: Pool) {
 interface WorkflowStepInput {
   action_id: string;
   action_name?: string;
+  /** Slice 9X.79 — Per-steg-config; passes til handleren som stepData */
+  config?: Record<string, any>;
 }
 
 interface ExecuteOptions {
@@ -773,7 +783,7 @@ async function executeWorkflowRun(runId: string, opts: ExecuteOptions): Promise<
         userId: opts.userId,
         runId,
         stepIndex: i,
-        stepData: {},
+        stepData: step.config || {},
         workflowContext: opts.context || {},
         pool: opts.pool,
       });

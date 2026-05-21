@@ -119,6 +119,7 @@ export async function fireWorkflowTrigger(opts: FireOptions): Promise<{ triggere
       const steps = (workflow.steps || []).map((s: any) => ({
         action_id: s.action?.id || s.action_id,
         action_name: s.action?.name || s.action_name,
+        config: s.params || s.config || undefined,
       }));
       if (steps.length === 0) continue;
 

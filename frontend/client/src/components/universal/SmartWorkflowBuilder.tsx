@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import WorkflowRunHistoryDialog from './WorkflowRunHistoryDialog';
 import WorkflowScheduleDialog from './WorkflowScheduleDialog';
 import WorkflowTriggerDialog from './WorkflowTriggerDialog';
-import { Snackbar } from '@mui/material';
+import { Snackbar, Select, MenuItem } from '@mui/material';
 import { Schedule as ScheduleIcon, Bolt as BoltIcon } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
@@ -637,6 +637,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
             steps: workflow.steps.map((s) => ({
               action_id: s.action.id,
               action_name: s.action.name,
+              config: s.params || undefined,
             })),
             context: {},
           }),
@@ -1630,6 +1631,40 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
                                 }
                               }}
                             />
+
+                            {/* Slice 9X.79 — per-steg-config: auto-culling-strictness */}
+                            {step.action.id === 'auto-culling' && !runningWorkflows.has(workflow.id) && (
+                              <Tooltip title="Hvor strengt skal kullingen være">
+                                <Select
+                                  size="small"
+                                  value={step.params?.strictness || 'balanced'}
+                                  onChange={(e) => {
+                                    const next = workflow.steps.map((s, i) =>
+                                      i === index
+                                        ? { ...s, params: { ...(s.params || {}), strictness: e.target.value } }
+                                        : s,
+                                    );
+                                    setWorkflows((ws) =>
+                                      ws.map((w) => (w.id === workflow.id ? { ...w, steps: next } : w)),
+                                    );
+                                    // Persist via samme save-mutation
+                                    saveWorkflowMutation.mutate({ ...workflow, steps: next });
+                                  }}
+                                  sx={{
+                                    height: 22,
+                                    fontSize: '0.66rem',
+                                    color: '#9b87f5',
+                                    bgcolor: 'rgba(155,135,245,0.06)',
+                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(155,135,245,0.32)' },
+                                    '& .MuiSelect-icon': { color: '#9b87f5', fontSize: '1rem' },
+                                  }}
+                                >
+                                  <MenuItem value="conservative" sx={{ fontSize: '0.7rem' }}>Konservativ</MenuItem>
+                                  <MenuItem value="balanced" sx={{ fontSize: '0.7rem' }}>Balansert</MenuItem>
+                                  <MenuItem value="aggressive" sx={{ fontSize: '0.7rem' }}>Aggressiv</MenuItem>
+                                </Select>
+                              </Tooltip>
+                            )}
 
                             {/* Slice 9X.79 — execution-mode + live status badge */}
                             {statusBadge && (
