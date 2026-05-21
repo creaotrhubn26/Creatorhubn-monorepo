@@ -20,6 +20,14 @@ import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
 import { isRoleRoomEducationPathname } from './utils/runtime';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
+import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
+import { getActiveProfessionMode } from './config/professionMode';
+import {
+  Search as SearchTourIcon,
+  HelpOutline as HelpTourIcon,
+  EmojiPeople as WelcomeIcon,
+  Theaters as CastingIcon,
+} from '@mui/icons-material';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -432,27 +440,76 @@ function CastingStandaloneRuntimeContent() {
           <CastingLandingPage onEnter={handleEnter} />
         ) : (
           <ToastProvider position="bottom-right">
-            {shouldRenderTalentPortal ? (
-              <TalentPortalView
-                intent={talentPortalIntent}
-                onClose={() => {
-                  void handleReturnToLanding();
-                }}
-              />
-            ) : (
-              <CastingPlannerPanel 
-                onClose={() => {
-                  void handleReturnToLanding();
-                }}
-                isFullscreen={true}
-                onToggleFullscreen={() => {
-                  // Not applicable in standalone mode - already fullscreen
-                  console.log('Fullscreen toggle not available in standalone mode');
-                }}
-                isStandalone={true}
-                isGuestMode={false}
-              />
-            )}
+            <RoleRoomUXLayer
+              workspaceId={shouldRenderTalentPortal ? 'talent-portal-v1' : 'casting-planner-v1'}
+              mode={getActiveProfessionMode()}
+              onSwitchMode={(newMode) => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('mode', newMode);
+                window.location.href = url.toString();
+              }}
+              supportEmail="support@theroleroom.com"
+              changelogUrl="https://creatorhubn.com/news"
+              tourSteps={
+                shouldRenderTalentPortal
+                  ? [
+                      {
+                        title: 'Velkommen til Talentportalen',
+                        body: 'Her bygger du din profil og søker på casting-roller. Vi viser deg det viktigste først.',
+                        icon: <WelcomeIcon />,
+                      },
+                      {
+                        title: 'Søk overalt med Cmd+K',
+                        body: 'Trykk ⌘K for å hoppe direkte til en seksjon — profil, audition, kalender.',
+                        icon: <SearchTourIcon />,
+                      },
+                      {
+                        title: 'Hjelp er alltid synlig',
+                        body: '?-knappen nederst-høyre har snarveier og support. Trykk ? for å åpne.',
+                        icon: <HelpTourIcon />,
+                      },
+                    ]
+                  : [
+                      {
+                        title: 'Velkommen til Casting Planner',
+                        body: 'Her organiserer du roller, kandidater og audition-prosesser. Vi tar deg gjennom 3 viktige snarveier.',
+                        icon: <CastingIcon />,
+                      },
+                      {
+                        title: 'Søk overalt med Cmd+K',
+                        body: 'Trykk ⌘K for å finne roller, kandidater eller audition-runder direkte.',
+                        icon: <SearchTourIcon />,
+                      },
+                      {
+                        title: 'Hjelp er alltid synlig',
+                        body: '?-knappen nederst-høyre har snarveier og support. Trykk ? for å åpne.',
+                        icon: <HelpTourIcon />,
+                      },
+                    ]
+              }
+            >
+              {shouldRenderTalentPortal ? (
+                <TalentPortalView
+                  intent={talentPortalIntent}
+                  onClose={() => {
+                    void handleReturnToLanding();
+                  }}
+                />
+              ) : (
+                <CastingPlannerPanel
+                  onClose={() => {
+                    void handleReturnToLanding();
+                  }}
+                  isFullscreen={true}
+                  onToggleFullscreen={() => {
+                    // Not applicable in standalone mode - already fullscreen
+                    console.log('Fullscreen toggle not available in standalone mode');
+                  }}
+                  isStandalone={true}
+                  isGuestMode={false}
+                />
+              )}
+            </RoleRoomUXLayer>
           </ToastProvider>
         )}
     </Box>
