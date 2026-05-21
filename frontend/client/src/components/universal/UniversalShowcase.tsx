@@ -1428,18 +1428,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     return () => window.removeEventListener('storage', handleStorageChange);
 }, []);
 
-  // Integration and feature setup
-  useEffect(() => {
-    if (integrationContext) {
-      console.log('Integration context initialized:', integrationContext);
-    }
-    if (enableSmartCollections) {
-      console.log('Smart collections enabled for', effectiveUserId);
-    }
-    if (isPublic) {
-      console.log('Public showcase mode active');
-    }
-  }, [integrationContext, enableSmartCollections, isPublic, effectiveUserId]);
+  // Slice 9X.81 — Integration setup hook beholdt for fremtidig logging,
+  // men debug-console.log fjernet (de var no-op for sluttbrukeren).
 
   // Video time tracking
   useEffect(() => {
@@ -1450,30 +1440,21 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     }
   }, []);
 
-  // File management status monitoring
-  useEffect(() => {
-    if (fileManagementStatus) {
-      console.log('File management status:', fileManagementStatus);
-    }
-  }, [fileManagementStatus]);
+  // Slice 9X.81 — file-management-status monitoring (debug-logg fjernet)
 
-  // Google Drive integration monitoring
+  // Google Drive integration monitoring — varsler ved sync-progresjon
   useEffect(() => {
-    if (googleDriveItems && googleDriveItems.length > 0) {
-      console.log('Google Drive items loaded:', googleDriveItems.length);
-      if (syncProgress && syncProgress > 0) {
-        addNotification({ message: `Sync ${syncProgress}% complete`, type: 'info' });
-      }
+    if (googleDriveItems && googleDriveItems.length > 0
+        && syncProgress && syncProgress > 0) {
+      addNotification({ message: `Sync ${syncProgress}% complete`, type: 'info' });
     }
   }, [googleDriveItems, syncProgress, addNotification]);
 
-  // Live update feature monitoring
+  // Live update feature — polling stub (debug-logg fjernet)
   useEffect(() => {
     if (liveUpdateEnabled) {
-      console.log('Live updates enabled for showcase');
       const interval = setInterval(() => {
-        // Poll for updates when live mode is active
-        console.log('Checking for live updates...');
+        // Stub for fremtidig live-update-fetch
       }, 5000);
       return () => clearInterval(interval);
     }
@@ -1514,8 +1495,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', _title?: string) => {
     // Apply profession-specific toast styling
     const style = getProfessionToastStyle(type);
-    console.log('Toast style for', profession, ':', style);
-    
+    // Slice 9X.81 — debug-logg fjernet; style brukes nedenfor i addNotification
+    void style;
+
     addNotification({
       type,
       message
@@ -1753,15 +1735,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     const unsubscribe = communication.onMessage((message: any) => {
       // Project selection from UniversalDashboard
       if (message.type === 'project:selected' && message.data) {
-        console.log('🎨 Universal Showcase: Project selected', message.data);
         setSyncedProject(message.data);
-        // Could filter showcase items by project
       }
       // Client selection from UniversalDashboard
       if (message.type === 'client:selected' && message.data) {
-        console.log('🎨 Universal Showcase: Client selected', message.data);
         setSyncedClient(message.data);
-        // Could filter showcase items by client
       }
       // Data sync events
       if (message.type === 'data:sync') {
@@ -1772,15 +1750,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           setSyncedClient(message.data.data);
         }
       }
-      // Pricing package selection - could highlight items in showcase with pricing
-      if (message.type === 'pricing:packageCreated' && message.data) {
-        console.log('🎨 Universal Showcase: Package created', message.data);
-      }
-      // Showcase admin updates
-      if (message.type === 'showcase:updated' && message.data) {
-        console.log('🎨 Universal Showcase: Showcase updated from admin', message.data);
-        // Could refresh showcase items
-      }
+      // Slice 9X.81 — pricing/showcase-update-broadcast: debug-loggene var
+      // no-op for sluttbruker. Stubbene beholdt som dokumentasjon av
+      // event-typer som andre komponenter kan lytte til.
     });
     return unsubscribe;
   }, [communication]);
@@ -6935,7 +6907,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Box 
                     component="img" 
-                    src={item.thumbnailUrl || 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=60&h=60&fit=crop'}
+                    src={item.thumbnailUrl || 'data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2060%2060%22%3E%3Crect%20width%3D%2260%22%20height%3D%2260%22%20fill%3D%22%231a1a1a%22%2F%3E%3C%2Fsvg%3E'}
                     alt={item.title}
                     sx={{ width: 60, height: 60, borderRadius: 1, objectFit: 'cover' }}
                   />
@@ -9137,7 +9109,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 onClick={() => handleItemSelectWithBroadcast(currentFeaturedItem as any)}
               >
                 <img
-                  src={currentFeaturedItem.fileUrl || currentFeaturedItem.thumbnailUrl || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&h=500&fit=crop'}
+                  src={currentFeaturedItem.fileUrl || currentFeaturedItem.thumbnailUrl || 'data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%20500%22%3E%3Crect%20width%3D%22800%22%20height%3D%22500%22%20fill%3D%22%231a1a1a%22%2F%3E%3Ctext%20x%3D%22400%22%20y%3D%22250%22%20text-anchor%3D%22middle%22%20fill%3D%22%23666%22%20font-family%3D%22sans-serif%22%20font-size%3D%2218%22%3EUtvalgt%20bilde%3C%2Ftext%3E%3C%2Fsvg%3E'}
                   alt={currentFeaturedItem.title}
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
@@ -9199,7 +9171,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 }}
               >
                 <img
-                  src={(filteredItems[1]?.fileUrl || filteredItems[1]?.thumbnailUrl) || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=500&fit=crop'}
+                  src={(filteredItems[1]?.fileUrl || filteredItems[1]?.thumbnailUrl) || 'data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%20500%22%3E%3Crect%20width%3D%22400%22%20height%3D%22500%22%20fill%3D%22%231a1a1a%22%2F%3E%3C%2Fsvg%3E'}
                   alt={filteredItems[1]?.title || 'Featured'}
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
