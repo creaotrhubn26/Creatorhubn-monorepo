@@ -518,54 +518,41 @@ Svar med profesjonell og vennlig tone.
           </Button>
         </Stack>
 
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Filterstatus</InputLabel>
-            <Select
-              value={filterStatus}
-              label="Filterstatus"
-              onChange={(event) => setFilterStatus(event.target.value as 'all' | 'new' | 'replied' | 'starred')}
-            >
-              <MenuItem value="all">Alle</MenuItem>
-              <MenuItem value="new">Nye</MenuItem>
-              <MenuItem value="replied">Besvarte</MenuItem>
-              <MenuItem value="starred">Stjernemerket</MenuItem>
-            </Select>
-          </FormControl>
-          <Typography variant="caption" color="text.secondary">
-            Trykk på stjerneikonet for å prioritere viktige henvendelser.
-          </Typography>
-        </Stack>
+        {/* Slice 9X.81 — Dropdown for filterStatus var duplikat med tabs.
+            Tab 0 setter 'new', tab 1 setter 'all', og dropdown ble derfor
+            "stille" når brukeren byttet tab. Nå har vi bare tabs som top-
+            nivå, og status-chips (Nye/Besvarte/Stjernemerket) inne i tab 0. */}
         <Divider />
-        
-        <Tabs 
+
+        <Tabs
           value={selectedTab}
-          onChange={(e, newValue) => setSelectedTab(newValue)}
+          onChange={(e, newValue) => {
+            setSelectedTab(newValue);
+            // Sync filterStatus til tab — tab 0 = ny-fokus, tab 1 = alt
+            if (newValue === 0) setFilterStatus('new');
+            else if (newValue === 1) setFilterStatus('all');
+          }}
           variant="scrollable"
           scrollButtons="auto"
           sx={{
             '& .MuiTab-root': {
               fontSize: '0.8rem',
-              minHeight: 40,
+              minHeight: 44, // WCAG 2.5.5 touch-target
               textTransform: 'none'
             }, '& .MuiTabs-indicator': {
               backgroundColor: customBranding?.color || '#ff8c00'
             }
           }}
         >
-          <Tab 
+          <Tab
             label={
               <Badge badgeContent={stats.newInquiries} color="error">
                 Nye Forespørsler
               </Badge>
           }
-            onClick={() => setFilterStatus('new')}
           />
-          <Tab 
-            label="Alle E-poster"
-            onClick={() => setFilterStatus('all')}
-          />
-          <Tab 
+          <Tab label="Alle E-poster" />
+          <Tab
             label={
               profession === 'photographer' ? 'Booking Forespørsler' :
               profession === 'videographer' ? 'Video Bestillinger' :
@@ -573,18 +560,39 @@ Svar med profesjonell og vennlig tone.
               'Kundeforespørsler'
           }
           />
-          <Tab 
-            label="Kontakter"
-          />
-          <Tab 
-            label="Statistikk"
-          />
+          <Tab label="Kontakter" />
+          <Tab label="Statistikk" />
         </Tabs>
       </Box>
 
       {/* Multi-tab Content */}
       <Box>
         <TabPanel value={selectedTab} index={0}>
+          {/* Slice 9X.81 — Sub-filter-chips erstatter tidligere dropdown */}
+          <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+            {([
+              { value: 'new',     label: 'Nye',           color: customBranding?.color || '#ff8c00' },
+              { value: 'replied', label: 'Besvarte',      color: '#4caf50' },
+              { value: 'starred', label: 'Stjernemerket', color: '#f59e0b' },
+            ] as const).map((c) => (
+              <Chip
+                key={c.value}
+                label={c.label}
+                onClick={() => setFilterStatus(c.value)}
+                variant={filterStatus === c.value ? 'filled' : 'outlined'}
+                sx={filterStatus === c.value ? {
+                  bgcolor: c.color,
+                  color: '#fff',
+                  fontWeight: 700,
+                  '&:hover': { bgcolor: c.color, opacity: 0.9 },
+                } : {
+                  borderColor: `${c.color}66`,
+                  color: c.color,
+                  '&:hover': { bgcolor: `${c.color}11`, borderColor: c.color },
+                }}
+              />
+            ))}
+          </Stack>
           {emailsLoading ? (
             <Box>
               <LinearProgress sx={{ mb: 2 }} />
