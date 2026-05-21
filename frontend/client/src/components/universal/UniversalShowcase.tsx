@@ -16,6 +16,7 @@ import type {
   ProfessionType 
 } from '@/types/showcase';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import StreamingEmbed, { detectStreamingEmbed } from '@/components/showcase/StreamingEmbed';
 import { useTheming } from '../../utils/theming-helper';
 import { useClientServicePricing } from '../../services/ClientServicePricingService';
 import { lightroomIntegrationService } from '../../services/lightroomIntegrationService';
@@ -9139,10 +9140,17 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               }}
                 onClick={() => handleItemSelectWithBroadcast(currentFeaturedItem as any)}
               >
+                {/* Slice 9X.81 — width/height + loading=lazy + aspect-ratio på parent
+                    eliminerer CLS når bildet laster. fetchpriority='high' for LCP. */}
                 <img
                   src={currentFeaturedItem.fileUrl || currentFeaturedItem.thumbnailUrl || 'data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%20500%22%3E%3Crect%20width%3D%22800%22%20height%3D%22500%22%20fill%3D%22%231a1a1a%22%2F%3E%3Ctext%20x%3D%22400%22%20y%3D%22250%22%20text-anchor%3D%22middle%22%20fill%3D%22%23666%22%20font-family%3D%22sans-serif%22%20font-size%3D%2218%22%3EUtvalgt%20bilde%3C%2Ftext%3E%3C%2Fsvg%3E'}
                   alt={currentFeaturedItem.title}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  width={800}
+                  height={500}
+                  loading="eager"
+                  // @ts-expect-error — fetchpriority er gyldig HTML5-attributt men ikke i React-typer enda
+                  fetchpriority="high"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', aspectRatio: '8 / 5' }}
                 />
                 {/* Hover action icons (heart + share) */}
                 <Box className="hero-overlay-actions" sx={{
@@ -9204,7 +9212,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <img
                   src={(filteredItems[1]?.fileUrl || filteredItems[1]?.thumbnailUrl) || 'data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%20500%22%3E%3Crect%20width%3D%22400%22%20height%3D%22500%22%20fill%3D%22%231a1a1a%22%2F%3E%3C%2Fsvg%3E'}
                   alt={filteredItems[1]?.title || 'Featured'}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  width={400}
+                  height={500}
+                  loading="lazy"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', aspectRatio: '4 / 5' }}
                 />
                 <Box sx={{
                   position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -9679,18 +9690,32 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <ImageList variant="masonry" cols={showcaseSettings.gridColumns} gap={8}>
               {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
                 <ImageListItem key={item.id} sx={{ cursor: 'pointer' }} onClick={() => setSelectedItem(item)}>
-                  {item.type === 'image' ? (
-                    <img
-                      src={item.thumbnailUrl || ''}
-                      alt={item.title || ''}
-                      loading="lazy"
-                      style={{ borderRadius: 8 }}
-                    />
-                  ) : (
-                    <Box sx={{ position: 'relative', bgcolor: 'rgba(0,0,0,0.8)', aspectRatio: '16/9', borderRadius: 2 }}>
-                      <video src={item.thumbnailUrl || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
-                    </Box>
-                  )}
+                  {/* Slice 9X.81 — Spotify/SoundCloud/YouTube/Vimeo detekteres
+                      automatisk fra fileUrl; render iframe-embed istedenfor
+                      img/video når matchet. */}
+                  {(() => {
+                    const embed = detectStreamingEmbed(item.fileUrl || item.thumbnailUrl || '');
+                    if (embed) {
+                      return <StreamingEmbed url={item.fileUrl || item.thumbnailUrl || ''} title={item.title || ''} />;
+                    }
+                    if (item.type === 'image') {
+                      return (
+                        <img
+                          src={item.thumbnailUrl || ''}
+                          alt={item.title || ''}
+                          loading="lazy"
+                          width={400}
+                          height={400}
+                          style={{ borderRadius: 8, width: '100%', height: 'auto', display: 'block' }}
+                        />
+                      );
+                    }
+                    return (
+                      <Box sx={{ position: 'relative', bgcolor: 'rgba(0,0,0,0.8)', aspectRatio: '16/9', borderRadius: 2 }}>
+                        <video src={item.thumbnailUrl || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
+                      </Box>
+                    );
+                  })()}
                   <ImageListItemBar
                     title={item.title || ''}
                     subtitle={formatFileSize(item.fileSize || 0)}
