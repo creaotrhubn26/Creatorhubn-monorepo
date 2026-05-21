@@ -78,6 +78,7 @@ import ImageSelectionWarning from '@/components/ImageSelectionWarning';
 import ContractPreviewModal from '@/components/ContractPreviewModal';
 import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
 import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
+import GallerySelectionSubmitDialog from '@/components/gallery/GallerySelectionSubmitDialog';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -152,6 +153,8 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [favoriteImages, setFavoriteImages] = useState<Set<string>>(new Set());
+  // Slice 9X.82 — submit-dialog state for "send mitt utvalg"-flyt
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showOnlySelected, setShowOnlySelected] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -1918,6 +1921,77 @@ export default function ClientGallery({}: ClientGalleryProps) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Slice 9X.82 — Sticky "Send mitt utvalg"-FAB i Pic-Time-stil.
+          Vises kun når klienten har valgt minst ett bilde + ikke alle
+          allerede er submittet. */}
+      {favoriteImages.size > 0 && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: { xs: 16, sm: 32 },
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1100,
+            // Pulserende skygge for å trekke oppmerksomheten
+            '@keyframes pulse-glow': {
+              '0%, 100%': { boxShadow: '0 8px 24px rgba(217, 119, 6, 0.32)' },
+              '50%': { boxShadow: '0 8px 32px rgba(217, 119, 6, 0.55)' },
+            },
+          }}
+        >
+          <Button
+            variant="contained"
+            size="large"
+            onClick={() => setShowSubmitDialog(true)}
+            sx={{
+              bgcolor: '#1a1612',
+              color: '#fdfaf5',
+              fontFamily: '"Inter", "Segoe UI", sans-serif',
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              fontSize: '0.78rem',
+              px: 4,
+              py: 1.5,
+              borderRadius: 999,
+              minHeight: 48,
+              animation: 'pulse-glow 2.4s ease-in-out infinite',
+              '@media (prefers-reduced-motion: reduce)': {
+                animation: 'none',
+                boxShadow: '0 8px 24px rgba(217, 119, 6, 0.32)',
+              },
+              '&:hover': { bgcolor: '#2d2620' },
+            }}
+          >
+            Send mitt utvalg · {favoriteImages.size}
+          </Button>
+        </Box>
+      )}
+
+      {/* Slice 9X.82 — Submit-dialog (Pic-Time editorial) */}
+      <GallerySelectionSubmitDialog
+        open={showSubmitDialog}
+        onClose={() => setShowSubmitDialog(false)}
+        accessToken={accessToken}
+        galleryPassword={galleryPassword}
+        clientEmail={gallery?.clientEmail || ''}
+        clientName={gallery?.clientName || null}
+        favorites={Array.from(favoriteImages).map((id) => {
+          const img = images.find((i: GalleryImage) => i.id === id);
+          return {
+            imageId: id,
+            thumbnailUrl: img?.thumbnailUrl || null,
+            title: img?.imageTitle || null,
+          };
+        })}
+        onSubmitted={() => {
+          // Refetch selections så UI viser låst state
+          void queryClient.invalidateQueries({
+            queryKey: ['/api/client/gallery', accessToken, 'selections', galleryPassword],
+          });
+        }}
+      />
     </Box>
   );
 }
