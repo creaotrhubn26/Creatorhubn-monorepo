@@ -22202,6 +22202,132 @@ app.get("/api/client/gallery/:accessToken/selections", async (req, res) => {
   }
 });
 
+// Slice 9X.82 — Klient submitter sitt endelig utvalg. Låser favoritt-listen
+// for klient (submitted_at != NULL) og sender e-post-varsel til fotograf
+// med curated summary. Bygger på eksisterende client_image_selections.
+app.post("/api/client/gallery/:accessToken/selections/submit", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const clientEmail = typeof req.body?.clientEmail === "string" ? req.body.clientEmail.trim().toLowerCase() : "";
+  const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim() : "";
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 1000) : "";
+  if (!clientEmail) return res.status(400).json({ error: "missing_client_email" });
+
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+    if (!gallery) return res.status(404).json({ error: "not_found" });
+
+    // Forsikre at submitted_at-kolonnen finnes (idempotent — migration 157 også gjør det)
+    try {
+      await pool.query(
+        `ALTER TABLE client_image_selections
+           ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ,
+           ADD COLUMN IF NOT EXISTS submission_note TEXT`,
+      );
+    } catch { /* ignore — kolonner kan allerede finnes */ }
+
+    // Hent favoritt-utvalget før vi låser, så vi kan inkludere i e-post
+    const favs = await pool.query(
+      `SELECT image_id, priority, client_notes
+         FROM client_image_selections
+        WHERE gallery_id = $1
+          AND client_email = $2
+          AND selection_type IN ('favorite', 'selected')
+          AND submitted_at IS NULL
+        ORDER BY priority DESC NULLS LAST, updated_at ASC`,
+      [gallery.id, clientEmail],
+    );
+    const favCount = favs.rowCount || 0;
+    if (favCount === 0) {
+      return res.status(400).json({ error: "no_favorites_to_submit", message: "Velg minst ett bilde før du sender utvalget." });
+    }
+
+    // Lås alle nye favoritter til denne klienten
+    await pool.query(
+      `UPDATE client_image_selections
+          SET submitted_at = NOW(),
+              submission_note = COALESCE($3, submission_note)
+        WHERE gallery_id = $1
+          AND client_email = $2
+          AND submitted_at IS NULL`,
+      [gallery.id, clientEmail, note || null],
+    );
+
+    // Best-effort: send e-post til fotograf. Vi vil ikke at en e-post-feil
+    // skal hindre at klientens utvalg blir registrert som submitted.
+    void (async () => {
+      try {
+        const photographerEmail = (gallery as any).photographerEmail
+          || (await pool.query(
+            `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+            [gallery.photographerId],
+          )).rows[0]?.email;
+        if (!photographerEmail) return;
+
+        const { sendEmail } = await import('./casting-reminder-sender.js').catch(() => ({ sendEmail: null as any }));
+        if (!sendEmail) return;
+
+        const subject = `${clientName || clientEmail} har sendt sitt utvalg (${favCount} bilder)`;
+        const galleryUrl = `${(process.env.PUBLIC_APP_URL || 'https://creatorhubn.com').replace(/\/$/, '')}/photographer/galleries/${gallery.id}`;
+        const html = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px;">
+            <h2 style="font-family: Georgia, serif; font-weight: 400; font-size: 28px; color: #0b1020; margin: 0 0 8px;">
+              ${clientName || clientEmail} har valgt
+            </h2>
+            <p style="font-size: 14px; color: #5b6478; margin: 0 0 24px;">
+              ${favCount} ${favCount === 1 ? 'bilde' : 'bilder'} fra galleriet "${gallery.projectTitle}"
+            </p>
+            ${note ? `
+              <div style="background: #f7f9fc; border-left: 3px solid #ffba6c; padding: 16px; margin: 16px 0; font-style: italic; color: #2a2f3a;">
+                "${note.replace(/</g, '&lt;')}"
+              </div>
+            ` : ''}
+            <a href="${galleryUrl}" style="display: inline-block; background: #0b1020; color: #fff; padding: 14px 28px; border-radius: 999px; text-decoration: none; font-weight: 600; margin-top: 16px;">
+              Se klientens utvalg
+            </a>
+            <p style="font-size: 12px; color: #98a0b3; margin: 32px 0 0;">
+              CreatorHub · Du mottar dette fordi en klient sendte inn et galleri-utvalg.
+            </p>
+          </div>
+        `;
+        await sendEmail({
+          to: photographerEmail,
+          subject,
+          html,
+          fromName: 'CreatorHub',
+        });
+      } catch (e: any) {
+        console.warn('[gallery-selection-submit] email failed:', e.message);
+      }
+    })();
+
+    // Broadcast realtime så Stine ser submission i admin-portalen umiddelbart
+    try {
+      broadcastUserEvent(gallery.photographerId, {
+        kind: "gallery.selection-submitted",
+        galleryId: gallery.id,
+        clientEmail,
+        clientName: clientName || gallery.clientName || null,
+        favoriteCount: favCount,
+        note: note || null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch { /* best-effort */ }
+
+    res.json({ success: true, favoriteCount: favCount, submittedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[client-gallery] selection submit failed", error);
+    res.status(500).json({ error: "selection_submit_failed" });
+  }
+});
+
 app.post("/api/client/gallery/:accessToken/comments", async (req, res) => {
   const accessToken = String(req.params.accessToken || "").trim();
   if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
