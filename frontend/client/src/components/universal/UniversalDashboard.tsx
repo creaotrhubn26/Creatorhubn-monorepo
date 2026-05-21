@@ -528,8 +528,53 @@ interface TabPanelProps {
   value: number
 }
 
+// Slice 9X.81 — Scroll-restoration per tab: lagre y-pos før tab-bytte,
+// restore ved retur. SessionStorage så det overlever page-reload.
+const TAB_SCROLL_KEY = 'universal-dashboard-tab-scroll';
+function readTabScrollMap(): Record<number, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.sessionStorage.getItem(TAB_SCROLL_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+function writeTabScroll(index: number, y: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const map = readTabScrollMap();
+    map[index] = y;
+    window.sessionStorage.setItem(TAB_SCROLL_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
+  const isActive = value === index;
+
+  // Lagre scroll-pos før tab-bytte, restore ved retur
+  React.useEffect(() => {
+    if (!isActive) return;
+    const saved = readTabScrollMap()[index];
+    if (typeof saved === 'number' && saved > 0) {
+      // Vent ett animation-frame så DOM er rendret før vi scroller
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: saved, behavior: 'auto' });
+      });
+    }
+    const handler = () => {
+      writeTabScroll(index, window.scrollY);
+    };
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => {
+      writeTabScroll(index, window.scrollY);
+      window.removeEventListener('scroll', handler);
+    };
+  }, [isActive, index]);
+
   return (
     <div
       role="tabpanel"
@@ -538,7 +583,7 @@ function TabPanel(props: TabPanelProps) {
       aria-labelledby={`universal-tab-${index}`}
       {...other}
     >
-      {value === index && (
+      {isActive && (
         <Box
           sx={{
             p: { xs: 2, sm: 3, md: 4 },
