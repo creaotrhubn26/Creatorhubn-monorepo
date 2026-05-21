@@ -882,10 +882,39 @@ export function createCreatorHubGoogleRouter(
         ),
       );
     } catch (error) {
-      console.error('CreatorHub Google callback error:', error);
+      // Slice 9X.80 — strukturert logging slik at devs ser hva som feilet
+      // i prod (postmortem item #2). Inkluder redirect-URI vi sendte til
+      // Google + Google's response-data så debugging er mulig.
+      const errAny = error as any;
+      const googleResponseData = errAny?.response?.data;
+      console.error('CreatorHub Google callback error:', {
+        message: error instanceof Error ? error.message : String(error),
+        code: errAny?.code,
+        status: errAny?.response?.status,
+        returnPath: oauthState.returnPath,
+        browserOrigin: oauthState.browserOrigin,
+        googleResponse: typeof googleResponseData === 'object'
+          ? JSON.stringify(googleResponseData).slice(0, 500)
+          : googleResponseData,
+      });
+
+      // Hvis vi har userId tilgjengelig fra oauthState, marker tilkoblingen
+      // som needs_reauth slik at frontend kan vise "Re-koble til Google".
+      // OauthState har ikke userId direkte, men hvis mode='link' er det
+      // typisk en kjent bruker.
+      const errStr = `${error instanceof Error ? error.message : String(error)} ${
+        typeof googleResponseData === 'string' ? googleResponseData : JSON.stringify(googleResponseData ?? {})
+      }`.toLowerCase();
+      const isAuthError = errStr.includes('invalid_grant')
+        || errStr.includes('invalid_rapt')
+        || errStr.includes('reauth')
+        || errStr.includes('unauthorized_client');
+
       redirectWithError(
         oauthState.returnPath,
-        error instanceof Error ? error.message : 'CreatorHub Google-innlogging feilet',
+        isAuthError
+          ? 'Google krever ny innlogging — prøv igjen'
+          : error instanceof Error ? error.message : 'CreatorHub Google-innlogging feilet',
         oauthState.browserOrigin,
       );
     }

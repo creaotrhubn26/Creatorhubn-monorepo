@@ -4,6 +4,7 @@ import {
   CREATORHUB_AUTH_USER_KEY,
   CREATORHUB_GOOGLE_LOGIN_ERROR_KEY,
   consumeCreatorHubGoogleLoginError,
+  dismissCreatorHubGoogleLoginError,
   readCreatorHubSessionSnapshot,
   validateCreatorHubStoredSession,
   type CreatorHubSessionSnapshot,
@@ -54,6 +55,9 @@ export function useCreatorHubStoredSession(): CreatorHubStoredSession {
   }, []);
 
   const clearGoogleLoginError = useCallback(() => {
+    // Slice 9X.80 — eksplisitt dismiss både i state og sessionStorage så
+    // banneret ikke dukker opp igjen ved neste page-refresh
+    dismissCreatorHubGoogleLoginError();
     setGoogleLoginError(null);
   }, []);
 

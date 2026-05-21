@@ -174,7 +174,9 @@ function readStoredJson<T>(key: string): T | null {
 // Slice 9X.59 — Lagre med timestamp så vi kan ignorere gamle feil ved
 // neste mount. Hindrer at "redirect_uri_mismatch" fra forrige forsøk
 // dukker opp etter at brukeren har fikset config og logget vellykket inn.
-const ERROR_TTL_MS = 30_000;
+// Slice 9X.80 — bumpet fra 30s → 10min. 30s var for kort:
+// brukere som refresher dashbordet etter feil mistet meldingen.
+const ERROR_TTL_MS = 10 * 60_000;
 
 function writeGoogleLoginError(message: string): void {
   if (typeof window === 'undefined') {
@@ -865,7 +867,16 @@ export async function bootstrapCreatorHubGoogleLoginRedirect(): Promise<void> {
   }
 }
 
+/**
+ * Les Google-innloggings-feil uten å fjerne den. Banneret holder feilen
+ * synlig på tvers av page-refreshes (innenfor TTL) til brukeren
+ * eksplisitt dismisser via dismissCreatorHubGoogleLoginError().
+ */
 export function consumeCreatorHubGoogleLoginError(): string | null {
+  return readCreatorHubGoogleLoginError();
+}
+
+export function readCreatorHubGoogleLoginError(): string | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -873,25 +884,21 @@ export function consumeCreatorHubGoogleLoginError(): string | null {
   try {
     const raw = window.sessionStorage.getItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
     if (!raw) return null;
-    // Alltid rydd — selv om feilen er for gammel til å vises.
-    window.sessionStorage.removeItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
 
-    // Forsøk å parse strukturert payload (new format med timestamp).
-    // Faller tilbake til legacy plain-string for bakoverkompatibilitet.
     try {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && parsed.ts && parsed.message) {
         const ageMs = Date.now() - Number(parsed.ts);
         if (ageMs > ERROR_TTL_MS) {
-          // Feilen er for gammel — sannsynligvis fra et tidligere forsøk
-          // som ble fulgt av vellykket innlogging. Ikke vis.
+          // Eldre enn TTL — rydd ut og ikke vis
+          window.sessionStorage.removeItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
           return null;
         }
         return String(parsed.message);
       }
     } catch {
-      // Ikke JSON — legacy-format. Vis ikke (vi vet ikke alder, og
-      // gammel cache er mer sannsynlig enn fersk feil).
+      // Ikke JSON — legacy-format, vis ikke
+      window.sessionStorage.removeItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
       return null;
     }
   } catch {
@@ -899,4 +906,16 @@ export function consumeCreatorHubGoogleLoginError(): string | null {
   }
 
   return null;
+}
+
+/**
+ * Slice 9X.80 — eksplisitt dismiss. Brukeren trykker X på error-banner.
+ */
+export function dismissCreatorHubGoogleLoginError(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
+  } catch {
+    /* ignore */
+  }
 }
