@@ -5454,7 +5454,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       if (evendiEventType && item.projectType !== evendiEventType) return false;
     }
     if (filter === 'all') return true;
-    if (filter === 'featured') return item.featured;
+    // Slice 9X.81 — støtt både `featured` (legacy) og `isFeatured` (kanonisk)
+    if (filter === 'featured') return Boolean(item.isFeatured ?? item.featured);
     if (filter === 'favorites') return favorites.has(item.id);
     if (quickTagFilter) return item.tags?.includes(quickTagFilter);
     return item.fileType === filter;
@@ -5465,7 +5466,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     return 0;
   }).slice(0, maxItems as number);
 
-  const currentFeaturedItem = featuredItem || items.find((item: ShowcaseItem) => item.featured) || items[0];
+  // Slice 9X.81 — støtt både legacy `featured` og kanonisk `isFeatured`
+  const currentFeaturedItem = featuredItem
+    || items.find((item: ShowcaseItem) => Boolean(item.isFeatured ?? item.featured))
+    || items[0];
 
   const toggleFavorite = (itemId: string) => {
     setFavorites(prev => {

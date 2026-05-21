@@ -86,6 +86,10 @@ export interface ShowcaseItem {
   projectType?: string;
   category?: string;
   createdAt?: string;
+  /**
+   * @deprecated Bruk isFeatured i stedet. Beholdt for bakoverkompatibilitet med
+   * eldre data i DB. Slice 9X.81 — alle lesninger bør gå via isShowcaseItemFeatured().
+   */
   featured?: boolean;
   isFeatured?: boolean;
   type?: string;
