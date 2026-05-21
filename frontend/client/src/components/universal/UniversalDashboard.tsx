@@ -1696,11 +1696,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const setShowEditProjectModal = (value: boolean) => updateModalStateLocal('showEditProjectModal', value);
   const showDeleteProjectDialog = modalState.showDeleteProjectDialog;
   const setShowDeleteProjectDialog = (value: boolean) => updateModalStateLocal('showDeleteProjectDialog', value);
-  const dashboardOverlayZIndex = 1400;
-  const dashboardPanelZIndex = 1450;
-  const dashboardWorkspaceZIndex = 1500;
-  const dashboardFullscreenZIndex = 1600;
-  const dashboardFullscreenControlZIndex = 1610;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1903,6 +1898,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // Theme and Responsive
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Slice 9X.81 — Z-index basert på MUI's egen skala for å unngå
+  // konflikter med Dialog (1300), Snackbar (1400), Tooltip (1500).
+  const dashboardOverlayZIndex = theme.zIndex.modal;                  // 1300
+  const dashboardPanelZIndex = theme.zIndex.modal + 50;               // 1350
+  const dashboardWorkspaceZIndex = theme.zIndex.modal + 100;          // 1400
+  const dashboardFullscreenZIndex = theme.zIndex.modal + 200;         // 1500
+  const dashboardFullscreenControlZIndex = theme.zIndex.modal + 210;  // 1510
 
   // Universal Demo Mode Integration
   const { isDemoMode: _isDemoMode, isLoading: _demoModeLoading } = useDemoMode();

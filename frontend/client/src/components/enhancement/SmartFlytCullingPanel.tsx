@@ -93,7 +93,7 @@ const SmartFlytCullingPanel: React.FC<Props> = ({ userId }) => {
 
       {sessionsWithoutAi > 0 && (
         <Typography variant="caption" sx={{ display: 'block', color: '#f59e0b', mt: 1 }}>
-          ⚠ {sessionsWithoutAi} sessions mangler Vision-signaler — kjør via Capture-appen for sterkere bucketing
+          Tips: kjør analysen via iPad Capture-appen for mer treffsikker kategorisering ({sessionsWithoutAi} {sessionsWithoutAi === 1 ? 'shoot' : 'shoots'} kan forbedres)
         </Typography>
       )}
     </Box>

@@ -373,7 +373,7 @@ function registerDefaultActions() {
           completed: true,
           data: {
             note: sessionsWithoutAi > 0
-              ? `Culling gjort — ${sessionsWithoutAi} sessions mangler AI-signaler (run Vision via Capture-appen for bedre resultat)`
+              ? `Culling ferdig — ${totalReject} avvist, ${totalKeep + totalHero} beholdt. Tips: ${sessionsWithoutAi} shoot${sessionsWithoutAi === 1 ? '' : 's'} kan bli mer treffsikker hvis du kjører analysen via iPad Capture-appen.`
               : `Culling ferdig — ${totalReject} avvist, ${totalKeep + totalHero} beholdt`,
             actionUrl: '/photo-enhancement',
             projectId,
