@@ -1113,7 +1113,13 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       try {
         if (shouldForceGoogleAccessTokenRefresh(expiryTimestamp)) {
           oauthClient.setCredentials({ refresh_token: refreshToken });
-          const refreshed = await oauthClient.refreshAccessToken();
+          // Slice 9X.80 — wrapper markerer needs_reauth ved invalid_grant
+          const { refreshAccessTokenWithStateTracking } = await import('./google-oauth-shared.js');
+          const refreshed = await refreshAccessTokenWithStateTracking(oauthClient, {
+            pool,
+            userId: row.user_id,
+            context: 'communication_routes_refresh',
+          });
           const refreshedCredentials = refreshed.credentials ?? oauthClient.credentials;
           accessToken = readStringConfig(refreshedCredentials.access_token ?? oauthClient.credentials.access_token);
         } else {

@@ -146,6 +146,7 @@ export function makeDriveUploader(resolver: DriveClientResolver): DriveUploader 
 export async function makePerBatchDriveUploader(
   resolver: DriveClientResolver,
   userId: string,
+  pool?: Pool,  // Slice 9X.80 — optional pool for needs_reauth-marking
 ): Promise<DriveUploader> {
   const drive = await resolver.resolve(userId);
   return {
@@ -154,6 +155,15 @@ export async function makePerBatchDriveUploader(
         return await performUpload(drive, item);
       } catch (err) {
         const driveErr = err as { code?: number; message?: string };
+        // Slice 9X.80 — fang 401 (invalid_grant via auto-refresh) og marker
+        // needs_reauth så badge'en kan vise re-koble-knapp
+        if ((driveErr.code === 401 || /invalid_grant|invalid_rapt|reauth/i.test(driveErr.message || ''))
+            && pool && userId) {
+          try {
+            const { markConnectionNeedsReauth } = await import('./google-oauth-shared.js');
+            await markConnectionNeedsReauth(pool, userId, 'role_room_google_connections', 'drive_batch_upload_401').catch(() => null);
+          } catch { /* ignore */ }
+        }
         return {
           error: {
             code: typeof driveErr.code === "number" ? driveErr.code : 500,

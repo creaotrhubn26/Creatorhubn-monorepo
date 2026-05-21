@@ -28702,7 +28702,15 @@ app.post("/api/photographer/google-drive/setup-folders", async (req, res) => {
         if (Number.isFinite(ts)) seed.expiry_date = ts;
       }
       oauthClient.setCredentials(seed);
-      if (refreshToken) await oauthClient.refreshAccessToken().catch(() => undefined);
+      if (refreshToken) {
+        // Slice 9X.80 — wrapper markerer needs_reauth ved invalid_grant
+        const { refreshAccessTokenWithStateTracking } = await import('./google-oauth-shared.js');
+        await refreshAccessTokenWithStateTracking(oauthClient, {
+          pool,
+          userId,
+          context: 'drive_setup_refresh',
+        }).catch(() => undefined);
+      }
     } catch (credErr) {
       console.warn('[drive-setup] cred load failed:', credErr);
       return res.status(500).json({ error: 'cred_load_failed' });

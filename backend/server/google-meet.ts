@@ -143,6 +143,7 @@ async function resolveRoleRoomGoogleCredentialSource(
     expiryDate: readStringValue(row.expiry_date),
     googleEmail: readStringValue(row.google_email),
     googleSubject: readStringValue(row.google_subject),
+    userId: readStringValue(row.user_id),  // Slice 9X.80 — needs_reauth-tracking
   };
 }
 
@@ -282,7 +283,13 @@ export async function createGoogleMeetLink(
     if (tokenSeed.refresh_token) {
       if (shouldForceGoogleAccessTokenRefresh(tokenSeed.expiry_date)) {
         oauthClient.setCredentials({ refresh_token: tokenSeed.refresh_token });
-        await oauthClient.refreshAccessToken();
+        // Slice 9X.80 — wrapper markerer needs_reauth ved invalid_grant
+        const { refreshAccessTokenWithStateTracking } = await import('./google-oauth-shared.js');
+        await refreshAccessTokenWithStateTracking(oauthClient, {
+          pool,
+          userId: (credentialSource as any).userId ?? preferredUserId ?? null,
+          context: 'google_meet_refresh',
+        });
       } else {
         await oauthClient.getAccessToken();
       }

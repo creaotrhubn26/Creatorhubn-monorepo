@@ -526,7 +526,13 @@ export async function resolveRoleRoomGoogleConnection(
     const expiryTimestamp = connection.expiry_date ? Date.parse(connection.expiry_date) : NaN;
     if (refreshToken && shouldForceGoogleAccessTokenRefresh(expiryTimestamp)) {
       oauthClient.setCredentials({ refresh_token: refreshToken });
-      await oauthClient.refreshAccessToken();
+      // Slice 9X.80 — wrapper markerer needs_reauth ved invalid_grant
+      const { refreshAccessTokenWithStateTracking } = await import('./google-oauth-shared.js');
+      await refreshAccessTokenWithStateTracking(oauthClient, {
+        pool,
+        userId: connection.user_id,
+        context: 'contract_signing_refresh',
+      });
     } else {
       await oauthClient.getAccessToken();
     }

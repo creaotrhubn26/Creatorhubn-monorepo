@@ -2520,7 +2520,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const expiryTimestamp = connection.expiry_date ? Date.parse(connection.expiry_date) : NaN;
       if (refreshToken && shouldForceRoleRoomGoogleAccessTokenRefresh(expiryTimestamp)) {
         oauthClient.setCredentials({ refresh_token: refreshToken });
-        await oauthClient.refreshAccessToken();
+        // Slice 9X.80 — wrapper markerer needs_reauth ved invalid_grant
+        const { refreshAccessTokenWithStateTracking } = await import('./google-oauth-shared.js');
+        await refreshAccessTokenWithStateTracking(oauthClient, {
+          pool,
+          userId: connection.user_id,
+          context: 'role_room_routes_refresh',
+        });
       } else {
         await oauthClient.getAccessToken();
       }

@@ -309,6 +309,49 @@ export async function markConnectionNeedsReauth(
 }
 
 /**
+ * Wrapper rundt oauthClient.refreshAccessToken() som klassifiserer feilen
+ * og markerer connection_state = 'needs_reauth' når Google returnerer
+ * invalid_grant / invalid_rapt / unauthorized_client / reauth-error.
+ *
+ * Caller fortsetter med samme error-håndtering som før (rethrows). Dette
+ * er en side-effect-wrapper, ikke en flow-controller.
+ *
+ * Bruk i stedet for `await oauthClient.refreshAccessToken()` på alle
+ * call sites der vi har userId i scope.
+ */
+export async function refreshAccessTokenWithStateTracking(
+  oauthClient: any,
+  opts: {
+    pool: Pool;
+    userId: string | null;
+    tableName?: string;
+    context?: string;
+  },
+): Promise<any> {
+  try {
+    return await oauthClient.refreshAccessToken();
+  } catch (err: any) {
+    const responseData = (err as { response?: { data?: unknown } } | undefined)?.response?.data;
+    const combined = `${err?.message || ''} ${
+      typeof responseData === 'string' ? responseData : JSON.stringify(responseData ?? {})
+    }`.toLowerCase();
+    const isAuthInvalidated = combined.includes('invalid_grant')
+      || combined.includes('invalid_rapt')
+      || combined.includes('reauth')
+      || combined.includes('unauthorized_client');
+    if (isAuthInvalidated && opts.userId) {
+      await markConnectionNeedsReauth(
+        opts.pool,
+        opts.userId,
+        opts.tableName || 'role_room_google_connections',
+        opts.context || 'refresh_invalid_grant',
+      ).catch(() => null);
+    }
+    throw err;
+  }
+}
+
+/**
  * Bekvem-funksjon: hent OAuth2-klient for en bruker med ferskt access-token.
  * Brukes av nye call sites; eksisterende code kan fortsette å bruke
  * sine egne loader-helpers, som internt vil delegere hit i Phase 2.
