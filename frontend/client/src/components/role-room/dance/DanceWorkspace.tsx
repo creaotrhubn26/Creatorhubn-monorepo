@@ -87,6 +87,18 @@ import { MyTeamsHeader, useMyMemberships } from './MyTeamsHeader';
 import { UpgradeToFreelanceDialog } from './UpgradeToFreelanceDialog';
 import { AddonsPanel } from './AddonsPanel';
 import { authSessionService } from '../services/authSessionService';
+import CommandPalette from '../shared/CommandPalette';
+import ProfessionModeChip from '../shared/ProfessionModeChip';
+import HelpButton from '../shared/HelpButton';
+import FirstTimeTour from '../shared/FirstTimeTour';
+import {
+  EmojiPeople as WelcomeIcon,
+  Search as SearchTourIcon,
+  HelpOutline as HelpTourIcon,
+  SwapHoriz as ModeTourIcon,
+} from '@mui/icons-material';
+
+
 
 export interface DanceWorkspaceProps {
   /** Override mode (mostly for tests). Falls back to URL/storage. */
@@ -250,7 +262,38 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
   );
   const isOwner = !!ownerMembership;
   const ADMIN_ONLY_TABS = new Set(['admin_plans', 'admin_testers', 'admin_settings']);
-  const visibleTabs = tabs.filter((t) => isOwner || !ADMIN_ONLY_TABS.has(t.id));
+  const allVisibleTabs = tabs.filter((t) => isOwner || !ADMIN_ONLY_TABS.has(t.id));
+
+  // Brukervennlige kategorier — mapper RoleRooms interne 'feature'-kode
+  // til norske gruppenavn brukeren forstår.
+  type TabCategory = 'all' | 'core' | 'operations' | 'creative' | 'business';
+  const TAB_CATEGORIES: Record<string, TabCategory> = {
+    // Oversikt
+    dashboard: 'core', pieces: 'core', formations: 'core',
+    // Drift (resources + on_set)
+    classes: 'operations', students: 'operations', instructors: 'operations',
+    rooms: 'operations', team: 'operations', rehearsal_log: 'operations',
+    video: 'operations', performances: 'operations', season: 'operations',
+    // Kreativt (production)
+    music: 'creative', movement_vocab: 'creative', analysis: 'creative',
+    reel: 'creative', injuries: 'creative',
+    // Forretning (finance + union)
+    grants: 'business', billing: 'business', union: 'business',
+    pricing: 'business', addons: 'business',
+    admin_plans: 'business', admin_testers: 'business', admin_settings: 'business',
+  };
+  const CATEGORY_LABELS: Record<TabCategory, string> = {
+    all: 'Alt',
+    core: 'Oversikt',
+    operations: 'Drift',
+    creative: 'Kreativt',
+    business: 'Forretning',
+  };
+
+  const [activeCategory, setActiveCategory] = React.useState<TabCategory>('all');
+  const visibleTabs = activeCategory === 'all'
+    ? allVisibleTabs
+    : allVisibleTabs.filter((t) => TAB_CATEGORIES[t.id] === activeCategory);
 
   const activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0];
 
@@ -404,6 +447,50 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           borderBottom: '1px solid rgba(139,92,246,0.18)',
         }}
       >
+        {/* Permanent mode-chip øverst — bruker vet alltid hvilken
+            profession-modus de er i. Klikkbar for bytte. */}
+        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <ProfessionModeChip
+              mode={mode}
+              onSwitch={(newMode) => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('mode', newMode);
+                window.location.href = url.toString();
+              }}
+            />
+            {/* Kategori-filter — reduserer 18 tabs til relevante grupper */}
+            <Stack direction="row" spacing={0.5}>
+              {(['all', 'core', 'operations', 'creative', 'business'] as TabCategory[]).map((cat) => (
+                <Box
+                  key={cat}
+                  component="button"
+                  onClick={() => setActiveCategory(cat)}
+                  sx={{
+                    px: 1.2,
+                    py: 0.4,
+                    border: 'none',
+                    borderRadius: 1,
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    fontFamily: 'inherit',
+                    bgcolor: activeCategory === cat ? 'rgba(245, 184, 46, 0.15)' : 'transparent',
+                    color: activeCategory === cat ? '#F5B82E' : 'rgba(229, 231, 235, 0.55)',
+                    transition: 'all 0.15s ease',
+                    '&:hover': { color: '#F5B82E', bgcolor: 'rgba(245, 184, 46, 0.08)' },
+                  }}
+                >
+                  {CATEGORY_LABELS[cat]}
+                </Box>
+              ))}
+            </Stack>
+          </Stack>
+          <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace', fontSize: 11 }}>
+            <Box component="kbd" sx={{ px: 0.5, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.08)' }}>⌘K</Box>
+            {' '}for å søke
+          </Typography>
+        </Box>
         <Tabs
           value={activeTab.id}
           onChange={(_, value) => setActiveTabId(value)}
@@ -462,6 +549,51 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           {renderTabBody(activeTab)}
         </React.Suspense>
       </Box>
+
+      {/* Cmd+K command palette — søk og hopp mellom 18 paneler */}
+      <CommandPalette
+        commands={visibleTabs.map((t) => ({
+          id: `tab-${t.id}`,
+          label: t.label,
+          description: t.description,
+          category: 'Hopp til',
+          keywords: [t.id, t.label.toLowerCase()],
+          onSelect: () => setActiveTabId(t.id),
+        }))}
+      />
+
+      {/* Persistent help-knapp nederst-høyre */}
+      <HelpButton
+        supportEmail="support@theroleroom.com"
+        changelogUrl="https://creatorhubn.com/news"
+      />
+
+      {/* Første-gang-tour — vises kun ved første besøk per bruker */}
+      <FirstTimeTour
+        tourId="dance-workspace-v1"
+        steps={[
+          {
+            title: 'Velkommen til Dance Studio',
+            body: 'Her finner du klasser, instruktører, rom, koreografi og fakturering — alt samlet ett sted. Vi tar deg gjennom 3 ting du bør vite først.',
+            icon: <WelcomeIcon />,
+          },
+          {
+            title: 'Søk overalt med Cmd+K',
+            body: 'Trykk ⌘K (eller Ctrl+K) for å hoppe direkte til hvilket som helst panel. Klasser, Koreografi, Faktura — alt er ett tastetrykk unna.',
+            icon: <SearchTourIcon />,
+          },
+          {
+            title: 'Du er i Studio-modus',
+            body: 'Chipen øverst viser nåværende modus. Klikk på den for å bytte til Frilans-modus hvis du heller er solo-danser. Funksjoner tilpasses automatisk.',
+            icon: <ModeTourIcon />,
+          },
+          {
+            title: 'Hjelp er alltid synlig',
+            body: 'Spørsmål? "?"-knappen nede i høyre hjørne har snarveier, support-kontakt og tastatursnarveier. Trykk ? når som helst for å åpne den.',
+            icon: <HelpTourIcon />,
+          },
+        ]}
+      />
     </Box>
   );
 };

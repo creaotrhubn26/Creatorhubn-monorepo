@@ -254,8 +254,31 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
       // sesjonen → user bouncet etter login fordi /api/onboarding/status
       // eller lignende returnerte 401.
       const isAuthEndpoint = /\/(auth|session)\/(user|me|status|validate|refresh)\b/i.test(normalizedUrl);
-      if (isAuthEndpoint) {
-        clearClientAuthState();
+      // RoleRoom/dance/casting/talent — disse krever Bearer-token og
+      // backend returnerer 401 KUN når token ikke kan resolves. Det er
+      // alltid en stale-session-situasjon, ikke en permission-feil.
+      const isRoleRoomAuthed = /^\/api\/(dance|role-room|casting|talent|cms)\b/i.test(normalizedUrl);
+
+      if (isAuthEndpoint || isRoleRoomAuthed) {
+        // Broadcast event slik at globalt SessionExpiredModal kan vise
+        // brukervennlig melding + re-login-knapp. Vi clearer ikke auth-
+        // staten her — modalen styrer det basert på user-handling.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('creatorhub:session-expired', {
+              detail: {
+                returnUrl: window.location.pathname + window.location.search,
+                triggeredBy: normalizedUrl,
+                isAuthEndpoint,
+              },
+            }),
+          );
+        }
+        if (isAuthEndpoint) {
+          // Auth-spesifikke endpoints clearer fortsatt umiddelbart
+          // (token er definitivt død — bruker var allerede logget ut)
+          clearClientAuthState();
+        }
       }
     }
 

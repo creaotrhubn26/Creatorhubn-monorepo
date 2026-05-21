@@ -22,6 +22,7 @@ type ValidProfession = 'photographer' | 'videographer' | 'music_producer' | 'ven
 // Valid profession types for file manager (subset of ValidProfession)
 type FileManagerProfession = 'photographer' | 'videographer' | 'music_producer' | 'designer';
 import { ThemeProvider } from '@mui/material/styles';
+import SessionExpiredModal from './components/SessionExpiredModal';
 import { CssBaseline, Box, Typography, CircularProgress } from '@mui/material';
 import { creatorHubTheme } from './theme/creatorHubTheme';
 import { LanguageProvider } from '@/components/language-provider';
@@ -583,6 +584,9 @@ function App() {
               <ThemeProvider theme={creatorHubTheme}>
                 <CssBaseline />
                 <AuthProvider>
+                  {/* Global modal som fanger 401 fra authenticated endpoints
+                      og gir brukervennlig "logg inn på nytt"-flow */}
+                  <SessionExpiredModal />
                   <EnhancedMasterIntegrationProvider
                     enableDebugMode={import.meta.env.VITE_ENABLE_INTEGRATION_DEBUG === 'true'}
                     enablePerformanceMonitoring={true}

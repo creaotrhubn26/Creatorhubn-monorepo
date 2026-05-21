@@ -37,6 +37,7 @@ import {
   Delete as DeleteIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
+import EmptyState from '../shared/EmptyState';
 
 const PURPLE = '#8b5cf6';
 const PURPLE_LIGHT = '#a78bfa';
@@ -82,8 +83,18 @@ export interface EntityCrudPanelProps<T extends { id: string } & object> {
   newDefaults?: Partial<T>;
   /** Render et ekstra panel per rad (e.g. enrollments-listen for en class). */
   rowExpansion?: (row: T) => React.ReactNode;
-  /** Tom-tilstand-melding. */
+  /** Tom-tilstand-melding (legacy — vurder å bruke emptyState istedenfor). */
   emptyText?: string;
+  /** Rikere tom-tilstand med ikon, beskrivelse og handlings-knapp. Hvis
+   *  satt overstyrer den emptyText. Når listen er tom og emptyState er
+   *  satt, viser vi EmptyState-komponenten istedenfor en kjedelig tekst. */
+  emptyState?: {
+    icon?: React.ReactNode;
+    title: string;
+    description?: string;
+    primaryActionLabel?: string;
+    hint?: React.ReactNode;
+  };
   /** Eksplisitt testid for panel-root (default: undefined). Lar specs scope-e til ett panel. */
   panelTestId?: string;
 }
@@ -101,6 +112,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
   newDefaults = {},
   rowExpansion,
   emptyText = 'Ingen oppføringer ennå.',
+  emptyState,
   panelTestId,
 }: EntityCrudPanelProps<T>): React.ReactElement {
   const [items, setItems] = React.useState<T[]>([]);
@@ -263,9 +275,26 @@ export function EntityCrudPanel<T extends { id: string } & object>({
       ) : null}
 
       {!loading && filtered.length === 0 ? (
-        <Typography sx={{ color: 'rgba(229,231,235,0.5)', fontStyle: 'italic', py: 4, textAlign: 'center' }}>
-          {emptyText}
-        </Typography>
+        emptyState ? (
+          <EmptyState
+            icon={emptyState.icon}
+            title={emptyState.title}
+            description={emptyState.description}
+            hint={emptyState.hint}
+            primaryAction={{
+              label: emptyState.primaryActionLabel ?? `Opprett første ${title.toLowerCase()}`,
+              onClick: () => {
+                setEditing(null);
+                setDialogOpen(true);
+              },
+              icon: <AddIcon fontSize="small" />,
+            }}
+          />
+        ) : (
+          <Typography sx={{ color: 'rgba(229,231,235,0.5)', fontStyle: 'italic', py: 4, textAlign: 'center' }}>
+            {emptyText}
+          </Typography>
+        )
       ) : null}
 
       <Stack spacing={1}>
