@@ -80,6 +80,7 @@ import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
 import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
 import GallerySelectionSubmitDialog from '@/components/gallery/GallerySelectionSubmitDialog';
 import GallerySlideshow from '@/components/gallery/GallerySlideshow';
+import PrintOrderDialog from '@/components/gallery/PrintOrderDialog';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -159,6 +160,8 @@ export default function ClientGallery({}: ClientGalleryProps) {
   // Slice 9X.82 — slideshow-state
   const [showSlideshow, setShowSlideshow] = useState(false);
   const [slideshowStartIndex, setSlideshowStartIndex] = useState(0);
+  // Slice 9X.82 — print-order-state (per-bilde-flyt, Pic-Time)
+  const [printOrderImage, setPrintOrderImage] = useState<GalleryImage | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showOnlySelected, setShowOnlySelected] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -1391,12 +1394,41 @@ export default function ClientGallery({}: ClientGalleryProps) {
               <Typography variant="h6" sx={{ color: '#fff' }}>
                 {selectedImageForView.imageTitle}
               </Typography>
-              <IconButton
-                onClick={() => setImageDialogOpen(false)}
-                sx={{ color: 'rgba(255,255,255,0.7)' }}
-              >
-                <Close />
-              </IconButton>
+              <Stack direction="row" spacing={1} alignItems="center">
+                {/* Slice 9X.82 — Bestill print fra image-detail */}
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    setPrintOrderImage(selectedImageForView);
+                    setImageDialogOpen(false);
+                  }}
+                  sx={{
+                    color: '#fdfaf5',
+                    borderColor: 'rgba(253, 250, 245, 0.4)',
+                    fontFamily: '"Inter", "Segoe UI", sans-serif',
+                    fontWeight: 600,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    fontSize: '0.72rem',
+                    px: 2,
+                    borderRadius: 0,
+                    minHeight: 36,
+                    '&:hover': {
+                      borderColor: '#fdfaf5',
+                      bgcolor: 'rgba(253, 250, 245, 0.08)',
+                    },
+                  }}
+                >
+                  Bestill print
+                </Button>
+                <IconButton
+                  onClick={() => setImageDialogOpen(false)}
+                  sx={{ color: 'rgba(255,255,255,0.7)' }}
+                >
+                  <Close />
+                </IconButton>
+              </Stack>
             </DialogTitle>
             <DialogContent sx={{ bgcolor: '#0a0f1a', p: 3 }}>
               <Box sx={{ textAlign: 'center', mb: 2 }}>
@@ -2043,6 +2075,21 @@ export default function ClientGallery({}: ClientGalleryProps) {
           alt: img.imageTitle || '',
         }))}
       />
+
+      {/* Slice 9X.82 — Per-bilde print-bestilling (Pic-Time editorial) */}
+      {printOrderImage && (
+        <PrintOrderDialog
+          open={!!printOrderImage}
+          onClose={() => setPrintOrderImage(null)}
+          accessToken={accessToken}
+          galleryPassword={galleryPassword}
+          imageId={printOrderImage.id}
+          imageThumbnail={printOrderImage.thumbnailUrl || printOrderImage.fullSizeUrl || null}
+          imageTitle={printOrderImage.imageTitle || null}
+          clientEmail={gallery?.clientEmail || null}
+          clientName={gallery?.clientName || null}
+        />
+      )}
     </Box>
   );
 }
