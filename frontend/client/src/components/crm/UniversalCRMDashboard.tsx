@@ -1333,24 +1333,44 @@ export default function UniversalCRMDashboard({
                 bgcolor: alpha(colors.primary, 0.03),
               }}
             >
-              <Stack spacing={1.5} alignItems="flex-start">
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  Ingen kunder matcher filtrene
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Prøv et annet søk, nullstill filteret eller opprett en ny kontakt direkte herfra.
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {statusFilter && (
-                    <Button variant="outlined" onClick={() => setStatusFilter('')}>
-                      Nullstill filter
-                    </Button>
-                  )}
-                  <Button variant="contained" onClick={() => setShowAddForm(true)} sx={{ bgcolor: colors.primary }}>
-                    Ny kunde
+              {/* Slice 9X.81 — Skill mellom "ingen kunder ennå" og "ingen treff på filter" */}
+              {customers.length === 0 ? (
+                <Stack spacing={1.5} alignItems="flex-start">
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    Du har ingen kunder ennå
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Opprett den første kunden manuelt, eller la dem komme inn automatisk via kundeforespørsels-skjemaet på nettsiden din.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    onClick={() => setShowAddForm(true)}
+                    sx={{ bgcolor: colors.primary, mt: 1 }}
+                  >
+                    Opprett første kunde
                   </Button>
                 </Stack>
-              </Stack>
+              ) : (
+                <Stack spacing={1.5} alignItems="flex-start">
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    Ingen kunder matcher filtrene
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Du har {customers.length} {customers.length === 1 ? 'kunde' : 'kunder'} totalt — prøv et annet søk eller nullstill filtrene.
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {statusFilter && (
+                      <Button variant="outlined" onClick={() => setStatusFilter('')}>
+                        Nullstill filter
+                      </Button>
+                    )}
+                    <Button variant="contained" onClick={() => setShowAddForm(true)} sx={{ bgcolor: colors.primary }}>
+                      Ny kunde
+                    </Button>
+                  </Stack>
+                </Stack>
+              )}
             </Paper>
           ) : (
             <Grid container spacing={2.25}>

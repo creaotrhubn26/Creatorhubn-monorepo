@@ -432,28 +432,42 @@ Svar med profesjonell og vennlig tone.
           academy-temaet (det er hva default-theming returnerer når profession
           ikke matcher en kjent tema-key). Nå bygger vi konsistent dark-card
           med eksplisitt accent per card, og bra kontrast i begge moduser. */}
+      {/* Slice 9X.81 — Visuelt hierarki: "Nye Forespørsler" er primær handling
+          (kan kreve action), de andre er sekundære stats. Primær kortet er
+          større + accent-bakgrunn; sekundære er kompakte outlined-kort. */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         {([
-          { label: 'Nye Forespørsler', value: stats.newInquiries, color: customBranding?.color || '#ff8c00', icon: <InboxIcon /> },
-          { label: 'Besvarte', value: stats.repliedInquiries, color: '#4caf50', icon: <ReplyIcon /> },
-          { label: professionConfig ? `${professionConfig.displayName} Forespørsler` : 'Kundeforespørsler', value: submissions.length, color: '#2196f3', icon: <AssignmentIcon /> },
-          { label: 'Høy Prioritet', value: stats.highPriority, color: '#ff9800', icon: <TrendingUpIcon /> },
+          { label: 'Nye Forespørsler', value: stats.newInquiries, color: customBranding?.color || '#ff8c00', icon: <InboxIcon />, primary: true },
+          { label: 'Høy Prioritet', value: stats.highPriority, color: '#ff9800', icon: <TrendingUpIcon />, primary: false },
+          { label: 'Besvarte', value: stats.repliedInquiries, color: '#4caf50', icon: <ReplyIcon />, primary: false },
+          { label: professionConfig ? `${professionConfig.displayName} totalt` : 'Forespørsler totalt', value: submissions.length, color: '#2196f3', icon: <AssignmentIcon />, primary: false },
         ] as const).map((stat) => (
-          <Box key={stat.label} sx={{ flex: '1 1 200px', minWidth: 200 }}>
+          <Box key={stat.label} sx={{
+            flex: stat.primary ? '2 1 280px' : '1 1 180px',
+            minWidth: stat.primary ? 240 : 160,
+          }}>
             <Card sx={{
-              background: `linear-gradient(135deg, ${stat.color}26, ${stat.color}10)`,
-              border: `1px solid ${stat.color}55`,
+              background: stat.primary
+                ? `linear-gradient(135deg, ${stat.color}40, ${stat.color}15)`
+                : 'transparent',
+              border: `1px solid ${stat.color}${stat.primary ? '88' : '40'}`,
               height: '100%',
-              boxShadow: 'none',
+              boxShadow: stat.primary ? `0 4px 16px ${stat.color}22` : 'none',
             }}>
-              <CardContent sx={{ p: 2, textAlign: 'center' }}>
+              <CardContent sx={{ p: stat.primary ? 2.5 : 2, textAlign: 'center' }}>
                 {React.cloneElement(stat.icon, {
-                  sx: { color: stat.color, fontSize: 28, mb: 1 },
+                  sx: { color: stat.color, fontSize: stat.primary ? 36 : 24, mb: stat.primary ? 1 : 0.5 },
                 })}
-                <Typography variant="h4" sx={{ color: stat.color, fontWeight: 700 }}>
+                <Typography
+                  variant={stat.primary ? 'h3' : 'h5'}
+                  sx={{ color: stat.color, fontWeight: 700, lineHeight: 1 }}
+                >
                   {stat.value}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'text.primary', opacity: 0.85, fontWeight: 500 }}>
+                <Typography
+                  variant={stat.primary ? 'body2' : 'caption'}
+                  sx={{ color: 'text.primary', opacity: stat.primary ? 0.95 : 0.75, fontWeight: stat.primary ? 600 : 500, mt: 0.5, display: 'block' }}
+                >
                   {stat.label}
                 </Typography>
               </CardContent>

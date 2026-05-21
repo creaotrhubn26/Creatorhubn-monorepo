@@ -4917,91 +4917,52 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     Nytt prosjekt
                   </Button>
                 </Box>
+                {/* Slice 9X.81 — Visuell hierarki: kategori-fargede ikoner + iconBg
+                    så kortene er scanbar i én sweep. Kategori-grupper:
+                    daglig drift (blå), økonomi (grønn), logistikk (oransje),
+                    teknisk (lilla), system (grå). */}
                 <Grid2 container spacing={2}>
-                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Paper
-                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => setQuickModal('projects')}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <Folder color="primary" />
-                        <Box>
-                          <Typography variant="body2" fontWeight={600}>Prosjekter</Typography>
-                          <Typography variant="caption" color="text.secondary">Alle oppdrag & margin</Typography>
-                        </Box>
-                      </Stack>
-                    </Paper>
-                  </Grid2>
-                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Paper
-                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => setQuickModal('clients')}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <Group color="primary" />
-                        <Box>
-                          <Typography variant="body2" fontWeight={600}>Klienter</Typography>
-                          <Typography variant="caption" color="text.secondary">CRM & historikk</Typography>
-                        </Box>
-                      </Stack>
-                    </Paper>
-                  </Grid2>
-                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Paper
-                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => setQuickModal('profitability')}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <TrendingUp color="success" />
-                        <Box>
-                          <Typography variant="body2" fontWeight={600}>Lønnsomhet</Typography>
-                          <Typography variant="caption" color="text.secondary">Margin per tjeneste</Typography>
-                        </Box>
-                      </Stack>
-                    </Paper>
-                  </Grid2>
-                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Paper
-                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => setQuickModal('print-orders')}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <LocalShipping color="primary" />
-                        <Box>
-                          <Typography variant="body2" fontWeight={600}>Print-ordrer</Typography>
-                          <Typography variant="caption" color="text.secondary">Leveranser & shipping</Typography>
-                        </Box>
-                      </Stack>
-                    </Paper>
-                  </Grid2>
-                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Paper
-                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => setQuickModal('equipment')}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <CameraAlt color="primary" />
-                        <Box>
-                          <Typography variant="body2" fontWeight={600}>Utstyr</Typography>
-                          <Typography variant="caption" color="text.secondary">Garanti & firmware</Typography>
-                        </Box>
-                      </Stack>
-                    </Paper>
-                  </Grid2>
-                  <Grid2 size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Paper
-                      sx={{ p: 2.5, cursor: 'pointer', '&:hover': { boxShadow: 4 }, transition: 'box-shadow 0.2s' }}
-                      onClick={() => setQuickModal('settings')}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <Settings color="primary" />
-                        <Box>
-                          <Typography variant="body2" fontWeight={600}>Innstillinger</Typography>
-                          <Typography variant="caption" color="text.secondary">Profil, logo, abonnement</Typography>
-                        </Box>
-                      </Stack>
-                    </Paper>
-                  </Grid2>
+                  {([
+                    { id: 'projects',     label: 'Prosjekter',    desc: 'Alle oppdrag & margin',     icon: <Folder />,        accent: '#3b82f6' },
+                    { id: 'clients',      label: 'Klienter',      desc: 'CRM & historikk',           icon: <Group />,         accent: '#3b82f6' },
+                    { id: 'profitability',label: 'Lønnsomhet',    desc: 'Margin per tjeneste',       icon: <TrendingUp />,    accent: '#10b981' },
+                    { id: 'print-orders', label: 'Print-ordrer',  desc: 'Leveranser & shipping',     icon: <LocalShipping />, accent: '#f59e0b' },
+                    { id: 'equipment',    label: 'Utstyr',        desc: 'Garanti & firmware',        icon: <CameraAlt />,     accent: '#a855f7' },
+                    { id: 'settings',     label: 'Innstillinger', desc: 'Profil, logo, abonnement',  icon: <Settings />,      accent: '#6b7280' },
+                  ] as const).map((card) => (
+                    <Grid2 key={card.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                      <Paper
+                        sx={{
+                          p: 2.5,
+                          cursor: 'pointer',
+                          borderLeft: `3px solid ${card.accent}`,
+                          '&:hover': { boxShadow: 4, borderLeftWidth: '5px' },
+                          transition: 'box-shadow 0.2s, border-left-width 0.2s',
+                        }}
+                        onClick={() => setQuickModal(card.id as any)}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={1.5}>
+                          <Box sx={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bgcolor: `${card.accent}1a`,
+                            color: card.accent,
+                            flexShrink: 0,
+                          }}>
+                            {React.cloneElement(card.icon, { sx: { color: 'inherit' } })}
+                          </Box>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" fontWeight={600}>{card.label}</Typography>
+                            <Typography variant="caption" color="text.secondary">{card.desc}</Typography>
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    </Grid2>
+                  ))}
                 </Grid2>
 
                 {/* Slice 9X.66 — Quick-action-modal-wrapper */}
