@@ -349,6 +349,10 @@ import { setupNextRoleArbeidsplassenRoutes } from "./nextrole-arbeidsplassen";
 import { setupNextRolePublicCvAnalyticsRoutes } from "./nextrole-public-cv-analytics";
 import { setupNextRoleEducationVerificationRoutes } from "./nextrole-education-verification";
 import { setupNextRoleCareerMentorRoutes } from "./nextrole-career-mentor";
+import {
+  setupMetaCapiRoutes,
+  sendCheckoutCapiEvent,
+} from "./meta-conversions-api";
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
@@ -896,6 +900,8 @@ app.post(
         case "checkout.session.async_payment_succeeded": {
           const session = event.data.object as Stripe.Checkout.Session;
           // Sjekk NextRole først (egen app_id-metadata).
+          // NextRole-handleren sender sin egen 'Subscribe'-event til CAPI,
+          // så vi hopper over generisk fallback for å unngå dobbeltsending.
           const nextRoleResult = await handleNextRoleCheckoutCompleted(pool, session);
           if (nextRoleResult.matched) break;
           // Route agent add-on checkouts to our handler first. If the
@@ -903,6 +909,14 @@ app.post(
           const agentResult = await handleAgentCheckoutSessionCompleted(pool, session);
           if (!agentResult.matched) {
             await syncRoleRoomCommercialStripeCheckoutSession(session, eventTimestamp);
+          }
+          // Generisk Meta CAPI Purchase/Subscribe — fanger alle ikke-NextRole
+          // checkouts (Agent, marketplace-apper, RoleRoom commercial).
+          // Best-effort: feilet CAPI hindrer ikke andre handlers.
+          try {
+            await sendCheckoutCapiEvent({ session });
+          } catch (err) {
+            console.error("[stripe-webhook] CAPI generic Purchase failed (non-fatal)", err);
           }
           break;
         }
@@ -18205,6 +18219,7 @@ setupNextRoleArbeidsplassenRoutes({ app, getActiveSessionFromRequest });
 setupNextRolePublicCvAnalyticsRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleEducationVerificationRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleCareerMentorRoutes({ app, pool, getActiveSessionFromRequest });
+setupMetaCapiRoutes({ app, getActiveSessionFromRequest });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
   try {

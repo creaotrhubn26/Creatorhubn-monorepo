@@ -39,6 +39,7 @@ import {
   sendNextRoleTrialExpiringEmail,
 } from "./nextrole-email-service";
 import { applyReferralRewardsOnCheckout } from "./nextrole-referrals";
+import { sendServerSideConversion } from "./meta-conversions-api";
 
 export interface NextRoleRoutesDeps {
   app: express.Application;
@@ -201,6 +202,38 @@ export async function handleNextRoleCheckoutCompleted(
     console.error("[nextrole-webhook] referral reward failed (non-fatal)", err);
   }
 
+  // Server-side Meta Conversions API — pålitelig Purchase/Subscribe-
+  // attribusjon som ikke kan blokkeres av ad-blockere eller iOS ATT.
+  // Best-effort: feilet CAPI-kall hindrer ikke webhook-suksess.
+  try {
+    if (contact.email) {
+      const amountOre = session.amount_total ?? 0;
+      await sendServerSideConversion({
+        eventName: "Subscribe",
+        eventId: `nextrole-sub-${session.id}`,
+        userData: {
+          email: contact.email,
+          firstName: contact.firstName,
+          externalId: userId,
+        },
+        customData: {
+          value: amountOre / 100,
+          currency: (session.currency ?? "nok").toUpperCase(),
+          content_name: `NextRole ${tierId}`,
+          content_type: "subscription",
+          subscription_id:
+            typeof session.subscription === "string"
+              ? session.subscription
+              : session.subscription?.id,
+        },
+        eventSourceUrl: "https://creatorhubn.com/nextrole",
+        siteKey: "creatorhub",
+      });
+    }
+  } catch (err) {
+    console.error("[nextrole-webhook] CAPI Subscribe event failed (non-fatal)", err);
+  }
+
   return { matched: true, message: `nextrole_${tierId}_purchased` };
 }
 
@@ -337,6 +370,28 @@ export function setupNextRoleRoutes(deps: NextRoleRoutesDeps): void {
         contact.firstName,
         trialEndsAt,
       );
+      // Server-side StartTrial-event til Meta CAPI — pålitelig
+      // attribusjon for FB-ads som drev trial-start.
+      void sendServerSideConversion({
+        eventName: "StartTrial",
+        eventId: `nextrole-trial-${session.userId}-${trialEndsAt.getTime()}`,
+        userData: {
+          email: contact.email,
+          firstName: contact.firstName,
+          externalId: session.userId,
+        },
+        customData: {
+          value: 0,
+          currency: "NOK",
+          content_name: "NextRole 14-day trial",
+          content_type: "trial",
+          predicted_ltv: 588, // 14 dager → forventet 12 mnd × 49 kr Standard-trinn
+        },
+        eventSourceUrl: "https://creatorhubn.com/nextrole",
+        siteKey: "creatorhub",
+      }).catch((err) => {
+        console.warn("[start-trial] CAPI StartTrial-event feilet (non-fatal)", err);
+      });
     }
 
     res.json({
