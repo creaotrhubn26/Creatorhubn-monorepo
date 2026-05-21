@@ -79,6 +79,7 @@ import ContractPreviewModal from '@/components/ContractPreviewModal';
 import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
 import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
 import GallerySelectionSubmitDialog from '@/components/gallery/GallerySelectionSubmitDialog';
+import GallerySlideshow from '@/components/gallery/GallerySlideshow';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -155,6 +156,9 @@ export default function ClientGallery({}: ClientGalleryProps) {
   const [favoriteImages, setFavoriteImages] = useState<Set<string>>(new Set());
   // Slice 9X.82 — submit-dialog state for "send mitt utvalg"-flyt
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  // Slice 9X.82 — slideshow-state
+  const [showSlideshow, setShowSlideshow] = useState(false);
+  const [slideshowStartIndex, setSlideshowStartIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showOnlySelected, setShowOnlySelected] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -1986,11 +1990,58 @@ export default function ClientGallery({}: ClientGalleryProps) {
           };
         })}
         onSubmitted={() => {
-          // Refetch selections så UI viser låst state
           void queryClient.invalidateQueries({
             queryKey: ['/api/client/gallery', accessToken, 'selections', galleryPassword],
           });
         }}
+      />
+
+      {/* Slice 9X.82 — Play-slideshow-knapp (sticky øverst-til-høyre) */}
+      {images.length > 1 && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: { xs: 12, sm: 24 },
+            right: { xs: 12, sm: 24 },
+            zIndex: 1050,
+          }}
+        >
+          <Tooltip title="Spill av slideshow">
+            <IconButton
+              onClick={() => {
+                setSlideshowStartIndex(0);
+                setShowSlideshow(true);
+              }}
+              aria-label="Spill av slideshow"
+              sx={{
+                bgcolor: 'rgba(10, 8, 7, 0.85)',
+                color: '#fdfaf5',
+                backdropFilter: 'blur(8px)',
+                width: { xs: 44, sm: 48 },
+                height: { xs: 44, sm: 48 },
+                border: '1px solid rgba(253, 250, 245, 0.18)',
+                '&:hover': {
+                  bgcolor: 'rgba(217, 119, 6, 0.92)',
+                  borderColor: '#fdfaf5',
+                },
+              }}
+            >
+              <PlayArrow />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+
+      {/* Slice 9X.82 — Fullskjerm slideshow */}
+      <GallerySlideshow
+        open={showSlideshow}
+        onClose={() => setShowSlideshow(false)}
+        startIndex={slideshowStartIndex}
+        images={images.map((img: GalleryImage) => ({
+          id: img.id,
+          url: img.fullSizeUrl || img.thumbnailUrl || '',
+          alt: img.imageTitle || '',
+        }))}
       />
     </Box>
   );
