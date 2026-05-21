@@ -48,6 +48,10 @@ import {
   readBriefDraft,
   writeBriefDraft,
 } from './briefDraftPersistence';
+import BriefCommentThread from './BriefCommentThread';
+import BriefActivityFeed from './BriefActivityFeed';
+import BriefReferenceMoodboard from './BriefReferenceMoodboard';
+import { BRIEF_QUICK_PICKS, appendQuickPick } from './briefQuickPicks';
 
 interface RoleRoomMobileBriefWizardProps {
   projectId: string | null;
@@ -216,16 +220,47 @@ export const RoleRoomMobileBriefWizard: React.FC<RoleRoomMobileBriefWizardProps>
         />
       ) : (
         <Stack spacing={2}>
-          {step.fields.map((descriptor) => (
-            <BriefField
-              key={String(descriptor.field)}
-              descriptor={descriptor}
-              value={typeof draft[descriptor.field] === 'string' ? (draft[descriptor.field] as string) : ''}
-              onChange={(value) => handleFieldChange(descriptor.field, value)}
-              autoFocus={focusField === descriptor.field}
-              onFocused={() => setFocusField(null)}
-            />
-          ))}
+          {step.fields.map((descriptor) => {
+            const fieldValue = typeof draft[descriptor.field] === 'string'
+              ? (draft[descriptor.field] as string)
+              : '';
+            const renderAsMoodboard = descriptor.field === 'referenceLinks';
+            return (
+              <Box key={String(descriptor.field)}>
+                {renderAsMoodboard ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 600 }}>
+                      {descriptor.label}
+                    </Typography>
+                    {descriptor.helperText && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                        {descriptor.helperText}
+                      </Typography>
+                    )}
+                    <BriefReferenceMoodboard
+                      value={fieldValue}
+                      onChange={(value) => handleFieldChange(descriptor.field, value)}
+                    />
+                  </Box>
+                ) : (
+                  <BriefField
+                    descriptor={descriptor}
+                    value={fieldValue}
+                    onChange={(value) => handleFieldChange(descriptor.field, value)}
+                    autoFocus={focusField === descriptor.field}
+                    onFocused={() => setFocusField(null)}
+                  />
+                )}
+                <BriefCommentThread
+                  projectId={projectId}
+                  fieldKey={String(descriptor.field)}
+                  fieldLabel={descriptor.label}
+                  hideIfEmpty
+                  dense
+                />
+              </Box>
+            );
+          })}
         </Stack>
       )}
 
@@ -293,28 +328,39 @@ export const RoleRoomMobileBriefWizard: React.FC<RoleRoomMobileBriefWizardProps>
         }}
       >
         <Box>{wizardBody}</Box>
-        <Box
+        <Stack
+          spacing={2}
           sx={{
             position: 'sticky',
             top: 0,
-            p: 2,
-            borderRadius: 'var(--rr-card-radius, 16px)',
-            border: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
             maxHeight: 'calc(100dvh - 120px)',
-            overflowY: 'auto',
+            overflow: 'hidden',
           }}
         >
-          <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 1 }}>
-            Live oppsummering
-          </Typography>
-          <BriefSummary
-            draft={draft}
-            missingFields={missingFields}
-            onJumpToMissing={handleJumpToMissing}
-          />
-        </Box>
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 'var(--rr-card-radius, 16px)',
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              maxHeight: 'calc(50dvh - 80px)',
+              overflowY: 'auto',
+            }}
+          >
+            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 1 }}>
+              Live oppsummering
+            </Typography>
+            <BriefSummary
+              draft={draft}
+              missingFields={missingFields}
+              onJumpToMissing={handleJumpToMissing}
+            />
+          </Box>
+          <Box sx={{ minHeight: 240, maxHeight: 'calc(50dvh - 60px)' }}>
+            <BriefActivityFeed projectId={projectId} limit={30} />
+          </Box>
+        </Stack>
       </Box>
     );
   }
@@ -332,6 +378,7 @@ interface BriefFieldProps {
 
 const BriefField: React.FC<BriefFieldProps> = ({ descriptor, value, onChange, autoFocus, onFocused }) => {
   const ref = useRef<HTMLInputElement | null>(null);
+  const quickPicks = BRIEF_QUICK_PICKS[descriptor.field] ?? [];
 
   useEffect(() => {
     if (autoFocus && ref.current) {
@@ -342,23 +389,53 @@ const BriefField: React.FC<BriefFieldProps> = ({ descriptor, value, onChange, au
   }, [autoFocus, onFocused]);
 
   return (
-    <TextField
-      inputRef={ref}
-      label={descriptor.label}
-      helperText={descriptor.helperText}
-      required={descriptor.required}
-      multiline={descriptor.multiline}
-      minRows={descriptor.minRows}
-      placeholder={descriptor.placeholder}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      fullWidth
-      sx={{
-        '& .MuiOutlinedInput-root': {
-          minHeight: 'var(--rr-touch-target-min, 44px)',
-        },
-      }}
-    />
+    <Box>
+      <TextField
+        inputRef={ref}
+        label={descriptor.label}
+        helperText={descriptor.helperText}
+        required={descriptor.required}
+        multiline={descriptor.multiline}
+        minRows={descriptor.minRows}
+        placeholder={descriptor.placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        fullWidth
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            minHeight: 'var(--rr-touch-target-min, 44px)',
+          },
+        }}
+      />
+      {quickPicks.length > 0 && (
+        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 0.75 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ pr: 0.5, alignSelf: 'center' }}>
+            Hurtigvalg:
+          </Typography>
+          {quickPicks.map((pick) => (
+            <Chip
+              key={pick.label}
+              label={pick.label}
+              size="small"
+              variant="outlined"
+              onClick={() => onChange(appendQuickPick(value, pick))}
+              clickable
+              sx={{
+                fontSize: 12,
+                height: 26,
+                borderColor: 'rgba(245, 184, 46, 0.4)',
+                color: '#F5B82E',
+                '&:hover': {
+                  bgcolor: 'rgba(245, 184, 46, 0.1)',
+                  borderColor: 'rgba(245, 184, 46, 0.7)',
+                },
+              }}
+              title={pick.hint}
+            />
+          ))}
+        </Stack>
+      )}
+    </Box>
   );
 };
 

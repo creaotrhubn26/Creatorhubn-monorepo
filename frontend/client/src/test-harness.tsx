@@ -16,6 +16,9 @@
  *                                project-creation-modalen. Brukes av dance-*-
  *                                specs. I produksjon lastes dance bare etter at
  *                                project-creation-modalen har valgt et prosjekt.
+ *   ?harness=content_producer    Mounter RoleRoomDashboardPanel som
+ *                                innholdsprodusent (Creative Space Sync /
+ *                                klient-brief, producer-timeline, osv.).
  *   ?harness-project=<id>        Override projectId (default: proj-spring-2026)
  */
 import React from 'react';
@@ -58,6 +61,10 @@ function TestHarness() {
         modeOverride={harnessMode}
         projectId={seededProjectId}
       />
+    );
+  } else if (harnessMode === 'content_producer') {
+    panel = (
+      <RoleRoomDashboardPanel userId="e2e-test-user" profession="content_producer" />
     );
   } else {
     panel = (

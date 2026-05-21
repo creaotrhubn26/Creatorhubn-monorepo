@@ -14509,10 +14509,342 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         );
       }
 
+      // Activity-feed: logg én "brief_saved" + per-felt "field_edited" for felter
+      // som faktisk var med i body. Vi spammer ikke feeden hvis ingen felter er
+      // endret denne lagringen.
+      if (await ensureBriefCollaborationTables()) {
+        const actorRole = normaliseAuthorRoleForBrief(effectiveRoleRecord?.role);
+        const editedFields = [
+          'projectGoal', 'deliverables', 'targetAudience', 'keyMessage',
+          'timingConstraints', 'brandNotes', 'materialOverview', 'referenceLinks',
+          'contactName', 'contactEmail', 'contactPhone', 'additionalNotes',
+        ].filter((key) => typeof body[key] === 'string' && (body[key] as string).trim().length > 0);
+
+        await logBriefActivity(
+          projectId,
+          'brief_saved',
+          { userId, role: actorRole, name: null },
+          null,
+          { fieldsEdited: editedFields },
+        );
+        for (const fieldKey of editedFields) {
+          await logBriefActivity(
+            projectId,
+            'field_edited',
+            { userId, role: actorRole, name: null },
+            fieldKey,
+            { length: (body[fieldKey] as string).length },
+          );
+        }
+      }
+
       res.json({ intake: result.rows[0] });
     } catch (error) {
       console.error('Producer client intake save error:', error);
       res.status(500).json({ error: 'Kunne ikke lagre klientbrief' });
+    }
+  });
+
+  // ----------------------------------------------------------------------
+  // Creative Space Sync — inline-kommentarer + activity-feed
+  // (migrasjon 0151_role_room_brief_comments.sql)
+  // ----------------------------------------------------------------------
+
+  let briefCollaborationTablesReadyPromise: Promise<boolean> | null = null;
+  async function ensureBriefCollaborationTables(): Promise<boolean> {
+    if (briefCollaborationTablesReadyPromise) return briefCollaborationTablesReadyPromise;
+    briefCollaborationTablesReadyPromise = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS role_room_brief_comments (
+            id               VARCHAR(64)  PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            project_id       VARCHAR(64)  NOT NULL,
+            field_key        VARCHAR(64)  NOT NULL,
+            author_user_id   VARCHAR(255),
+            author_role      VARCHAR(32)  NOT NULL CHECK (author_role IN ('client', 'producer', 'system')),
+            author_name      VARCHAR(255),
+            body             TEXT         NOT NULL,
+            parent_id        VARCHAR(64)  REFERENCES role_room_brief_comments(id) ON DELETE CASCADE,
+            resolved_at      TIMESTAMPTZ,
+            resolved_by_role VARCHAR(32),
+            created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS role_room_brief_comments_project_field_idx
+            ON role_room_brief_comments (project_id, field_key, created_at);
+          CREATE INDEX IF NOT EXISTS role_room_brief_comments_unresolved_idx
+            ON role_room_brief_comments (project_id)
+            WHERE resolved_at IS NULL;
+
+          CREATE TABLE IF NOT EXISTS role_room_brief_activity (
+            id            BIGSERIAL    PRIMARY KEY,
+            project_id    VARCHAR(64)  NOT NULL,
+            event_kind    VARCHAR(64)  NOT NULL,
+            actor_user_id VARCHAR(255),
+            actor_role    VARCHAR(32),
+            actor_name    VARCHAR(255),
+            field_key     VARCHAR(64),
+            metadata      JSONB        DEFAULT '{}'::jsonb,
+            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS role_room_brief_activity_project_idx
+            ON role_room_brief_activity (project_id, created_at DESC);
+        `);
+        return true;
+      } catch (error) {
+        console.error('[brief-collaboration] ensure tables failed:', error);
+        briefCollaborationTablesReadyPromise = null;
+        return false;
+      }
+    })();
+    return briefCollaborationTablesReadyPromise;
+  }
+
+  function normaliseAuthorRoleForBrief(role: string | null | undefined): 'client' | 'producer' {
+    if (!role) return 'producer';
+    if (role === 'client_reviewer' || role === 'client') return 'client';
+    return 'producer';
+  }
+
+  async function logBriefActivity(
+    projectId: string,
+    eventKind: string,
+    actor: { userId: string | null; role: string | null; name: string | null },
+    fieldKey: string | null,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await pool.query(
+        `INSERT INTO role_room_brief_activity
+           (project_id, event_kind, actor_user_id, actor_role, actor_name, field_key, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        [
+          projectId,
+          eventKind,
+          actor.userId,
+          actor.role,
+          actor.name,
+          fieldKey,
+          JSON.stringify(metadata ?? {}),
+        ],
+      );
+    } catch (error) {
+      console.error('[brief-collaboration] activity log failed:', error);
+    }
+  }
+
+  router.get('/projects/:projectId/brief-comments', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureBriefCollaborationTables())) {
+      res.status(500).json({ error: 'Brief-tabeller er ikke tilgjengelige' });
+      return;
+    }
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til brief-kommentarer' });
+        return;
+      }
+      const fieldKey = typeof req.query.fieldKey === 'string' ? req.query.fieldKey.trim() : null;
+      const includeResolved = req.query.includeResolved === '1' || req.query.includeResolved === 'true';
+
+      const params: unknown[] = [projectId];
+      let whereClause = 'project_id = $1';
+      if (fieldKey) {
+        params.push(fieldKey);
+        whereClause += ` AND field_key = $${params.length}`;
+      }
+      if (!includeResolved) {
+        whereClause += ' AND resolved_at IS NULL';
+      }
+
+      const result = await pool.query(
+        `SELECT id, project_id, field_key, author_user_id, author_role, author_name,
+                body, parent_id, resolved_at, resolved_by_role, created_at, updated_at
+         FROM role_room_brief_comments
+         WHERE ${whereClause}
+         ORDER BY created_at ASC`,
+        params,
+      );
+      res.json({ comments: result.rows });
+    } catch (error) {
+      console.error('Brief-comments fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente kommentarer' });
+    }
+  });
+
+  router.post('/projects/:projectId/brief-comments', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureBriefCollaborationTables())) {
+      res.status(500).json({ error: 'Brief-tabeller er ikke tilgjengelige' });
+      return;
+    }
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    const body = req.body as Record<string, unknown>;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å kommentere brief' });
+        return;
+      }
+
+      const fieldKey = typeof body.fieldKey === 'string' ? body.fieldKey.trim() : '';
+      const commentBody = typeof body.body === 'string' ? body.body.trim() : '';
+      const parentId = typeof body.parentId === 'string' && body.parentId.trim() ? body.parentId.trim() : null;
+      const authorName = typeof body.authorName === 'string' ? body.authorName.trim().slice(0, 255) : null;
+
+      if (!fieldKey || !commentBody) {
+        res.status(400).json({ error: 'fieldKey og body er påkrevd' });
+        return;
+      }
+      if (commentBody.length > 4000) {
+        res.status(400).json({ error: 'Kommentar er for lang (maks 4000 tegn)' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const authorRole = normaliseAuthorRoleForBrief(effectiveRoleRecord?.role);
+
+      const inserted = await pool.query(
+        `INSERT INTO role_room_brief_comments
+           (project_id, field_key, author_user_id, author_role, author_name, body, parent_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [projectId, fieldKey, userId, authorRole, authorName, commentBody, parentId],
+      );
+
+      await logBriefActivity(
+        projectId,
+        parentId ? 'comment_replied' : 'comment_added',
+        { userId, role: authorRole, name: authorName },
+        fieldKey,
+        { commentId: inserted.rows[0].id, parentId },
+      );
+
+      res.status(201).json({ comment: inserted.rows[0] });
+    } catch (error) {
+      console.error('Brief-comments create error:', error);
+      res.status(500).json({ error: 'Kunne ikke lagre kommentar' });
+    }
+  });
+
+  router.post('/projects/:projectId/brief-comments/:commentId/resolve', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureBriefCollaborationTables())) {
+      res.status(500).json({ error: 'Brief-tabeller er ikke tilgjengelige' });
+      return;
+    }
+    const { projectId, commentId } = req.params;
+    const userId = getUserId(req);
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å løse kommentar' });
+        return;
+      }
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const role = normaliseAuthorRoleForBrief(effectiveRoleRecord?.role);
+
+      const result = await pool.query(
+        `UPDATE role_room_brief_comments
+            SET resolved_at = NOW(), resolved_by_role = $3, updated_at = NOW()
+          WHERE id = $1 AND project_id = $2 AND resolved_at IS NULL
+          RETURNING *`,
+        [commentId, projectId, role],
+      );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Kommentar ikke funnet eller allerede løst' });
+        return;
+      }
+      await logBriefActivity(
+        projectId,
+        'comment_resolved',
+        { userId, role, name: null },
+        result.rows[0].field_key,
+        { commentId },
+      );
+      res.json({ comment: result.rows[0] });
+    } catch (error) {
+      console.error('Brief-comment resolve error:', error);
+      res.status(500).json({ error: 'Kunne ikke løse kommentar' });
+    }
+  });
+
+  router.delete('/projects/:projectId/brief-comments/:commentId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureBriefCollaborationTables())) {
+      res.status(500).json({ error: 'Brief-tabeller er ikke tilgjengelige' });
+      return;
+    }
+    const { projectId, commentId } = req.params;
+    const userId = getUserId(req);
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang' });
+        return;
+      }
+      // Bare forfatter eller admin kan slette
+      const existing = await pool.query(
+        `SELECT author_user_id, field_key FROM role_room_brief_comments
+          WHERE id = $1 AND project_id = $2`,
+        [commentId, projectId],
+      );
+      if (existing.rowCount === 0) {
+        res.status(404).json({ error: 'Kommentar ikke funnet' });
+        return;
+      }
+      const isAuthor = existing.rows[0].author_user_id === userId;
+      const isAdmin = requireScope(req, 'admin');
+      if (!isAuthor && !isAdmin) {
+        res.status(403).json({ error: 'Kun forfatter kan slette' });
+        return;
+      }
+      await pool.query(
+        `DELETE FROM role_room_brief_comments WHERE id = $1 AND project_id = $2`,
+        [commentId, projectId],
+      );
+      await logBriefActivity(
+        projectId,
+        'comment_deleted',
+        { userId, role: null, name: null },
+        existing.rows[0].field_key,
+        { commentId },
+      );
+      res.status(204).send();
+    } catch (error) {
+      console.error('Brief-comment delete error:', error);
+      res.status(500).json({ error: 'Kunne ikke slette kommentar' });
+    }
+  });
+
+  router.get('/projects/:projectId/brief-activity', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureBriefCollaborationTables())) {
+      res.status(500).json({ error: 'Brief-tabeller er ikke tilgjengelige' });
+      return;
+    }
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til activity-feed' });
+        return;
+      }
+      const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10) || 50, 200);
+      const result = await pool.query(
+        `SELECT id, project_id, event_kind, actor_user_id, actor_role, actor_name,
+                field_key, metadata, created_at
+           FROM role_room_brief_activity
+          WHERE project_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [projectId, limit],
+      );
+      res.json({ activity: result.rows });
+    } catch (error) {
+      console.error('Brief-activity fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente activity' });
     }
   });
 
