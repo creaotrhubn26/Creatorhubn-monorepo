@@ -84,6 +84,7 @@ import PrintOrderDialog from '@/components/gallery/PrintOrderDialog';
 import GalleryChapterBreak, { type GalleryChapter } from '@/components/gallery/GalleryChapterBreak';
 import GalleryChapterNav from '@/components/gallery/GalleryChapterNav';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
+import CinematicAudioPlayer from '@/components/gallery/CinematicAudioPlayer';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -335,7 +336,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
       && !!gallery
       && (!gallery.requiresPassword || !!galleryPassword)
       && Array.isArray((gallery as any)?.gallerySettings?.chapters)
-      && ((gallery as any).gallerySettings.chapters as any[]).some((c: any) => c?.videoUrl),
+      && ((gallery as any).gallerySettings.chapters as any[]).some((c: any) => c?.videoUrl || c?.audioUrl),
   });
 
   // Fetch existing comments so the gallery can show prior notes on the
@@ -1224,6 +1225,49 @@ export default function ClientGallery({}: ClientGalleryProps) {
                       />
                     </Grid>
                   );
+                  // Slice 9X.82 (Michael) — render CinematicAudioPlayer
+                  // når kapittel har audioUrl (musikkprodusent-leveranser).
+                  // Gjenbruker video_timecode_comments-systemet via samme
+                  // chapter-comment-filter.
+                  if (ch.audioUrl) {
+                    const audioComments = (videoCommentsData?.comments || []).filter(
+                      (c: any) => c.chapterId === ch.id,
+                    );
+                    nodes.push(
+                      <Grid item xs={12} key={`chapter-audio-${ch.id}`}>
+                        <Box sx={{ maxWidth: 1100, mx: 'auto', mb: 4 }}>
+                          <CinematicAudioPlayer
+                            src={ch.audioUrl}
+                            coverUrl={ch.audioCover}
+                            title={ch.title}
+                            credits={ch.audioCredits}
+                            sections={ch.audioSections || []}
+                            comments={audioComments}
+                            clientName={gallery?.clientName || null}
+                            onAddComment={async ({ timecodeSec, comment }) => {
+                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                              if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
+                              await fetch(`/api/client/gallery/${encodeURIComponent(accessToken)}/video-comments`, {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({
+                                  chapterId: ch.id,
+                                  timecodeSec,
+                                  comment,
+                                  clientEmail: gallery?.clientEmail || '',
+                                  clientName: gallery?.clientName || '',
+                                }),
+                              });
+                              void queryClient.invalidateQueries({
+                                queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
+                              });
+                            }}
+                          />
+                        </Box>
+                      </Grid>
+                    );
+                  }
+
                   // Slice 9X.82 (Bjarne) — render CinematicVideoPlayer
                   // når kapittel har videoUrl (videograf-leveranser).
                   // videoCommentsForChapter + handleAddVideoComment

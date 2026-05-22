@@ -31,6 +31,15 @@ export interface GalleryChapter {
   videoPoster?: string | null;
   /** Underkapittel-markører på video-progress-bar */
   videoMarkers?: Array<{ startSec: number; title: string; romanNumeral?: string | null; intro?: string | null }>;
+  /** Slice 9X.82 (Michael) — audioUrl rendres som CinematicAudioPlayer.
+   *  Brukes for musikkprodusent-leveranser (mix/master/stems). */
+  audioUrl?: string | null;
+  /** Album-cover for audio-track */
+  audioCover?: string | null;
+  /** Credits-tekst ("Komponist X · Vokal Y · Mix Z") */
+  audioCredits?: string | null;
+  /** Section-markører for audio (Intro/Vers/Refreng/Bro/Outro) */
+  audioSections?: Array<{ startSec: number; title: string; romanNumeral?: string | null }>;
 }
 
 interface Props {

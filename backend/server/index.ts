@@ -22907,6 +22907,26 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
                   }))
                   .slice(0, 30)
               : [],
+            // Slice 9X.82 (Michael) — audio-chapter-felter
+            audioUrl: typeof c.audioUrl === 'string' && /^https?:\/\//.test(c.audioUrl)
+              ? c.audioUrl.slice(0, 1024)
+              : null,
+            audioCover: typeof c.audioCover === 'string' && /^https?:\/\//.test(c.audioCover)
+              ? c.audioCover.slice(0, 1024)
+              : null,
+            audioCredits: typeof c.audioCredits === 'string'
+              ? c.audioCredits.slice(0, 400)
+              : null,
+            audioSections: Array.isArray(c.audioSections)
+              ? c.audioSections
+                  .filter((s: any) => s && typeof s === 'object' && Number.isFinite(Number(s.startSec)) && typeof s.title === 'string')
+                  .map((s: any) => ({
+                    startSec: Math.max(0, Number(s.startSec)),
+                    title: String(s.title).slice(0, 200),
+                    romanNumeral: typeof s.romanNumeral === 'string' ? s.romanNumeral.slice(0, 8) : null,
+                  }))
+                  .slice(0, 30)
+              : [],
           }))
           .slice(0, 20);
         next.chapters = cleaned;
