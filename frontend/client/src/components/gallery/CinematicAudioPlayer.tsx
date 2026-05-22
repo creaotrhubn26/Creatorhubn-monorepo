@@ -56,13 +56,20 @@ export interface AudioSectionMarker {
   romanNumeral?: string | null;
 }
 
+export type CommentCategory = 'color' | 'audio' | 'edit' | 'vfx' | 'structure' | 'text' | 'other';
+export type CommentPriority = 'must-fix' | 'nice-to-have' | 'suggestion';
+
 export interface AudioTimecodeComment {
   id: string;
   timecodeSec: number;
+  endTimecodeSec?: number | null;
   comment: string;
+  category?: CommentCategory;
+  priority?: CommentPriority;
   clientName?: string | null;
   clientEmail?: string | null;
   status?: 'open' | 'resolved' | 'archived';
+  createdAt?: string | null;
 }
 
 interface Props {

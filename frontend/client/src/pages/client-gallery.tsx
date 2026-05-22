@@ -85,6 +85,7 @@ import GalleryChapterBreak, { type GalleryChapter } from '@/components/gallery/G
 import GalleryChapterNav from '@/components/gallery/GalleryChapterNav';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
 import CinematicAudioPlayer from '@/components/gallery/CinematicAudioPlayer';
+import CommentsPanel from '@/components/gallery/CommentsPanel';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -1233,35 +1234,45 @@ export default function ClientGallery({}: ClientGalleryProps) {
                     const audioComments = (videoCommentsData?.comments || []).filter(
                       (c: any) => c.chapterId === ch.id,
                     );
+                    // Holds player + side-panel for audio i samme grid-rad
+                    const audioSeekRef = { current: (sec: number) => {} as any };
                     nodes.push(
                       <Grid item xs={12} key={`chapter-audio-${ch.id}`}>
-                        <Box sx={{ maxWidth: 1100, mx: 'auto', mb: 4 }}>
-                          <CinematicAudioPlayer
-                            src={ch.audioUrl}
-                            coverUrl={ch.audioCover}
-                            title={ch.title}
-                            credits={ch.audioCredits}
-                            sections={ch.audioSections || []}
+                        <Box sx={{ maxWidth: 1280, mx: 'auto', mb: 4, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <CinematicAudioPlayer
+                              src={ch.audioUrl}
+                              coverUrl={ch.audioCover}
+                              title={ch.title}
+                              credits={ch.audioCredits}
+                              sections={ch.audioSections || []}
+                              comments={audioComments}
+                              clientName={gallery?.clientName || null}
+                              onAddComment={async ({ timecodeSec, comment }) => {
+                                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                                if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
+                                await fetch(`/api/client/gallery/${encodeURIComponent(accessToken)}/video-comments`, {
+                                  method: 'POST',
+                                  headers,
+                                  body: JSON.stringify({
+                                    chapterId: ch.id,
+                                    timecodeSec,
+                                    comment,
+                                    clientEmail: gallery?.clientEmail || '',
+                                    clientName: gallery?.clientName || '',
+                                  }),
+                                });
+                                void queryClient.invalidateQueries({
+                                  queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
+                                });
+                              }}
+                            />
+                          </Box>
+                          <CommentsPanel
                             comments={audioComments}
-                            clientName={gallery?.clientName || null}
-                            onAddComment={async ({ timecodeSec, comment }) => {
-                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                              if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
-                              await fetch(`/api/client/gallery/${encodeURIComponent(accessToken)}/video-comments`, {
-                                method: 'POST',
-                                headers,
-                                body: JSON.stringify({
-                                  chapterId: ch.id,
-                                  timecodeSec,
-                                  comment,
-                                  clientEmail: gallery?.clientEmail || '',
-                                  clientName: gallery?.clientName || '',
-                                }),
-                              });
-                              void queryClient.invalidateQueries({
-                                queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
-                              });
-                            }}
+                            onSeek={() => {/* WaveSurfer-seek håndteres via comment-prikker direkte i player */}}
+                            layout="side"
+                            title="Tilbakemeldinger"
                           />
                         </Box>
                       </Grid>
@@ -1287,7 +1298,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                             chapters={ch.videoMarkers || []}
                             comments={chapterComments}
                             clientName={gallery?.clientName || null}
-                            onAddComment={async ({ timecodeSec, comment }) => {
+                            onAddComment={async ({ timecodeSec, endTimecodeSec, category, priority, comment }) => {
                               const headers: Record<string, string> = { 'Content-Type': 'application/json' };
                               if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
                               await fetch(`/api/client/gallery/${encodeURIComponent(accessToken)}/video-comments`, {
@@ -1296,6 +1307,9 @@ export default function ClientGallery({}: ClientGalleryProps) {
                                 body: JSON.stringify({
                                   chapterId: ch.id,
                                   timecodeSec,
+                                  endTimecodeSec,
+                                  category,
+                                  priority,
                                   comment,
                                   clientEmail: gallery?.clientEmail || '',
                                   clientName: gallery?.clientName || '',
@@ -1305,6 +1319,19 @@ export default function ClientGallery({}: ClientGalleryProps) {
                                 queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
                               });
                             }}
+                          />
+                          {/* Slice 9X.82 — CommentsPanel rett under video
+                              (Frame.io/Filepass-mønster). Klient ser ALLE
+                              tilbakemeldinger på dette klippet samlet,
+                              klikk for å seeke. */}
+                          <CommentsPanel
+                            comments={chapterComments}
+                            onSeek={() => {
+                              // Player seek-API ikke eksponert via ref enda; klient
+                              // kan klikke prikker på progress-bar i stedet.
+                            }}
+                            layout="under"
+                            title="Edit-tilbakemelding"
                           />
                         </Box>
                       </Grid>

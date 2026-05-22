@@ -22223,11 +22223,21 @@ async function ensureVideoTimecodeCommentsSchema(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_video_timecode_comments_gallery
         ON video_timecode_comments (gallery_id, chapter_id, timecode_sec);
+      -- Slice 9X.82 edit-feedback: range, category, priority
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS end_timecode_sec NUMERIC(10,3);
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS category VARCHAR(32) DEFAULT 'other';
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS priority VARCHAR(16) DEFAULT 'suggestion';
     `);
   } catch (e: any) {
     console.warn('[video-comments] schema-ensure failed:', e.message);
   }
 }
+
+const VALID_COMMENT_CATEGORIES = new Set(['color', 'audio', 'edit', 'vfx', 'structure', 'text', 'other']);
+const VALID_COMMENT_PRIORITIES = new Set(['must-fix', 'nice-to-have', 'suggestion']);
 
 app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
   const accessToken = String(req.params.accessToken || "").trim();
@@ -22246,7 +22256,8 @@ app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
     let where = `gallery_id = $1`;
     if (chapterId) { params.push(chapterId); where += ` AND chapter_id = $${params.length}`; }
     const result = await pool.query(
-      `SELECT id, chapter_id, timecode_sec, comment, client_email, client_name,
+      `SELECT id, chapter_id, timecode_sec, end_timecode_sec,
+              category, priority, comment, client_email, client_name,
               status, resolved_at, created_at, updated_at
          FROM video_timecode_comments
         WHERE ${where}
@@ -22259,6 +22270,9 @@ app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
         id: r.id,
         chapterId: r.chapter_id,
         timecodeSec: Number(r.timecode_sec),
+        endTimecodeSec: r.end_timecode_sec != null ? Number(r.end_timecode_sec) : null,
+        category: r.category || 'other',
+        priority: r.priority || 'suggestion',
         comment: r.comment,
         clientEmail: r.client_email,
         clientName: r.client_name,
@@ -22277,10 +22291,18 @@ app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => 
   const accessToken = String(req.params.accessToken || "").trim();
   if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
   const timecodeSec = Number(req.body?.timecodeSec);
+  const endTimecodeSecRaw = req.body?.endTimecodeSec;
+  const endTimecodeSec = endTimecodeSecRaw != null && Number.isFinite(Number(endTimecodeSecRaw)) && Number(endTimecodeSecRaw) > timecodeSec
+    ? Number(endTimecodeSecRaw)
+    : null;
   const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim().slice(0, 2000) : '';
   const chapterId = typeof req.body?.chapterId === 'string' ? req.body.chapterId.slice(0, 64) : null;
   const clientEmail = typeof req.body?.clientEmail === 'string' ? req.body.clientEmail.trim().toLowerCase() : '';
   const clientName = typeof req.body?.clientName === 'string' ? req.body.clientName.trim().slice(0, 255) : '';
+  const categoryRaw = typeof req.body?.category === 'string' ? req.body.category.toLowerCase() : 'other';
+  const category = VALID_COMMENT_CATEGORIES.has(categoryRaw) ? categoryRaw : 'other';
+  const priorityRaw = typeof req.body?.priority === 'string' ? req.body.priority.toLowerCase() : 'suggestion';
+  const priority = VALID_COMMENT_PRIORITIES.has(priorityRaw) ? priorityRaw : 'suggestion';
   if (!Number.isFinite(timecodeSec) || timecodeSec < 0) return res.status(400).json({ error: "invalid_timecode" });
   if (!comment) return res.status(400).json({ error: "comment_required" });
   if (!clientEmail) return res.status(400).json({ error: "client_email_required" });
@@ -22295,10 +22317,12 @@ app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => 
     await ensureVideoTimecodeCommentsSchema();
     const inserted = await pool.query(
       `INSERT INTO video_timecode_comments
-         (gallery_id, chapter_id, timecode_sec, comment, client_email, client_name)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (gallery_id, chapter_id, timecode_sec, end_timecode_sec,
+          category, priority, comment, client_email, client_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, created_at`,
-      [access.gallery.id, chapterId, timecodeSec, comment, clientEmail, clientName || null],
+      [access.gallery.id, chapterId, timecodeSec, endTimecodeSec,
+       category, priority, comment, clientEmail, clientName || null],
     );
 
     // Broadcast realtime så Bjarne ser kommentaren umiddelbart i sitt admin-view

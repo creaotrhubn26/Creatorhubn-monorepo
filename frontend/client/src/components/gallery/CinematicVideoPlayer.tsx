@@ -60,13 +60,20 @@ export interface VideoChapterMarker {
   romanNumeral?: string | null;
 }
 
+export type CommentCategory = 'color' | 'audio' | 'edit' | 'vfx' | 'structure' | 'text' | 'other';
+export type CommentPriority = 'must-fix' | 'nice-to-have' | 'suggestion';
+
 export interface VideoTimecodeComment {
   id: string;
   timecodeSec: number;
+  endTimecodeSec?: number | null;
   comment: string;
+  category?: CommentCategory;
+  priority?: CommentPriority;
   clientName?: string | null;
   clientEmail?: string | null;
   status?: 'open' | 'resolved' | 'archived';
+  createdAt?: string | null;
 }
 
 interface Props {
@@ -92,7 +99,13 @@ interface Props {
   /** Slice 9X.82 (Bjarne) — Frame.io-stil timecode-kommentarer */
   comments?: VideoTimecodeComment[];
   /** Callback når klient legger til ny kommentar på timecode */
-  onAddComment?: (input: { timecodeSec: number; comment: string }) => Promise<void> | void;
+  onAddComment?: (input: {
+    timecodeSec: number;
+    endTimecodeSec?: number | null;
+    comment: string;
+    category?: CommentCategory;
+    priority?: CommentPriority;
+  }) => Promise<void> | void;
   /** Klient-navn (forhåndsfyller comment-modalen) */
   clientName?: string | null;
 }
@@ -118,10 +131,13 @@ const CinematicVideoPlayer: React.FC<Props> = ({
   onAddComment,
   clientName,
 }) => {
-  // Slice 9X.82 (Bjarne) — comment-state
+  // Slice 9X.82 (Bjarne) — comment-state med edit-feedback-felter
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [pendingCommentText, setPendingCommentText] = useState('');
   const [pendingCommentTime, setPendingCommentTime] = useState(0);
+  const [pendingEndTime, setPendingEndTime] = useState<number | null>(null);
+  const [pendingCategory, setPendingCategory] = useState<CommentCategory>('edit');
+  const [pendingPriority, setPendingPriority] = useState<CommentPriority>('nice-to-have');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
 
@@ -134,6 +150,9 @@ const CinematicVideoPlayer: React.FC<Props> = ({
     if (!videoRef.current) return;
     videoRef.current.pause();
     setPendingCommentTime(videoRef.current.currentTime);
+    setPendingEndTime(null);
+    setPendingCategory('edit');
+    setPendingPriority('nice-to-have');
     setPendingCommentText('');
     setShowCommentModal(true);
   }, []);
@@ -144,6 +163,9 @@ const CinematicVideoPlayer: React.FC<Props> = ({
     try {
       await onAddComment({
         timecodeSec: pendingCommentTime,
+        endTimecodeSec: pendingEndTime,
+        category: pendingCategory,
+        priority: pendingPriority,
         comment: pendingCommentText.trim(),
       });
       setShowCommentModal(false);
@@ -151,7 +173,7 @@ const CinematicVideoPlayer: React.FC<Props> = ({
     } finally {
       setCommentSubmitting(false);
     }
-  }, [onAddComment, pendingCommentText, pendingCommentTime]);
+  }, [onAddComment, pendingCommentText, pendingCommentTime, pendingEndTime, pendingCategory, pendingPriority]);
 
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -792,7 +814,8 @@ const CinematicVideoPlayer: React.FC<Props> = ({
                 mb: 1,
               }}
             >
-              · Kommentar ved {fmtTime(pendingCommentTime)} ·
+              · Kommentar ved {fmtTime(pendingCommentTime)}
+              {pendingEndTime != null && ` → ${fmtTime(pendingEndTime)}`} ·
             </Typography>
             <Typography
               sx={{
@@ -802,20 +825,152 @@ const CinematicVideoPlayer: React.FC<Props> = ({
                 lineHeight: 1.0,
                 letterSpacing: '-0.02em',
                 color: '#1a1612',
-                mb: 2,
+                mb: 1.5,
               }}
             >
               Hva ser du?
             </Typography>
-            <Typography sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', fontSize: '0.95rem', color: '#5a4f42', mb: 2.5 }}>
-              {clientName ? `${clientName} — ` : ''}fortell hva du tenker om dette øyeblikket
+            <Typography sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', fontSize: '0.95rem', color: '#5a4f42', mb: 2 }}>
+              {clientName ? `${clientName} — ` : ''}gi Bjarne presis edit-tilbakemelding
             </Typography>
+
+            {/* Kategori-velger */}
+            <Typography variant="caption" sx={{ color: '#5a4f42', mb: 0.5, display: 'block', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: '0.66rem' }}>
+              Kategori
+            </Typography>
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
+              {([
+                { v: 'color' as const, l: 'Farge' },
+                { v: 'audio' as const, l: 'Lyd' },
+                { v: 'edit' as const, l: 'Klipping' },
+                { v: 'vfx' as const, l: 'VFX' },
+                { v: 'structure' as const, l: 'Struktur' },
+                { v: 'text' as const, l: 'Tekst' },
+                { v: 'other' as const, l: 'Annet' },
+              ]).map((opt) => {
+                const isSelected = pendingCategory === opt.v;
+                return (
+                  <Box
+                    key={opt.v}
+                    onClick={() => setPendingCategory(opt.v)}
+                    role="button"
+                    tabIndex={0}
+                    sx={{
+                      cursor: 'pointer',
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: 0.5,
+                      bgcolor: isSelected ? '#1a1612' : 'transparent',
+                      color: isSelected ? '#fdfaf5' : '#5a4f42',
+                      border: `1px solid ${isSelected ? '#1a1612' : '#d4c4b0'}`,
+                      fontFamily: '"Inter", "Segoe UI", sans-serif',
+                      fontSize: '0.75rem',
+                      fontWeight: isSelected ? 700 : 500,
+                      letterSpacing: '0.02em',
+                      transition: 'all 0.15s',
+                      '&:hover': { borderColor: '#1a1612' },
+                    }}
+                  >
+                    {opt.l}
+                  </Box>
+                );
+              })}
+            </Stack>
+
+            {/* Prioritet */}
+            <Typography variant="caption" sx={{ color: '#5a4f42', mb: 0.5, display: 'block', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: '0.66rem' }}>
+              Prioritet
+            </Typography>
+            <Stack direction="row" spacing={0.5} sx={{ mb: 1.5 }}>
+              {([
+                { v: 'must-fix' as const, l: 'Må fikses', color: '#dc2626' },
+                { v: 'nice-to-have' as const, l: 'Ønske', color: '#d97706' },
+                { v: 'suggestion' as const, l: 'Forslag', color: '#5a4f42' },
+              ]).map((opt) => {
+                const isSelected = pendingPriority === opt.v;
+                return (
+                  <Box
+                    key={opt.v}
+                    onClick={() => setPendingPriority(opt.v)}
+                    role="button"
+                    tabIndex={0}
+                    sx={{
+                      cursor: 'pointer',
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: 0.5,
+                      bgcolor: isSelected ? opt.color : 'transparent',
+                      color: isSelected ? '#fdfaf5' : opt.color,
+                      border: `1px solid ${opt.color}66`,
+                      fontFamily: '"Inter", "Segoe UI", sans-serif',
+                      fontSize: '0.75rem',
+                      fontWeight: isSelected ? 700 : 500,
+                      letterSpacing: '0.02em',
+                      transition: 'all 0.15s',
+                      '&:hover': { borderColor: opt.color },
+                    }}
+                  >
+                    {opt.l}
+                  </Box>
+                );
+              })}
+            </Stack>
+
+            {/* Range-toggle */}
+            <Box
+              onClick={() => {
+                if (pendingEndTime != null) setPendingEndTime(null);
+                else if (videoRef.current) setPendingEndTime(Math.min(videoRef.current.duration || 0, pendingCommentTime + 5));
+              }}
+              role="button"
+              tabIndex={0}
+              sx={{
+                cursor: 'pointer',
+                fontSize: '0.78rem',
+                color: pendingEndTime != null ? '#d97706' : '#5a4f42',
+                fontFamily: SERIF_STACK,
+                fontStyle: 'italic',
+                mb: 2,
+                display: 'inline-block',
+                '&:hover': { color: '#d97706' },
+              }}
+            >
+              {pendingEndTime != null
+                ? `← Tilbake til kun punkt-kommentar (${fmtTime(pendingCommentTime)})`
+                : `+ Marker en periode (fra ${fmtTime(pendingCommentTime)} til ...)`}
+            </Box>
+            {pendingEndTime != null && (
+              <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.32)', borderRadius: 0.5 }}>
+                <Typography variant="caption" sx={{ color: '#5a4f42', display: 'block', mb: 0.5 }}>
+                  Slutt-tidspunkt (sekunder fra {fmtTime(pendingCommentTime)}):
+                </Typography>
+                <input
+                  type="number"
+                  min={1}
+                  max={300}
+                  value={Math.max(1, Math.round(pendingEndTime - pendingCommentTime))}
+                  onChange={(e) => {
+                    const sec = Math.max(1, Math.min(300, Number(e.target.value) || 1));
+                    setPendingEndTime(pendingCommentTime + sec);
+                  }}
+                  style={{
+                    width: 80,
+                    padding: '6px 10px',
+                    border: '1px solid #d4c4b0',
+                    borderRadius: 2,
+                    fontFamily: 'inherit',
+                    fontSize: '0.9rem',
+                  }}
+                />{' '}sek
+              </Box>
+            )}
+
             <TextField
               fullWidth
               multiline
               rows={4}
               autoFocus
-              placeholder="F.eks. 'Kan vi få mer av mors tale her?' eller 'Elsker dette opptaket!'"
+              placeholder="F.eks. 'Kan vi få mer av mors tale her?' eller 'Color er for varm — kjør det -300K kaldere'"
               value={pendingCommentText}
               onChange={(e) => setPendingCommentText(e.target.value)}
               inputProps={{ maxLength: 1800 }}
@@ -864,7 +1019,7 @@ const CinematicVideoPlayer: React.FC<Props> = ({
                   '&.Mui-disabled': { bgcolor: '#a8957e', color: '#fdfaf5' },
                 }}
               >
-                {commentSubmitting ? 'Sender…' : 'Send kommentar'}
+                {commentSubmitting ? 'Sender…' : 'Send tilbakemelding'}
               </Button>
             </Stack>
           </Box>
