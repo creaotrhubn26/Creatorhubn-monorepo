@@ -92,6 +92,7 @@ import {
 } from "./role-room-whatsapp-config-service.js";
 import { persistWebhookEvents } from "./role-room-whatsapp-events-service.js";
 import { createCaptureRouter } from "./capture-routes.js";
+import { createPostAgentRouter } from "./post-agent-anthropic-routes.js";
 import { createSfxMatchRouter } from "./sfx-match-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -1579,6 +1580,7 @@ registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
+app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
 app.use(
   "/api/ai/read-through",
