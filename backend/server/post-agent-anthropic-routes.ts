@@ -552,5 +552,180 @@ export function createPostAgentRouter(
     }
   });
 
+  // ---- Admin: manage Post Agent prices ----
+
+  /**
+   * Admin-only — returns the current Post Agent Stripe product + prices + env-var
+   * configuration so the AdminDashboard's price-management panel can display
+   * what's actually configured live in Stripe.
+   */
+  router.get(
+    '/billing/admin/prices',
+    userAuth,
+    async (req: Request, res: Response) => {
+      const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+      if (!session || (session.role !== 'admin' && session.role !== 'owner' && session.role !== 'super_admin')) {
+        res.status(403).json({ error: 'admin_required' });
+        return;
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        res.status(503).json({
+          error: 'stripe_not_configured',
+          detail: 'STRIPE_SECRET_KEY missing on backend.',
+        });
+        return;
+      }
+      try {
+        const { default: Stripe } = await import('stripe');
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const search = await stripe.products.search({
+          query: `metadata['app']:'post-agent'`,
+          limit: 5,
+        });
+        const product = search.data.find((p) => p.active) ?? null;
+        let prices: unknown[] = [];
+        if (product) {
+          const priceList = await stripe.prices.list({ product: product.id, limit: 20 });
+          prices = priceList.data;
+        }
+
+        // Usage metrics
+        let activeSubscriptions = 0;
+        let tokensThisMonth = 0;
+        let revenueThisMonthNok = 0;
+        try {
+          const r = await pool.query(
+            `SELECT
+               COALESCE(SUM(input_tokens + output_tokens), 0)::BIGINT AS total_tokens,
+               COUNT(DISTINCT user_id)::BIGINT AS users
+             FROM post_agent_usage
+             WHERE at >= date_trunc('month', NOW())`,
+          );
+          tokensThisMonth = Number(r.rows[0]?.total_tokens ?? 0);
+          activeSubscriptions = Number(r.rows[0]?.users ?? 0);
+          revenueThisMonthNok = activeSubscriptions * 299; // approximate (monthly base)
+        } catch {
+          // Table may not exist yet
+        }
+
+        res.json({
+          product: product
+            ? {
+                id: product.id,
+                name: product.name,
+                description: product.description,
+                active: product.active,
+              }
+            : null,
+          prices,
+          envVars: {
+            STRIPE_PRODUCT_POST_AGENT: process.env.STRIPE_PRODUCT_POST_AGENT,
+            STRIPE_PRICE_POST_AGENT_MONTHLY: process.env.STRIPE_PRICE_POST_AGENT_MONTHLY,
+            STRIPE_PRICE_POST_AGENT_YEARLY: process.env.STRIPE_PRICE_POST_AGENT_YEARLY,
+          },
+          mode: process.env.STRIPE_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'test',
+          usageMetrics: {
+            activeSubscriptions,
+            tokensThisMonth,
+            revenueThisMonthNok,
+          },
+        });
+      } catch (err) {
+        res.status(502).json({
+          error: 'stripe_query_failed',
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  /**
+   * Admin-only — updates monthly/yearly Post Agent prices in Stripe.
+   * Implementation: creates NEW prices (Stripe prices are immutable), archives
+   * old ones, and reports the new IDs for the admin to update env vars.
+   */
+  router.post(
+    '/billing/admin/prices',
+    userAuth,
+    async (req: Request, res: Response) => {
+      const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+      if (!session || (session.role !== 'admin' && session.role !== 'owner' && session.role !== 'super_admin')) {
+        res.status(403).json({ error: 'admin_required' });
+        return;
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        res.status(503).json({ error: 'stripe_not_configured' });
+        return;
+      }
+
+      const monthlyNok = Number(req.body?.monthlyNok ?? 0);
+      const yearlyNok = Number(req.body?.yearlyNok ?? 0);
+      if (monthlyNok <= 0 && yearlyNok <= 0) {
+        res.status(400).json({ error: 'invalid_prices', detail: 'monthlyNok and/or yearlyNok required' });
+        return;
+      }
+
+      try {
+        const { default: Stripe } = await import('stripe');
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const search = await stripe.products.search({
+          query: `metadata['app']:'post-agent'`,
+          limit: 5,
+        });
+        const product = search.data.find((p) => p.active);
+        if (!product) {
+          res.status(404).json({
+            error: 'product_not_seeded',
+            detail: 'Run backend/scripts/seed-post-agent-stripe-product.ts first.',
+          });
+          return;
+        }
+
+        const existing = await stripe.prices.list({ product: product.id, active: true, limit: 50 });
+        const result: Record<string, unknown> = { productId: product.id };
+
+        for (const tier of ['monthly', 'yearly'] as const) {
+          const targetNok = tier === 'monthly' ? monthlyNok : yearlyNok;
+          if (targetNok <= 0) continue;
+          const interval = tier === 'monthly' ? 'month' : 'year';
+          const oldPrice = existing.data.find(
+            (p) => p.recurring?.interval === interval && p.metadata?.tier_key === tier,
+          );
+          const targetAmountOre = Math.round(targetNok * 100);
+          if (oldPrice && oldPrice.unit_amount === targetAmountOre) {
+            result[`${tier}PriceId`] = oldPrice.id;
+            result[`${tier}Changed`] = false;
+            continue;
+          }
+          if (oldPrice) {
+            await stripe.prices.update(oldPrice.id, { active: false });
+          }
+          const newPrice = await stripe.prices.create({
+            product: product.id,
+            unit_amount: targetAmountOre,
+            currency: 'nok',
+            recurring: { interval: interval as 'month' | 'year' },
+            nickname: `Post Agent · ${tier}`,
+            metadata: { app: 'post-agent', tier_key: tier, source: 'admin_update' },
+          });
+          result[`${tier}PriceId`] = newPrice.id;
+          result[`${tier}Changed`] = true;
+        }
+
+        res.json({
+          ok: true,
+          ...result,
+          envVarUpdateNeeded: 'Set STRIPE_PRICE_POST_AGENT_MONTHLY/YEARLY env vars in Render to the new price IDs above.',
+        });
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 502;
+        res.status(status).json({
+          error: 'stripe_update_failed',
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
   return router;
 }

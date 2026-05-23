@@ -53,6 +53,7 @@ import {
   type PlatformFeature,
   type PlatformSubscriptionPlan,
 } from '../../services/PlatformPricingService';
+import { PostAgentPricingPanel } from './PostAgentPricingPanel';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -197,7 +198,8 @@ type PriceManagementSection =
   | 'subscriptions'
   | 'email-templates'
   | 'analytics'
-  | 'enterprise';
+  | 'enterprise'
+  | 'post-agent';
 
 interface PriceManagementDashboardProps {
   onMeetingCreate?: (meeting: WorkflowPayload) => void;
@@ -576,6 +578,7 @@ export default function PriceManagementDashboard({
     'email-templates': 2,
     analytics: 3,
     enterprise: 4,
+    'post-agent': 5,
   };
 
   useEffect(() => {
@@ -1263,6 +1266,7 @@ export default function PriceManagementDashboard({
           <Tab icon={<EmailIcon />} label="E-postmaler" />
           <Tab icon={<AnalyticsIcon />} label="Analyse" />
           <Tab icon={<EnterpriseIcon />} label="Enterprise" />
+          <Tab icon={<MoneyIcon />} label="Post Agent" />
         </Tabs>
       </Box>
 
@@ -2143,6 +2147,10 @@ export default function PriceManagementDashboard({
             </Box>
           </Grid>
         </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={5}>
+        <PostAgentPricingPanel theming={theming} priceManagementSurfaceSx={priceManagementSurfaceSx} />
       </TabPanel>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>

@@ -1235,7 +1235,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                       (c: any) => c.chapterId === ch.id,
                     );
                     // Holds player + side-panel for audio i samme grid-rad
-                    const audioSeekRef = { current: (sec: number) => {} as any };
+                    const audioSeekRef: { current: (sec: number) => void } = { current: () => {} };
                     nodes.push(
                       <Grid item xs={12} key={`chapter-audio-${ch.id}`}>
                         <Box sx={{ maxWidth: 1280, mx: 'auto', mb: 4, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
