@@ -255,8 +255,15 @@ export async function checkAgentEntitlement(
   }
 
   // Auto-grant based on subscription plan.
-  if (planType === 'pro' || planType === 'enterprise') {
-    const source = planType === 'pro' ? 'plan_pro' : 'plan_enterprise';
+  // 'post_agent' is the standalone Post Agent subscription — sold separately
+  // from Role Room pro/enterprise, but unlocks the same Claude proxy.
+  if (planType === 'pro' || planType === 'enterprise' || planType === 'post_agent') {
+    const source =
+      planType === 'pro'
+        ? 'plan_pro'
+        : planType === 'enterprise'
+        ? 'plan_enterprise'
+        : 'plan_pro'; // post_agent maps to plan_pro semantically for AI quota
     await upsertPlanEntitlement(pool, userId, source);
     return {
       allowed: true,

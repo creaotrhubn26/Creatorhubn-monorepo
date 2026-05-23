@@ -219,6 +219,7 @@ const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile
 const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
+const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -863,6 +864,7 @@ function App() {
                   <Route path="/contracts/:contractId" component={ContractView} />
                   <Route path="/admin-invite-system" component={AdminInviteSystem as React.ComponentType<any>} />
                   <Route path="/role-room/accept-invite" component={AcceptTesterInvite} />
+                  <Route path="/link" component={PostAgentLinkPage} />
                   <Route path="/prototype-tester/accept-invite" component={AcceptPrototypeTesterInvite} />
                   {/* <Route path="/company-profiles" component={CompanyProfilesPage} /> */}
                   {/* <Route path="/logo-integration-demo" component={LogoIntegrationDemo} /> */}
