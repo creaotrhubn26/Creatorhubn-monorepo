@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Legg til Post Agent — The Role Room</title>
+  <link rel="icon" type="image/png" href="/theroleroom-app-icon-1024.png">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(160, 48, 192, 0.18), transparent 60%),
+        #0a0518;
+      color: #f0eaff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      padding: 24px;
+    }
+    .card {
+      background: rgba(26, 13, 69, 0.7);
+      border: 1px solid #2c1860;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+    h1 { margin: 0 0 4px; font-size: 24px; font-weight: 600; }
+    .subtitle { color: #b8a8d8; font-size: 14px; margin-bottom: 24px; }
+    .pricing-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .plan {
+      flex: 1;
+      background: #1a0d45;
+      border: 2px solid #2c1860;
+      border-radius: 10px;
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .plan:hover { border-color: #a030c0; transform: translateY(-1px); }
+    .plan.selected { border-color: #a030c0; background: rgba(160, 48, 192, 0.15); }
+    .plan-name { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #b8a8d8; }
+    .plan-price { font-size: 22px; font-weight: 600; margin: 6px 0; }
+    .plan-period { font-size: 12px; color: #8674a8; }
+    .plan-savings { font-size: 11px; color: #4ad48a; margin-top: 4px; }
+    .features {
+      background: #1a0d45;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .features-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #b8a8d8; margin-bottom: 8px; }
+    .features ul { margin: 0; padding-left: 20px; color: #f0eaff; font-size: 13px; }
+    .features li { padding: 3px 0; }
+    .ai-overage {
+      background: rgba(110, 63, 199, 0.1);
+      border-left: 3px solid #6e3fc7;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #b8a8d8;
+      margin-bottom: 16px;
+    }
+    button {
+      width: 100%;
+      background: #a030c0;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 24px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .alert {
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .alert.error { background: rgba(239, 79, 111, 0.1); border: 1px solid #ef4f6f; color: #ef4f6f; }
+    .alert.success { background: rgba(74, 212, 138, 0.1); border: 1px solid #4ad48a; color: #4ad48a; font-weight: 500; }
+    .helper { color: #8674a8; font-size: 11px; margin-top: 20px; margin-bottom: 0; }
+    .login-link {
+      display: inline-block;
+      margin-top: 12px;
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 20px;
+      background: #a030c0;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .loading {
+      color: #b8a8d8;
+      text-align: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Legg til Post Agent</h1>
+    <div class="subtitle">AI-drevet post-produksjon for DaVinci Resolve — som tillegg til Role Room-abonnementet ditt.</div>
+
+    <div id="loading" class="loading">Sjekker abonnementsstatus…</div>
+
+    <div id="error-no-sub" style="display:none">
+      <div class="alert error">
+        Du har ikke et aktivt Role Room-abonnement. Tegn et først, så kan Post Agent legges til som tillegg.
+      </div>
+      <a href="/pricing" class="login-link">Se priser</a>
+    </div>
+
+    <div id="error-unauthorized" style="display:none">
+      <div class="alert error">Du må være logget inn for å legge til Post Agent.</div>
+      <a href="/login?redirect=/billing/post-agent" class="login-link">Logg inn</a>
+    </div>
+
+    <div id="already-active" style="display:none">
+      <div class="alert success">
+        Post Agent er allerede en del av abonnementet ditt. Gå tilbake til Post Agent-appen.
+      </div>
+    </div>
+
+    <div id="purchase-form" style="display:none">
+      <div class="features">
+        <div class="features-title">Hva du får</div>
+        <ul>
+          <li>AI cull (Claude Vision) — automatisk klipp-utvelgelse</li>
+          <li>Highlight-scoring per klipp</li>
+          <li>Scene-tagging + smart timeline-bygging</li>
+          <li>Beat-synket music video-pipelines</li>
+          <li>Transkripsjon (WhisperX) — lokalt på Mac-en din</li>
+        </ul>
+      </div>
+
+      <div class="pricing-row">
+        <div class="plan selected" data-interval="monthly">
+          <div class="plan-name">Månedlig</div>
+          <div class="plan-price">299<small style="font-size:14px"> NOK</small></div>
+          <div class="plan-period">per måned</div>
+        </div>
+        <div class="plan" data-interval="yearly">
+          <div class="plan-name">Årlig</div>
+          <div class="plan-price">2990<small style="font-size:14px"> NOK</small></div>
+          <div class="plan-period">per år</div>
+          <div class="plan-savings">2 mnd gratis</div>
+        </div>
+      </div>
+
+      <div class="ai-overage">
+        <strong>+ AI-forbruk:</strong> Du betaler for faktiske Claude API-kall (cull, highlight-scoring, etc.) på toppen av base. Forventet: $0.30 per 100 klipp culled.
+      </div>
+
+      <button id="confirm-btn">Bekreft og legg til</button>
+      <div id="alert"></div>
+    </div>
+
+    <p class="helper">Stripe håndterer prorata-fakturering automatisk. Du belastes kun for resten av denne perioden, så normalpris fra neste fakturering.</p>
+  </div>
+
+  <script>
+    (function() {
+      var loading = document.getElementById('loading');
+      var errorNoSub = document.getElementById('error-no-sub');
+      var errorUnauth = document.getElementById('error-unauthorized');
+      var alreadyActive = document.getElementById('already-active');
+      var form = document.getElementById('purchase-form');
+      var alertBox = document.getElementById('alert');
+      var btn = document.getElementById('confirm-btn');
+      var selectedInterval = 'monthly';
+
+      // Plan-pick UI
+      document.querySelectorAll('.plan').forEach(function(p) {
+        p.addEventListener('click', function() {
+          document.querySelectorAll('.plan').forEach(function(x) { x.classList.remove('selected'); });
+          p.classList.add('selected');
+          selectedInterval = p.getAttribute('data-interval');
+        });
+      });
+
+      function getBearer() {
+        var keys = ['creatorhub_auth_token', 'role_room_auth_token', 'authToken', 'sessionToken', 'rr_session', 'auth_session'];
+        for (var i = 0; i < keys.length; i++) {
+          var v = window.localStorage.getItem(keys[i]);
+          if (v) return v.trim();
+        }
+        return null;
+      }
+
+      async function loadPreview() {
+        var bearer = getBearer();
+        var headers = bearer ? { 'Authorization': 'Bearer ' + bearer } : {};
+        try {
+          var res = await fetch('/api/post-agent/billing/preview', {
+            credentials: 'include',
+            headers: headers,
+          });
+          if (res.status === 401) {
+            loading.style.display = 'none';
+            errorUnauth.style.display = 'block';
+            return;
+          }
+          var data = await res.json();
+          loading.style.display = 'none';
+          if (!data.configured) {
+            alertBox.innerHTML = '<div class="alert error">Post Agent-priser er ikke konfigurert ennå. Admin må kjøre seed-scriptet.</div>';
+            form.style.display = 'block';
+            btn.disabled = true;
+            return;
+          }
+          if (data.hasPostAgent) {
+            alreadyActive.style.display = 'block';
+            return;
+          }
+          if (!data.hasActiveSubscription) {
+            errorNoSub.style.display = 'block';
+            return;
+          }
+          form.style.display = 'block';
+        } catch (e) {
+          loading.style.display = 'none';
+          alertBox.innerHTML = '<div class="alert error">Kunne ikke laste billing-info: ' + String(e) + '</div>';
+          form.style.display = 'block';
+          btn.disabled = true;
+        }
+      }
+
+      btn.addEventListener('click', async function() {
+        btn.disabled = true;
+        btn.textContent = 'Legger til…';
+        alertBox.innerHTML = '';
+        try {
+          var bearer = getBearer();
+          var res = await fetch('/api/post-agent/billing/add-to-subscription', {
+            method: 'POST',
+            credentials: 'include',
+            headers: Object.assign(
+              { 'Content-Type': 'application/json' },
+              bearer ? { 'Authorization': 'Bearer ' + bearer } : {}
+            ),
+            body: JSON.stringify({ interval: selectedInterval }),
+          });
+          var data = await res.json();
+          if (!res.ok) {
+            alertBox.innerHTML = '<div class="alert error">' + (data.detail || data.error || ('HTTP ' + res.status)) + '</div>';
+            btn.disabled = false;
+            btn.textContent = 'Bekreft og legg til';
+            return;
+          }
+          form.style.display = 'none';
+          alreadyActive.style.display = 'block';
+        } catch (e) {
+          alertBox.innerHTML = '<div class="alert error">' + String(e) + '</div>';
+          btn.disabled = false;
+          btn.textContent = 'Bekreft og legg til';
+        }
+      });
+
+      loadPreview();
+    })();
+  </script>
+</body>
+</html>

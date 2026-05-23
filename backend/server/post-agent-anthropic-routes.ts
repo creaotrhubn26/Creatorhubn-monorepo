@@ -375,5 +375,182 @@ export function createPostAgentRouter(
     res.json(summary);
   });
 
+  // ---- Billing / Add-on ----
+
+  /**
+   * Returns the current user's Stripe subscription state + Post Agent add-on info,
+   * so the /billing/post-agent page can show "Add for X NOK/mo".
+   * Doesn't mutate anything.
+   */
+  router.get('/billing/preview', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const postAgentPriceMonthly = process.env.STRIPE_PRICE_POST_AGENT_MONTHLY;
+    const postAgentPriceYearly = process.env.STRIPE_PRICE_POST_AGENT_YEARLY;
+
+    if (!postAgentPriceMonthly && !postAgentPriceYearly) {
+      res.json({
+        configured: false,
+        reason: 'post_agent_prices_not_configured',
+        detail: 'Run backend/scripts/seed-post-agent-stripe-product.ts to create products + set STRIPE_PRICE_POST_AGENT_* env vars.',
+      });
+      return;
+    }
+
+    let stripeSubscriptionId: string | null = null;
+    try {
+      const { rows } = await pool.query(
+        `SELECT stripe_subscription_id FROM subscriptions
+         WHERE user_id = $1 AND status IN ('active','trialing')
+         ORDER BY start_date DESC LIMIT 1`,
+        [userId],
+      );
+      stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
+    } catch {
+      // Table missing or query failed — treat as no sub
+    }
+
+    if (!stripeSubscriptionId) {
+      res.json({
+        configured: true,
+        hasActiveSubscription: false,
+        hasPostAgent: false,
+        canAddPostAgent: false,
+        reason: 'no_active_role_room_subscription',
+        availablePrices: {
+          monthly: postAgentPriceMonthly ?? null,
+          yearly: postAgentPriceYearly ?? null,
+        },
+      });
+      return;
+    }
+
+    try {
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '');
+      const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId, {
+        expand: ['items.data.price'],
+      });
+      const items = sub.items?.data ?? [];
+      const postAgentItem = items.find(
+        (it) =>
+          it.price?.id === postAgentPriceMonthly ||
+          it.price?.id === postAgentPriceYearly,
+      );
+      res.json({
+        configured: true,
+        hasActiveSubscription: true,
+        hasPostAgent: Boolean(postAgentItem),
+        canAddPostAgent: !postAgentItem,
+        subscriptionId: sub.id,
+        currentItemCount: items.length,
+        availablePrices: {
+          monthly: postAgentPriceMonthly ?? null,
+          yearly: postAgentPriceYearly ?? null,
+        },
+      });
+    } catch (err) {
+      res.status(502).json({
+        configured: true,
+        error: 'stripe_lookup_failed',
+        detail: (err as Error).message,
+      });
+    }
+  });
+
+  /**
+   * Adds the Post Agent price as a subscription item on the user's current Stripe
+   * subscription. Stripe handles proration automatically — user pays the
+   * remainder of the current period on next invoice.
+   *
+   * Body: { interval: 'monthly' | 'yearly' }
+   */
+  router.post('/billing/add-to-subscription', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const interval = (req.body?.interval ?? 'monthly') as 'monthly' | 'yearly';
+    const priceId =
+      interval === 'yearly'
+        ? process.env.STRIPE_PRICE_POST_AGENT_YEARLY
+        : process.env.STRIPE_PRICE_POST_AGENT_MONTHLY;
+
+    if (!priceId) {
+      res.status(503).json({
+        error: 'post_agent_price_not_configured',
+        detail: `Missing env var STRIPE_PRICE_POST_AGENT_${interval.toUpperCase()}`,
+      });
+      return;
+    }
+
+    let stripeSubscriptionId: string | null = null;
+    try {
+      const { rows } = await pool.query(
+        `SELECT stripe_subscription_id FROM subscriptions
+         WHERE user_id = $1 AND status IN ('active','trialing')
+         ORDER BY start_date DESC LIMIT 1`,
+        [userId],
+      );
+      stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
+    } catch (err) {
+      res.status(500).json({ error: 'subscription_lookup_failed', detail: (err as Error).message });
+      return;
+    }
+
+    if (!stripeSubscriptionId) {
+      res.status(404).json({
+        error: 'no_active_subscription',
+        detail: 'User must have an active Role Room subscription before adding Post Agent.',
+      });
+      return;
+    }
+
+    try {
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '');
+
+      // Check it isn't already added (idempotent)
+      const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+      const existing = (sub.items?.data ?? []).find((it) => it.price?.id === priceId);
+      if (existing) {
+        res.json({
+          ok: true,
+          already_subscribed: true,
+          subscriptionItemId: existing.id,
+        });
+        return;
+      }
+
+      const item = await stripe.subscriptionItems.create({
+        subscription: stripeSubscriptionId,
+        price: priceId,
+        proration_behavior: 'create_prorations',
+      });
+
+      // Write entitlement immediately so checkAgentEntitlement sees access on
+      // the next request (rather than waiting for Stripe webhook propagation).
+      try {
+        await pool.query(
+          `INSERT INTO role_room_agent_entitlements (user_id, status, source, notes)
+           VALUES ($1, 'active', 'plan_pro', $2)
+           ON CONFLICT DO NOTHING`,
+          [userId, `Auto-granted by post-agent add-on (item ${item.id})`],
+        );
+      } catch (entErr) {
+        console.warn('[post-agent] entitlement upsert failed (Stripe still added):', entErr);
+      }
+
+      console.log(`[post-agent] added subscription item for user=${userId} item=${item.id}`);
+      res.json({
+        ok: true,
+        already_subscribed: false,
+        subscriptionItemId: item.id,
+      });
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode ?? 502;
+      res.status(status).json({
+        error: 'stripe_add_item_failed',
+        detail: (err as Error).message,
+      });
+    }
+  });
+
   return router;
 }

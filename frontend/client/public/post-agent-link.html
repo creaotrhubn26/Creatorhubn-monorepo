@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Koble Post Agent — The Role Room</title>
+  <link rel="icon" type="image/png" href="/theroleroom-app-icon-1024.png">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(160, 48, 192, 0.18), transparent 60%),
+        #0a0518;
+      color: #f0eaff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      padding: 24px;
+    }
+    .card {
+      background: rgba(26, 13, 69, 0.7);
+      border: 1px solid #2c1860;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; font-weight: 600; }
+    p.subtitle { color: #b8a8d8; font-size: 14px; margin: 0 0 24px; }
+    label {
+      display: block;
+      color: #b8a8d8;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    input[type="text"] {
+      width: 100%;
+      background: #0a0518;
+      border: 1px solid #2c1860;
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #f0eaff;
+      font-size: 22px;
+      font-family: ui-monospace, "SF Mono", monospace;
+      letter-spacing: 4px;
+      text-align: center;
+      margin-bottom: 16px;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: #a030c0; }
+    button {
+      width: 100%;
+      background: #a030c0;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: #2c1860; }
+    .alert {
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .alert.error { background: rgba(239, 79, 111, 0.1); border: 1px solid #ef4f6f; color: #ef4f6f; }
+    .alert.success { background: rgba(74, 212, 138, 0.1); border: 1px solid #4ad48a; color: #4ad48a; font-weight: 500; }
+    .helper { color: #8674a8; font-size: 11px; margin-top: 24px; margin-bottom: 0; }
+    .login-link {
+      display: inline-block;
+      margin-top: 12px;
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 20px;
+      background: #a030c0;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Koble Post Agent</h1>
+    <p class="subtitle">Skriv inn 6-tegns koden som vises i Post Agent for å pare den med Role Room-kontoen din.</p>
+
+    <div id="form">
+      <label>Pairing-kode</label>
+      <input id="code" type="text" placeholder="ABC-DEF" autofocus maxlength="7" />
+      <button id="pair-btn" disabled>Pare Post Agent</button>
+      <div id="alert"></div>
+    </div>
+
+    <div id="success" style="display:none">
+      <div class="alert success">
+        Paret. Gå tilbake til Post Agent — den fullfører oppsettet automatisk innen et par sekunder.
+      </div>
+    </div>
+
+    <div id="unauthorized" style="display:none">
+      <div class="alert error">Du må være logget inn på Role Room for å pare en Post Agent.</div>
+      <a href="/login?redirect=/link" class="login-link">Logg inn</a>
+    </div>
+
+    <p class="helper">Pairing-koden utløper etter 10 minutter. Du kan generere en ny direkte fra Post Agent.</p>
+  </div>
+
+  <script>
+    (function() {
+      var form = document.getElementById('form');
+      var success = document.getElementById('success');
+      var unauthorized = document.getElementById('unauthorized');
+      var codeInput = document.getElementById('code');
+      var btn = document.getElementById('pair-btn');
+      var alertBox = document.getElementById('alert');
+
+      // Pre-fill code from ?code= URL param
+      var params = new URLSearchParams(window.location.search);
+      var prefilled = params.get('code');
+      if (prefilled) {
+        codeInput.value = prefilled.toUpperCase();
+        btn.disabled = false;
+      }
+
+      codeInput.addEventListener('input', function() {
+        codeInput.value = codeInput.value.toUpperCase();
+        var stripped = codeInput.value.replace('-', '');
+        btn.disabled = stripped.length < 6;
+      });
+
+      function getBearer() {
+        // Frontend stores its session token under 'creatorhub_auth_token'.
+        // The other keys are legacy/test-harness fallbacks.
+        var keys = [
+          'creatorhub_auth_token',
+          'role_room_auth_token',
+          'authToken',
+          'sessionToken',
+          'rr_session',
+          'auth_session',
+        ];
+        for (var i = 0; i < keys.length; i++) {
+          var v = window.localStorage.getItem(keys[i]);
+          if (v) return v.trim();
+        }
+        return null;
+      }
+
+      btn.addEventListener('click', async function() {
+        btn.disabled = true;
+        btn.textContent = 'Parer…';
+        alertBox.innerHTML = '';
+        try {
+          var bearer = getBearer();
+          var res = await fetch('/api/post-agent/pairing/redeem', {
+            method: 'POST',
+            headers: Object.assign(
+              { 'Content-Type': 'application/json' },
+              bearer ? { 'Authorization': 'Bearer ' + bearer } : {}
+            ),
+            credentials: 'include',
+            body: JSON.stringify({ code: codeInput.value.trim().toUpperCase() }),
+          });
+          if (res.status === 401) {
+            form.style.display = 'none';
+            unauthorized.style.display = 'block';
+            return;
+          }
+          var data = await res.json();
+          if (!res.ok) {
+            alertBox.innerHTML = '<div class="alert error">' + (data.error || ('HTTP ' + res.status)) + '</div>';
+            btn.disabled = false;
+            btn.textContent = 'Pare Post Agent';
+            return;
+          }
+          form.style.display = 'none';
+          success.style.display = 'block';
+        } catch (e) {
+          alertBox.innerHTML = '<div class="alert error">' + String(e) + '</div>';
+          btn.disabled = false;
+          btn.textContent = 'Pare Post Agent';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

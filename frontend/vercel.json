@@ -98,6 +98,14 @@
       "destination": "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev/$1"
     },
     {
+      "source": "/link",
+      "destination": "/post-agent-link.html"
+    },
+    {
+      "source": "/billing/post-agent",
+      "destination": "/post-agent-billing.html"
+    },
+    {
       "source": "/robots.txt",
       "destination": "/creatorhubn-robots.txt"
     },
