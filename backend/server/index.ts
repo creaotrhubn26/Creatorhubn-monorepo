@@ -93,6 +93,7 @@ import {
 import { persistWebhookEvents } from "./role-room-whatsapp-events-service.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createPostAgentRouter } from "./post-agent-anthropic-routes.js";
+import { handlePostAgentStripeWebhook } from "./post-agent-stripe-webhook.js";
 import { createSfxMatchRouter } from "./sfx-match-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -962,6 +963,15 @@ app.post(
       });
     }
   },
+);
+
+// Post Agent webhook — must be mounted BEFORE express.json() so raw body is
+// preserved for Stripe signature verification. Handles subscription lifecycle
+// events to keep role_room_agent_entitlements in sync.
+app.post(
+  "/api/post-agent/webhooks/stripe",
+  express.raw({ type: "application/json" }),
+  handlePostAgentStripeWebhook({ pool }),
 );
 
 app.post(
