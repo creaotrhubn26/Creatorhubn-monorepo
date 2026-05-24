@@ -31,19 +31,28 @@ import { loadPersistedAuthSession, persistAuthSession } from './auth-session-sto
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
 import {
+  countActiveSeats,
   deletePairingCode,
   ensurePostAgentTables,
   getPairingCode,
+  getTeamSubscription,
+  grantTeamSeat,
   insertPairingCode,
   insertUsage,
   isDeviceRevoked,
   listDevicesForUser,
+  listProjectSeats,
+  listUserActiveSeats,
   markPairingPaired,
   prunePairingCodes,
   registerDevice,
   revokeDevice,
+  revokeTeamSeat,
   summarizeUsageForUser,
   touchDeviceLastSeen,
+  upsertTeamSubscription,
+  userHasActiveTeamSeat,
+  type TeamSeatRow,
 } from './post-agent-storage.js';
 
 interface SessionData {
@@ -288,19 +297,32 @@ export function createPostAgentRouter(
     async (req: Request, res: Response): Promise<void> => {
       const userId = (req as AuthedRequest).userId;
 
+<<<<<<< Updated upstream
       // Entitlement gate — must have active Role Room sub OR be admin.
       // Pass role from session so admin/super_admin bypass works (without
       // this hint, checkAgentEntitlement can't see the role and 402s
       // even privileged users).
+=======
+      // Entitlement gate — multi-path access check, in priority order:
+      //  1. Admin/super_admin role  (session.role)        → allowed
+      //  2. Active Role Room sub / personal Post Agent    → allowed
+      //  3. Production team-seat granted by a project lead → allowed (NEW)
+      //  4. Otherwise → 402
+>>>>>>> Stashed changes
       const session = activeSessions?.get((req as AuthedRequest).bearerToken);
       const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
       if (!entitlement.allowed) {
-        res.status(402).json({
-          error: 'subscription_required',
-          detail: entitlement.reason,
-          upsell: entitlement.upsell,
-        });
-        return;
+        // Try the team-seat fallback before returning 402
+        const teamAccess = await userHasActiveTeamSeat(pool, userId);
+        if (!teamAccess) {
+          res.status(402).json({
+            error: 'subscription_required',
+            detail: entitlement.reason,
+            upsell: entitlement.upsell,
+          });
+          return;
+        }
+        // User has team-seat — allow and log for usage tracking
       }
 
       const body = req.body ?? {};
@@ -767,6 +789,239 @@ export function createPostAgentRouter(
       }
     },
   );
+
+  // ---- Team-seats per production ----
+
+  /**
+   * Verify the requesting user owns the given project (= production lead).
+   * Returns null on success; an Error to throw otherwise.
+   */
+  async function requireProjectOwnership(
+    req: Request,
+    res: Response,
+    projectId: string,
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    try {
+      const { rows } = await pool.query(
+        `SELECT user_id FROM projects WHERE id = $1 LIMIT 1`,
+        [projectId],
+      );
+      if (rows.length === 0) {
+        res.status(404).json({ error: 'project_not_found' });
+        return false;
+      }
+      if (rows[0].user_id !== userId) {
+        res.status(403).json({ error: 'not_project_owner' });
+        return false;
+      }
+      return true;
+    } catch (err) {
+      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      return false;
+    }
+  }
+
+  /**
+   * Sync Stripe subscription_item.quantity to match current active seat count.
+   * Creates the subscription_item on first seat, deletes it when count hits 0.
+   */
+  async function syncStripeQuantity(projectId: string, ownerUserId: string): Promise<{ ok: boolean; error?: string; quantity: number }> {
+    const quantity = await countActiveSeats(pool, projectId);
+    const priceId = process.env.STRIPE_PRICE_POST_AGENT_MONTHLY;
+    if (!priceId || !process.env.STRIPE_SECRET_KEY) {
+      return { ok: false, error: 'stripe_not_configured', quantity };
+    }
+    try {
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const existing = await getTeamSubscription(pool, projectId);
+
+      if (quantity === 0) {
+        // Tear down the subscription_item if no seats left
+        if (existing?.stripeSubscriptionItemId) {
+          try {
+            await stripe.subscriptionItems.del(existing.stripeSubscriptionItemId, {
+              proration_behavior: 'create_prorations',
+            });
+          } catch (e) {
+            console.warn('[post-agent] failed to delete subscription_item:', (e as Error).message);
+          }
+        }
+        if (existing) {
+          await upsertTeamSubscription(pool, { ...existing, seatCount: 0, status: 'cancelled' });
+        }
+        return { ok: true, quantity };
+      }
+
+      // Look up the owner's active subscription so we can attach the seat item
+      const { rows: subRows } = await pool.query(
+        `SELECT stripe_subscription_id FROM subscriptions
+         WHERE user_id = $1 AND status IN ('active','trialing')
+         ORDER BY start_date DESC LIMIT 1`,
+        [ownerUserId],
+      );
+      const stripeSubId: string | undefined = subRows[0]?.stripe_subscription_id;
+      if (!stripeSubId) {
+        return { ok: false, error: 'owner_has_no_subscription', quantity };
+      }
+
+      if (!existing?.stripeSubscriptionItemId) {
+        // First time — create the subscription_item with the right quantity
+        const item = await stripe.subscriptionItems.create({
+          subscription: stripeSubId,
+          price: priceId,
+          quantity,
+          proration_behavior: 'create_prorations',
+        });
+        await upsertTeamSubscription(pool, {
+          projectId,
+          ownerUserId,
+          stripeSubscriptionId: stripeSubId,
+          stripeSubscriptionItemId: item.id,
+          seatCount: quantity,
+          status: 'active',
+        });
+        return { ok: true, quantity };
+      }
+
+      // Update quantity on existing subscription_item
+      await stripe.subscriptionItems.update(existing.stripeSubscriptionItemId, {
+        quantity,
+        proration_behavior: 'create_prorations',
+      });
+      await upsertTeamSubscription(pool, { ...existing, seatCount: quantity, status: 'active' });
+      return { ok: true, quantity };
+    } catch (err) {
+      console.error('[post-agent] syncStripeQuantity failed:', err);
+      return { ok: false, error: (err as Error).message, quantity };
+    }
+  }
+
+  router.get(
+    '/team/:projectId/seats',
+    userAuth,
+    async (req: Request, res: Response) => {
+      const projectId = req.params.projectId;
+      if (!(await requireProjectOwnership(req, res, projectId))) return;
+      const seats = await listProjectSeats(pool, projectId);
+      const sub = await getTeamSubscription(pool, projectId);
+
+      // Hydrate user info for each seat
+      const userIds = [...new Set(seats.map((s) => s.userId))];
+      let userMap: Record<string, { email: string; name: string; profileImageUrl?: string }> = {};
+      if (userIds.length > 0) {
+        const { rows } = await pool.query(
+          `SELECT id, email, first_name, last_name, profile_image_url FROM users WHERE id = ANY($1)`,
+          [userIds],
+        );
+        userMap = Object.fromEntries(
+          rows.map((u) => [
+            u.id,
+            {
+              email: u.email,
+              name: [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email,
+              profileImageUrl: u.profile_image_url ?? undefined,
+            },
+          ]),
+        );
+      }
+
+      res.json({
+        projectId,
+        subscription: sub,
+        seats: seats.map((s) => ({
+          userId: s.userId,
+          email: userMap[s.userId]?.email,
+          name: userMap[s.userId]?.name,
+          profileImageUrl: userMap[s.userId]?.profileImageUrl,
+          grantedAt: s.grantedAt,
+          revokedAt: s.revokedAt,
+          isActive: s.revokedAt === null,
+        })),
+        activeSeatCount: seats.filter((s) => s.revokedAt === null).length,
+        pricePerSeatNok: 299,
+      });
+    },
+  );
+
+  router.post(
+    '/team/:projectId/grant',
+    userAuth,
+    async (req: Request, res: Response) => {
+      const projectId = req.params.projectId;
+      if (!(await requireProjectOwnership(req, res, projectId))) return;
+      const ownerUserId = (req as AuthedRequest).userId;
+      const targetEmail = String(req.body?.email ?? '').trim().toLowerCase();
+      let targetUserId = String(req.body?.userId ?? '').trim();
+
+      if (!targetUserId && !targetEmail) {
+        res.status(400).json({ error: 'userId or email required' });
+        return;
+      }
+      if (!targetUserId && targetEmail) {
+        const { rows } = await pool.query(`SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [targetEmail]);
+        if (rows.length === 0) {
+          res.status(404).json({ error: 'user_not_found', detail: `No Role Room user with email ${targetEmail}` });
+          return;
+        }
+        targetUserId = rows[0].id;
+      }
+
+      const granted = await grantTeamSeat(pool, projectId, targetUserId, ownerUserId);
+      const sync = await syncStripeQuantity(projectId, ownerUserId);
+      res.json({
+        granted,
+        userId: targetUserId,
+        ...sync,
+      });
+    },
+  );
+
+  router.delete(
+    '/team/:projectId/grant/:userId',
+    userAuth,
+    async (req: Request, res: Response) => {
+      const projectId = req.params.projectId;
+      if (!(await requireProjectOwnership(req, res, projectId))) return;
+      const ownerUserId = (req as AuthedRequest).userId;
+      const userId = req.params.userId;
+
+      const revoked = await revokeTeamSeat(pool, projectId, userId);
+      const sync = await syncStripeQuantity(projectId, ownerUserId);
+      res.json({ revoked, ...sync });
+    },
+  );
+
+  /** Where the signed-in user has Post Agent access via team-seats. */
+  router.get('/team/my-seats', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const seats = await listUserActiveSeats(pool, userId);
+    if (seats.length === 0) {
+      res.json({ seats: [] });
+      return;
+    }
+    const projectIds = seats.map((s) => s.projectId);
+    const { rows } = await pool.query(
+      `SELECT id, name, title, project_type FROM projects WHERE id = ANY($1)`,
+      [projectIds],
+    );
+    const meta = Object.fromEntries(rows.map((r) => [r.id, r]));
+    res.json({
+      seats: seats.map((s) => ({
+        projectId: s.projectId,
+        projectName: meta[s.projectId]?.title || meta[s.projectId]?.name || 'Untitled production',
+        projectType: meta[s.projectId]?.project_type,
+        grantedAt: s.grantedAt,
+      })),
+    });
+  });
+
+  // Expose userHasActiveTeamSeat as a helper used by the proxy-entitlement check.
+  // We re-export the function name as a route's internal closure variable so the
+  // main /anthropic/messages handler above can call it. Refactored to top-scope
+  // helper to keep things simple.
+  void userHasActiveTeamSeat;
 
   return router;
 }

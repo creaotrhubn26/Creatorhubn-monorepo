@@ -20,6 +20,8 @@ import type { Pool } from 'pg';
 const PAIRING_TABLE = 'post_agent_pairing_codes';
 const USAGE_TABLE = 'post_agent_usage';
 const DEVICE_TABLE = 'post_agent_devices';
+const TEAM_SEATS_TABLE = 'post_agent_team_seats';
+const TEAM_SUBSCRIPTIONS_TABLE = 'post_agent_team_subscriptions';
 
 let tablesReadyPromise: Promise<boolean> | null = null;
 
@@ -68,6 +70,45 @@ export async function ensurePostAgentTables(pool: Pool): Promise<boolean> {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS ${DEVICE_TABLE}_user_idx
         ON ${DEVICE_TABLE} (user_id)
+      `);
+      // ---- Team-seat tables (marketplace per-production licensing) ----
+      // Each (project_id, user_id) pair represents one paid seat held by the
+      // lead (projects.user_id) for that crew member. Stripe subscription_item
+      // quantity = COUNT(seats WHERE revoked_at IS NULL) per project.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TEAM_SUBSCRIPTIONS_TABLE} (
+          project_id                  TEXT PRIMARY KEY,
+          owner_user_id               TEXT NOT NULL,
+          stripe_subscription_id      TEXT NOT NULL,
+          stripe_subscription_item_id TEXT NOT NULL,
+          seat_count                  INTEGER NOT NULL DEFAULT 0,
+          created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          status                      TEXT NOT NULL DEFAULT 'active'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS ${TEAM_SUBSCRIPTIONS_TABLE}_owner_idx
+        ON ${TEAM_SUBSCRIPTIONS_TABLE} (owner_user_id)
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TEAM_SEATS_TABLE} (
+          id          BIGSERIAL PRIMARY KEY,
+          project_id  TEXT NOT NULL,
+          user_id     TEXT NOT NULL,
+          granted_by  TEXT NOT NULL,
+          granted_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          revoked_at  TIMESTAMPTZ,
+          UNIQUE (project_id, user_id)
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS ${TEAM_SEATS_TABLE}_user_active_idx
+        ON ${TEAM_SEATS_TABLE} (user_id) WHERE revoked_at IS NULL
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS ${TEAM_SEATS_TABLE}_project_idx
+        ON ${TEAM_SEATS_TABLE} (project_id)
       `);
       return true;
     } catch (error) {
@@ -338,5 +379,190 @@ export async function isDeviceRevoked(pool: Pool, token: string): Promise<boolea
     return rows[0].revoked_at !== null;
   } catch {
     return false;
+  }
+}
+
+// ---- Team-seat management ----
+
+export interface TeamSubscriptionRow {
+  projectId: string;
+  ownerUserId: string;
+  stripeSubscriptionId: string;
+  stripeSubscriptionItemId: string;
+  seatCount: number;
+  status: string;
+}
+
+export interface TeamSeatRow {
+  id: number;
+  projectId: string;
+  userId: string;
+  grantedBy: string;
+  grantedAt: Date;
+  revokedAt: Date | null;
+}
+
+export async function getTeamSubscription(pool: Pool, projectId: string): Promise<TeamSubscriptionRow | null> {
+  if (!(await ensurePostAgentTables(pool))) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT project_id, owner_user_id, stripe_subscription_id, stripe_subscription_item_id, seat_count, status
+       FROM ${TEAM_SUBSCRIPTIONS_TABLE} WHERE project_id = $1`,
+      [projectId],
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      projectId: r.project_id,
+      ownerUserId: r.owner_user_id,
+      stripeSubscriptionId: r.stripe_subscription_id,
+      stripeSubscriptionItemId: r.stripe_subscription_item_id,
+      seatCount: r.seat_count,
+      status: r.status,
+    };
+  } catch (err) {
+    console.warn('[post-agent] getTeamSubscription failed:', err);
+    return null;
+  }
+}
+
+export async function upsertTeamSubscription(
+  pool: Pool,
+  row: TeamSubscriptionRow,
+): Promise<boolean> {
+  if (!(await ensurePostAgentTables(pool))) return false;
+  try {
+    await pool.query(
+      `INSERT INTO ${TEAM_SUBSCRIPTIONS_TABLE}
+         (project_id, owner_user_id, stripe_subscription_id, stripe_subscription_item_id, seat_count, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (project_id) DO UPDATE SET
+         stripe_subscription_item_id = EXCLUDED.stripe_subscription_item_id,
+         seat_count = EXCLUDED.seat_count,
+         status = EXCLUDED.status,
+         updated_at = NOW()`,
+      [row.projectId, row.ownerUserId, row.stripeSubscriptionId, row.stripeSubscriptionItemId, row.seatCount, row.status],
+    );
+    return true;
+  } catch (err) {
+    console.warn('[post-agent] upsertTeamSubscription failed:', err);
+    return false;
+  }
+}
+
+export async function listProjectSeats(pool: Pool, projectId: string): Promise<TeamSeatRow[]> {
+  if (!(await ensurePostAgentTables(pool))) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, project_id, user_id, granted_by, granted_at, revoked_at
+       FROM ${TEAM_SEATS_TABLE}
+       WHERE project_id = $1
+       ORDER BY granted_at DESC`,
+      [projectId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      projectId: r.project_id,
+      userId: r.user_id,
+      grantedBy: r.granted_by,
+      grantedAt: r.granted_at,
+      revokedAt: r.revoked_at,
+    }));
+  } catch (err) {
+    console.warn('[post-agent] listProjectSeats failed:', err);
+    return [];
+  }
+}
+
+/** Grant a seat. Returns true if a new active seat was created (or revoked
+ * seat reactivated), false if user already had an active seat. */
+export async function grantTeamSeat(
+  pool: Pool,
+  projectId: string,
+  userId: string,
+  grantedBy: string,
+): Promise<boolean> {
+  if (!(await ensurePostAgentTables(pool))) return false;
+  try {
+    const { rowCount } = await pool.query(
+      `INSERT INTO ${TEAM_SEATS_TABLE} (project_id, user_id, granted_by, granted_at, revoked_at)
+       VALUES ($1, $2, $3, NOW(), NULL)
+       ON CONFLICT (project_id, user_id) DO UPDATE SET
+         revoked_at = NULL,
+         granted_at = NOW(),
+         granted_by = EXCLUDED.granted_by
+       WHERE ${TEAM_SEATS_TABLE}.revoked_at IS NOT NULL`,
+      [projectId, userId, grantedBy],
+    );
+    return (rowCount ?? 0) > 0;
+  } catch (err) {
+    console.warn('[post-agent] grantTeamSeat failed:', err);
+    return false;
+  }
+}
+
+/** Revoke a seat. Returns true if an active seat was revoked. */
+export async function revokeTeamSeat(
+  pool: Pool,
+  projectId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!(await ensurePostAgentTables(pool))) return false;
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE ${TEAM_SEATS_TABLE}
+       SET revoked_at = NOW()
+       WHERE project_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+      [projectId, userId],
+    );
+    return (rowCount ?? 0) > 0;
+  } catch (err) {
+    console.warn('[post-agent] revokeTeamSeat failed:', err);
+    return false;
+  }
+}
+
+export async function countActiveSeats(pool: Pool, projectId: string): Promise<number> {
+  if (!(await ensurePostAgentTables(pool))) return 0;
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM ${TEAM_SEATS_TABLE}
+       WHERE project_id = $1 AND revoked_at IS NULL`,
+      [projectId],
+    );
+    return rows[0]?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Check if a user has at least one active seat across any production. */
+export async function userHasActiveTeamSeat(pool: Pool, userId: string): Promise<boolean> {
+  if (!(await ensurePostAgentTables(pool))) return false;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM ${TEAM_SEATS_TABLE}
+       WHERE user_id = $1 AND revoked_at IS NULL LIMIT 1`,
+      [userId],
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Productions where this user is currently seated. Used in user-profile dropdown. */
+export async function listUserActiveSeats(pool: Pool, userId: string): Promise<Array<{ projectId: string; grantedAt: Date }>> {
+  if (!(await ensurePostAgentTables(pool))) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT project_id, granted_at FROM ${TEAM_SEATS_TABLE}
+       WHERE user_id = $1 AND revoked_at IS NULL
+       ORDER BY granted_at DESC`,
+      [userId],
+    );
+    return rows.map((r) => ({ projectId: r.project_id, grantedAt: r.granted_at }));
+  } catch {
+    return [];
   }
 }
