@@ -1017,10 +1017,39 @@ export function createPostAgentRouter(
     });
   });
 
-  // Expose userHasActiveTeamSeat as a helper used by the proxy-entitlement check.
-  // We re-export the function name as a route's internal closure variable so the
-  // main /anthropic/messages handler above can call it. Refactored to top-scope
-  // helper to keep things simple.
+  /** Productions where the signed-in user is the owner (=team lead). */
+  router.get('/team/my-productions', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    try {
+      const { rows } = await pool.query(
+        `SELECT p.id, p.title, p.name, p.project_type, p.event_date,
+                COALESCE(s.active_seats, 0)::int AS active_seats
+         FROM projects p
+         LEFT JOIN (
+           SELECT project_id, COUNT(*) AS active_seats
+           FROM post_agent_team_seats
+           WHERE is_active = true
+           GROUP BY project_id
+         ) s ON s.project_id = p.id
+         WHERE p.owner_id = $1
+         ORDER BY p.event_date DESC NULLS LAST, p.created_at DESC NULLS LAST
+         LIMIT 100`,
+        [userId],
+      );
+      res.json({
+        productions: rows.map((r) => ({
+          id: r.id,
+          name: r.title || r.name || 'Untitled production',
+          projectType: r.project_type,
+          eventDate: r.event_date,
+          activeSeats: r.active_seats,
+        })),
+      });
+    } catch (e) {
+      res.json({ productions: [], degraded: true, detail: (e as Error).message });
+    }
+  });
+
   void userHasActiveTeamSeat;
 
   return router;
