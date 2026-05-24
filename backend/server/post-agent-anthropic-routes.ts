@@ -379,6 +379,43 @@ export function createPostAgentRouter(
     res.json(summary);
   });
 
+  // ---- Current user profile ----
+
+  /**
+   * Returns the signed-in user's basic profile so the Tauri app can render
+   * avatar + name + role without direct DB access. Used by HeaderBar.
+   */
+  router.get('/me', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator
+         FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      const u = rows[0];
+      if (!u) {
+        res.status(404).json({ error: 'user_not_found' });
+        return;
+      }
+      const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+      res.json({
+        id: u.id,
+        email: u.email,
+        name: fullName || u.email?.split('@')[0] || 'Bruker',
+        firstName: u.first_name,
+        lastName: u.last_name,
+        role: u.role || 'user',
+        profileImageUrl: u.profile_image_url,
+        profession: u.profession,
+        companyName: u.company_name,
+        isAdministrator: u.is_administrator === true,
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'profile_lookup_failed', detail: (err as Error).message });
+    }
+  });
+
   // ---- Billing / Add-on ----
 
   /**
