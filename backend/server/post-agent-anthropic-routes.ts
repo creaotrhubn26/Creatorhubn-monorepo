@@ -297,18 +297,11 @@ export function createPostAgentRouter(
     async (req: Request, res: Response): Promise<void> => {
       const userId = (req as AuthedRequest).userId;
 
-<<<<<<< Updated upstream
-      // Entitlement gate — must have active Role Room sub OR be admin.
-      // Pass role from session so admin/super_admin bypass works (without
-      // this hint, checkAgentEntitlement can't see the role and 402s
-      // even privileged users).
-=======
       // Entitlement gate — multi-path access check, in priority order:
       //  1. Admin/super_admin role  (session.role)        → allowed
       //  2. Active Role Room sub / personal Post Agent    → allowed
-      //  3. Production team-seat granted by a project lead → allowed (NEW)
+      //  3. Production team-seat granted by a project lead → allowed
       //  4. Otherwise → 402
->>>>>>> Stashed changes
       const session = activeSessions?.get((req as AuthedRequest).bearerToken);
       const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
       if (!entitlement.allowed) {
