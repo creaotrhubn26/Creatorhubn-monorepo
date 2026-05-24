@@ -79,6 +79,7 @@ import {
   Badge,
   Stack,
   Paper,
+  Checkbox,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -100,7 +101,7 @@ import {
   AutoFixHigh as AutoFixHighIcon,
   AccountCircle as AccountCircleIcon,
 } from '@mui/icons-material';
-import { getActiveProfessionMode, isDanceMode } from './config/professionMode';
+import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
 import { DanceWorkspace } from './dance';
 
 import {
@@ -284,6 +285,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [newProjectEnablePostAgent, setNewProjectEnablePostAgent] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherAnchor, setSwitcherAnchor] = useState<HTMLElement | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
@@ -355,14 +357,21 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
       description: newProjectDesc.trim() || undefined,
       creatorhubProjectId: creatorhubProjectId ?? undefined,
     });
+    const createdId = (created as { id?: string })?.id ?? newProjectName.trim();
     roleRoomAnalytics.projectCreated({
-      project_id: (created as { id?: string })?.id ?? newProjectName.trim(),
+      project_id: createdId,
       source: 'manual',
     });
+    const wantsPostAgent = newProjectEnablePostAgent;
     setNewProjectName('');
     setNewProjectDesc('');
+    setNewProjectEnablePostAgent(false);
     setNewProjectOpen(false);
-  }, [newProjectName, newProjectDesc, creatorhubProjectId, createProjectMut]);
+    if (wantsPostAgent && typeof window !== 'undefined') {
+      // Hand off to marketplace — production lead picks crew + confirms billing there.
+      window.location.href = `/marketplace/post-agent?productionId=${encodeURIComponent(createdId)}`;
+    }
+  }, [newProjectName, newProjectDesc, newProjectEnablePostAgent, creatorhubProjectId, createProjectMut]);
 
   const handleSyncProject = useCallback(
     async (project: CastingProject) => {
@@ -1184,6 +1193,37 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             rows={3}
             fullWidth
           />
+          {isProductionMode(activeProfessionMode) && (
+            <Box
+              sx={{
+                mt: 1,
+                p: 1.5,
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.default',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 1.5,
+              }}
+            >
+              <Checkbox
+                size="small"
+                checked={newProjectEnablePostAgent}
+                onChange={(e) => setNewProjectEnablePostAgent(e.target.checked)}
+                sx={{ p: 0.25, mt: 0.25 }}
+              />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Aktiver Post Agent for prosjektet
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  AI-drevet post-produksjon i DaVinci Resolve. Du velger crew + bekrefter betaling
+                  på neste skjerm. 299 NOK/seat/mnd.
+                </Typography>
+              </Box>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNewProjectOpen(false)}>Avbryt</Button>

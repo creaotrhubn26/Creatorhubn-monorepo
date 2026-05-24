@@ -407,6 +407,21 @@
         return true;
       }
 
+      function preselectFromUrl() {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var pid = params.get('productionId');
+          if (!pid) return;
+          var opt = productionSelect.querySelector('option[value="' + pid.replace(/"/g, '') + '"]');
+          if (opt) {
+            productionSelect.value = pid;
+            productionSelect.dispatchEvent(new Event('change'));
+          } else {
+            showAlert('Fant ikke produksjonen som ble lenket til. Velg manuelt fra listen.', 'info');
+          }
+        } catch (_) { /* ignore */ }
+      }
+
       // Init
       (async function init() {
         if (!getBearer()) {
@@ -416,7 +431,10 @@
         }
         var ok = await loadProductions();
         loadingState.style.display = 'none';
-        if (ok) mainState.style.display = 'block';
+        if (ok) {
+          mainState.style.display = 'block';
+          preselectFromUrl();
+        }
       })();
 
       // Mode tabs
