@@ -106,6 +106,14 @@
       "destination": "/post-agent-billing.html"
     },
     {
+      "source": "/marketplace",
+      "destination": "/marketplace.html"
+    },
+    {
+      "source": "/marketplace/post-agent",
+      "destination": "/post-agent-detail.html"
+    },
+    {
       "source": "/robots.txt",
       "destination": "/creatorhubn-robots.txt"
     },

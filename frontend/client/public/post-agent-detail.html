@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Post Agent — The Role Room Marketplace</title>
+  <link rel="icon" type="image/png" href="/theroleroom-app-icon-1024.png">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(160, 48, 192, 0.18), transparent 60%),
+        #0a0518;
+      color: #f0eaff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 32px; border-bottom: 1px solid #2c1860;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+    .brand-name { font-weight: 700; font-size: 16px; }
+    .brand-sub { font-size: 12px; color: #b8a8d8; }
+    .breadcrumb { color: #8674a8; font-size: 13px; }
+    .breadcrumb a { color: #b8a8d8; text-decoration: none; }
+    .breadcrumb a:hover { color: #f0eaff; }
+
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 32px 64px;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 40px;
+    }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .hero-icon {
+      width: 96px; height: 96px;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, rgba(160, 48, 192, 0.22), rgba(110, 63, 199, 0.10));
+      border-radius: 24px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+      background: linear-gradient(120deg, #f0eaff 0%, #a030c0 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      font-size: 17px;
+      color: #b8a8d8;
+      margin: 0 0 32px;
+      line-height: 1.6;
+    }
+
+    .feature-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 32px;
+      display: grid;
+      gap: 14px;
+    }
+    .feature-list li {
+      display: flex; align-items: flex-start; gap: 12px;
+      font-size: 14px; color: #d8c8e8; line-height: 1.5;
+    }
+    .feature-list svg {
+      flex-shrink: 0; margin-top: 2px;
+      color: #4ad48a;
+    }
+
+    .price-card {
+      position: sticky;
+      top: 32px;
+      background: rgba(26, 13, 69, 0.7);
+      border: 1px solid #2c1860;
+      border-radius: 16px;
+      padding: 28px;
+      align-self: flex-start;
+    }
+    .price-amount {
+      font-size: 36px; font-weight: 700; letter-spacing: -0.01em;
+    }
+    .price-period { font-size: 13px; color: #b8a8d8; margin-top: -4px; }
+    .price-note { font-size: 12px; color: #8674a8; margin: 12px 0 20px; line-height: 1.5; }
+
+    .mode-tabs {
+      display: flex; gap: 6px;
+      background: #0a0518;
+      padding: 4px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    .mode-tab {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #b8a8d8;
+      padding: 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s, color 0.15s;
+    }
+    .mode-tab.active {
+      background: #a030c0;
+      color: white;
+    }
+
+    select, input[type=email], input[type=text] {
+      width: 100%;
+      background: #0a0518;
+      border: 1px solid #2c1860;
+      border-radius: 8px;
+      padding: 11px 14px;
+      color: #f0eaff;
+      font-size: 14px;
+      outline: none;
+      font-family: inherit;
+    }
+    select:focus, input:focus { border-color: #a030c0; }
+    label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #b8a8d8; margin-bottom: 6px; }
+
+    .field { margin-bottom: 16px; }
+
+    .crew-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-bottom: 12px;
+    }
+    .crew-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px;
+      background: #0a0518;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .crew-item .email { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .crew-item button {
+      background: transparent; border: none; color: #ef4f6f;
+      cursor: pointer; padding: 2px 6px;
+    }
+
+    .summary-row {
+      display: flex; justify-content: space-between;
+      padding: 10px 0; border-top: 1px solid #2c1860;
+      font-size: 13px;
+    }
+    .summary-row.total {
+      font-size: 17px; font-weight: 700; color: #f0eaff;
+      padding-top: 14px; margin-top: 4px;
+      border-top: 1px solid #a030c0;
+    }
+
+    button.primary {
+      width: 100%;
+      background: #a030c0;
+      color: white;
+      border: none; border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 14px; font-weight: 600;
+      cursor: pointer; margin-top: 14px;
+      transition: opacity 0.2s;
+    }
+    button.primary:hover:not(:disabled) { background: #b94dd6; }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.ghost {
+      background: transparent;
+      color: #b8a8d8;
+      border: 1px solid #2c1860;
+      padding: 9px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button.ghost:hover { border-color: #a030c0; color: #f0eaff; }
+
+    .alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .alert.error { background: rgba(239, 79, 111, 0.1); border: 1px solid #ef4f6f; color: #ef4f6f; }
+    .alert.success { background: rgba(74, 212, 138, 0.1); border: 1px solid #4ad48a; color: #4ad48a; }
+    .alert.info { background: rgba(110, 63, 199, 0.1); border-left: 3px solid #6e3fc7; color: #b8a8d8; }
+
+    .login-link {
+      display: inline-block;
+      padding: 10px 20px;
+      background: #a030c0;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="/marketplace">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="#a030c0">
+        <path d="M4 5h8.2l-3.5 14H4a1.2 1.2 0 0 1-1.2-1.2V6.2A1.2 1.2 0 0 1 4 5z"/>
+        <path d="M20 6.5h-5l-3.5 14H20a1.2 1.2 0 0 0 1.2-1.2V7.7A1.2 1.2 0 0 0 20 6.5z"/>
+      </svg>
+      <div>
+        <div class="brand-name">The Role Room</div>
+        <div class="brand-sub">Marketplace</div>
+      </div>
+    </a>
+    <div class="breadcrumb">
+      <a href="/marketplace">Marketplace</a> · Post Agent
+    </div>
+  </div>
+
+  <div class="layout">
+    <div>
+      <div class="hero-icon">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="#a030c0">
+          <path d="M4 5h8.2l-3.5 14H4a1.2 1.2 0 0 1-1.2-1.2V6.2A1.2 1.2 0 0 1 4 5z"/>
+          <path d="M20 6.5h-5l-3.5 14H20a1.2 1.2 0 0 0 1.2-1.2V7.7A1.2 1.2 0 0 0 20 6.5z"/>
+          <path d="M14.8 3.2 L9.2 21.5" stroke="#a030c0" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.85"/>
+          <path d="M8.5 8.5 L8.5 15.5 L13.5 12 z" fill="rgba(255,255,255,0.92)"/>
+        </svg>
+      </div>
+      <h1>Post Agent</h1>
+      <p class="subtitle">
+        AI-drevet post-produksjons-assistent for DaVinci Resolve. Cull, scene-detection, beat-synket music-video, transkripsjon —
+        kjører lokalt på Mac-en og snakker direkte med Resolve.
+      </p>
+
+      <ul class="feature-list">
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> AI cull (Claude Vision) — automatisk klipp-utvelgelse, sparer 60-80% av tiden</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Highlight-scoring per klipp + scene-tagging</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Beat-synket music-video pipeline (librosa beat-detection)</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> WhisperX transkripsjon — lokalt på Mac-en, ingen cloud-upload</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Multi-cam organize + color grouping</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Mac native — krever DaVinci Resolve Studio</li>
+      </ul>
+    </div>
+
+    <div class="price-card">
+      <div id="loading-state" class="alert info">Laster…</div>
+
+      <div id="unauth-state" style="display:none">
+        <div class="alert error">Du må være logget inn for å kjøpe.</div>
+        <a class="login-link" href="/login?redirect=/marketplace/post-agent">Logg inn</a>
+      </div>
+
+      <div id="main-state" style="display:none">
+        <div class="price-amount" id="price-display">299 NOK</div>
+        <div class="price-period">per seat · per måned</div>
+        <div class="price-note">
+          AI-forbruk faktureres separat basert på faktiske Claude API-kall (~$0.30 per 100 klipp culled).
+        </div>
+
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="team">For produksjons-team</button>
+          <button class="mode-tab" data-mode="self">Kun meg selv</button>
+        </div>
+
+        <div id="team-mode">
+          <div class="field">
+            <label>Velg produksjon</label>
+            <select id="production-select">
+              <option value="">Laster produksjoner…</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Legg til crew-medlem (e-post)</label>
+            <div style="display:flex;gap:8px">
+              <input id="crew-email-input" type="email" placeholder="navn@firma.no" />
+              <button class="ghost" id="add-crew-btn">Legg til</button>
+            </div>
+          </div>
+
+          <div class="crew-list" id="crew-list"></div>
+
+          <div id="summary-block" style="display:none">
+            <div class="summary-row">
+              <span>Aktive seats</span>
+              <span id="summary-seats">0</span>
+            </div>
+            <div class="summary-row">
+              <span>Pris per seat</span>
+              <span>299 NOK</span>
+            </div>
+            <div class="summary-row total">
+              <span>Totalt per måned</span>
+              <span id="summary-total">0 NOK</span>
+            </div>
+          </div>
+
+          <button class="primary" id="confirm-team-btn" disabled>Bekreft tilgang</button>
+        </div>
+
+        <div id="self-mode" style="display:none">
+          <div class="alert info">
+            Kjøp Post Agent kun for deg selv (ikke knyttet til en produksjon). Du betaler 299 NOK/mnd.
+          </div>
+          <button class="primary" id="confirm-self-btn">Kjøp for meg selv</button>
+        </div>
+
+        <div id="alert-area"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var BASE = 'https://creatorhubn.com/api/post-agent';
+
+      function getBearer() {
+        var keys = ['creatorhub_auth_token', 'role_room_auth_token', 'authToken', 'sessionToken'];
+        for (var i = 0; i < keys.length; i++) {
+          var v = window.localStorage.getItem(keys[i]);
+          if (v) return v.trim();
+        }
+        return null;
+      }
+      function authHeaders() {
+        var b = getBearer();
+        return b ? { 'Authorization': 'Bearer ' + b } : {};
+      }
+
+      var pendingCrew = []; // array of { email, userId? }
+      var selectedProductionId = '';
+
+      var loadingState = document.getElementById('loading-state');
+      var unauthState = document.getElementById('unauth-state');
+      var mainState = document.getElementById('main-state');
+      var teamMode = document.getElementById('team-mode');
+      var selfMode = document.getElementById('self-mode');
+      var productionSelect = document.getElementById('production-select');
+      var crewList = document.getElementById('crew-list');
+      var summaryBlock = document.getElementById('summary-block');
+      var summarySeats = document.getElementById('summary-seats');
+      var summaryTotal = document.getElementById('summary-total');
+      var confirmTeamBtn = document.getElementById('confirm-team-btn');
+      var alertArea = document.getElementById('alert-area');
+
+      function showAlert(msg, kind) {
+        alertArea.innerHTML = '<div class="alert ' + (kind || 'error') + '">' + msg + '</div>';
+      }
+      function clearAlert() { alertArea.innerHTML = ''; }
+
+      function renderCrew() {
+        crewList.innerHTML = pendingCrew.map(function (c, i) {
+          return '<div class="crew-item"><span class="email">' + c.email + (c.includeLead ? ' (deg, lead)' : '') + '</span>' +
+            (c.includeLead ? '' : '<button data-i="' + i + '">Fjern</button>') + '</div>';
+        }).join('');
+        Array.prototype.forEach.call(crewList.querySelectorAll('button'), function (btn) {
+          btn.addEventListener('click', function () {
+            var i = parseInt(btn.getAttribute('data-i'), 10);
+            pendingCrew.splice(i, 1);
+            renderCrew();
+            updateSummary();
+          });
+        });
+      }
+      function updateSummary() {
+        var n = pendingCrew.length;
+        summaryBlock.style.display = n > 0 ? '' : 'none';
+        summarySeats.textContent = n;
+        summaryTotal.textContent = (n * 299).toLocaleString('nb-NO') + ' NOK';
+        confirmTeamBtn.disabled = !selectedProductionId || n === 0;
+      }
+
+      async function loadProductions() {
+        var res = await fetch(BASE + '/team/my-productions', {
+          credentials: 'include',
+          headers: authHeaders(),
+        });
+        if (res.status === 401) {
+          loadingState.style.display = 'none';
+          unauthState.style.display = 'block';
+          return false;
+        }
+        if (!res.ok) {
+          loadingState.style.display = 'none';
+          showAlert('Kunne ikke hente produksjoner (HTTP ' + res.status + ')');
+          return false;
+        }
+        var data = await res.json();
+        productionSelect.innerHTML = '<option value="">Velg produksjon…</option>' +
+          (data.productions || []).map(function (p) {
+            return '<option value="' + p.id + '">' + p.name + (p.eventDate ? ' (' + p.eventDate + ')' : '') + (p.activeSeats ? ' · ' + p.activeSeats + ' seats' : '') + '</option>';
+          }).join('');
+        if ((data.productions || []).length === 0) {
+          productionSelect.innerHTML = '<option value="">Ingen produksjoner ennå — opprett en i Role Room først</option>';
+          productionSelect.disabled = true;
+        }
+        return true;
+      }
+
+      // Init
+      (async function init() {
+        if (!getBearer()) {
+          loadingState.style.display = 'none';
+          unauthState.style.display = 'block';
+          return;
+        }
+        var ok = await loadProductions();
+        loadingState.style.display = 'none';
+        if (ok) mainState.style.display = 'block';
+      })();
+
+      // Mode tabs
+      Array.prototype.forEach.call(document.querySelectorAll('.mode-tab'), function (tab) {
+        tab.addEventListener('click', function () {
+          Array.prototype.forEach.call(document.querySelectorAll('.mode-tab'), function (t) { t.classList.remove('active'); });
+          tab.classList.add('active');
+          var mode = tab.getAttribute('data-mode');
+          teamMode.style.display = mode === 'team' ? 'block' : 'none';
+          selfMode.style.display = mode === 'self' ? 'block' : 'none';
+          clearAlert();
+        });
+      });
+
+      productionSelect.addEventListener('change', function () {
+        selectedProductionId = productionSelect.value;
+        // When production picked, fetch existing seats so we can show them in the list
+        if (selectedProductionId) {
+          fetch(BASE + '/team/' + selectedProductionId + '/seats', {
+            credentials: 'include',
+            headers: authHeaders(),
+          }).then(function (r) { return r.json(); }).then(function (data) {
+            var active = (data.seats || []).filter(function (s) { return s.isActive; });
+            pendingCrew = active.map(function (s) { return { email: s.email || s.userId, userId: s.userId, alreadyGranted: true }; });
+            renderCrew();
+            updateSummary();
+          }).catch(function () { /* ignore */ });
+        }
+        updateSummary();
+      });
+
+      document.getElementById('add-crew-btn').addEventListener('click', function () {
+        var input = document.getElementById('crew-email-input');
+        var email = (input.value || '').trim().toLowerCase();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          showAlert('Ugyldig e-postadresse');
+          return;
+        }
+        if (pendingCrew.some(function (c) { return c.email.toLowerCase() === email; })) {
+          showAlert('Allerede lagt til');
+          return;
+        }
+        pendingCrew.push({ email: email });
+        input.value = '';
+        clearAlert();
+        renderCrew();
+        updateSummary();
+      });
+
+      confirmTeamBtn.addEventListener('click', async function () {
+        confirmTeamBtn.disabled = true;
+        confirmTeamBtn.textContent = 'Aktiverer…';
+        clearAlert();
+        var toGrant = pendingCrew.filter(function (c) { return !c.alreadyGranted; });
+        var errors = [];
+        for (var i = 0; i < toGrant.length; i++) {
+          var c = toGrant[i];
+          try {
+            var r = await fetch(BASE + '/team/' + selectedProductionId + '/grant', {
+              method: 'POST',
+              credentials: 'include',
+              headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+              body: JSON.stringify({ email: c.email }),
+            });
+            var b = await r.json();
+            if (!r.ok) errors.push(c.email + ': ' + (b.detail || b.error || 'HTTP ' + r.status));
+          } catch (e) {
+            errors.push(c.email + ': nettverksfeil');
+          }
+        }
+        if (errors.length > 0) {
+          showAlert('Noen seats feilet:<br>' + errors.join('<br>'));
+          confirmTeamBtn.disabled = false;
+          confirmTeamBtn.textContent = 'Bekreft tilgang';
+        } else {
+          showAlert('Tilgang aktivert. Crew kan nå logge inn i Post Agent og bruke AI-funksjonene.', 'success');
+          confirmTeamBtn.textContent = 'Aktivert ✓';
+        }
+      });
+
+      document.getElementById('confirm-self-btn').addEventListener('click', async function () {
+        var btn = this;
+        btn.disabled = true; btn.textContent = 'Aktiverer…';
+        clearAlert();
+        try {
+          var r = await fetch(BASE + '/billing/add-to-subscription', {
+            method: 'POST',
+            credentials: 'include',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+            body: JSON.stringify({ interval: 'monthly' }),
+          });
+          var b = await r.json();
+          if (!r.ok) {
+            showAlert(b.detail || b.error || ('HTTP ' + r.status));
+            btn.disabled = false; btn.textContent = 'Kjøp for meg selv';
+            return;
+          }
+          showAlert('Post Agent lagt til ditt abonnement. Logg inn i Post Agent-appen for å starte.', 'success');
+          btn.textContent = 'Aktivert ✓';
+        } catch (e) {
+          showAlert(String(e));
+          btn.disabled = false; btn.textContent = 'Kjøp for meg selv';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
