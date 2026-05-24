@@ -483,6 +483,43 @@ import { setupMultiVendorCameraRoutes } from "./multi-vendor-camera-routes.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
 import { createCoverageJobWorker } from "./coverage-job-queue.js";
 import { setupAdminFeaturesRoutes } from "./admin-features-routes";
+<<<<<<< Updated upstream
+=======
+import { setupAdminMiscRoutes } from "./admin-misc-routes";
+import { setupAdminSeoRoutes } from "./admin-seo-routes";
+import { setupAdminAccountingRoutes } from "./admin-accounting-routes";
+import { setupSeoBotRoutes } from "./seo-bot-routes";
+import { setupInspirationsRoutes } from "./inspirations-routes";
+import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
+import { setupSplitSheetsRoutes } from "./split-sheets-routes";
+import { setupCommunityRoutes } from "./community-routes";
+import { setupContractsRoutes } from "./contracts-routes";
+import { setupBusinessRoutes } from "./business-routes";
+import { setupCmsRoutes } from "./cms-routes";
+import { setupOrchestrationRoutes } from "./orchestration-routes";
+import { setupUniversalCrmRoutes } from "./universal-crm-routes";
+import { setupPricingRoutes } from "./pricing-routes";
+import { setupAudioSettingsRoutes } from "./audio-settings-routes";
+import { setupQuotesRoutes } from "./quotes-routes";
+import { setupAnalyticsRoutes } from "./analytics-routes";
+import { setupPaymentsRoutes } from "./payments-routes";
+import { setupProjectsRoutes } from "./projects-routes";
+import { setupWeddingRoutes } from "./wedding-routes";
+import { setupWeddingTimelineRoutes } from "./wedding-timeline-routes";
+import { setupProjectsTimelineRoutes } from "./projects-timeline-routes";
+import { setupKartverketRoutes } from "./kartverket-routes";
+import { setupSsbRoutes } from "./ssb-routes";
+import { setupVendorTypesRoutes } from "./vendor-types-routes";
+import { setupSalesRoutes } from "./sales-routes";
+import { setupVideoSyncRoutes } from "./video-sync-routes";
+import { setupVideoAiRoutes } from "./video-ai-routes";
+import { setupPhotographerRoutes } from "./photographer-routes";
+import { setupDeliveriesRoutes } from "./deliveries-routes";
+import { setupGooglePhotosRoutes } from "./google-photos-routes";
+import { setupEaseverseRoutes } from "./easeverse-routes";
+import { setupRoleRoomTicketsRoutes } from "./role-room-tickets-routes";
+import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
+>>>>>>> Stashed changes
 import { setupAdminRefundRequestsRoutes } from "./admin-refund-requests-routes";
 import { setupAdminStatsRoutes } from "./admin-stats-routes";
 import { setupAdminDashboardRoutes } from "./admin-dashboard-routes";
@@ -37453,6 +37490,483 @@ setupAdminFeaturesRoutes({
   dbCompatAdminFeatureKey,
   compatResolveUserId,
   isRecord,
+<<<<<<< Updated upstream
+=======
+  requireAdminSession,
+});
+
+// ── Admin misc — flyttet til ./admin-misc-routes.ts
+//   3 endpoints (første batch): gdpr-settings, profession-types, log-interaction.
+//   Auth: alle krever requireAdminSession (lukket sammen i 2026-05-22).
+//   Gjenstår 8 endpoints (per memory.md) — accounting-integration,
+//   proff, smoke-tests, SEO-cluster — kan flyttes hit eller egen admin-seo-routes.
+setupAdminMiscRoutes({
+  app,
+  pool,
+  requireAdminSession,
+  compatResolveUserId,
+  compatAdminInteractionLog,
+  dbCompatAdminInteractionKey,
+  compatStoreSet,
+  isValidNorwegianOrgNumber,
+  lookupInviteRequestBrregCompany,
+  buildInviteRequestProffAnalysis,
+  isEvendiSmokeAuthorized,
+  runEvendiSmoke,
+});
+
+// ── Admin SEO-cluster — flyttet til ./admin-seo-routes.ts
+//   4 endpoints: profession-trends, apply-seo-fixes, seo-projects (GET+POST).
+//   Auth: alle krever requireAdminSession.
+setupAdminSeoRoutes({
+  app,
+  db,
+  schema,
+  requireAdminSession,
+});
+
+// ── SEO-bot — flyttet til ./seo-bot-routes.ts
+//   8 endpoints: initialize, analytics, visits, crawl-budget,
+//   mobile-tests, recommendations, render-test, mobile-usability-test.
+//   Auth: alle krever requireAdminSession.
+//   Første ekstraksjon fra backend-kjerneclusteret (per memory.md).
+setupSeoBotRoutes({
+  app,
+  requireAdminSession,
+  getSeoBotVisitSnapshot,
+  listStoredSeoMobileTests,
+  getSeoBotEmulationUserAgent,
+  extractVisibleTextFromHtml,
+  countWords,
+  compatStoreSet,
+  readString,
+  readNumber,
+  normalizeJsonObjectField,
+  roundAdminMetric,
+});
+
+// ── Inspirations — flyttet til ./inspirations-routes.ts
+//   11 endpoints under /api/inspirations/* (vendor-inspiration + public-browse + inquiry).
+setupInspirationsRoutes({ app, pool });
+
+// ── DaVinci Resolve — flyttet til ./davinci-resolve-routes.ts
+//   8 endpoints: status, projects, timelines, system-status, scripts,
+//   execution-history, execute-script, install-scripts.
+setupDavinciResolveRoutes({
+  app,
+  compatResolveUserId,
+  getCompatResolveStatus,
+  compatResolveProjectsStore,
+  compatResolveTimelinesStore,
+  compatResolveStatusStore,
+  compatResolveExecutionHistoryStore,
+  dbCompatResolveProjectKey,
+  dbCompatResolveTimelineKey,
+  dbCompatResolveStatusKey,
+  dbCompatResolveHistoryKey,
+  compatStoreSet,
+  isRecord,
+  readString,
+});
+
+// ── Split sheets — flyttet til ./split-sheets-routes.ts
+//   17 endpoints: CRUD + signering + share + PDF-summary + versjoner +
+//   duplisering + revenue + payments + BI-dashboard-analytics
+//   (stats, revenue-analytics, payment-analytics, market-insights).
+setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId });
+
+// ── Community — flyttet til ./community-routes.ts
+//   32 endpoints: onboarding (6), user-views (5), channels & messages
+//   (5), DMs (5), mentors/notifications/unanswered (7), bookmarks (4).
+//   Mest spredte cluster så langt — dep-injecter 11 community-helpers.
+setupCommunityRoutes({
+  app,
+  pool,
+  onboardUserToCommunity,
+  getCommunityOnboardingStatus,
+  ensureCommunityOnboardingProgressTable,
+  getCommunityMembershipRows,
+  ensureCommunityDefaultChannels,
+  loadCommunityUserProfile,
+  getCommunityAccessUserId,
+  mapCommunityMessageRow,
+  normalizeCommunityProfession,
+  getDefaultCommunityOnboardingConfig,
+  COMMUNITY_DEFAULT_NOTIFICATION_PREFERENCES,
+});
+
+// ── Contracts — flyttet til ./contracts-routes.ts
+//   13 hovedendpoints (CRUD + sign + Google eSignature + status +
+//   delete + PDF + send-email). 5 outlier-endpoints (summary, stats,
+//   signers x2, list) + upload-import (multer/pdf-parse/mammoth)
+//   blir værende i index.ts — krever 2. pass.
+setupContractsRoutes({
+  app,
+  pool,
+  ensureContractsCompatibilitySchema,
+  mapContractRecord,
+  fetchContractById,
+  resolveContractUserId,
+  syncContractLifecycleArtifacts,
+  buildContractPdfBuffer,
+  calculateContractHash,
+  buildContractNumber,
+  normalizeContractStatusValue,
+  normalizeContractSections,
+  toNumericValue,
+});
+
+// ── Business Intelligence — flyttet til ./business-routes.ts
+//   20 endpoints (surveys, swot, personas, newsletter, dashboard,
+//   regional, BI status). 15 BI-spesifikke helpers (incl. norske
+//   regions-data + sesongfaktorer) ble flyttet sammen med endpointene
+//   siden de kun ble brukt der. toBiNumericMetric blir værende i
+//   index.ts (brukes også av contract /stats).
+setupBusinessRoutes({ app, pool });
+
+// ── CMS — flyttet til ./cms-routes.ts
+//   11 endpoints (fields CRUD + content-types CRUD + stats + public
+//   read + admin upsert). cmsSchemaReady + ensureCmsSchema (med all
+//   schema-init + seed-INSERTs) flyttet sammen siden ensureCmsSchema
+//   kun ble brukt av disse endpointene.
+setupCmsRoutes({ app, pool, requireUserSession });
+
+// ── Orchestration — flyttet til ./orchestration-routes.ts
+//   20 endpoints (status/trigger/stop + workflows CRUD + run-lifecycle
+//   + schedules + triggers + ai-cost + culling-result + runs-list).
+//   Workflow-engine + scheduler bruker dynamic imports inni handler
+//   (ingen dep-injection nødvendig). customWorkflows + orchestrationStates
+//   in-memory dicts flyttet sammen.
+setupOrchestrationRoutes({ app, pool, db });
+
+// ── Universal CRM — flyttet til ./universal-crm-routes.ts
+//   18 endpoints (customers + deals + activities + tasks +
+//   pipeline-stages + email-templates). Kun pool som dep.
+setupUniversalCrmRoutes({ app, pool });
+
+// ── Pricing — flyttet til ./pricing-routes.ts
+//   17 endpoints (categories/services/packages/customer-pricing CRUD).
+//   Deler getPricingUserId-helper med flere andre route-moduler.
+setupPricingRoutes({ app, pool, getPricingUserId });
+
+// ── Audio Settings — flyttet til ./audio-settings-routes.ts
+//   7 endpoints (ducking-presets, eq-presets, mixer-settings — in-memory).
+//   Stores flyttet sammen (kun brukt herfra).
+setupAudioSettingsRoutes({ app });
+
+// ── Quotes — flyttet til ./quotes-routes.ts
+//   19 endpoints (templates + reminders + CRUD + PDF + send-email +
+//   status-management). 8 quote-spesifikke helpers + QuoteTemplateRecord
+//   ble flyttet sammen siden de kun ble brukt herfra.
+setupQuotesRoutes({
+  app,
+  pool,
+  ensureQuotesCompatibilitySchema,
+  mapQuoteCompatibilityRecord,
+  getPricingUserId,
+  compatStoreGet,
+  compatStoreSet,
+  toNumericValue,
+  normalizeJsonArrayField,
+  mapPriceAdministrationQuote,
+  insertSharedQuote,
+  syncQuoteArtifactToCustomerDrive,
+  normalizeLegacyQuoteStatus,
+  ensureContractForAcceptedQuote,
+});
+
+// ── Analytics dashboard — flyttet til ./analytics-routes.ts
+//   23 endpoints (overview, timeseries, revenue, clients, equipment,
+//   performance, BI, Norwegian market, real-time). Krever admin-session.
+//   Deler ~14 shared utility-helpers med equipment-handlers.
+setupAnalyticsRoutes({
+  app,
+  pool,
+  db,
+  requireAdminSession,
+  parseCreatorhubAnalyticsRange,
+  listCreatorhubAnalyticsUsers,
+  listCreatorhubAnalyticsEvents,
+  buildCreatorhubAnalyticsAggregate,
+  toAnalyticsDate,
+  calculateAnalyticsChange,
+  buildProjectFilter,
+  buildFeedbackFilter,
+  buildMonthlyBuckets,
+  parseRangeParam,
+  toDateOnly,
+  toDateOrNull,
+  toIsoString,
+  toNumberValue,
+  normalizeCondition,
+  normalizeEquipmentType,
+  normalizePriority,
+  normalizeStatus,
+  normalizeTaskType,
+  monthKey,
+});
+
+// ── Payments — flyttet til ./payments-routes.ts
+//   9 endpoints (history, receipt, invoice, payment-intent, status,
+//   send-receipt, Fiken-register, Fiken-MVA-status). 21 compat-payment-
+//   helpers dep-injectes — alle blir værende i index.ts pga
+//   cross-feature-coupling (refund-requests, accounting, membership-cards).
+setupPaymentsRoutes({
+  app,
+  pool,
+  compatResolveUserId,
+  compatResolveUserEmail,
+  compatHeaderString,
+  buildCompatPaymentHistory,
+  writeCompatPaymentHistory,
+  decorateCompatPaymentHistoryWithRefundRequests,
+  findCompatPaymentStatusRecord,
+  readCompatLatestPaymentStatusRecord,
+  writeCompatPaymentStatusRecord,
+  canAccessCompatPaymentDocument,
+  buildCompatPaymentDocumentHtml,
+  buildCompatPaymentStatusResponse,
+  resolveCompatPaymentUserScope,
+  recordCompatPaymentCompletion,
+  normalizeBillingPlanId,
+  getCompatPlatformSubscriptionPlan,
+  normalizeCompatPaymentMethod,
+  normalizeCompatAmountMinor,
+  readCompatFikenMvaStatus,
+  writeCompatFikenMvaStatus,
+});
+
+// ── Projects (main block) — flyttet til ./projects-routes.ts
+//   38 endpoints (CRUD + change-log + collaborators + files + comments +
+//   integrations + permissions + compliance + analytics + health +
+//   memory-cards + shot-list + capture-session). 18 deps incl
+//   db/state-helpers/multer.
+setupProjectsRoutes({
+  app,
+  pool,
+  db,
+  getUserIdFromAuth,
+  mapProjectRow,
+  resolveMeetingNotesProjectContext,
+  dispatchClientGalleryNotification,
+  ensureCompatProjectState,
+  loadCompatProjectState,
+  persistCompatProjectState,
+  compatProjectStateStore,
+  compatStoreSet,
+  dbCompatProjectStateKey,
+  compatResolveUserId,
+  recordAnalyticsEvent,
+  buildGalleryShareUrl,
+  bootstrapCaptureSessionForProject,
+  upsertShotListForProject,
+  PROJECT_FILE_DB_INLINE_MAX_BYTES,
+  PROJECT_FILE_STORAGE_ROOT,
+  projectFileUpload,
+});
+
+// ── Wedding (main block) — flyttet til ./wedding-routes.ts
+//   26 endpoints (timeline/client/events/culture/reminders/GDPR/
+//   battery/shotlist). 2 schema-init-helpers flyttet sammen.
+//   Andre /api/wedding/* (timeline/ical + wedding-projects) blir
+//   værende — egne sub-clusters med ulike deps.
+setupWeddingRoutes({
+  app,
+  pool,
+  db,
+  requireUserSession,
+  escapeHtml,
+  getPhotographerOvertimeRate,
+});
+
+// ── Wedding timeline + iCal — flyttet til ./wedding-timeline-routes.ts
+//   8 endpoints (timeline-per-prosjekt + iCal-export 3 stk +
+//   sync-meeting-notes + templates). 6 lokale helpers
+//   (mapTimelineRow/EventRow + meeting-notes-parsers + buildIcal)
+//   flyttet sammen.
+setupWeddingTimelineRoutes({
+  app,
+  pool,
+  getUserIdFromAuth,
+  resolveMeetingNotesProjectContext,
+});
+
+// ── Projects timeline + worklog + contract-status — flyttet til
+//   ./projects-timeline-routes.ts (8 endpoints utenfor hoved-projects-
+//   blokken).
+setupProjectsTimelineRoutes({
+  app,
+  pool,
+  ensureContractsCompatibilitySchema,
+  mapContractRecord,
+});
+
+// ── Kartverket geonorge.no-proxy — flyttet til ./kartverket-routes.ts
+//   5 endpoints (address-search, address-by-name, places, property,
+//   elevation). Ingen deps — bare Node fetch.
+setupKartverketRoutes({ app });
+
+// ── SSB-mocks — flyttet til ./ssb-routes.ts
+//   2 endpoints (KPI/rente/ledighet/lønnsvekst + befolkningsdata).
+//   2 dead-duplicate registrations slettet samtidig (35589, 35637).
+setupSsbRoutes({ app });
+
+// ── Vendor-types (Evendi) — flyttet til ./vendor-types-routes.ts
+//   7 endpoints (categories list/expandable/enable + CRUD per type).
+//   Evendi-helpers + override-map + storage-helpers dep-injectes.
+setupVendorTypesRoutes({
+  app,
+  fetchEvendiVendorCategories,
+  buildVendorTypePayload,
+  resolveEvendiKey,
+  evendiVendorOverrides,
+  compatStoreSet,
+  dbCompatVendorOverrideKey,
+});
+
+// ── Sales (DB-backed, LIVE) — flyttet til ./sales-routes.ts
+//   3 endpoints (analytics + leads CRUD). Vinner over compat-duplikatene
+//   ved ~35000-blokken (Express first-registered).
+setupSalesRoutes({
+  app,
+  pool,
+  isMissingRelationError,
+  isMissingColumnError,
+  mapSalesLeadRow,
+  buildSalesLeadSelectColumns,
+  buildSalesLeadSelectQuery,
+  resolveSalesLeadsStorageShape,
+});
+
+// ── Video-sync — flyttet til ./video-sync-routes.ts
+//   4 endpoints (sync-clips, submit-clips, jobs poll/cancel).
+//   Hele type-fjellet + in-memory job-storage + persistVideoSyncJob +
+//   getVideoSyncJob + cleanup-loop flyttet sammen (kun brukt herfra).
+setupVideoSyncRoutes({
+  app,
+  compatStoreGet,
+  compatStoreSet,
+  compatStoreDelete,
+  dbCompatVideoSyncJobKey,
+});
+
+// ── Video AI — flyttet til ./video-ai-routes.ts
+//   4 endpoints (status, models, enhance-url, analyze-story-arc-url).
+//   AI-model-helpers blir værende i index.ts (deles med Photo Enhancer).
+setupVideoAiRoutes({
+  app,
+  getAiModelStatusPayload,
+  findModelStatus,
+  normalizeModelLookupValue,
+  seedFromString,
+  seededRandom,
+});
+
+// ── Photographer workspace — flyttet til ./photographer-routes.ts
+//   51 endpoints (galleries + contracts + clients + projects +
+//   equipment + worklog + profitability + print-products + profile +
+//   Google Drive setup). Største enkelt-ekstraksjon i sesjonen.
+//   5 nested schema-init-helpers flyttet sammen.
+setupPhotographerRoutes({
+  app,
+  pool,
+  db,
+  requireUserSession,
+  dispatchClientGalleryNotification,
+  ensureAnalyticsEventsSchema,
+  ensureGalleryDownloadAuditSchema,
+  buildGalleryShareUrl,
+  calculateGalleryPricing,
+  escapeHtml,
+  gateGalleryAccess,
+  getCreatorHubStripeClient,
+  getPhotographerOvertimeRate,
+  getRoleRoomEducationInquiryMailer,
+  readGalleryPasswordHeader,
+  recordAnalyticsEvent,
+});
+
+// ── Deliveries — flyttet til ./deliveries-routes.ts
+//   7 endpoints (vendor leveranse CRUD + items + public access).
+setupDeliveriesRoutes({ app, pool, normalizeEventType });
+
+// ── Google Photos integration — flyttet til ./google-photos-routes.ts
+//   8 endpoints (test-connection, auth-stub, albums CRUD, upload).
+setupGooglePhotosRoutes({
+  app,
+  pool,
+  showcaseMediaUpload,
+  buildGooglePhotosStatusSnapshot,
+  getShowcaseGoogleAlbums,
+  getShowcaseGoogleAlbumPhotos,
+  setShowcaseGoogleAlbums,
+  setShowcaseGoogleAlbumPhotos,
+  mapGooglePhotoRow,
+  fileBufferToDataUrl,
+});
+
+// ── EaseVerse + SongFlow-aliaser — flyttet til ./easeverse-routes.ts
+//   16 endpoints (5 EaseVerse-tracks + 1 projects + 4 split-sheet
+//   linkage + 6 SongFlow deprecation-aliaser).
+setupEaseverseRoutes({
+  app,
+  listEaseVerseProjectsHandler,
+  listEaseVerseTracksHandler,
+  createEaseVerseTrackHandler,
+  backupEaseVerseTrackHandler,
+  syncEaseVerseLyricsHandler,
+  updateEaseVerseLyricsHandler,
+  createSplitSheetFromEaseVerseTrackHandler,
+  listSplitSheetEaseVerseLinksHandler,
+  linkSplitSheetEaseVerseHandler,
+  unlinkSplitSheetEaseVerseHandler,
+  markSongFlowAliasDeprecated,
+});
+
+// ── Role Room support-tickets — flyttet til ./role-room-tickets-routes.ts
+//   3 endpoints (opprett, list, oppdater status).
+//   ensureRoleRoomTicketsTable + VALID_TICKET_{CATEGORIES,PRIORITIES}
+//   flyttet sammen.
+setupRoleRoomTicketsRoutes({ app, pool });
+
+// ── Meeting notes — flyttet til ./meeting-notes-routes.ts
+//   7 endpoints (AI-process, writing-assist, CRUD, google-backup).
+//   14 deps: AI-orchestrering + DB-persistens + Google Drive +
+//   NotebookLM-integrasjon.
+setupMeetingNotesRoutes({
+  app,
+  pool,
+  getUserIdFromAuth,
+  compatResolveUserId,
+  resolveMeetingNotesProjectContext,
+  ensureMeetingNotesCompatibilitySchema,
+  normalizeMeetingNotesPayload,
+  mapMeetingNotesRecord,
+  buildLocalMeetingNotesAiResult,
+  requestMeetingNotesAiResult,
+  buildLocalMeetingWritingAssist,
+  requestMeetingWritingAssist,
+  syncMeetingNotesToCustomerDrive,
+  syncNotebookLmWorkspaceForMeetingNote,
+  syncMeetingNotesLifecycleArtifacts,
+});
+
+// ── Admin accounting-integration — flyttet til ./admin-accounting-routes.ts
+//   2 endpoints (GET+PUT) for Tripletex-integrasjon per bruker.
+//   Closer admin-cluster 11/11 (2026-05-22).
+setupAdminAccountingRoutes({
+  app,
+  requireAdminSession,
+  resolveAdminUserView,
+  readCompatAccountingIntegrationStatus,
+  writeCompatAccountingIntegrationStatus,
+  buildDefaultCompatAccountingIntegrationStatus,
+  buildCompatAccountingIntegrationStatusResponse,
+  isTripletexConfigured,
+  readString,
+  readBoolean,
+  isRecord,
+>>>>>>> Stashed changes
 });
 
 // ── Admin refund-requests — flyttet til ./admin-refund-requests-routes.ts
@@ -104366,505 +104880,6 @@ async function requestMeetingWritingAssist(params: {
   }
 }
 
-app.post("/api/meeting-notes/ai-process", async (req, res) => {
-  try {
-    const body = isRecord(req.body) ? req.body : {};
-    const mode: MeetingNotesAiMode =
-      readString(body.mode) === "summarize" ? "summarize" : "full";
-    const personalNotes = readString(body.personalNotes) || "";
-    const clientVisibleNotes = readString(body.clientVisibleNotes) || "";
-    const profession = readString(body.profession) || "photographer";
-    const projectId = readString(body.projectId);
-    const projectContext = await resolveMeetingNotesProjectContext(projectId);
-    const projectTitle = readString(body.projectTitle) || readString(projectContext?.title) || readString(projectContext?.name);
-    const clientName = readString(body.clientName) || readString(projectContext?.client_name);
-    const meetingTitle = readString(body.meetingTitle);
-    const projectBrief =
-      readString(body.projectBrief) ||
-      readString(projectContext?.request_summary) ||
-      readString(projectContext?.description);
-    const writingStats = isRecord(body.writingStats) ? body.writingStats : {};
-
-    const localResult = buildLocalMeetingNotesAiResult({
-      personalNotes,
-      clientVisibleNotes,
-      mode,
-      projectTitle,
-      clientName,
-      meetingTitle,
-      projectBrief,
-    });
-    const llmResult = await requestMeetingNotesAiResult({
-      profession,
-      mode,
-      personalNotes,
-      clientVisibleNotes,
-      projectTitle,
-      clientName,
-      meetingTitle,
-      projectBrief,
-      writingStats,
-    });
-
-    return res.json(llmResult || localResult);
-  } catch (error) {
-    console.error("Meeting notes AI process error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to process meeting notes with AI" });
-  }
-});
-
-app.post("/api/meeting-notes/writing-assist", async (req, res) => {
-  try {
-    const body = isRecord(req.body) ? req.body : {};
-    const text = readString(body.text) || "";
-    const profession = readString(body.profession) || "photographer";
-    const projectId = readString(body.projectId);
-    const projectContext = await resolveMeetingNotesProjectContext(projectId);
-    const mode: MeetingNotesAiVisibility =
-      readString(body.mode) === "client" ? "client" : "personal";
-    const writingStats = isRecord(body.writingStats) ? body.writingStats : {};
-    const preferredStructure = readString(writingStats.preferredStructure);
-    const formalityLevel = readString(writingStats.formalityLevel);
-    const projectTitle = readString(body.projectTitle) || readString(projectContext?.title) || readString(projectContext?.name);
-    const clientName = readString(body.clientName) || readString(projectContext?.client_name);
-    const meetingTitle = readString(body.meetingTitle);
-    const projectBrief =
-      readString(body.projectBrief) ||
-      readString(projectContext?.request_summary) ||
-      readString(projectContext?.description);
-    const commonPhrases = Array.isArray(writingStats.commonPhrases)
-      ? writingStats.commonPhrases
-          .map((item) => readString(item) || "")
-          .filter(Boolean)
-      : [];
-
-    const localResult = buildLocalMeetingWritingAssist({
-      text,
-      profession,
-      mode,
-      preferredStructure,
-      projectTitle,
-      clientName,
-      projectBrief,
-    });
-    const llmResult = await requestMeetingWritingAssist({
-      text,
-      profession,
-      mode,
-      preferredStructure,
-      formalityLevel,
-      commonPhrases,
-      projectTitle,
-      clientName,
-      meetingTitle,
-      projectBrief,
-    });
-
-    return res.json(llmResult || localResult);
-  } catch (error) {
-    console.error("Meeting notes writing assist error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch writing assistance" });
-  }
-});
-
-app.get("/api/meeting-notes", async (req, res) => {
-  try {
-    await ensureMeetingNotesCompatibilitySchema();
-
-    const meetingId = readString(req.query.meetingId);
-    const creatorId =
-      readString(req.query.creatorId) ||
-      getUserIdFromAuth(req) ||
-      compatResolveUserId(req);
-
-    if (meetingId) {
-      const single = await pool.query(
-        `SELECT * FROM meeting_notes WHERE meeting_id = $1 LIMIT 1`,
-        [meetingId],
-      );
-      if (single.rows[0]) {
-        return res.json(mapMeetingNotesRecord(single.rows[0]));
-      }
-      return res.status(404).json({ error: "Meeting notes not found" });
-    }
-
-    const result = creatorId
-      ? await pool.query(
-          `SELECT * FROM meeting_notes WHERE creator_id = $1 ORDER BY updated_at DESC LIMIT 50`,
-          [creatorId],
-        )
-      : await pool.query(
-          `SELECT * FROM meeting_notes ORDER BY updated_at DESC LIMIT 50`,
-        );
-
-    return res.json({ notes: result.rows.map(mapMeetingNotesRecord) });
-  } catch (error) {
-    console.error("Meeting notes fetch error:", error);
-    return res.status(500).json({ error: "Failed to fetch meeting notes" });
-  }
-});
-
-app.get("/api/meeting-notes/:meetingId", async (req, res) => {
-  try {
-    await ensureMeetingNotesCompatibilitySchema();
-    const result = await pool.query(
-      `SELECT * FROM meeting_notes WHERE meeting_id = $1 OR id::text = $1 ORDER BY updated_at DESC LIMIT 1`,
-      [req.params.meetingId],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Meeting notes not found" });
-    }
-    return res.json(mapMeetingNotesRecord(result.rows[0]));
-  } catch (error) {
-    console.error("Meeting notes get error:", error);
-    return res.status(500).json({ error: "Failed to fetch meeting notes" });
-  }
-});
-
-app.post("/api/meeting-notes", async (req, res) => {
-  try {
-    await ensureMeetingNotesCompatibilitySchema();
-    const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
-    const payload = await normalizeMeetingNotesPayload(
-      req.body || {},
-      creatorId,
-    );
-
-    const result = await pool.query(
-      `INSERT INTO meeting_notes (
-         id, user_id, creator_id, title, content, note_type, position, size, style, metadata,
-         meeting_id, project_id, wedding_timeline_id, client_id, profession, meeting_title, meeting_date,
-         meeting_duration, meeting_type, meeting_location, personal_notes, client_notes, practical_info,
-         action_items, decisions, follow_up_tasks, participants, agenda, next_steps,
-         ai_summary, ai_tags, ai_sentiment, ai_key_topics, timeline_updates,
-         is_client_visible, position_x, position_y, width, height, color, created_by,
-         vendor_info, equipment_needs, client_access_level, is_archived, created_at, updated_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb,
-         $11, $12, $13, $14, $15, $16, $17,
-         $18, $19, $20, $21, $22, $23,
-         $24::jsonb, $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb,
-         $30, $31::jsonb, $32, $33::jsonb, $34::jsonb,
-         $35, $36, $37, $38, $39, $40, $41,
-         $42::jsonb, $43::jsonb, $44, $45, NOW(), NOW()
-       )
-       RETURNING *`,
-      [
-        crypto.randomUUID(),
-        payload.creatorId,
-        payload.creatorId,
-        payload.meetingTitle,
-        readString(payload.personalNotes?.content) || "",
-        payload.meetingType,
-        JSON.stringify({ x: 0, y: 0, z: 0 }),
-        JSON.stringify({ width: 200, height: 150 }),
-        JSON.stringify({
-          fontSize: "14px",
-          textColor: "#333333",
-          fontFamily: "Inter",
-        }),
-        JSON.stringify({ source: "meeting-notes-api" }),
-        payload.meetingId,
-        payload.projectId,
-        payload.weddingTimelineId,
-        payload.clientId,
-        payload.profession,
-        payload.meetingTitle,
-        payload.meetingDate.toISOString().slice(0, 10),
-        payload.meetingDuration,
-        payload.meetingType,
-        payload.meetingLocation,
-        JSON.stringify(payload.personalNotes),
-        JSON.stringify(payload.clientNotes || {}),
-        JSON.stringify(payload.practicalInfo || {}),
-        JSON.stringify(payload.actionItems || []),
-        JSON.stringify(payload.decisions || []),
-        JSON.stringify(payload.actionItems || []),
-        JSON.stringify(payload.vendorInfo?.attendees || []),
-        JSON.stringify([]),
-        JSON.stringify(payload.nextSteps || []),
-        payload.aiSummary,
-        JSON.stringify(payload.aiTags || []),
-        payload.aiSentiment,
-        JSON.stringify(payload.aiKeyTopics || []),
-        JSON.stringify(payload.timelineUpdates || []),
-        payload.isClientVisible,
-        0,
-        0,
-        200,
-        150,
-        "#ffeb3b",
-        payload.creatorId,
-        JSON.stringify(payload.vendorInfo || {}),
-        JSON.stringify(payload.equipmentNeeds || {}),
-        payload.clientAccessLevel,
-        false,
-      ],
-    );
-
-    const syncedRow = await syncMeetingNotesToCustomerDrive(
-      result.rows[0],
-      creatorId,
-    );
-    await syncNotebookLmWorkspaceForMeetingNote(
-      pool,
-      syncedRow,
-      creatorId,
-    ).catch((error) => {
-      console.warn(
-        "NotebookLM workspace sync skipped on create:",
-        error instanceof Error ? error.message : error,
-      );
-    });
-    await syncMeetingNotesLifecycleArtifacts(syncedRow, creatorId);
-    return res.status(201).json(mapMeetingNotesRecord(syncedRow));
-  } catch (error) {
-    console.error("Meeting notes create error:", error);
-    return res.status(500).json({ error: "Failed to create meeting notes" });
-  }
-});
-
-app.put("/api/meeting-notes/:meetingId", async (req, res) => {
-  try {
-    await ensureMeetingNotesCompatibilitySchema();
-    const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
-    const existingResult = await pool.query(
-      `SELECT * FROM meeting_notes WHERE meeting_id = $1 OR id::text = $1 ORDER BY updated_at DESC LIMIT 1`,
-      [req.params.meetingId],
-    );
-    if (existingResult.rows.length === 0) {
-      return res.status(404).json({ error: "Meeting notes not found" });
-    }
-
-    const existing = existingResult.rows[0];
-    const payload = await normalizeMeetingNotesPayload(
-      {
-        ...existing,
-        ...req.body,
-        meetingId: existing.meeting_id,
-        meetingTitle: req.body?.meetingTitle || existing.meeting_title,
-        projectId: req.body?.projectId || existing.project_id,
-        clientId: req.body?.clientId || existing.client_id,
-      },
-      creatorId,
-    );
-
-    const result = await pool.query(
-      `UPDATE meeting_notes
-          SET project_id = $2,
-              wedding_timeline_id = $3,
-              client_id = $4,
-              profession = $5,
-              title = $6,
-              content = $7,
-              note_type = $8,
-              meeting_title = $9,
-              meeting_date = $10,
-              meeting_duration = $11,
-              meeting_type = $12,
-              meeting_location = $13,
-              personal_notes = $14,
-              client_notes = $15,
-              practical_info = $16,
-              action_items = $17::jsonb,
-              decisions = $18::jsonb,
-              follow_up_tasks = $19::jsonb,
-              participants = $20::jsonb,
-              agenda = $21::jsonb,
-              next_steps = $22::jsonb,
-              ai_summary = $23,
-              ai_tags = $24::jsonb,
-              ai_sentiment = $25,
-              ai_key_topics = $26::jsonb,
-              timeline_updates = $27::jsonb,
-              is_client_visible = $28,
-              created_by = $29,
-              vendor_info = $30::jsonb,
-              equipment_needs = $31::jsonb,
-              client_access_level = $32,
-              updated_at = NOW()
-        WHERE meeting_id = $1
-        RETURNING *`,
-      [
-        existing.meeting_id,
-        payload.projectId,
-        payload.weddingTimelineId,
-        payload.clientId,
-        payload.profession,
-        payload.meetingTitle,
-        readString(payload.personalNotes?.content) || "",
-        payload.meetingType,
-        payload.meetingTitle,
-        payload.meetingDate.toISOString().slice(0, 10),
-        payload.meetingDuration,
-        payload.meetingType,
-        payload.meetingLocation,
-        JSON.stringify(payload.personalNotes),
-        JSON.stringify(payload.clientNotes || {}),
-        JSON.stringify(payload.practicalInfo || {}),
-        JSON.stringify(payload.actionItems || []),
-        JSON.stringify(payload.decisions || []),
-        JSON.stringify(payload.actionItems || []),
-        JSON.stringify(payload.vendorInfo?.attendees || []),
-        JSON.stringify([]),
-        JSON.stringify(payload.nextSteps || []),
-        payload.aiSummary,
-        JSON.stringify(payload.aiTags || []),
-        payload.aiSentiment,
-        JSON.stringify(payload.aiKeyTopics || []),
-        JSON.stringify(payload.timelineUpdates || []),
-        payload.isClientVisible,
-        payload.creatorId,
-        JSON.stringify(payload.vendorInfo || {}),
-        JSON.stringify(payload.equipmentNeeds || {}),
-        payload.clientAccessLevel,
-      ],
-    );
-
-    const syncedRow = await syncMeetingNotesToCustomerDrive(
-      result.rows[0],
-      creatorId,
-    );
-    await syncNotebookLmWorkspaceForMeetingNote(
-      pool,
-      syncedRow,
-      creatorId,
-    ).catch((error) => {
-      console.warn(
-        "NotebookLM workspace sync skipped on update:",
-        error instanceof Error ? error.message : error,
-      );
-    });
-    return res.json(mapMeetingNotesRecord(syncedRow));
-  } catch (error) {
-    console.error("Meeting notes update error:", error);
-    return res.status(500).json({ error: "Failed to update meeting notes" });
-  }
-});
-
-app.post("/api/meeting-notes/google-backup", async (req, res) => {
-  try {
-    await ensureMeetingNotesCompatibilitySchema();
-    const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
-    const meetingId = readString(req.body?.meetingId);
-    if (!meetingId) {
-      return res.status(400).json({ error: "meetingId is required" });
-    }
-
-    let recordResult = await pool.query(
-      `SELECT * FROM meeting_notes WHERE meeting_id = $1 LIMIT 1`,
-      [meetingId],
-    );
-
-    if (recordResult.rows.length === 0) {
-      const payload = await normalizeMeetingNotesPayload(
-        {
-          ...(normalizeJsonObjectField(req.body?.notes) || {}),
-          meetingId,
-          projectId: req.body?.projectId,
-          profession: req.body?.profession,
-          title: "Møtenotat",
-        },
-        creatorId,
-      );
-
-      recordResult = await pool.query(
-        `INSERT INTO meeting_notes (
-           id, user_id, creator_id, title, content, note_type, position, size, style, metadata,
-           meeting_id, project_id, wedding_timeline_id, client_id, profession, meeting_title, meeting_date,
-           meeting_type, personal_notes, client_notes, practical_info, action_items, decisions, follow_up_tasks,
-           participants, agenda, next_steps, ai_summary, ai_tags, ai_key_topics, timeline_updates,
-           is_client_visible, position_x, position_y, width, height, color, created_by,
-           vendor_info, equipment_needs, client_access_level, is_archived, created_at, updated_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb,
-           $11, $12, $13, $14, $15, $16, $17,
-           $18, $19, $20, $21, $22::jsonb, $23::jsonb, $24::jsonb,
-           $25::jsonb, $26::jsonb, $27::jsonb, $28, $29::jsonb, $30::jsonb, $31::jsonb,
-           $32, $33, $34, $35, $36, $37, $38,
-           $39::jsonb, $40::jsonb, $41, $42, NOW(), NOW()
-         )
-         RETURNING *`,
-        [
-          crypto.randomUUID(),
-          payload.creatorId,
-          payload.creatorId,
-          payload.meetingTitle,
-          readString(payload.personalNotes?.content) || "",
-          payload.meetingType,
-          JSON.stringify({ x: 0, y: 0, z: 0 }),
-          JSON.stringify({ width: 200, height: 150 }),
-          JSON.stringify({
-            fontSize: "14px",
-            textColor: "#333333",
-            fontFamily: "Inter",
-          }),
-          JSON.stringify({ source: "meeting-notes-backup" }),
-          payload.meetingId,
-          payload.projectId,
-          payload.weddingTimelineId,
-          payload.clientId,
-          payload.profession,
-          payload.meetingTitle,
-          payload.meetingDate.toISOString().slice(0, 10),
-          payload.meetingType,
-          JSON.stringify(payload.personalNotes),
-          JSON.stringify(payload.clientNotes || {}),
-          JSON.stringify(payload.practicalInfo || {}),
-          JSON.stringify(payload.actionItems || []),
-          JSON.stringify(payload.decisions || []),
-          JSON.stringify(payload.actionItems || []),
-          JSON.stringify(payload.vendorInfo?.attendees || []),
-          JSON.stringify([]),
-          JSON.stringify(payload.nextSteps || []),
-          payload.aiSummary,
-          JSON.stringify(payload.aiTags || []),
-          JSON.stringify(payload.aiKeyTopics || []),
-          JSON.stringify(payload.timelineUpdates || []),
-          payload.isClientVisible,
-          0,
-          0,
-          200,
-          150,
-          "#ffeb3b",
-          payload.creatorId,
-          JSON.stringify(payload.vendorInfo || {}),
-          JSON.stringify(payload.equipmentNeeds || {}),
-          payload.clientAccessLevel,
-          false,
-        ],
-      );
-    }
-
-    const syncedRow = await syncMeetingNotesToCustomerDrive(
-      recordResult.rows[0],
-      creatorId,
-    );
-    await syncNotebookLmWorkspaceForMeetingNote(
-      pool,
-      syncedRow,
-      creatorId,
-    ).catch((error) => {
-      console.warn(
-        "NotebookLM workspace sync skipped on backup:",
-        error instanceof Error ? error.message : error,
-      );
-    });
-    return res.json({
-      success: true,
-      note: mapMeetingNotesRecord(syncedRow),
-    });
-  } catch (error) {
-    console.error("Meeting notes Google backup error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to sync meeting notes to Google Drive" });
-  }
-});
 
 app.get("/api/notebooklm/workspace/status", async (req, res) => {
   try {
