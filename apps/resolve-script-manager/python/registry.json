@@ -1140,6 +1140,24 @@
       "requiresTimeline": false
     },
     {
+      "id": "extract_highlight_from_film",
+      "name": "Extract Highlight from Film",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/extract_highlight_from_film.py",
+      "description": "Tar en lang ferdig film, scorer alle shots (motion + audio energy + length), plukker beste shots i kronologisk rekkefølge inntil minDurationSec. Bygger ny Resolve-timeline med highlight-cut.",
+      "requiredInputs": [
+        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
+        {"key": "minDurationSec", "label": "Minimum highlight duration (sec)", "type": "number", "required": false},
+        {"key": "maxDurationSec", "label": "Maximum highlight duration (sec)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "learn_from_user_edit",
       "name": "Learn From My Edit",
       "category": "timeline",
