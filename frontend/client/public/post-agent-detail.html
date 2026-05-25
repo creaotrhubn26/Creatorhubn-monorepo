@@ -391,6 +391,9 @@
 
       var pendingCrew = []; // array of { email, userId? }
       var selectedProductionId = '';
+      // True for ~1 minute after returning from Stripe Checkout. Prevents
+      // re-triggering checkout if grant 402s due to webhook-write lag.
+      var justCompletedCheckout = false;
 
       var loadingState = document.getElementById('loading-state');
       var unauthState = document.getElementById('unauth-state');
@@ -475,6 +478,10 @@
 
           // Returning from Stripe Checkout? Restore pending crew + show success.
           if (params.get('checkout') === 'success') {
+            justCompletedCheckout = true;
+            // Clear flag after 90s — by then any reasonable webhook delay is past
+            // and a 402 means something else is wrong.
+            setTimeout(function () { justCompletedCheckout = false; }, 90000);
             showAlert('Betaling registrert. Klikk «Bekreft tilgang» for å aktivere crew-seats.', 'success');
             try {
               var pending = JSON.parse(window.localStorage.getItem('trrpa_pending_grants_' + pid) || '[]');
@@ -608,6 +615,62 @@
         updateSummary();
       });
 
+      async function retryGrantsAfterCheckout() {
+        // Stripe checkout.session.completed webhook usually arrives within
+        // 1-3 seconds. Poll up to ~30s with progressive delays.
+        var delays = [1500, 1500, 2000, 2500, 3000, 4000, 5000, 5000, 5000];
+        for (var attempt = 0; attempt < delays.length; attempt++) {
+          confirmTeamBtn.textContent = 'Bekrefter betaling… (' + (attempt + 1) + '/' + delays.length + ')';
+          alertArea.innerHTML =
+            '<div class="alert info">Venter på bekreftelse fra Stripe — dette tar normalt 1–3 sekunder etter betaling.</div>';
+          await new Promise(function (r) { setTimeout(r, delays[attempt]); });
+
+          var stillMissing = false;
+          var anyError = null;
+          var toGrant = pendingCrew.filter(function (c) { return !c.alreadyGranted; });
+          for (var j = 0; j < toGrant.length; j++) {
+            var cc = toGrant[j];
+            try {
+              var rr = await fetch(BASE + '/team/' + selectedProductionId + '/grant', {
+                method: 'POST',
+                credentials: 'include',
+                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+                body: JSON.stringify({ email: cc.email }),
+              });
+              var bb = await rr.json();
+              if (!rr.ok) {
+                if (bb.error === 'owner_subscription_required') {
+                  stillMissing = true;
+                  break; // No point trying other grants — same lead, same gap
+                }
+                anyError = cc.email + ': ' + (bb.detail || bb.error || 'HTTP ' + rr.status);
+              }
+            } catch (_) {
+              anyError = cc.email + ': nettverksfeil';
+            }
+          }
+
+          if (!stillMissing) {
+            // Either all succeeded or we hit a non-subscription error
+            if (anyError) {
+              showAlert('Noen seats feilet: ' + anyError);
+              confirmTeamBtn.disabled = false;
+              confirmTeamBtn.textContent = 'Bekreft tilgang';
+            } else {
+              showAlert('Tilgang aktivert. Crew kan nå logge inn i Post Agent.', 'success');
+              confirmTeamBtn.textContent = 'Aktivert ✓';
+              justCompletedCheckout = false;
+            }
+            return;
+          }
+        }
+        // Webhook never showed up — surface graceful escape hatch
+        alertArea.innerHTML =
+          '<div class="alert error">Betalingen ble registrert hos Stripe, men vi har ennå ikke mottatt bekreftelses-eventet (uvanlig).<br>Refresh siden om noen sekunder og prøv igjen — pengene er trygt mottatt.</div>';
+        confirmTeamBtn.disabled = false;
+        confirmTeamBtn.textContent = 'Bekreft tilgang';
+      }
+
       confirmTeamBtn.addEventListener('click', async function () {
         confirmTeamBtn.disabled = true;
         confirmTeamBtn.textContent = 'Aktiverer…';
@@ -640,6 +703,15 @@
             errors.push(c.email + ': nettverksfeil');
           }
         }
+        if (subscriptionMissing && justCompletedCheckout) {
+          // Race: just returned from Checkout but Stripe webhook hasn't written
+          // the subscriptions row yet. Don't re-trigger checkout (double-charge
+          // risk!) — poll with exponential-ish backoff, retry the grants when
+          // the sub appears.
+          await retryGrantsAfterCheckout();
+          return;
+        }
+
         if (subscriptionMissing) {
           // Lazy-onboarding: spin up a Stripe Checkout for Post Agent standalone.
           // Seat count = pending crew the lead wanted to add.
