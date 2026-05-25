@@ -535,6 +535,7 @@ import { setupEmailsRoutes } from "./emails-routes";
 import { setupTelemetryRoutes } from "./telemetry-routes";
 import { setupVideoSyncRoutes } from "./video-sync-routes";
 import { setupUserPreferencesRoutes } from "./user-preferences-routes";
+import { setupOnboardingRoutes } from "./onboarding-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -31107,52 +31108,6 @@ app.post("/api/auth/reset-password/:token", async (req, res) => {
     return res.json({ status: "ok", message: result.message });
   } catch (error) {
     console.error("[auth/reset-password POST] failed", error);
-    return res.status(500).json({ error: "failed" });
-  }
-});
-
-// ── Onboarding-wizard progresjon ──────────────────────────────────────
-//
-// GET   /api/onboarding/status        — hent fullførte steg + ferdig-flagg
-// POST  /api/onboarding/complete-step { stepId } — marker steg som ferdig
-// POST  /api/onboarding/dismiss       — skjul wizarden permanent
-app.get("/api/onboarding/status", async (req, res) => {
-  const session = await resolveActiveSessionFromRequest(req);
-  if (!session) return res.status(401).json({ error: "not_authenticated" });
-  try {
-    const svc = await import("./onboarding-service.js");
-    const status = await svc.getOnboardingStatus(pool, session.userId);
-    return res.json(status);
-  } catch (error) {
-    console.error("[onboarding/status] failed", error);
-    return res.status(500).json({ error: "failed" });
-  }
-});
-
-app.post("/api/onboarding/complete-step", async (req, res) => {
-  const session = await resolveActiveSessionFromRequest(req);
-  if (!session) return res.status(401).json({ error: "not_authenticated" });
-  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
-  const stepId = typeof body.stepId === "string" ? body.stepId : "";
-  try {
-    const svc = await import("./onboarding-service.js");
-    const status = await svc.markStepCompleted(pool, session.userId, stepId as any);
-    return res.json(status);
-  } catch (error) {
-    console.error("[onboarding/complete-step] failed", error);
-    return res.status(500).json({ error: "failed" });
-  }
-});
-
-app.post("/api/onboarding/dismiss", async (req, res) => {
-  const session = await resolveActiveSessionFromRequest(req);
-  if (!session) return res.status(401).json({ error: "not_authenticated" });
-  try {
-    const svc = await import("./onboarding-service.js");
-    const status = await svc.dismissOnboarding(pool, session.userId);
-    return res.json(status);
-  } catch (error) {
-    console.error("[onboarding/dismiss] failed", error);
     return res.status(500).json({ error: "failed" });
   }
 });
@@ -84678,6 +84633,10 @@ setupUserPreferencesRoutes({
   dbCompatSpeedDialPreferenceKey,
   speedDialPreferencesFallbackStore,
 });
+
+// /api/onboarding/* — 3 endpoints (status, complete-step, dismiss).
+// Dynamisk import av onboarding-service holder modulen lett.
+setupOnboardingRoutes({ app, pool, resolveActiveSessionFromRequest });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
