@@ -104,6 +104,8 @@ import {
 import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '../../lib/queryClient';
 import { DanceWorkspace } from './dance';
 
 import {
@@ -1618,6 +1620,83 @@ function CrewSubPanel({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
+  const qc = useQueryClient();
+
+  // Seats granted on this project, keyed by user email (for matching crew rows by email)
+  const seatsQuery = useQuery<{ seats: Array<{ userId: string; email?: string; isActive?: boolean }> }>({
+    queryKey: ['post-agent-team-seats', projectId],
+    queryFn: async () => {
+      const res = await apiRequest(`/api/post-agent/team/${projectId}/seats`).catch(() => null);
+      const data = (res as any)?.json ? await (res as any).json() : res;
+      return { seats: Array.isArray(data?.seats) ? data.seats : [] };
+    },
+    enabled: !!projectId,
+    staleTime: 30_000,
+    retry: 1,
+  });
+
+  const activeSeats = (seatsQuery.data?.seats || []).filter((s) => s.isActive !== false);
+  const seatByEmail = new Map<string, { userId: string }>();
+  const seatByUserId = new Map<string, true>();
+  activeSeats.forEach((s) => {
+    if (s.email) seatByEmail.set(s.email.toLowerCase(), { userId: s.userId });
+    if (s.userId) seatByUserId.set(s.userId, true);
+  });
+
+  const grantMut = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiRequest(`/api/post-agent/team/${projectId}/grant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      return (res as any)?.json ? await (res as any).json() : res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['post-agent-team-seats', projectId] });
+      qc.invalidateQueries({ queryKey: ['post-agent-card', projectId, 'seats'] });
+    },
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest(`/api/post-agent/team/${projectId}/grant/${userId}`, { method: 'DELETE' });
+      return (res as any)?.json ? await (res as any).json() : res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['post-agent-team-seats', projectId] });
+      qc.invalidateQueries({ queryKey: ['post-agent-card', projectId, 'seats'] });
+    },
+  });
+
+  const [busyRow, setBusyRow] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ rowId: string; msg: string; cta?: { label: string; url: string } } | null>(null);
+
+  async function handleToggle(c: CrewMember, currentSeat: { userId: string } | undefined) {
+    if (!c.email) return;
+    setBusyRow(c.id);
+    setRowError(null);
+    try {
+      if (currentSeat) {
+        await revokeMut.mutateAsync(currentSeat.userId);
+      } else {
+        const result = await grantMut.mutateAsync(c.email);
+        if (result?.error === 'owner_subscription_required') {
+          setRowError({
+            rowId: c.id,
+            msg: 'Du må ha et aktivt Role Room-abonnement eller kjøpe Post Agent standalone.',
+            cta: { label: 'Sett opp billing', url: `/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}` },
+          });
+        } else if (result?.error) {
+          setRowError({ rowId: c.id, msg: result.detail || result.error });
+        }
+      }
+    } catch (e: any) {
+      setRowError({ rowId: c.id, msg: e?.message || 'Noe gikk galt' });
+    } finally {
+      setBusyRow(null);
+    }
+  }
 
   if (loading) return <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 1 }} />;
 
@@ -1638,14 +1717,73 @@ function CrewSubPanel({
         </Typography>
       ) : (
         <List dense>
-          {crew.map((c) => (
-            <ListItem key={c.id}>
-              <Avatar sx={{ mr: 1.5, bgcolor: '#ec4899', width: 32, height: 32 }}>
-                <GroupIcon fontSize="small" />
-              </Avatar>
-              <ListItemText primary={c.name} secondary={[c.role, c.department].filter(Boolean).join(' · ')} />
-            </ListItem>
-          ))}
+          {crew.map((c) => {
+            const email = c.email?.trim().toLowerCase();
+            const seat = email ? seatByEmail.get(email) : undefined;
+            const isBusy = busyRow === c.id;
+            const err = rowError && rowError.rowId === c.id ? rowError : null;
+            return (
+              <ListItem
+                key={c.id}
+                sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 0.5, py: 1 }}
+                secondaryAction={null}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
+                  <Avatar sx={{ bgcolor: '#ec4899', width: 32, height: 32 }}>
+                    <GroupIcon fontSize="small" />
+                  </Avatar>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{c.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {[c.role, c.department, c.email].filter(Boolean).join(' · ') || '—'}
+                    </Typography>
+                  </Box>
+                  {!c.email ? (
+                    <Chip size="small" label="Trenger e-post" sx={{ opacity: 0.6 }} />
+                  ) : seat ? (
+                    <Chip
+                      size="small"
+                      label={isBusy ? '...' : 'Post Agent ✓'}
+                      onDelete={isBusy ? undefined : () => handleToggle(c, seat)}
+                      sx={{
+                        bgcolor: 'rgba(74, 212, 138, 0.18)',
+                        color: '#2a9568',
+                        fontWeight: 600,
+                        '& .MuiChip-deleteIcon': { color: '#2a9568' },
+                      }}
+                    />
+                  ) : (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={isBusy}
+                      onClick={() => handleToggle(c, undefined)}
+                      sx={{
+                        borderColor: '#a030c0',
+                        color: '#a030c0',
+                        '&:hover': { borderColor: '#b94dd6', bgcolor: 'rgba(160,48,192,0.05)' },
+                      }}
+                    >
+                      {isBusy ? '...' : 'Aktiver Post Agent'}
+                    </Button>
+                  )}
+                </Box>
+                {err && (
+                  <Alert
+                    severity="warning"
+                    sx={{ ml: 6, py: 0.25 }}
+                    action={
+                      err.cta ? (
+                        <Button size="small" href={err.cta.url}>{err.cta.label}</Button>
+                      ) : undefined
+                    }
+                  >
+                    {err.msg}
+                  </Alert>
+                )}
+              </ListItem>
+            );
+          })}
         </List>
       )}
 
