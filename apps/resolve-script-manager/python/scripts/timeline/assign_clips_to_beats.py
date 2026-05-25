@@ -37,6 +37,57 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import bridge
 
 
+def _probe_motion_score(ffmpeg: str, video_path: str, sample_seconds: float = 5.0) -> float | None:
+    """Quick motion score via ffmpeg scdet — average per-frame scene-change
+    delta over the first N seconds. Higher = more visual motion/cuts within
+    the shot. Returns 0..1 (None on probe failure).
+    """
+    import re, subprocess
+    cmd = [
+        ffmpeg, "-hide_banner", "-nostats", "-y",
+        "-t", f"{sample_seconds:.1f}",
+        "-i", video_path,
+        "-vf", "scdet=threshold=0:sc_pass=0",
+        "-an", "-f", "null", "-",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+        if not deltas:
+            return None
+        avg = sum(deltas) / len(deltas)
+        return min(1.0, avg / 30.0)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ensure_motion_scores(decisions: list[dict]) -> None:
+    """Populate 'motionScore' on each decision in-place (best-effort). Uses
+    ffmpeg scdet on the first 5 seconds. Skips entries that already have it,
+    so this only pays the probe cost once per cull session."""
+    import shutil
+    ffmpeg = (
+        os.environ.get("RESOLVE_SCRIPT_MANAGER_FFMPEG")
+        or shutil.which("ffmpeg")
+        or "/opt/homebrew/bin/ffmpeg"
+    )
+    if not os.path.isfile(ffmpeg):
+        bridge.warn("ffmpeg not found — skipping motion probe (intro selection will fall back to duration heuristic)")
+        return
+    needed = [d for d in decisions if "motionScore" not in d and d.get("clipPath")]
+    if not needed:
+        return
+    bridge.log(f"Probing motion-score for {len(needed)} clips (~5s sample each)…")
+    for i, d in enumerate(needed):
+        path = d.get("clipPath")
+        if not path or not os.path.isfile(path):
+            d["motionScore"] = None
+            continue
+        d["motionScore"] = _probe_motion_score(ffmpeg, path)
+        if (i + 1) % 10 == 0:
+            bridge.progress(i + 1, len(needed), f"Motion-score {i+1}/{len(needed)}")
+
+
 def _kept_decisions_sorted(session: dict) -> list[dict]:
     """Return clips with decision=='keep', sorted by energy (highlightScore desc,
     qualityScore desc, then name for stability)."""
@@ -262,6 +313,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         bridge.error("No clips marked 'keep' (or 'maybe') in the cull session.")
         sys.exit(1)
 
+    # Probe motion-scores so we can sort clips by visual energy.
+    # Calm clips → intro/outro. Energetic clips → climax.
+    _ensure_motion_scores(kept)
+
     segments = _build_segments(beats, segment_beats, prefer_downbeats, downbeats)
     if not segments:
         bridge.error("Could not derive any cut-segments from the beat grid.")
@@ -272,28 +327,63 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         f"(beat stride: {segment_beats}, prefer downbeats: {prefer_downbeats})"
     )
 
-    # Strategy: rank-1 clip → highest-energy segment; rank-N → lowest-energy.
-    # Highest-energy segments are typically the middle (build → drop), so we
-    # interleave the sort: alternate around the centre to put best clips on
-    # downbeats nearer the middle.
+    # ─── Energy-curve assignment ─────────────────────────────────────────
+    # Build a per-segment "energy demand" curve: low at start (intro), peaks
+    # around 60-70% (climax / drop), tapers at end (outro). Each segment's
+    # demand value is in [0..1].
     n = len(segments)
-    indices = []
-    # Build [mid, mid-1, mid+1, mid-2, mid+2, ...] sequence
-    mid = n // 2
-    for offset in range(n):
-        if offset % 2 == 0:
-            target = mid + offset // 2
-        else:
-            target = mid - (offset // 2 + 1)
-        if 0 <= target < n:
-            indices.append(target)
-    indices = indices[:n]
 
-    # Round-robin clips if we have fewer than segments
+    def _energy_demand(seg_idx: int) -> float:
+        # Smooth-step easing: starts flat-low, rises to peak around 0.65, falls
+        x = seg_idx / max(1, n - 1)
+        # Curve: 0 → 0.35 → 1.0 → 0.4 → 0
+        if x < 0.15:
+            return 0.05 + (x / 0.15) * 0.25         # intro 0.05 → 0.30
+        if x < 0.65:
+            return 0.30 + ((x - 0.15) / 0.50) * 0.70  # rise 0.30 → 1.00
+        if x < 0.90:
+            return 1.0 - ((x - 0.65) / 0.25) * 0.55   # peak fall 1.00 → 0.45
+        return 0.45 - ((x - 0.90) / 0.10) * 0.35      # outro 0.45 → 0.10
+
+    # Rank clips by motion-score (None falls to average so we don't penalize
+    # unknowns). Tie-break on highlightScore + qualityScore.
+    def _clip_energy(c: dict) -> float:
+        m = c.get("motionScore")
+        if m is None:
+            return 0.5
+        return float(m)
+
+    # For each segment, find the clip whose energy best matches the demand.
+    # Avoid using the same clip twice in a row if we have enough variety.
+    available = list(kept)
     assignments: list[dict] = [{} for _ in range(n)]
-    for energy_rank, seg_idx in enumerate(indices):
-        clip = kept[energy_rank % len(kept)]
+    recent_clips: list[str] = []  # rolling window to avoid back-to-back repeats
+
+    for seg_idx in range(n):
+        if not available:
+            available = list(kept)  # exhaustion: allow reuse
+        demand = _energy_demand(seg_idx)
+        # Sort available by absolute distance from demand
+        scored = sorted(
+            available,
+            key=lambda c: (
+                abs(_clip_energy(c) - demand),
+                -(c.get("highlightScore") or 0),
+                -(c.get("qualityScore") or 0),
+            ),
+        )
+        # Skip last 3 used clips when possible
+        pick = None
+        for cand in scored:
+            if cand.get("clipPath") not in recent_clips[-3:]:
+                pick = cand
+                break
+        if pick is None:
+            pick = scored[0]
+        recent_clips.append(pick.get("clipPath"))
+
         start_sec, end_sec = segments[seg_idx]
+        clip = pick
         assignments[seg_idx] = {
             "segmentIndex": seg_idx,
             "startSec": round(start_sec, 3),
@@ -303,9 +393,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "clipName": clip.get("clipName"),
             "qualityScore": clip.get("qualityScore"),
             "highlightScore": clip.get("highlightScore"),
-            "energyRank": energy_rank,
+            "motionScore": clip.get("motionScore"),
+            "energyDemand": round(demand, 3),
         }
-        bridge.progress(energy_rank, n, f"Assigning clip {energy_rank + 1}/{n}")
+        bridge.progress(seg_idx, n, f"Assigning clip {seg_idx + 1}/{n} (demand {demand:.2f})")
 
     result = {
         "segments": assignments,
