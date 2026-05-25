@@ -32,6 +32,7 @@ const DISPLAY_ORDER: Array<{ key: string; label: string; manager?: "brew" | "pip
   { key: "python3", label: "Python 3" },
   { key: "anthropic", label: "anthropic (Python)", manager: "pip", pipPkg: "anthropic" },
   { key: "whisperx", label: "whisperx (Python)", manager: "pip", pipPkg: "whisperx" },
+  { key: "librosa", label: "librosa (beat detection)", manager: "pip", pipPkg: "librosa" },
   { key: "resolve", label: "DaVinci Resolve" },
 ];
 
