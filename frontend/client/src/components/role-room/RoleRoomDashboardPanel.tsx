@@ -1671,6 +1671,26 @@ function CrewSubPanel({
 
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ rowId: string; msg: string; cta?: { label: string; url: string } } | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  async function handleBulkGrant() {
+    const unseated = crew.filter((c) => {
+      const email = c.email?.trim().toLowerCase();
+      return !!email && !seatByEmail.get(email);
+    });
+    if (unseated.length === 0) return;
+    setBulkProgress({ done: 0, total: unseated.length });
+    setRowError(null);
+    for (let i = 0; i < unseated.length; i++) {
+      try {
+        await grantMut.mutateAsync(unseated[i].email!);
+      } catch {
+        /* skip — error chips per row would be noisy in bulk; continue */
+      }
+      setBulkProgress({ done: i + 1, total: unseated.length });
+    }
+    setBulkProgress(null);
+  }
 
   async function handleToggle(c: CrewMember, currentSeat: { userId: string } | undefined) {
     if (!c.email) return;
@@ -1744,6 +1764,35 @@ function CrewSubPanel({
           </Typography>
         </Alert>
       )}
+
+      {/* Bulk-grant: only after project activation, only if there are
+          unseated crew with email to grant. */}
+      {activeSeats.length > 0 && (() => {
+        const unseatedWithEmail = crew.filter((c) => {
+          const email = c.email?.trim().toLowerCase();
+          return !!email && !seatByEmail.get(email);
+        });
+        if (unseatedWithEmail.length === 0) return null;
+        return (
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!!bulkProgress}
+              onClick={handleBulkGrant}
+              sx={{
+                borderColor: '#a030c0',
+                color: '#a030c0',
+                '&:hover': { borderColor: '#b94dd6', bgcolor: 'rgba(160,48,192,0.05)' },
+              }}
+            >
+              {bulkProgress
+                ? `Tildeler… (${bulkProgress.done}/${bulkProgress.total})`
+                : `Tildel alle med epost (${unseatedWithEmail.length})`}
+            </Button>
+          </Box>
+        );
+      })()}
 
       {crew.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
