@@ -40,6 +40,15 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import bridge
 
+# Allow `signals` + `genre_weights` to be imported as top-level packages
+# from inside scripts/timeline/, which is where this script lives.
+_TIMELINE_DIR = os.path.dirname(os.path.abspath(__file__))
+if _TIMELINE_DIR not in sys.path:
+    sys.path.insert(0, _TIMELINE_DIR)
+
+import signals as _signals_pkg  # noqa: E402
+import genre_weights  # noqa: E402
+
 
 SIDECAR_FFMPEG_PATHS = (
     "/opt/homebrew/bin/ffmpeg",
@@ -177,6 +186,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # is run to finalize the Resolve timeline.
     review_mode = bool(params.get("interactiveReview"))
 
+    # Genre selection (#21) — controls signal weights + chapter targets
+    genre_name = (params.get("genre") or "wedding").strip()
+    genre_cfg = genre_weights.get(genre_name)
+    use_signals = bool(params.get("useSignals", True))
+    bridge.log(f"Genre: {genre_name} — {genre_cfg['description']}")
+
     ffmpeg, ffprobe = find_ffmpeg()
     if not ffmpeg or not ffprobe:
         bridge.error("ffmpeg/ffprobe not on PATH — install via Dependencies modal")
@@ -230,7 +245,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         shot_dur = end - start
         # Length bonus: reward 1-6s shots, lightly penalize very long static ones
         length_factor = 1.0 if 1.0 <= shot_dur <= 6.0 else (0.7 if shot_dur < 1.0 else 0.85)
-        score = (motion * motion_w + audio * audio_w) * length_factor
+        base_score = (motion * motion_w + audio * audio_w) * length_factor
         shot_scores.append({
             "index": i,
             "startSec": round(start, 3),
@@ -238,29 +253,108 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "durationSec": round(shot_dur, 3),
             "motion": round(motion, 3),
             "audio": round(audio, 3),
-            "score": round(score, 4),
+            "baseScore": round(base_score, 4),
+            "score": round(base_score, 4),  # may be augmented below
+            "signals": {},  # populated by signal pipeline
         })
         if (i + 1) % 10 == 0:
-            bridge.progress(20 + int(50 * (i + 1) / len(shots)), 100, f"Scored {i + 1}/{len(shots)}")
+            bridge.progress(20 + int(35 * (i + 1) / len(shots)), 100, f"Scored {i + 1}/{len(shots)}")
+
+    # ─── Signal pipeline (#15–#25) ─────────────────────────────────────────
+    chapter_labels: dict[int, str] = {}
+    signal_outputs: dict[str, dict[int, float]] = {}
+    if use_signals:
+        bridge.progress(55, 100, "Running advanced signals…")
+        avail = _signals_pkg.available_signals(logger=lambda m: bridge.log(f"  {m}"))
+        # Compute chapter labels FIRST (used for representation guarantee below)
+        if "chapters" in avail:
+            try:
+                chapters_mod = avail["chapters"]
+                chapter_labels = chapters_mod.compute_chapter_labels(
+                    ffmpeg, video_path, shots, duration,
+                    n_chapters=3 if genre_name == "wedding" else 3,
+                )
+            except Exception as exc:  # noqa: BLE001
+                bridge.warn(f"chapters signal failed: {exc}")
+        # Run remaining signals
+        shot_tuples = [(s["startSec"], s["endSec"]) for s in shot_scores]
+        weights = genre_cfg["weights"]
+        for sig_name, mod in avail.items():
+            if sig_name == "chapters":
+                continue
+            try:
+                signal_outputs[sig_name] = mod.compute(ffmpeg, ffprobe, video_path, shot_tuples)
+            except Exception as exc:  # noqa: BLE001
+                bridge.warn(f"signal '{sig_name}' raised: {exc}")
+                signal_outputs[sig_name] = {}
+
+        # Combine signals into shot.score
+        for shot in shot_scores:
+            i = shot["index"]
+            adjustment = 0.0
+            for sig_name, output in signal_outputs.items():
+                w = weights.get(sig_name, 0.0)
+                if w == 0.0 or i not in output:
+                    continue
+                v = float(output[i])
+                shot["signals"][sig_name] = round(v, 3)
+                adjustment += w * v
+            shot["score"] = round(shot["baseScore"] + adjustment, 4)
+            if chapter_labels:
+                shot["chapter"] = chapter_labels.get(i)
 
     bridge.progress(75, 100, "Picking best shots…")
-    # Greedy: sort by score, pick until total reaches min_dur, never exceed max_dur
-    sorted_by_score = sorted(shot_scores, key=lambda s: -s["score"])
-    picked: list[dict] = []
-    total = 0.0
-    for s in sorted_by_score:
-        if total >= min_dur and total + s["durationSec"] > max_dur:
-            continue
-        picked.append(s)
-        total += s["durationSec"]
-        if total >= max_dur:
-            break
+    # Per-chapter quota picking (#18 + #20): if chapter_targets is set, allocate
+    # a fraction of the total duration to each chapter and pick the best shots
+    # within that chapter independently. This ensures the highlight isn't all-
+    # ceremony or all-dance.
+    chapter_targets = genre_cfg.get("chapter_targets") if use_signals else None
+    if chapter_targets and chapter_labels:
+        picked: list[dict] = []
+        total = 0.0
+        for chap, fraction in chapter_targets.items():
+            chap_target = min_dur * fraction
+            chap_max = max_dur * fraction
+            chap_shots = [s for s in shot_scores if s.get("chapter") == chap]
+            chap_shots.sort(key=lambda s: -s["score"])
+            chap_total = 0.0
+            for s in chap_shots:
+                if chap_total + s["durationSec"] > chap_max:
+                    continue
+                picked.append(s)
+                chap_total += s["durationSec"]
+                if chap_total >= chap_target:
+                    break
+            total += chap_total
+            bridge.log(f"  Chapter '{chap}': picked {chap_total:.1f}s "
+                       f"(target {chap_target:.0f}s)")
+    else:
+        # Original greedy mode
+        sorted_by_score = sorted(shot_scores, key=lambda s: -s["score"])
+        picked = []
+        total = 0.0
+        for s in sorted_by_score:
+            if total >= min_dur and total + s["durationSec"] > max_dur:
+                continue
+            picked.append(s)
+            total += s["durationSec"]
+            if total >= max_dur:
+                break
 
     # Sort picks chronologically for narrative flow
     picked.sort(key=lambda s: s["startSec"])
+    chapters_summary = ""
+    if chapter_labels:
+        used_chaps: dict[str, float] = {}
+        for p in picked:
+            c = p.get("chapter") or "?"
+            used_chaps[c] = used_chaps.get(c, 0) + p["durationSec"]
+        chapters_summary = " · " + ", ".join(
+            f"{c}={d:.0f}s" for c, d in used_chaps.items()
+        )
     bridge.log(
         f"Picked {len(picked)} shots totalling {total:.1f}s "
-        f"(target {min_dur:.0f}s, cap {max_dur:.0f}s)"
+        f"(target {min_dur:.0f}s, cap {max_dur:.0f}s){chapters_summary}"
     )
 
     if dry_run:
@@ -271,6 +365,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "shotsPicked": len(picked),
             "highlightDuration": round(total, 1),
             "samplePicks": picked[:10],
+            "signalsUsed": list(signal_outputs.keys()),
+            "chaptersDetected": sorted(set(chapter_labels.values())) if chapter_labels else [],
+            "genre": genre_name,
         })
         return
 
@@ -323,6 +420,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "picksCount": len(picked),
             "highlightDuration": round(total, 1),
             "samplePicks": picked[:10],
+            "signalsUsed": list(signal_outputs.keys()),
+            "chaptersDetected": sorted(set(chapter_labels.values())) if chapter_labels else [],
+            "genre": genre_name,
         })
         return
 
@@ -388,6 +488,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         "highlightDurationSec": round(total, 1),
         "placedCount": placed_count,
         "samplePicks": picked[:15],
+        "signalsUsed": list(signal_outputs.keys()),
+        "chaptersDetected": sorted(set(chapter_labels.values())) if chapter_labels else [],
+        "genre": genre_name,
     })
 
 

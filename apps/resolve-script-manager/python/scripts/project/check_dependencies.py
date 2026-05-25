@@ -196,13 +196,28 @@ def run(params: dict, dry_run: bool) -> None:
     bridge.progress(6, 9, "whisperx (pip)")
     whisperx_pkg = check_python_module("whisperx")
 
-    bridge.progress(7, 9, "librosa (pip)")
+    bridge.progress(7, 14, "librosa (pip)")
     librosa_pkg = check_python_module("librosa")
 
-    bridge.progress(8, 9, "DaVinci Resolve")
+    bridge.progress(8, 14, "opencv-python (pip)")
+    opencv_pkg = check_python_module("cv2")
+
+    bridge.progress(9, 14, "webrtcvad (pip)")
+    webrtcvad_pkg = check_python_module("webrtcvad")
+
+    bridge.progress(10, 14, "ultralytics (pip)")
+    ultralytics_pkg = check_python_module("ultralytics")
+
+    bridge.progress(11, 14, "scikit-learn (pip)")
+    sklearn_pkg = check_python_module("sklearn")
+
+    bridge.progress(12, 14, "face_recognition (pip, optional)")
+    face_rec_pkg = check_python_module("face_recognition")
+
+    bridge.progress(13, 14, "DaVinci Resolve")
     resolve = check_resolve()
 
-    bridge.progress(9, 9, "Done.")
+    bridge.progress(14, 14, "Done.")
 
     has_anthropic_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     has_hf_token = bool(os.environ.get("HF_TOKEN"))
@@ -217,6 +232,11 @@ def run(params: dict, dry_run: bool) -> None:
             "anthropic": anthropic,
             "whisperx": whisperx_pkg,
             "librosa": librosa_pkg,
+            "opencv": opencv_pkg,
+            "webrtcvad": webrtcvad_pkg,
+            "ultralytics": ultralytics_pkg,
+            "sklearn": sklearn_pkg,
+            "face_recognition": face_rec_pkg,
             "resolve": resolve,
         },
         "credentials": {

@@ -37,6 +37,118 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import bridge
 
 
+def _compute_clip_phash(ffmpeg: str, video_path: str, ts_sec: float = 2.0) -> int | None:
+    """Compute 64-bit perceptual hash of a single frame at `ts_sec`.
+
+    Used to detect near-duplicate shots (e.g. same moment from a different
+    camera angle) so we don't pick all 3 angles back-to-back. Requires
+    opencv-python; returns None if unavailable.
+    """
+    try:
+        import cv2  # type: ignore
+        import numpy as np
+    except ImportError:
+        return None
+    import tempfile, subprocess, os as _os
+    fd, tmp = tempfile.mkstemp(prefix="phash_", suffix=".png")
+    _os.close(fd)
+    try:
+        subprocess.run(
+            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+             "-ss", f"{ts_sec:.2f}", "-i", video_path,
+             "-vframes", "1", "-vf", "scale=32:32,format=gray",
+             tmp],
+            capture_output=True, timeout=10,
+        )
+        if not _os.path.exists(tmp):
+            return None
+        img = cv2.imread(tmp, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return None
+        img_f = np.float32(img)
+        dct = cv2.dct(img_f)
+        # Top-left 8x8 (low-frequency) DCT coefficients — perceptual signature
+        low = dct[:8, :8]
+        med = float(np.median(low))
+        bits = (low > med).flatten()
+        h = 0
+        for i, b in enumerate(bits):
+            if b:
+                h |= (1 << i)
+        return h
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        try: _os.unlink(tmp)
+        except OSError: pass
+
+
+def _hamming(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+def _compute_motion_period(ffmpeg: str, video_path: str, max_seconds: float = 12.0) -> float | None:
+    """Dominant period (seconds) of motion variation in the clip.
+
+    Detects rhythmic camera moves (pan/tilt/dolly that "breathes" at a
+    given tempo). Returns None when motion is too constant or clip is too
+    short to estimate. Used to bias toward shots whose pan-tempo matches
+    the song's beat-period (or a harmonic of it).
+    """
+    import re, subprocess
+    cmd = [
+        ffmpeg, "-hide_banner", "-nostats", "-y",
+        "-t", f"{max_seconds:.1f}",
+        "-i", video_path,
+        "-vf", "scale=80:45,fps=4,scdet=threshold=0:sc_pass=0",
+        "-an", "-f", "null", "-",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+    except Exception:  # noqa: BLE001
+        return None
+    if len(deltas) < 8:
+        return None
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    arr = np.array(deltas, dtype=float)
+    arr = arr - arr.mean()
+    if float(arr.std()) < 0.5:
+        return None  # too constant — no rhythm
+    autocorr = np.correlate(arr, arr, mode="full")
+    autocorr = autocorr[len(autocorr) // 2:]
+    # Look for first peak after lag 0 in the range 2..20 samples (= 0.5..5s at 4fps)
+    max_lag = min(len(autocorr) - 1, 20)
+    best_lag = None
+    for lag in range(2, max_lag):
+        if autocorr[lag] > autocorr[lag - 1] and autocorr[lag] >= autocorr[lag + 1]:
+            best_lag = lag
+            break
+    if best_lag is None:
+        return None
+    # We sampled at fps=4 → period_seconds = best_lag / 4
+    return best_lag / 4.0
+
+
+def _tempo_match_score(clip_period_sec: float | None, beat_period_sec: float) -> float:
+    """0..1 — how well a clip's motion-period aligns with the song's beat-period
+    or a musical harmonic (½×, 1×, 2×, 4×).
+    """
+    if clip_period_sec is None or beat_period_sec <= 0:
+        return 0.5  # unknown → neutral, neither bonus nor penalty
+    ratios = (0.25, 0.5, 1.0, 2.0, 4.0)
+    rel = clip_period_sec / beat_period_sec
+    best = min(abs(rel - r) / r for r in ratios)  # relative error
+    if best < 0.05:
+        return 1.0
+    if best < 0.20:
+        return 1.0 - (best - 0.05) / 0.15 * 0.5
+    return 0.3
+
+
 def _probe_motion_score(ffmpeg: str, video_path: str, sample_seconds: float = 5.0) -> float | None:
     """Quick motion score via ffmpeg scdet — average per-frame scene-change
     delta over the first N seconds. Higher = more visual motion/cuts within
@@ -62,9 +174,14 @@ def _probe_motion_score(ffmpeg: str, video_path: str, sample_seconds: float = 5.
 
 
 def _ensure_motion_scores(decisions: list[dict]) -> None:
-    """Populate 'motionScore' on each decision in-place (best-effort). Uses
-    ffmpeg scdet on the first 5 seconds. Skips entries that already have it,
-    so this only pays the probe cost once per cull session."""
+    """Populate 'motionScore', 'phash' (if cv2 available), and 'motionPeriod'
+    on each decision in-place (best-effort). Skips entries that already have
+    them, so this only pays the probe cost once per cull session.
+
+    motionScore  → 0..1, average frame-to-frame difference (visual energy)
+    phash        → 64-bit perceptual hash (clip-dedupe vs different angles)
+    motionPeriod → dominant period of motion variation in seconds (rhythm-match)
+    """
     import shutil
     ffmpeg = (
         os.environ.get("RESOLVE_SCRIPT_MANAGER_FFMPEG")
@@ -77,15 +194,19 @@ def _ensure_motion_scores(decisions: list[dict]) -> None:
     needed = [d for d in decisions if "motionScore" not in d and d.get("clipPath")]
     if not needed:
         return
-    bridge.log(f"Probing motion-score for {len(needed)} clips (~5s sample each)…")
+    bridge.log(f"Probing motion-score + pHash + motion-period for {len(needed)} clips…")
     for i, d in enumerate(needed):
         path = d.get("clipPath")
         if not path or not os.path.isfile(path):
             d["motionScore"] = None
+            d["phash"] = None
+            d["motionPeriod"] = None
             continue
         d["motionScore"] = _probe_motion_score(ffmpeg, path)
+        d["phash"] = _compute_clip_phash(ffmpeg, path)
+        d["motionPeriod"] = _compute_motion_period(ffmpeg, path)
         if (i + 1) % 10 == 0:
-            bridge.progress(i + 1, len(needed), f"Motion-score {i+1}/{len(needed)}")
+            bridge.progress(i + 1, len(needed), f"Fingerprint {i+1}/{len(needed)}")
 
 
 def _load_user_preferences() -> dict:
@@ -394,30 +515,71 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             return 0.5
         return float(m)
 
+    # Derive song beat-period for camera-tempo bias (#42)
+    cached_session = _load_cached_beat_session()
+    song_bpm = cached_session.get("bpm") if cached_session else None
+    beat_period_sec = (60.0 / float(song_bpm)) if song_bpm else None
+    if beat_period_sec:
+        bridge.log(
+            f"Beat period = {beat_period_sec:.3f}s ({song_bpm:.1f} BPM) — "
+            "clips with matching pan-tempo (or 0.5×/2×/4× harmonic) will be boosted"
+        )
+
     # For each segment, find the clip whose energy best matches the demand.
-    # Avoid using the same clip twice in a row if we have enough variety.
+    # Avoid using the same clip twice in a row if we have enough variety, AND
+    # avoid using clips that are perceptually near-duplicates of recent picks
+    # (#41) — different angle of the same moment, different exposure, etc.
     available = list(kept)
     assignments: list[dict] = [{} for _ in range(n)]
-    recent_clips: list[str] = []  # rolling window to avoid back-to-back repeats
+    recent_clips: list[str] = []
+    recent_phashes: list[int] = []  # parallel — len matches recent_clips
+
+    PHASH_NEAR_THRESHOLD = 8      # Hamming dist < 8/64 → strong penalty
+    PHASH_SIMILAR_THRESHOLD = 16  # dist < 16/64       → mild penalty
+
+    def _phash_penalty(c: dict) -> float:
+        ph = c.get("phash")
+        if ph is None or not recent_phashes:
+            return 0.0
+        window = recent_phashes[-3:]
+        if not window:
+            return 0.0
+        min_dist = min(_hamming(ph, rh) for rh in window)
+        if min_dist < PHASH_NEAR_THRESHOLD:
+            return 0.45  # large penalty (likely same-moment-different-angle)
+        if min_dist < PHASH_SIMILAR_THRESHOLD:
+            return 0.18
+        return 0.0
+
+    def _tempo_bonus(c: dict) -> float:
+        if beat_period_sec is None:
+            return 0.0
+        # Boost magnitude ~0.15 of score range
+        return _tempo_match_score(c.get("motionPeriod"), beat_period_sec) * 0.15
 
     for seg_idx in range(n):
         if not available:
             available = list(kept)  # exhaustion: allow reuse
         demand = _energy_demand(seg_idx)
         # Sort available by combined score:
-        #  1. Distance from energy demand (closer = better)
-        #  2. User-preference bias (positive = user keeps; negative = replaces)
-        #  3. Highlight score
-        #  4. Quality score
+        #  1. Distance from energy demand (closer = better, lower is better)
+        #  - 0.3 × user-preference bias (positive = keep history)
+        #  + pHash dedupe penalty (positive = similar to recent → push down)
+        #  - tempo-match bonus (positive = camera-pan aligns with beat)
+        #  2. Highlight score (-)
+        #  3. Quality score (-)
         scored = sorted(
             available,
             key=lambda c: (
-                abs(_clip_energy(c) - demand) - 0.3 * _user_pref_score(c.get("clipPath"), user_profile),
+                abs(_clip_energy(c) - demand)
+                - 0.3 * _user_pref_score(c.get("clipPath"), user_profile)
+                + _phash_penalty(c)
+                - _tempo_bonus(c),
                 -(c.get("highlightScore") or 0),
                 -(c.get("qualityScore") or 0),
             ),
         )
-        # Skip last 3 used clips when possible
+        # Skip last 3 used clip-paths when possible (exact-match dedupe)
         pick = None
         for cand in scored:
             if cand.get("clipPath") not in recent_clips[-3:]:
@@ -426,6 +588,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         if pick is None:
             pick = scored[0]
         recent_clips.append(pick.get("clipPath"))
+        if pick.get("phash") is not None:
+            recent_phashes.append(pick["phash"])
+        else:
+            recent_phashes.append(0)  # placeholder to keep parallel index
 
         start_sec, end_sec = segments[seg_idx]
         clip = pick
@@ -439,6 +605,11 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "qualityScore": clip.get("qualityScore"),
             "highlightScore": clip.get("highlightScore"),
             "motionScore": clip.get("motionScore"),
+            "motionPeriod": clip.get("motionPeriod"),
+            "tempoMatch": (
+                round(_tempo_match_score(clip.get("motionPeriod"), beat_period_sec), 3)
+                if beat_period_sec else None
+            ),
             "energyDemand": round(demand, 3),
         }
         bridge.progress(seg_idx, n, f"Assigning clip {seg_idx + 1}/{n} (demand {demand:.2f})")

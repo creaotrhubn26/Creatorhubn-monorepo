@@ -324,8 +324,31 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         timeline_start_frame = int(timeline.GetStartFrame() or 0)
     except Exception:  # noqa: BLE001
         timeline_start_frame = 0
-    if timeline_start_frame > 0:
-        bridge.log(f"Timeline starts at frame {timeline_start_frame} — offsetting recordFrames")
+
+    # Explicit sync-debug block — always log fps + start so we never have to
+    # guess at which timecode reference produced an off-by-N-frames bug.
+    try:
+        project_fps_setting = project.GetSetting("timelineFrameRate")
+    except Exception:  # noqa: BLE001
+        project_fps_setting = "?"
+    try:
+        drop_frame_setting = timeline.GetSetting("timelineDropFrameTimecode")
+    except Exception:  # noqa: BLE001
+        drop_frame_setting = "?"
+    start_tc = ""
+    try:
+        start_tc = timeline.GetStartTimecode() or ""
+    except Exception:  # noqa: BLE001
+        pass
+    bridge.log(
+        "SYNC DEBUG ── "
+        f"timeline_fps={target_fps} "
+        f"project_fps_setting={project_fps_setting} "
+        f"drop_frame={drop_frame_setting} "
+        f"start_frame={timeline_start_frame} "
+        f"start_timecode={start_tc!r} "
+        f"first_segment_start_sec={segments[0].get('startSec', 0) if segments else 'n/a'}"
+    )
 
     # Build the append-list with per-clip trim info + EXPLICIT recordFrame
     # so each clip lands at its beat-window's start time on the timeline.

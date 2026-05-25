@@ -1144,13 +1144,15 @@
       "name": "Extract Highlight from Film",
       "category": "timeline",
       "scriptPath": "scripts/timeline/extract_highlight_from_film.py",
-      "description": "Tar en lang ferdig film, scorer alle shots (motion + audio energy + length), plukker beste shots i kronologisk rekkefølge inntil minDurationSec. Bygger ny Resolve-timeline med highlight-cut.",
+      "description": "Tar en lang ferdig film, scorer hver shot med 8 signaler (faces/wedding-events/bokeh/slow-mo/exposure/color-grade/emotional-peak/speech-penalty), grupperer i kapitler (ceremony/reception/dance), og bygger highlight som balanserer alle kapitlene. Genre-spesifikke vekter via 'genre' param.",
       "requiredInputs": [
         {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
         {"key": "minDurationSec", "label": "Minimum highlight duration (sec)", "type": "number", "required": false},
         {"key": "maxDurationSec", "label": "Maximum highlight duration (sec)", "type": "number", "required": false},
         {"key": "startOffsetSec", "label": "Start from second N (0 = beginning)", "type": "number", "required": false},
-        {"key": "endOffsetSec", "label": "End at second N (0 = end of file)", "type": "number", "required": false}
+        {"key": "endOffsetSec", "label": "End at second N (0 = end of file)", "type": "number", "required": false},
+        {"key": "genre", "label": "Genre (wedding / music_video / corporate / documentary)", "type": "text", "required": false},
+        {"key": "useSignals", "label": "Use advanced ML signals (default: yes)", "type": "boolean", "required": false}
       ],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",

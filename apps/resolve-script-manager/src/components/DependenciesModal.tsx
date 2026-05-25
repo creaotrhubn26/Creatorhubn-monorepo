@@ -33,6 +33,11 @@ const DISPLAY_ORDER: Array<{ key: string; label: string; manager?: "brew" | "pip
   { key: "anthropic", label: "anthropic (Python)", manager: "pip", pipPkg: "anthropic" },
   { key: "whisperx", label: "whisperx (Python)", manager: "pip", pipPkg: "whisperx" },
   { key: "librosa", label: "librosa (beat detection)", manager: "pip", pipPkg: "librosa" },
+  { key: "opencv", label: "opencv-python (bokeh + faces + pHash)", manager: "pip", pipPkg: "opencv-python" },
+  { key: "webrtcvad", label: "webrtcvad (speech detection)", manager: "pip", pipPkg: "webrtcvad" },
+  { key: "ultralytics", label: "ultralytics (YOLOv8 wedding-events)", manager: "pip", pipPkg: "ultralytics" },
+  { key: "sklearn", label: "scikit-learn (chapter clustering)", manager: "pip", pipPkg: "scikit-learn" },
+  { key: "face_recognition", label: "face_recognition (optional, known-faces match)", manager: "pip", pipPkg: "face_recognition" },
   { key: "resolve", label: "DaVinci Resolve" },
 ];
 
