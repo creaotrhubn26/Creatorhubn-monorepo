@@ -45,6 +45,34 @@ def clip_matches_tags(clip, tags: set[str]) -> bool:
     return False
 
 
+def _harvest_current_timeline_clips(conn) -> list:
+    """Collect MediaPoolItem objects backing the current timeline's V1 track.
+    De-duplicates so each source clip appears once even if reused in multiple
+    segments. Returns [] if no timeline is open or it's empty."""
+    try:
+        timeline = conn.project.GetCurrentTimeline()
+        if not timeline:
+            return []
+        v1 = timeline.GetItemListInTrack("video", 1) or []
+        seen_paths: set[str] = set()
+        out = []
+        for item in v1:
+            try:
+                mpi = item.GetMediaPoolItem()
+                if not mpi:
+                    continue
+                path = mpi.GetClipProperty("File Path") or ""
+                if path and path in seen_paths:
+                    continue
+                seen_paths.add(path)
+                out.append(mpi)
+            except Exception:  # noqa: BLE001
+                continue
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def clip_duration_seconds(clip) -> float:
     try:
         props = clip.GetClipProperty() or {}
@@ -93,20 +121,49 @@ def run(params: dict, dry_run: bool) -> None:
         except Exception:
             continue
 
-    # Pick candidate clips
+    # Pick candidate clips — try in priority order:
+    #   1. rankedClips param (from analyze_clips_for_highlights)
+    #   2. Marker-tag match across Media Pool
+    #   3. (NEW) Current timeline's V1 clips — already curated by the user
     candidates: list = []
+    source_strategy = "none"
+
     if ranked_clips:
         for entry in ranked_clips:
             clip_name = (entry or {}).get("clipName")
             if clip_name and clip_name in by_basename:
                 candidates.append(by_basename[clip_name])
+        source_strategy = f"rankedClips ({len(candidates)} matched)"
     else:
-        candidates = [c for c in all_clips if clip_matches_tags(c, tags)]
+        tag_matched = [c for c in all_clips if clip_matches_tags(c, tags)]
+        if tag_matched:
+            candidates = tag_matched
+            source_strategy = f"tag-markers ({len(candidates)} clips)"
+
+    # Fallback: harvest from current timeline if Media Pool scan produced nothing.
+    if not candidates:
+        timeline_clips = _harvest_current_timeline_clips(conn)
+        if timeline_clips:
+            # Filter to ones whose markers match tags, if any have markers;
+            # otherwise accept all timeline clips (the user already curated them).
+            tagged = [c for c in timeline_clips if clip_matches_tags(c, tags)]
+            if tagged:
+                candidates = tagged
+                source_strategy = f"current-timeline tag-markers ({len(candidates)} of {len(timeline_clips)})"
+            else:
+                candidates = timeline_clips
+                source_strategy = f"current-timeline all-clips ({len(candidates)})"
 
     if not candidates:
-        bridge.warn("No candidate clips found. Either tag clips with markers matching the requested tags, or pass rankedClips from analyze_clips_for_highlights.")
+        bridge.warn(
+            "No candidate clips found. Tried: rankedClips param, tag-markers across "
+            "Media Pool, current timeline. Either tag clips with markers, pass "
+            "rankedClips, or open a timeline with at least one clip."
+        )
         bridge.result({"timelineName": timeline_name, "clipsAppended": 0})
         return
+
+    bridge.log(f"Source strategy: {source_strategy}")
 
     # Cap by duration
     picked: list = []
