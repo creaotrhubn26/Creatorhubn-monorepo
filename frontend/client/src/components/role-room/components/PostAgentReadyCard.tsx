@@ -28,6 +28,7 @@ import {
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../../lib/queryClient';
+import { BillingOverviewDialog } from './BillingOverviewDialog';
 
 interface Props {
   projectId: string;
@@ -114,6 +115,7 @@ function StatusRow({ label, value, hint }: { label: string; value: React.ReactNo
 
 export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
   const [howOpen, setHowOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
   const scenes = useScenesCount(projectId);
   const equipment = useEquipmentCount(projectId);
   const takes = useTakesCount(projectId);
@@ -254,27 +256,14 @@ export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
           </Button>
         </Stack>
 
-        {(seats.data?.count || 0) > 0 && (
-          <Button
-            size="small"
-            onClick={async () => {
-              try {
-                const res = await apiRequest('/api/post-agent/billing/customer-portal', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ returnPath: window.location.pathname }),
-                });
-                const data = (res as any)?.json ? await (res as any).json() : res;
-                if (data?.url) window.location.href = data.url;
-              } catch {
-                /* swallow — button will just no-op */
-              }
-            }}
-            sx={{ mt: 1, textTransform: 'none', color: 'text.secondary', justifyContent: 'flex-start', px: 0 }}
-          >
-            Administrer billing →
-          </Button>
-        )}
+        <Button
+          size="small"
+          onClick={() => setBillingOpen(true)}
+          sx={{ mt: 1, textTransform: 'none', color: 'text.secondary', justifyContent: 'flex-start', px: 0 }}
+        >
+          Mine abonnementer →
+        </Button>
+        <BillingOverviewDialog open={billingOpen} onClose={() => setBillingOpen(false)} />
 
         <Button
           size="small"

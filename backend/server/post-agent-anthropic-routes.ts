@@ -522,6 +522,90 @@ export function createPostAgentRouter(
    * Body: { interval: 'monthly' | 'yearly' }
    */
   /**
+   * Billing overview — every active/trialing Stripe subscription for the
+   * signed-in user, with line-item breakdowns + monthly-equivalent totals.
+   * Used by the dashboard's "Mine abonnementer"-dialog so the lead sees ALL
+   * their paid services in one place, not just Post Agent.
+   */
+  router.get('/billing/overview', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) {
+      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: 'stripe_not_configured' });
+      return;
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT stripe_customer_id FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      let customerId = rows[0]?.stripe_customer_id as string | null | undefined;
+      if (!customerId) {
+        const sub = await pool.query(
+          `SELECT stripe_customer_id FROM subscriptions
+           WHERE user_id = $1 AND stripe_customer_id IS NOT NULL
+           ORDER BY start_date DESC LIMIT 1`,
+          [userId],
+        );
+        customerId = sub.rows[0]?.stripe_customer_id;
+      }
+      if (!customerId) {
+        res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK' });
+        return;
+      }
+
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(secret);
+      const subs = await stripe.subscriptions.list({
+        customer: customerId,
+        status: 'all',
+        expand: ['data.items.data.price.product'],
+        limit: 20,
+      });
+
+      const active = subs.data.filter((s) => s.status === 'active' || s.status === 'trialing');
+      const out = active.map((s) => ({
+        id: s.id,
+        status: s.status,
+        currentPeriodEnd: s.current_period_end,
+        cancelAtPeriodEnd: s.cancel_at_period_end,
+        items: s.items.data.map((it) => {
+          const product = it.price?.product as any;
+          const productName = (typeof product === 'object' ? product?.name : undefined) || 'Subscription item';
+          const amount = (it.price?.unit_amount || 0) / 100;
+          const interval = it.price?.recurring?.interval || 'month';
+          const qty = it.quantity || 1;
+          // Normalize to monthly equivalent
+          const perMonth = interval === 'year' ? (amount * qty) / 12 : interval === 'week' ? (amount * qty) * (52 / 12) : amount * qty;
+          return {
+            itemId: it.id,
+            productName,
+            unitAmount: amount,
+            currency: (it.price?.currency || 'nok').toUpperCase(),
+            interval,
+            quantity: qty,
+            monthlyEquivalent: perMonth,
+          };
+        }),
+      }));
+
+      // Sum monthlyEquivalent across all NOK items (skip mixed-currency totals)
+      let totalMonthlyNok = 0;
+      let currency = 'NOK';
+      const currencies = new Set<string>();
+      out.forEach((s) => s.items.forEach((it) => {
+        currencies.add(it.currency);
+        if (it.currency === 'NOK') totalMonthlyNok += it.monthlyEquivalent;
+      }));
+      if (currencies.size === 1) currency = Array.from(currencies)[0];
+
+      res.json({ subscriptions: out, totalMonthlyNok: Math.round(totalMonthlyNok), currency, mixedCurrencies: currencies.size > 1 });
+    } catch (err) {
+      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: (err as Error).message });
+    }
+  });
+
+  /**
    * Stripe Customer Portal — self-serve sub management (cancel, update card,
    * invoices, billing history). Returns a one-time URL the lead can be
    * redirected to.
