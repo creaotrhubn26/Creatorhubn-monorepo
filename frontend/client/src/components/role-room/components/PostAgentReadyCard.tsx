@@ -254,6 +254,28 @@ export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
           </Button>
         </Stack>
 
+        {(seats.data?.count || 0) > 0 && (
+          <Button
+            size="small"
+            onClick={async () => {
+              try {
+                const res = await apiRequest('/api/post-agent/billing/customer-portal', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ returnPath: window.location.pathname }),
+                });
+                const data = (res as any)?.json ? await (res as any).json() : res;
+                if (data?.url) window.location.href = data.url;
+              } catch {
+                /* swallow — button will just no-op */
+              }
+            }}
+            sx={{ mt: 1, textTransform: 'none', color: 'text.secondary', justifyContent: 'flex-start', px: 0 }}
+          >
+            Administrer billing →
+          </Button>
+        )}
+
         <Button
           size="small"
           onClick={() => setHowOpen((v) => !v)}

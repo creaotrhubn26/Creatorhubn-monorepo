@@ -522,6 +522,61 @@ export function createPostAgentRouter(
    * Body: { interval: 'monthly' | 'yearly' }
    */
   /**
+   * Stripe Customer Portal — self-serve sub management (cancel, update card,
+   * invoices, billing history). Returns a one-time URL the lead can be
+   * redirected to.
+   */
+  router.post('/billing/customer-portal', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) {
+      res.status(503).json({ error: 'stripe_not_configured' });
+      return;
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT stripe_customer_id FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      let customerId = rows[0]?.stripe_customer_id as string | null | undefined;
+      // Fallback: look up via subscriptions table (some flows write the customer
+      // there but not on users)
+      if (!customerId) {
+        const sub = await pool.query(
+          `SELECT stripe_customer_id FROM subscriptions
+           WHERE user_id = $1 AND stripe_customer_id IS NOT NULL
+           ORDER BY start_date DESC LIMIT 1`,
+          [userId],
+        );
+        customerId = sub.rows[0]?.stripe_customer_id;
+      }
+      if (!customerId) {
+        res.status(409).json({
+          error: 'no_stripe_customer',
+          detail: 'Du har ingen aktiv betalingskobling ennå. Kjøp Post Agent først via /marketplace/post-agent.',
+        });
+        return;
+      }
+
+      const origin =
+        (req.headers.origin as string | undefined) ||
+        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const returnPath = typeof req.body?.returnPath === 'string' ? req.body.returnPath : '/';
+
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(secret);
+      const session = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${origin}${returnPath}`,
+      });
+      res.json({ ok: true, url: session.url });
+    } catch (err) {
+      console.error('[post-agent] customer-portal failed:', err);
+      res.status(500).json({ error: 'portal_create_failed', detail: (err as Error).message });
+    }
+  });
+
+  /**
    * Standalone Post Agent purchase — for users who do NOT have a Role Room
    * subscription yet. Creates a Stripe Checkout session with a single line-item
    * (Post Agent monthly) at the requested quantity. The webhook then writes the
