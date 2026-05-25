@@ -1249,7 +1249,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                               onAddComment={async ({ timecodeSec, comment }) => {
                                 const headers: Record<string, string> = { 'Content-Type': 'application/json' };
                                 if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
-                                await fetch(`/api/client/gallery/${encodeURIComponent(accessToken)}/video-comments`, {
+                                await fetch(`/api/client/gallery/${encodeURIComponent(accessToken || '')}/video-comments`, {
                                   method: 'POST',
                                   headers,
                                   body: JSON.stringify({
@@ -1271,6 +1271,26 @@ export default function ClientGallery({}: ClientGalleryProps) {
                             onSeek={() => {/* WaveSurfer-seek håndteres via comment-prikker direkte i player */}}
                             layout="side"
                             title="Tilbakemeldinger"
+                            onReply={async (parentId, replyText) => {
+                              const parent = audioComments.find((c: any) => c.id === parentId);
+                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                              if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
+                              await fetch(`/api/client/gallery/${encodeURIComponent(accessToken || '')}/video-comments`, {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({
+                                  chapterId: ch.id,
+                                  timecodeSec: parent?.timecodeSec ?? 0,
+                                  comment: replyText,
+                                  clientEmail: gallery?.clientEmail || '',
+                                  clientName: gallery?.clientName || '',
+                                  parentId,
+                                }),
+                              });
+                              void queryClient.invalidateQueries({
+                                queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
+                              });
+                            }}
                           />
                         </Box>
                       </Grid>
@@ -1299,7 +1319,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                             onAddComment={async ({ timecodeSec, endTimecodeSec, category, priority, comment }) => {
                               const headers: Record<string, string> = { 'Content-Type': 'application/json' };
                               if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
-                              await fetch(`/api/client/gallery/${encodeURIComponent(accessToken)}/video-comments`, {
+                              await fetch(`/api/client/gallery/${encodeURIComponent(accessToken || '')}/video-comments`, {
                                 method: 'POST',
                                 headers,
                                 body: JSON.stringify({
@@ -1330,6 +1350,26 @@ export default function ClientGallery({}: ClientGalleryProps) {
                             }}
                             layout="under"
                             title="Edit-tilbakemelding"
+                            onReply={async (parentId, replyText) => {
+                              const parent = chapterComments.find((c: any) => c.id === parentId);
+                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                              if (galleryPassword) headers['x-gallery-password'] = galleryPassword;
+                              await fetch(`/api/client/gallery/${encodeURIComponent(accessToken || '')}/video-comments`, {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({
+                                  chapterId: ch.id,
+                                  timecodeSec: parent?.timecodeSec ?? 0,
+                                  comment: replyText,
+                                  clientEmail: gallery?.clientEmail || '',
+                                  clientName: gallery?.clientName || '',
+                                  parentId,
+                                }),
+                              });
+                              void queryClient.invalidateQueries({
+                                queryKey: ['/api/client/gallery', accessToken, 'video-comments', galleryPassword],
+                              });
+                            }}
                           />
                         </Box>
                       </Grid>

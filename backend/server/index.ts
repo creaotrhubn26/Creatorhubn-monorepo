@@ -21955,6 +21955,14 @@ async function ensureVideoTimecodeCommentsSchema(): Promise<void> {
         ADD COLUMN IF NOT EXISTS suggested_media_from_sec NUMERIC(10,3);
       ALTER TABLE video_timecode_comments
         ADD COLUMN IF NOT EXISTS suggested_media_to_sec NUMERIC(10,3);
+      -- Slice 9X.86 threading/replies
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS parent_id UUID
+          REFERENCES video_timecode_comments(id) ON DELETE CASCADE;
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS author_kind VARCHAR(20) NOT NULL DEFAULT 'client';
+      CREATE INDEX IF NOT EXISTS idx_video_timecode_comments_parent
+        ON video_timecode_comments (parent_id);
     `);
   } catch (e: any) {
     console.warn('[video-comments] schema-ensure failed:', e.message);
@@ -21985,7 +21993,8 @@ app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
               category, priority, comment, client_email, client_name,
               status, resolved_at, created_at, updated_at,
               suggested_media_url, suggested_media_label,
-              suggested_media_from_sec, suggested_media_to_sec
+              suggested_media_from_sec, suggested_media_to_sec,
+              parent_id, author_kind
          FROM video_timecode_comments
         WHERE ${where}
         ORDER BY timecode_sec ASC, created_at ASC`,
@@ -22010,6 +22019,8 @@ app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
         suggestedMediaLabel: r.suggested_media_label,
         suggestedMediaFromSec: r.suggested_media_from_sec != null ? Number(r.suggested_media_from_sec) : null,
         suggestedMediaToSec: r.suggested_media_to_sec != null ? Number(r.suggested_media_to_sec) : null,
+        parentId: r.parent_id,
+        authorKind: r.author_kind || 'client',
       })),
     });
   } catch (e) {
@@ -22049,6 +22060,8 @@ app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => 
     && Number(req.body.suggestedMediaToSec) > (suggestedMediaFromSec ?? 0)
       ? Number(req.body.suggestedMediaToSec)
       : null;
+  // Slice 9X.86 — reply på eksisterende kommentar
+  const parentIdRaw = typeof req.body?.parentId === 'string' ? req.body.parentId.trim() : null;
   if (!Number.isFinite(timecodeSec) || timecodeSec < 0) return res.status(400).json({ error: "invalid_timecode" });
   if (!comment) return res.status(400).json({ error: "comment_required" });
   if (!clientEmail) return res.status(400).json({ error: "client_email_required" });
@@ -22061,18 +22074,28 @@ app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => 
       });
     }
     await ensureVideoTimecodeCommentsSchema();
+    let parentId: string | null = null;
+    if (parentIdRaw) {
+      const p = await pool.query(
+        `SELECT id FROM video_timecode_comments WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
+        [parentIdRaw, access.gallery.id],
+      );
+      if (p.rowCount === 0) return res.status(400).json({ error: "invalid_parent" });
+      parentId = parentIdRaw;
+    }
     const inserted = await pool.query(
       `INSERT INTO video_timecode_comments
          (gallery_id, chapter_id, timecode_sec, end_timecode_sec,
           category, priority, comment, client_email, client_name,
           suggested_media_url, suggested_media_label,
-          suggested_media_from_sec, suggested_media_to_sec)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          suggested_media_from_sec, suggested_media_to_sec,
+          parent_id, author_kind)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'client')
        RETURNING id, created_at`,
       [access.gallery.id, chapterId, timecodeSec, endTimecodeSec,
        category, priority, comment, clientEmail, clientName || null,
        suggestedMediaUrl, suggestedMediaLabel,
-       suggestedMediaFromSec, suggestedMediaToSec],
+       suggestedMediaFromSec, suggestedMediaToSec, parentId],
     );
 
     // Broadcast realtime så Bjarne ser kommentaren umiddelbart i sitt admin-view

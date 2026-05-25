@@ -31,6 +31,7 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  TextField,
 } from '@mui/material';
 import {
   ContentCopy as CopyIcon,
@@ -77,6 +78,8 @@ export interface FeedbackEntry {
   suggestedMediaLabel?: string | null;
   suggestedMediaFromSec?: number | null;
   suggestedMediaToSec?: number | null;
+  parentId?: string | null;
+  authorKind?: 'client' | 'photographer';
 }
 
 interface Props {
@@ -91,6 +94,8 @@ interface Props {
   projectTitle?: string | null;
   /** Admin-side: callback når Bjarne markerer kommentar som løst/åpen */
   onToggleResolved?: (commentId: string, nextStatus: 'open' | 'resolved') => void;
+  /** Admin-side: produsent svarer på en tråd */
+  onReply?: (parentId: string, comment: string) => void | Promise<void>;
 }
 
 const CATEGORY_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -191,24 +196,60 @@ const EditFeedbackSummary: React.FC<Props> = ({
   clientName,
   projectTitle,
   onToggleResolved,
+  onReply,
 }) => {
   const [copySnack, setCopySnack] = useState(false);
   const [downloadSnack, setDownloadSnack] = useState<string | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [replyOpenFor, setReplyOpenFor] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [replyPending, setReplyPending] = useState(false);
+
+  // Slice 9X.86 — filtrér ut replies så de bare vises under sin parent.
+  // Topp-nivå = parentId null.
+  const topLevelEntries = useMemo(
+    () => entries.filter((e) => !e.parentId),
+    [entries],
+  );
+  const repliesByParent = useMemo(() => {
+    const map = new Map<string, FeedbackEntry[]>();
+    entries.forEach((e) => {
+      if (e.parentId) {
+        const arr = map.get(e.parentId) || [];
+        arr.push(e);
+        map.set(e.parentId, arr);
+      }
+    });
+    map.forEach((arr) => arr.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '')));
+    return map;
+  }, [entries]);
+
+  const submitReply = async (parentId: string) => {
+    const text = replyDraft.trim();
+    if (!text || !onReply) return;
+    setReplyPending(true);
+    try {
+      await onReply(parentId, text);
+      setReplyDraft('');
+      setReplyOpenFor(null);
+    } finally {
+      setReplyPending(false);
+    }
+  };
 
   const stats = useMemo(() => {
-    const mustFix = entries.filter((e) => e.priority === 'must-fix').length;
-    const niceToHave = entries.filter((e) => e.priority === 'nice-to-have').length;
-    const suggestion = entries.filter((e) => e.priority === 'suggestion' || !e.priority).length;
-    const resolved = entries.filter((e) => e.status === 'resolved').length;
-    return { total: entries.length, mustFix, niceToHave, suggestion, resolved };
-  }, [entries]);
+    const mustFix = topLevelEntries.filter((e) => e.priority === 'must-fix').length;
+    const niceToHave = topLevelEntries.filter((e) => e.priority === 'nice-to-have').length;
+    const suggestion = topLevelEntries.filter((e) => e.priority === 'suggestion' || !e.priority).length;
+    const resolved = topLevelEntries.filter((e) => e.status === 'resolved').length;
+    return { total: topLevelEntries.length, mustFix, niceToHave, suggestion, resolved };
+  }, [topLevelEntries]);
 
   const grouped = useMemo(() => {
     const map: Record<string, FeedbackEntry[]> = {};
-    entries.forEach((e) => {
+    topLevelEntries.forEach((e) => {
       const cat = e.category || 'other';
       if (!map[cat]) map[cat] = [];
       map[cat].push(e);
@@ -223,7 +264,7 @@ const EditFeedbackSummary: React.FC<Props> = ({
       });
     });
     return map;
-  }, [entries]);
+  }, [topLevelEntries]);
 
   const orderedCats = useMemo(
     () => Object.keys(grouped).sort((a, b) => {
@@ -686,6 +727,102 @@ const EditFeedbackSummary: React.FC<Props> = ({
                                 — {e.clientName}
                               </Typography>
                             )}
+                            {/* Slice 9X.86 — replies + reply-form */}
+                            {(() => {
+                              const replies = repliesByParent.get(e.id) || [];
+                              return (
+                                <>
+                                  {replies.length > 0 && (
+                                    <Stack spacing={0.6} sx={{ mt: 1, pl: 1.2, borderLeft: `2px solid ${meta.color}42` }}>
+                                      {replies.map((r) => {
+                                        const isProducer = r.authorKind === 'photographer';
+                                        return (
+                                          <Box
+                                            key={r.id}
+                                            sx={{
+                                              p: 1,
+                                              borderRadius: 0.4,
+                                              bgcolor: isProducer ? 'rgba(217, 119, 6, 0.10)' : 'rgba(168, 149, 126, 0.10)',
+                                              border: `1px solid ${isProducer ? 'rgba(217, 119, 6, 0.32)' : 'rgba(168, 149, 126, 0.32)'}`,
+                                            }}
+                                          >
+                                            <Typography
+                                              variant="caption"
+                                              sx={{
+                                                fontWeight: 700,
+                                                color: isProducer ? '#d97706' : '#5a4f42',
+                                                display: 'block',
+                                                fontSize: '0.72rem',
+                                              }}
+                                            >
+                                              {isProducer ? 'Du · CreatorHub' : (r.clientName || r.clientEmail || 'Klient')}
+                                            </Typography>
+                                            <Typography sx={{ fontSize: '0.85rem', color: '#1a1612', whiteSpace: 'pre-wrap', mt: 0.3 }}>
+                                              {r.comment}
+                                            </Typography>
+                                          </Box>
+                                        );
+                                      })}
+                                    </Stack>
+                                  )}
+                                  {onReply && (
+                                    <Box sx={{ mt: 0.8 }}>
+                                      {replyOpenFor === e.id ? (
+                                        <Stack direction="row" spacing={0.5} alignItems="flex-start">
+                                          <TextField
+                                            autoFocus
+                                            size="small"
+                                            multiline
+                                            maxRows={3}
+                                            value={replyDraft}
+                                            onChange={(ev) => setReplyDraft(ev.target.value)}
+                                            placeholder="Skriv et svar til klienten…"
+                                            fullWidth
+                                            onKeyDown={(ev) => {
+                                              if (ev.key === 'Enter' && !ev.shiftKey) {
+                                                ev.preventDefault();
+                                                submitReply(e.id);
+                                              }
+                                            }}
+                                          />
+                                          <Button
+                                            size="small"
+                                            variant="contained"
+                                            onClick={() => submitReply(e.id)}
+                                            disabled={!replyDraft.trim() || replyPending}
+                                            sx={{
+                                              bgcolor: '#d97706',
+                                              color: '#fff',
+                                              minWidth: 70,
+                                              borderRadius: 0,
+                                              '&:hover': { bgcolor: '#b45309' },
+                                            }}
+                                          >
+                                            {replyPending ? '…' : 'Send'}
+                                          </Button>
+                                        </Stack>
+                                      ) : (
+                                        <Chip
+                                          label="Svar"
+                                          size="small"
+                                          onClick={() => { setReplyOpenFor(e.id); setReplyDraft(''); }}
+                                          sx={{
+                                            height: 22,
+                                            cursor: 'pointer',
+                                            bgcolor: 'transparent',
+                                            color: '#5a4f42',
+                                            border: '1px solid #5a4f42',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 600,
+                                            '&:hover': { bgcolor: 'rgba(217, 119, 6, 0.08)', borderColor: '#d97706', color: '#d97706' },
+                                          }}
+                                        />
+                                      )}
+                                    </Box>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </Box>
                         </Stack>
                       </Box>

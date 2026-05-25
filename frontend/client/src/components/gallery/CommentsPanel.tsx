@@ -30,6 +30,8 @@ import {
   Avatar,
   IconButton,
   Collapse,
+  TextField,
+  Button,
   useMediaQuery,
 } from '@mui/material';
 import {
@@ -37,6 +39,8 @@ import {
   CheckCircle as ResolvedIcon,
   ExpandMore as ExpandIcon,
   ExpandLess as CollapseIcon,
+  Reply as ReplyIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
 
 const SERIF_STACK = '"Cormorant Garamond", "Playfair Display", Georgia, serif';
@@ -49,6 +53,8 @@ export interface CommentEntry {
   clientEmail?: string | null;
   status?: 'open' | 'resolved' | 'archived';
   createdAt?: string | null;
+  parentId?: string | null;
+  authorKind?: 'client' | 'photographer';
 }
 
 interface Props {
@@ -64,6 +70,8 @@ interface Props {
   hideFilters?: boolean;
   /** Initielt kollapset på mobile (kun "side"-layout) */
   defaultCollapsed?: boolean;
+  /** Slice 9X.86 — callback for å sende en reply på en tråd */
+  onReply?: (parentId: string, comment: string) => void | Promise<void>;
 }
 
 function fmtTime(sec: number): string {
@@ -92,14 +100,37 @@ const CommentsPanel: React.FC<Props> = ({
   title = 'Kommentarer',
   hideFilters = false,
   defaultCollapsed = false,
+  onReply,
 }) => {
   const isMobile = useMediaQuery('(max-width: 600px)');
   const [filter, setFilter] = useState<'all' | 'open'>('all');
   const [collapsed, setCollapsed] = useState(defaultCollapsed && isMobile);
+  const [replyOpenFor, setReplyOpenFor] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [replyPending, setReplyPending] = useState(false);
+
+  // Slice 9X.86 — gruppér replies under sin parent. Topp-nivå =
+  // parentId null/undefined. Replies sorteres etter createdAt så
+  // tråden leses kronologisk.
+  const { topLevel, repliesByParent } = useMemo(() => {
+    const tops: CommentEntry[] = [];
+    const map = new Map<string, CommentEntry[]>();
+    (comments || []).forEach((c) => {
+      if (c.parentId) {
+        const arr = map.get(c.parentId) || [];
+        arr.push(c);
+        map.set(c.parentId, arr);
+      } else {
+        tops.push(c);
+      }
+    });
+    map.forEach((arr) => arr.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '')));
+    return { topLevel: tops, repliesByParent: map };
+  }, [comments]);
 
   const sorted = useMemo(
-    () => [...(comments || [])].sort((a, b) => a.timecodeSec - b.timecodeSec),
-    [comments],
+    () => [...topLevel].sort((a, b) => a.timecodeSec - b.timecodeSec),
+    [topLevel],
   );
   const filtered = useMemo(
     () => (filter === 'open' ? sorted.filter((c) => (c.status || 'open') === 'open') : sorted),
@@ -108,6 +139,19 @@ const CommentsPanel: React.FC<Props> = ({
 
   const openCount = sorted.filter((c) => (c.status || 'open') === 'open').length;
   const resolvedCount = sorted.length - openCount;
+
+  const submitReply = async (parentId: string) => {
+    const text = replyDraft.trim();
+    if (!text || !onReply) return;
+    setReplyPending(true);
+    try {
+      await onReply(parentId, text);
+      setReplyDraft('');
+      setReplyOpenFor(null);
+    } finally {
+      setReplyPending(false);
+    }
+  };
 
   if (comments.length === 0) {
     return (
@@ -259,6 +303,119 @@ const CommentsPanel: React.FC<Props> = ({
             >
               {c.comment}
             </Typography>
+            {/* Replies tråd */}
+            {(() => {
+              const replies = repliesByParent.get(c.id) || [];
+              return replies.length > 0 ? (
+                <Stack spacing={0.8} sx={{ mt: 1.2, pl: 1, borderLeft: '2px solid rgba(217, 119, 6, 0.32)' }}>
+                  {replies.map((r) => {
+                    const isProducer = r.authorKind === 'photographer';
+                    return (
+                      <Box
+                        key={r.id}
+                        sx={{
+                          p: 1.2,
+                          borderRadius: 0.5,
+                          bgcolor: isProducer ? 'rgba(217, 119, 6, 0.12)' : 'rgba(253, 250, 245, 0.04)',
+                          border: `1px solid ${isProducer ? 'rgba(217, 119, 6, 0.32)' : 'rgba(253, 250, 245, 0.08)'}`,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.3 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: SERIF_STACK,
+                              fontStyle: 'italic',
+                              fontSize: '0.78rem',
+                              color: isProducer ? '#d97706' : 'rgba(253, 250, 245, 0.7)',
+                              fontWeight: isProducer ? 700 : 500,
+                            }}
+                          >
+                            {isProducer ? 'CreatorHub-teamet' : (r.clientName || r.clientEmail || 'Klient')}
+                          </Typography>
+                          {r.createdAt && (
+                            <Typography variant="caption" sx={{ color: 'rgba(253, 250, 245, 0.4)', fontSize: '0.68rem' }}>
+                              · {fmtRelative(r.createdAt)}
+                            </Typography>
+                          )}
+                        </Stack>
+                        <Typography
+                          sx={{
+                            fontSize: '0.85rem',
+                            color: 'rgba(253, 250, 245, 0.88)',
+                            lineHeight: 1.45,
+                            whiteSpace: 'pre-wrap',
+                          }}
+                        >
+                          {r.comment}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              ) : null;
+            })()}
+            {/* Reply-handling */}
+            {onReply && (
+              <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
+                {replyOpenFor === c.id ? (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <TextField
+                      autoFocus
+                      size="small"
+                      multiline
+                      maxRows={3}
+                      value={replyDraft}
+                      onChange={(e) => setReplyDraft(e.target.value)}
+                      placeholder="Skriv et svar…"
+                      fullWidth
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          submitReply(c.id);
+                        }
+                      }}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          bgcolor: 'rgba(253, 250, 245, 0.06)',
+                          color: '#fdfaf5',
+                          fontSize: '0.85rem',
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(253, 250, 245, 0.18)',
+                        },
+                      }}
+                    />
+                    <IconButton
+                      onClick={() => submitReply(c.id)}
+                      disabled={!replyDraft.trim() || replyPending}
+                      aria-label="Send svar"
+                      sx={{ color: '#d97706' }}
+                    >
+                      <SendIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                ) : (
+                  <Button
+                    size="small"
+                    startIcon={<ReplyIcon sx={{ fontSize: '0.9rem' }} />}
+                    onClick={() => { setReplyOpenFor(c.id); setReplyDraft(''); }}
+                    sx={{
+                      color: 'rgba(253, 250, 245, 0.5)',
+                      fontSize: '0.72rem',
+                      textTransform: 'none',
+                      minHeight: 0,
+                      px: 0.5,
+                      py: 0.3,
+                      '&:hover': { color: '#d97706', bgcolor: 'transparent' },
+                    }}
+                  >
+                    Svar
+                  </Button>
+                )}
+              </Box>
+            )}
           </Box>
         </Stack>
       </Box>

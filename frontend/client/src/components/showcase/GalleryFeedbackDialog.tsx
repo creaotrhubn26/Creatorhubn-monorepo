@@ -38,6 +38,8 @@ interface VideoComment {
   suggestedMediaLabel: string | null;
   suggestedMediaFromSec: number | null;
   suggestedMediaToSec: number | null;
+  parentId: string | null;
+  authorKind: 'client' | 'photographer';
 }
 
 interface Props {
@@ -78,6 +80,20 @@ const GalleryFeedbackDialog: React.FC<Props> = ({
     },
   });
 
+  const replyMutation = useMutation({
+    mutationFn: async ({ parentId, comment }: { parentId: string; comment: string }) => {
+      return apiRequest(
+        `/api/photographer/galleries/${galleryId}/video-comments/${parentId}/reply`,
+        { method: 'POST', body: JSON.stringify({ comment }) },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/photographer/galleries', galleryId, 'video-comments'],
+      });
+    },
+  });
+
   const entries: FeedbackEntry[] = (data?.comments || []).map((c) => ({
     id: c.id,
     timecodeSec: c.timecodeSec,
@@ -93,6 +109,8 @@ const GalleryFeedbackDialog: React.FC<Props> = ({
     suggestedMediaLabel: c.suggestedMediaLabel,
     suggestedMediaFromSec: c.suggestedMediaFromSec,
     suggestedMediaToSec: c.suggestedMediaToSec,
+    parentId: c.parentId,
+    authorKind: c.authorKind,
   }));
 
   return (
@@ -153,6 +171,9 @@ const GalleryFeedbackDialog: React.FC<Props> = ({
               projectTitle={projectTitle}
               onToggleResolved={(commentId, status) =>
                 toggleMutation.mutate({ commentId, status })
+              }
+              onReply={(parentId, comment) =>
+                replyMutation.mutateAsync({ parentId, comment })
               }
             />
           )}

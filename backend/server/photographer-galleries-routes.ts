@@ -1374,7 +1374,8 @@ export function setupPhotographerGalleriesRoutes(
                 category, priority, comment, client_email, client_name,
                 status, resolved_at, created_at,
                 suggested_media_url, suggested_media_label,
-                suggested_media_from_sec, suggested_media_to_sec
+                suggested_media_from_sec, suggested_media_to_sec,
+                parent_id, author_kind
            FROM video_timecode_comments
           WHERE gallery_id = $1
           ORDER BY created_at DESC
@@ -1399,6 +1400,8 @@ export function setupPhotographerGalleriesRoutes(
           suggestedMediaLabel: r.suggested_media_label,
           suggestedMediaFromSec: r.suggested_media_from_sec != null ? Number(r.suggested_media_from_sec) : null,
           suggestedMediaToSec: r.suggested_media_to_sec != null ? Number(r.suggested_media_to_sec) : null,
+          parentId: r.parent_id,
+          authorKind: r.author_kind || 'client',
         })),
       });
     } catch (error) {
@@ -1443,6 +1446,53 @@ export function setupPhotographerGalleriesRoutes(
     } catch (error) {
       console.error("[photographer-galleries] video-comment patch failed", error);
       res.status(500).json({ error: "patch_failed" });
+    }
+  });
+
+  // Slice 9X.86 — Produsent svarer på en kommentar i samme tråd.
+  // author_kind = 'photographer' så klient-UI kan style svaret som
+  // "fra Bjarne" (vs. egen klient-kommentar).
+  app.post("/api/photographer/galleries/:id/video-comments/:commentId/reply", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const galleryId = String(req.params.id || '').trim();
+    const parentId = String(req.params.commentId || '').trim();
+    const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim().slice(0, 2000) : '';
+    if (!galleryId || !parentId) return res.status(400).json({ error: "missing_ids" });
+    if (!comment) return res.status(400).json({ error: "comment_required" });
+    try {
+      const owned = await pool.query(
+        `SELECT id FROM photographer_client_galleries
+          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+        [galleryId, session.userId],
+      );
+      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      const parent = await pool.query(
+        `SELECT chapter_id, timecode_sec FROM video_timecode_comments
+          WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
+        [parentId, galleryId],
+      );
+      if (parent.rowCount === 0) return res.status(404).json({ error: "parent_not_found" });
+      const { chapter_id, timecode_sec } = parent.rows[0];
+      const inserted = await pool.query(
+        `INSERT INTO video_timecode_comments
+           (gallery_id, chapter_id, timecode_sec, comment,
+            client_email, client_name, category, priority,
+            parent_id, author_kind)
+         VALUES ($1, $2, $3, $4, $5, $6, 'other', 'suggestion', $7, 'photographer')
+         RETURNING id, created_at`,
+        [galleryId, chapter_id, timecode_sec, comment,
+         session.email || 'photographer@creatorhub.local',
+         session.name || 'CreatorHub-teamet',
+         parentId],
+      );
+      res.status(201).json({
+        id: inserted.rows[0].id,
+        createdAt: inserted.rows[0].created_at,
+      });
+    } catch (error) {
+      console.error("[photographer-galleries] video-comment reply failed", error);
+      res.status(500).json({ error: "reply_failed" });
     }
   });
 
