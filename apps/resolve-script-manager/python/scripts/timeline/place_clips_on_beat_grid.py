@@ -353,6 +353,21 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     elif music_path:
         bridge.warn(f"Music path doesn't exist on disk: {music_path}")
 
+    # Mute A1 (camera audio from video clips) — user wants to hear only the
+    # imported music on A2, but keeps A1 visible so waveforms serve as a
+    # sync reference (does the camera audio align with the music beats?).
+    a1_muted = False
+    if music_added:
+        try:
+            ok = timeline.SetTrackEnable("audio", 1, False)
+            a1_muted = bool(ok)
+            if a1_muted:
+                bridge.log("Muted A1 (camera audio) — A2 music plays solo, A1 visible for sync reference")
+            else:
+                bridge.warn("SetTrackEnable returned False — A1 may need manual mute")
+        except Exception as exc:  # noqa: BLE001
+            bridge.warn(f"Could not mute A1: {exc}")
+
     bridge.result({
         "timelineCreated": True,
         "timelineName": timeline_name,
@@ -361,6 +376,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         "segmentsSkipped": skipped,
         "musicAdded": music_added,
         "musicItemCount": music_count,
+        "cameraAudioMuted": a1_muted,
     })
 
 
