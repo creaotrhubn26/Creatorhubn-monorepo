@@ -538,6 +538,7 @@ import { setupUserPreferencesRoutes } from "./user-preferences-routes";
 import { setupOnboardingRoutes } from "./onboarding-routes";
 import { setupWorklogRoutes } from "./worklog-routes";
 import { setupTravelLogRoutes } from "./travel-log-routes";
+import { setupBatchRoutes } from "./batch-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -21179,20 +21180,6 @@ const audioFileStore = new Map<
     name: string;
     size: number;
     createdAt: number;
-  }
->();
-const batchJobs = new Map<
-  string,
-  {
-    id: string;
-    name: string;
-    status: "pending" | "processing" | "completed" | "failed" | "cancelled";
-    progress: number;
-    totalFiles: number;
-    processedFiles: number;
-    failedFiles: number;
-    results: Array<Record<string, unknown>>;
-    errors: Array<Record<string, unknown>>;
   }
 >();
 
@@ -81971,76 +81958,7 @@ app.delete("/api/audio/versions/:id", async (req, res) => {
   }
 });
 
-app.post("/api/batch/create", async (req, res) => {
-  try {
-    const { name, files, operation, settings } = req.body || {};
-    if (!Array.isArray(files) || files.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "No files provided" });
-    }
-    const id = crypto.randomUUID();
-    const job = {
-      id,
-      name: name || "Batch job",
-      status: "processing" as const,
-      progress: 0,
-      totalFiles: files.length,
-      processedFiles: 0,
-      failedFiles: 0,
-      results: [],
-      errors: [],
-    };
-    batchJobs.set(id, job);
-
-    files.forEach((file: string, index: number) => {
-      setTimeout(
-        () => {
-          const current = batchJobs.get(id);
-          if (!current || current.status === "cancelled") return;
-          current.processedFiles += 1;
-          current.results.push({
-            file,
-            operation,
-            settings,
-            status: "completed",
-          });
-          current.progress = Math.round(
-            (current.processedFiles / current.totalFiles) * 100,
-          );
-          if (current.processedFiles === current.totalFiles) {
-            current.status = "completed";
-          }
-          batchJobs.set(id, current);
-        },
-        300 + index * 200,
-      );
-    });
-
-    res.json({ success: true, job });
-  } catch (error) {
-    console.error("Batch create error:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to create batch job" });
-  }
-});
-
-app.get("/api/batch/job/:id", (req, res) => {
-  const job = batchJobs.get(req.params.id);
-  if (!job)
-    return res.status(404).json({ success: false, error: "Job not found" });
-  res.json({ success: true, job });
-});
-
-app.post("/api/batch/cancel/:id", (req, res) => {
-  const job = batchJobs.get(req.params.id);
-  if (!job)
-    return res.status(404).json({ success: false, error: "Job not found" });
-  job.status = "cancelled";
-  batchJobs.set(req.params.id, job);
-  res.json({ success: true });
-});
+// /api/batch/* (3 endpoints + batchJobs Map) → ./batch-routes.ts
 
 // /api/audio-settings/* (7 endpoints + 3 in-memory stores) → ./audio-settings-routes.ts
 
@@ -84457,6 +84375,10 @@ setupWorklogRoutes({ app, pool, getUserIdFromAuth });
 // /api/travel-log — 3 endpoints (GET liste, POST create, DELETE).
 // Kjørebok-data for photographers reise-utlegg.
 setupTravelLogRoutes({ app, pool, getPricingUserId });
+
+// /api/batch/* — 3 endpoints (create, job GET, cancel). In-memory Map
+// for batch-jobs (kun brukt av disse handlerne; flyttet inn i modulen).
+setupBatchRoutes({ app });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
