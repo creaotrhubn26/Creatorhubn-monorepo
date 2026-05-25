@@ -33,6 +33,35 @@ def _seconds_to_frames(seconds: float, fps: float) -> int:
     return int(round(seconds * fps))
 
 
+def _probe_audio_track_count(video_path: str) -> int:
+    """Count audio streams in a video file via ffprobe. Returns 0 on failure
+    or for files without audio. Used to determine how many audio tracks the
+    timeline needs (Canon C80 = 1-2 streams; multi-XLR rigs = 2-4 streams)."""
+    import shutil, subprocess
+    ffprobe = (
+        os.environ.get("RESOLVE_SCRIPT_MANAGER_FFPROBE")
+        or shutil.which("ffprobe")
+        or "/opt/homebrew/bin/ffprobe"
+    )
+    if not os.path.isfile(ffprobe):
+        return 0
+    try:
+        r = subprocess.run(
+            [
+                ffprobe, "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=index",
+                "-of", "csv=p=0",
+                video_path,
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+        return len(lines)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def _seconds_to_clip_frames(media_item, segment_dur_sec: float, fps: float) -> tuple[int, int]:
     """Return (start_frame, end_frame) inside the source clip — uses first N frames
     matching the segment duration. We trim from clip-start because most music-video
@@ -128,6 +157,21 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # Map clipPath → MediaPoolItem (search across all bins recursively)
     clip_paths = {s["clipPath"] for s in segments if s.get("clipPath")}
     bridge.log(f"Resolving {len(clip_paths)} unique clips in Media Pool")
+
+    # Probe a sample of clips to find the max audio-track count. Canon C80 =
+    # typically 1-2 streams; multi-XLR rigs (Sound Devices MixPre etc) may
+    # have 2-4. Sample first 10 to balance speed vs. accuracy.
+    bridge.log("Probing audio streams in source clips…")
+    max_audio_streams = 0
+    sample = list(clip_paths)[:10]
+    for sp in sample:
+        if os.path.isfile(sp):
+            n = _probe_audio_track_count(sp)
+            if n > max_audio_streams:
+                max_audio_streams = n
+    if max_audio_streams == 0:
+        max_audio_streams = 1  # Default safety — Resolve always creates A1 for linked-audio
+    bridge.log(f"Source clips have up to {max_audio_streams} audio stream(s) — linked audio will occupy A1..A{max_audio_streams}")
 
     def index_pool(folder, into: dict) -> None:
         for item in folder.GetClipList() or []:
@@ -283,43 +327,49 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     bridge.log(f"Placed {placed_count} clips on V1")
 
-    # Add music on A2 (a separate audio track under the linked-audio from
-    # video clips on A1). Resolve's CreateEmptyTimeline only creates V1+A1
-    # by default — must explicitly add A2 before placing music there.
+    # Music goes on the track AFTER all the linked-audio tracks from video
+    # clips. If video has 2 audio streams, linked-audio = A1+A2, music = A3.
+    music_track = max_audio_streams + 1
+
+    # Add music on the correct audio track. Resolve's CreateEmptyTimeline
+    # only creates V1+A1 by default — must explicitly add tracks up to
+    # music_track before placement.
     music_added = False
     music_count = 0
     if music_path and os.path.isfile(music_path):
         bridge.log(f"Importing music: {os.path.basename(music_path)}")
         music_items = media_pool.ImportMedia([music_path]) or []
         if music_items:
-            # Ensure A2 exists so trackIndex=2 has a valid target
+            # Ensure music_track exists
             try:
                 existing_audio_tracks = timeline.GetTrackCount("audio")
             except Exception:  # noqa: BLE001
                 existing_audio_tracks = 1
-            if existing_audio_tracks < 2:
+            tracks_to_add = max(0, music_track - existing_audio_tracks)
+            for _ in range(tracks_to_add):
                 try:
                     timeline.AddTrack("audio")
-                    bridge.log("Added A2 audio track for music")
                 except Exception as exc:  # noqa: BLE001
-                    bridge.warn(f"Could not add A2 track: {exc}")
+                    bridge.warn(f"AddTrack failed: {exc}")
+                    break
+            if tracks_to_add > 0:
+                bridge.log(f"Added {tracks_to_add} audio track(s) — music lands on A{music_track}")
 
             music_spec = [{
                 "mediaPoolItem": music_items[0],
                 "mediaType": 2,
-                "trackIndex": 2,
+                "trackIndex": music_track,
                 "recordFrame": timeline_start_frame,
             }]
             music_placed = media_pool.AppendToTimeline(music_spec)
             music_count = len(music_placed) if isinstance(music_placed, list) else 0
 
             if music_count == 0:
-                bridge.warn("A2 spec rejected — falling back to A1 with linked audio")
+                bridge.warn(f"A{music_track} spec rejected — trying A{music_track} without recordFrame")
                 music_placed = media_pool.AppendToTimeline([{
                     "mediaPoolItem": music_items[0],
                     "mediaType": 2,
-                    "trackIndex": 1,
-                    "recordFrame": timeline_start_frame,
+                    "trackIndex": music_track,
                 }])
                 music_count = len(music_placed) if isinstance(music_placed, list) else 0
 
@@ -330,17 +380,15 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
             music_added = music_count > 0
 
-            # Verify by reading back A2 (or A1 if fallback fired)
+            # Verify by reading back the music track
             try:
-                for track_idx in (2, 1):
-                    items = timeline.GetItemListInTrack("audio", track_idx) or []
-                    if items:
-                        first = items[0]
-                        bridge.log(
-                            f"Verified A{track_idx}: '{first.GetName()}' "
-                            f"frames {first.GetStart()}-{first.GetEnd()}"
-                        )
-                        break
+                items = timeline.GetItemListInTrack("audio", music_track) or []
+                if items:
+                    first = items[0]
+                    bridge.log(
+                        f"Verified A{music_track} (music): '{first.GetName()}' "
+                        f"frames {first.GetStart()}-{first.GetEnd()}"
+                    )
             except Exception as exc:  # noqa: BLE001
                 bridge.warn(f"Could not verify music placement: {exc}")
 
@@ -353,20 +401,22 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     elif music_path:
         bridge.warn(f"Music path doesn't exist on disk: {music_path}")
 
-    # Mute A1 (camera audio from video clips) — user wants to hear only the
-    # imported music on A2, but keeps A1 visible so waveforms serve as a
-    # sync reference (does the camera audio align with the music beats?).
-    a1_muted = False
+    # Mute every linked-audio track (A1..A_max_audio_streams) so only the
+    # music plays. Waveforms stay visible for sync verification.
+    muted_tracks: list[int] = []
     if music_added:
-        try:
-            ok = timeline.SetTrackEnable("audio", 1, False)
-            a1_muted = bool(ok)
-            if a1_muted:
-                bridge.log("Muted A1 (camera audio) — A2 music plays solo, A1 visible for sync reference")
-            else:
-                bridge.warn("SetTrackEnable returned False — A1 may need manual mute")
-        except Exception as exc:  # noqa: BLE001
-            bridge.warn(f"Could not mute A1: {exc}")
+        for track_idx in range(1, max_audio_streams + 1):
+            try:
+                ok = timeline.SetTrackEnable("audio", track_idx, False)
+                if ok:
+                    muted_tracks.append(track_idx)
+            except Exception as exc:  # noqa: BLE001
+                bridge.warn(f"Could not mute A{track_idx}: {exc}")
+        if muted_tracks:
+            track_list = ", ".join(f"A{t}" for t in muted_tracks)
+            bridge.log(f"Muted {track_list} (camera audio) — A{music_track} (music) plays solo")
+        else:
+            bridge.warn("SetTrackEnable returned falsy for all linked-audio tracks — mute manually via M button")
 
     bridge.result({
         "timelineCreated": True,
@@ -374,9 +424,11 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         "segmentsAttempted": len(append_specs),
         "segmentsPlaced": placed_count,
         "segmentsSkipped": skipped,
+        "sourceAudioStreams": max_audio_streams,
         "musicAdded": music_added,
         "musicItemCount": music_count,
-        "cameraAudioMuted": a1_muted,
+        "musicTrack": f"A{music_track}",
+        "mutedTracks": [f"A{t}" for t in muted_tracks],
     })
 
 
