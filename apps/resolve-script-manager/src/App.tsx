@@ -34,6 +34,7 @@ import { MediaPoolSidebar } from "./components/MediaPoolSidebar";
 import { SettingsModal, loadSettings, settingsToEnvVars } from "./components/SettingsModal";
 import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
+import { HighlightReviewView } from "./components/HighlightReviewView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { MagicCutDialog } from "./components/MagicCutDialog";
@@ -62,6 +63,7 @@ export default function App() {
   const [showMediaPool, setShowMediaPool] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showDependencies, setShowDependencies] = useState(false);
+  const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
   useEffect(() => {
@@ -201,6 +203,15 @@ export default function App() {
       const resultEvent = summary.events.find((e) => e.type === "result");
       if (resultEvent && resultEvent.value && typeof resultEvent.value === "object") {
         setHealth(resultEvent.value as HealthStatus);
+      }
+    }
+    // Auto-open the highlight-review UI when extract_highlight_from_film
+    // returns reviewMode + picksPath
+    if (summary.script_id === "extract_highlight_from_film") {
+      const resultEvent = summary.events.find((e) => e.type === "result");
+      const r = resultEvent?.value as { reviewMode?: boolean; picksPath?: string } | undefined;
+      if (r?.reviewMode && r.picksPath) {
+        setHighlightReviewPath(r.picksPath);
       }
     }
   }, [scriptsById]);
@@ -462,6 +473,13 @@ export default function App() {
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
       {showDependencies && <DependenciesModal onClose={() => setShowDependencies(false)} />}
+      {highlightReviewPath && (
+        <HighlightReviewView
+          picksPath={highlightReviewPath}
+          onClose={() => setHighlightReviewPath(null)}
+          onBuilt={() => setHighlightReviewPath(null)}
+        />
+      )}
 
       {showFirstRun && <FirstRunSetupWizard onClose={() => setShowFirstRun(false)} />}
 
