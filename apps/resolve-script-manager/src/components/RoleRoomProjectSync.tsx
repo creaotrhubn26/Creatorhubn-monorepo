@@ -81,6 +81,81 @@ export function RoleRoomProjectSync() {
     samplePlan?: Array<{ index: number; time: number; durationSeconds?: number; motionScore?: number | null; name: string }>;
   } | null>(null);
 
+  // Source-matching state
+  const [sourceFolders, setSourceFolders] = useState<string[]>([]);
+  const [matching, setMatching] = useState(false);
+  const [matchResult, setMatchResult] = useState<{
+    sourceCount: number;
+    sourceFrameCount: number;
+    confidenceBreakdown: { high?: number; medium?: number; low?: number; none?: number };
+    matches: Array<{
+      shotIndex: number;
+      shotTime: number;
+      sourceFile: string | null;
+      sourceTime: number | null;
+      hashDistance: number | null;
+      confidence: "high" | "medium" | "low" | "none";
+    }>;
+  } | null>(null);
+
+  async function pickSourceFolder() {
+    try {
+      const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+      const selected = await openDialog({ multiple: false, directory: true });
+      if (typeof selected === "string" && selected && !sourceFolders.includes(selected)) {
+        setSourceFolders([...sourceFolders, selected]);
+        setMatchResult(null);
+      }
+    } catch (e) {
+      console.warn("folder picker failed", e);
+    }
+  }
+
+  async function runMatchShotsToSource() {
+    if (!analyzePath || sourceFolders.length === 0) return;
+    setMatching(true);
+    setMatchResult(null);
+    setError(null);
+    try {
+      const summary = await executeScript(
+        "match_shots_to_source",
+        {
+          editedVideoPath: analyzePath,
+          sourceFolders,
+          sceneThreshold: analyzeThreshold,
+        },
+        false,
+      );
+      const r = summary.events.find((e) => e.type === "result")?.value as
+        | {
+            sourceCount?: number;
+            sourceFrameCount?: number;
+            confidenceBreakdown?: Record<string, number>;
+            matches?: unknown[];
+          }
+        | undefined;
+      const err = summary.events.find((e) => e.type === "error")?.value as { message?: string } | undefined;
+      if (err?.message) {
+        setError(err.message);
+        return;
+      }
+      setMatchResult({
+        sourceCount: r?.sourceCount || 0,
+        sourceFrameCount: r?.sourceFrameCount || 0,
+        confidenceBreakdown: r?.confidenceBreakdown || {},
+        matches: (r?.matches || []) as typeof matchResult extends infer T
+          ? T extends { matches: infer M }
+            ? M
+            : never
+          : never,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMatching(false);
+    }
+  }
+
   async function pickAnalyzeFile() {
     try {
       const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
@@ -871,6 +946,113 @@ export function RoleRoomProjectSync() {
                     … og {analyzeResult.samplePlan.length - 15} til (se Resolve-timeline for full liste)
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Match shots to source material */}
+        {analyzeResult && analyzePath && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px dashed rgba(160,48,192,0.20)" }}>
+            <strong style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+              Match shots til råmateriale
+            </strong>
+            <div style={{ fontSize: 11, color: "#8674a8", marginBottom: 8 }}>
+              Pek på en eller flere raw-footage-mapper. Post Agent finner hvilken kilde + timecode hvert shot kom fra (perceptual hash).
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {sourceFolders.map((f) => (
+                <span key={f} style={{ padding: "3px 8px", background: "rgba(160,48,192,0.15)", color: "#d8c8e8", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {f.split("/").pop()}
+                  <button
+                    onClick={() => setSourceFolders(sourceFolders.filter((x) => x !== f))}
+                    disabled={matching}
+                    style={{ background: "transparent", border: "none", color: "#8674a8", cursor: "pointer", padding: 0, fontSize: 14 }}
+                  >×</button>
+                </span>
+              ))}
+              <button
+                onClick={pickSourceFolder}
+                disabled={matching}
+                style={{
+                  background: "transparent",
+                  border: "1px dashed rgba(160,48,192,0.4)",
+                  color: "#a030c0",
+                  borderRadius: 4,
+                  padding: "3px 10px",
+                  cursor: matching ? "default" : "pointer",
+                  fontSize: 11,
+                }}
+              >
+                + Legg til mappe
+              </button>
+            </div>
+
+            <button
+              onClick={runMatchShotsToSource}
+              disabled={matching || sourceFolders.length === 0}
+              style={{
+                background: "#6e3fc7",
+                border: "none",
+                color: "white",
+                borderRadius: 6,
+                padding: "6px 12px",
+                cursor: matching || sourceFolders.length === 0 ? "default" : "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {matching ? "Matcher…" : "Match shots"}
+            </button>
+
+            {matchResult && (
+              <div style={{
+                marginTop: 10,
+                padding: 10,
+                background: "rgba(110,63,199,0.08)",
+                border: "1px solid rgba(110,63,199,0.30)",
+                borderRadius: 6,
+                fontSize: 11,
+                color: "#d8c8e8",
+              }}>
+                <div style={{ marginBottom: 6, color: "#f0eaff" }}>
+                  <strong>{matchResult.sourceCount}</strong> raw-klipp · <strong>{matchResult.sourceFrameCount}</strong> sample-frames indeksert
+                </div>
+                <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 8 }}>
+                  {matchResult.confidenceBreakdown.high ? <span style={{ color: "#4ad48a" }}>✓ {matchResult.confidenceBreakdown.high} høy</span> : null}
+                  {matchResult.confidenceBreakdown.medium ? <span style={{ color: "#f59e0b" }}>~ {matchResult.confidenceBreakdown.medium} medium</span> : null}
+                  {matchResult.confidenceBreakdown.low ? <span style={{ color: "#ef4f6f" }}>? {matchResult.confidenceBreakdown.low} lav</span> : null}
+                  {matchResult.confidenceBreakdown.none ? <span style={{ color: "#8674a8" }}>× {matchResult.confidenceBreakdown.none} ingen</span> : null}
+                </div>
+                <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                  {matchResult.matches.slice(0, 30).map((m) => {
+                    const conf = m.confidence;
+                    const color = conf === "high" ? "#4ad48a" : conf === "medium" ? "#f59e0b" : conf === "low" ? "#ef4f6f" : "#8674a8";
+                    const minutes = Math.floor(m.shotTime / 60);
+                    const seconds = Math.floor(m.shotTime % 60);
+                    return (
+                      <div key={m.shotIndex} style={{ padding: "2px 0", display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ color: "#8674a8", minWidth: 40 }}>{minutes}:{String(seconds).padStart(2, "0")}</span>
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: m.sourceFile ? "#f0eaff" : "#8674a8" }}>
+                          {m.sourceFile || "(ingen match)"}
+                          {m.sourceTime != null && ` @ ${m.sourceTime.toFixed(1)}s`}
+                        </span>
+                        <span style={{ color, fontSize: 10, whiteSpace: "nowrap" }}>
+                          {conf === "high" && "≥90%"}
+                          {conf === "medium" && "~75%"}
+                          {conf === "low" && "<75%"}
+                          {conf === "none" && "ingen"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {matchResult.matches.length > 30 && (
+                    <div style={{ color: "#8674a8", padding: "4px 0", textAlign: "center" }}>
+                      … og {matchResult.matches.length - 30} til
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
