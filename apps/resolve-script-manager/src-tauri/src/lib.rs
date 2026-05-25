@@ -7,6 +7,7 @@ mod cull;
 mod folder_watcher;
 mod history;
 mod python;
+mod role_room_api;
 
 use std::path::PathBuf;
 
@@ -395,6 +396,11 @@ pub fn run() {
             start_watching_folder,
             stop_watching_folder,
             list_watched_folders,
+            role_room_api::role_room_fetch_scenes,
+            role_room_api::role_room_fetch_equipment,
+            role_room_api::role_room_fetch_live_set_state,
+            role_room_api::role_room_my_productions,
+            role_room_api::role_room_my_seats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

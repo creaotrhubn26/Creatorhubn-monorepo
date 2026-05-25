@@ -170,3 +170,79 @@ export async function onScriptEvent(
 ): Promise<UnlistenFn> {
   return listen<ScriptEvent>("script-event", (e) => handler(e.payload));
 }
+
+// ─── Role Room API consumers ─────────────────────────────────────────────
+
+export interface RoleRoomScene {
+  id: string;
+  sceneNumber?: number;
+  title?: string;
+  description?: string;
+  setting?: string;
+  timeOfDay?: string;
+  intExt?: string;
+  characters?: unknown[];
+}
+
+export interface RoleRoomEquipment {
+  id: string;
+  name?: string;
+  brand?: string;
+  model?: string;
+  category?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RoleRoomProjectSettings {
+  resolution?: string | null;
+  frameRate?: number | null;
+  colorScience?: string | null;
+  primaryCamera?: { brand?: string; model?: string; name?: string } | null;
+}
+
+export interface RoleRoomClip {
+  id: string;
+  sceneId?: string;
+  sceneNumber?: number;
+  sceneTitle?: string;
+  shotIndex?: number;
+  takeNumber?: number;
+  mediaKey?: string;
+  capturedAt?: string;
+  circled?: boolean;
+  processingStatus?: string;
+}
+
+export interface RoleRoomProduction {
+  id: string;
+  name: string;
+  projectType?: string;
+  eventDate?: string;
+  activeSeats?: number;
+}
+
+export async function fetchRoleRoomScenes(projectId: string): Promise<{ scenes: RoleRoomScene[] }> {
+  return invoke("role_room_fetch_scenes", { projectId });
+}
+
+export async function fetchRoleRoomEquipment(
+  projectId: string,
+): Promise<{ equipment: RoleRoomEquipment[]; projectSettings: RoleRoomProjectSettings | null }> {
+  return invoke("role_room_fetch_equipment", { projectId });
+}
+
+export async function fetchRoleRoomLiveSetState(
+  projectId: string,
+): Promise<{ clips: RoleRoomClip[]; sceneMarkers: Array<{ sceneId: string; sceneNumber?: number; title?: string }> }> {
+  return invoke("role_room_fetch_live_set_state", { projectId });
+}
+
+export async function fetchMyProductions(): Promise<{ productions: RoleRoomProduction[] }> {
+  return invoke("role_room_my_productions");
+}
+
+export async function fetchMySeats(): Promise<{
+  seats: Array<{ projectId: string; projectName: string; projectType?: string; grantedAt?: string }>;
+}> {
+  return invoke("role_room_my_seats");
+}

@@ -38,7 +38,6 @@ import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSe
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
-import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons";
 import { updateAppSettings } from "./api";
 import { useProjectTemplate } from "./hooks/useProjectTemplate";

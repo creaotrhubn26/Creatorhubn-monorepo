@@ -26,6 +26,7 @@ import {
   IconHeart,
   IconPlay,
 } from "./Icons";
+import { RoleRoomProjectSync } from "./RoleRoomProjectSync";
 
 type IconCmp = (p: { size?: number }) => JSX.Element;
 
@@ -179,6 +180,10 @@ export function HomeView({
           ))}
         </div>
       )}
+
+      <div style={{ marginTop: 24 }}>
+        <RoleRoomProjectSync />
+      </div>
 
       <div className="home-footer-hints">
         <button className="home-link-button" onClick={onOpenAdvanced}>
