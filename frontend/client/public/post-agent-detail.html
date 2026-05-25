@@ -5,6 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="mobile-web-app-capable" content="yes">
   <title>Post Agent — The Role Room Marketplace</title>
+  <meta name="description" content="AI-drevet post-produksjon for DaVinci Resolve på Mac. Cull med Claude Vision, scene-detection, beat-sync, WhisperX-transkripsjon. 299 NOK/seat/mnd.">
+  <meta name="theme-color" content="#a030c0">
+  <link rel="canonical" href="https://creatorhubn.com/marketplace/post-agent">
+  <meta property="og:type" content="product">
+  <meta property="og:url" content="https://creatorhubn.com/marketplace/post-agent">
+  <meta property="og:title" content="Post Agent — AI-post-produksjon for DaVinci Resolve">
+  <meta property="og:description" content="Cull, scene-detection, beat-sync og transkripsjon — lokalt på Mac-en, ingen filer forlater maskinen.">
+  <meta property="og:image" content="https://creatorhubn.com/theroleroom-app-icon-1024.png">
+  <meta property="product:price:amount" content="299">
+  <meta property="product:price:currency" content="NOK">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Post Agent — AI for DaVinci Resolve">
+  <meta name="twitter:description" content="Lokal AI-cull + scene-detection + beat-sync. 299 NOK/seat/mnd.">
+  <meta name="twitter:image" content="https://creatorhubn.com/theroleroom-app-icon-1024.png">
   <link rel="icon" type="image/png" href="/theroleroom-app-icon-1024.png">
   <style>
     * { box-sizing: border-box; }
@@ -376,6 +390,16 @@
     (function() {
       var BASE = 'https://creatorhubn.com/api/post-agent';
 
+      // Lightweight funnel tracking — dispatches CustomEvents on window so
+      // any analytics layer (PostHog, GA, Segment) can subscribe without
+      // hard-coupling. No data sent until a listener subscribes.
+      function track(event, props) {
+        try {
+          window.dispatchEvent(new CustomEvent('trrpa:funnel', { detail: { event: event, props: props || {} } }));
+        } catch (_) { /* ignore */ }
+      }
+      track('marketplace_post_agent_view');
+
       function getBearer() {
         var keys = ['creatorhub_auth_token', 'role_room_auth_token', 'authToken', 'sessionToken'];
         for (var i = 0; i < keys.length; i++) {
@@ -734,6 +758,7 @@
                   JSON.stringify(pendingCrew.filter(function (c) { return !c.alreadyGranted; }).map(function (c) { return c.email; })),
                 );
               } catch (_) { /* localStorage may be unavailable in private mode */ }
+              track('marketplace_checkout_start', { seatCount: pendingCrew.length, productionId: selectedProductionId });
               window.location.href = coData.url;
               return;
             }
@@ -750,6 +775,7 @@
         } else {
           showAlert('Tilgang aktivert. Crew kan nå logge inn i Post Agent og bruke AI-funksjonene.', 'success');
           confirmTeamBtn.textContent = 'Aktivert ✓';
+          track('marketplace_grants_completed', { seatCount: toGrant.length, productionId: selectedProductionId });
         }
       });
 

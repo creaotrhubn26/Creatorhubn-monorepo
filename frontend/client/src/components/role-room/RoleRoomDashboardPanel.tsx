@@ -104,6 +104,7 @@ import {
 import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
+import { PostAgentErrorBoundary } from './components/PostAgentErrorBoundary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { DanceWorkspace } from './dance';
@@ -816,7 +817,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         </Stack>
       </Box>
 
-      <PostAgentCrewWelcomeBanner />
+      <PostAgentErrorBoundary label="Velkomst-banner">
+        <PostAgentCrewWelcomeBanner />
+      </PostAgentErrorBoundary>
 
       {/* ── Stats Row ──────────────────────────────────── */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -1004,7 +1007,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
               {isProductionMode(activeProfessionMode) && selectedProjectId && (
                 <Box sx={{ px: 2 }}>
-                  <PostAgentReadyCard projectId={selectedProjectId} />
+                  <PostAgentErrorBoundary label="Post Agent-status">
+                    <PostAgentReadyCard projectId={selectedProjectId} />
+                  </PostAgentErrorBoundary>
                 </Box>
               )}
 
