@@ -89,6 +89,8 @@ interface Props {
   clientName?: string | null;
   /** Galleri/prosjekt-tittel (for eksport-header) */
   projectTitle?: string | null;
+  /** Admin-side: callback når Bjarne markerer kommentar som løst/åpen */
+  onToggleResolved?: (commentId: string, nextStatus: 'open' | 'resolved') => void;
 }
 
 const CATEGORY_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -188,6 +190,7 @@ const EditFeedbackSummary: React.FC<Props> = ({
   title = 'Edit-tilbakemelding',
   clientName,
   projectTitle,
+  onToggleResolved,
 }) => {
   const [copySnack, setCopySnack] = useState(false);
   const [downloadSnack, setDownloadSnack] = useState<string | null>(null);
@@ -580,7 +583,7 @@ const EditFeedbackSummary: React.FC<Props> = ({
                                   fontSize: '0.65rem',
                                 }}
                               />
-                              {isResolved && (
+                              {isResolved && !onToggleResolved && (
                                 <Chip
                                   size="small"
                                   icon={<ResolvedIcon sx={{ fontSize: '0.75rem !important' }} />}
@@ -593,6 +596,28 @@ const EditFeedbackSummary: React.FC<Props> = ({
                                     fontSize: '0.65rem',
                                   }}
                                 />
+                              )}
+                              {onToggleResolved && (
+                                <Tooltip title={isResolved ? 'Marker som åpen' : 'Marker som løst'}>
+                                  <Chip
+                                    onClick={() => onToggleResolved(e.id, isResolved ? 'open' : 'resolved')}
+                                    size="small"
+                                    icon={<ResolvedIcon sx={{ fontSize: '0.75rem !important' }} />}
+                                    label={isResolved ? 'Løst' : 'Marker løst'}
+                                    sx={{
+                                      height: 20,
+                                      bgcolor: isResolved ? 'rgba(16, 185, 129, 0.18)' : 'transparent',
+                                      color: isResolved ? '#10b981' : '#5a4f42',
+                                      border: isResolved ? 'none' : '1px solid #5a4f42',
+                                      fontWeight: 700,
+                                      fontSize: '0.65rem',
+                                      cursor: 'pointer',
+                                      '&:hover': {
+                                        bgcolor: isResolved ? 'rgba(16, 185, 129, 0.28)' : 'rgba(16, 185, 129, 0.12)',
+                                      },
+                                    }}
+                                  />
+                                </Tooltip>
                               )}
                             </Stack>
                             <Typography

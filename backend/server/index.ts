@@ -23705,6 +23705,99 @@ app.get("/api/photographer/galleries/events", async (req, res) => {
   }
 });
 
+// Slice 9X.84 — Admin-side liste av video-timecode-kommentarer for ett
+// galleri. Brukes av EditFeedbackSummary i admin-portalen så Bjarne kan
+// se aggregert oversikt uten å åpne klient-galleriet.
+app.get("/api/photographer/galleries/:id/video-comments", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: "gallery_id_required" });
+  try {
+    const owned = await pool.query(
+      `SELECT id FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+    await ensureVideoTimecodeCommentsSchema();
+    const rows = await pool.query(
+      `SELECT id, chapter_id, timecode_sec, end_timecode_sec,
+              category, priority, comment, client_email, client_name,
+              status, resolved_at, created_at,
+              suggested_media_url, suggested_media_label,
+              suggested_media_from_sec, suggested_media_to_sec
+         FROM video_timecode_comments
+        WHERE gallery_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1000`,
+      [galleryId],
+    );
+    res.json({
+      comments: rows.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        chapterId: r.chapter_id,
+        timecodeSec: Number(r.timecode_sec),
+        endTimecodeSec: r.end_timecode_sec != null ? Number(r.end_timecode_sec) : null,
+        category: r.category,
+        priority: r.priority,
+        comment: r.comment,
+        clientEmail: r.client_email,
+        clientName: r.client_name,
+        status: r.status,
+        resolvedAt: r.resolved_at,
+        createdAt: r.created_at,
+        suggestedMediaUrl: r.suggested_media_url,
+        suggestedMediaLabel: r.suggested_media_label,
+        suggestedMediaFromSec: r.suggested_media_from_sec != null ? Number(r.suggested_media_from_sec) : null,
+        suggestedMediaToSec: r.suggested_media_to_sec != null ? Number(r.suggested_media_to_sec) : null,
+      })),
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] video-comments list failed", error);
+    res.status(500).json({ error: "list_failed" });
+  }
+});
+
+// Slice 9X.84 — Toggle resolved/open per kommentar. Bjarne markerer ting
+// som ferdig direkte fra EditFeedbackSummary.
+app.patch("/api/photographer/galleries/:id/video-comments/:commentId", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  const commentId = String(req.params.commentId || '').trim();
+  if (!galleryId || !commentId) return res.status(400).json({ error: "missing_ids" });
+  const statusRaw = typeof req.body?.status === 'string' ? req.body.status.toLowerCase() : '';
+  if (!['open', 'resolved', 'archived'].includes(statusRaw)) {
+    return res.status(400).json({ error: "invalid_status" });
+  }
+  try {
+    const owned = await pool.query(
+      `SELECT id FROM photographer_client_galleries
+        WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+    const updated = await pool.query(
+      `UPDATE video_timecode_comments
+          SET status = $1,
+              resolved_at = CASE WHEN $1 = 'resolved' THEN NOW() ELSE NULL END
+        WHERE id = $2 AND gallery_id = $3
+        RETURNING id, status, resolved_at`,
+      [statusRaw, commentId, galleryId],
+    );
+    if (updated.rowCount === 0) return res.status(404).json({ error: "comment_not_found" });
+    res.json({
+      id: updated.rows[0].id,
+      status: updated.rows[0].status,
+      resolvedAt: updated.rows[0].resolved_at,
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] video-comment patch failed", error);
+    res.status(500).json({ error: "patch_failed" });
+  }
+});
+
 // GET /api/photographer/galleries/:id/events — activity timeline.
 app.get("/api/photographer/galleries/:id/events", async (req, res) => {
   const session = requireUserSession(req, res);

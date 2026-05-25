@@ -55,7 +55,10 @@ import {
   CheckCircle as CheckCircleIcon,
   Payment as PaymentIcon,
   Folder as FolderIcon,
+  ViewModule as ChaptersIcon,
 } from '@mui/icons-material';
+import ChapterEditor from './ChapterEditor';
+import GalleryFeedbackDialog from './GalleryFeedbackDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -80,6 +83,8 @@ interface GallerySettings {
   logoUrl?: string;
   primaryColor?: string;
   accentColor?: string;
+  /** Slice 9X.83 — Pic-Time story-chapters (administrert via ChapterEditor). */
+  chapters?: Array<Record<string, unknown>>;
 }
 
 interface PhotographerGallery {
@@ -165,6 +170,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   const [createPackageId, setCreatePackageId] = useState<string | null>(null);
   const [settingsOpenFor, setSettingsOpenFor] = useState<PhotographerGallery | null>(null);
   const [eventsOpenFor, setEventsOpenFor] = useState<PhotographerGallery | null>(null);
+  const [feedbackOpenFor, setFeedbackOpenFor] = useState<PhotographerGallery | null>(null);
 
   // Slice 9X.2 — read prefill params from the URL once on mount. When
   // the deep-link sets autoCreate=1, open the dialog pre-populated
@@ -286,6 +292,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
               terms={terms}
               onSettings={() => setSettingsOpenFor(g)}
               onEvents={() => setEventsOpenFor(g)}
+              onFeedback={() => setFeedbackOpenFor(g)}
             />
           </Grid>
         ))}
@@ -356,6 +363,15 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
           onClose={() => setEventsOpenFor(null)}
         />
       )}
+      {feedbackOpenFor && (
+        <GalleryFeedbackDialog
+          open
+          galleryId={feedbackOpenFor.id}
+          projectTitle={feedbackOpenFor.projectTitle}
+          clientName={feedbackOpenFor.clientName}
+          onClose={() => setFeedbackOpenFor(null)}
+        />
+      )}
     </Box>
   );
 };
@@ -365,7 +381,8 @@ const GalleryCard: React.FC<{
   terms: ShowcaseTerminology;
   onSettings: () => void;
   onEvents: () => void;
-}> = ({ gallery, terms, onSettings, onEvents }) => {
+  onFeedback: () => void;
+}> = ({ gallery, terms, onSettings, onEvents, onFeedback }) => {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const totalEvents =
@@ -525,6 +542,16 @@ const GalleryCard: React.FC<{
             Hendelser ({totalEvents})
           </Button>
         </Stack>
+        <Button
+          size="small"
+          startIcon={<CommentIcon />}
+          onClick={onFeedback}
+          fullWidth
+          variant="outlined"
+          sx={{ mt: 1, borderColor: '#d97706', color: '#d97706', '&:hover': { borderColor: '#b45309', bgcolor: 'rgba(217, 119, 6, 0.08)' } }}
+        >
+          Klient-tilbakemelding
+        </Button>
         {/* Slice 9X.7 — explicit completion action. Disabled when
             already completed (idempotent on backend, but visual cue). */}
         <Button
@@ -577,6 +604,10 @@ const GallerySettingsDialog: React.FC<{
   // unless the photographer also edits contractedImages manually in
   // the same save (so the manual override always wins).
   const [packageId, setPackageId] = useState<string>(gallery.packageId ?? '');
+  // Slice 9X.84 — Chapter editor (Pic-Time story-flyt). Åpnes som
+  // egen dialog siden settings-dialogen er begrenset i bredde.
+  const [chapterEditorOpen, setChapterEditorOpen] = useState(false);
+  const existingChapterCount = Array.isArray(s.chapters) ? s.chapters.length : 0;
   const { data: packagesList } = useQuery<{
     id: string | number;
     name?: string;
@@ -749,6 +780,30 @@ const GallerySettingsDialog: React.FC<{
 
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              <ChaptersIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+              Kapittel-struktur (Pic-Time-flyt)
+            </Typography>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<ChaptersIcon />}
+                onClick={() => setChapterEditorOpen(true)}
+              >
+                {existingChapterCount > 0 ? 'Rediger kapitler' : 'Bygg kapittel-struktur'}
+              </Button>
+              <Typography variant="caption" color="text.secondary">
+                {existingChapterCount > 0
+                  ? `${existingChapterCount} kapittel${existingChapterCount === 1 ? '' : 'er'} konfigurert`
+                  : 'Ingen kapitler — galleriet vises som flat bilde-grid'}
+              </Typography>
+            </Stack>
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
               <LockIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
               Sikkerhet
             </Typography>
@@ -853,6 +908,12 @@ const GallerySettingsDialog: React.FC<{
           {patchMutation.isPending ? 'Lagrer…' : 'Lagre'}
         </Button>
       </DialogActions>
+
+      <ChapterEditor
+        open={chapterEditorOpen}
+        galleryId={gallery.id}
+        onClose={() => setChapterEditorOpen(false)}
+      />
     </Dialog>
   );
 };
