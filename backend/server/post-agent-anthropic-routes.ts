@@ -521,6 +521,74 @@ export function createPostAgentRouter(
    *
    * Body: { interval: 'monthly' | 'yearly' }
    */
+  /**
+   * Standalone Post Agent purchase — for users who do NOT have a Role Room
+   * subscription yet. Creates a Stripe Checkout session with a single line-item
+   * (Post Agent monthly) at the requested quantity. The webhook then writes the
+   * subscriptions-row + entitlement when checkout completes.
+   *
+   * Request body: { productionId?: string; seatCount?: number }
+   *   - productionId: where to redirect back to after checkout
+   *   - seatCount: how many crew seats to provision (defaults to 1 = lead only)
+   */
+  router.post('/billing/standalone-checkout', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const productionId = String(req.body?.productionId ?? '').trim();
+    const seatCount = Math.max(1, parseInt(String(req.body?.seatCount ?? 1), 10) || 1);
+    const priceId = process.env.STRIPE_PRICE_POST_AGENT_MONTHLY;
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!priceId || !secret) {
+      res.status(503).json({ error: 'stripe_not_configured' });
+      return;
+    }
+
+    try {
+      const { rows: userRows } = await pool.query(
+        `SELECT email, stripe_customer_id FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      const email = userRows[0]?.email;
+      const existingCustomer = userRows[0]?.stripe_customer_id;
+
+      const origin =
+        (req.headers.origin as string | undefined) ||
+        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const successQuery = productionId
+        ? `productionId=${encodeURIComponent(productionId)}&checkout=success`
+        : 'checkout=success';
+      const cancelQuery = productionId ? `productionId=${encodeURIComponent(productionId)}` : '';
+
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(secret);
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [{ price: priceId, quantity: seatCount }],
+        success_url: `${origin}/marketplace/post-agent?${successQuery}`,
+        cancel_url: `${origin}/marketplace/post-agent${cancelQuery ? '?' + cancelQuery : ''}`,
+        client_reference_id: userId,
+        ...(existingCustomer ? { customer: existingCustomer } : email ? { customer_email: email } : {}),
+        metadata: {
+          product: 'post_agent_standalone',
+          role_room_user_id: userId,
+          ...(productionId ? { productionId } : {}),
+          seatCount: String(seatCount),
+        },
+        subscription_data: {
+          metadata: {
+            product: 'post_agent_standalone',
+            role_room_user_id: userId,
+            ...(productionId ? { productionId } : {}),
+          },
+        },
+      });
+
+      res.json({ ok: true, url: session.url, id: session.id });
+    } catch (err) {
+      console.error('[post-agent] standalone-checkout failed:', err);
+      res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+    }
+  });
+
   router.post('/billing/add-to-subscription', userAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
     const interval = (req.body?.interval ?? 'monthly') as 'monthly' | 'yearly';

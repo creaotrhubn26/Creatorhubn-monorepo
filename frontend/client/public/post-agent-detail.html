@@ -464,6 +464,28 @@
             productionSelect.dispatchEvent(new Event('change'));
           } else {
             showAlert('Fant ikke produksjonen som ble lenket til. Velg manuelt fra listen.', 'info');
+            return;
+          }
+
+          // Returning from Stripe Checkout? Restore pending crew + show success.
+          if (params.get('checkout') === 'success') {
+            showAlert('Betaling registrert. Klikk «Bekreft tilgang» for å aktivere crew-seats.', 'success');
+            try {
+              var pending = JSON.parse(window.localStorage.getItem('trrpa_pending_grants_' + pid) || '[]');
+              if (Array.isArray(pending) && pending.length > 0) {
+                // Merge into pendingCrew (skip dupes with existing seats fetched above)
+                setTimeout(function () {
+                  pending.forEach(function (email) {
+                    if (!pendingCrew.some(function (c) { return c.email.toLowerCase() === email.toLowerCase(); })) {
+                      pendingCrew.push({ email: email });
+                    }
+                  });
+                  renderCrew();
+                  updateSummary();
+                  window.localStorage.removeItem('trrpa_pending_grants_' + pid);
+                }, 600); // Give the seats-fetch a moment to populate first
+              }
+            } catch (_) { /* ignore */ }
           }
         } catch (_) { /* ignore */ }
       }
@@ -563,9 +585,34 @@
           }
         }
         if (subscriptionMissing) {
-          alertArea.innerHTML =
-            '<div class="alert error">Du må ha et aktivt Role Room-abonnement før du kan tildele Post Agent-seats. Seat-fakturering legges som en line-item på ditt eksisterende abonnement.<br><br>' +
-            '<a href="' + ctaUrl + '" class="login-link" style="display:inline-block;margin-top:8px">' + ctaLabel + '</a></div>';
+          // Lazy-onboarding: spin up a Stripe Checkout for Post Agent standalone.
+          // Seat count = pending crew the lead wanted to add.
+          confirmTeamBtn.textContent = 'Sender til betaling…';
+          try {
+            var coRes = await fetch(BASE + '/billing/standalone-checkout', {
+              method: 'POST',
+              credentials: 'include',
+              headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+              body: JSON.stringify({
+                productionId: selectedProductionId,
+                seatCount: pendingCrew.length || 1,
+              }),
+            });
+            var coData = await coRes.json();
+            if (coRes.ok && coData.url) {
+              try {
+                window.localStorage.setItem(
+                  'trrpa_pending_grants_' + selectedProductionId,
+                  JSON.stringify(pendingCrew.filter(function (c) { return !c.alreadyGranted; }).map(function (c) { return c.email; })),
+                );
+              } catch (_) { /* localStorage may be unavailable in private mode */ }
+              window.location.href = coData.url;
+              return;
+            }
+            showAlert('Kunne ikke starte betaling: ' + (coData.detail || coData.error || 'HTTP ' + coRes.status));
+          } catch (e) {
+            showAlert('Nettverksfeil ved oppstart av betaling.');
+          }
           confirmTeamBtn.disabled = false;
           confirmTeamBtn.textContent = 'Bekreft tilgang';
         } else if (errors.length > 0) {

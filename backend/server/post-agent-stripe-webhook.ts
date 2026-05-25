@@ -120,6 +120,56 @@ export function handlePostAgentStripeWebhook({ pool }: PostAgentWebhookDeps) {
 
     try {
       switch (event.type) {
+        case 'checkout.session.completed': {
+          // Lazy-onboarding: standalone Post Agent buyers come in via Checkout.
+          // Stripe creates the customer + subscription, but our DB has no
+          // user↔customer mapping yet. Write that mapping here so subsequent
+          // .subscription.updated events can resolve back to our user.
+          const sess = event.data.object as {
+            id: string;
+            mode?: string;
+            customer?: string;
+            subscription?: string;
+            client_reference_id?: string;
+            metadata?: Record<string, string>;
+          };
+          if (sess.mode !== 'subscription' || sess.metadata?.product !== 'post_agent_standalone') {
+            // Other checkout flows are handled elsewhere — no-op for us.
+            break;
+          }
+          const userId = sess.client_reference_id || sess.metadata?.role_room_user_id || null;
+          const customerId = typeof sess.customer === 'string' ? sess.customer : null;
+          const subscriptionId = typeof sess.subscription === 'string' ? sess.subscription : null;
+          if (!userId || !customerId || !subscriptionId) {
+            console.warn('[post-agent-webhook] checkout.completed missing fields:', {
+              hasUserId: !!userId, hasCustomer: !!customerId, hasSub: !!subscriptionId,
+            });
+            break;
+          }
+          try {
+            // Map user → customer in users table (best-effort).
+            await pool.query(
+              `UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND (stripe_customer_id IS NULL OR stripe_customer_id = '')`,
+              [customerId, userId],
+            );
+          } catch (e) {
+            console.warn('[post-agent-webhook] users.stripe_customer_id update failed:', (e as Error).message);
+          }
+          try {
+            // Insert subscriptions-row so syncStripeQuantity can find it on next grant.
+            await pool.query(
+              `INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, start_date)
+               VALUES ($1, $2, $3, 'active', NOW())
+               ON CONFLICT (stripe_subscription_id) DO UPDATE SET status = 'active'`,
+              [userId, customerId, subscriptionId],
+            );
+          } catch (e) {
+            console.warn('[post-agent-webhook] subscriptions insert failed:', (e as Error).message);
+          }
+          await grantPostAgentEntitlement(pool, userId, subscriptionId);
+          console.log(`[post-agent-webhook] standalone-checkout completed user=${userId} sub=${subscriptionId}`);
+          break;
+        }
         case 'customer.subscription.updated':
         case 'customer.subscription.created': {
           const sub = event.data.object as {
