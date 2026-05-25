@@ -543,7 +543,7 @@ def run(params: dict, dry_run: bool) -> None:
             tc_key = start_tc[:11]  # HH:MM:SS — group within same second
             tc_groups.setdefault(tc_key, []).append(path)
 
-        decisions.append({
+        decision_record = {
             "clipPath": path,
             "clipName": clip_name,
             "thumbnails": thumbnails,
@@ -559,7 +559,26 @@ def run(params: dict, dry_run: bool) -> None:
             "tags": (ai or {}).get("tags", []),
             "notes": (ai or {}).get("notes") or prefilter_reason,
             "userOverrode": False,
-        })
+        }
+        decisions.append(decision_record)
+
+        # Live event for the UI — lets CullTheater render this clip's tile
+        # immediately rather than waiting for the whole batch to finish.
+        bridge.emit(
+            "clip_decision",
+            clipName=clip_name,
+            clipPath=path,
+            thumbnailPath=thumbnails[0] if thumbnails else None,
+            decision=decision,
+            aiSuggestion=decision_record["aiSuggestion"],
+            qualityScore=decision_record["qualityScore"],
+            highlightScore=decision_record["highlightScore"],
+            scene=decision_record["scene"],
+            tags=decision_record["tags"],
+            notes=decision_record["notes"],
+            index=index,
+            total=total_clips,
+        )
 
         if (index + 1) % 10 == 0 or index == len(clip_paths) - 1:
             bridge.log(f"Culled {index + 1}/{len(clip_paths)} clips")

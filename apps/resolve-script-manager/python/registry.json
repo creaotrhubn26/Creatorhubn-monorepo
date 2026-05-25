@@ -1012,6 +1012,68 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": false
+    },
+    {
+      "id": "detect_music_beats",
+      "name": "Detect Music Beats",
+      "category": "audio",
+      "scriptPath": "scripts/audio/detect_music_beats.py",
+      "description": "Ekstraherer BPM + beat-timestamps fra musikkfil via librosa. Brukes som timing-grid for music video-pipelines.",
+      "requiredInputs": [
+        {
+          "key": "musicPath",
+          "label": "Music file",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "targetFps",
+          "label": "Target FPS",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "assign_clips_to_beats",
+      "name": "Assign Clips to Beats",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/assign_clips_to_beats.py",
+      "description": "Plasserer culled klipp på beat-segmenter med energi-matching. Output er segment-plan brukt av place_clips_on_beat_grid.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "place_clips_on_beat_grid",
+      "name": "Place Clips on Beat Grid",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/place_clips_on_beat_grid.py",
+      "description": "Bygger beat-synket timeline i Resolve med klipp trimmet til beat-segmentenes lengde + valgfri musikk-track.",
+      "requiredInputs": [
+        {
+          "key": "segments",
+          "label": "Beat-segments (from assign_clips_to_beats)",
+          "type": "json",
+          "required": true
+        }
+      ],
+      "resolvePageDependency": "edit",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
     }
   ]
 }

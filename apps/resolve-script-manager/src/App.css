@@ -900,6 +900,116 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-family: ui-monospace, "SF Mono", monospace;
   font-size: 11px;
 }
+
+/* ============ Cull Theater (live cull view) ============ */
+.cull-theater { display: flex; flex-direction: column; gap: 12px; padding: 4px; }
+.cull-theater-progress { display: flex; flex-direction: column; gap: 6px; }
+.cull-theater-progress-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cull-theater-bar { width: 100%; height: 8px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
+.cull-theater-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--experimental)); transition: width 0.4s ease; }
+
+.cull-theater-spotlight {
+  display: flex; gap: 16px; padding: 16px; border-radius: 10px;
+  background: var(--bg-2); border: 2px solid var(--border);
+  animation: theater-fade-in 0.35s ease;
+}
+.cull-theater-spotlight.tone-ok { border-color: var(--success); box-shadow: 0 0 24px rgba(74,212,138,0.18); }
+.cull-theater-spotlight.tone-danger { border-color: var(--danger); box-shadow: 0 0 24px rgba(239,79,111,0.18); }
+.cull-theater-spotlight.tone-warning { border-color: var(--warning); box-shadow: 0 0 24px rgba(240,165,0,0.18); }
+.cull-theater-spotlight.tone-muted { border-color: var(--border); }
+
+@keyframes theater-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cull-theater-spotlight-thumb { flex: 0 0 240px; height: 135px; background: var(--bg-0); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.cull-theater-spotlight-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.cull-theater-thumb-placeholder { color: var(--text-muted); font-size: 32px; }
+.cull-theater-thumb-placeholder.large { font-size: 64px; flex: 0 0 240px; height: 135px; }
+.cull-theater-thumb-placeholder.small { font-size: 14px; }
+
+.cull-theater-spotlight-meta { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cull-theater-spotlight-decision {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700;
+  letter-spacing: 1px; padding: 4px 10px; border-radius: 6px; align-self: flex-start; background: var(--bg-3);
+}
+.tone-ok .cull-theater-spotlight-decision { background: rgba(74,212,138,0.18); color: var(--success); }
+.tone-danger .cull-theater-spotlight-decision { background: rgba(239,79,111,0.18); color: var(--danger); }
+.tone-warning .cull-theater-spotlight-decision { background: rgba(240,165,0,0.18); color: var(--warning); }
+.cull-theater-spotlight-name { font-family: ui-monospace, "SF Mono", monospace; font-size: 13px; color: var(--text); }
+.cull-theater-spotlight-scores { display: flex; gap: 12px; font-size: 12px; color: var(--text-dim); }
+.cull-theater-spotlight-scene { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+.cull-theater-narration {
+  font-size: 13px; color: var(--text); line-height: 1.4;
+  padding: 8px 10px; background: var(--bg-3); border-radius: 6px; border-left: 3px solid var(--accent);
+}
+.cull-theater-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.cull-theater-tag { font-size: 10px; padding: 2px 6px; background: var(--bg-3); border-radius: 999px; color: var(--text-muted); }
+
+.cull-theater-strip { display: flex; gap: 4px; overflow-x: auto; padding: 2px; }
+.cull-theater-tile {
+  position: relative; flex: 0 0 72px; height: 41px;
+  background: var(--bg-3); border-radius: 3px; overflow: hidden; border: 2px solid transparent;
+  animation: theater-fade-in 0.3s ease;
+}
+.cull-theater-tile.tone-ok { border-color: var(--success); }
+.cull-theater-tile.tone-danger { border-color: var(--danger); }
+.cull-theater-tile.tone-warning { border-color: var(--warning); }
+.cull-theater-tile img { width: 100%; height: 100%; object-fit: cover; }
+.cull-theater-tile-score { position: absolute; top: 1px; right: 1px; background: rgba(0,0,0,0.7); color: white; font-size: 9px; padding: 0 3px; border-radius: 2px; font-weight: 600; }
+
+.cull-theater-tally { display: flex; gap: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+
+/* ============ Cull Summary (post-cull review) ============ */
+.cull-summary { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; max-height: 60vh; overflow-y: auto; }
+.cull-summary-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.cull-summary-scene { padding: 10px; background: var(--bg-2); border-radius: 8px; }
+.cull-summary-scene-name { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; }
+.cull-summary-scene-row { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.cull-summary-hero {
+  display: flex; gap: 12px; align-items: center; padding: 8px;
+  background: var(--bg-3); border-radius: 6px; border-left: 3px solid var(--success);
+}
+.cull-summary-hero.tone-danger { border-left-color: var(--danger); }
+.cull-summary-hero.tone-warning { border-left-color: var(--warning); }
+.cull-summary-hero img { width: 140px; height: 79px; object-fit: cover; border-radius: 4px; }
+.cull-summary-hero-meta { flex: 1; min-width: 0; }
+.cull-summary-swap-btn { white-space: nowrap; }
+.cull-summary-alternatives { padding-left: 12px; }
+.cull-summary-alt-row { display: flex; gap: 4px; margin-top: 4px; }
+.cull-summary-alt-tile {
+  position: relative; width: 72px; height: 41px;
+  background: var(--bg-3); border: 2px solid transparent; border-radius: 3px; overflow: hidden;
+  padding: 0; cursor: pointer; transition: transform 0.1s;
+}
+.cull-summary-alt-tile:hover { transform: scale(1.05); }
+.cull-summary-alt-tile.tone-ok { border-color: var(--success); }
+.cull-summary-alt-tile.tone-danger { border-color: var(--danger); opacity: 0.5; }
+.cull-summary-alt-tile.tone-warning { border-color: var(--warning); }
+.cull-summary-alt-tile img { width: 100%; height: 100%; object-fit: cover; }
+.cull-summary-alt-score { position: absolute; top: 1px; right: 1px; background: rgba(0,0,0,0.7); color: white; font-size: 9px; padding: 0 3px; border-radius: 2px; font-weight: 600; }
+
+.cull-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 4px; }
+.cull-summary-tile {
+  position: relative; aspect-ratio: 16/9;
+  background: var(--bg-3); border: 2px solid transparent; border-radius: 3px; overflow: hidden;
+  padding: 0; cursor: pointer;
+}
+.cull-summary-tile.tone-ok { border-color: var(--success); }
+.cull-summary-tile.tone-danger { border-color: var(--danger); opacity: 0.6; }
+.cull-summary-tile.tone-warning { border-color: var(--warning); }
+.cull-summary-tile.override::after {
+  content: "★"; position: absolute; top: 2px; left: 2px;
+  color: var(--accent); font-size: 12px; text-shadow: 0 0 4px var(--accent);
+}
+.cull-summary-tile img { width: 100%; height: 100%; object-fit: cover; }
+.cull-summary-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.cull-summary-overlay {
+  position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 3px; background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%);
+  color: white; font-size: 12px; font-weight: 600;
+}
 .media-pool-timeline-name { font-size: 11px; font-weight: 600; }
 .media-pool-render-job {
   padding: 4px 14px;

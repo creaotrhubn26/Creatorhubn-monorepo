@@ -27,7 +27,7 @@ import bridge
 # ML packages on Apple Silicon need Python ≤ 3.12 (ctranslate2 / torch pins).
 # We auto-provision python@3.12 via brew when the system python is too new,
 # then install into a dedicated venv (PEP 668 blocks pip on brew-managed Python).
-PIP_COMPAT_PACKAGES = {"whisperx", "ctranslate2", "torch", "torchaudio", "pyannote.audio"}
+PIP_COMPAT_PACKAGES = {"whisperx", "ctranslate2", "torch", "torchaudio", "pyannote.audio", "librosa"}
 BREW_PY312_BIN_CANDIDATES = (
     "/opt/homebrew/opt/python@3.12/bin/python3.12",
     "/usr/local/opt/python@3.12/bin/python3.12",

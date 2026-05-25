@@ -94,7 +94,7 @@
   ],
   "magicCutPipeline": {
     "name": "Build a music-video rough cut",
-    "description": "Importer, cull, AI-scor, plasser musikk-markører, og bygg beat-synket timeline.",
+    "description": "Importer, cull, detect beats, energy-match clips til beats, og bygg beat-synket timeline.",
     "defaultDurationSec": 180,
     "steps": [
       {
@@ -105,29 +105,34 @@
       {
         "scriptId": "organize_by_camera",
         "label": "Organiserer per kamera",
-        "weight": 5
+        "weight": 4
       },
       {
         "scriptId": "cull_folder",
         "label": "AI cull",
-        "weight": 40,
+        "weight": 35,
         "requiresApiKey": "ANTHROPIC_API_KEY"
       },
       {
         "scriptId": "analyze_clips_for_highlights",
-        "label": "Highlight-scoring",
-        "weight": 22,
+        "label": "Highlight-scoring (energy)",
+        "weight": 18,
         "requiresApiKey": "ANTHROPIC_API_KEY"
       },
       {
-        "scriptId": "place_music_and_markers",
-        "label": "Musikk-markører",
-        "weight": 10
+        "scriptId": "detect_music_beats",
+        "label": "Detekterer beats",
+        "weight": 8
       },
       {
-        "scriptId": "place_clips_on_timeline",
-        "label": "Bygger timeline",
-        "weight": 15
+        "scriptId": "assign_clips_to_beats",
+        "label": "Mapper klipp til beats",
+        "weight": 5
+      },
+      {
+        "scriptId": "place_clips_on_beat_grid",
+        "label": "Bygger beat-synket timeline",
+        "weight": 22
       }
     ]
   }

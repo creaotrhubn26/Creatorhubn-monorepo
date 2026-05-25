@@ -193,13 +193,16 @@ def run(params: dict, dry_run: bool) -> None:
     bridge.progress(5, 8, "anthropic (pip)")
     anthropic = check_python_module("anthropic")
 
-    bridge.progress(6, 8, "whisperx (pip)")
+    bridge.progress(6, 9, "whisperx (pip)")
     whisperx_pkg = check_python_module("whisperx")
 
-    bridge.progress(7, 8, "DaVinci Resolve")
+    bridge.progress(7, 9, "librosa (pip)")
+    librosa_pkg = check_python_module("librosa")
+
+    bridge.progress(8, 9, "DaVinci Resolve")
     resolve = check_resolve()
 
-    bridge.progress(8, 8, "Done.")
+    bridge.progress(9, 9, "Done.")
 
     has_anthropic_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     has_hf_token = bool(os.environ.get("HF_TOKEN"))
@@ -213,6 +216,7 @@ def run(params: dict, dry_run: bool) -> None:
             "python3": python,
             "anthropic": anthropic,
             "whisperx": whisperx_pkg,
+            "librosa": librosa_pkg,
             "resolve": resolve,
         },
         "credentials": {

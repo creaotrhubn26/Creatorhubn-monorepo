@@ -32,6 +32,7 @@ import { OnboardingWizard } from "./components/OnboardingWizard";
 import { RunningScriptsPanel, type RunningScript } from "./components/RunningScriptsPanel";
 import { MediaPoolSidebar } from "./components/MediaPoolSidebar";
 import { SettingsModal, loadSettings, settingsToEnvVars } from "./components/SettingsModal";
+import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
 import { WatchFolderModal } from "./components/WatchFolderModal";
@@ -63,6 +64,14 @@ export default function App() {
   const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
   const [showWatch, setShowWatch] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
+  // Auto-show Role Room sign-in on app launch when first-run is done but
+  // the user hasn't authenticated yet. Suppressed during first-run since
+  // the wizard owns that flow.
+  const [showSignIn, setShowSignIn] = useState(() => {
+    if (shouldShowFirstRun()) return false;
+    const s = loadSettings();
+    return !s.RR_BEARER_TOKEN?.trim();
+  });
 
   // Push saved settings to backend on mount so the first Python run inherits ANTHROPIC_API_KEY etc.
   useEffect(() => {
@@ -434,6 +443,15 @@ export default function App() {
       {showDependencies && <DependenciesModal onClose={() => setShowDependencies(false)} />}
 
       {showFirstRun && <FirstRunSetupWizard onClose={() => setShowFirstRun(false)} />}
+
+      {/* Auto-prompt sign-in on launch when first-run is done but user isn't authed.
+          Suppressed during first-run since the wizard handles the initial auth. */}
+      {!showFirstRun && showSignIn && (
+        <RoleRoomSignInDialog
+          onClose={() => setShowSignIn(false)}
+          onSignedIn={() => setShowSignIn(false)}
+        />
+      )}
 
       {showWatch && <WatchFolderModal onClose={() => setShowWatch(false)} />}
 

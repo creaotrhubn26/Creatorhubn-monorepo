@@ -92,6 +92,11 @@ def _run_step(step: dict, params: dict, base_offset: int, step_weight: int) -> t
                 bridge.error(f"[{label}] {msg}")
             else:
                 bridge.log(f"[{label}] {msg[:240]}")
+        else:
+            # Pass through any other event types verbatim — lets cull_folder's
+            # per-clip "clip_decision" events bubble up to CullTheater UI.
+            forwarded = {k: v for k, v in event.items() if k not in ("type", "ts")}
+            bridge.emit(et or "log", **forwarded)
         # ignore "started", "finished" — handled by our own envelope
 
     # Drain stderr (mostly Python tracebacks)
