@@ -103,6 +103,7 @@ import {
 } from '@mui/icons-material';
 import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
+import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
 import { DanceWorkspace } from './dance';
 
 import {
@@ -812,6 +813,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           </Tooltip>
         </Stack>
       </Box>
+
+      <PostAgentCrewWelcomeBanner />
 
       {/* ── Stats Row ──────────────────────────────────── */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
