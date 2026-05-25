@@ -250,6 +250,52 @@
         <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Multi-cam organize + color grouping</li>
         <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Mac native — krever DaVinci Resolve Studio</li>
       </ul>
+
+      <h2 style="font-size: 24px; font-weight: 700; margin: 40px 0 16px; letter-spacing: -0.01em;">Slik fungerer det</h2>
+      <ol style="list-style: none; padding: 0; margin: 0; display: grid; gap: 18px; counter-reset: step;">
+        <li style="display: grid; grid-template-columns: 36px 1fr; gap: 14px; counter-increment: step;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: #a030c0; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700;">1</div>
+          <div>
+            <div style="font-weight: 600; margin-bottom: 4px;">Konfigurer prosjektet i Role Room</div>
+            <div style="font-size: 14px; color: #b8a8d8;">Legg til scener, utstyr (kamera/lyd) og crew. Post Agent leser dette automatisk når den parer.</div>
+          </div>
+        </li>
+        <li style="display: grid; grid-template-columns: 36px 1fr; gap: 14px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: #a030c0; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700;">2</div>
+          <div>
+            <div style="font-weight: 600; margin-bottom: 4px;">Aktiver tilgang for crew</div>
+            <div style="font-size: 14px; color: #b8a8d8;">Du som lead bestemmer hvem som får tilgang — 299 NOK/seat/mnd. Stripe pro-ratar når du legger til eller fjerner medlemmer.</div>
+          </div>
+        </li>
+        <li style="display: grid; grid-template-columns: 36px 1fr; gap: 14px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: #a030c0; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700;">3</div>
+          <div>
+            <div style="font-weight: 600; margin-bottom: 4px;">Crew parer Mac-en sin med Role Room</div>
+            <div style="font-size: 14px; color: #b8a8d8;">Installerer Post Agent.app, logger inn med Role Room-kontoen — appen ser umiddelbart prosjektets scener, utstyr og fangede klipp.</div>
+          </div>
+        </li>
+        <li style="display: grid; grid-template-columns: 36px 1fr; gap: 14px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: #a030c0; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700;">4</div>
+          <div>
+            <div style="font-weight: 600; margin-bottom: 4px;">AI-drevet post-produksjon i DaVinci Resolve</div>
+            <div style="font-size: 14px; color: #b8a8d8;">Pre-genererer bins per scene · auto-konfigurerer Resolve etter kamera-utstyret · cull med Claude Vision · beat-sync · transkripsjon. Alt lokalt — ingen filer forlater Mac-en.</div>
+          </div>
+        </li>
+        <li style="display: grid; grid-template-columns: 36px 1fr; gap: 14px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: #a030c0; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700;">5</div>
+          <div>
+            <div style="font-weight: 600; margin-bottom: 4px;">Live Set-handoff</div>
+            <div style="font-size: 14px; color: #b8a8d8;">Klipp som fanges under shoot dukker opp i Post Agent med scene-metadata intakt — klare for ingest med ett klikk.</div>
+          </div>
+        </li>
+      </ol>
+
+      <h2 style="font-size: 20px; font-weight: 700; margin: 40px 0 12px; letter-spacing: -0.01em;">Hva som faktureres</h2>
+      <div style="background: rgba(110, 63, 199, 0.08); border-left: 3px solid #6e3fc7; border-radius: 8px; padding: 16px 18px; font-size: 14px; color: #d8c8e8; line-height: 1.6;">
+        <strong style="color: #f0eaff;">Seat-pris:</strong> 299 NOK/mnd per crew-medlem du gir tilgang — pro-rated på Stripe.<br>
+        <strong style="color: #f0eaff;">AI-forbruk:</strong> ~$0.30 per 100 klipp culled (faktureres separat basert på faktiske Claude API-kall).<br>
+        <strong style="color: #f0eaff;">Resolve Studio:</strong> Hver crew-medlem må ha egen lisens — kjøpes hos Blackmagic Design ($295 engangs).
+      </div>
     </div>
 
     <div class="price-card">

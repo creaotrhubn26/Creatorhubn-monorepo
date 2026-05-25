@@ -102,6 +102,7 @@ import {
   AccountCircle as AccountCircleIcon,
 } from '@mui/icons-material';
 import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
+import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { DanceWorkspace } from './dance';
 
 import {
@@ -995,6 +996,12 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   ) : null
                 }
               />
+
+              {isProductionMode(activeProfessionMode) && selectedProjectId && (
+                <Box sx={{ px: 2 }}>
+                  <PostAgentReadyCard projectId={selectedProjectId} />
+                </Box>
+              )}
 
               {syncProjectMut.isPending && <LinearProgress />}
               {syncProjectMut.isSuccess && (
