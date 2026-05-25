@@ -1043,6 +1043,166 @@ export function createPostAgentRouter(
     }
   });
 
+  // ---- Project-context for Tauri Post Agent app ----
+  //
+  // These read-only endpoints expose the data the desktop client needs to
+  // pre-configure DaVinci Resolve from the Role Room project:
+  //   • scenes  → pre-create matching bins
+  //   • equipment → derive resolution/fps/color settings
+  //   • live-set state → ingest captured clips with scene metadata
+  //
+  // Access: project owner OR active team-seat holder.
+
+  async function requireProjectAccess(
+    req: Request,
+    res: Response,
+    projectId: string,
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    try {
+      const { rows } = await pool.query(
+        `SELECT user_id FROM projects WHERE id = $1 LIMIT 1`,
+        [projectId],
+      );
+      if (rows.length === 0) {
+        res.status(404).json({ error: 'project_not_found' });
+        return false;
+      }
+      if (rows[0].user_id === userId) return true;
+      const hasSeat = await pool
+        .query(
+          `SELECT 1 FROM post_agent_team_seats
+           WHERE project_id = $1 AND user_id = $2 AND is_active = true LIMIT 1`,
+          [projectId, userId],
+        )
+        .then((r) => r.rows.length > 0)
+        .catch(() => false);
+      if (!hasSeat) {
+        res.status(403).json({ error: 'no_project_access' });
+        return false;
+      }
+      return true;
+    } catch (err) {
+      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      return false;
+    }
+  }
+
+  router.get('/projects/:projectId/scenes', postAgentAuth, async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    if (!(await requireProjectAccess(req, res, projectId))) return;
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, scene_number, title, description, setting, time_of_day, int_ext, characters
+         FROM casting_scenes
+         WHERE project_id = $1
+         ORDER BY scene_number ASC NULLS LAST, created_at ASC NULLS LAST
+         LIMIT 500`,
+        [projectId],
+      );
+      res.json({
+        scenes: rows.map((r) => ({
+          id: r.id,
+          sceneNumber: r.scene_number,
+          title: r.title,
+          description: r.description,
+          setting: r.setting,
+          timeOfDay: r.time_of_day,
+          intExt: r.int_ext,
+          characters: r.characters || [],
+        })),
+      });
+    } catch (e) {
+      res.json({ scenes: [], degraded: true, detail: (e as Error).message });
+    }
+  });
+
+  router.get('/projects/:projectId/equipment', postAgentAuth, async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    if (!(await requireProjectAccess(req, res, projectId))) return;
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, name, brand, model, category, metadata
+         FROM casting_equipment
+         WHERE project_id = $1
+         ORDER BY category ASC, name ASC
+         LIMIT 500`,
+        [projectId],
+      );
+      const equipment = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        brand: r.brand,
+        model: r.model,
+        category: r.category,
+        metadata: r.metadata || {},
+      }));
+      // Derive a Resolve-ready settings hint from the first camera with usable metadata.
+      const cameras = equipment.filter(
+        (e) => (e.category || '').toLowerCase().includes('camera') || (e.category || '').toLowerCase() === 'kamera',
+      );
+      const primary = cameras.find((c) => c.metadata?.resolution || c.metadata?.frameRate) || cameras[0];
+      res.json({
+        equipment,
+        projectSettings: primary
+          ? {
+              resolution: primary.metadata?.resolution || null,
+              frameRate: primary.metadata?.frameRate || null,
+              colorScience: primary.metadata?.colorScience || null,
+              primaryCamera: { brand: primary.brand, model: primary.model, name: primary.name },
+            }
+          : null,
+      });
+    } catch (e) {
+      res.json({ equipment: [], projectSettings: null, degraded: true, detail: (e as Error).message });
+    }
+  });
+
+  router.get('/projects/:projectId/live-set-state', postAgentAuth, async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    if (!(await requireProjectAccess(req, res, projectId))) return;
+    try {
+      const takesQ = pool.query(
+        `SELECT t.id, t.scene_id, t.shot_index, t.take_number, t.media_key,
+                t.captured_at, t.marked_circled, t.processing_status,
+                s.scene_number, s.title AS scene_title
+         FROM casting_takes t
+         LEFT JOIN casting_scenes s ON s.id = t.scene_id
+         WHERE t.project_id = $1
+         ORDER BY t.captured_at DESC NULLS LAST
+         LIMIT 500`,
+        [projectId],
+      );
+      const scenesQ = pool.query(
+        `SELECT id, scene_number, title FROM casting_scenes
+         WHERE project_id = $1 ORDER BY scene_number ASC NULLS LAST LIMIT 500`,
+        [projectId],
+      );
+      const [takes, scenes] = await Promise.all([takesQ, scenesQ]);
+      res.json({
+        clips: takes.rows.map((r) => ({
+          id: r.id,
+          sceneId: r.scene_id,
+          sceneNumber: r.scene_number,
+          sceneTitle: r.scene_title,
+          shotIndex: r.shot_index,
+          takeNumber: r.take_number,
+          mediaKey: r.media_key,
+          capturedAt: r.captured_at,
+          circled: !!r.marked_circled,
+          processingStatus: r.processing_status,
+        })),
+        sceneMarkers: scenes.rows.map((r) => ({
+          sceneId: r.id,
+          sceneNumber: r.scene_number,
+          title: r.title,
+        })),
+      });
+    } catch (e) {
+      res.json({ clips: [], sceneMarkers: [], degraded: true, detail: (e as Error).message });
+    }
+  });
+
   void userHasActiveTeamSeat;
 
   return router;

@@ -12,6 +12,7 @@ import type { SelectChangeEvent } from '@mui/material/Select';
 import { Folder } from '@mui/icons-material';
 import AddIcon from '@mui/icons-material/Add';
 import { PROJECT_TYPES } from './projectTypeConstants';
+import { getActiveProfessionMode } from '../../config/professionMode';
 
 interface CustomProjectType {
   id: number;
@@ -40,8 +41,14 @@ export const ProjectTypeSelector: React.FC<ProjectTypeSelectorProps> = ({
   showAddButton = true,
 }) => {
   const availableTypes = useMemo(() => {
+    // Hide wedding when:
+    //  - The casting planner is active (existing behavior), OR
+    //  - The user is in film/video production mode (wedding is irrelevant
+    //    to a production-team workflow — see strategic vision).
+    const hideWedding =
+      isCastingPlanner || getActiveProfessionMode() === 'production';
     return Object.entries(PROJECT_TYPES)
-      .filter(([key]) => !isCastingPlanner || key !== 'wedding');
+      .filter(([key]) => !hideWedding || key !== 'wedding');
   }, [isCastingPlanner]);
 
   const handleChange = useCallback((e: SelectChangeEvent<string>) => {
