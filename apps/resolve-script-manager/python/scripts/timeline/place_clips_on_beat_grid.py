@@ -195,36 +195,78 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
 
     bridge.log(f"Appending {len(append_specs)} beat-aligned segments to timeline ({skipped} skipped)")
-    ok = media_pool.AppendToTimeline(append_specs)
+    bridge.log(f"First segment: clip={os.path.basename(append_specs[0].get('mediaPoolItem').GetName() or '?')} "
+               f"frame {append_specs[0]['startFrame']}-{append_specs[0]['endFrame']} "
+               f"@ recordFrame {append_specs[0]['recordFrame']}")
+
+    # Resolve's AppendToTimeline returns a LIST of placed TimelineItems
+    # (truthy if any landed) or None/empty on failure. Try the rich spec
+    # first; if Resolve rejects (some 18.x builds dislike recordFrame),
+    # fall back to plain sequential append.
+    placed_items = media_pool.AppendToTimeline(append_specs)
+    placed_count = len(placed_items) if isinstance(placed_items, list) else 0
+    if placed_count == 0:
+        bridge.warn(
+            f"AppendToTimeline with recordFrame returned {placed_items!r} — "
+            "Resolve may not support that spec field on this build. "
+            "Falling back to sequential append (cuts will land sequentially, "
+            "not beat-aligned)."
+        )
+        # Strip the placement-control fields for the fallback
+        simple_specs = [
+            {k: v for k, v in s.items() if k in ("mediaPoolItem", "startFrame", "endFrame")}
+            for s in append_specs
+        ]
+        placed_items = media_pool.AppendToTimeline(simple_specs)
+        placed_count = len(placed_items) if isinstance(placed_items, list) else 0
+
+    if placed_count == 0:
+        bridge.error(
+            f"Resolve rejected both rich + simple AppendToTimeline. "
+            f"Tried {len(append_specs)} segments — none placed. "
+            "Check Resolve Edit page is active and timeline is selected."
+        )
+        sys.exit(1)
+    bridge.log(f"Placed {placed_count} clips on V1")
 
     # Add music as a separate audio-only spec on A2 starting at frame 0.
-    # Using AppendToTimeline with mediaType=2 + recordFrame=0 + trackIndex=2
-    # avoids the previous bug where music ended up appended AFTER the clips.
     music_added = False
+    music_count = 0
     if music_path and os.path.isfile(music_path):
         bridge.log(f"Importing music: {os.path.basename(music_path)}")
         music_items = media_pool.ImportMedia([music_path]) or []
         if music_items:
+            # Try the spec first
             music_spec = [{
                 "mediaPoolItem": music_items[0],
-                "mediaType": 2,         # audio-only
-                "trackIndex": 2,        # A2 (under any A1 from video clips)
-                "recordFrame": 0,       # song starts at timeline t=0
+                "mediaType": 2,
+                "trackIndex": 2,
+                "recordFrame": 0,
             }]
-            music_ok = media_pool.AppendToTimeline(music_spec)
-            music_added = bool(music_ok)
+            music_placed = media_pool.AppendToTimeline(music_spec)
+            music_count = len(music_placed) if isinstance(music_placed, list) else 0
+            if music_count == 0:
+                bridge.warn("Music spec with recordFrame rejected — trying plain append on A1")
+                music_placed = media_pool.AppendToTimeline([{"mediaPoolItem": music_items[0]}])
+                music_count = len(music_placed) if isinstance(music_placed, list) else 0
+            music_added = music_count > 0
             if music_added:
-                bridge.log(f"Music placed on A2 at frame 0: {os.path.basename(music_path)}")
+                bridge.log(f"Music placed: {os.path.basename(music_path)} ({music_count} item(s))")
             else:
-                bridge.warn("AppendToTimeline returned falsy for music — Resolve may have rejected the spec")
+                bridge.warn(f"AppendToTimeline returned {music_placed!r} for music — Resolve refused to add it")
+        else:
+            bridge.warn(f"ImportMedia returned empty for {music_path}")
+    elif music_path:
+        bridge.warn(f"Music path doesn't exist on disk: {music_path}")
 
     bridge.result({
         "timelineCreated": True,
         "timelineName": timeline_name,
-        "segmentsPlaced": len(append_specs),
+        "segmentsAttempted": len(append_specs),
+        "segmentsPlaced": placed_count,
         "segmentsSkipped": skipped,
         "musicAdded": music_added,
-        "appendOk": bool(ok),
+        "musicItemCount": music_count,
     })
 
 
