@@ -155,8 +155,11 @@ def detect_with_librosa(audio_path: str, target_fps: float, beat_limit: int, max
 
 def run(params: dict[str, Any], dry_run: bool) -> None:
     music_path = params.get("musicPath") or params.get("musicFile") or ""
-    target_fps = float(params.get("targetFps", 25))
-    beat_limit = int(params.get("beatLimit", 1024))
+    # Use `or default` instead of dict.get(key, default) — if the UI sent ''
+    # as the value (empty input), .get returns '' (not default), then float()
+    # would raise ValueError.
+    target_fps = float(params.get("targetFps") or 25)
+    beat_limit = int(params.get("beatLimit") or 1024)
 
     if not music_path:
         bridge.error(

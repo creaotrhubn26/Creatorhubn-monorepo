@@ -118,6 +118,10 @@ export function ParamDialog({ script, dryRun, defaults, onCancel, onConfirm }: P
     const parsed: Record<string, unknown> = {};
     for (const inp of inputs) {
       const raw = values[inp.key] ?? "";
+      // Skip empty optional fields entirely so Python's params.get(..., default)
+      // can return its fallback. Sending '' as the value makes get() return ''
+      // and breaks float()/int() coercion downstream.
+      if (raw === "") continue;
       if (raw.startsWith("{") || raw.startsWith("[")) {
         try {
           parsed[inp.key] = JSON.parse(raw);
@@ -128,11 +132,11 @@ export function ParamDialog({ script, dryRun, defaults, onCancel, onConfirm }: P
       }
       if (inp.type === "number") {
         const num = Number(raw);
-        parsed[inp.key] = raw === "" ? "" : Number.isFinite(num) ? num : raw;
+        parsed[inp.key] = Number.isFinite(num) ? num : raw;
         continue;
       }
       const num = Number(raw);
-      parsed[inp.key] = raw === "" ? "" : Number.isFinite(num) && raw.trim() !== "" && !isNaN(num) ? num : raw;
+      parsed[inp.key] = Number.isFinite(num) && raw.trim() !== "" && !isNaN(num) ? num : raw;
     }
     onConfirm(parsed);
   }
