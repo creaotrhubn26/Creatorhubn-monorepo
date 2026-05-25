@@ -36,6 +36,18 @@
       {"order": 3, "scriptId": "import_clips_to_scene_bins", "label": "Ingest fangede klipp"}
     ]
   },
+  "wedding_audio_sync": {
+    "id": "wedding_audio_sync",
+    "name": "Bryllup — Audio-synket music video",
+    "description": "For klipp som ble filmet MENS sangen spilte (f.eks. første dans). Lytter på video-audio, matcher mot source-sangen, og plasserer klippene på det nøyaktige tidspunktet der audio-en stemmer.",
+    "projectTemplate": "wedding_film",
+    "steps": [
+      {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
+      {"order": 2, "scriptId": "fetch_source_song", "label": "Hent source-sang fra YouTube"},
+      {"order": 3, "scriptId": "align_clips_to_song_audio", "label": "Match klippene til sangen via audio-fingerprint"},
+      {"order": 4, "scriptId": "place_clips_on_beat_grid", "label": "Bygg timeline med klippene synket til sangen"}
+    ]
+  },
   "music_video_beat_sync": {
     "id": "music_video_beat_sync",
     "name": "Music Video — Beat-synket",

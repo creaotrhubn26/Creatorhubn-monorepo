@@ -1140,6 +1140,27 @@
       "requiresTimeline": false
     },
     {
+      "id": "align_clips_to_song_audio",
+      "name": "Align Clips to Song Audio",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/align_clips_to_song_audio.py",
+      "description": "For hver video-klipp, lytt på audio-en og finn hvor i source-sangen den matcher (chroma cross-correlation). Klippene plasseres ved nøyaktig tidspunkt der audio-en matcher sangen.",
+      "requiredInputs": [
+        {
+          "key": "sourceSongPath",
+          "label": "Source song (clean audio file)",
+          "type": "file",
+          "required": true
+        }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "assign_clips_to_beats",
       "name": "Assign Clips to Beats",
       "category": "timeline",
