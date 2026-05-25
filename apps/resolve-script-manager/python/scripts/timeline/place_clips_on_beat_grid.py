@@ -65,6 +65,24 @@ def _load_cached_assignments() -> list:
         return []
 
 
+def _load_cached_music_path() -> str:
+    """Read musicPath from the last detect_music_beats run — same file Bjarne
+    pointed at when running Detect Beats, so the timeline gets that exact
+    song attached without re-asking."""
+    import json as _json
+    cache_path = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_beat_session.json"
+    )
+    if not os.path.isfile(cache_path):
+        return ""
+    try:
+        with open(cache_path) as f:
+            data = _json.load(f)
+            return data.get("musicPath") or ""
+    except (OSError, _json.JSONDecodeError):
+        return ""
+
+
 def run(params: dict[str, Any], dry_run: bool) -> None:
     segments = params.get("segments") or []
     music_path = params.get("musicPath") or params.get("musicFile") or ""
@@ -75,6 +93,14 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         segments = _load_cached_assignments()
         if segments:
             bridge.log(f"Loaded {len(segments)} cached segments from last assign_clips_to_beats run")
+
+    if not music_path:
+        cached_music = _load_cached_music_path()
+        if cached_music and os.path.isfile(cached_music):
+            music_path = cached_music
+            bridge.log(f"Using music from last Detect Beats run: {os.path.basename(music_path)}")
+        elif cached_music:
+            bridge.warn(f"Cached music path missing on disk: {cached_music}")
 
     if not segments:
         bridge.error(
