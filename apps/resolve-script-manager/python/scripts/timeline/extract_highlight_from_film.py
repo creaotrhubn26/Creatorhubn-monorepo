@@ -172,6 +172,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     timeline_name = (params.get("timelineName") or "").strip() or (
         f"{os.path.splitext(os.path.basename(video_path))[0]} — highlight"
     )
+    # When True, script stops after computing picks + extracting thumbnails.
+    # User reviews/adjusts via the Tauri UI, then build_highlight_from_picks
+    # is run to finalize the Resolve timeline.
+    review_mode = bool(params.get("interactiveReview"))
 
     ffmpeg, ffprobe = find_ffmpeg()
     if not ffmpeg or not ffprobe:
@@ -265,6 +269,58 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "sourceDuration": duration,
             "totalShots": len(shots),
             "shotsPicked": len(picked),
+            "highlightDuration": round(total, 1),
+            "samplePicks": picked[:10],
+        })
+        return
+
+    # If interactive review, extract thumbnails + cache picks and stop.
+    # build_highlight_from_picks finalizes the timeline once user approves.
+    if review_mode:
+        bridge.progress(80, 100, "Extracting thumbnails for review…")
+        cache_dir = os.path.expanduser(
+            "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
+        )
+        thumb_dir = os.path.join(cache_dir, "highlight_thumbs",
+                                 os.path.splitext(os.path.basename(video_path))[0])
+        os.makedirs(thumb_dir, exist_ok=True)
+        for p in picked:
+            mid = (p["startSec"] + p["endSec"]) / 2
+            thumb_path = os.path.join(thumb_dir, f"shot_{p['index']:04d}.jpg")
+            try:
+                subprocess.run(
+                    [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                     "-ss", f"{mid:.3f}", "-i", video_path,
+                     "-vframes", "1", "-q:v", "5",
+                     "-vf", "scale=320:180:force_original_aspect_ratio=decrease",
+                     thumb_path],
+                    capture_output=True, timeout=10,
+                )
+                if os.path.isfile(thumb_path):
+                    p["thumbnailPath"] = thumb_path
+            except Exception:  # noqa: BLE001
+                pass
+        # Save picks for the UI + the follow-up build script
+        picks_payload = {
+            "sourceVideo": video_path,
+            "timelineName": timeline_name,
+            "sourceDurationSec": duration,
+            "fps": fps,
+            "minDurationSec": min_dur,
+            "maxDurationSec": max_dur,
+            "totalDurationSec": total,
+            "shotsAnalyzed": len(shots),
+            "picks": picked,
+        }
+        picks_path = os.path.join(cache_dir, "last_highlight_picks.json")
+        with open(picks_path, "w") as f:
+            json.dump(picks_payload, f, indent=2)
+        bridge.log(f"Cached {len(picked)} picks for interactive review → {picks_path}")
+        bridge.progress(100, 100, "Klar for review")
+        bridge.result({
+            "reviewMode": True,
+            "picksPath": picks_path,
+            "picksCount": len(picked),
             "highlightDuration": round(total, 1),
             "samplePicks": picked[:10],
         })
