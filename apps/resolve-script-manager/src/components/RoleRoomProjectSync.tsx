@@ -37,6 +37,14 @@ interface ProjectContext {
   clips: RoleRoomClip[];
 }
 
+type ProjectSyncShotPlan = {
+  index: number;
+  time: number;
+  durationSeconds?: number;
+  motionScore?: number | null;
+  name: string;
+};
+
 function classifyExpectedStandard(fps: number | null | undefined): string | null {
   if (fps == null) return null;
   if (Math.abs(fps - 25) < 0.02 || Math.abs(fps - 50) < 0.02) return "PAL";
@@ -60,6 +68,71 @@ export function RoleRoomProjectSync() {
   const [ingesting, setIngesting] = useState(false);
   const [ingestProgress, setIngestProgress] = useState<{ done: number; total: number; phase: string } | null>(null);
   const [ingestResult, setIngestResult] = useState<{ imported: number; failed: number; binsCreated: number } | null>(null);
+
+  // Analyze finished/exported video
+  const [analyzePath, setAnalyzePath] = useState<string>("");
+  const [analyzeThreshold, setAnalyzeThreshold] = useState<number>(0.4);
+  const [analyzeNarrate, setAnalyzeNarrate] = useState<boolean>(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeResult, setAnalyzeResult] = useState<{
+    cuts: number;
+    markersAdded: number;
+    timelineName: string;
+    samplePlan?: Array<{ index: number; time: number; durationSeconds?: number; motionScore?: number | null; name: string }>;
+  } | null>(null);
+
+  async function pickAnalyzeFile() {
+    try {
+      const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+      const selected = await openDialog({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Video", extensions: ["mp4", "mov", "mxf", "mkv", "m4v"] }],
+      });
+      if (typeof selected === "string" && selected) {
+        setAnalyzePath(selected);
+        setAnalyzeResult(null);
+      }
+    } catch (e) {
+      console.warn("file picker failed", e);
+    }
+  }
+
+  async function runAnalyzeExportedVideo() {
+    if (!analyzePath) return;
+    setAnalyzing(true);
+    setAnalyzeResult(null);
+    setError(null);
+    try {
+      const summary = await executeScript(
+        "analyze_exported_video",
+        {
+          videoPath: analyzePath,
+          sceneThreshold: analyzeThreshold,
+          narrate: analyzeNarrate,
+        },
+        false,
+      );
+      const r = summary.events.find((e) => e.type === "result")?.value as
+        | { cutCount?: number; markersAdded?: number; timelineName?: string; samplePlan?: unknown[] }
+        | undefined;
+      const err = summary.events.find((e) => e.type === "error")?.value as { message?: string } | undefined;
+      if (err?.message) {
+        setError(err.message);
+        return;
+      }
+      setAnalyzeResult({
+        cuts: r?.cutCount || 0,
+        markersAdded: r?.markersAdded || 0,
+        timelineName: r?.timelineName || "(unnamed)",
+        samplePlan: r?.samplePlan as ProjectSyncShotPlan[] | undefined,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   async function ingestCapturedClips() {
     if (!context || context.clips.length === 0 || !selected) return;
@@ -686,6 +759,123 @@ export function RoleRoomProjectSync() {
           })()}
         </div>
       )}
+
+      {/* Analyze exported video → Resolve timeline with markers per cut */}
+      <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(160,48,192,0.20)" }}>
+        <strong style={{ fontSize: 13, display: "block", marginBottom: 8 }}>
+          Analysér ferdig video
+        </strong>
+        <div style={{ fontSize: 11, color: "#8674a8", marginBottom: 10 }}>
+          Drop en allerede-redigert video og se din egen edit shot-for-shot i Resolve med markører + Claude-narrasjon.
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <button
+            onClick={pickAnalyzeFile}
+            disabled={analyzing}
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(160,48,192,0.4)",
+              color: "#a030c0",
+              borderRadius: 6,
+              padding: "6px 12px",
+              cursor: analyzing ? "default" : "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {analyzePath ? "Bytt fil" : "Velg video-fil"}
+          </button>
+          {analyzePath && (
+            <span style={{ fontSize: 12, color: "#d8c8e8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {analyzePath.split("/").pop()}
+            </span>
+          )}
+        </div>
+
+        {analyzePath && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, fontSize: 12, color: "#b8a8d8" }}>
+              <label style={{ minWidth: 100 }}>
+                Cut-sensitivitet: <strong style={{ color: "#f0eaff" }}>{analyzeThreshold.toFixed(2)}</strong>
+              </label>
+              <input
+                type="range"
+                min={0.15}
+                max={0.7}
+                step={0.05}
+                value={analyzeThreshold}
+                onChange={(e) => setAnalyzeThreshold(parseFloat(e.target.value))}
+                disabled={analyzing}
+                style={{ flex: 1 }}
+              />
+              <span style={{ fontSize: 10, color: "#8674a8", whiteSpace: "nowrap" }}>
+                {analyzeThreshold < 0.3 ? "fler cuts" : analyzeThreshold > 0.5 ? "færre cuts" : "balansert"}
+              </span>
+            </div>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#d8c8e8", marginBottom: 10 }}>
+              <input
+                type="checkbox"
+                checked={analyzeNarrate}
+                onChange={(e) => setAnalyzeNarrate(e.target.checked)}
+                disabled={analyzing}
+              />
+              Narrér hvert shot med Claude Vision (3 bilder + bevegelses-score per shot)
+            </label>
+
+            <button
+              onClick={runAnalyzeExportedVideo}
+              disabled={analyzing}
+              style={{
+                background: "#a030c0",
+                border: "none",
+                color: "white",
+                borderRadius: 6,
+                padding: "8px 14px",
+                cursor: analyzing ? "default" : "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {analyzing ? "Analyserer + importerer…" : "Analysér og importer til Resolve"}
+            </button>
+          </>
+        )}
+
+        {analyzeResult && (
+          <div style={{
+            marginTop: 10,
+            padding: 10,
+            background: "rgba(74,212,138,0.10)",
+            border: "1px solid rgba(74,212,138,0.4)",
+            color: "#4ad48a",
+            borderRadius: 6,
+            fontSize: 12,
+          }}>
+            <strong>✓</strong> {analyzeResult.cuts} cuts detektert, {analyzeResult.markersAdded} markører plassert på timeline <code>{analyzeResult.timelineName}</code>.
+            {analyzeResult.samplePlan && analyzeResult.samplePlan.length > 0 && (
+              <div style={{ marginTop: 8, maxHeight: 160, overflowY: "auto", fontSize: 11, color: "#d8c8e8" }}>
+                {analyzeResult.samplePlan.slice(0, 15).map((p) => (
+                  <div key={p.index} style={{ padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ color: "#8674a8", minWidth: 50 }}>{Math.floor(p.time / 60)}:{String(Math.floor(p.time % 60)).padStart(2, "0")}</span>
+                    <span style={{ flex: 1 }}>{p.name}</span>
+                    <span style={{ color: "#8674a8", fontSize: 10, whiteSpace: "nowrap" }}>
+                      {p.durationSeconds != null ? `${p.durationSeconds.toFixed(1)}s` : ""}
+                      {p.motionScore != null && ` · ${(p.motionScore * 100).toFixed(0)}% bev.`}
+                    </span>
+                  </div>
+                ))}
+                {analyzeResult.samplePlan.length > 15 && (
+                  <div style={{ color: "#8674a8", padding: "4px 0", textAlign: "center" }}>
+                    … og {analyzeResult.samplePlan.length - 15} til (se Resolve-timeline for full liste)
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {loading && (
         <div style={{ marginTop: 10, fontSize: 12, color: "#8674a8" }}>Laster…</div>

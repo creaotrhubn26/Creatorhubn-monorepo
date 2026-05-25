@@ -242,6 +242,22 @@
       "requiresTimeline": false
     },
     {
+      "id": "analyze_exported_video",
+      "name": "Analyze Exported Video",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/analyze_exported_video.py",
+      "description": "Tar en ferdig-eksportert video, detekterer shot-cuts via ffmpeg, narrater hvert shot med Claude Vision (3 bilder per shot + bevegelses-score for nøyaktighet), og importerer til Resolve som ny timeline med gule markører per cut.",
+      "requiredInputs": [
+        "videoPath"
+      ],
+      "resolvePageDependency": "Media",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "import_clips_to_scene_bins",
       "name": "Import Clips to Scene Bins",
       "category": "media",
