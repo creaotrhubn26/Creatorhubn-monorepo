@@ -163,6 +163,20 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
     project.SetCurrentTimeline(timeline)
 
+    # CRITICAL: use the timeline's actual fps for recordFrame math. CreateEmptyTimeline
+    # inherits the project's timelineFrameRate setting — if that's 24 but our beats
+    # were computed at 25 fps, every recordFrame would land at the wrong moment.
+    try:
+        actual_fps = float(timeline.GetSetting("timelineFrameRate") or target_fps)
+    except Exception:  # noqa: BLE001
+        actual_fps = target_fps
+    if abs(actual_fps - target_fps) > 0.01:
+        bridge.log(
+            f"Re-mapping beat positions from {target_fps} → {actual_fps} fps "
+            f"(timeline inherited project setting)"
+        )
+        target_fps = actual_fps
+
     # Build the append-list with per-clip trim info + EXPLICIT recordFrame
     # so each clip lands at its beat-window's start time on the timeline.
     # Without recordFrame, AppendToTimeline puts clips sequentially, so any
@@ -227,6 +241,35 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "Check Resolve Edit page is active and timeline is selected."
         )
         sys.exit(1)
+
+    # Verify by reading back what's actually on V1 — AppendToTimeline can
+    # return a non-empty list of items even when they're stacked at frame 0
+    # or have 0-frame durations. Reading back via GetItemListInTrack is
+    # the source of truth.
+    try:
+        v1_items = timeline.GetItemListInTrack("video", 1) or []
+        if v1_items:
+            verified = len(v1_items)
+            first = v1_items[0]
+            try:
+                first_start = first.GetStart()
+                first_end = first.GetEnd()
+                bridge.log(
+                    f"Verified {verified} items on V1. First: '{first.GetName()}' "
+                    f"frames {first_start}-{first_end} "
+                    f"(timeline fps {target_fps})"
+                )
+            except Exception:  # noqa: BLE001
+                bridge.log(f"Verified {verified} items on V1")
+            placed_count = verified
+        else:
+            bridge.warn(
+                f"AppendToTimeline returned {placed_count} items, but V1 reads back as "
+                "empty. Resolve accepted the spec but didn't actually place the clips."
+            )
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"Could not verify V1 contents: {exc}")
+
     bridge.log(f"Placed {placed_count} clips on V1")
 
     # Add music as a separate audio-only spec on A2 starting at frame 0.
