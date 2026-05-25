@@ -33,6 +33,77 @@ def _seconds_to_frames(seconds: float, fps: float) -> int:
     return int(round(seconds * fps))
 
 
+_MOTION_PROFILE_CACHE: dict[str, list[float]] = {}
+
+
+def _clip_motion_profile(ffmpeg: str, video_path: str, max_seconds: float = 90.0) -> list[float]:
+    """Per-second motion profile for a clip — used to find the BEST sub-window
+    that matches a segment's energy demand. Values are 0..1, one per second
+    of clip (capped at max_seconds for performance). Cached by path so
+    re-using a clip across segments doesn't re-probe it.
+    """
+    if video_path in _MOTION_PROFILE_CACHE:
+        return _MOTION_PROFILE_CACHE[video_path]
+    import re, subprocess
+    cmd = [
+        ffmpeg, "-hide_banner", "-nostats", "-y",
+        "-t", f"{max_seconds:.1f}",
+        "-i", video_path,
+        "-vf", "scale=160:90,scdet=threshold=0:sc_pass=0",
+        "-an", "-f", "null", "-",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+    except Exception:  # noqa: BLE001
+        deltas = []
+    if not deltas:
+        _MOTION_PROFILE_CACHE[video_path] = []
+        return []
+    # Reduce to 1Hz: group every ~fps frames into seconds (assume 24fps if unknown)
+    # Simpler: bucket-average deltas into max_seconds buckets.
+    secs = min(int(max_seconds), max(1, len(deltas) // 24))
+    bucket_size = max(1, len(deltas) // secs)
+    profile = []
+    for i in range(0, len(deltas), bucket_size):
+        chunk = deltas[i:i + bucket_size]
+        if not chunk:
+            break
+        avg = sum(chunk) / len(chunk)
+        profile.append(min(1.0, avg / 30.0))
+    _MOTION_PROFILE_CACHE[video_path] = profile
+    return profile
+
+
+def _best_window_for_demand(profile: list[float], window_seconds: int, demand: float) -> int:
+    """Slide a `window_seconds`-second window over the motion profile, return
+    the START SECOND of the window whose mean motion is closest to `demand`.
+    Falls back to 0 if profile is too short."""
+    if not profile or window_seconds <= 0:
+        return 0
+    window_seconds = min(window_seconds, len(profile))
+    if window_seconds >= len(profile):
+        return 0
+    best_start = 0
+    best_distance = 999.0
+    for start in range(len(profile) - window_seconds + 1):
+        mean = sum(profile[start:start + window_seconds]) / window_seconds
+        d = abs(mean - demand)
+        if d < best_distance:
+            best_distance = d
+            best_start = start
+    return best_start
+
+
+def _resolve_ffmpeg_path() -> str:
+    import shutil
+    return (
+        os.environ.get("RESOLVE_SCRIPT_MANAGER_FFMPEG")
+        or shutil.which("ffmpeg")
+        or "/opt/homebrew/bin/ffmpeg"
+    )
+
+
 def _probe_audio_track_count(video_path: str) -> int:
     """Count audio streams in a video file via ffprobe. Returns 0 on failure
     or for files without audio. Used to determine how many audio tracks the
@@ -62,19 +133,43 @@ def _probe_audio_track_count(video_path: str) -> int:
         return 0
 
 
-def _seconds_to_clip_frames(media_item, segment_dur_sec: float, fps: float) -> tuple[int, int]:
-    """Return (start_frame, end_frame) inside the source clip — uses first N frames
-    matching the segment duration. We trim from clip-start because most music-video
-    cuts grab the energetic opening of each shot."""
+def _seconds_to_clip_frames(
+    media_item,
+    segment_dur_sec: float,
+    fps: float,
+    clip_path: str = "",
+    energy_demand: float | None = None,
+    ffmpeg: str = "",
+) -> tuple[int, int]:
+    """Return (start_frame, end_frame) inside the source clip.
+
+    If energy_demand + ffmpeg are provided, scans the WHOLE clip and picks
+    the sub-window whose motion best matches the demand. Otherwise falls
+    back to the first N frames matching the segment duration.
+    """
     try:
         clip_total = int(media_item.GetClipProperty("Frames") or 0)
-    except Exception:
+    except Exception:  # noqa: BLE001
         clip_total = 0
     needed = _seconds_to_frames(segment_dur_sec, fps)
     if clip_total > 0 and needed > clip_total:
-        # Clip shorter than segment — use the whole thing
         return (0, max(0, clip_total - 1))
-    return (0, max(0, needed - 1))
+
+    if energy_demand is None or not ffmpeg or not clip_path:
+        return (0, max(0, needed - 1))
+
+    profile = _clip_motion_profile(ffmpeg, clip_path)
+    if not profile:
+        return (0, max(0, needed - 1))
+
+    window_seconds = max(1, int(round(segment_dur_sec)))
+    best_start_sec = _best_window_for_demand(profile, window_seconds, energy_demand)
+    start_f = int(round(best_start_sec * fps))
+    end_f = start_f + needed - 1
+    if clip_total > 0 and end_f >= clip_total:
+        end_f = clip_total - 1
+        start_f = max(0, end_f - needed + 1)
+    return (start_f, max(start_f, end_f))
 
 
 def _load_cached_assignments() -> list:
@@ -247,7 +342,13 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             continue
         seg_dur = seg.get("durationSec") or 0
         start_sec = seg.get("startSec") or 0
-        start_f, end_f = _seconds_to_clip_frames(media_item, seg_dur, target_fps)
+        energy_demand = seg.get("energyDemand")  # set by assign_clips_to_beats curve
+        start_f, end_f = _seconds_to_clip_frames(
+            media_item, seg_dur, target_fps,
+            clip_path=clip_path,
+            energy_demand=energy_demand,
+            ffmpeg=_resolve_ffmpeg_path(),
+        )
         # Offset by timeline start (Resolve timelines start at SMPTE 01:00:00:00)
         record_frame = timeline_start_frame + int(round(start_sec * target_fps))
         # NOTE: mediaType in Resolve's API means 1=video-only, 2=audio-only.
