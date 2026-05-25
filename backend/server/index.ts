@@ -527,6 +527,7 @@ import { setupSettingsRoutes } from "./settings-routes";
 import { setupAudioEnhancementRoutes } from "./audio-enhancement-routes";
 import { setupVideoAnalysisRoutes } from "./video-analysis-routes";
 import { setupGooglePeopleRoutes } from "./google-people-routes";
+import { setupAdminSeoTrendsRoutes } from "./admin-seo-trends-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -85805,6 +85806,10 @@ setupGooglePeopleRoutes({
   derivePreferredGoogleWorkspaceOauthApps,
 });
 
+// /api/admin/profession-trends + /api/admin/apply-seo-fixes +
+// /api/admin/seo-projects (4 endpoints) — admin SEO/trends-flate.
+setupAdminSeoTrendsRoutes({ app, db });
+
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
 // faktisk er beskyttet. User-endepunktene (inbox/seen/act) trenger ikke
@@ -95510,117 +95515,8 @@ setupShowcaseGooglePhotosRoutes({
 
 // /api/google-photos/* (8 endpoints) → ./google-photos-routes.ts
 // /api/video/* (6 endpoints) → ./video-routes.ts
-// Profession Trends API - Real SEO and keyword trend data
-app.post("/api/admin/profession-trends", async (req, res) => {
-  try {
-    const { profession, region } = req.body;
-
-    console.log(`[Trends API] Fetching trends for ${profession} in ${region}`);
-
-    // Generate profession-specific trend data based on Norwegian market
-    const trendData = {
-      profession,
-      region,
-      fetchedAt: new Date().toISOString(),
-      keywords: [], // Would be populated from actual Google Trends API
-      insights: {
-        totalSearchVolume: 0,
-        growthRate: 0,
-        seasonalityPattern: "stable",
-      },
-    };
-
-    res.json(trendData);
-  } catch (error) {
-    console.error("Profession trends error:", error);
-    res.status(500).json({ error: "Failed to fetch trends data" });
-  }
-});
-
-// Apply SEO Fixes API - Store and track SEO optimization changes
-app.post("/api/admin/apply-seo-fixes", async (req, res) => {
-  try {
-    const { profession, region, fixes } = req.body;
-
-    console.log(
-      `[SEO Fixes] Applying ${fixes.length} fixes for ${profession} in ${region}`,
-    );
-
-    // In a real implementation, this would:
-    // 1. Update SEO metadata in the database
-    // 2. Generate sitemap updates
-    // 3. Submit to Google Search Console API
-    // 4. Track SEO improvements over time
-
-    // For now, simulate successful application
-    const appliedFixes = fixes.map((fix: any) => ({
-      ...fix,
-      applied: true,
-      appliedAt: new Date().toISOString(),
-    }));
-
-    res.json({
-      success: true,
-      profession,
-      region,
-      fixesApplied: appliedFixes.length,
-      fixes: appliedFixes,
-      message: `Successfully applied ${appliedFixes.length} SEO optimizations`,
-    });
-  } catch (error) {
-    console.error("SEO fixes error:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to apply SEO fixes" });
-  }
-});
-
-// SEO Projects Management - Track SEO projects per profession
-app.get("/api/admin/seo-projects", async (req, res) => {
-  try {
-    const userId = req.query.userId as string;
-
-    // Fetch SEO projects from database
-    const projects = await db
-      .select()
-      .from(schema.seoProjects)
-      .where(userId ? eq(schema.seoProjects.userId, userId) : sql`1=1`)
-      .orderBy(desc(schema.seoProjects.createdAt))
-      .limit(50);
-
-    res.json(projects);
-  } catch (error) {
-    console.error("SEO projects fetch error:", error);
-    res.status(500).json({ error: "Failed to fetch SEO projects" });
-  }
-});
-
-app.post("/api/admin/seo-projects", async (req, res) => {
-  try {
-    const { domain, userId, targetKeywords, profession } = req.body;
-
-    if (!domain || !userId) {
-      return res.status(400).json({ error: "Domain and userId are required" });
-    }
-
-    const [project] = await db
-      .insert(schema.seoProjects)
-      .values({
-        domain,
-        userId,
-        name: domain,
-        userType: profession || "photographer",
-        isActive: true,
-      })
-      .returning();
-
-    res.status(201).json(project);
-  } catch (error) {
-    console.error("SEO project create error:", error);
-    res.status(500).json({ error: "Failed to create SEO project" });
-  }
-});
-
+// /api/admin/profession-trends, /api/admin/apply-seo-fixes,
+// /api/admin/seo-projects GET/POST (4 endpoints) → ./admin-seo-trends-routes.ts
 // Project email activity
 app.get("/api/projects/:projectId/email-activity", async (req, res) => {
   try {
