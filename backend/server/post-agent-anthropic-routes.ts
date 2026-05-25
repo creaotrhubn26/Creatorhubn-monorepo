@@ -1188,9 +1188,82 @@ Spørsmål? Svar på denne eposten.
 
       const revoked = await revokeTeamSeat(pool, projectId, userId);
       const sync = await syncStripeQuantity(projectId, ownerUserId);
+      if (revoked) {
+        void notifyCrewOfRevoke(userId, projectId, ownerUserId);
+      }
       res.json({ revoked, ...sync });
     },
   );
+
+  async function notifyCrewOfRevoke(
+    targetUserId: string,
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<void> {
+    try {
+      const { rows: targetRows } = await pool.query(
+        `SELECT email, first_name, last_name FROM users WHERE id = $1 LIMIT 1`,
+        [targetUserId],
+      );
+      const crewEmail = (targetRows[0]?.email || '').trim();
+      if (!crewEmail) return;
+      const crewName = [targetRows[0]?.first_name, targetRows[0]?.last_name]
+        .filter(Boolean).join(' ').trim();
+
+      const { rows: ownerRows } = await pool.query(
+        `SELECT email, first_name, last_name FROM users WHERE id = $1 LIMIT 1`,
+        [ownerUserId],
+      );
+      const ownerName = [ownerRows[0]?.first_name, ownerRows[0]?.last_name]
+        .filter(Boolean).join(' ').trim() || ownerRows[0]?.email || 'Produksjonslederen';
+
+      const { rows: projectRows } = await pool.query(
+        `SELECT title, name FROM projects WHERE id = $1 LIMIT 1`,
+        [projectId],
+      );
+      const productionName = projectRows[0]?.title || projectRows[0]?.name || 'produksjonen';
+
+      const greeting = crewName ? `Hei ${crewName.split(' ')[0]},` : 'Hei,';
+      const subject = `Post Agent-tilgangen din til ${productionName} er avsluttet`;
+      const text = `${greeting}
+
+${ownerName} har avsluttet Post Agent-tilgangen din til produksjonen "${productionName}".
+
+Det betyr at du ikke lenger kan kjøre AI-cull, scene-detection eller andre Post Agent-funksjoner på denne produksjonen. Eventuelle lokale klipp og prosjektfiler på Mac-en din er upåvirket — appen mister bare AI-funksjonene for dette prosjektet.
+
+Hvis dette virker feil, ta kontakt med ${ownerName}.
+
+— The Role Room`;
+
+      const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
+  <div style="border-left: 3px solid #6e3fc7; padding-left: 16px; margin-bottom: 24px;">
+    <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Post Agent-tilgang avsluttet</h2>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+  </div>
+
+  <p>${greeting}</p>
+
+  <p><strong>${ownerName}</strong> har avsluttet Post Agent-tilgangen din til denne produksjonen.</p>
+
+  <p>Det betyr at AI-cull, scene-detection og andre Post Agent-funksjoner ikke lenger er
+  tilgjengelige for dette prosjektet. Lokale klipp og prosjektfiler er upåvirket.</p>
+
+  <p style="margin-top: 24px; font-size: 13px; color: #6e3fc7;">
+    Hvis dette virker feil, ta kontakt med ${ownerName}.<br>
+    — The Role Room
+  </p>
+</div>`;
+
+      const result = await sendEmail({
+        to: crewEmail, subject, text, html, fromName: 'The Role Room',
+      });
+      if (!result.success) {
+        console.warn('[post-agent] crew-revoke email failed:', result.error || 'unknown');
+      }
+    } catch (err) {
+      console.warn('[post-agent] notifyCrewOfRevoke threw:', (err as Error).message);
+    }
+  }
 
   /** Where the signed-in user has Post Agent access via team-seats. */
   router.get('/team/my-seats', postAgentAuth, async (req: Request, res: Response) => {
