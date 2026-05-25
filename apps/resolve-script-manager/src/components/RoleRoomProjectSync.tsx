@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  executeScript,
   fetchMyProductions,
   fetchRoleRoomScenes,
   fetchRoleRoomEquipment,
@@ -50,6 +51,8 @@ export function RoleRoomProjectSync() {
   const [error, setError] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<ProbeSummary | null>(null);
+  const [creatingBins, setCreatingBins] = useState(false);
+  const [binResult, setBinResult] = useState<{ created: string[]; skipped: string[]; failed: number } | null>(null);
 
   async function loadProductions() {
     setLoading(true);
@@ -98,6 +101,37 @@ export function RoleRoomProjectSync() {
     void loadContext(selected);
     setProbeResult(null);
   }, [selected]);
+
+  async function createBinsInResolve() {
+    if (!context || context.scenes.length === 0) return;
+    setCreatingBins(true);
+    setBinResult(null);
+    setError(null);
+    try {
+      const summary = await executeScript(
+        "create_bins_from_scenes",
+        { scenes: context.scenes },
+        false,
+      );
+      const result = summary.events.find((e) => e.type === "result")?.value as
+        | { binsCreated?: string[]; binsSkipped?: string[]; binsFailed?: unknown[] }
+        | undefined;
+      const err = summary.events.find((e) => e.type === "error")?.value as { message?: string } | undefined;
+      if (err?.message) {
+        setError(err.message);
+        return;
+      }
+      setBinResult({
+        created: result?.binsCreated || [],
+        skipped: result?.binsSkipped || [],
+        failed: (result?.binsFailed || []).length,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreatingBins(false);
+    }
+  }
 
   async function probeMountedCards() {
     setProbing(true);
@@ -217,6 +251,44 @@ export function RoleRoomProjectSync() {
             }
             small
           />
+        </div>
+      )}
+
+      {/* Action: Create bins from scenes in Resolve */}
+      {context && context.scenes.length > 0 && (
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+          <button
+            onClick={createBinsInResolve}
+            disabled={creatingBins}
+            style={{
+              background: "#a030c0",
+              border: "none",
+              color: "white",
+              borderRadius: 6,
+              padding: "8px 14px",
+              cursor: creatingBins ? "default" : "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+              alignSelf: "flex-start",
+            }}
+          >
+            {creatingBins ? "Oppretter bins…" : `Opprett ${context.scenes.length} bins fra scener i Resolve`}
+          </button>
+          {binResult && (
+            <div style={{
+              padding: 10,
+              background: binResult.failed > 0 ? "rgba(245,158,11,0.10)" : "rgba(74,212,138,0.10)",
+              border: binResult.failed > 0 ? "1px solid rgba(245,158,11,0.4)" : "1px solid rgba(74,212,138,0.4)",
+              color: binResult.failed > 0 ? "#a16207" : "#4ad48a",
+              borderRadius: 6,
+              fontSize: 12,
+            }}>
+              <strong>{binResult.failed > 0 ? "⚠" : "✓"}</strong>{" "}
+              {binResult.created.length} opprettet
+              {binResult.skipped.length > 0 && `, ${binResult.skipped.length} hoppet over (fantes fra før)`}
+              {binResult.failed > 0 && `, ${binResult.failed} feilet`}.
+            </div>
+          )}
         </div>
       )}
 

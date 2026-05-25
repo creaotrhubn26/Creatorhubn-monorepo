@@ -99,6 +99,22 @@
       "requiresTimeline": false
     },
     {
+      "id": "create_bins_from_scenes",
+      "name": "Create Bins from Scenes",
+      "category": "project",
+      "scriptPath": "scripts/project/create_bins_from_scenes.py",
+      "description": "Lager Media Pool-bins som matcher Role Room-prosjektets scene-liste ('01 Scene title INT DAG'). Idempotent — hopper over bins som allerede finnes.",
+      "requiredInputs": [
+        "scenes"
+      ],
+      "resolvePageDependency": "Media",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "get_media_pool_state",
       "name": "Get Media Pool State",
       "category": "project",
