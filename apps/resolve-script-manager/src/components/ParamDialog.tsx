@@ -3,16 +3,62 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { ScriptMeta } from "../types";
 import { IconWarning } from "./Icons";
 
+/** Input spec normalized from registry — handles both old string format
+ *  ['key1', 'key2'] and new object format [{key, label, type, required}].
+ */
+interface NormalizedInput {
+  key: string;
+  label: string;
+  type: "text" | "number" | "file" | "directory" | "boolean";
+}
+
+function normalizeInput(raw: unknown): NormalizedInput | null {
+  if (typeof raw === "string") {
+    return {
+      key: raw,
+      label: raw,
+      type: fieldPickerKind(raw) || (looksNumeric(raw) ? "number" : "text"),
+    };
+  }
+  if (raw && typeof raw === "object" && "key" in raw) {
+    const obj = raw as Record<string, unknown>;
+    const key = String(obj.key || "");
+    if (!key) return null;
+    const explicitType = String(obj.type || "");
+    let type: NormalizedInput["type"] = "text";
+    if (explicitType === "file" || explicitType === "directory" || explicitType === "number" || explicitType === "boolean") {
+      type = explicitType;
+    } else {
+      type = fieldPickerKind(key) || (looksNumeric(key) ? "number" : "text");
+    }
+    return {
+      key,
+      label: String(obj.label || key),
+      type,
+    };
+  }
+  return null;
+}
+
+function looksNumeric(key: string): boolean {
+  const k = key.toLowerCase();
+  return (
+    k.endsWith("fps") || k.endsWith("rate") || k.endsWith("count") ||
+    k.endsWith("limit") || k.endsWith("threshold") || k.endsWith("seconds") ||
+    k.endsWith("sec") || k.endsWith("offset") || k === "tempo" || k === "bpm"
+  );
+}
+
 /** Classify a script-input field name into picker type. Heuristic:
  *  - 'File' suffix → file picker
  *  - 'Folder' / 'Path' / 'Dir' suffix → directory picker
  *  - known specific names mapped explicitly
- *  - anything else → no picker (plain text input)
+ *  - anything else → null (plain text input)
  */
 function fieldPickerKind(key: string): "file" | "directory" | null {
   const k = key.toLowerCase();
-  // Explicit mappings first (preferred — most accurate)
-  if (k === "musicfile" || k === "videopath" || k === "editedvideopath" || k === "sourcesongpath" || k === "audiopath") {
+  // Explicit file mappings (preferred — most accurate)
+  if (k === "musicfile" || k === "musicpath" || k === "videopath" || k === "editedvideopath" || k === "sourcesongpath" || k === "audiopath") {
     return "file";
   }
   if (
@@ -24,7 +70,14 @@ function fieldPickerKind(key: string): "file" | "directory" | null {
   }
   // Suffix heuristics
   if (k.endsWith("file") || k.endsWith("filepath")) return "file";
-  if (k.endsWith("folder") || k.endsWith("path") || k.endsWith("dir") || k.endsWith("directory")) return "directory";
+  if (k.endsWith("folder") || k.endsWith("dir") || k.endsWith("directory")) return "directory";
+  // Generic 'path' suffix — ambiguous; check for video/audio/song hints to pick file
+  if (k.endsWith("path")) {
+    if (k.includes("video") || k.includes("audio") || k.includes("song") || k.includes("music") || k.includes("file")) {
+      return "file";
+    }
+    return "directory";
+  }
   return null;
 }
 
@@ -57,25 +110,34 @@ export function ParamDialog({ script, dryRun, defaults, onCancel, onConfirm }: P
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
+  const inputs: NormalizedInput[] = (script.requiredInputs ?? [])
+    .map(normalizeInput)
+    .filter((x): x is NormalizedInput => x !== null);
+
   function handleSubmit() {
     const parsed: Record<string, unknown> = {};
-    for (const key of script!.requiredInputs) {
-      const raw = values[key] ?? "";
+    for (const inp of inputs) {
+      const raw = values[inp.key] ?? "";
       if (raw.startsWith("{") || raw.startsWith("[")) {
         try {
-          parsed[key] = JSON.parse(raw);
+          parsed[inp.key] = JSON.parse(raw);
           continue;
         } catch {
           // fall through to string
         }
       }
+      if (inp.type === "number") {
+        const num = Number(raw);
+        parsed[inp.key] = raw === "" ? "" : Number.isFinite(num) ? num : raw;
+        continue;
+      }
       const num = Number(raw);
-      parsed[key] = raw === "" ? "" : Number.isFinite(num) && raw.trim() !== "" && !isNaN(num) ? num : raw;
+      parsed[inp.key] = raw === "" ? "" : Number.isFinite(num) && raw.trim() !== "" && !isNaN(num) ? num : raw;
     }
     onConfirm(parsed);
   }
 
-  const hasInputs = script.requiredInputs.length > 0;
+  const hasInputs = inputs.length > 0;
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
@@ -102,18 +164,19 @@ export function ParamDialog({ script, dryRun, defaults, onCancel, onConfirm }: P
         )}
 
         {hasInputs ? (
-          script.requiredInputs.map((key) => {
-            const pickerKind = fieldPickerKind(key);
+          inputs.map((inp) => {
+            const pickerKind = inp.type === "file" ? "file" : inp.type === "directory" ? "directory" : null;
+            const inputType = inp.type === "number" ? "number" : "text";
             return (
-              <div className="field" key={key}>
-                <label htmlFor={`field-${key}`}>{key}</label>
+              <div className="field" key={inp.key}>
+                <label htmlFor={`field-${inp.key}`}>{inp.label}</label>
                 <div style={{ display: "flex", gap: 6 }}>
                   <input
-                    id={`field-${key}`}
-                    type="text"
-                    value={values[key] ?? ""}
-                    onChange={(e) => update(key, e.target.value)}
-                    placeholder={inputHint(key)}
+                    id={`field-${inp.key}`}
+                    type={inputType}
+                    value={values[inp.key] ?? ""}
+                    onChange={(e) => update(inp.key, e.target.value)}
+                    placeholder={inputHint(inp.key)}
                     style={{ flex: 1, minWidth: 0 }}
                   />
                   {pickerKind && (
@@ -121,14 +184,14 @@ export function ParamDialog({ script, dryRun, defaults, onCancel, onConfirm }: P
                       type="button"
                       onClick={async () => {
                         try {
-                          const filters = pickerKind === "file" ? FILE_EXT_FILTERS[key.toLowerCase()] : undefined;
+                          const filters = pickerKind === "file" ? FILE_EXT_FILTERS[inp.key.toLowerCase()] : undefined;
                           const picked = await openDialog({
                             multiple: false,
                             directory: pickerKind === "directory",
                             ...(filters ? { filters } : {}),
                           });
                           if (typeof picked === "string" && picked) {
-                            update(key, picked);
+                            update(inp.key, picked);
                           }
                         } catch (err) {
                           console.warn("openDialog failed", err);
