@@ -163,7 +163,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
     project.SetCurrentTimeline(timeline)
 
-    # Build the append-list with per-clip trim info
+    # Build the append-list with per-clip trim info + EXPLICIT recordFrame
+    # so each clip lands at its beat-window's start time on the timeline.
+    # Without recordFrame, AppendToTimeline puts clips sequentially, so any
+    # rounding error or duration drift means the cuts no longer land on beats.
     append_specs: list[dict] = []
     skipped = 0
     for i, seg in enumerate(segments):
@@ -175,33 +178,45 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             skipped += 1
             continue
         seg_dur = seg.get("durationSec") or 0
+        start_sec = seg.get("startSec") or 0
         start_f, end_f = _seconds_to_clip_frames(media_item, seg_dur, target_fps)
+        record_frame = int(round(start_sec * target_fps))
         append_specs.append({
             "mediaPoolItem": media_item,
             "startFrame": start_f,
             "endFrame": end_f,
+            "mediaType": 1,        # video+linked-audio
+            "trackIndex": 1,       # V1
+            "recordFrame": record_frame,
         })
 
     if not append_specs:
         bridge.error("No clips could be matched to media-pool items.")
         sys.exit(1)
 
-    bridge.log(f"Appending {len(append_specs)} segments to timeline ({skipped} skipped)")
+    bridge.log(f"Appending {len(append_specs)} beat-aligned segments to timeline ({skipped} skipped)")
     ok = media_pool.AppendToTimeline(append_specs)
 
-    # Add music track if provided
+    # Add music as a separate audio-only spec on A2 starting at frame 0.
+    # Using AppendToTimeline with mediaType=2 + recordFrame=0 + trackIndex=2
+    # avoids the previous bug where music ended up appended AFTER the clips.
     music_added = False
     if music_path and os.path.isfile(music_path):
         bridge.log(f"Importing music: {os.path.basename(music_path)}")
         music_items = media_pool.ImportMedia([music_path]) or []
         if music_items:
-            # Place on audio track A6 (matches place_music_and_markers convention).
-            # Resolve doesn't expose direct "drop on track" via media_pool.AppendToTimeline,
-            # so we rely on the user moving the imported clip onto A6 manually OR call
-            # AppendToTimeline which goes to V1/A1 by default. Place at frame 0.
-            timeline.SetCurrentTimecode(timeline.GetStartTimecode())
-            media_pool.AppendToTimeline(music_items)
-            music_added = True
+            music_spec = [{
+                "mediaPoolItem": music_items[0],
+                "mediaType": 2,         # audio-only
+                "trackIndex": 2,        # A2 (under any A1 from video clips)
+                "recordFrame": 0,       # song starts at timeline t=0
+            }]
+            music_ok = media_pool.AppendToTimeline(music_spec)
+            music_added = bool(music_ok)
+            if music_added:
+                bridge.log(f"Music placed on A2 at frame 0: {os.path.basename(music_path)}")
+            else:
+                bridge.warn("AppendToTimeline returned falsy for music — Resolve may have rejected the spec")
 
     bridge.result({
         "timelineCreated": True,
