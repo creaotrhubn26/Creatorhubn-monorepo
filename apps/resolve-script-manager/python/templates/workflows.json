@@ -10,28 +10,141 @@
       {"order": 3, "scriptId": "create_wedding_master_timeline", "label": "Create Master Timeline"},
       {"order": 4, "scriptId": "add_scene_markers", "label": "Add Scene Markers"},
       {"order": 5, "scriptId": "create_highlight_rough_cut", "label": "Create Highlight Draft"},
-      {"order": 6, "scriptId": "create_render_queue", "label": "Prepare Render Queue"},
-      {"order": 7, "scriptId": "backup_project", "label": "Backup Project"}
+      {"order": 6, "scriptId": "apply_wedding_look_pack", "label": "Apply Norwedfilm Look"},
+      {"order": 7, "scriptId": "create_render_queue", "label": "Prepare Render Queue"},
+      {"order": 8, "scriptId": "backup_project", "label": "Backup Project"}
+    ]
+  },
+  "wedding_review_finished_film": {
+    "id": "wedding_review_finished_film",
+    "name": "Bryllup — Analysér ferdig film",
+    "description": "Bjarne har en eksportert wedding-film og vil se den shot-for-shot med beat-presisjon. Krever YouTube source-sang for pristine beat-grid.",
+    "projectTemplate": "wedding_film",
+    "steps": [
+      {"order": 1, "scriptId": "fetch_source_song", "label": "Hent source-sang fra YouTube"},
+      {"order": 2, "scriptId": "analyze_exported_video", "label": "Analysér ferdig film med pristine beats"},
+      {"order": 3, "scriptId": "match_shots_to_source", "label": "Match shots til DIT-mappe"}
+    ]
+  },
+  "role_room_project_setup": {
+    "id": "role_room_project_setup",
+    "name": "Role Room → Resolve setup",
+    "description": "Konfigurer Resolve-prosjektet fra Role Room-data: scener → bins, utstyr → project settings + CST, fangede klipp → ingest med scene-metadata.",
+    "steps": [
+      {"order": 1, "scriptId": "create_bins_from_scenes", "label": "Lag bins fra scene-liste"},
+      {"order": 2, "scriptId": "apply_project_settings", "label": "Sett resolution/fps + CST"},
+      {"order": 3, "scriptId": "import_clips_to_scene_bins", "label": "Ingest fangede klipp"}
+    ]
+  },
+  "music_video_beat_sync": {
+    "id": "music_video_beat_sync",
+    "name": "Music Video — Beat-synket",
+    "description": "Beat-synket music video: detekter beats fra source-sang og plasser klipp på beat-grid",
+    "projectTemplate": "music_video",
+    "steps": [
+      {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
+      {"order": 2, "scriptId": "organize_by_camera", "label": "Organize Bins"},
+      {"order": 3, "scriptId": "detect_music_beats", "label": "Detect Beats (librosa)"},
+      {"order": 4, "scriptId": "assign_clips_to_beats", "label": "Assign Clips → Beats"},
+      {"order": 5, "scriptId": "place_clips_on_beat_grid", "label": "Build Beat-grid Timeline"},
+      {"order": 6, "scriptId": "create_render_queue", "label": "Render Queue"}
+    ]
+  },
+  "documentary_longform": {
+    "id": "documentary_longform",
+    "name": "Documentary — Long-form",
+    "description": "Lang-form dokumentar med multi-cam B-roll + intervju-sync + transkripsjon + scene-markers",
+    "projectTemplate": "documentary",
+    "steps": [
+      {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
+      {"order": 2, "scriptId": "organize_by_camera", "label": "Organize by Camera"},
+      {"order": 3, "scriptId": "sync_audio_by_timecode", "label": "Sync Multi-cam Audio"},
+      {"order": 4, "scriptId": "transcribe_audio", "label": "Transcribe (WhisperX)"},
+      {"order": 5, "scriptId": "add_transcription_markers", "label": "Markers from Transcript"},
+      {"order": 6, "scriptId": "tag_best_moments", "label": "AI Tag Best Moments"},
+      {"order": 7, "scriptId": "create_render_queue", "label": "Render Queue"}
+    ]
+  },
+  "corporate_video": {
+    "id": "corporate_video",
+    "name": "Corporate Video",
+    "description": "Bedrifts-/intervju-video: import, sync, lyd-normalisering, color, render",
+    "projectTemplate": "corporate_video",
+    "steps": [
+      {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
+      {"order": 2, "scriptId": "sync_audio_by_filename_pattern", "label": "Sync Lav Audio"},
+      {"order": 3, "scriptId": "analyze_loudness", "label": "Analyze LUFS"},
+      {"order": 4, "scriptId": "flag_clipping", "label": "Flag Clipping"},
+      {"order": 5, "scriptId": "detect_camera_profiles", "label": "Detect Camera Profiles"},
+      {"order": 6, "scriptId": "match_bcam_to_acam", "label": "Match B-cam to A-cam"},
+      {"order": 7, "scriptId": "generate_color_qc_report", "label": "Color QC"},
+      {"order": 8, "scriptId": "create_render_queue", "label": "Render Queue"}
+    ]
+  },
+  "course_academy": {
+    "id": "course_academy",
+    "name": "Course / Academy",
+    "description": "Kurs-/tutorial-pipeline: skjerm-opptak + face-cam, transkripsjon, chapter-markers, audio-normalize",
+    "projectTemplate": "course_academy",
+    "steps": [
+      {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
+      {"order": 2, "scriptId": "sync_audio_by_timecode", "label": "Sync Screen + Cam"},
+      {"order": 3, "scriptId": "transcribe_audio", "label": "Transcribe (WhisperX)"},
+      {"order": 4, "scriptId": "add_transcription_markers", "label": "Chapter Markers"},
+      {"order": 5, "scriptId": "analyze_loudness", "label": "LUFS Check (-16 streaming)"},
+      {"order": 6, "scriptId": "prepare_audio_for_fairlight", "label": "Audio Layout"},
+      {"order": 7, "scriptId": "create_render_queue", "label": "Render Queue"}
     ]
   },
   "podcast_quick": {
     "id": "podcast_quick",
     "name": "Podcast — Quick edit",
     "description": "Import, sync, normalize, render",
+    "projectTemplate": "podcast",
     "steps": [
       {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
       {"order": 2, "scriptId": "sync_audio_by_filename_pattern", "label": "Sync Audio"},
-      {"order": 3, "scriptId": "prepare_audio_for_fairlight", "label": "Audio Layout"},
-      {"order": 4, "scriptId": "create_render_queue", "label": "Render Queue"}
+      {"order": 3, "scriptId": "detect_retakes", "label": "Detect Retakes"},
+      {"order": 4, "scriptId": "prepare_audio_for_fairlight", "label": "Audio Layout"},
+      {"order": 5, "scriptId": "analyze_loudness", "label": "LUFS Normalize"},
+      {"order": 6, "scriptId": "create_render_queue", "label": "Render Queue"}
     ]
   },
   "social_batch": {
     "id": "social_batch",
     "name": "Social Media Batch",
-    "description": "Eksporter samme klipp i flere formater",
+    "description": "Eksporter samme klipp i flere formater (Reels/TikTok/Shorts/YouTube)",
+    "projectTemplate": "social_media",
     "steps": [
       {"order": 1, "scriptId": "create_timeline_from_bin", "label": "Build Timeline"},
-      {"order": 2, "scriptId": "export_social_versions", "label": "Export 16:9 + 9:16 + 1:1 + 4:5"}
+      {"order": 2, "scriptId": "tag_best_moments", "label": "AI Tag Best Moments"},
+      {"order": 3, "scriptId": "export_social_versions", "label": "Export 16:9 + 9:16 + 1:1 + 4:5"}
+    ]
+  },
+  "dit_card_to_resolve": {
+    "id": "dit_card_to_resolve",
+    "name": "DIT — Kort → SSD → Resolve",
+    "description": "Sikker DIT-flyt: backup kort til SSD, benchmark drive, importer til Resolve, organiser",
+    "steps": [
+      {"order": 1, "scriptId": "inspect_source_drive", "label": "Inspect Source Card"},
+      {"order": 2, "scriptId": "list_storage_devices", "label": "List Available SSDs"},
+      {"order": 3, "scriptId": "benchmark_drive", "label": "Benchmark Target SSD"},
+      {"order": 4, "scriptId": "backup_card_to_ssd", "label": "Backup Card → SSD"},
+      {"order": 5, "scriptId": "import_media_from_folder", "label": "Import to Resolve"},
+      {"order": 6, "scriptId": "organize_by_camera", "label": "Organize Bins"}
+    ]
+  },
+  "delivery_qc": {
+    "id": "delivery_qc",
+    "name": "Delivery — QC før eksport",
+    "description": "Sjekk at prosjektet er klart for kundelevering: missing media, audio QC, color QC, marker-rapport",
+    "steps": [
+      {"order": 1, "scriptId": "check_missing_media", "label": "Check Missing Media"},
+      {"order": 2, "scriptId": "generate_audio_qc_report", "label": "Audio QC Report"},
+      {"order": 3, "scriptId": "generate_color_qc_report", "label": "Color QC Report"},
+      {"order": 4, "scriptId": "generate_marker_report", "label": "Marker Report"},
+      {"order": 5, "scriptId": "generate_delivery_report", "label": "Delivery Checklist"},
+      {"order": 6, "scriptId": "backup_project", "label": "Backup Project"}
     ]
   }
 }
