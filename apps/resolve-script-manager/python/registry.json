@@ -242,6 +242,22 @@
       "requiresTimeline": false
     },
     {
+      "id": "import_clips_to_scene_bins",
+      "name": "Import Clips to Scene Bins",
+      "category": "media",
+      "scriptPath": "scripts/media/import_clips_to_scene_bins.py",
+      "description": "Importerer captured clips (lokale fil-stier) inn i Resolve Media Pool, plassert i scene-bin som matcher Role Room scene-listen. Lager bin om den ikke finnes.",
+      "requiredInputs": [
+        "clips"
+      ],
+      "resolvePageDependency": "Media",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "import_media_from_folder",
       "name": "Import Media from Folder",
       "category": "media",

@@ -14,10 +14,12 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   executeScript,
+  fetchClipDownloadUrls,
   fetchMyProductions,
   fetchRoleRoomScenes,
   fetchRoleRoomEquipment,
   fetchRoleRoomLiveSetState,
+  downloadClip,
   probeMediaFiles,
   type RoleRoomProduction,
   type RoleRoomScene,
@@ -55,6 +57,96 @@ export function RoleRoomProjectSync() {
   const [binResult, setBinResult] = useState<{ created: string[]; skipped: string[]; failed: number } | null>(null);
   const [applyingSettings, setApplyingSettings] = useState(false);
   const [settingsResult, setSettingsResult] = useState<{ applied: number; skipped: number; failed: number } | null>(null);
+  const [ingesting, setIngesting] = useState(false);
+  const [ingestProgress, setIngestProgress] = useState<{ done: number; total: number; phase: string } | null>(null);
+  const [ingestResult, setIngestResult] = useState<{ imported: number; failed: number; binsCreated: number } | null>(null);
+
+  async function ingestCapturedClips() {
+    if (!context || context.clips.length === 0 || !selected) return;
+    setIngesting(true);
+    setIngestProgress({ done: 0, total: context.clips.length, phase: "Henter download-URLs…" });
+    setIngestResult(null);
+    setError(null);
+    try {
+      // Step 1: get presigned URLs from backend
+      const clipIds = context.clips.map((c) => c.id);
+      const { urls } = await fetchClipDownloadUrls(selected, clipIds);
+      const usable = urls.filter((u) => u.downloadUrl);
+      if (usable.length === 0) {
+        setError("Ingen klipp har gyldig download-URL. Sjekk at R2-konfigurasjon er aktiv på backend.");
+        setIngesting(false);
+        return;
+      }
+
+      // Step 2: get a staging dir from Tauri (use app data dir)
+      const baseDir: string = await invoke("get_app_data_dir");
+      const stagingDir = `${baseDir.replace(/\/+$/, "")}/staging/${selected}`;
+
+      // Step 3: download all clips in parallel (cap at 4 concurrent for stability)
+      const downloaded: Array<{
+        localPath: string;
+        sceneNumber?: number;
+        sceneTitle?: string;
+        takeNumber?: number;
+      }> = [];
+      const concurrency = 4;
+      const queue = [...usable];
+      let done = 0;
+      const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+        while (queue.length > 0) {
+          const next = queue.shift();
+          if (!next) break;
+          const dest = `${stagingDir}/${next.fileName}`;
+          try {
+            await downloadClip(next.downloadUrl as string, dest);
+            downloaded.push({
+              localPath: dest,
+              sceneNumber: next.sceneNumber,
+              sceneTitle: next.sceneTitle,
+              takeNumber: next.takeNumber,
+            });
+          } catch (e) {
+            console.warn("download failed", next.fileName, e);
+          }
+          done++;
+          setIngestProgress({ done, total: usable.length, phase: "Laster ned klipp…" });
+        }
+      });
+      await Promise.all(workers);
+
+      if (downloaded.length === 0) {
+        setError("Alle nedlastinger feilet. Sjekk nettverket og prøv igjen.");
+        setIngesting(false);
+        return;
+      }
+
+      // Step 4: import into Resolve via Python script
+      setIngestProgress({ done: 0, total: downloaded.length, phase: "Importerer i Resolve…" });
+      const summary = await executeScript(
+        "import_clips_to_scene_bins",
+        { clips: downloaded },
+        false,
+      );
+      const result = summary.events.find((e) => e.type === "result")?.value as
+        | { imported?: unknown[]; failed?: unknown[]; binsCreated?: string[] }
+        | undefined;
+      const err = summary.events.find((e) => e.type === "error")?.value as { message?: string } | undefined;
+      if (err?.message) {
+        setError(err.message);
+        return;
+      }
+      setIngestResult({
+        imported: (result?.imported || []).length,
+        failed: (result?.failed || []).length,
+        binsCreated: (result?.binsCreated || []).length,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIngesting(false);
+      setIngestProgress(null);
+    }
+  }
 
   async function applySettingsToResolve() {
     if (!context) return;
@@ -288,6 +380,48 @@ export function RoleRoomProjectSync() {
             }
             small
           />
+        </div>
+      )}
+
+      {/* Action: Ingest captured clips from Live Set */}
+      {context && context.clips.length > 0 && (
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+          <button
+            onClick={ingestCapturedClips}
+            disabled={ingesting}
+            style={{
+              background: "#6e3fc7",
+              border: "none",
+              color: "white",
+              borderRadius: 6,
+              padding: "8px 14px",
+              cursor: ingesting ? "default" : "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+              alignSelf: "flex-start",
+            }}
+          >
+            {ingesting
+              ? ingestProgress
+                ? `${ingestProgress.phase} (${ingestProgress.done}/${ingestProgress.total})`
+                : "Forbereder ingest…"
+              : `Ingest ${context.clips.length} fangede klipp fra Live Set`}
+          </button>
+          {ingestResult && (
+            <div style={{
+              padding: 10,
+              background: ingestResult.failed > 0 ? "rgba(245,158,11,0.10)" : "rgba(74,212,138,0.10)",
+              border: ingestResult.failed > 0 ? "1px solid rgba(245,158,11,0.4)" : "1px solid rgba(74,212,138,0.4)",
+              color: ingestResult.failed > 0 ? "#a16207" : "#4ad48a",
+              borderRadius: 6,
+              fontSize: 12,
+            }}>
+              <strong>{ingestResult.failed > 0 ? "⚠" : "✓"}</strong>{" "}
+              {ingestResult.imported} klipp importert
+              {ingestResult.binsCreated > 0 && `, ${ingestResult.binsCreated} nye bins`}
+              {ingestResult.failed > 0 && `, ${ingestResult.failed} feilet`}.
+            </div>
+          )}
         </div>
       )}
 

@@ -113,3 +113,71 @@ pub async fn role_room_my_seats(settings: State<'_, AppSettings>) -> Result<Valu
     let (base, token) = extract_creds(&settings)?;
     fetch_json(&base, "/team/my-seats", &token).await
 }
+
+/// POST /api/post-agent/projects/:projectId/clips/download-urls
+/// Body: { clipIds: [...] }
+/// Returns presigned R2 URLs + scene metadata so the desktop app can
+/// stream the captured clips locally and then import them into Resolve.
+#[tauri::command]
+pub async fn role_room_fetch_clip_download_urls(
+    project_id: String,
+    clip_ids: Vec<String>,
+    settings: State<'_, AppSettings>,
+) -> Result<Value, String> {
+    let (base, token) = extract_creds(&settings)?;
+    let url = format!("{}/projects/{}/clips/download-urls", base, project_id);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {}", e))?;
+    let res = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "clipIds": clip_ids }))
+        .send()
+        .await
+        .map_err(|e| format!("POST {} failed: {}", url, e))?;
+    let status = res.status();
+    let text = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("HTTP {} from {}: {}", status, url, text));
+    }
+    serde_json::from_str::<Value>(&text)
+        .map_err(|e| format!("Parse JSON: {} (body: {})", e, text))
+}
+
+/// Download a single clip from a presigned URL to a local path. Returns
+/// the bytes-written count. Used by ingest_captured_clips to stream R2
+/// objects to a staging folder before importing into Resolve.
+#[tauri::command]
+pub async fn role_room_download_clip(
+    download_url: String,
+    dest_path: String,
+) -> Result<u64, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600)) // 10 min for big takes
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {}", e))?;
+    let res = client
+        .get(&download_url)
+        .send()
+        .await
+        .map_err(|e| format!("Download GET failed: {}", e))?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("HTTP {} downloading {}", status, &download_url[..download_url.len().min(80)]));
+    }
+    let bytes = res
+        .bytes()
+        .await
+        .map_err(|e| format!("Reading body failed: {}", e))?;
+    let len = bytes.len() as u64;
+    // Ensure parent dir exists
+    if let Some(parent) = std::path::Path::new(&dest_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("create_dir_all {} failed: {}", parent.display(), e))?;
+    }
+    std::fs::write(&dest_path, &bytes)
+        .map_err(|e| format!("Write {} failed: {}", dest_path, e))?;
+    Ok(len)
+}

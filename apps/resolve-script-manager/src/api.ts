@@ -290,3 +290,26 @@ export interface ProbeSummary {
 export async function probeMediaFiles(paths: string[]): Promise<ProbeSummary> {
   return invoke("probe_media_files", { paths });
 }
+
+export interface ClipDownloadEntry {
+  clipId: string;
+  mediaKey: string | null;
+  downloadUrl: string | null;
+  sceneId?: string;
+  sceneTitle?: string;
+  sceneNumber?: number;
+  takeNumber?: number;
+  fileName: string;
+  error?: string | null;
+}
+
+export async function fetchClipDownloadUrls(
+  projectId: string,
+  clipIds: string[],
+): Promise<{ urls: ClipDownloadEntry[] }> {
+  return invoke("role_room_fetch_clip_download_urls", { projectId, clipIds });
+}
+
+export async function downloadClip(downloadUrl: string, destPath: string): Promise<number> {
+  return invoke("role_room_download_clip", { downloadUrl, destPath });
+}

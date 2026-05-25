@@ -402,6 +402,8 @@ pub fn run() {
             role_room_api::role_room_fetch_live_set_state,
             role_room_api::role_room_my_productions,
             role_room_api::role_room_my_seats,
+            role_room_api::role_room_fetch_clip_download_urls,
+            role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
         ])
         .run(tauri::generate_context!())

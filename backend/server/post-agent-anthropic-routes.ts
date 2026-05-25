@@ -31,6 +31,7 @@ import { loadPersistedAuthSession, persistAuthSession } from './auth-session-sto
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
 import { sendEmail } from './casting-reminder-sender.js';
+import { presignTakeReadUrl } from './coverage-take-service.js';
 import {
   countActiveSeats,
   deletePairingCode,
@@ -1720,6 +1721,61 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
       res.json({ clips: [], sceneMarkers: [], degraded: true, detail: (e as Error).message });
     }
   });
+
+  /** Batch: signed download URLs for a set of captured-clip IDs. Tauri uses
+   *  these to stream clips to a local staging folder before importing into
+   *  the Resolve Media Pool with bin-placement.
+   *
+   *  Body: { clipIds: string[] }  (max 200 per call)
+   *  Returns: { urls: [{ clipId, mediaKey, downloadUrl?, sceneId, sceneTitle,
+   *                       takeNumber, fileName, error? }] }
+   */
+  router.post(
+    '/projects/:projectId/clips/download-urls',
+    postAgentAuth,
+    async (req: Request, res: Response) => {
+      const projectId = req.params.projectId;
+      if (!(await requireProjectAccess(req, res, projectId))) return;
+      const clipIds = Array.isArray(req.body?.clipIds) ? req.body.clipIds : [];
+      if (clipIds.length === 0 || clipIds.length > 200) {
+        res.status(400).json({ error: 'clipIds must be a 1-200 length array' });
+        return;
+      }
+      try {
+        const { rows } = await pool.query(
+          `SELECT t.id, t.media_key, t.take_number, t.scene_id,
+                  s.scene_number, s.title AS scene_title
+           FROM casting_takes t
+           LEFT JOIN casting_scenes s ON s.id = t.scene_id
+           WHERE t.project_id = $1 AND t.id = ANY($2)`,
+          [projectId, clipIds],
+        );
+        const urls = await Promise.all(
+          rows.map(async (r) => {
+            const mediaKey = r.media_key as string | null;
+            const downloadUrl = mediaKey ? await presignTakeReadUrl(mediaKey) : null;
+            const ext = mediaKey ? (mediaKey.match(/\.[a-zA-Z0-9]+$/)?.[0] || '.mov') : '.mov';
+            const safeTitle = (r.scene_title || `scene-${r.scene_number || '?'}`).replace(/[\s/\\]+/g, '_');
+            const fileName = `${String(r.scene_number || 0).padStart(2, '0')}_${safeTitle}_take${r.take_number || 1}${ext}`;
+            return {
+              clipId: r.id,
+              mediaKey,
+              downloadUrl,
+              sceneId: r.scene_id,
+              sceneTitle: r.scene_title,
+              sceneNumber: r.scene_number,
+              takeNumber: r.take_number,
+              fileName,
+              error: downloadUrl ? null : (mediaKey ? 'presign_failed' : 'no_media_key'),
+            };
+          }),
+        );
+        res.json({ urls });
+      } catch (e) {
+        res.status(500).json({ error: 'download_urls_failed', detail: (e as Error).message });
+      }
+    },
+  );
 
   void userHasActiveTeamSeat;
 
