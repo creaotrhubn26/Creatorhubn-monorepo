@@ -250,12 +250,14 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         start_f, end_f = _seconds_to_clip_frames(media_item, seg_dur, target_fps)
         # Offset by timeline start (Resolve timelines start at SMPTE 01:00:00:00)
         record_frame = timeline_start_frame + int(round(start_sec * target_fps))
+        # NOTE: mediaType in Resolve's API means 1=video-only, 2=audio-only.
+        # Omitting it gives the default 'video+linked-audio' behavior — which
+        # is what we want so camera audio lands on A1..A_N for sync reference.
         append_specs.append({
             "mediaPoolItem": media_item,
             "startFrame": start_f,
             "endFrame": end_f,
-            "mediaType": 1,        # video+linked-audio
-            "trackIndex": 1,       # V1
+            "trackIndex": 1,       # V1 — linked audio auto-flows to A1..A_N
             "recordFrame": record_frame,
         })
 
