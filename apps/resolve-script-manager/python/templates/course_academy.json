@@ -1,0 +1,116 @@
+{
+  "name": "Course / Academy",
+  "id": "course_academy",
+  "description": "Online course modules, tutorials, screen-recording-driven educational content.",
+  "bins": [
+    "01 Presenter Talking Head",
+    "02 Screen Recording",
+    "03 B-Roll / Demos",
+    "04 Slides + Graphics",
+    "05 Animations",
+    "06 Lav Audio",
+    "07 Music Bed",
+    "08 SFX",
+    "Exports"
+  ],
+  "defaultTimelines": [
+    "Module 01",
+    "Promo Trailer",
+    "Social Teaser"
+  ],
+  "audioLayout": [
+    {
+      "track": 1,
+      "label": "Presenter Mic"
+    },
+    {
+      "track": 2,
+      "label": "Screen Recording Audio"
+    },
+    {
+      "track": 3,
+      "label": "Music Bed"
+    },
+    {
+      "track": 4,
+      "label": "SFX"
+    },
+    {
+      "track": 5,
+      "label": "Noise Print / Room Tone"
+    }
+  ],
+  "sceneMarkers": [
+    {
+      "name": "INTRO",
+      "color": "Blue"
+    },
+    {
+      "name": "LEARNING_OBJECTIVE",
+      "color": "Cyan"
+    },
+    {
+      "name": "DEMO_START",
+      "color": "Green"
+    },
+    {
+      "name": "KEY_INSIGHT",
+      "color": "Yellow"
+    },
+    {
+      "name": "EXERCISE",
+      "color": "Sand"
+    },
+    {
+      "name": "SUMMARY",
+      "color": "Pink"
+    }
+  ],
+  "highlightTags": [
+    "concept",
+    "demo",
+    "exercise",
+    "tip",
+    "recap"
+  ],
+  "musicBeats": [
+    "Open",
+    "Section",
+    "Highlight",
+    "Close"
+  ],
+  "lookPackId": "corporate_clean",
+  "deliveryTargets": [
+    "youtube",
+    "instagram"
+  ],
+  "magicCutPipeline": {
+    "name": "Build a course/tutorial cut",
+    "description": "Importer, cull, AI-scor highlights og bygg en undervisnings-timeline.",
+    "defaultDurationSec": 600,
+    "steps": [
+      {
+        "scriptId": "import_media_from_folder",
+        "label": "Importerer media",
+        "weight": 10
+      },
+      {
+        "scriptId": "cull_folder",
+        "label": "Cull",
+        "weight": 45,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "analyze_clips_for_highlights",
+        "label": "Highlight-scoring",
+        "weight": 25,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "place_clips_on_timeline",
+        "label": "Bygger timeline",
+        "weight": 20
+      }
+    ]
+  }
+}

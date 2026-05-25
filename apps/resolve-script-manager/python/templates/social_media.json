@@ -1,0 +1,104 @@
+{
+  "name": "Social Media Batch",
+  "id": "social_media",
+  "description": "Batch-edit Reels, TikTok, Shorts, Stories. High volume, fast turnaround, multi-format exports.",
+  "bins": [
+    "01 Hook Shots",
+    "02 Main Content",
+    "03 B-Roll / Cutaways",
+    "04 Captions / Stickers",
+    "05 Music Library",
+    "06 SFX",
+    "07 Brand Assets",
+    "Exports"
+  ],
+  "defaultTimelines": [
+    "Reel 01",
+    "Reel 02",
+    "Reel 03",
+    "Short Compilation"
+  ],
+  "audioLayout": [
+    {
+      "track": 1,
+      "label": "Primary Audio"
+    },
+    {
+      "track": 2,
+      "label": "Voiceover"
+    },
+    {
+      "track": 3,
+      "label": "Music"
+    },
+    {
+      "track": 4,
+      "label": "SFX / Stingers"
+    }
+  ],
+  "sceneMarkers": [
+    {
+      "name": "HOOK_3S",
+      "color": "Red"
+    },
+    {
+      "name": "CONTEXT",
+      "color": "Yellow"
+    },
+    {
+      "name": "VALUE",
+      "color": "Green"
+    },
+    {
+      "name": "CTA",
+      "color": "Pink"
+    }
+  ],
+  "highlightTags": [
+    "hook",
+    "punchline",
+    "transition",
+    "text_moment",
+    "product"
+  ],
+  "musicBeats": [
+    "Drop",
+    "Hook",
+    "Pivot",
+    "Close"
+  ],
+  "lookPackId": "vibrant_social",
+  "deliveryTargets": [
+    "instagram",
+    "youtube"
+  ],
+  "magicCutPipeline": {
+    "name": "Build a social cut",
+    "description": "Importer, cull, AI-scor highlights og bygg en kort vertikal timeline.",
+    "defaultDurationSec": 45,
+    "steps": [
+      {
+        "scriptId": "import_media_from_folder",
+        "label": "Importerer media",
+        "weight": 10
+      },
+      {
+        "scriptId": "cull_folder",
+        "label": "Cull",
+        "weight": 45,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "analyze_clips_for_highlights",
+        "label": "Highlight-scoring",
+        "weight": 25,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "place_clips_on_timeline",
+        "label": "Bygger timeline",
+        "weight": 20
+      }
+    ]
+  }
+}

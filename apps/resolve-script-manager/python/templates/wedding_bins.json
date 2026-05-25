@@ -1,0 +1,138 @@
+{
+  "name": "Wedding Film",
+  "id": "wedding_film",
+  "description": "Standard bin-struktur for bryllupsfilm-leveranse",
+  "bins": [
+    "01 Bride Prep",
+    "02 Groom Prep",
+    "03 Ceremony",
+    "04 Portrait",
+    "05 Entrance",
+    "06 Speeches",
+    "07 Cake",
+    "08 First Dance",
+    "09 Party",
+    "10 Drone",
+    "11 Audio",
+    "12 Music",
+    "Exports"
+  ],
+  "defaultTimelines": [
+    "Master Timeline",
+    "Highlight_Edit_Draft_V01",
+    "Ceremony Timeline"
+  ],
+  "audioLayout": [
+    {
+      "track": 1,
+      "label": "Camera Scratch"
+    },
+    {
+      "track": 2,
+      "label": "Groom Mic"
+    },
+    {
+      "track": 3,
+      "label": "Bride Mic"
+    },
+    {
+      "track": 4,
+      "label": "Officiant"
+    },
+    {
+      "track": 5,
+      "label": "Speeches"
+    },
+    {
+      "track": 6,
+      "label": "Music"
+    },
+    {
+      "track": 7,
+      "label": "Ambience"
+    }
+  ],
+  "sceneMarkers": [
+    {
+      "name": "CEREMONY_START",
+      "color": "Blue"
+    },
+    {
+      "name": "VOWS",
+      "color": "Cyan"
+    },
+    {
+      "name": "RING_EXCHANGE",
+      "color": "Yellow"
+    },
+    {
+      "name": "FIRST_KISS",
+      "color": "Red"
+    },
+    {
+      "name": "SPEECH_BRIDE_FATHER",
+      "color": "Green"
+    },
+    {
+      "name": "FIRST_DANCE",
+      "color": "Pink"
+    }
+  ],
+  "highlightTags": [
+    "emotional",
+    "kiss",
+    "rings",
+    "entrance",
+    "speech",
+    "laughing",
+    "dance",
+    "drone",
+    "details"
+  ],
+  "musicBeats": [
+    "Intro",
+    "Build",
+    "Drop",
+    "Soft moment",
+    "Finale"
+  ],
+  "magicCutPipeline": {
+    "name": "Build a wedding rough cut",
+    "description": "Importer, cull, scene-tag highlights, bygg master timeline og 90s highlight-cut.",
+    "defaultDurationSec": 90,
+    "steps": [
+      {
+        "scriptId": "import_media_from_folder",
+        "label": "Importerer media",
+        "weight": 6
+      },
+      {
+        "scriptId": "organize_by_camera",
+        "label": "Organiserer per kamera",
+        "weight": 4
+      },
+      {
+        "scriptId": "cull_folder",
+        "label": "AI cull",
+        "weight": 35,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "analyze_clips_for_highlights",
+        "label": "Highlight-scoring",
+        "weight": 20,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "create_wedding_master_timeline",
+        "label": "Bygger master timeline",
+        "weight": 20
+      },
+      {
+        "scriptId": "create_highlight_rough_cut",
+        "label": "Bygger highlight cut",
+        "weight": 15
+      }
+    ]
+  }
+}

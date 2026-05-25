@@ -1,0 +1,50 @@
+{
+  "name": "Editorial Contrast Look Pack",
+  "id": "editorial_contrast",
+  "version": "v1",
+  "description": "Editorial, high-contrast cinematic looks for music videos, trailers, narrative content.",
+  "looks": [
+    {
+      "id": "editorial_filmic",
+      "name": "Editorial Filmic",
+      "bestFor": ["narrative", "music_video", "trailer"],
+      "components": {
+        "lut": "Editorial_Filmic_v1.cube",
+        "cdl": {"slope": [1.08, 1.05, 1.02], "offset": [0.01, 0.005, 0.00], "power": [0.90, 0.92, 0.95], "saturation": 0.85},
+        "grain": "fine_neutral",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "moody_teal_orange",
+      "name": "Moody Teal & Orange",
+      "bestFor": ["trailer", "music_video", "narrative"],
+      "components": {
+        "lut": "Teal_Orange_Moody_v1.cube",
+        "cdl": {"slope": [1.10, 1.00, 0.92], "offset": [0.02, -0.005, -0.015], "power": [0.88, 0.92, 1.00], "saturation": 0.95},
+        "grain": "medium",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "bleach_bypass",
+      "name": "Bleach Bypass",
+      "bestFor": ["dramatic", "action", "edgy"],
+      "components": {
+        "lut": "Bleach_Bypass_v1.cube",
+        "cdl": {"slope": [1.15, 1.10, 1.08], "offset": [0.005, 0.00, -0.005], "power": [0.80, 0.85, 0.88], "saturation": 0.55},
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    }
+  ],
+  "sceneToLookMap": {
+    "INTRO": "editorial_filmic",
+    "VERSE_1": "moody_teal_orange",
+    "CHORUS_1": "editorial_filmic",
+    "VERSE_2": "moody_teal_orange",
+    "CHORUS_2": "editorial_filmic",
+    "BRIDGE": "bleach_bypass",
+    "DROP": "editorial_filmic",
+    "OUTRO": "moody_teal_orange"
+  }
+}

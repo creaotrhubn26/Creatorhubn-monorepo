@@ -1,0 +1,139 @@
+{
+  "name": "Documentary",
+  "id": "documentary",
+  "description": "Long-form documentary, factual storytelling, observational and interview-driven.",
+  "bins": [
+    "01 Interviews",
+    "02 Verite / Observational",
+    "03 Archive",
+    "04 B-Roll",
+    "05 Drone",
+    "06 Establishing Shots",
+    "07 Audio Recordings",
+    "08 Music",
+    "09 SFX",
+    "10 Graphics + Lower Thirds",
+    "Exports"
+  ],
+  "defaultTimelines": [
+    "Master Edit",
+    "Selects Reel",
+    "Trailer Cut"
+  ],
+  "audioLayout": [
+    {
+      "track": 1,
+      "label": "Subject Lav"
+    },
+    {
+      "track": 2,
+      "label": "Subject Boom"
+    },
+    {
+      "track": 3,
+      "label": "Backup / Camera Scratch"
+    },
+    {
+      "track": 4,
+      "label": "Music"
+    },
+    {
+      "track": 5,
+      "label": "SFX / Foley"
+    },
+    {
+      "track": 6,
+      "label": "Ambience"
+    },
+    {
+      "track": 7,
+      "label": "Narration"
+    }
+  ],
+  "sceneMarkers": [
+    {
+      "name": "COLD_OPEN",
+      "color": "Blue"
+    },
+    {
+      "name": "ACT_1_SETUP",
+      "color": "Cyan"
+    },
+    {
+      "name": "TURNING_POINT",
+      "color": "Yellow"
+    },
+    {
+      "name": "ACT_2_DEVELOPMENT",
+      "color": "Green"
+    },
+    {
+      "name": "CLIMAX",
+      "color": "Red"
+    },
+    {
+      "name": "RESOLUTION",
+      "color": "Pink"
+    }
+  ],
+  "highlightTags": [
+    "emotional",
+    "key_quote",
+    "verite",
+    "archive",
+    "establishing",
+    "transition",
+    "data"
+  ],
+  "musicBeats": [
+    "Reflection",
+    "Tension",
+    "Discovery",
+    "Resolution"
+  ],
+  "lookPackId": "documentary_natural",
+  "deliveryTargets": [
+    "broadcast",
+    "youtube"
+  ],
+  "magicCutPipeline": {
+    "name": "Build a documentary rough cut",
+    "description": "Importer, cull, AI-scor highlights, finn key quotes og bygg timeline.",
+    "defaultDurationSec": 180,
+    "steps": [
+      {
+        "scriptId": "import_media_from_folder",
+        "label": "Importerer media",
+        "weight": 8
+      },
+      {
+        "scriptId": "organize_by_camera",
+        "label": "Organiserer per kamera",
+        "weight": 4
+      },
+      {
+        "scriptId": "cull_folder",
+        "label": "AI cull",
+        "weight": 40,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "analyze_clips_for_highlights",
+        "label": "Highlight-scoring",
+        "weight": 20,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "find_quotes",
+        "label": "Finner key quotes",
+        "weight": 18,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "place_clips_on_timeline",
+        "label": "Bygger timeline",
+        "weight": 10
+      }
+    ]
+  }
+}

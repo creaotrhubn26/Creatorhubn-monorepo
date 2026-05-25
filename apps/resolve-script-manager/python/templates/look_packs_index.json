@@ -1,0 +1,12 @@
+{
+  "$schema": "Index of all look packs available. Each entry references a pack JSON in this folder.",
+  "default": "corporate_clean",
+  "packs": [
+    {"id": "corporate_clean", "file": "corporate_clean.json", "scope": "general"},
+    {"id": "documentary_natural", "file": "documentary_natural.json", "scope": "general"},
+    {"id": "podcast_neutral", "file": "podcast_neutral.json", "scope": "general"},
+    {"id": "vibrant_social", "file": "vibrant_social.json", "scope": "general"},
+    {"id": "editorial_contrast", "file": "editorial_contrast.json", "scope": "general"},
+    {"id": "norwedfilm_look_pack", "file": "norwedfilm_look_pack.json", "scope": "plugin", "pluginFor": "wedding_film"}
+  ]
+}

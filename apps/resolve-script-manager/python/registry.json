@@ -1,0 +1,1017 @@
+{
+  "$schema": "Script catalog read by Tauri (lib.rs::list_scripts) and surfaced in App.tsx",
+  "categories": [
+    {
+      "id": "project",
+      "name": "Project",
+      "icon": "FolderSpecial"
+    },
+    {
+      "id": "media",
+      "name": "Media",
+      "icon": "VideoLibrary"
+    },
+    {
+      "id": "timeline",
+      "name": "Timeline",
+      "icon": "Timeline"
+    },
+    {
+      "id": "markers",
+      "name": "Markers",
+      "icon": "Bookmark"
+    },
+    {
+      "id": "audio",
+      "name": "Audio",
+      "icon": "GraphicEq"
+    },
+    {
+      "id": "color",
+      "name": "Color",
+      "icon": "Palette"
+    },
+    {
+      "id": "export",
+      "name": "Export",
+      "icon": "Movie"
+    },
+    {
+      "id": "qc",
+      "name": "QC",
+      "icon": "FactCheck"
+    },
+    {
+      "id": "vision",
+      "name": "Vision",
+      "icon": "AutoAwesome"
+    },
+    {
+      "id": "cull",
+      "name": "Cull",
+      "icon": "Inventory"
+    }
+  ],
+  "scripts": [
+    {
+      "id": "connect_to_resolve",
+      "name": "Connect to Resolve",
+      "category": "project",
+      "scriptPath": "scripts/project/connect_to_resolve.py",
+      "description": "Verifiserer at Resolve kjører og at scripting-modulen er nåbar. Returnerer prosjekt-navn + nåværende side.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "health_check",
+      "name": "Run Health Check",
+      "category": "project",
+      "scriptPath": "health_check.py",
+      "description": "Sjekker Python-versjon, scripting-modul-sti, Resolve-tilkobling og aktivt prosjekt.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "create_project_structure",
+      "name": "Create Project Structure",
+      "category": "project",
+      "scriptPath": "scripts/project/create_project_structure.py",
+      "description": "Oppretter et nytt prosjekt med standard bin-struktur fra en mal (wedding_film, podcast, …).",
+      "requiredInputs": [
+        "projectName",
+        "template"
+      ],
+      "resolvePageDependency": "Media",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "get_media_pool_state",
+      "name": "Get Media Pool State",
+      "category": "project",
+      "scriptPath": "scripts/project/get_media_pool_state.py",
+      "description": "Read-only snapshot av aktivt Resolve-prosjekt: bins, klipp, timelines, render queue. Driver Live Media Pool-sidebaren.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "inspect_source_drive",
+      "name": "Inspect Source Drive",
+      "category": "project",
+      "scriptPath": "scripts/project/inspect_source_drive.py",
+      "description": "Detekterer om en mappe ligger på SD/CF-kort vs ekstern SSD vs intern disk. Anbefaler backup hvis source er kamera-kort.",
+      "requiredInputs": [
+        "path"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "list_storage_devices",
+      "name": "List Storage Devices",
+      "category": "project",
+      "scriptPath": "scripts/project/list_storage_devices.py",
+      "description": "Lister monterte volumer (diskutil) for SSD-valg i Onboarding-backup-flowen.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "backup_card_to_ssd",
+      "name": "Backup Card to SSD",
+      "category": "project",
+      "scriptPath": "scripts/project/backup_card_to_ssd.py",
+      "description": "Kopierer media fra SD-kort til en SSD via rsync med DIT-folder-struktur og file-count/byte-verifikasjon (valgfri SHA-256 per fil).",
+      "requiredInputs": [
+        "sourcePath",
+        "ssdPath",
+        "projectName"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "benchmark_drive",
+      "name": "Benchmark Drive Speed",
+      "category": "project",
+      "scriptPath": "scripts/project/benchmark_drive.py",
+      "description": "Måler sustained write + read MB/s på en SSD med 1 GB test-fil. Sammenligner mot kamera-codec-kravet (Canon C80, R5C, Sony FX, …) og gir verdict.",
+      "requiredInputs": [
+        "path"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "analyze_clip_folder",
+      "name": "Analyze Clip Folder",
+      "category": "project",
+      "scriptPath": "scripts/project/analyze_clip_folder.py",
+      "description": "Skanner en mappe og foreslår prosjekt-template + kamera-distribusjon + scene-hint analyse. Brukes av Onboarding Wizard.",
+      "requiredInputs": [
+        "folderPath"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "backup_project",
+      "name": "Backup Project + DRP",
+      "category": "project",
+      "scriptPath": "scripts/project/backup_project.py",
+      "description": "Eksporterer DRP, timeline-XML og marker-rapport til en backup-mappe.",
+      "requiredInputs": [
+        "backupFolder"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "import_media_from_folder",
+      "name": "Import Media from Folder",
+      "category": "media",
+      "scriptPath": "scripts/media/import_media_from_folder.py",
+      "description": "Importerer media-filer fra en mappe rekursivt til Media Pool, bevarer mappestruktur som bins.",
+      "requiredInputs": [
+        "mediaFolderPath"
+      ],
+      "resolvePageDependency": "Media",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "organize_by_camera",
+      "name": "Organize by Camera",
+      "category": "media",
+      "scriptPath": "scripts/media/organize_by_camera.py",
+      "description": "Flytter klipp i Media Pool til bins basert på kameramodell, dato og codec.",
+      "requiredInputs": [],
+      "resolvePageDependency": "Media",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "check_missing_media",
+      "name": "Check Missing Media",
+      "category": "qc",
+      "scriptPath": "scripts/qc/check_missing_media.py",
+      "description": "Skanner alle klipp for offline-status, manglende lyd, feil frame rate og blandede oppløsninger.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "create_timeline_from_bin",
+      "name": "Create Timeline from Bin",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/create_timeline_from_bin.py",
+      "description": "Lager en timeline fra alle klipp i en spesifikk bin, sortert kronologisk.",
+      "requiredInputs": [
+        "binName",
+        "timelineName"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "create_wedding_master_timeline",
+      "name": "Create Wedding Master Timeline",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/create_wedding_master_timeline.py",
+      "description": "Lager en master timeline med segmenter for hver del av dagen (Bride Prep → Party).",
+      "requiredInputs": [
+        "timelineName",
+        "frameRate"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "create_highlight_rough_cut",
+      "name": "Create Highlight Rough Cut",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/create_highlight_rough_cut.py",
+      "description": "Strukturert rough assembly basert på tags (emotional, kiss, drone …) → Highlight_Edit_Draft_V01. Kan ta input fra Vision-scoring.",
+      "requiredInputs": [
+        "tags",
+        "maxDurationSeconds"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "high",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "place_music_and_markers",
+      "name": "Place Music + Beat Markers",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/place_music_and_markers.py",
+      "description": "Plasserer musikk på A6 og legger markers (Intro/Build/Drop/Soft moment/Finale) på beats.",
+      "requiredInputs": [
+        "musicFile",
+        "beatTimestamps"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "add_standard_markers",
+      "name": "Add Standard Markers",
+      "category": "markers",
+      "scriptPath": "scripts/markers/add_standard_markers.py",
+      "description": "Legger standard markers (Intro, Body, Outro) basert på timeline-prosenter.",
+      "requiredInputs": [],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "add_scene_markers",
+      "name": "Add Wedding Scene Markers",
+      "category": "markers",
+      "scriptPath": "scripts/markers/add_scene_markers.py",
+      "description": "Legger CEREMONY_START, VOWS, RING_EXCHANGE, FIRST_KISS, SPEECH_BRIDE_FATHER, FIRST_DANCE.",
+      "requiredInputs": [
+        "markerTimestamps"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "generate_marker_report",
+      "name": "Generate Marker Report",
+      "category": "markers",
+      "scriptPath": "scripts/markers/generate_marker_report.py",
+      "description": "Eksporterer markers til CSV, JSON, EDL og en kunde-review-liste.",
+      "requiredInputs": [
+        "outputFolder",
+        "format"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "add_transcription_markers",
+      "name": "Add Transcription Markers",
+      "category": "markers",
+      "scriptPath": "scripts/markers/add_transcription_markers.py",
+      "description": "Tar transkripsjons-segmenter og legger markers på current timeline. Hvis speaker er angitt fargekodes per taler. Marker-navn er første 6 ord, marker-note holder hele segmentet.",
+      "requiredInputs": [
+        "segments"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "tag_best_moments",
+      "name": "Tag Best Moments",
+      "category": "markers",
+      "scriptPath": "scripts/markers/tag_best_moments.py",
+      "description": "Markerer øyeblikk: Best reaction, Good audio, Use in trailer, Use in full film, Possible reel.",
+      "requiredInputs": [
+        "taggedClips"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "sync_audio_by_timecode",
+      "name": "Sync Audio by Timecode",
+      "category": "audio",
+      "scriptPath": "scripts/audio/sync_audio_by_timecode.py",
+      "description": "Synker eksterne lydopptak med kamera-klipp basert på matchende timecode.",
+      "requiredInputs": [],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "sync_audio_by_filename_pattern",
+      "name": "Sync Audio by Filename Pattern",
+      "category": "audio",
+      "scriptPath": "scripts/audio/sync_audio_by_filename_pattern.py",
+      "description": "Fallback: matcher C80_A001 ↔ Zoom_A001 når timecode mangler.",
+      "requiredInputs": [
+        "pattern"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "detect_audio_sources",
+      "name": "Detect Audio Sources",
+      "category": "audio",
+      "scriptPath": "scripts/audio/detect_audio_sources.py",
+      "description": "Skanner Media Pool og kategoriserer alle audio/video-klipp i camera_scratch / lav_mic / recorder / music / sfx / unknown basert på filnavn + metadata.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "analyze_loudness",
+      "name": "Analyze Loudness (LUFS)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_loudness.py",
+      "description": "Ekte ffmpeg loudnorm-måling per klipp: integrated LUFS, true peak, LRA. Sammenligner mot delivery-target (wedding/youtube/podcast/broadcast).",
+      "requiredInputs": [
+        "deliveryTarget"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "flag_clipping",
+      "name": "Flag Clipping (Peak ≥ -0.1 dBFS)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/flag_clipping.py",
+      "description": "ffmpeg astats peak-level måling per klipp. Returnerer liste over digitalt klippede klipp som trenger reparasjon eller decline.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "flag_low_dialogue",
+      "name": "Flag Low Dialogue (< -28 LUFS)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/flag_low_dialogue.py",
+      "description": "Identifiserer klipp med integrert LUFS under terskelen — typisk lav-mic-opptak som trenger boost eller AI-cleanup.",
+      "requiredInputs": [
+        "thresholdLufs"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "generate_audio_qc_report",
+      "name": "Generate Audio QC Report",
+      "category": "audio",
+      "scriptPath": "scripts/audio/generate_audio_qc_report.py",
+      "description": "Slår sammen detect-sources + loudness + clipping + low-dialogue til én Markdown + JSON-rapport, mot valgt delivery-target.",
+      "requiredInputs": [
+        "outputFolder",
+        "deliveryTarget"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "generate_music_ducking_plan",
+      "name": "Generate Music Ducking Plan",
+      "category": "audio",
+      "scriptPath": "scripts/audio/generate_music_ducking_plan.py",
+      "description": "ffmpeg silencedetect identifiserer tale-segmenter, bygger ducking-plan (start/end/duck_db/fade_in/fade_out per region), optional yellow markers i Resolve.",
+      "requiredInputs": [
+        "audioPath"
+      ],
+      "resolvePageDependency": "Fairlight",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "transcribe_audio",
+      "name": "Transcribe Audio (WhisperX)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/transcribe_audio.py",
+      "description": "Lokal WhisperX transkripsjon med valgfri speaker-diarization. Returnerer per-segment timestamps + tekst + speaker labels. Krever pip install whisperx.",
+      "requiredInputs": [
+        "audioPath"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "find_quotes",
+      "name": "Find Quotes",
+      "category": "audio",
+      "scriptPath": "scripts/audio/find_quotes.py",
+      "description": "Søk gjennom en transkripsjon etter ord/fraser. Returnerer matching segmenter med tidspunkter for klipping i Resolve.",
+      "requiredInputs": [
+        "transcription",
+        "searchTerms"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "detect_retakes",
+      "name": "Detect Retakes",
+      "category": "audio",
+      "scriptPath": "scripts/audio/detect_retakes.py",
+      "description": "Finner gjentatt lyd-innhold (retakes) i et langt opptak via chromaprint sliding-window. Returnerer take-grupper med timestamps + audio-confidence.",
+      "requiredInputs": [
+        "audioPath"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_waveform",
+      "name": "Extract Waveform PNG",
+      "category": "audio",
+      "scriptPath": "scripts/audio/extract_waveform.py",
+      "description": "ffmpeg showwavespic → PNG per segment. Valgfri (v1 bruker audio playback, ikke visuell waveform).",
+      "requiredInputs": [
+        "audioPath",
+        "segments"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "prepare_audio_for_fairlight",
+      "name": "Prepare Audio for Fairlight",
+      "category": "audio",
+      "scriptPath": "scripts/audio/prepare_audio_for_fairlight.py",
+      "description": "Setter opp A1-A7 spor: Camera scratch / Groom mic / Bride mic / Officiant / Speeches / Music / Ambience.",
+      "requiredInputs": [],
+      "resolvePageDependency": "Fairlight",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "detect_camera_profiles",
+      "name": "Detect Camera Profiles",
+      "category": "color",
+      "scriptPath": "scripts/color/detect_camera_profiles.py",
+      "description": "Color Prep: leser metadata + filnavn → grupperer klipp i Canon C-Log2 / Canon C-Log3 / Sony S-Log3 / DJI D-Log / iPhone. Flagger ukjente profiler.",
+      "requiredInputs": [],
+      "resolvePageDependency": "Media",
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "match_bcam_to_acam",
+      "name": "Camera Match Assistant (B-cam → A-cam)",
+      "category": "color",
+      "scriptPath": "scripts/color/match_bcam_to_acam.py",
+      "description": "Setter A-cam som referanse (Canon C80), foreslår CDL/LUT-match for R5 og drone. Eksporterer stills for manuell kontroll.",
+      "requiredInputs": [
+        "referenceCamera",
+        "matchCameras"
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "apply_camera_lut",
+      "name": "Apply Camera LUT",
+      "category": "color",
+      "scriptPath": "scripts/color/apply_camera_lut.py",
+      "description": "Bruker riktig LUT pr. kamera (Canon C-Log2, Sony S-Log3, DJI D-Log …) på første node.",
+      "requiredInputs": [
+        "lutMapping"
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "create_color_groups",
+      "name": "Create Color Groups",
+      "category": "color",
+      "scriptPath": "scripts/color/create_color_groups.py",
+      "description": "Grupperer klipp i color page: Canon C80, Canon R5, Drone, Low light, Reception, Ceremony.",
+      "requiredInputs": [],
+      "resolvePageDependency": "Color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "apply_wedding_look_pack",
+      "name": "Apply Norwedfilm Look Pack",
+      "category": "color",
+      "scriptPath": "scripts/color/apply_wedding_look_pack.py",
+      "description": "Bruker valgt look per scene fra Norwedfilm-pakken: Soft Luxury, Warm Wedding, Sikh Wedding Gold, Nordic Natural, Evening Reception …",
+      "requiredInputs": [
+        "lookId",
+        "sceneMarkers"
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "export_stills_for_look_review",
+      "name": "Export Stills for Look Review",
+      "category": "color",
+      "scriptPath": "scripts/color/export_stills_for_look_review.py",
+      "description": "Eksporterer stills fra Bride prep / Ceremony / Reception / Dance floor for klient-look-godkjenning.",
+      "requiredInputs": [
+        "outputFolder"
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "flag_underexposed_clips",
+      "name": "Flag Underexposed Clips",
+      "category": "color",
+      "scriptPath": "scripts/color/flag_underexposed_clips.py",
+      "description": "QC: scanner timeline for klipp med lav gjennomsnitts-luminans, legger orange marker 'Needs exposure'.",
+      "requiredInputs": [
+        "thresholdIRE"
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "flag_mixed_white_balance",
+      "name": "Flag Mixed White Balance",
+      "category": "color",
+      "scriptPath": "scripts/color/flag_mixed_white_balance.py",
+      "description": "QC: leser WB-metadata per klipp, flagger klipp som avviker fra scene-snitt (mixed tungsten/daylight).",
+      "requiredInputs": [],
+      "resolvePageDependency": "Color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "generate_color_qc_report",
+      "name": "Generate Color QC Report",
+      "category": "color",
+      "scriptPath": "scripts/color/generate_color_qc_report.py",
+      "description": "Eksporterer Markdown + JSON med under-exposure-, WB-, kamera-mix- og missing-LUT-rapport.",
+      "requiredInputs": [
+        "outputFolder"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "create_render_queue",
+      "name": "Create Render Queue",
+      "category": "export",
+      "scriptPath": "scripts/export/create_render_queue.py",
+      "description": "Lager render jobs: YouTube 4K, Instagram Reel, Client Review 1080p, Archive ProRes, Trailer, Highlight.",
+      "requiredInputs": [
+        "outputFolder",
+        "presets"
+      ],
+      "resolvePageDependency": "Deliver",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "export_client_review",
+      "name": "Export Client Review",
+      "category": "export",
+      "scriptPath": "scripts/export/export_client_review.py",
+      "description": "H.264 1080p med valgfri watermark. Filnavn: Couple_Highlight_Review_V01.mp4",
+      "requiredInputs": [
+        "outputFolder",
+        "filenamePrefix",
+        "addWatermark"
+      ],
+      "resolvePageDependency": "Deliver",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "export_social_versions",
+      "name": "Export Social Versions",
+      "category": "export",
+      "scriptPath": "scripts/export/export_social_versions.py",
+      "description": "16:9 YouTube + 9:16 Reels + 1:1 Square + 4:5 Instagram Feed på samme klikk.",
+      "requiredInputs": [
+        "outputFolder",
+        "aspectRatios"
+      ],
+      "resolvePageDependency": "Deliver",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "batch_render_all_timelines",
+      "name": "Batch Render All Timelines",
+      "category": "export",
+      "scriptPath": "scripts/export/batch_render_all_timelines.py",
+      "description": "Rendrer alle godkjente timelines (Trailer/Highlight/Full Film/Speeches/Ceremony) i kø.",
+      "requiredInputs": [
+        "outputFolder",
+        "approvedTimelineNames"
+      ],
+      "resolvePageDependency": "Deliver",
+      "riskLevel": "high",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "analyze_clips_for_highlights",
+      "name": "Analyze Clips for Highlights (Vision)",
+      "category": "vision",
+      "scriptPath": "scripts/vision/analyze_clips_for_highlights.py",
+      "description": "Claude Vision scorer hver klipp for highlight + full-film bruk, returnerer ranked liste.",
+      "requiredInputs": [
+        "thumbnails"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false,
+      "requiresEnv": [
+        "ANTHROPIC_API_KEY"
+      ]
+    },
+    {
+      "id": "identify_key_faces",
+      "name": "Identify Key Faces (Vision)",
+      "category": "vision",
+      "scriptPath": "scripts/vision/identify_key_faces.py",
+      "description": "Lar Bjarne peke ut bilde av brud/brudgom/VIPs. Embedder ansiktene, deretter matcher mot alle thumbnails — gir hver klipp keyFacesPresent + coverage. Boost highlightScore for klipp med nøkkelpersoner.",
+      "requiredInputs": [
+        "referencePhotos"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "classify_scene_looks",
+      "name": "Classify Scene Looks (Vision)",
+      "category": "vision",
+      "scriptPath": "scripts/vision/classify_scene_looks.py",
+      "description": "Claude Vision tagger hver klipp som bride_prep/ceremony/portrait/reception/dance + lyssetting.",
+      "requiredInputs": [
+        "thumbnails"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false,
+      "requiresEnv": [
+        "ANTHROPIC_API_KEY"
+      ]
+    },
+    {
+      "id": "cull_folder",
+      "name": "Cull Folder (AI)",
+      "category": "cull",
+      "scriptPath": "scripts/cull/cull_folder.py",
+      "description": "Skanner en mappe/kort, trekker ut thumbnails (ffmpeg), kjører lokal pre-filter + Claude Vision-scoring, returnerer CullSession med per-klipp decision og scene-tag.",
+      "requiredInputs": [
+        "sourcePath"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false,
+      "requiresEnv": [
+        "ANTHROPIC_API_KEY"
+      ]
+    },
+    {
+      "id": "extract_thumbnails",
+      "name": "Extract Thumbnails",
+      "category": "cull",
+      "scriptPath": "scripts/cull/extract_thumbnails.py",
+      "description": "Ren ffmpeg-wrapper. Trekker ut N thumbnails per klipp (default 3) til cache-mappe. Brukes internt av cull_folder.",
+      "requiredInputs": [
+        "clips"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "place_clips_on_timeline",
+      "name": "Place Clips on Timeline (from Cull)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/place_clips_on_timeline.py",
+      "description": "Tar en CullSession, importerer kept-klipp i scene-bins, bygger timeline med scenes i canonical rekkefølge (bride_prep → ceremony → portrait → … → party) og scene-markers per segment.",
+      "requiredInputs": [
+        "session"
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "generate_delivery_report",
+      "name": "Generate Delivery Report",
+      "category": "qc",
+      "scriptPath": "scripts/qc/generate_delivery_report.py",
+      "description": "Rapport: prosjekt, timelines, varighet, eksporterte filer, codec, oppløsning, dato, kunde, manglende elementer.",
+      "requiredInputs": [
+        "outputFolder",
+        "clientName"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "check_dependencies",
+      "name": "Check Dependencies",
+      "category": "project",
+      "scriptPath": "scripts/project/check_dependencies.py",
+      "description": "Detekterer hvilke verktøy som er installert (Homebrew, ffmpeg, fpcalc, Python-moduler, DaVinci Resolve). Returnerer status per verktøy.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "install_dependency",
+      "name": "Install Dependency",
+      "category": "project",
+      "scriptPath": "scripts/project/install_dependency.py",
+      "description": "Installerer pakker via Homebrew eller pip3 med live progress. Brukes av Dependencies-modalen og førstegangs-wizard.",
+      "requiredInputs": [
+        {
+          "key": "manager",
+          "label": "Package manager (brew|pip)",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "packages",
+          "label": "Pakker å installere",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "auto_rough_cut",
+      "name": "Auto Rough Cut",
+      "category": "project",
+      "scriptPath": "scripts/project/auto_rough_cut.py",
+      "description": "Magic Cut — kjører template-spesifikk pipeline (import → cull → highlights → timeline).",
+      "requiredInputs": [
+        {
+          "key": "templateId",
+          "label": "Template ID",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "sourceFolder",
+          "label": "Footage folder",
+          "type": "folder",
+          "required": true
+        },
+        {
+          "key": "targetDurationSec",
+          "label": "Target duration",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "model",
+          "label": "Claude model",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    }
+  ]
+}

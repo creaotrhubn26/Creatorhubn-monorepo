@@ -1,0 +1,153 @@
+{
+  "$schema": "Per-camera SSD recommendations — codec + bitrate driven. Updated 2025.",
+  "byCamera": {
+    "Canon C80": {
+      "codecs": ["XF-AVC S 4:2:2 10-bit (810 Mbps)", "Cinema RAW Light"],
+      "minSpeedMBs": 500,
+      "recommended": [
+        {"model": "Samsung T7 Shield 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$170-200"},
+        {"model": "SanDisk Extreme PRO Portable V2 2TB", "speedMBs": 2000, "interface": "USB-C 20Gbps", "price": "$220-260"},
+        {"model": "OWC Envoy Pro FX 2TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$340"}
+      ]
+    },
+    "Canon R5": {
+      "codecs": ["8K RAW (2600 Mbps)", "H.265 10-bit (1300 Mbps)"],
+      "minSpeedMBs": 700,
+      "recommended": [
+        {"model": "SanDisk Pro-G40 2TB", "speedMBs": 3000, "interface": "Thunderbolt 3", "price": "$320"},
+        {"model": "OWC Envoy Pro FX 2TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$340"},
+        {"model": "Samsung T9 2TB", "speedMBs": 2000, "interface": "USB-C 20Gbps", "price": "$200"}
+      ]
+    },
+    "Canon R5C": {
+      "codecs": ["8K RAW (2600 Mbps)", "Cinema RAW Light HQ"],
+      "minSpeedMBs": 700,
+      "recommended": [
+        {"model": "SanDisk Pro-G40 2TB", "speedMBs": 3000, "interface": "Thunderbolt 3", "price": "$320"},
+        {"model": "OWC Envoy Pro FX 2TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$340"}
+      ]
+    },
+    "Canon C70": {
+      "codecs": ["Cinema RAW Light", "XF-AVC"],
+      "minSpeedMBs": 400,
+      "recommended": [
+        {"model": "Samsung T7 Shield 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$170"},
+        {"model": "Crucial X9 Pro 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$160"}
+      ]
+    },
+    "Sony FX": {
+      "codecs": ["XAVC HS 10-bit (200-600 Mbps)", "XAVC S-I (240-600 Mbps)"],
+      "minSpeedMBs": 400,
+      "recommended": [
+        {"model": "Samsung T7 Shield 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$170"},
+        {"model": "Angelbird SSD2go PKT MK2 2TB", "speedMBs": 2700, "interface": "USB-C 20Gbps", "price": "$400"}
+      ]
+    },
+    "Sony Venice": {
+      "codecs": ["X-OCN ST/LT/XT (6K)", "ProRes 4444"],
+      "minSpeedMBs": 1000,
+      "recommended": [
+        {"model": "G-Tech ArmorLock 2TB", "speedMBs": 1000, "interface": "USB-C 10Gbps", "price": "$320"},
+        {"model": "OWC Envoy Pro FX 4TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$640"}
+      ]
+    },
+    "Sony Alpha": {
+      "codecs": ["XAVC HS / S 10-bit (~200 Mbps)"],
+      "minSpeedMBs": 300,
+      "recommended": [
+        {"model": "Samsung T7 Shield 1TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$95"},
+        {"model": "Crucial X9 Pro 1TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$85"}
+      ]
+    },
+    "Panasonic": {
+      "codecs": ["ALL-Intra 400 Mbps", "Long-GOP 200 Mbps"],
+      "minSpeedMBs": 400,
+      "recommended": [
+        {"model": "Samsung T7 Shield 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$170"},
+        {"model": "Crucial X9 Pro 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$160"}
+      ]
+    },
+    "DJI Drone": {
+      "codecs": ["D-Log H.265 (130-150 Mbps)", "ProRes 422 HQ (drone)"],
+      "minSpeedMBs": 200,
+      "recommended": [
+        {"model": "Samsung T7 Shield 1TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$95"},
+        {"model": "SanDisk Extreme Portable v2 1TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$90"}
+      ]
+    },
+    "Blackmagic": {
+      "codecs": ["Blackmagic RAW 5:1-12:1", "ProRes"],
+      "minSpeedMBs": 400,
+      "recommended": [
+        {"model": "Samsung T7 Shield 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$170"},
+        {"model": "Angelbird SSD2go PKT MK2 2TB", "speedMBs": 2700, "interface": "USB-C 20Gbps", "price": "$400"}
+      ]
+    },
+    "ARRI Alexa": {
+      "codecs": ["ARRIRAW", "ProRes 4444 XQ"],
+      "minSpeedMBs": 1500,
+      "recommended": [
+        {"model": "Codex Capture Drive 2.0 1TB", "speedMBs": 2000, "interface": "USB-C 10Gbps", "price": "$1500+"},
+        {"model": "OWC Envoy Pro FX 4TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$640"}
+      ]
+    },
+    "RED": {
+      "codecs": ["REDCODE RAW (3:1-22:1)"],
+      "minSpeedMBs": 1000,
+      "recommended": [
+        {"model": "OWC Envoy Pro FX 2TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$340"},
+        {"model": "G-Tech Pro SSD 2TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$420"}
+      ]
+    },
+    "Fujifilm": {
+      "codecs": ["ProRes 422 HQ", "H.265 4:2:2 10-bit"],
+      "minSpeedMBs": 400,
+      "recommended": [
+        {"model": "Samsung T7 Shield 2TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$170"}
+      ]
+    },
+    "Nikon": {
+      "codecs": ["N-RAW 12-bit", "ProRes RAW"],
+      "minSpeedMBs": 500,
+      "recommended": [
+        {"model": "Samsung T9 2TB", "speedMBs": 2000, "interface": "USB-C 20Gbps", "price": "$200"},
+        {"model": "OWC Envoy Pro FX 2TB", "speedMBs": 2800, "interface": "Thunderbolt 3", "price": "$340"}
+      ]
+    },
+    "iPhone": {
+      "codecs": ["HEVC", "ProRes 422 HQ (Pro models)"],
+      "minSpeedMBs": 200,
+      "recommended": [
+        {"model": "Samsung T7 Shield 1TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$95"}
+      ]
+    },
+    "GoPro": {
+      "codecs": ["GoPro CineForm", "H.265"],
+      "minSpeedMBs": 200,
+      "recommended": [
+        {"model": "Samsung T7 Shield 1TB", "speedMBs": 1050, "interface": "USB-C 10Gbps", "price": "$95"}
+      ]
+    }
+  },
+  "defaultFolderStructure": {
+    "description": "DIT-style — date-prefixed project, footage grouped by camera, audio separated",
+    "tree": {
+      "{ProjectName}_{YYYY-MM-DD}": {
+        "01_Footage": {
+          "{CameraLabel}": "Each detected camera gets its own folder"
+        },
+        "02_Audio": {
+          "Lav_Mics": null,
+          "Boom": null,
+          "Recorder_Files": null
+        },
+        "03_Music": null,
+        "04_Graphics": null,
+        "05_Editing": {
+          "Resolve_Projects": null
+        },
+        "06_Deliverables": null
+      }
+    }
+  }
+}

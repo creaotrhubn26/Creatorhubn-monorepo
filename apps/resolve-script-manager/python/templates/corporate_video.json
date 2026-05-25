@@ -1,0 +1,123 @@
+{
+  "name": "Corporate Video",
+  "id": "corporate_video",
+  "description": "Corporate films, brand pieces, executive interviews, internal communications.",
+  "bins": [
+    "01 Interviews",
+    "02 A-Roll",
+    "03 B-Roll",
+    "04 Product Shots",
+    "05 Graphics + Lower Thirds",
+    "06 Music",
+    "07 SFX",
+    "08 Brand Assets",
+    "Exports"
+  ],
+  "defaultTimelines": [
+    "Main Cut",
+    "Trailer Cut",
+    "30s Social Cut"
+  ],
+  "audioLayout": [
+    {
+      "track": 1,
+      "label": "Main Dialogue"
+    },
+    {
+      "track": 2,
+      "label": "Backup Dialogue"
+    },
+    {
+      "track": 3,
+      "label": "Interview B-cam Audio"
+    },
+    {
+      "track": 4,
+      "label": "Music"
+    },
+    {
+      "track": 5,
+      "label": "SFX"
+    },
+    {
+      "track": 6,
+      "label": "Room Tone"
+    }
+  ],
+  "sceneMarkers": [
+    {
+      "name": "OPENING_HOOK",
+      "color": "Blue"
+    },
+    {
+      "name": "PROBLEM_STATEMENT",
+      "color": "Yellow"
+    },
+    {
+      "name": "SOLUTION_OVERVIEW",
+      "color": "Green"
+    },
+    {
+      "name": "CASE_STUDY",
+      "color": "Cyan"
+    },
+    {
+      "name": "CTA",
+      "color": "Red"
+    }
+  ],
+  "highlightTags": [
+    "quote",
+    "data_point",
+    "product_close_up",
+    "office",
+    "team",
+    "outcome"
+  ],
+  "musicBeats": [
+    "Open",
+    "Build",
+    "Statement",
+    "Reflection",
+    "Close"
+  ],
+  "lookPackId": "corporate_clean",
+  "deliveryTargets": [
+    "youtube",
+    "broadcast"
+  ],
+  "magicCutPipeline": {
+    "name": "Build a corporate highlight reel",
+    "description": "Importer, cull beste klipp, AI-scor highlights, og bygg en rough timeline.",
+    "defaultDurationSec": 90,
+    "steps": [
+      {
+        "scriptId": "import_media_from_folder",
+        "label": "Importerer media",
+        "weight": 10
+      },
+      {
+        "scriptId": "organize_by_camera",
+        "label": "Organiserer per kamera",
+        "weight": 5
+      },
+      {
+        "scriptId": "cull_folder",
+        "label": "AI cull (Claude Vision)",
+        "weight": 50,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "analyze_clips_for_highlights",
+        "label": "Highlight-scoring",
+        "weight": 20,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "place_clips_on_timeline",
+        "label": "Bygger timeline",
+        "weight": 15
+      }
+    ]
+  }
+}

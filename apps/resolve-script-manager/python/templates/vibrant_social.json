@@ -1,0 +1,45 @@
+{
+  "name": "Vibrant Social Look Pack",
+  "id": "vibrant_social",
+  "version": "v1",
+  "description": "Punchy, saturated looks optimized for Reels, TikTok, Shorts. High contrast, push for thumbnail attention.",
+  "looks": [
+    {
+      "id": "punchy_pop",
+      "name": "Punchy Pop",
+      "bestFor": ["hook", "product", "energy"],
+      "components": {
+        "lut": "Social_Punchy_v1.cube",
+        "cdl": {"slope": [1.12, 1.10, 1.05], "offset": [0.01, 0.005, 0.00], "power": [0.85, 0.88, 0.92], "saturation": 1.18},
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "warm_lifestyle",
+      "name": "Warm Lifestyle",
+      "bestFor": ["lifestyle", "ootd", "food"],
+      "components": {
+        "lut": "Social_Lifestyle_v1.cube",
+        "cdl": {"slope": [1.08, 1.05, 0.95], "offset": [0.02, 0.01, -0.02], "power": [0.90, 0.93, 1.00], "saturation": 1.10},
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "neon_cinematic",
+      "name": "Neon Cinematic",
+      "bestFor": ["night", "club", "creative"],
+      "components": {
+        "lut": "Social_Neon_v1.cube",
+        "cdl": {"slope": [1.05, 1.00, 1.08], "offset": [0.01, 0.00, 0.02], "power": [0.85, 0.90, 0.85], "saturation": 1.25},
+        "grain": "subtle",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    }
+  ],
+  "sceneToLookMap": {
+    "HOOK_3S": "punchy_pop",
+    "CONTEXT": "warm_lifestyle",
+    "VALUE": "warm_lifestyle",
+    "CTA": "punchy_pop"
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "name": "Podcast (Video)",
+  "id": "podcast",
+  "description": "Multi-cam video podcast (1-4 cameras, individual lav mics per speaker, intro/outro).",
+  "bins": [
+    "01 Host Cam",
+    "02 Guest 1 Cam",
+    "03 Guest 2 Cam",
+    "04 Wide Cam",
+    "05 Lav Audio",
+    "06 Recorder Audio",
+    "07 Music / Beds",
+    "08 Intro / Outro",
+    "09 SFX",
+    "Exports"
+  ],
+  "defaultTimelines": [
+    "Full Episode",
+    "YouTube Cut",
+    "Reels Compilation"
+  ],
+  "audioLayout": [
+    {
+      "track": 1,
+      "label": "Host Mic"
+    },
+    {
+      "track": 2,
+      "label": "Guest 1 Mic"
+    },
+    {
+      "track": 3,
+      "label": "Guest 2 Mic"
+    },
+    {
+      "track": 4,
+      "label": "Guest 3 Mic"
+    },
+    {
+      "track": 5,
+      "label": "Room Tone"
+    },
+    {
+      "track": 6,
+      "label": "Music Bed"
+    },
+    {
+      "track": 7,
+      "label": "Intro / Outro Stinger"
+    }
+  ],
+  "sceneMarkers": [
+    {
+      "name": "INTRO",
+      "color": "Blue"
+    },
+    {
+      "name": "TOPIC_1",
+      "color": "Cyan"
+    },
+    {
+      "name": "TOPIC_2",
+      "color": "Green"
+    },
+    {
+      "name": "BREAK",
+      "color": "Yellow"
+    },
+    {
+      "name": "AD_READ",
+      "color": "Sand"
+    },
+    {
+      "name": "OUTRO",
+      "color": "Pink"
+    }
+  ],
+  "highlightTags": [
+    "quotable",
+    "laugh",
+    "controversy",
+    "explanation",
+    "story",
+    "reaction"
+  ],
+  "musicBeats": [
+    "Open",
+    "Bumper",
+    "Sting",
+    "Outro"
+  ],
+  "lookPackId": "podcast_neutral",
+  "deliveryTargets": [
+    "podcast",
+    "youtube",
+    "instagram"
+  ],
+  "magicCutPipeline": {
+    "name": "Build a podcast cut",
+    "description": "Importer, sync audio per filename, cull, normaliser loudness, og bygg multi-cam timeline.",
+    "defaultDurationSec": 1800,
+    "steps": [
+      {
+        "scriptId": "import_media_from_folder",
+        "label": "Importerer media",
+        "weight": 8
+      },
+      {
+        "scriptId": "organize_by_camera",
+        "label": "Organiserer per kamera",
+        "weight": 5
+      },
+      {
+        "scriptId": "sync_audio_by_filename_pattern",
+        "label": "Synker audio",
+        "weight": 20
+      },
+      {
+        "scriptId": "cull_folder",
+        "label": "Cull (markerer dårlige takes)",
+        "weight": 30,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "analyze_loudness",
+        "label": "Loudness-måling",
+        "weight": 15
+      },
+      {
+        "scriptId": "place_clips_on_timeline",
+        "label": "Bygger timeline",
+        "weight": 22
+      }
+    ]
+  }
+}

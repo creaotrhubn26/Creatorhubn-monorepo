@@ -1,0 +1,57 @@
+{
+  "$schema": "Lists all project templates available to the app. Each entry references a template JSON in this folder.",
+  "default": "corporate_video",
+  "templates": [
+    {
+      "id": "corporate_video",
+      "name": "Corporate Video",
+      "file": "corporate_video.json",
+      "description": "Brand pieces, executive interviews, internal comms",
+      "lookPackId": "corporate_clean"
+    },
+    {
+      "id": "documentary",
+      "name": "Documentary",
+      "file": "documentary.json",
+      "description": "Long-form factual storytelling",
+      "lookPackId": "documentary_natural"
+    },
+    {
+      "id": "podcast",
+      "name": "Podcast (Video)",
+      "file": "podcast.json",
+      "description": "Multi-cam video podcast with lav mics",
+      "lookPackId": "podcast_neutral"
+    },
+    {
+      "id": "course_academy",
+      "name": "Course / Academy",
+      "file": "course_academy.json",
+      "description": "Online course modules, tutorials, screen-recording driven",
+      "lookPackId": "corporate_clean"
+    },
+    {
+      "id": "music_video",
+      "name": "Music Video",
+      "file": "music_video.json",
+      "description": "Performance + narrative, beat-synced edit",
+      "lookPackId": "editorial_contrast"
+    },
+    {
+      "id": "social_media",
+      "name": "Social Media Batch",
+      "file": "social_media.json",
+      "description": "Reels, TikTok, Shorts — high-volume batch edits",
+      "lookPackId": "vibrant_social"
+    },
+    {
+      "id": "wedding_film",
+      "name": "Wedding Film",
+      "file": "wedding_bins.json",
+      "description": "Wedding day documentation — single-day, ceremony + reception",
+      "lookPackId": "norwedfilm_look_pack",
+      "plugin": true,
+      "pluginNote": "Wedding-specific scripts (create_wedding_master_timeline, add_scene_markers, Norwedfilm look pack) are only relevant when this template is active."
+    }
+  ]
+}

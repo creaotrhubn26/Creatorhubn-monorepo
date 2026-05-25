@@ -1,0 +1,45 @@
+{
+  "name": "Corporate Clean Look Pack",
+  "id": "corporate_clean",
+  "version": "v1",
+  "description": "Neutral, broadcast-safe looks for corporate and course content. Clean skin tones, controlled contrast.",
+  "looks": [
+    {
+      "id": "broadcast_neutral",
+      "name": "Broadcast Neutral",
+      "bestFor": ["interview", "presenter", "boardroom"],
+      "components": {
+        "lut": "Rec709_Broadcast_v1.cube",
+        "cdl": {"slope": [1.00, 1.00, 1.00], "offset": [0.00, 0.00, 0.00], "power": [1.00, 1.00, 1.00], "saturation": 1.00},
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "brand_warm",
+      "name": "Brand Warm",
+      "bestFor": ["corporate", "product_showcase"],
+      "components": {
+        "lut": "Corporate_Warm_v1.cube",
+        "cdl": {"slope": [1.02, 1.00, 0.98], "offset": [0.01, 0.005, -0.005], "power": [0.98, 1.00, 1.02], "saturation": 1.02},
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "studio_cool",
+      "name": "Studio Cool",
+      "bestFor": ["interview", "tech_product"],
+      "components": {
+        "lut": "Studio_Cool_v1.cube",
+        "cdl": {"slope": [0.98, 1.00, 1.02], "offset": [-0.005, 0.00, 0.01], "power": [1.02, 1.00, 0.98], "saturation": 1.00},
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    }
+  ],
+  "sceneToLookMap": {
+    "OPENING_HOOK": "brand_warm",
+    "PROBLEM_STATEMENT": "broadcast_neutral",
+    "SOLUTION_OVERVIEW": "broadcast_neutral",
+    "CASE_STUDY": "studio_cool",
+    "CTA": "brand_warm"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "Podcast Neutral Look Pack",
+  "id": "podcast_neutral",
+  "version": "v1",
+  "description": "Clean, consistent looks for multi-cam video podcasts. Skin tone protection across cameras.",
+  "looks": [
+    {
+      "id": "podcast_clean",
+      "name": "Podcast Clean",
+      "bestFor": ["host", "guest", "interview"],
+      "components": {
+        "lut": "Podcast_Clean_v1.cube",
+        "cdl": {"slope": [1.00, 1.00, 1.00], "offset": [0.005, 0.00, -0.005], "power": [1.00, 1.00, 1.00], "saturation": 1.00},
+        "outputTransform": "Rec709_Gamma2.4",
+        "skinToneProtection": "high"
+      }
+    },
+    {
+      "id": "podcast_cinematic",
+      "name": "Podcast Cinematic",
+      "bestFor": ["intro", "outro", "bumper"],
+      "components": {
+        "lut": "Podcast_Cinematic_v1.cube",
+        "cdl": {"slope": [1.05, 1.00, 0.95], "offset": [0.01, 0.005, -0.01], "power": [0.95, 0.98, 1.02], "saturation": 0.92},
+        "grain": "subtle",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    }
+  ],
+  "sceneToLookMap": {
+    "INTRO": "podcast_cinematic",
+    "TOPIC_1": "podcast_clean",
+    "TOPIC_2": "podcast_clean",
+    "BREAK": "podcast_clean",
+    "AD_READ": "podcast_clean",
+    "OUTRO": "podcast_cinematic"
+  }
+}

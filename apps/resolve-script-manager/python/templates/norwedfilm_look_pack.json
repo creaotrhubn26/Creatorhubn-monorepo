@@ -1,0 +1,102 @@
+{
+  "name": "Norwedfilm Look Pack",
+  "id": "norwedfilm_look_pack",
+  "version": "v1",
+  "description": "Look-bibliotek for bryllups- og bryllups-adjacent leveranser. Hver look består av LUT + CDL + optional grain/halation/vignette/output-transform — bruk apply_wedding_look_pack.py for å applikere.",
+  "looks": [
+    {
+      "id": "soft_luxury",
+      "name": "Norwedfilm Soft Luxury",
+      "bestFor": ["bride_prep", "portrait", "candid"],
+      "components": {
+        "lut": "Norwedfilm_Soft_Luxury_v1.cube",
+        "cdl": {"slope": [1.02, 1.00, 0.98], "offset": [0.015, 0.005, -0.005], "power": [0.95, 0.97, 0.98], "saturation": 0.92},
+        "grain": "subtle_35mm_5perm",
+        "halation": "soft_warm",
+        "vignette": "circular_-12"
+      }
+    },
+    {
+      "id": "warm_wedding",
+      "name": "Norwedfilm Warm Wedding",
+      "bestFor": ["reception", "speeches", "candid"],
+      "components": {
+        "lut": "Norwedfilm_Warm_Wedding_v1.cube",
+        "cdl": {"slope": [1.05, 1.00, 0.92], "offset": [0.02, 0.01, -0.02], "power": [0.95, 0.97, 1.00], "saturation": 1.05},
+        "grain": "medium_warm_8perm",
+        "halation": "amber_glow"
+      }
+    },
+    {
+      "id": "clean_documentary",
+      "name": "Norwedfilm Clean Documentary",
+      "bestFor": ["interview", "speeches", "drone"],
+      "components": {
+        "lut": "Norwedfilm_Clean_Doc_v1.cube",
+        "cdl": {"slope": [1.00, 1.00, 1.00], "offset": [0.00, 0.00, 0.00], "power": [1.00, 1.00, 1.00], "saturation": 1.00},
+        "grain": null,
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "sikh_wedding_gold",
+      "name": "Norwedfilm Sikh Wedding Gold",
+      "bestFor": ["sikh_ceremony", "indian_wedding", "haldi", "mehendi"],
+      "components": {
+        "lut": "Norwedfilm_Sikh_Gold_v1.cube",
+        "cdl": {"slope": [1.08, 1.02, 0.88], "offset": [0.025, 0.012, -0.025], "power": [0.93, 0.95, 1.00], "saturation": 1.12},
+        "grain": "fine_warm_4perm",
+        "halation": "gold_bloom",
+        "skinToneProtection": "high"
+      }
+    },
+    {
+      "id": "nordic_natural",
+      "name": "Norwedfilm Nordic Natural",
+      "bestFor": ["outdoor_portrait", "fjord", "nordic_landscape", "drone"],
+      "components": {
+        "lut": "Norwedfilm_Nordic_Natural_v1.cube",
+        "cdl": {"slope": [0.98, 1.00, 1.04], "offset": [-0.005, 0.00, 0.012], "power": [1.02, 1.00, 0.98], "saturation": 0.95},
+        "outputTransform": "Rec709_Gamma2.2"
+      }
+    },
+    {
+      "id": "evening_reception",
+      "name": "Norwedfilm Evening Reception",
+      "bestFor": ["dance_floor", "speeches_evening", "low_light"],
+      "components": {
+        "lut": "Norwedfilm_Evening_v1.cube",
+        "cdl": {"slope": [1.10, 1.02, 0.88], "offset": [0.03, 0.01, -0.025], "power": [0.92, 0.95, 1.02], "saturation": 1.08},
+        "grain": "heavy_warm_12perm",
+        "halation": "warm_bloom",
+        "vignette": "soft_-18"
+      }
+    },
+    {
+      "id": "editorial_contrast",
+      "name": "Norwedfilm Editorial Contrast",
+      "bestFor": ["trailer", "highlight", "social_reel"],
+      "components": {
+        "lut": "Norwedfilm_Editorial_v1.cube",
+        "cdl": {"slope": [1.08, 1.05, 1.02], "offset": [0.01, 0.005, 0.00], "power": [0.90, 0.92, 0.95], "saturation": 0.85},
+        "grain": "fine_neutral_3perm",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    }
+  ],
+  "sceneToLookMap": {
+    "bride_prep": "soft_luxury",
+    "groom_prep": "soft_luxury",
+    "ceremony": "clean_documentary",
+    "sikh_ceremony": "sikh_wedding_gold",
+    "indian_wedding": "sikh_wedding_gold",
+    "portrait": "soft_luxury",
+    "reception": "warm_wedding",
+    "speeches": "warm_wedding",
+    "first_dance": "evening_reception",
+    "party": "evening_reception",
+    "drone": "nordic_natural",
+    "trailer": "editorial_contrast",
+    "highlight": "editorial_contrast"
+  }
+}

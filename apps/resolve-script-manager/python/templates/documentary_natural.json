@@ -1,0 +1,50 @@
+{
+  "name": "Documentary Natural Look Pack",
+  "id": "documentary_natural",
+  "version": "v1",
+  "description": "Natural filmic looks for documentary content. Preserves source authenticity with light grading.",
+  "looks": [
+    {
+      "id": "verite_natural",
+      "name": "Verité Natural",
+      "bestFor": ["verite", "observational", "interview"],
+      "components": {
+        "lut": "Documentary_Natural_v1.cube",
+        "cdl": {"slope": [1.00, 1.00, 1.00], "offset": [0.005, 0.00, -0.005], "power": [1.00, 1.00, 1.00], "saturation": 0.95},
+        "grain": "subtle_natural",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "filmic_cinematic",
+      "name": "Filmic Cinematic",
+      "bestFor": ["narrative", "climax", "establishing"],
+      "components": {
+        "lut": "Documentary_Filmic_v1.cube",
+        "cdl": {"slope": [1.05, 1.02, 0.98], "offset": [0.01, 0.005, -0.01], "power": [0.95, 0.98, 1.02], "saturation": 0.92},
+        "grain": "medium_filmic",
+        "halation": "soft",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    },
+    {
+      "id": "archive_warm",
+      "name": "Archive Warm",
+      "bestFor": ["archive", "vintage", "historical"],
+      "components": {
+        "lut": "Archive_Warm_v1.cube",
+        "cdl": {"slope": [1.08, 1.00, 0.85], "offset": [0.03, 0.01, -0.03], "power": [0.90, 0.95, 1.05], "saturation": 0.80},
+        "grain": "heavy_warm",
+        "outputTransform": "Rec709_Gamma2.4"
+      }
+    }
+  ],
+  "sceneToLookMap": {
+    "COLD_OPEN": "filmic_cinematic",
+    "ACT_1_SETUP": "verite_natural",
+    "TURNING_POINT": "filmic_cinematic",
+    "ACT_2_DEVELOPMENT": "verite_natural",
+    "CLIMAX": "filmic_cinematic",
+    "RESOLUTION": "verite_natural"
+  }
+}

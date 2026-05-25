@@ -1,0 +1,134 @@
+{
+  "name": "Music Video",
+  "id": "music_video",
+  "description": "Performance + narrative music video, beat-synced edit, multiple takes per setup.",
+  "bins": [
+    "01 Performance Takes",
+    "02 Narrative Scenes",
+    "03 B-Roll / Texture",
+    "04 Drone / Aerial",
+    "05 Slow-Mo Inserts",
+    "06 Master Audio (Mixed)",
+    "07 Reference Audio (Sync)",
+    "08 SFX",
+    "Exports"
+  ],
+  "defaultTimelines": [
+    "Main Cut",
+    "Performance Cut",
+    "Vertical Reel Cut"
+  ],
+  "audioLayout": [
+    {
+      "track": 1,
+      "label": "Master Mix"
+    },
+    {
+      "track": 2,
+      "label": "Reference Sync"
+    },
+    {
+      "track": 3,
+      "label": "SFX"
+    },
+    {
+      "track": 4,
+      "label": "Texture / Atmos"
+    }
+  ],
+  "sceneMarkers": [
+    {
+      "name": "INTRO",
+      "color": "Blue"
+    },
+    {
+      "name": "VERSE_1",
+      "color": "Cyan"
+    },
+    {
+      "name": "CHORUS_1",
+      "color": "Yellow"
+    },
+    {
+      "name": "VERSE_2",
+      "color": "Green"
+    },
+    {
+      "name": "CHORUS_2",
+      "color": "Red"
+    },
+    {
+      "name": "BRIDGE",
+      "color": "Sand"
+    },
+    {
+      "name": "DROP",
+      "color": "Pink"
+    },
+    {
+      "name": "OUTRO",
+      "color": "Lavender"
+    }
+  ],
+  "highlightTags": [
+    "close_up",
+    "wide",
+    "drone",
+    "slow_mo",
+    "performance",
+    "narrative",
+    "transition"
+  ],
+  "musicBeats": [
+    "Intro",
+    "Build",
+    "Drop",
+    "Breakdown",
+    "Final Drop",
+    "Outro"
+  ],
+  "lookPackId": "editorial_contrast",
+  "deliveryTargets": [
+    "youtube",
+    "instagram"
+  ],
+  "magicCutPipeline": {
+    "name": "Build a music-video rough cut",
+    "description": "Importer, cull, AI-scor, plasser musikk-markører, og bygg beat-synket timeline.",
+    "defaultDurationSec": 180,
+    "steps": [
+      {
+        "scriptId": "import_media_from_folder",
+        "label": "Importerer media",
+        "weight": 8
+      },
+      {
+        "scriptId": "organize_by_camera",
+        "label": "Organiserer per kamera",
+        "weight": 5
+      },
+      {
+        "scriptId": "cull_folder",
+        "label": "AI cull",
+        "weight": 40,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "analyze_clips_for_highlights",
+        "label": "Highlight-scoring",
+        "weight": 22,
+        "requiresApiKey": "ANTHROPIC_API_KEY"
+      },
+      {
+        "scriptId": "place_music_and_markers",
+        "label": "Musikk-markører",
+        "weight": 10
+      },
+      {
+        "scriptId": "place_clips_on_timeline",
+        "label": "Bygger timeline",
+        "weight": 15
+      }
+    ]
+  }
+}

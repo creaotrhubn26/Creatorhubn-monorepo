@@ -1,0 +1,37 @@
+{
+  "wedding_full_delivery": {
+    "id": "wedding_full_delivery",
+    "name": "Bryllup — Full leveranse",
+    "description": "Komplett pipeline fra import til kundelevering",
+    "projectTemplate": "wedding_film",
+    "steps": [
+      {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
+      {"order": 2, "scriptId": "organize_by_camera", "label": "Organize Bins"},
+      {"order": 3, "scriptId": "create_wedding_master_timeline", "label": "Create Master Timeline"},
+      {"order": 4, "scriptId": "add_scene_markers", "label": "Add Scene Markers"},
+      {"order": 5, "scriptId": "create_highlight_rough_cut", "label": "Create Highlight Draft"},
+      {"order": 6, "scriptId": "create_render_queue", "label": "Prepare Render Queue"},
+      {"order": 7, "scriptId": "backup_project", "label": "Backup Project"}
+    ]
+  },
+  "podcast_quick": {
+    "id": "podcast_quick",
+    "name": "Podcast — Quick edit",
+    "description": "Import, sync, normalize, render",
+    "steps": [
+      {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
+      {"order": 2, "scriptId": "sync_audio_by_filename_pattern", "label": "Sync Audio"},
+      {"order": 3, "scriptId": "prepare_audio_for_fairlight", "label": "Audio Layout"},
+      {"order": 4, "scriptId": "create_render_queue", "label": "Render Queue"}
+    ]
+  },
+  "social_batch": {
+    "id": "social_batch",
+    "name": "Social Media Batch",
+    "description": "Eksporter samme klipp i flere formater",
+    "steps": [
+      {"order": 1, "scriptId": "create_timeline_from_bin", "label": "Build Timeline"},
+      {"order": 2, "scriptId": "export_social_versions", "label": "Export 16:9 + 9:16 + 1:1 + 4:5"}
+    ]
+  }
+}
