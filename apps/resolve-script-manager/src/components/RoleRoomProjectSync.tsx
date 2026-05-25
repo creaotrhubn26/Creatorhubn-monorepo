@@ -272,8 +272,35 @@ export function RoleRoomProjectSync() {
           {probeResult && (() => {
             if (!probeResult.ffprobeAvailable) {
               return (
-                <div style={{ padding: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.4)", color: "#a16207", borderRadius: 6, fontSize: 12 }}>
-                  ffprobe ikke funnet på maskinen. Installer med <code>brew install ffmpeg</code> for å aktivere format-sjekk.
+                <div style={{
+                  padding: 12,
+                  background: "rgba(245,158,11,0.10)",
+                  border: "1px solid rgba(245,158,11,0.4)",
+                  color: "#a16207",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}>
+                  <span>ffprobe (ffmpeg) er ikke installert ennå — kreves for format-sjekk.</span>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent("trrpa:open-dependencies"))}
+                    style={{
+                      background: "#a16207",
+                      border: "none",
+                      color: "white",
+                      borderRadius: 6,
+                      padding: "6px 12px",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Installer nå
+                  </button>
                 </div>
               );
             }

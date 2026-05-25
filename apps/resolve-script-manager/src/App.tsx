@@ -62,6 +62,13 @@ export default function App() {
   const [showMediaPool, setShowMediaPool] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showDependencies, setShowDependencies] = useState(false);
+  // Listen for cross-component requests to open the deps modal
+  // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
+  useEffect(() => {
+    const handler = () => setShowDependencies(true);
+    window.addEventListener("trrpa:open-dependencies", handler);
+    return () => window.removeEventListener("trrpa:open-dependencies", handler);
+  }, []);
   const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
   const [showWatch, setShowWatch] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
