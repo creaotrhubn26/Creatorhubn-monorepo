@@ -326,8 +326,14 @@
             </select>
           </div>
 
+          <div class="field" id="crew-candidates-field" style="display:none">
+            <label>Crew fra prosjektet</label>
+            <div id="crew-candidates-list" style="display:grid;gap:4px;max-height:180px;overflow-y:auto;margin-bottom:4px"></div>
+            <div style="font-size:11px;color:#8674a8;margin-top:4px">Klikk en for å legge til. Allerede tildelt vises som grønt.</div>
+          </div>
+
           <div class="field">
-            <label>Legg til crew-medlem (e-post)</label>
+            <label>Eller legg til crew-medlem (e-post)</label>
             <div style="display:flex;gap:8px">
               <input id="crew-email-input" type="email" placeholder="navn@firma.no" />
               <button class="ghost" id="add-crew-btn">Legg til</button>
@@ -517,19 +523,69 @@
         });
       });
 
-      productionSelect.addEventListener('change', function () {
-        selectedProductionId = productionSelect.value;
-        // When production picked, fetch existing seats so we can show them in the list
-        if (selectedProductionId) {
-          fetch(BASE + '/team/' + selectedProductionId + '/seats', {
-            credentials: 'include',
-            headers: authHeaders(),
-          }).then(function (r) { return r.json(); }).then(function (data) {
-            var active = (data.seats || []).filter(function (s) { return s.isActive; });
-            pendingCrew = active.map(function (s) { return { email: s.email || s.userId, userId: s.userId, alreadyGranted: true }; });
+      function renderCrewCandidates(candidates) {
+        var field = document.getElementById('crew-candidates-field');
+        var list = document.getElementById('crew-candidates-list');
+        if (!candidates || candidates.length === 0) {
+          field.style.display = 'none';
+          return;
+        }
+        field.style.display = '';
+        list.innerHTML = candidates.map(function (c, i) {
+          var pendingMatch = pendingCrew.some(function (p) {
+            return p.email && p.email.toLowerCase() === (c.email || '').toLowerCase();
+          });
+          var pickedStyle = c.alreadySeated
+            ? 'background:rgba(74,212,138,0.15);color:#4ad48a;cursor:default'
+            : pendingMatch
+              ? 'background:rgba(160,48,192,0.20);color:#f0eaff;cursor:pointer'
+              : 'background:#0a0518;color:#d8c8e8;cursor:pointer';
+          var label = (c.name || c.email) + (c.role ? ' · ' + c.role : '') +
+            (c.alreadySeated ? ' ✓' : pendingMatch ? ' (lagt til)' : '');
+          return '<div data-i="' + i + '" data-disabled="' + (c.alreadySeated ? '1' : '0') + '" ' +
+            'style="padding:6px 10px;border-radius:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center;' + pickedStyle + '">' +
+            '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + '</span>' +
+            '<span style="font-size:11px;opacity:0.7;margin-left:8px">' + (c.email || '') + '</span>' +
+            '</div>';
+        }).join('');
+        Array.prototype.forEach.call(list.children, function (el) {
+          if (el.getAttribute('data-disabled') === '1') return;
+          el.addEventListener('click', function () {
+            var idx = parseInt(el.getAttribute('data-i'), 10);
+            var c = candidates[idx];
+            if (!c || !c.email) return;
+            if (pendingCrew.some(function (p) { return (p.email || '').toLowerCase() === c.email.toLowerCase(); })) return;
+            pendingCrew.push({ email: c.email });
             renderCrew();
             updateSummary();
-          }).catch(function () { /* ignore */ });
+            renderCrewCandidates(candidates); // refresh to mark as added
+          });
+        });
+      }
+
+      productionSelect.addEventListener('change', function () {
+        selectedProductionId = productionSelect.value;
+        renderCrewCandidates([]); // clear
+        if (selectedProductionId) {
+          // Fetch active seats + crew candidates in parallel
+          Promise.all([
+            fetch(BASE + '/team/' + selectedProductionId + '/seats', {
+              credentials: 'include', headers: authHeaders(),
+            }).then(function (r) { return r.json(); }).catch(function () { return { seats: [] }; }),
+            fetch(BASE + '/team/' + selectedProductionId + '/crew-candidates', {
+              credentials: 'include', headers: authHeaders(),
+            }).then(function (r) { return r.json(); }).catch(function () { return { crew: [] }; }),
+          ]).then(function (results) {
+            var seatsData = results[0];
+            var crewData = results[1];
+            var active = (seatsData.seats || []).filter(function (s) { return s.isActive !== false; });
+            pendingCrew = active.map(function (s) {
+              return { email: s.email || s.userId, userId: s.userId, alreadyGranted: true };
+            });
+            renderCrew();
+            updateSummary();
+            renderCrewCandidates(crewData.crew || []);
+          });
         }
         updateSummary();
       });

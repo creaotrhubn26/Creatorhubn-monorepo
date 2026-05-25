@@ -1216,6 +1216,54 @@ Spørsmål? Svar på denne eposten.
     });
   });
 
+  /** Crew members from a project who could be seated (have an email).
+   *  Marks ones who already have an active team-seat so the marketplace UI
+   *  can pre-check + disable them instead of double-granting.
+   */
+  router.get(
+    '/team/:projectId/crew-candidates',
+    userAuth,
+    async (req: Request, res: Response) => {
+      const projectId = req.params.projectId;
+      if (!(await requireProjectOwnership(req, res, projectId))) return;
+      try {
+        const crewQ = pool.query(
+          `SELECT id, name, email, role, department
+           FROM casting_crew
+           WHERE project_id = $1 AND email IS NOT NULL AND email <> ''
+           ORDER BY name ASC
+           LIMIT 200`,
+          [projectId],
+        );
+        const seatsQ = pool.query(
+          `SELECT s.user_id, u.email
+           FROM post_agent_team_seats s
+           LEFT JOIN users u ON u.id = s.user_id
+           WHERE s.project_id = $1 AND s.is_active = true`,
+          [projectId],
+        );
+        const [crewRes, seatsRes] = await Promise.all([crewQ, seatsQ]);
+        const seatedEmails = new Set<string>(
+          seatsRes.rows
+            .map((r) => (r.email || '').toLowerCase().trim())
+            .filter(Boolean),
+        );
+        res.json({
+          crew: crewRes.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            role: r.role,
+            department: r.department,
+            alreadySeated: seatedEmails.has((r.email || '').toLowerCase().trim()),
+          })),
+        });
+      } catch (e) {
+        res.json({ crew: [], degraded: true, detail: (e as Error).message });
+      }
+    },
+  );
+
   /** Productions where the signed-in user is the owner (=team lead). */
   router.get('/team/my-productions', postAgentAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
