@@ -515,6 +515,7 @@ import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
 import { setupSeoBotRoutes } from "./seo-bot-routes";
 import { setupGooglePhotosRoutes } from "./google-photos-routes";
 import { setupDeliveriesRoutes } from "./deliveries-routes";
+import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -21275,9 +21276,6 @@ const batchJobs = new Map<
     errors: Array<Record<string, unknown>>;
   }
 >();
-const duckingPresetStore: Array<Record<string, unknown>> = [];
-const eqPresetStore: Array<Record<string, unknown>> = [];
-const mixerSettingsStore: Array<Record<string, unknown>> = [];
 
 async function ensureAudioStorageDir() {
   await fs.mkdir(audioStorageDir, { recursive: true });
@@ -85723,52 +85721,7 @@ app.post("/api/batch/cancel/:id", (req, res) => {
   res.json({ success: true });
 });
 
-app.get("/api/audio-settings/ducking-presets", (req, res) => {
-  res.json({ presets: duckingPresetStore });
-});
-
-app.post("/api/audio-settings/ducking-presets", (req, res) => {
-  const preset = req.body || {};
-  const stored = { ...preset, id: duckingPresetStore.length + 1 };
-  duckingPresetStore.push(stored);
-  res.json({ success: true, preset: stored });
-});
-
-app.delete("/api/audio-settings/ducking-presets/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const index = duckingPresetStore.findIndex((preset: any) => preset.id === id);
-  if (index >= 0) duckingPresetStore.splice(index, 1);
-  res.json({ success: true });
-});
-
-app.get("/api/audio-settings/eq-presets", (req, res) => {
-  res.json({ presets: eqPresetStore });
-});
-
-app.post("/api/audio-settings/eq-presets", (req, res) => {
-  const preset = req.body || {};
-  const stored = { ...preset, id: eqPresetStore.length + 1 };
-  eqPresetStore.push(stored);
-  res.json({ success: true, preset: stored });
-});
-
-app.get("/api/audio-settings/mixer-settings", (req, res) => {
-  const projectId = readString(req.query.projectId);
-  const trackId = readString(req.query.trackId);
-  const settings = mixerSettingsStore.filter((setting: any) => {
-    if (projectId && String(setting.projectId) !== projectId) return false;
-    if (trackId && String(setting.trackId) !== trackId) return false;
-    return true;
-  });
-  res.json({ settings });
-});
-
-app.post("/api/audio-settings/mixer-settings", (req, res) => {
-  const settings = req.body || {};
-  const stored = { ...settings, id: mixerSettingsStore.length + 1 };
-  mixerSettingsStore.push(stored);
-  res.json({ success: true, settings: stored });
-});
+// /api/audio-settings/* (7 endpoints + 3 in-memory stores) → ./audio-settings-routes.ts
 
 // Analytics - accept and acknowledge
 app.post("/api/analytics", (req, res) => {
@@ -87955,6 +87908,10 @@ setupGooglePhotosRoutes({
 // /api/deliveries/* — 8 endpoints (public access + vendor CRUD for
 // deliveries og items). Selvstendig — kun pool + normalizeEventType.
 setupDeliveriesRoutes({ app, pool, normalizeEventType });
+
+// /api/audio-settings/* — 7 endpoints (ducking-/eq-presets, mixer-settings).
+// In-memory stores er kun brukt av disse handlerne; flyttet inn i modulen.
+setupAudioSettingsRoutes({ app });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
