@@ -48,11 +48,33 @@ def _seconds_to_clip_frames(media_item, segment_dur_sec: float, fps: float) -> t
     return (0, max(0, needed - 1))
 
 
+def _load_cached_assignments() -> list:
+    """Fallback: read last assign_clips_to_beats segments from disk so this
+    step can run independently in the Tauri UI without re-passing them."""
+    import json as _json
+    cache_path = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_beat_assignments.json"
+    )
+    if not os.path.isfile(cache_path):
+        return []
+    try:
+        with open(cache_path) as f:
+            data = _json.load(f)
+            return data.get("segments") or []
+    except (OSError, _json.JSONDecodeError):
+        return []
+
+
 def run(params: dict[str, Any], dry_run: bool) -> None:
     segments = params.get("segments") or []
     music_path = params.get("musicPath") or params.get("musicFile") or ""
-    timeline_name = params.get("timelineName", "Beat_Cut_V01")
-    target_fps = float(params.get("targetFps", 25))
+    timeline_name = params.get("timelineName") or "Beat_Cut_V01"
+    target_fps = float(params.get("targetFps") or 25)
+
+    if not segments:
+        segments = _load_cached_assignments()
+        if segments:
+            bridge.log(f"Loaded {len(segments)} cached segments from last assign_clips_to_beats run")
 
     if not segments:
         bridge.error(

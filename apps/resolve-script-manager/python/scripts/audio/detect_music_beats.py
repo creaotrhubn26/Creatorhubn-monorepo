@@ -211,6 +211,28 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         f"Detected {len(result['beats'])} beats at {result['bpm']:.1f} BPM "
         f"({result['method']})"
     )
+
+    # Persist the result so downstream scripts (assign_clips_to_beats,
+    # place_clips_on_beat_grid) can pick it up when run as separate steps
+    # without manual JSON paste. The Tauri UI doesn't auto-pipe outputs
+    # between workflow steps, so this is the bridge.
+    try:
+        cache_dir = os.path.expanduser(
+            "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
+        )
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, "last_beat_session.json")
+        cache_payload = {
+            "musicPath": music_path,
+            "savedAt": __import__("time").time(),
+            **result,
+        }
+        with open(cache_path, "w") as f:
+            json.dump(cache_payload, f)
+        bridge.log(f"Cached beat session → {cache_path}")
+    except OSError as exc:
+        bridge.warn(f"Could not cache beat session: {exc}")
+
     bridge.result(result)
 
 

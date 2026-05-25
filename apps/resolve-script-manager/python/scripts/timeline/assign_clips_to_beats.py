@@ -73,12 +73,69 @@ def _build_segments(beats: list[float], segment_beats: int, prefer_downbeats: bo
     return segments
 
 
+def _load_cached_beat_session() -> dict:
+    """Fallback: read the last detect_music_beats result from disk so workflow
+    steps can be run independently in the Tauri UI without manually re-passing
+    the beats[] array."""
+    import json as _json
+    cache_path = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_beat_session.json"
+    )
+    if not os.path.isfile(cache_path):
+        return {}
+    try:
+        with open(cache_path) as f:
+            return _json.load(f)
+    except (OSError, _json.JSONDecodeError):
+        return {}
+
+
+def _load_latest_cull_session() -> dict:
+    """Fallback: find the most-recent cull session JSON saved by the Tauri
+    save_cull_session command. Lets this step run independently after a
+    Magic Cut without manually pasting the session JSON."""
+    import json as _json
+    sessions_dir = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/cull_sessions"
+    )
+    if not os.path.isdir(sessions_dir):
+        return {}
+    try:
+        candidates = []
+        for fn in os.listdir(sessions_dir):
+            if not fn.endswith(".json"):
+                continue
+            path = os.path.join(sessions_dir, fn)
+            try:
+                candidates.append((os.path.getmtime(path), path))
+            except OSError:
+                continue
+        if not candidates:
+            return {}
+        candidates.sort(reverse=True)
+        with open(candidates[0][1]) as f:
+            return _json.load(f)
+    except (OSError, _json.JSONDecodeError):
+        return {}
+
+
 def run(params: dict[str, Any], dry_run: bool) -> None:
     beats: list[float] = params.get("beats") or []
     downbeats: list[float] = params.get("downbeats") or []
     session: dict = params.get("session") or {}
-    segment_beats = int(params.get("segmentBeats", 4))
+    segment_beats = int(params.get("segmentBeats") or 4)
     prefer_downbeats = bool(params.get("preferDownbeatCuts", True))
+
+    if not beats:
+        cached = _load_cached_beat_session()
+        if cached.get("beats"):
+            beats = cached["beats"]
+            downbeats = downbeats or cached.get("downbeats") or []
+            bridge.log(
+                f"Using cached beat session from detect_music_beats "
+                f"({len(beats)} beats, {cached.get('bpm', '?')} BPM, "
+                f"from {os.path.basename(cached.get('musicPath', '?'))})"
+            )
 
     if not beats:
         bridge.error(
@@ -86,6 +143,17 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "If this is auto_rough_cut, ensure detect_music_beats step ran successfully."
         )
         sys.exit(1)
+
+    if not session or not session.get("decisions"):
+        cached_session = _load_latest_cull_session()
+        if cached_session.get("decisions"):
+            session = cached_session
+            n_keeps = sum(1 for d in session["decisions"] if d.get("decision") == "keep")
+            bridge.log(
+                f"Using latest cull session ({n_keeps} keeps from "
+                f"{os.path.basename(session.get('sourcePath', '?'))})"
+            )
+
     if not session or not session.get("decisions"):
         bridge.error("session.decisions[] is required — run cull_folder first.")
         sys.exit(1)
@@ -148,14 +216,30 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         }
         bridge.progress(energy_rank, n, f"Assigning clip {energy_rank + 1}/{n}")
 
-    bridge.result({
+    result = {
         "segments": assignments,
         "totalSegments": n,
         "uniqueClipsUsed": len({a.get("clipPath") for a in assignments if a.get("clipPath")}),
         "averageSegmentDurationSec": round(
             sum(a["durationSec"] for a in assignments) / max(1, n), 3
         ),
-    })
+    }
+
+    # Cache for place_clips_on_beat_grid to pick up (no UI piping yet)
+    try:
+        import json as _json, time as _time
+        cache_dir = os.path.expanduser(
+            "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
+        )
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, "last_beat_assignments.json")
+        with open(cache_path, "w") as f:
+            _json.dump({"savedAt": _time.time(), **result}, f)
+        bridge.log(f"Cached beat assignments → {cache_path}")
+    except OSError as exc:
+        bridge.warn(f"Could not cache assignments: {exc}")
+
+    bridge.result(result)
 
 
 if __name__ == "__main__":
