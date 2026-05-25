@@ -88,6 +88,39 @@ def _ensure_motion_scores(decisions: list[dict]) -> None:
             bridge.progress(i + 1, len(needed), f"Motion-score {i+1}/{len(needed)}")
 
 
+def _load_user_preferences() -> dict:
+    """Read the aggregated preferences profile built by learn_from_user_edit.
+    Returns empty dict if no learning sessions have run yet."""
+    path = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/preferences/profile.json"
+    )
+    if not os.path.isfile(path):
+        return {}
+    try:
+        import json as _json
+        with open(path) as f:
+            return _json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _user_pref_score(clip_path: str, profile: dict) -> float:
+    """Returns a -1..+1 score for a clip based on past user keep/replace ratio.
+    Positive = user historically keeps this clip; negative = user replaces.
+    Zero = unseen or balanced."""
+    if not profile or not clip_path:
+        return 0.0
+    pref = (profile.get("clipPreferences") or {}).get(clip_path)
+    if not pref:
+        return 0.0
+    keeps = pref.get("keeps", 0)
+    repls = pref.get("replacements", 0)
+    total = keeps + repls
+    if total < 2:  # need at least 2 samples to trust the bias
+        return 0.0
+    return (keeps - repls) / total  # -1..+1
+
+
 def _kept_decisions_sorted(session: dict) -> list[dict]:
     """Return clips with decision=='keep', sorted by energy (highlightScore desc,
     qualityScore desc, then name for stability)."""
@@ -317,6 +350,14 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # Calm clips → intro/outro. Energetic clips → climax.
     _ensure_motion_scores(kept)
 
+    # Load learning profile — biases clip selection by past keep/replace ratios.
+    user_profile = _load_user_preferences()
+    if user_profile.get("clipPreferences"):
+        bridge.log(
+            f"Applying learning profile from {user_profile.get('totalLearningSessions', 0)} "
+            f"past edits ({len(user_profile['clipPreferences'])} clips with history)"
+        )
+
     segments = _build_segments(beats, segment_beats, prefer_downbeats, downbeats)
     if not segments:
         bridge.error("Could not derive any cut-segments from the beat grid.")
@@ -363,11 +404,15 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         if not available:
             available = list(kept)  # exhaustion: allow reuse
         demand = _energy_demand(seg_idx)
-        # Sort available by absolute distance from demand
+        # Sort available by combined score:
+        #  1. Distance from energy demand (closer = better)
+        #  2. User-preference bias (positive = user keeps; negative = replaces)
+        #  3. Highlight score
+        #  4. Quality score
         scored = sorted(
             available,
             key=lambda c: (
-                abs(_clip_energy(c) - demand),
+                abs(_clip_energy(c) - demand) - 0.3 * _user_pref_score(c.get("clipPath"), user_profile),
                 -(c.get("highlightScore") or 0),
                 -(c.get("qualityScore") or 0),
             ),

@@ -1140,6 +1140,20 @@
       "requiresTimeline": false
     },
     {
+      "id": "learn_from_user_edit",
+      "name": "Learn From My Edit",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/learn_from_user_edit.py",
+      "description": "Diff'er nåværende Resolve-timeline mot siste auto-placement og lærer av brukerens manuelle endringer. Bygger en profil som biaserer fremtidige klipp-valg.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "align_clips_to_song_audio",
       "name": "Align Clips to Song Audio",
       "category": "timeline",

@@ -21,6 +21,7 @@ Output:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from typing import Any
@@ -520,6 +521,54 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             bridge.log(f"Muted {track_list} (camera audio) — A{music_track} (music) plays solo")
         else:
             bridge.warn("SetTrackEnable returned falsy for all linked-audio tracks — mute manually via M button")
+
+    # Snapshot the auto-placement so 'Learn from my edit' can later diff
+    # what the user actually shipped against what we suggested.
+    try:
+        import time as _time
+        snapshot = {
+            "savedAt": _time.time(),
+            "timelineName": timeline_name,
+            "projectName": project.GetName(),
+            "musicPath": music_path,
+            "musicTrack": music_track if music_added else None,
+            "sourceAudioStreams": max_audio_streams,
+            "fps": target_fps,
+            "timelineStartFrame": timeline_start_frame,
+            "segments": [
+                {
+                    "segmentIndex": i,
+                    "startSec": seg.get("startSec"),
+                    "endSec": seg.get("endSec"),
+                    "durationSec": seg.get("durationSec"),
+                    "clipPath": seg.get("clipPath"),
+                    "clipName": seg.get("clipName"),
+                    "energyDemand": seg.get("energyDemand"),
+                    "motionScore": seg.get("motionScore"),
+                    "highlightScore": seg.get("highlightScore"),
+                    "qualityScore": seg.get("qualityScore"),
+                }
+                for i, seg in enumerate(segments)
+            ],
+        }
+        cache_dir = os.path.expanduser(
+            "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
+        )
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(os.path.join(cache_dir, "last_auto_placement.json"), "w") as f:
+            json.dump(snapshot, f, indent=2)
+        # Also keep a timestamped history so multiple cuts can be compared
+        history_dir = os.path.join(cache_dir, "auto_placement_history")
+        os.makedirs(history_dir, exist_ok=True)
+        history_path = os.path.join(
+            history_dir,
+            f"{timeline_name}_{int(_time.time())}.json",
+        )
+        with open(history_path, "w") as f:
+            json.dump(snapshot, f, indent=2)
+        bridge.log(f"Auto-placement snapshot cached for 'Learn from edit' diff")
+    except OSError as exc:
+        bridge.warn(f"Could not write auto-placement snapshot: {exc}")
 
     bridge.result({
         "timelineCreated": True,
