@@ -42,14 +42,14 @@ def run(params: dict, dry_run: bool) -> None:
         })
         return
 
-    if not api_key:
-        bridge.error("ANTHROPIC_API_KEY not set — cannot call Claude Vision. Set the env var in Tauri app settings.")
-        sys.exit(1)
     if not thumbnails:
         bridge.error("No thumbnails provided. Run a thumbnail-extraction step first (e.g. ffmpeg or Resolve GrabStill).")
         sys.exit(1)
 
     bearer = os.environ.get("RR_BEARER_TOKEN")
+    if not bearer and not api_key:
+        bridge.error("Ikke logget inn til The Role Room (RR_BEARER_TOKEN) og ingen ANTHROPIC_API_KEY satt.")
+        sys.exit(1)
     if bearer:
         from anthropic_proxy import Anthropic  # type: ignore[import-not-found]
         client = Anthropic(bearer_token=bearer)
