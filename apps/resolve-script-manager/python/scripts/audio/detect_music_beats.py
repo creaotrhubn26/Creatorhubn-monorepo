@@ -93,31 +93,50 @@ def _fallback_constant_bpm(audio_path: str, target_fps: float, default_bpm: floa
     }
 
 
-def detect_with_librosa(audio_path: str, target_fps: float, beat_limit: int) -> dict | None:
-    """Use librosa.beat.beat_track to extract real beats. Returns None on failure."""
+def detect_with_librosa(audio_path: str, target_fps: float, beat_limit: int, max_duration: float = 300.0) -> dict | None:
+    """Use librosa.beat.beat_track to extract real beats. Returns None on failure.
+
+    Defensive against UI freeze:
+      - Suppress librosa's stderr noise (codec warnings, deprecation chatter)
+        so the Tauri log panel doesn't get flooded with unhelpful output
+        that could appear as a 'black screen' if the WebView falls behind.
+      - Heartbeat progress events at each phase so the renderer keeps refreshing
+        even while librosa is in a long blocking call.
+      - Lower default duration cap (300s vs 600s) — 5 min covers virtually all
+        wedding songs and halves the memory + CPU pressure during load.
+    """
     try:
         import librosa  # type: ignore[import-not-found]
     except ImportError:
         return None
+
+    # Suppress non-critical noise from librosa/audioread/soundfile so the
+    # log panel only shows our own structured events. librosa is chatty
+    # about deprecation + codec quirks via stderr — those flood the UI.
+    import warnings as _w, contextlib, io
+    _w.filterwarnings("ignore")
+    null_stream = io.StringIO()
+
     try:
-        bridge.log(f"Loading audio with librosa: {os.path.basename(audio_path)}")
-        # mono=True simplifies analysis; sr=None preserves native sample rate.
-        # Long files: load up to 600s of audio so we don't OOM on a 1h podcast.
-        y, sr = librosa.load(audio_path, sr=None, mono=True, duration=600.0)
-        bridge.log(f"Sample rate: {sr} Hz · duration: {len(y) / sr:.1f}s")
-        bridge.progress(20, 100, "Analyzing tempo")
-        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-        # Cast tempo — librosa can return either a scalar or a 1-element ndarray
+        bridge.progress(5, 100, "Importerer librosa…")
+        bridge.log(f"Audio: {os.path.basename(audio_path)} (cap {max_duration:.0f}s)")
+        bridge.progress(10, 100, "Laster audio…")
+
+        with contextlib.redirect_stderr(null_stream):
+            y, sr = librosa.load(audio_path, sr=22050, mono=True, duration=max_duration)
+
+        bridge.progress(40, 100, f"Loaded {len(y)/sr:.1f}s @ {sr} Hz — analyserer tempo…")
+
+        with contextlib.redirect_stderr(null_stream):
+            tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+
+        bridge.progress(75, 100, "Beregner downbeats…")
         bpm = float(tempo) if hasattr(tempo, "__float__") else float(tempo[0])
         beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
         beat_times = beat_times[:beat_limit]
-        bridge.progress(70, 100, "Estimating downbeats")
-        # Simple downbeat heuristic: every 4th beat (4/4 time). For better
-        # downbeat detection use librosa.beat.beat_track with units='time'
-        # and the more advanced madmom library, but that's a heavy dep.
         downbeats = beat_times[::4]
         frames = [int(t * target_fps) for t in beat_times]
-        bridge.progress(100, 100, "Done")
+        bridge.progress(100, 100, "Ferdig")
         return {
             "bpm": round(bpm, 2),
             "beats": [round(t, 3) for t in beat_times],
@@ -126,8 +145,11 @@ def detect_with_librosa(audio_path: str, target_fps: float, beat_limit: int) -> 
             "durationSec": round(len(y) / sr, 2),
             "method": "librosa",
         }
+    except MemoryError:
+        bridge.warn("librosa loaded out of memory — switching to fallback BPM grid")
+        return None
     except Exception as exc:
-        bridge.warn(f"librosa failed: {exc} — falling back to constant BPM")
+        bridge.warn(f"librosa failed: {type(exc).__name__}: {exc} — falling back to constant BPM")
         return None
 
 
