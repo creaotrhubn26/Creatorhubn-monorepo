@@ -21936,6 +21936,15 @@ async function ensureVideoTimecodeCommentsSchema(): Promise<void> {
         ADD COLUMN IF NOT EXISTS category VARCHAR(32) DEFAULT 'other';
       ALTER TABLE video_timecode_comments
         ADD COLUMN IF NOT EXISTS priority VARCHAR(16) DEFAULT 'suggestion';
+      -- Slice 9X.82 music-suggestion på timecode
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS suggested_media_url TEXT;
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS suggested_media_label VARCHAR(255);
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS suggested_media_from_sec NUMERIC(10,3);
+      ALTER TABLE video_timecode_comments
+        ADD COLUMN IF NOT EXISTS suggested_media_to_sec NUMERIC(10,3);
     `);
   } catch (e: any) {
     console.warn('[video-comments] schema-ensure failed:', e.message);
@@ -21964,7 +21973,9 @@ app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
     const result = await pool.query(
       `SELECT id, chapter_id, timecode_sec, end_timecode_sec,
               category, priority, comment, client_email, client_name,
-              status, resolved_at, created_at, updated_at
+              status, resolved_at, created_at, updated_at,
+              suggested_media_url, suggested_media_label,
+              suggested_media_from_sec, suggested_media_to_sec
          FROM video_timecode_comments
         WHERE ${where}
         ORDER BY timecode_sec ASC, created_at ASC`,
@@ -21985,6 +21996,10 @@ app.get("/api/client/gallery/:accessToken/video-comments", async (req, res) => {
         status: r.status,
         resolvedAt: r.resolved_at,
         createdAt: r.created_at,
+        suggestedMediaUrl: r.suggested_media_url,
+        suggestedMediaLabel: r.suggested_media_label,
+        suggestedMediaFromSec: r.suggested_media_from_sec != null ? Number(r.suggested_media_from_sec) : null,
+        suggestedMediaToSec: r.suggested_media_to_sec != null ? Number(r.suggested_media_to_sec) : null,
       })),
     });
   } catch (e) {
@@ -22009,6 +22024,21 @@ app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => 
   const category = VALID_COMMENT_CATEGORIES.has(categoryRaw) ? categoryRaw : 'other';
   const priorityRaw = typeof req.body?.priority === 'string' ? req.body.priority.toLowerCase() : 'suggestion';
   const priority = VALID_COMMENT_PRIORITIES.has(priorityRaw) ? priorityRaw : 'suggestion';
+  // Slice 9X.82 — music suggestion fields
+  const suggestedMediaUrl = typeof req.body?.suggestedMediaUrl === 'string'
+    && /^https?:\/\//.test(req.body.suggestedMediaUrl)
+      ? req.body.suggestedMediaUrl.slice(0, 1024)
+      : null;
+  const suggestedMediaLabel = typeof req.body?.suggestedMediaLabel === 'string'
+    ? req.body.suggestedMediaLabel.trim().slice(0, 255)
+    : null;
+  const suggestedMediaFromSec = Number.isFinite(Number(req.body?.suggestedMediaFromSec))
+    ? Math.max(0, Number(req.body.suggestedMediaFromSec))
+    : null;
+  const suggestedMediaToSec = Number.isFinite(Number(req.body?.suggestedMediaToSec))
+    && Number(req.body.suggestedMediaToSec) > (suggestedMediaFromSec ?? 0)
+      ? Number(req.body.suggestedMediaToSec)
+      : null;
   if (!Number.isFinite(timecodeSec) || timecodeSec < 0) return res.status(400).json({ error: "invalid_timecode" });
   if (!comment) return res.status(400).json({ error: "comment_required" });
   if (!clientEmail) return res.status(400).json({ error: "client_email_required" });
@@ -22024,11 +22054,15 @@ app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => 
     const inserted = await pool.query(
       `INSERT INTO video_timecode_comments
          (gallery_id, chapter_id, timecode_sec, end_timecode_sec,
-          category, priority, comment, client_email, client_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          category, priority, comment, client_email, client_name,
+          suggested_media_url, suggested_media_label,
+          suggested_media_from_sec, suggested_media_to_sec)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING id, created_at`,
       [access.gallery.id, chapterId, timecodeSec, endTimecodeSec,
-       category, priority, comment, clientEmail, clientName || null],
+       category, priority, comment, clientEmail, clientName || null,
+       suggestedMediaUrl, suggestedMediaLabel,
+       suggestedMediaFromSec, suggestedMediaToSec],
     );
 
     // Broadcast realtime så Bjarne ser kommentaren umiddelbart i sitt admin-view
@@ -22044,9 +22078,10 @@ app.post("/api/client/gallery/:accessToken/video-comments", async (req, res) => 
           galleryId: access.gallery.id,
           chapterId,
           timecodeSec,
-          comment,
-          clientEmail,
-          clientName: clientName || null,
+          commentId: inserted.rows[0].id,
+          clientLabel: clientName || clientEmail || null,
+          category,
+          priority,
           timestamp: new Date().toISOString(),
         });
       }
@@ -22178,8 +22213,8 @@ app.post("/api/client/gallery/:accessToken/selections/submit", async (req, res) 
         galleryId: gallery.id,
         clientEmail,
         clientName: clientName || gallery.clientName || null,
-        favoriteCount: favCount,
-        note: note || null,
+        selectedCount: favCount,
+        submissionNote: note || null,
         timestamp: new Date().toISOString(),
       });
     } catch { /* best-effort */ }

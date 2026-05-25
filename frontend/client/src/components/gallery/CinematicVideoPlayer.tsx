@@ -74,6 +74,11 @@ export interface VideoTimecodeComment {
   clientEmail?: string | null;
   status?: 'open' | 'resolved' | 'archived';
   createdAt?: string | null;
+  /** Slice 9X.82 — musikk-forslag på timecode */
+  suggestedMediaUrl?: string | null;
+  suggestedMediaLabel?: string | null;
+  suggestedMediaFromSec?: number | null;
+  suggestedMediaToSec?: number | null;
 }
 
 interface Props {
@@ -105,6 +110,10 @@ interface Props {
     comment: string;
     category?: CommentCategory;
     priority?: CommentPriority;
+    suggestedMediaUrl?: string | null;
+    suggestedMediaLabel?: string | null;
+    suggestedMediaFromSec?: number | null;
+    suggestedMediaToSec?: number | null;
   }) => Promise<void> | void;
   /** Klient-navn (forhåndsfyller comment-modalen) */
   clientName?: string | null;
@@ -138,6 +147,12 @@ const CinematicVideoPlayer: React.FC<Props> = ({
   const [pendingEndTime, setPendingEndTime] = useState<number | null>(null);
   const [pendingCategory, setPendingCategory] = useState<CommentCategory>('edit');
   const [pendingPriority, setPendingPriority] = useState<CommentPriority>('nice-to-have');
+  // Slice 9X.82 — music-suggestion state
+  const [pendingMusicUrl, setPendingMusicUrl] = useState('');
+  const [pendingMusicLabel, setPendingMusicLabel] = useState('');
+  const [pendingMusicFromSec, setPendingMusicFromSec] = useState<number>(0);
+  const [pendingMusicToSec, setPendingMusicToSec] = useState<number | null>(null);
+  const [showMusicFields, setShowMusicFields] = useState(false);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
 
@@ -154,6 +169,11 @@ const CinematicVideoPlayer: React.FC<Props> = ({
     setPendingCategory('edit');
     setPendingPriority('nice-to-have');
     setPendingCommentText('');
+    setPendingMusicUrl('');
+    setPendingMusicLabel('');
+    setPendingMusicFromSec(0);
+    setPendingMusicToSec(null);
+    setShowMusicFields(false);
     setShowCommentModal(true);
   }, []);
 
@@ -167,13 +187,19 @@ const CinematicVideoPlayer: React.FC<Props> = ({
         category: pendingCategory,
         priority: pendingPriority,
         comment: pendingCommentText.trim(),
+        suggestedMediaUrl: pendingMusicUrl.trim() || null,
+        suggestedMediaLabel: pendingMusicLabel.trim() || null,
+        suggestedMediaFromSec: pendingMusicUrl.trim() ? Math.max(0, pendingMusicFromSec) : null,
+        suggestedMediaToSec: pendingMusicUrl.trim() && pendingMusicToSec != null && pendingMusicToSec > pendingMusicFromSec
+          ? pendingMusicToSec
+          : null,
       });
       setShowCommentModal(false);
       setPendingCommentText('');
     } finally {
       setCommentSubmitting(false);
     }
-  }, [onAddComment, pendingCommentText, pendingCommentTime, pendingEndTime, pendingCategory, pendingPriority]);
+  }, [onAddComment, pendingCommentText, pendingCommentTime, pendingEndTime, pendingCategory, pendingPriority, pendingMusicUrl, pendingMusicLabel, pendingMusicFromSec, pendingMusicToSec]);
 
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -986,6 +1012,111 @@ const CinematicVideoPlayer: React.FC<Props> = ({
                 },
               }}
             />
+            {/* Slice 9X.82 — Musikk-forslag (toggle-section) */}
+            <Box
+              onClick={() => setShowMusicFields((s) => !s)}
+              role="button"
+              tabIndex={0}
+              sx={{
+                mt: 2,
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                color: showMusicFields ? '#d97706' : '#5a4f42',
+                fontFamily: SERIF_STACK,
+                fontStyle: 'italic',
+                '&:hover': { color: '#d97706' },
+              }}
+            >
+              {showMusicFields ? '× Fjern musikk-forslag' : '+ Foreslå en sang her (YouTube/Spotify)'}
+            </Box>
+            {showMusicFields && (
+              <Box sx={{ mt: 1.5, p: 2, bgcolor: 'rgba(217, 119, 6, 0.06)', border: '1px solid rgba(217, 119, 6, 0.32)', borderRadius: 0.5 }}>
+                <Typography variant="caption" sx={{ color: '#5a4f42', display: 'block', mb: 0.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.66rem' }}>
+                  Sang-URL (YouTube, Spotify, SoundCloud, Apple Music)
+                </Typography>
+                <input
+                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={pendingMusicUrl}
+                  onChange={(e) => setPendingMusicUrl(e.target.value.trim())}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d4c4b0',
+                    borderRadius: 2,
+                    fontFamily: 'inherit',
+                    fontSize: '0.85rem',
+                    marginBottom: 8,
+                  }}
+                />
+                <Typography variant="caption" sx={{ color: '#5a4f42', display: 'block', mb: 0.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.66rem' }}>
+                  Sang-tittel / artist (for Bjarne)
+                </Typography>
+                <input
+                  type="text"
+                  placeholder="F.eks. 'A Thousand Years — Christina Perri'"
+                  value={pendingMusicLabel}
+                  onChange={(e) => setPendingMusicLabel(e.target.value)}
+                  maxLength={120}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d4c4b0',
+                    borderRadius: 2,
+                    fontFamily: 'inherit',
+                    fontSize: '0.85rem',
+                    marginBottom: 8,
+                  }}
+                />
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="caption" sx={{ color: '#5a4f42', display: 'block', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.66rem' }}>
+                      Fra (sek inn i sangen)
+                    </Typography>
+                    <input
+                      type="number"
+                      min={0}
+                      max={3600}
+                      value={pendingMusicFromSec}
+                      onChange={(e) => setPendingMusicFromSec(Math.max(0, Number(e.target.value) || 0))}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        border: '1px solid #d4c4b0',
+                        borderRadius: 2,
+                        fontFamily: 'inherit',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="caption" sx={{ color: '#5a4f42', display: 'block', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.66rem' }}>
+                      Til (sek inn i sangen — valgfritt)
+                    </Typography>
+                    <input
+                      type="number"
+                      min={1}
+                      max={3600}
+                      value={pendingMusicToSec ?? ''}
+                      placeholder="ikke satt"
+                      onChange={(e) => setPendingMusicToSec(e.target.value ? Math.max(1, Number(e.target.value) || 1) : null)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        border: '1px solid #d4c4b0',
+                        borderRadius: 2,
+                        fontFamily: 'inherit',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </Box>
+                </Stack>
+                <Typography variant="caption" sx={{ color: '#a8957e', fontStyle: 'italic', mt: 1, display: 'block', fontSize: '0.78rem' }}>
+                  Bjarne får en klikkbar lenke som åpner sangen ved riktig tidspunkt.
+                </Typography>
+              </Box>
+            )}
+
             <Stack direction="row" spacing={1.5} justifyContent="flex-end" sx={{ mt: 3 }}>
               <Button
                 onClick={() => setShowCommentModal(false)}

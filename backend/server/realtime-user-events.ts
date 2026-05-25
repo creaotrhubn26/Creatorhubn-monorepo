@@ -136,6 +136,30 @@ export type UserEvent =
       flaggedForClient: boolean | null;
       rejected: boolean | null;
       timestamp: string;
+    }
+  /// Slice 9X.82 — videograf-leveranse: klient legger inn timecode-
+  /// kommentar (Frame.io-stil) på en CinematicVideoPlayer/Audio.
+  /// Brukt for både video-, audio- og chapter-comments.
+  | {
+      kind: "video.comment-added";
+      galleryId: string;
+      chapterId: string | null;
+      timecodeSec: number;
+      commentId: string;
+      clientLabel: string | null;
+      category: string | null;
+      priority: string | null;
+      timestamp: string;
+    }
+  /// Slice 9X.80 — klient submitter favoritt-utvalg (Pixieset).
+  | {
+      kind: "gallery.selection-submitted";
+      galleryId: string;
+      clientEmail: string | null;
+      clientName: string | null;
+      selectedCount: number;
+      submissionNote: string | null;
+      timestamp: string;
     };
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";
