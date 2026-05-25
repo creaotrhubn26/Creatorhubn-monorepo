@@ -29,6 +29,7 @@ import {
   type ProbeSummary,
 } from "../api";
 import type { MountedCard } from "../types";
+import { WeddingPipeline, isWeddingProjectType } from "./WeddingPipeline";
 
 interface ProjectContext {
   scenes: RoleRoomScene[];
@@ -83,6 +84,7 @@ export function RoleRoomProjectSync() {
 
   // Source-matching state
   const [sourceFolders, setSourceFolders] = useState<string[]>([]);
+  const [sourceSongPath, setSourceSongPath] = useState<string | null>(null);
   const [matching, setMatching] = useState(false);
   const [matchResult, setMatchResult] = useState<{
     sourceCount: number;
@@ -185,6 +187,10 @@ export function RoleRoomProjectSync() {
           videoPath: analyzePath,
           sceneThreshold: analyzeThreshold,
           narrate: analyzeNarrate,
+          // If a YouTube source-song has been fetched via WeddingPipeline,
+          // pass its path so analyzer uses pristine beat-grid + auto-align
+          // instead of detecting beats from the mixed video audio.
+          ...(sourceSongPath ? { sourceSongPath } : {}),
         },
         false,
       );
@@ -835,10 +841,25 @@ export function RoleRoomProjectSync() {
         </div>
       )}
 
+      {/* Wedding-specific pipeline (only renders for wedding-type productions) */}
+      {selected && (() => {
+        const prod = productions.find((p) => p.id === selected);
+        const isWedding = isWeddingProjectType(prod?.projectType);
+        if (!isWedding) return null;
+        return (
+          <WeddingPipeline
+            projectId={selected}
+            projectType={prod?.projectType}
+            exportedVideoPath={analyzePath}
+            onSourceSongReady={(path) => setSourceSongPath(path)}
+          />
+        );
+      })()}
+
       {/* Analyze exported video → Resolve timeline with markers per cut */}
       <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(160,48,192,0.20)" }}>
         <strong style={{ fontSize: 13, display: "block", marginBottom: 8 }}>
-          Analysér ferdig video
+          Analysér ferdig video {sourceSongPath ? <span style={{ fontSize: 10, color: "#ec4899", fontWeight: 400 }}>(med pristine beat-grid)</span> : null}
         </strong>
         <div style={{ fontSize: 11, color: "#8674a8", marginBottom: 10 }}>
           Drop en allerede-redigert video og se din egen edit shot-for-shot i Resolve med markører + Claude-narrasjon.
