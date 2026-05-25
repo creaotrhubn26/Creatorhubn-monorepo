@@ -1148,7 +1148,9 @@
       "requiredInputs": [
         {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
         {"key": "minDurationSec", "label": "Minimum highlight duration (sec)", "type": "number", "required": false},
-        {"key": "maxDurationSec", "label": "Maximum highlight duration (sec)", "type": "number", "required": false}
+        {"key": "maxDurationSec", "label": "Maximum highlight duration (sec)", "type": "number", "required": false},
+        {"key": "startOffsetSec", "label": "Start from second N (0 = beginning)", "type": "number", "required": false},
+        {"key": "endOffsetSec", "label": "End at second N (0 = end of file)", "type": "number", "required": false}
       ],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",

@@ -163,8 +163,11 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         threshold = float(params.get("sceneThreshold") or 0.4)
         audio_w = float(params.get("audioWeight") or 0.4)
         motion_w = float(params.get("motionWeight") or 0.6)
+        start_offset = float(params.get("startOffsetSec") or 0)
+        end_offset = float(params.get("endOffsetSec") or 0)  # 0 = use full length
     except (TypeError, ValueError):
         min_dur, max_dur, threshold, audio_w, motion_w = 240.0, 300.0, 0.4, 0.4, 0.6
+        start_offset = end_offset = 0.0
 
     timeline_name = (params.get("timelineName") or "").strip() or (
         f"{os.path.splitext(os.path.basename(video_path))[0]} — highlight"
@@ -185,14 +188,31 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
     bridge.log(f"Source: {duration:.0f}s @ {fps} fps")
 
+    # Apply source-range constraints if given
+    effective_end = duration
+    if end_offset > 0 and end_offset < duration:
+        effective_end = end_offset
+    if start_offset > 0 and start_offset < effective_end:
+        bridge.log(f"Analyzing source range {start_offset:.1f}s → {effective_end:.1f}s "
+                   f"({effective_end - start_offset:.1f}s of {duration:.1f}s total)")
+    elif end_offset > 0:
+        bridge.log(f"Analyzing source range 0.0s → {effective_end:.1f}s")
+
     bridge.progress(10, 100, "Detecting shot cuts…")
     cuts = detect_cuts(ffmpeg, video_path, threshold)
     if not cuts or cuts[0] > 0.05:
         cuts = [0.0] + cuts
-    shots = [(cuts[i], cuts[i + 1] if i + 1 < len(cuts) else duration) for i in range(len(cuts))]
-    # Drop ultra-short shots (< 0.4s — usually flash cuts/transitions)
-    shots = [s for s in shots if (s[1] - s[0]) >= 0.4]
-    bridge.log(f"Detected {len(shots)} shots after filtering ultra-short cuts")
+    shots_raw = [(cuts[i], cuts[i + 1] if i + 1 < len(cuts) else duration) for i in range(len(cuts))]
+    # Filter to the requested source range + drop ultra-short flash cuts
+    shots = []
+    for s, e in shots_raw:
+        if e <= start_offset or s >= effective_end:
+            continue
+        clipped_s = max(s, start_offset)
+        clipped_e = min(e, effective_end)
+        if (clipped_e - clipped_s) >= 0.4:
+            shots.append((clipped_s, clipped_e))
+    bridge.log(f"Detected {len(shots)} shots in selected range (after filtering)")
 
     if not shots:
         bridge.error("No usable shots after cut detection")
