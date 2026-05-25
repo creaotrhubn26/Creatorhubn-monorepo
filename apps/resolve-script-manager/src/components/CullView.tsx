@@ -22,7 +22,7 @@ import type {
 } from "../types";
 import { CullPreflight } from "./CullPreflight";
 import { SimilarClipsDialog } from "./SimilarClipsDialog";
-import { IconStar } from "./Icons";
+import { IconStar, IconPlay, IconSparkle } from "./Icons";
 
 const FORMAT_GB = (bytes: number) => `${(bytes / 1_073_741_824).toFixed(1)} GB`;
 const FORMAT_MB = (bytes: number) => `${(bytes / 1_048_576).toFixed(0)} MB`;
@@ -257,8 +257,8 @@ export function CullView({ activeTemplate }: CullViewProps) {
             </div>
           </div>
           <div className="cull-actions">
-            <button className="small" onClick={handleStartFresh}>Start fresh</button>
-            <button className="small primary" onClick={handleResume}>Resume</button>
+            <button className="small" onClick={handleStartFresh}><IconSparkle /> Start fresh</button>
+            <button className="small primary" onClick={handleResume}><IconPlay /> Resume</button>
           </div>
         </div>
       )}

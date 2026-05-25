@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { updateAppSettings } from "../api";
-import { IconCheck, IconX, IconSparkle } from "./Icons";
+import { IconCheck, IconX, IconSparkle, IconArrowRight } from "./Icons";
 
 const STORAGE_KEY = "trrpa.settings";
 const POLL_INTERVAL_MS = 2000;
@@ -50,6 +50,9 @@ async function saveBearerToSettings(token: string): Promise<void> {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   // Also push to Rust side so currently-running Python subprocesses pick it up
   await updateAppSettings({ RR_BEARER_TOKEN: token });
+  // Notify in-tab listeners (HeaderBar / UserProfile) so they re-render with
+  // the new auth state — localStorage 'storage' event doesn't fire same-tab.
+  window.dispatchEvent(new CustomEvent("trrpa:auth-changed"));
 }
 
 export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
@@ -214,7 +217,7 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
             <div className="dialog-warning">{error ?? "Ukjent feil"}</div>
             <div className="actions">
               <button onClick={onClose}>Lukk</button>
-              <button className="primary" onClick={start}>Prøv på nytt</button>
+              <button className="primary" onClick={start}><IconArrowRight /> Prøv på nytt</button>
             </div>
           </>
         )}

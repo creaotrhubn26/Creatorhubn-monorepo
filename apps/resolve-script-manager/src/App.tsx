@@ -37,7 +37,9 @@ import { DependenciesModal } from "./components/DependenciesModal";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { MagicCutDialog } from "./components/MagicCutDialog";
-import { IconEye, IconBox, IconGear, IconChevronLeft, IconChevronRight, IconCheck } from "./components/Icons";
+import { HomeView, recordRecentProject } from "./components/HomeView";
+import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
+import { IconChevronLeft, IconChevronRight } from "./components/Icons";
 import { updateAppSettings } from "./api";
 import { useProjectTemplate } from "./hooks/useProjectTemplate";
 
@@ -72,6 +74,8 @@ export default function App() {
     const s = loadSettings();
     return !s.RR_BEARER_TOKEN?.trim();
   });
+  // Toggle to expose the legacy power-user UI (Pipeline + Library + Logs)
+  const [advancedMode, setAdvancedMode] = useState(() => localStorage.getItem("trrpa.advancedMode") === "true");
 
   // Push saved settings to backend on mount so the first Python run inherits ANTHROPIC_API_KEY etc.
   useEffect(() => {
@@ -289,17 +293,52 @@ export default function App() {
         onTemplateChange={setActiveTemplateId}
         onSetupProject={() => setShowOnboarding(true)}
         onMagicCut={() => setShowMagicCut(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenDependencies={() => setShowDependencies(true)}
+        onOpenWatch={() => setShowWatch(true)}
+        onSignIn={() => setShowSignIn(true)}
+        onSignedOut={() => { /* state refresh happens via storage event */ }}
+        advancedMode={advancedMode}
       />
 
-      {view === "cull" ? (
-        <CullView activeTemplate={activeTemplate} />
-      ) : view === "audio" ? (
-        <AudioView />
-      ) : view === "color" ? (
-        <ColorView activeTemplate={activeTemplate} />
-      ) : (
+      {!advancedMode && view === "pipeline" && (
+        <HomeView
+          templates={projectTemplates}
+          onPickTemplate={(id) => {
+            setActiveTemplateId(id);
+            // Defer to next tick so the activeTemplate prop in MagicCutDialog
+            // reflects the new selection before the dialog mounts.
+            setTimeout(() => setShowMagicCut(true), 0);
+            const t = projectTemplates.find((x) => x.id === id);
+            if (t) recordRecentProject({ templateId: t.id, templateName: t.name });
+          }}
+          onOpenAdvanced={() => {
+            setAdvancedMode(true);
+            localStorage.setItem("trrpa.advancedMode", "true");
+          }}
+          signedIn={Boolean(loadSettings().RR_BEARER_TOKEN)}
+          onSignIn={() => setShowSignIn(true)}
+          resolveConnected={Boolean(health?.resolveRunning && health?.projectOpen)}
+        />
+      )}
+
+      {view === "cull" && <CullView activeTemplate={activeTemplate} />}
+      {view === "audio" && <AudioView />}
+      {view === "color" && <ColorView activeTemplate={activeTemplate} />}
+
+      {advancedMode && view === "pipeline" && (
       <div className="body">
         <aside className="col col-pipeline">
+          <button
+            className="small ghost"
+            style={{ marginBottom: 8 }}
+            onClick={() => {
+              setAdvancedMode(false);
+              localStorage.removeItem("trrpa.advancedMode");
+            }}
+          >
+            ← Tilbake til Home
+          </button>
           <WorkflowPicker
             workflows={workflows}
             selectedId={selectedWorkflowId}
@@ -340,46 +379,22 @@ export default function App() {
       </div>
       )}
 
-      <footer className="footer">
-        <span>
-          {registry.scripts.length} scripts · {Object.keys(workflows).length} workflows ·{" "}
-          {activeTemplate ? `Template: ${activeTemplate.name}` : "No template"} ·{" "}
-          {health?.scriptingModulePath ? (
-            <>Resolve scripting module <IconCheck /></>
-          ) : (
-            "Run Health Check to detect Resolve"
+      <footer className="footer footer-minimal">
+        <span className="footer-meta">
+          {activeTemplate ? activeTemplate.name : "Ingen mal valgt"}
+          {advancedMode && (
+            <> · {registry.scripts.length} scripts · {Object.keys(workflows).length} workflows</>
           )}
         </span>
-        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <span className="footer-meta">
           <button
-            className="small ghost"
-            onClick={() => setShowWatch(true)}
-            title="Watch folder — live event mode (auto-import new clips)"
-          >
-            <IconEye /> Watch Folder
-          </button>
-          <button
-            className="small ghost"
-            onClick={() => setShowDependencies(true)}
-            title="Dependencies — ffmpeg, chromaprint, whisperx, Resolve"
-          >
-            <IconBox /> Dependencies
-          </button>
-          <button
-            className="small ghost"
-            onClick={() => setShowSettings(true)}
-            title="Settings — preferences, AI usage, admin"
-          >
-            <IconGear /> Settings
-          </button>
-          <button
-            className="small ghost"
+            className="small ghost icon-button"
             onClick={() => setShowMediaPool((s) => !s)}
             title="Toggle Media Pool sidebar"
           >
-            {showMediaPool ? <><IconChevronRight /> Hide Media Pool</> : <><IconChevronLeft /> Show Media Pool</>}
+            {showMediaPool ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
-          <span>The Role Room Post Agent · v0.1.0</span>
+          <span className="footer-version">v0.1.0</span>
         </span>
       </footer>
 
@@ -460,6 +475,13 @@ export default function App() {
           templateId={activeTemplate.id}
           templateName={activeTemplate.name}
           onClose={() => setShowMagicCut(false)}
+        />
+      )}
+
+      {showSignIn && (
+        <RoleRoomSignInDialog
+          onClose={() => setShowSignIn(false)}
+          onSignedIn={() => setShowSignIn(false)}
         />
       )}
     </div>

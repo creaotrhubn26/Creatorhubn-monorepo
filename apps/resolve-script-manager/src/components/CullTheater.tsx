@@ -121,7 +121,7 @@ export function CullTheater({ decisions, progressPercent, progressLabel, isActiv
               <img src={convertFileSrc(spotlight.thumbnailPath)} alt={spotlight.clipName} />
             ) : (
               <div className="cull-theater-thumb-placeholder">
-                {isActive ? "…" : "✗"}
+                {isActive ? "…" : <IconX size={32} />}
               </div>
             )}
           </div>
@@ -184,7 +184,7 @@ export function CullTheater({ decisions, progressPercent, progressLabel, isActiv
                 <img src={convertFileSrc(c.thumbnailPath)} alt={c.clipName} />
               ) : (
                 <div className="cull-theater-thumb-placeholder small">
-                  {c.decision === "reject" ? "✗" : "…"}
+                  {c.decision === "reject" ? <IconX size={12} /> : "…"}
                 </div>
               )}
               {c.qualityScore != null && (

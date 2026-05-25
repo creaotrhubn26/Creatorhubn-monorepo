@@ -3,7 +3,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { cancelScript, convertFileSrc, executeScript, onScriptEvent, readProjectTemplate } from "../api";
 import { loadSettings } from "./SettingsModal";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { IconSparkle, IconX, IconCheck } from "./Icons";
+import { IconSparkle, IconX, IconCheck, IconMagicCut } from "./Icons";
 import { CullTheater, type ClipDecisionEvent } from "./CullTheater";
 import { RoleRoomSignInDialog } from "./RoleRoomSignInDialog";
 
@@ -293,7 +293,7 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
     <div className="modal-backdrop" onClick={!running ? onClose : undefined}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 600, maxHeight: "88vh" }}>
         <h2>
-          <IconSparkle /> Magic Cut · {templateName}
+          <IconMagicCut size={20} /> Magic Cut · {templateName}
         </h2>
 
         {loadError && <div className="dialog-warning">{loadError}</div>}
@@ -449,7 +449,7 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
             <div className="actions">
               <button onClick={onClose}>Avbryt</button>
               <button className="primary" onClick={handleStart} disabled={!sourceFolder}>
-                <IconSparkle /> Start Magic Cut
+                <IconMagicCut /> Start Magic Cut
               </button>
             </div>
           </>
@@ -503,7 +503,7 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
         {finishedSummary && !running && (
           <>
             <h3 style={{ marginTop: 12, color: "var(--success)" }}>
-              <IconSparkle /> Ferdig — {finishedSummary.completed}/{finishedSummary.total} steg
+              <IconMagicCut size={20} /> Ferdig — {finishedSummary.completed}/{finishedSummary.total} steg
             </h3>
             <div className="desc">
               Rough cut er klar i Resolve. Sjekk AI-ens valg under — klikk en kort for å overstyre.

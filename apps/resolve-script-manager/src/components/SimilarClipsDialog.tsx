@@ -136,8 +136,8 @@ export function SimilarClipsDialog({ session, onClose, onUpdate }: Props) {
                   </div>
                 </div>
                 {group.audioMatchNote && (
-                  <div className="clip-notes" style={{ marginBottom: 4, fontStyle: "italic" }}>
-                    🔊 {group.audioMatchNote}
+                  <div className="clip-notes" style={{ marginBottom: 4, fontStyle: "italic", display: "flex", alignItems: "center", gap: 6 }}>
+                    <IconMusic size={12} /> {group.audioMatchNote}
                   </div>
                 )}
                 {group.heroReasoning && (

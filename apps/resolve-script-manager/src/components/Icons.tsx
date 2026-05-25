@@ -125,3 +125,110 @@ export const IconArrowLeft = (p: IconProps) => (
     <polyline points="12 19 5 12 12 5" />
   </Svg>
 );
+
+// ─── Template-specific icons (Role Room "Magic Cut") ────────────────────
+
+export const IconCamera = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+    <circle cx={12} cy={13} r={4} />
+  </Svg>
+);
+
+export const IconFilmReel = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x={2} y={2} width={20} height={20} rx={2.5} />
+    <line x1={7} y1={2} x2={7} y2={22} />
+    <line x1={17} y1={2} x2={17} y2={22} />
+    <line x1={2} y1={12} x2={7} y2={12} />
+    <line x1={17} y1={12} x2={22} y2={12} />
+    <line x1={2} y1={7} x2={7} y2={7} />
+    <line x1={2} y1={17} x2={7} y2={17} />
+    <line x1={17} y1={7} x2={22} y2={7} />
+    <line x1={17} y1={17} x2={22} y2={17} />
+  </Svg>
+);
+
+export const IconMicrophone = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1={12} y1={19} x2={12} y2={23} />
+    <line x1={8} y1={23} x2={16} y2={23} />
+  </Svg>
+);
+
+export const IconBookOpen = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+  </Svg>
+);
+
+export const IconWaveform = (p: IconProps) => (
+  <Svg {...p}>
+    <line x1={3} y1={12} x2={3} y2={12} strokeWidth={2.5} />
+    <line x1={6} y1={9} x2={6} y2={15} strokeWidth={2.5} />
+    <line x1={9} y1={5} x2={9} y2={19} strokeWidth={2.5} />
+    <line x1={12} y1={2} x2={12} y2={22} strokeWidth={2.5} />
+    <line x1={15} y1={5} x2={15} y2={19} strokeWidth={2.5} />
+    <line x1={18} y1={9} x2={18} y2={15} strokeWidth={2.5} />
+    <line x1={21} y1={12} x2={21} y2={12} strokeWidth={2.5} />
+  </Svg>
+);
+
+export const IconPhone = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x={5} y={2} width={14} height={20} rx={2.5} />
+    <line x1={12} y1={18} x2={12.01} y2={18} />
+  </Svg>
+);
+
+export const IconHeart = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+  </Svg>
+);
+
+/**
+ * Magic Cut signature mark — film strip cut diagonally with a play triangle.
+ * Filled solid (uses fill="currentColor") so it reads as a brand-mark, not an
+ * outline-icon. Tinted to the Role Room magenta wherever rendered.
+ *
+ * Designed for sizes 16–48 px. At 16px the perforation dots disappear visually
+ * but the silhouette remains recognizable.
+ */
+export const IconMagicCut = ({ size = 14, ...rest }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    style={{ display: "inline-block", verticalAlign: "-2px", ...(rest.style ?? {}) }}
+    {...rest}
+  >
+    {/* Left film strip half with play triangle cut-out */}
+    <path d="M4 5h8.2l-3.5 14H4a1.2 1.2 0 0 1-1.2-1.2V6.2A1.2 1.2 0 0 1 4 5z" />
+    {/* Right film strip half, offset to suggest the cut */}
+    <path d="M20 6.5h-5l-3.5 14H20a1.2 1.2 0 0 0 1.2-1.2V7.7A1.2 1.2 0 0 0 20 6.5z" />
+    {/* Diagonal slash cutting through the middle (magenta-glow accent) */}
+    <path
+      d="M14.8 3.2 L9.2 21.5"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      fill="none"
+      opacity={0.85}
+    />
+    {/* Play triangle overlay (mid-strip) */}
+    <path d="M8.5 8.5 L8.5 15.5 L13.5 12 z" fill="rgba(255,255,255,0.92)" />
+    {/* Sprocket holes — left edge */}
+    <rect x={3.5} y={7} width={1.8} height={1.8} fill="rgba(255,255,255,0.85)" rx={0.3} />
+    <rect x={3.5} y={11} width={1.8} height={1.8} fill="rgba(255,255,255,0.85)" rx={0.3} />
+    <rect x={3.5} y={15} width={1.8} height={1.8} fill="rgba(255,255,255,0.85)" rx={0.3} />
+    {/* Sprocket holes — right edge */}
+    <rect x={18.7} y={8.5} width={1.8} height={1.8} fill="rgba(255,255,255,0.85)" rx={0.3} />
+    <rect x={18.7} y={12.5} width={1.8} height={1.8} fill="rgba(255,255,255,0.85)" rx={0.3} />
+    <rect x={18.7} y={16.5} width={1.8} height={1.8} fill="rgba(255,255,255,0.85)" rx={0.3} />
+  </svg>
+);

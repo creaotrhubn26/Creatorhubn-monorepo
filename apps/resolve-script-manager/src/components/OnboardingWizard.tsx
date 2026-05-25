@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { executeScript, listProjectTemplates } from "../api";
 import type { ProjectTemplateSummary } from "../types";
-import { IconCheck, IconX, IconPlay } from "./Icons";
+import { IconCheck, IconX, IconPlay, IconArrowLeft, IconArrowRight, IconMagicCut, IconBox } from "./Icons";
 
 interface AnalyzeResult {
   folder: string;
@@ -318,7 +318,7 @@ export function OnboardingWizard({ onClose, defaultTemplateId, onTemplateChange 
             {error && <div className="dialog-warning">{error}</div>}
             <div className="actions">
               <button onClick={onClose}>Cancel</button>
-              <button className="primary" onClick={pickFolder}>Pick clip folder…</button>
+              <button className="primary" onClick={pickFolder}><IconBox /> Pick clip folder…</button>
             </div>
           </>
         )}
@@ -526,7 +526,7 @@ export function OnboardingWizard({ onClose, defaultTemplateId, onTemplateChange 
 
             <div className="actions">
               <button onClick={onClose}>Cancel</button>
-              <button onClick={() => setStage("preview")}>Next →</button>
+              <button onClick={() => setStage("preview")}>Next <IconArrowRight /></button>
             </div>
           </>
         )}
@@ -578,8 +578,8 @@ export function OnboardingWizard({ onClose, defaultTemplateId, onTemplateChange 
               Resolve må ha prosjektet ditt åpent. Hvis et annet prosjekt er aktivt nå, bytt til riktig prosjekt før du kjører — eller la steg 1 lage et nytt.
             </div>
             <div className="actions">
-              <button onClick={() => setStage("review")}>← Back</button>
-              <button className="primary" onClick={startPipeline}>Run setup</button>
+              <button onClick={() => setStage("review")}><IconArrowLeft /> Back</button>
+              <button className="primary" onClick={startPipeline}><IconMagicCut /> Run setup</button>
             </div>
           </>
         )}
@@ -604,7 +604,7 @@ export function OnboardingWizard({ onClose, defaultTemplateId, onTemplateChange 
             {error && <div className="dialog-warning">{error}</div>}
             {stage === "done" && (
               <div className="actions">
-                <button className="primary" onClick={onClose}>Done</button>
+                <button className="primary" onClick={onClose}><IconCheck /> Done</button>
               </div>
             )}
           </>
