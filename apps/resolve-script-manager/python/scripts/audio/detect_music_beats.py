@@ -64,8 +64,8 @@ def _probe_duration(audio_path: str) -> float:
         return 0.0
 
 
-def _fallback_constant_bpm(audio_path: str, target_fps: float, default_bpm: float = 120.0) -> dict:
-    """When librosa isn't available, lay down a constant-BPM grid based on duration."""
+def _fallback_constant_bpm(audio_path: str, target_fps: float, default_bpm: float = 120.0, reason: str = "librosa not available") -> dict:
+    """When librosa isn't available OR errored, lay down a constant-BPM grid."""
     duration = _probe_duration(audio_path)
     if duration <= 0:
         bridge.error(
@@ -79,9 +79,8 @@ def _fallback_constant_bpm(audio_path: str, target_fps: float, default_bpm: floa
     frames = [int(t * target_fps) for t in beats]
     downbeats = [beats[i] for i in range(0, len(beats), 4)]
     bridge.warn(
-        f"librosa not installed — using constant-{default_bpm:.0f}-BPM grid "
-        f"({len(beats)} beats over {duration:.1f}s). Install via "
-        "Settings → Dependencies → pip librosa for true beat detection."
+        f"{reason} — using constant-{default_bpm:.0f}-BPM grid "
+        f"({len(beats)} beats over {duration:.1f}s)."
     )
     return {
         "bpm": default_bpm,
@@ -131,7 +130,10 @@ def detect_with_librosa(audio_path: str, target_fps: float, beat_limit: int, max
             tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
 
         bridge.progress(75, 100, "Beregner downbeats…")
-        bpm = float(tempo) if hasattr(tempo, "__float__") else float(tempo[0])
+        # librosa 0.11+ returns tempo as a 1-D numpy ndarray shape=(1,);
+        # earlier versions returned scalar. Normalize via numpy ravel().
+        import numpy as np
+        bpm = float(np.asarray(tempo).ravel()[0])
         beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
         beat_times = beat_times[:beat_limit]
         downbeats = beat_times[::4]
@@ -151,6 +153,24 @@ def detect_with_librosa(audio_path: str, target_fps: float, beat_limit: int, max
     except Exception as exc:
         bridge.warn(f"librosa failed: {type(exc).__name__}: {exc} — falling back to constant BPM")
         return None
+
+
+def detect_with_librosa_safe(audio_path: str, target_fps: float, beat_limit: int) -> tuple[dict | None, str | None]:
+    """Wrapper that returns (result, failure_reason). If librosa is genuinely
+    not installed, returns (None, 'librosa not installed'). If it errored
+    during analysis, returns (None, 'librosa error: …'). Allows the caller
+    to surface a more specific reason to the user."""
+    try:
+        import librosa  # noqa: F401
+    except ImportError:
+        return None, "librosa ikke installert (kjør Install fra Dependencies-modalen)"
+    try:
+        r = detect_with_librosa(audio_path, target_fps, beat_limit)
+        if r is None:
+            return None, "librosa-analyse feilet (se logg over)"
+        return r, None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"librosa-feil: {type(exc).__name__}: {exc}"
 
 
 def run(params: dict[str, Any], dry_run: bool) -> None:
@@ -182,9 +202,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     bridge.log(f"Detecting beats in {os.path.basename(music_path)}")
     bridge.progress(0, 100, "Starting beat detection")
 
-    result = detect_with_librosa(music_path, target_fps, beat_limit)
+    result, librosa_failure = detect_with_librosa_safe(music_path, target_fps, beat_limit)
     if result is None:
-        result = _fallback_constant_bpm(music_path, target_fps)
+        reason = librosa_failure or "librosa not installed"
+        result = _fallback_constant_bpm(music_path, target_fps, reason=reason)
 
     bridge.log(
         f"Detected {len(result['beats'])} beats at {result['bpm']:.1f} BPM "
