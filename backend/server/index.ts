@@ -540,6 +540,7 @@ import { setupWorklogRoutes } from "./worklog-routes";
 import { setupTravelLogRoutes } from "./travel-log-routes";
 import { setupBatchRoutes } from "./batch-routes";
 import { setupMarketplaceRoutes } from "./marketplace-routes";
+import { setupWeddingProjectsRoutes } from "./wedding-projects-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -31349,39 +31350,6 @@ function buildSalesLeadSelectQuery(shape: SalesLeadsStorageShape): string {
   return `SELECT ${buildSalesLeadSelectColumns(shape)} FROM sales_leads`;
 }
 
-// GET /api/wedding-projects — fetch recent wedding/photo projects for dashboard overview
-app.get("/api/wedding-projects", async (req, res) => {
-  try {
-    const userId = compatResolveUserId(req);
-    const params: Array<string> = [];
-    const clauses = [
-      `(COALESCE(category, '') ILIKE 'wedding%' OR COALESCE(profession, '') IN ('photographer','wedding'))`,
-    ];
-    if (userId && userId !== "guest") {
-      params.push(userId);
-      clauses.push(`user_id = $${params.length}`);
-    }
-    const query = `
-      SELECT * FROM legacy.projects
-      WHERE ${clauses.join(" AND ")}
-      ORDER BY created_at DESC
-      LIMIT 200
-    `;
-    const result = await pool.query(query, params);
-    const projects = result.rows.map((row: any) => ({
-      ...mapProjectRow(row),
-      projectType: "wedding",
-    }));
-
-    res.json({ success: true, projects });
-  } catch (error) {
-    console.warn(
-      "Wedding projects query failed, returning empty list:",
-      (error as Error).message,
-    );
-    res.json({ success: true, projects: [] });
-  }
-});
 
 // GET /api/audio-enhancement/jobs — list audio enhancement jobs with optional filters
 app.get("/api/audio-enhancement/jobs", async (req, res) => {
@@ -58260,65 +58228,6 @@ function compatPushProjectAudit(
   void compatStoreSet(dbCompatProjectStateKey(projectId), state);
 }
 
-// Wedding projects alias used by universal dashboard/showcase
-app.get("/api/wedding-projects", async (req, res) => {
-  try {
-    const userId = compatResolveUserId(req);
-    const params: Array<string> = [];
-    const clauses = [
-      `(COALESCE(category, '') ILIKE 'wedding%' OR COALESCE(profession, '') IN ('photographer','wedding'))`,
-    ];
-    if (userId && userId !== "guest") {
-      params.push(userId);
-      clauses.push(`user_id = $${params.length}`);
-    }
-    const query = `
-      SELECT * FROM legacy.projects
-      WHERE ${clauses.join(" AND ")}
-      ORDER BY created_at DESC
-      LIMIT 200
-    `;
-    const result = await pool.query(query, params);
-    const projects = result.rows.map((row: any) => ({
-      ...mapProjectRow(row),
-      projectType: "wedding",
-    }));
-    res.json({ success: true, projects });
-  } catch (error) {
-    console.warn(
-      "Wedding projects query failed, returning empty list:",
-      (error as Error).message,
-    );
-    res.json({ success: true, projects: [] });
-  }
-});
-
-app.get("/api/wedding-projects/:projectId", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM legacy.projects WHERE id = $1 LIMIT 1",
-      [req.params.projectId],
-    );
-    if (!result.rowCount || result.rowCount === 0) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Project not found" });
-    }
-    res.json({
-      success: true,
-      project: {
-        ...mapProjectRow(result.rows[0]),
-        projectType: "wedding",
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching wedding project:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to load wedding project" });
-  }
-});
-
 // Project collaboration, files, comments, integrations, compliance, audit and analytics
 app.get("/api/projects/:projectId/collaborators", async (req, res) => {
   const { projectId } = req.params;
@@ -84259,6 +84168,15 @@ setupBatchRoutes({ app });
 // /api/marketplace/* — 3 endpoints (stats, apps/:id/reviews GET/POST).
 // Drizzle ORM mot vendorProductDownloads + vendorProductReviews.
 setupMarketplaceRoutes({ app, db });
+
+// /api/wedding-projects — 2 endpoints (GET liste, GET /:projectId).
+// Dup ved 58264 slettet i samme commit (Express first-registered).
+setupWeddingProjectsRoutes({
+  app,
+  pool,
+  compatResolveUserId,
+  mapProjectRow,
+});
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
