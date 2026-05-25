@@ -283,32 +283,71 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     bridge.log(f"Placed {placed_count} clips on V1")
 
-    # Add music as a separate audio-only spec on A2 starting at frame 0.
+    # Add music on A2 (a separate audio track under the linked-audio from
+    # video clips on A1). Resolve's CreateEmptyTimeline only creates V1+A1
+    # by default — must explicitly add A2 before placing music there.
     music_added = False
     music_count = 0
     if music_path and os.path.isfile(music_path):
         bridge.log(f"Importing music: {os.path.basename(music_path)}")
         music_items = media_pool.ImportMedia([music_path]) or []
         if music_items:
-            # Try the spec first
+            # Ensure A2 exists so trackIndex=2 has a valid target
+            try:
+                existing_audio_tracks = timeline.GetTrackCount("audio")
+            except Exception:  # noqa: BLE001
+                existing_audio_tracks = 1
+            if existing_audio_tracks < 2:
+                try:
+                    timeline.AddTrack("audio")
+                    bridge.log("Added A2 audio track for music")
+                except Exception as exc:  # noqa: BLE001
+                    bridge.warn(f"Could not add A2 track: {exc}")
+
             music_spec = [{
                 "mediaPoolItem": music_items[0],
                 "mediaType": 2,
                 "trackIndex": 2,
-                # Music starts at timeline t=0 → timeline_start_frame in absolute frames
                 "recordFrame": timeline_start_frame,
             }]
             music_placed = media_pool.AppendToTimeline(music_spec)
             music_count = len(music_placed) if isinstance(music_placed, list) else 0
+
             if music_count == 0:
-                bridge.warn("Music spec with recordFrame rejected — trying plain append on A1")
+                bridge.warn("A2 spec rejected — falling back to A1 with linked audio")
+                music_placed = media_pool.AppendToTimeline([{
+                    "mediaPoolItem": music_items[0],
+                    "mediaType": 2,
+                    "trackIndex": 1,
+                    "recordFrame": timeline_start_frame,
+                }])
+                music_count = len(music_placed) if isinstance(music_placed, list) else 0
+
+            if music_count == 0:
+                bridge.warn("trackIndex spec rejected — trying plain append (will go to end)")
                 music_placed = media_pool.AppendToTimeline([{"mediaPoolItem": music_items[0]}])
                 music_count = len(music_placed) if isinstance(music_placed, list) else 0
+
             music_added = music_count > 0
+
+            # Verify by reading back A2 (or A1 if fallback fired)
+            try:
+                for track_idx in (2, 1):
+                    items = timeline.GetItemListInTrack("audio", track_idx) or []
+                    if items:
+                        first = items[0]
+                        bridge.log(
+                            f"Verified A{track_idx}: '{first.GetName()}' "
+                            f"frames {first.GetStart()}-{first.GetEnd()}"
+                        )
+                        break
+            except Exception as exc:  # noqa: BLE001
+                bridge.warn(f"Could not verify music placement: {exc}")
+
             if music_added:
                 bridge.log(f"Music placed: {os.path.basename(music_path)} ({music_count} item(s))")
             else:
-                bridge.warn(f"AppendToTimeline returned {music_placed!r} for music — Resolve refused to add it")
+                bridge.warn(f"AppendToTimeline returned {music_placed!r} for music — Resolve refused")
         else:
             bridge.warn(f"ImportMedia returned empty for {music_path}")
     elif music_path:
