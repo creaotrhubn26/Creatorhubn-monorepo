@@ -531,6 +531,7 @@ import { setupAdminSeoTrendsRoutes } from "./admin-seo-trends-routes";
 import { setupTwoFaRoutes } from "./twofa-routes";
 import { setupCouplesRoutes } from "./couples-routes";
 import { setupAdminProvisioningRoutes } from "./admin-provisioning-routes";
+import { setupEmailsRoutes } from "./emails-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -54575,177 +54576,6 @@ app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
 // (6 endpoints + mapSubmissionRow-helper).
 // ============================================================
 
-// ============================================================
-// EMAIL / INQUIRY API (CustomerInquiryCenter endpoints)
-// ============================================================
-
-// GET /api/emails/recent — returns submissions as "email" messages for CustomerInquiryCenter
-app.get("/api/emails/recent", async (req, res) => {
-  try {
-    if (!(await hasTable("client_submissions"))) {
-      res.json([]);
-      return;
-    }
-
-    const userId =
-      typeof req.query.userId === "string" ? req.query.userId : null;
-
-    // Get submissions as email-like messages — look up vendor by userId
-    let vendorEmail: string | null = null;
-    if (userId) {
-      // First check creatorhub_users (has vendor_id link)
-      vendorEmail = await getCreatorhubUserEmailById(userId);
-      // Also try vendors table by id
-      if (!vendorEmail) {
-        vendorEmail = await getVendorEmailById(userId);
-      }
-    }
-
-    let query = "SELECT * FROM client_submissions";
-    const params: any[] = [];
-    if (vendorEmail) {
-      query += " WHERE vendor_email = $1";
-      params.push(vendorEmail);
-    }
-    query += " ORDER BY submitted_at DESC LIMIT 50";
-
-    const result = await pool.query(query, params);
-
-    // Transform submissions to email-like messages for CustomerInquiryCenter
-    const emails = result.rows.map((r: any) => ({
-      id: r.id,
-      subject: r.project_type
-        ? `Forespørsel: ${r.project_type} - ${r.name || r.client_name || "Ukjent"}`
-        : `Ny kundeforespørsel fra ${r.name || r.client_name || "Ukjent"}`,
-      from: {
-        name: r.name || r.client_name || "Ukjent",
-        email: r.email || r.client_email || "",
-      },
-      timestamp: r.submitted_at || r.created_at,
-      isRead: r.is_read || false,
-      isStarred: r.is_starred || false,
-      category: r.category || "inquiry",
-      priority:
-        r.priority === "urgent" || r.priority === "high" ? "high" : "normal",
-      isCustomerInquiry: true,
-      body: r.description || "",
-      eventDate: r.event_date || null,
-      budget: r.budget ? parseFloat(r.budget) : null,
-      location: r.location || "",
-    }));
-
-    res.json(emails);
-  } catch (error) {
-    console.error("Error fetching emails:", error);
-    res.json([]);
-  }
-});
-
-// GET /api/emails/stats — email/inquiry statistics
-app.get("/api/emails/stats", async (req, res) => {
-  try {
-    if (!(await hasTable("client_submissions"))) {
-      res.json({ total: 0, unread: 0, thisWeek: 0 });
-      return;
-    }
-
-    const userId =
-      typeof req.query.userId === "string" ? req.query.userId : null;
-
-    let vendorEmail: string | null = null;
-    if (userId) {
-      vendorEmail = await getCreatorhubUserEmailById(userId);
-      if (!vendorEmail) {
-        vendorEmail = await getVendorEmailById(userId);
-      }
-    }
-
-    let whereClause = "";
-    const params: any[] = [];
-    if (vendorEmail) {
-      whereClause = " WHERE vendor_email = $1";
-      params.push(vendorEmail);
-    }
-
-    const result = await pool.query(
-      `
-      SELECT 
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE is_read = false OR is_read IS NULL) as unread,
-        COUNT(*) FILTER (WHERE submitted_at > NOW() - INTERVAL '7 days') as "thisWeek"
-      FROM client_submissions${whereClause}
-    `,
-      params,
-    );
-
-    const stats = result.rows[0];
-    res.json({
-      total: parseInt(stats.total),
-      unread: parseInt(stats.unread),
-      thisWeek: parseInt(stats.thisWeek),
-    });
-  } catch (error) {
-    console.error("Error fetching email stats:", error);
-    res.json({ total: 0, unread: 0, thisWeek: 0 });
-  }
-});
-
-// GET /api/emails/contacts — list of client contacts
-app.get("/api/emails/contacts", async (req, res) => {
-  try {
-    if (!(await hasTable("client_submissions"))) {
-      res.json([]);
-      return;
-    }
-
-    const result = await pool.query(
-      `SELECT DISTINCT ON (email) id, name, email 
-       FROM client_submissions 
-       WHERE email IS NOT NULL AND email != ''
-       ORDER BY email, submitted_at DESC`,
-    );
-    res.json(
-      result.rows.map((r: any) => ({
-        id: r.id,
-        name: r.name || "Ukjent",
-        email: r.email,
-      })),
-    );
-  } catch (error) {
-    console.error("Error fetching contacts:", error);
-    res.json([]);
-  }
-});
-
-// PATCH /api/emails/star — toggle star on a submission/email
-app.patch("/api/emails/star", async (req, res) => {
-  try {
-    const { emailId, starred } = req.body;
-    await pool.query(
-      "UPDATE client_submissions SET is_starred = $1, updated_at = NOW() WHERE id = $2",
-      [starred, emailId],
-    );
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error starring email:", error);
-    res.status(500).json({ error: "Kunne ikke oppdatere stjerne" });
-  }
-});
-
-// PATCH /api/emails/read — mark as read
-app.patch("/api/emails/read", async (req, res) => {
-  try {
-    const { emailId, isRead } = req.body;
-    await pool.query(
-      "UPDATE client_submissions SET is_read = $1, updated_at = NOW() WHERE id = $2",
-      [isRead !== false, emailId],
-    );
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error marking email read:", error);
-    res.status(500).json({ error: "Kunne ikke oppdatere leststatus" });
-  }
-});
 
 type AdminRoleCatalogEntry = {
   id: string;
@@ -85184,6 +85014,16 @@ setupCouplesRoutes({
 // requests dups var interleaved og slettet i samme commit (live versions
 // ved 54093+ er uendret).
 setupAdminProvisioningRoutes({ app, pool });
+
+// /api/emails/* — 5 endpoints (CustomerInquiryCenter henter submissions
+// som email-meldinger: recent, stats, contacts, PATCH star, PATCH read).
+setupEmailsRoutes({
+  app,
+  pool,
+  hasTable,
+  getCreatorhubUserEmailById,
+  getVendorEmailById,
+});
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
