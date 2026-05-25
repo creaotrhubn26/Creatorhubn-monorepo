@@ -242,6 +242,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "fetch_source_song",
+      "name": "Fetch Source Song from YouTube",
+      "category": "audio",
+      "scriptPath": "scripts/audio/fetch_source_song.py",
+      "description": "Laster ned audio fra YouTube via yt-dlp + detekterer beats. KUN aktivert for bryllups-prosjekter (privat-bruk). Gir pristine source-audio for nøyaktig beat-alignment ved analyze_exported_video.",
+      "requiredInputs": [
+        "youtubeUrl",
+        "projectType"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "match_shots_to_source",
       "name": "Match Shots to Source Material",
       "category": "timeline",

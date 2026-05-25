@@ -230,27 +230,36 @@ def _measure_rms_db(ffmpeg: str, video: str, start_sec: float, duration: float) 
         return None
 
 
-def detect_beats(video: str, ffmpeg: str, duration: float) -> list[float]:
+def detect_beats(video: str, ffmpeg: str, duration: float, source_audio_path: str | None = None) -> list[float]:
     """Beat detection via librosa (optional dep). Returns beat times in
     seconds. Empty list if librosa unavailable or detection fails. We use
     the venv-py312 if it has librosa, else system python.
+
+    If source_audio_path is provided, beats are detected on the PRISTINE
+    source song (downloaded via fetch_source_song.py) instead of the
+    mixed audio in the exported video. This gives a much cleaner
+    beat-grid because dialogue/SFX/applause don't confuse librosa.
     """
     venv_py = os.path.expanduser(
         "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/venv-py312/bin/python"
     )
     python = venv_py if os.path.isfile(venv_py) else "python3"
 
-    # Extract audio to a temp WAV — librosa loads anything but a single
-    # mono 22050 Hz WAV is fastest.
-    tmp_audio = os.path.join(os.path.dirname(video), ".trrpa_beat.wav")
-    extract_cmd = [
-        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-        "-i", video,
-        "-ac", "1", "-ar", "22050",
-        "-vn", "-f", "wav", tmp_audio,
-    ]
-    try:
+    use_source = bool(source_audio_path and os.path.isfile(source_audio_path))
+    if use_source:
+        tmp_audio = source_audio_path
+        bridge.log(f"Using pristine source audio for beat-grid: {os.path.basename(source_audio_path)}")
+    else:
+        # Extract audio from video to a temp WAV
+        tmp_audio = os.path.join(os.path.dirname(video), ".trrpa_beat.wav")
+        extract_cmd = [
+            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+            "-i", video,
+            "-ac", "1", "-ar", "22050",
+            "-vn", "-f", "wav", tmp_audio,
+        ]
         subprocess.run(extract_cmd, capture_output=True, timeout=120, check=False)
+    try:
         if not os.path.isfile(tmp_audio):
             return []
         # Use librosa subprocess so we don't import it into the manager-side python
@@ -278,8 +287,98 @@ def detect_beats(video: str, ffmpeg: str, duration: float) -> list[float]:
         except (json.JSONDecodeError, IndexError):
             return []
     finally:
+        if not use_source:
+            try:
+                os.remove(tmp_audio)
+            except OSError:
+                pass
+
+
+def auto_align_source_in_video(ffmpeg: str, video_path: str, source_audio: str, duration: float) -> dict:
+    """Find where source_audio starts inside video_path via chroma cross-correlation.
+
+    Strategy: compute chroma features for both audios at low rate (22.05 kHz),
+    take the first ~6 seconds of the source song as a 'fingerprint window',
+    slide it across the video's chroma matrix, return the offset with highest
+    inner-product similarity.
+
+    Returns { offsetSec, confidence (0..1), windowSeconds } or { offsetSec: None } on failure.
+    """
+    venv_py = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/venv-py312/bin/python"
+    )
+    python = venv_py if os.path.isfile(venv_py) else "python3"
+
+    # Extract video audio first
+    tmp_video_audio = os.path.join(os.path.dirname(video_path), ".trrpa_video_audio.wav")
+    try:
+        subprocess.run(
+            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+             "-i", video_path, "-ac", "1", "-ar", "22050", "-vn", "-f", "wav", tmp_video_audio],
+            capture_output=True, timeout=180, check=False,
+        )
+        if not os.path.isfile(tmp_video_audio):
+            return {"offsetSec": None}
+
+        snippet = (
+            "import sys, json\n"
+            "try:\n"
+            "  import librosa, numpy as np\n"
+            "except ImportError:\n"
+            "  print(json.dumps({'error': 'librosa_not_installed'})); sys.exit(0)\n"
+            "src_path, vid_path = sys.argv[1], sys.argv[2]\n"
+            # Sliding window: first 6 seconds of source as fingerprint
+            "y_src, sr = librosa.load(src_path, sr=22050, duration=6.0)\n"
+            "y_vid, _ = librosa.load(vid_path, sr=22050)\n"
+            "if len(y_src) < sr or len(y_vid) < len(y_src):\n"
+            "  print(json.dumps({'offsetSec': None, 'reason': 'too_short'})); sys.exit(0)\n"
+            "hop = 512\n"
+            "ch_src = librosa.feature.chroma_cqt(y=y_src, sr=sr, hop_length=hop)\n"
+            "ch_vid = librosa.feature.chroma_cqt(y=y_vid, sr=sr, hop_length=hop)\n"
+            # Normalize chroma vectors per-frame so the dot-product becomes cosine similarity
+            "def norm(c):\n"
+            "  n = np.linalg.norm(c, axis=0, keepdims=True); n[n==0]=1; return c / n\n"
+            "ch_src_n = norm(ch_src); ch_vid_n = norm(ch_vid)\n"
+            "win = ch_src_n.shape[1]\n"
+            "if ch_vid_n.shape[1] < win:\n"
+            "  print(json.dumps({'offsetSec': None, 'reason': 'video_shorter_than_window'})); sys.exit(0)\n"
+            "best = (-1.0, 0)\n"
+            "second = -1.0\n"
+            "for i in range(ch_vid_n.shape[1] - win + 1):\n"
+            "  sim = float(np.sum(ch_src_n[:, :win] * ch_vid_n[:, i:i+win]) / win)\n"
+            "  if sim > best[0]:\n"
+            "    second = best[0]; best = (sim, i)\n"
+            "  elif sim > second:\n"
+            "    second = sim\n"
+            "offset_sec = best[1] * hop / sr\n"
+            # Confidence = ratio of best to second-best (clamped, common heuristic for peak detection)
+            "confidence = min(1.0, (best[0] - max(second, 0)) / max(best[0], 0.001))\n"
+            "print(json.dumps({'offsetSec': offset_sec, 'confidence': confidence, 'similarity': best[0], 'windowSeconds': win * hop / sr}))\n"
+        )
+        r = subprocess.run(
+            [python, "-c", snippet, source_audio, tmp_video_audio],
+            capture_output=True, text=True, timeout=240,
+        )
+        for line in (r.stdout or "").splitlines()[::-1]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                if isinstance(data, dict):
+                    if "error" in data:
+                        bridge.warn(f"auto-align skipped: {data['error']}")
+                        return {"offsetSec": None}
+                    return data
+            except json.JSONDecodeError:
+                continue
+        return {"offsetSec": None}
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"auto-align failed: {exc}")
+        return {"offsetSec": None}
+    finally:
         try:
-            os.remove(tmp_audio)
+            os.remove(tmp_video_audio)
         except OSError:
             pass
 
@@ -452,6 +551,14 @@ def run(params: dict, dry_run: bool) -> None:
     threshold = max(0.05, min(0.95, threshold))
     narrate = bool(params.get("narrate", False))
     timeline_name = (params.get("timelineName") or "").strip() or f"{os.path.splitext(os.path.basename(video_path))[0]} — analyzed"
+    source_song_path = (params.get("sourceSongPath") or "").strip() or None
+    # Offset where the source song starts in the exported video (in seconds).
+    # Lets the analyzer align the source's beat-grid to the actual placement
+    # in the exported timeline (song doesn't have to start at t=0).
+    try:
+        source_song_offset = float(params.get("sourceSongOffsetSec", 0.0))
+    except (TypeError, ValueError):
+        source_song_offset = 0.0
 
     ffmpeg, ffprobe = find_ffmpeg()
     if not ffmpeg or not ffprobe:
@@ -474,10 +581,40 @@ def run(params: dict, dry_run: bool) -> None:
     bridge.progress(20, 100, "Analyzing audio sections…")
     audio_sections = detect_audio_sections(ffmpeg, video_path, duration)
     # Beat-detection is more expensive — only run if we found enough music
+    # OR if a pristine source song was provided (always use that if given).
     music_total = sum(s["end"] - s["start"] for s in audio_sections if s["type"] == "music")
     beats: list[float] = []
-    if music_total > 5.0:  # at least 5 seconds of music to bother
-        bridge.progress(25, 100, "Detecting beats (librosa)…")
+    beats_from_source = False
+    auto_align_info: dict = {}
+    if source_song_path:
+        # If no manual offset was given, auto-detect where the source song
+        # starts in the exported video via chroma cross-correlation. This
+        # is the difference between "Sangen starter ved 0:30" og "vi gjettet
+        # at den startet på t=0".
+        if source_song_offset == 0.0:
+            bridge.progress(20, 100, "Finner hvor source-sangen starter i videoen…")
+            auto_align_info = auto_align_source_in_video(ffmpeg, video_path, source_song_path, duration)
+            if auto_align_info.get("offsetSec") is not None:
+                detected = float(auto_align_info["offsetSec"])
+                confidence = float(auto_align_info.get("confidence") or 0)
+                if confidence >= 0.05:  # any signal above noise floor
+                    source_song_offset = detected
+                    bridge.log(
+                        f"Source-song auto-aligned: sangen starter ved {detected:.2f}s "
+                        f"i video (confidence {confidence:.2f})"
+                    )
+                else:
+                    bridge.warn(f"Auto-align confidence too low ({confidence:.2f}) — using offset=0")
+
+        bridge.progress(25, 100, "Detecting beats on pristine source song…")
+        raw_beats = detect_beats(video_path, ffmpeg, duration, source_audio_path=source_song_path)
+        # Translate source-relative beat times to exported-video timeline
+        beats = [b + source_song_offset for b in raw_beats if 0 <= b + source_song_offset <= duration]
+        beats_from_source = True
+        bridge.log(f"Source-song beats translated with offset {source_song_offset:.2f}s — "
+                   f"{len(beats)} beats within video timeline")
+    elif music_total > 5.0:
+        bridge.progress(25, 100, "Detecting beats (librosa, mixed audio)…")
         beats = detect_beats(video_path, ffmpeg, duration)
 
     # Compute per-shot audio + beat context regardless of narrate flag —
@@ -673,6 +810,10 @@ def run(params: dict, dry_run: bool) -> None:
             "dialogueSeconds": dialogue_total,
             "silenceSeconds": silence_total,
             "beatsDetected": len(beats),
+            "beatsFromPristineSource": beats_from_source,
+            "sourceSongOffsetSec": source_song_offset if source_song_path else None,
+            "sourceSongAutoAligned": bool(auto_align_info.get("offsetSec") is not None),
+            "sourceSongAlignConfidence": auto_align_info.get("confidence"),
             "onBeatCuts": on_beat_cuts,
             "offBeatCuts": off_beat_cuts,
             "musicEditPrecisionPct": round(100 * on_beat_cuts / max(1, on_beat_cuts + off_beat_cuts)),
