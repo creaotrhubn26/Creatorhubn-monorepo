@@ -163,9 +163,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
     project.SetCurrentTimeline(timeline)
 
-    # CRITICAL: use the timeline's actual fps for recordFrame math. CreateEmptyTimeline
-    # inherits the project's timelineFrameRate setting — if that's 24 but our beats
-    # were computed at 25 fps, every recordFrame would land at the wrong moment.
+    # CRITICAL: use the timeline's actual fps for recordFrame math.
     try:
         actual_fps = float(timeline.GetSetting("timelineFrameRate") or target_fps)
     except Exception:  # noqa: BLE001
@@ -176,6 +174,18 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             f"(timeline inherited project setting)"
         )
         target_fps = actual_fps
+
+    # CRITICAL #2: Resolve timelines don't start at frame 0 — they typically
+    # start at frame 86400 (= 01:00:00:00 @ 24 fps), per the SMPTE convention.
+    # recordFrame is ABSOLUTE timeline frames, so we must offset by the
+    # timeline's start frame or clips land BEFORE the timeline begins (i.e.
+    # invisible — Resolve clamps them to nothing useful).
+    try:
+        timeline_start_frame = int(timeline.GetStartFrame() or 0)
+    except Exception:  # noqa: BLE001
+        timeline_start_frame = 0
+    if timeline_start_frame > 0:
+        bridge.log(f"Timeline starts at frame {timeline_start_frame} — offsetting recordFrames")
 
     # Build the append-list with per-clip trim info + EXPLICIT recordFrame
     # so each clip lands at its beat-window's start time on the timeline.
@@ -194,7 +204,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         seg_dur = seg.get("durationSec") or 0
         start_sec = seg.get("startSec") or 0
         start_f, end_f = _seconds_to_clip_frames(media_item, seg_dur, target_fps)
-        record_frame = int(round(start_sec * target_fps))
+        # Offset by timeline start (Resolve timelines start at SMPTE 01:00:00:00)
+        record_frame = timeline_start_frame + int(round(start_sec * target_fps))
         append_specs.append({
             "mediaPoolItem": media_item,
             "startFrame": start_f,
@@ -284,7 +295,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 "mediaPoolItem": music_items[0],
                 "mediaType": 2,
                 "trackIndex": 2,
-                "recordFrame": 0,
+                # Music starts at timeline t=0 → timeline_start_frame in absolute frames
+                "recordFrame": timeline_start_frame,
             }]
             music_placed = media_pool.AppendToTimeline(music_spec)
             music_count = len(music_placed) if isinstance(music_placed, list) else 0
