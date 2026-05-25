@@ -1711,6 +1711,40 @@ function CrewSubPanel({
         </Button>
       </Box>
 
+      {/* Post Agent must be activated for the project first (via marketplace
+          — that's where pricing is shown + accepted). Once 1+ seats exist,
+          we surface inline toggles per crew row for fast administration. */}
+      {!seatsQuery.isLoading && activeSeats.length === 0 && (
+        <Alert
+          severity="info"
+          icon={false}
+          sx={{
+            mb: 2,
+            background: 'linear-gradient(135deg, rgba(160, 48, 192, 0.10) 0%, rgba(110, 63, 199, 0.05) 100%)',
+            border: '1px solid rgba(160, 48, 192, 0.30)',
+            color: 'text.primary',
+          }}
+          action={
+            <Button
+              size="small"
+              variant="contained"
+              href={`/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}`}
+              sx={{ bgcolor: '#a030c0', '&:hover': { bgcolor: '#b94dd6' } }}
+            >
+              Aktiver i marketplace
+            </Button>
+          }
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            Post Agent ikke aktivert for dette prosjektet
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            Aktiver i marketplace (299 NOK/seat/mnd, du ser pris-preview + bekrefter) — så
+            kan du tildele crew-seats herfra med ett klikk.
+          </Typography>
+        </Alert>
+      )}
+
       {crew.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           Ingen crew-medlemmer ennå
@@ -1722,6 +1756,7 @@ function CrewSubPanel({
             const seat = email ? seatByEmail.get(email) : undefined;
             const isBusy = busyRow === c.id;
             const err = rowError && rowError.rowId === c.id ? rowError : null;
+            const projectActivated = activeSeats.length > 0;
             return (
               <ListItem
                 key={c.id}
@@ -1738,7 +1773,7 @@ function CrewSubPanel({
                       {[c.role, c.department, c.email].filter(Boolean).join(' · ') || '—'}
                     </Typography>
                   </Box>
-                  {!c.email ? (
+                  {!projectActivated ? null : !c.email ? (
                     <Chip size="small" label="Trenger e-post" sx={{ opacity: 0.6 }} />
                   ) : seat ? (
                     <Chip
@@ -1764,7 +1799,7 @@ function CrewSubPanel({
                         '&:hover': { borderColor: '#b94dd6', bgcolor: 'rgba(160,48,192,0.05)' },
                       }}
                     >
-                      {isBusy ? '...' : 'Aktiver Post Agent'}
+                      {isBusy ? '...' : 'Tildel seat'}
                     </Button>
                   )}
                 </Box>
