@@ -523,6 +523,7 @@ import { setupCmsRoutes } from "./cms-routes";
 import { setupPaymentsRoutes } from "./payments-routes";
 import { setupVideoRoutes } from "./video-routes";
 import { setupProjectTypesRoutes } from "./project-types-routes";
+import { setupSettingsRoutes } from "./settings-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -16705,110 +16706,7 @@ async function getVendorByEmail(
   }
 }
 
-app.get("/api/settings", async (req, res) => {
-  const userId = readQueryString(req.query.user_id, "default-user");
-  const namespace = readQueryString(req.query.namespace, "");
-  const projectId =
-    typeof req.query.project_id === "string" ? req.query.project_id : undefined;
-
-  if (!namespace) {
-    res.status(400).json({ error: "namespace is required" });
-    return;
-  }
-
-  const legacyKey = legacySettingKey(userId, namespace, projectId);
-  const dbKey = dbLegacySettingKey(userId, namespace, projectId);
-  const dbEntry = await compatStoreGet<LegacySettingEntry>(dbKey);
-  if (dbEntry) {
-    legacySettingsStore.set(legacyKey, dbEntry);
-    res.json({ data: dbEntry.data ?? null });
-    return;
-  }
-
-  const entry = legacySettingsStore.get(legacyKey);
-  res.json({ data: entry?.data ?? null });
-});
-
-app.put("/api/settings", async (req, res) => {
-  const userId = readQueryString(
-    req.body?.userId ?? req.body?.user_id,
-    "default-user",
-  );
-  const namespace = readQueryString(req.body?.namespace, "");
-  const projectId =
-    typeof req.body?.projectId === "string"
-      ? req.body.projectId
-      : typeof req.body?.project_id === "string"
-        ? req.body.project_id
-        : undefined;
-
-  if (!namespace) {
-    res.status(400).json({ error: "namespace is required" });
-    return;
-  }
-
-  const entry: LegacySettingEntry = {
-    userId,
-    projectId,
-    namespace,
-    data: req.body?.data ?? null,
-  };
-  const legacyKey = legacySettingKey(userId, namespace, projectId);
-  legacySettingsStore.set(legacyKey, entry);
-  await compatStoreSet(dbLegacySettingKey(userId, namespace, projectId), entry);
-  res.json({ ok: true });
-});
-
-app.delete("/api/settings", async (req, res) => {
-  const userId = readQueryString(req.query.user_id, "default-user");
-  const namespace = readQueryString(req.query.namespace, "");
-  const projectId =
-    typeof req.query.project_id === "string" ? req.query.project_id : undefined;
-
-  if (!namespace) {
-    res.status(400).json({ error: "namespace is required" });
-    return;
-  }
-
-  const legacyKey = legacySettingKey(userId, namespace, projectId);
-  legacySettingsStore.delete(legacyKey);
-  await compatStoreDelete(dbLegacySettingKey(userId, namespace, projectId));
-  res.json({ ok: true });
-});
-
-app.get("/api/settings/list", async (req, res) => {
-  const userId = readQueryString(req.query.user_id, "default-user");
-  const namespacePrefix = readQueryString(req.query.namespace_prefix, "");
-  const hasProjectIdFilter = typeof req.query.project_id === "string";
-  const projectId =
-    hasProjectIdFilter ? req.query.project_id : undefined;
-
-  const dbRows = await compatStoreListByPrefix<LegacySettingEntry>("settings:");
-  for (const row of dbRows) {
-    const entry = row.value;
-    if (!entry || typeof entry !== "object") continue;
-    if (typeof entry.userId !== "string" || typeof entry.namespace !== "string")
-      continue;
-    const legacyKey = legacySettingKey(
-      entry.userId,
-      entry.namespace,
-      entry.projectId,
-    );
-    legacySettingsStore.set(legacyKey, entry);
-  }
-
-  const entries = Array.from(legacySettingsStore.values()).filter((entry) => {
-    if (entry.userId !== userId) return false;
-    if (
-      hasProjectIdFilter &&
-      (entry.projectId || "") !== (projectId || "")
-    )
-      return false;
-    return !namespacePrefix || entry.namespace.startsWith(namespacePrefix);
-  });
-
-  res.json({ entries });
-});
+// /api/settings/* (4 endpoints) → ./settings-routes.ts
 
 // /api/branding/business-info|upload-logo|logo (4 endpoints) → ./branding-routes.ts
 // /api/branding/settings (2 endpoints) — også flyttet (samme modul).
@@ -86299,6 +86197,20 @@ setupProjectTypesRoutes({
   compatProjectTypesStore,
   compatStoreSet,
   dbCompatProjectTypesKey,
+});
+
+// /api/settings/* — 4 endpoints (CRUD + list) for namespaced user-settings.
+// Compat-store-basert (legacySettingsStore Map + compatStore-persistens).
+setupSettingsRoutes({
+  app,
+  readQueryString,
+  legacySettingsStore,
+  legacySettingKey,
+  dbLegacySettingKey,
+  compatStoreGet,
+  compatStoreSet,
+  compatStoreDelete,
+  compatStoreListByPrefix,
 });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
