@@ -75,6 +75,19 @@ import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
+interface VideoMarker {
+  startSec: number;
+  title: string;
+  intro?: string | null;
+  romanNumeral?: string | null;
+}
+
+interface AudioSection {
+  startSec: number;
+  title: string;
+  romanNumeral?: string | null;
+}
+
 interface GalleryChapterPayload {
   id: string;
   title: string;
@@ -83,9 +96,27 @@ interface GalleryChapterPayload {
   imageIds?: string[];
   videoUrl?: string | null;
   videoPoster?: string | null;
+  videoMarkers?: VideoMarker[];
   audioUrl?: string | null;
   audioCover?: string | null;
   audioCredits?: string | null;
+  audioSections?: AudioSection[];
+}
+
+/** "mm:ss" → sekunder, eller null hvis ugyldig */
+function parseTimecode(raw: string): number | null {
+  const m = String(raw).trim().match(/^(\d+):([0-5]?\d)(?:\.(\d{1,3}))?$/);
+  if (!m) return null;
+  const minutes = Number(m[1]);
+  const seconds = Number(m[2]);
+  const millis = m[3] ? Number(m[3].padEnd(3, '0')) / 1000 : 0;
+  return minutes * 60 + seconds + millis;
+}
+
+function fmtTimecode(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 interface GalleryImage {
@@ -118,6 +149,114 @@ const KIND_META = {
   video: { label: 'Video', color: '#d97706', icon: <VideoIcon sx={{ fontSize: 18 }} /> },
   audio: { label: 'Lyd', color: '#a855f7', icon: <AudioIcon sx={{ fontSize: 18 }} /> },
 } as const;
+
+/* ── Sub-component: tidskode-markører/seksjoner ─────────────────── */
+const MarkersEditor: React.FC<{
+  label: string;
+  items: Array<{ startSec: number; title: string; intro?: string | null; romanNumeral?: string | null }>;
+  withIntro?: boolean;
+  onChange: (next: Array<{ startSec: number; title: string; intro?: string | null; romanNumeral?: string | null }>) => void;
+}> = ({ label, items, withIntro = false, onChange }) => {
+  const [tcDraft, setTcDraft] = useState('');
+  const [titleDraft, setTitleDraft] = useState('');
+  const [tcError, setTcError] = useState<string | null>(null);
+
+  const add = () => {
+    const sec = parseTimecode(tcDraft);
+    if (sec == null) {
+      setTcError('Bruk format mm:ss (f.eks. 1:32)');
+      return;
+    }
+    if (!titleDraft.trim()) {
+      setTcError('Tittel kreves');
+      return;
+    }
+    setTcError(null);
+    const sorted = [...items, { startSec: sec, title: titleDraft.trim() }].sort(
+      (a, b) => a.startSec - b.startSec,
+    );
+    onChange(sorted);
+    setTcDraft('');
+    setTitleDraft('');
+  };
+
+  const update = (idx: number, patch: Partial<{ startSec: number; title: string; intro: string; romanNumeral: string }>) => {
+    const next = items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+    onChange(next);
+  };
+
+  const remove = (idx: number) => {
+    onChange(items.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
+        {label}
+      </Typography>
+
+      {items.length > 0 && (
+        <Stack spacing={0.8} sx={{ mb: 1.5 }}>
+          {items.map((it, idx) => (
+            <Stack key={idx} direction="row" spacing={1} alignItems="center">
+              <Chip
+                size="small"
+                label={fmtTimecode(it.startSec)}
+                sx={{ fontFamily: 'monospace', minWidth: 60 }}
+              />
+              <TextField
+                size="small"
+                value={it.title}
+                onChange={(e) => update(idx, { title: e.target.value })}
+                placeholder="Tittel"
+                sx={{ flex: 1 }}
+              />
+              {withIntro && (
+                <TextField
+                  size="small"
+                  value={it.intro || ''}
+                  onChange={(e) => update(idx, { intro: e.target.value })}
+                  placeholder="Intro (valgfri)"
+                  sx={{ flex: 1 }}
+                />
+              )}
+              <IconButton size="small" onClick={() => remove(idx)} color="error" aria-label="Slett markør">
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+
+      <Stack direction="row" spacing={1} alignItems="flex-start">
+        <TextField
+          size="small"
+          value={tcDraft}
+          onChange={(e) => { setTcDraft(e.target.value); setTcError(null); }}
+          placeholder="0:00"
+          sx={{ width: 90, '& input': { fontFamily: 'monospace' } }}
+          error={Boolean(tcError && tcError.includes('mm:ss'))}
+        />
+        <TextField
+          size="small"
+          value={titleDraft}
+          onChange={(e) => { setTitleDraft(e.target.value); setTcError(null); }}
+          placeholder="Tittel"
+          sx={{ flex: 1 }}
+          onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+        />
+        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={add}>
+          Legg til
+        </Button>
+      </Stack>
+      {tcError && (
+        <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
+          {tcError}
+        </Typography>
+      )}
+    </Box>
+  );
+};
 
 /* ── Sortable chapter card ──────────────────────────────────────── */
 const SortableChapter: React.FC<{
@@ -272,6 +411,12 @@ const SortableChapter: React.FC<{
                   fullWidth
                   placeholder="https://… (vises før play)"
                 />
+                <MarkersEditor
+                  label="Kapittel-markører på videoen (klikkbar tidskode i klient-spilleren)"
+                  items={chapter.videoMarkers || []}
+                  withIntro
+                  onChange={(next) => onChange({ ...chapter, videoMarkers: next as VideoMarker[] })}
+                />
               </>
             )}
 
@@ -299,6 +444,11 @@ const SortableChapter: React.FC<{
                   size="small"
                   fullWidth
                   placeholder="Produsert av Michael Larsen · 2026"
+                />
+                <MarkersEditor
+                  label="Seksjoner i lyd-sporet (intro, vers, refreng, …)"
+                  items={chapter.audioSections || []}
+                  onChange={(next) => onChange({ ...chapter, audioSections: next as AudioSection[] })}
                 />
               </>
             )}
@@ -458,11 +608,22 @@ const ChapterEditor: React.FC<Props> = ({ open, galleryId, onClose }) => {
         if (kind === 'video') {
           base.videoUrl = (c.videoUrl || '').trim();
           base.videoPoster = (c.videoPoster || '').trim() || null;
+          base.videoMarkers = (c.videoMarkers || []).map((m) => ({
+            startSec: Number(m.startSec) || 0,
+            title: (m.title || '').trim(),
+            intro: (m.intro || '').trim() || null,
+            romanNumeral: (m.romanNumeral || '').trim() || null,
+          }));
         }
         if (kind === 'audio') {
           base.audioUrl = (c.audioUrl || '').trim();
           base.audioCover = (c.audioCover || '').trim() || null;
           base.audioCredits = (c.audioCredits || '').trim() || null;
+          base.audioSections = (c.audioSections || []).map((s) => ({
+            startSec: Number(s.startSec) || 0,
+            title: (s.title || '').trim(),
+            romanNumeral: (s.romanNumeral || '').trim() || null,
+          }));
         }
         return base;
       });
