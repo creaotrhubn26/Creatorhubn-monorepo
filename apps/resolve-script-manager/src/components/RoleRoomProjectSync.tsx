@@ -53,6 +53,43 @@ export function RoleRoomProjectSync() {
   const [probeResult, setProbeResult] = useState<ProbeSummary | null>(null);
   const [creatingBins, setCreatingBins] = useState(false);
   const [binResult, setBinResult] = useState<{ created: string[]; skipped: string[]; failed: number } | null>(null);
+  const [applyingSettings, setApplyingSettings] = useState(false);
+  const [settingsResult, setSettingsResult] = useState<{ applied: number; skipped: number; failed: number } | null>(null);
+
+  async function applySettingsToResolve() {
+    if (!context) return;
+    const ps = context.projectSettings;
+    const log = probeResult?.dominantLogCurve;
+    if (!ps?.resolution && !ps?.frameRate && !log) return;
+    setApplyingSettings(true);
+    setSettingsResult(null);
+    setError(null);
+    try {
+      const params: Record<string, unknown> = {};
+      if (ps?.resolution) params.resolution = ps.resolution;
+      if (ps?.frameRate != null) params.frameRate = ps.frameRate;
+      if (log?.suggestedCstInputGamma) params.cstInputGamma = log.suggestedCstInputGamma;
+      if (log?.suggestedCstInputGamut) params.cstInputGamut = log.suggestedCstInputGamut;
+      const summary = await executeScript("apply_project_settings", params, false);
+      const result = summary.events.find((e) => e.type === "result")?.value as
+        | { applied?: unknown[]; skipped?: unknown[]; failed?: unknown[] }
+        | undefined;
+      const err = summary.events.find((e) => e.type === "error")?.value as { message?: string } | undefined;
+      if (err?.message) {
+        setError(err.message);
+        return;
+      }
+      setSettingsResult({
+        applied: (result?.applied || []).length,
+        skipped: (result?.skipped || []).length,
+        failed: (result?.failed || []).length,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplyingSettings(false);
+    }
+  }
 
   async function loadProductions() {
     setLoading(true);
@@ -301,20 +338,70 @@ export function RoleRoomProjectSync() {
           borderRadius: 4,
           fontSize: 12,
           color: "#b8a8d8",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
         }}>
-          <strong style={{ color: "#f0eaff" }}>Foreslåtte Resolve-innstillinger:</strong>{" "}
-          {context.projectSettings.resolution && <>resolution {context.projectSettings.resolution} · </>}
-          {context.projectSettings.frameRate && (
-            <>
-              {context.projectSettings.frameRate} fps
-              {(() => {
-                const std = classifyExpectedStandard(context.projectSettings?.frameRate ?? null);
-                return std ? ` (${std})` : "";
-              })()}
-              {" · "}
-            </>
-          )}
-          {context.projectSettings.colorScience && <>{context.projectSettings.colorScience}</>}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{ color: "#f0eaff" }}>Foreslåtte Resolve-innstillinger:</strong>{" "}
+            {context.projectSettings.resolution && <>resolution {context.projectSettings.resolution} · </>}
+            {context.projectSettings.frameRate && (
+              <>
+                {context.projectSettings.frameRate} fps
+                {(() => {
+                  const std = classifyExpectedStandard(context.projectSettings?.frameRate ?? null);
+                  return std ? ` (${std})` : "";
+                })()}
+                {" · "}
+              </>
+            )}
+            {context.projectSettings.colorScience && <>{context.projectSettings.colorScience}</>}
+            {probeResult?.dominantLogCurve && (
+              <>
+                <br />
+                <span style={{ color: "#a030c0" }}>
+                  + CST: {probeResult.dominantLogCurve.suggestedCstInputGamma}
+                  {probeResult.dominantLogCurve.suggestedCstInputGamut && ` / ${probeResult.dominantLogCurve.suggestedCstInputGamut}`}
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            onClick={applySettingsToResolve}
+            disabled={applyingSettings}
+            style={{
+              background: "#6e3fc7",
+              border: "none",
+              color: "white",
+              borderRadius: 6,
+              padding: "6px 12px",
+              cursor: applyingSettings ? "default" : "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {applyingSettings ? "Setter…" : "Sett i Resolve"}
+          </button>
+        </div>
+      )}
+
+      {settingsResult && (
+        <div style={{
+          marginTop: 8,
+          padding: 10,
+          background: settingsResult.failed > 0 ? "rgba(245,158,11,0.10)" : "rgba(74,212,138,0.10)",
+          border: settingsResult.failed > 0 ? "1px solid rgba(245,158,11,0.4)" : "1px solid rgba(74,212,138,0.4)",
+          color: settingsResult.failed > 0 ? "#a16207" : "#4ad48a",
+          borderRadius: 6,
+          fontSize: 12,
+        }}>
+          <strong>{settingsResult.failed > 0 ? "⚠" : "✓"}</strong>{" "}
+          {settingsResult.applied} satt
+          {settingsResult.skipped > 0 && `, ${settingsResult.skipped} allerede korrekt`}
+          {settingsResult.failed > 0 && `, ${settingsResult.failed} feilet (Resolve avviste verdien)`}.
         </div>
       )}
 

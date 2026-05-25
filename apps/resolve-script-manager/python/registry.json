@@ -115,6 +115,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "apply_project_settings",
+      "name": "Apply Project Settings",
+      "category": "project",
+      "scriptPath": "scripts/project/apply_project_settings.py",
+      "description": "Setter Resolve project-resolusjon, framerate og Color Space Transform (CST) basert på equipment + detektert log-kurve fra Role Room. Idempotent.",
+      "requiredInputs": [
+        "resolution",
+        "frameRate"
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "get_media_pool_state",
       "name": "Get Media Pool State",
       "category": "project",
