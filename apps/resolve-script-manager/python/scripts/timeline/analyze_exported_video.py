@@ -125,6 +125,201 @@ def extract_frame(ffmpeg: str, video: str, time_sec: float, dest: str) -> bool:
         return False
 
 
+SILENCEDETECT_RE = re.compile(r"silence_(start|end): ([\d.]+)")
+
+
+def detect_audio_sections(ffmpeg: str, video: str, duration: float) -> list[dict]:
+    """Classify audio-track regions as 'music' / 'dialogue' / 'silence' by
+    combining ffmpeg silencedetect with RMS-energy analysis.
+
+    Music typically = continuous moderate-to-high RMS with few silence gaps.
+    Dialogue = variable RMS with frequent short silences (between words).
+    Silence = below threshold for >0.4s.
+
+    Returns: [{ start, end, type, rmsDb, silenceRatio }] sorted by start.
+    The 'type' is a best-guess label; for very mixed content (music + voice
+    over) we pick whichever character dominates.
+    """
+    # 1) Run silencedetect to find silent gaps
+    silence_cmd = [
+        ffmpeg, "-hide_banner", "-nostats",
+        "-i", video,
+        "-af", "silencedetect=noise=-32dB:d=0.4",
+        "-vn", "-f", "null", "-",
+    ]
+    try:
+        r = subprocess.run(silence_cmd, capture_output=True, text=True, timeout=300)
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"silencedetect failed: {exc}")
+        return [{"start": 0.0, "end": duration, "type": "unknown", "rmsDb": None, "silenceRatio": None}]
+
+    silences: list[tuple[float, float]] = []
+    cur_start: float | None = None
+    for kind, val in SILENCEDETECT_RE.findall(r.stderr):
+        t = float(val)
+        if kind == "start":
+            cur_start = t
+        elif kind == "end" and cur_start is not None:
+            silences.append((cur_start, t))
+            cur_start = None
+    if cur_start is not None:
+        silences.append((cur_start, duration))
+
+    # 2) Build non-silent intervals (= candidate music or dialogue)
+    audio_regions: list[tuple[float, float]] = []
+    cursor = 0.0
+    for s_start, s_end in silences:
+        if s_start - cursor > 0.2:
+            audio_regions.append((cursor, s_start))
+        cursor = s_end
+    if duration - cursor > 0.2:
+        audio_regions.append((cursor, duration))
+
+    # 3) For each non-silent region, measure RMS + count internal short
+    #    silences (proxy for word-gaps in dialogue). High RMS + few gaps
+    #    = music; lower RMS + many gaps = dialogue.
+    sections: list[dict] = []
+    for start, end in audio_regions:
+        region_dur = end - start
+        if region_dur < 0.5:
+            continue
+        rms_db = _measure_rms_db(ffmpeg, video, start, region_dur)
+        # Count short silences inside this region (between words)
+        inner = [s for s in silences if start <= s[0] <= end]
+        silence_ratio = sum(min(end, e) - max(start, b) for b, e in inner) / region_dur if region_dur > 0 else 0
+        # Heuristic classification
+        if rms_db is not None and rms_db > -22 and silence_ratio < 0.08:
+            kind = "music"
+        elif rms_db is not None and rms_db > -30 and silence_ratio < 0.04:
+            kind = "music"  # quiet music
+        elif silence_ratio > 0.15:
+            kind = "dialogue"
+        else:
+            kind = "dialogue" if (rms_db or -60) > -35 else "ambient"
+        sections.append({
+            "start": start,
+            "end": end,
+            "type": kind,
+            "rmsDb": rms_db,
+            "silenceRatio": silence_ratio,
+        })
+
+    # 4) Add the silence sections back in
+    for s_start, s_end in silences:
+        sections.append({"start": s_start, "end": s_end, "type": "silence", "rmsDb": None, "silenceRatio": 1.0})
+    sections.sort(key=lambda s: s["start"])
+    return sections
+
+
+def _measure_rms_db(ffmpeg: str, video: str, start_sec: float, duration: float) -> float | None:
+    """Run volumedetect on a clip slice → return mean RMS in dB, or None."""
+    cmd = [
+        ffmpeg, "-hide_banner", "-nostats",
+        "-ss", f"{start_sec:.3f}",
+        "-t", f"{duration:.3f}",
+        "-i", video,
+        "-vn",
+        "-af", "volumedetect",
+        "-f", "null", "-",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        m = re.search(r"mean_volume: ([-\d.]+) dB", r.stderr)
+        return float(m.group(1)) if m else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def detect_beats(video: str, ffmpeg: str, duration: float) -> list[float]:
+    """Beat detection via librosa (optional dep). Returns beat times in
+    seconds. Empty list if librosa unavailable or detection fails. We use
+    the venv-py312 if it has librosa, else system python.
+    """
+    venv_py = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/venv-py312/bin/python"
+    )
+    python = venv_py if os.path.isfile(venv_py) else "python3"
+
+    # Extract audio to a temp WAV — librosa loads anything but a single
+    # mono 22050 Hz WAV is fastest.
+    tmp_audio = os.path.join(os.path.dirname(video), ".trrpa_beat.wav")
+    extract_cmd = [
+        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+        "-i", video,
+        "-ac", "1", "-ar", "22050",
+        "-vn", "-f", "wav", tmp_audio,
+    ]
+    try:
+        subprocess.run(extract_cmd, capture_output=True, timeout=120, check=False)
+        if not os.path.isfile(tmp_audio):
+            return []
+        # Use librosa subprocess so we don't import it into the manager-side python
+        snippet = (
+            "import sys, json\n"
+            "try:\n"
+            "  import librosa, numpy as np\n"
+            "except ImportError:\n"
+            "  print(json.dumps({'error': 'librosa_not_installed'})); sys.exit(0)\n"
+            "y, sr = librosa.load(sys.argv[1], sr=22050)\n"
+            "tempo, beats = librosa.beat.beat_track(y=y, sr=sr)\n"
+            "times = librosa.frames_to_time(beats, sr=sr).tolist()\n"
+            "print(json.dumps({'beats': times, 'tempo': float(tempo)}))\n"
+        )
+        r = subprocess.run(
+            [python, "-c", snippet, tmp_audio],
+            capture_output=True, text=True, timeout=180,
+        )
+        try:
+            data = json.loads((r.stdout or "").strip().splitlines()[-1])
+            if "error" in data:
+                bridge.warn(f"beat-detection skipped: {data['error']}")
+                return []
+            return data.get("beats", [])
+        except (json.JSONDecodeError, IndexError):
+            return []
+    finally:
+        try:
+            os.remove(tmp_audio)
+        except OSError:
+            pass
+
+
+def audio_section_for_time(sections: list[dict], t: float) -> dict | None:
+    for s in sections:
+        if s["start"] <= t < s["end"]:
+            return s
+    return None
+
+
+def nearest_beat(beats: list[float], t: float, tolerance_s: float = 0.15) -> dict:
+    """Distance to nearest beat + on-beat verdict for a cut time."""
+    if not beats:
+        return {"hasBeats": False}
+    # Binary-search nearest beat
+    lo, hi = 0, len(beats) - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if beats[mid] < t:
+            lo = mid + 1
+        else:
+            hi = mid
+    nearest_idx = lo if lo == 0 else (lo if abs(beats[lo] - t) < abs(beats[lo - 1] - t) else lo - 1)
+    nearest_t = beats[nearest_idx]
+    delta = t - nearest_t
+    abs_delta = abs(delta)
+    return {
+        "hasBeats": True,
+        "nearestBeatTime": nearest_t,
+        "deltaSeconds": delta,
+        "onBeat": abs_delta <= tolerance_s,
+        "verdict": (
+            "på beat" if abs_delta <= tolerance_s
+            else "nær beat" if abs_delta <= tolerance_s * 2
+            else "av-beat"
+        ),
+    }
+
+
 def measure_motion(ffmpeg: str, video: str, start_sec: float, end_sec: float) -> float | None:
     """Rough motion score over a shot interval — averages per-frame scene-change
     delta from ffmpeg's scdet filter. Returns 0..1 (higher = more motion).
@@ -205,16 +400,21 @@ def narrate_with_claude(shot_meta: list[dict]) -> list[str]:
             duration_s = s.get("duration", 0.0)
             motion_label = describe_motion(s.get("motion"))
             length_label = describe_shot_length(duration_s)
+            audio_label = s.get("audioLabel") or "ukjent lyd"
+            beat_label = s.get("beatLabel") or ""
 
             prompt = (
                 f"Du ser {len(usable)} bilder fra ETT shot i en bryllups-/eventfilm: "
                 f"start, midt og slutt. Shot-varighet: {duration_s:.1f}s ({length_label}). "
-                f"Bevegelse: {motion_label}.\n\n"
+                f"Bevegelse: {motion_label}. Lyd: {audio_label}"
+                f"{f' · {beat_label}' if beat_label else ''}.\n\n"
                 "Skriv 3-6 ord på norsk som beskriver HVA SOM SKJER i shotet — "
-                "inkluder bevegelsen mellom bildene hvis relevant. Tenk som en "
-                "marker-tittel i et redigeringsprogram. Eksempler: "
+                "inkluder bevegelsen mellom bildene hvis relevant. Hvis det er musikk "
+                "uten dialog, prøv å fange stemningen ('Slow-mo seremoni med musikk'). "
+                "Hvis dialog/tale, beskriv handling ('Brudefar holder tale'). "
+                "Tenk som en marker-tittel i et redigeringsprogram. Eksempler: "
                 "'Brudefar gråter under tale', 'Kamera følger ringbyttingen', "
-                "'Brud og brudgom danser', 'Brytar zoomer inn på kake'.\n\n"
+                "'Slow-mo brudemarsj med musikk', 'Brytar zoomer inn på kake'.\n\n"
                 "Kun beskrivelsen, ingen anførselstegn, ingen forklaring."
             )
             content.append({"type": "text", "text": prompt})
@@ -269,39 +469,69 @@ def run(params: dict, dry_run: bool) -> None:
     if not cuts or cuts[0] > 0.05:
         cuts = [0.0] + cuts
 
-    narrations: list[str] = []
+    # Audio analysis — separate pass so shot-detection isn't influenced
+    # by audio (music underneath shouldn't add false cuts).
+    bridge.progress(20, 100, "Analyzing audio sections…")
+    audio_sections = detect_audio_sections(ffmpeg, video_path, duration)
+    # Beat-detection is more expensive — only run if we found enough music
+    music_total = sum(s["end"] - s["start"] for s in audio_sections if s["type"] == "music")
+    beats: list[float] = []
+    if music_total > 5.0:  # at least 5 seconds of music to bother
+        bridge.progress(25, 100, "Detecting beats (librosa)…")
+        beats = detect_beats(video_path, ffmpeg, duration)
+
+    # Compute per-shot audio + beat context regardless of narrate flag —
+    # it shows up in the result table and gets used by Claude if narrating.
+    def _audio_label_for_shot(start: float, end: float) -> str:
+        overlaps = [s for s in audio_sections if s["end"] > start and s["start"] < end]
+        if not overlaps:
+            return "stille"
+        # Pick the dominant type across the shot
+        type_dur: dict[str, float] = {}
+        for s in overlaps:
+            overlap = min(end, s["end"]) - max(start, s["start"])
+            type_dur[s["type"]] = type_dur.get(s["type"], 0) + max(0, overlap)
+        dom = max(type_dur.items(), key=lambda kv: kv[1])[0]
+        labels = {"music": "musikk", "dialogue": "dialog/tale", "silence": "stille", "ambient": "rom-lyd", "unknown": "lyd"}
+        return labels.get(dom, dom)
+
     shot_meta_for_narration: list[dict] = []
+    bridge.progress(30, 100, "Computing per-shot context (motion + audio + beats)…")
+    tmp_dir = os.path.join(os.path.dirname(video_path), ".trrpa_thumbs")
     if narrate and not dry_run:
-        # Extract 3 frames per shot (start/mid/end) + measure motion.
-        # This gives Claude enough temporal context to describe action,
-        # not just a single moment.
-        bridge.progress(30, 100, "Extracting frames + measuring motion per shot…")
-        tmp_dir = os.path.join(os.path.dirname(video_path), ".trrpa_thumbs")
         os.makedirs(tmp_dir, exist_ok=True)
-        for i, cut in enumerate(cuts):
-            next_cut = cuts[i + 1] if i + 1 < len(cuts) else duration
-            shot_dur = max(0.05, next_cut - cut)
-            # Sample at 10%, 50%, 90% of shot duration so we don't catch
-            # the cut transition itself (cuts often have motion blur on
-            # both ends of the boundary).
+    for i, cut in enumerate(cuts):
+        next_cut = cuts[i + 1] if i + 1 < len(cuts) else duration
+        shot_dur = max(0.05, next_cut - cut)
+        audio_label = _audio_label_for_shot(cut, next_cut)
+        beat_info = nearest_beat(beats, cut) if beats else {"hasBeats": False}
+        beat_label = ""
+        if beat_info.get("hasBeats") and audio_label == "musikk":
+            beat_label = f"kutt {beat_info['verdict']}"
+        frames: list[str] = []
+        if narrate and not dry_run:
             t_start = cut + shot_dur * 0.10
             t_mid = cut + shot_dur * 0.50
             t_end = cut + shot_dur * 0.90
-            frames: list[str] = []
             for label, t in [("a", t_start), ("b", t_mid), ("c", t_end)]:
                 dest = os.path.join(tmp_dir, f"shot_{i:03d}_{label}.jpg")
                 if extract_frame(ffmpeg, video_path, t, dest):
                     frames.append(dest)
-            motion = measure_motion(ffmpeg, video_path, cut, next_cut) if shot_dur > 0.2 else None
-            shot_meta_for_narration.append({
-                "index": i,
-                "duration": shot_dur,
-                "motion": motion,
-                "frames": frames,
-            })
-            if (i + 1) % 5 == 0:
-                bridge.progress(30 + int(20 * (i + 1) / len(cuts)), 100, f"Frames {i+1}/{len(cuts)}")
+        motion = measure_motion(ffmpeg, video_path, cut, next_cut) if shot_dur > 0.2 else None
+        shot_meta_for_narration.append({
+            "index": i,
+            "duration": shot_dur,
+            "motion": motion,
+            "frames": frames,
+            "audioLabel": audio_label,
+            "beatInfo": beat_info,
+            "beatLabel": beat_label,
+        })
+        if (i + 1) % 5 == 0:
+            bridge.progress(30 + int(20 * (i + 1) / len(cuts)), 100, f"Context {i+1}/{len(cuts)}")
 
+    narrations: list[str] = []
+    if narrate and not dry_run:
         bridge.progress(55, 100, "Narrating shots with Claude Vision…")
         narrations = narrate_with_claude(shot_meta_for_narration)
         while len(narrations) < len(cuts):
@@ -316,12 +546,16 @@ def run(params: dict, dry_run: bool) -> None:
     for i, cut in enumerate(cuts):
         next_cut = cuts[i + 1] if i + 1 < len(cuts) else duration
         m = meta_by_idx.get(i, {})
+        beat_info = m.get("beatInfo", {})
         plan.append({
             "index": i,
             "time": cut,
             "frame": int(cut * fps),
             "durationSeconds": max(0.0, next_cut - cut),
             "motionScore": m.get("motion"),
+            "audioType": m.get("audioLabel"),
+            "onBeat": bool(beat_info.get("onBeat")),
+            "beatDelta": beat_info.get("deltaSeconds"),
             "name": narrations[i] if i < len(narrations) else f"Shot {i+1}",
         })
 
@@ -361,19 +595,53 @@ def run(params: dict, dry_run: bool) -> None:
         bridge.error(f"CreateTimelineFromClips failed for '{timeline_name}'")
         sys.exit(1)
 
-    # Add markers per cut
+    # Add markers per cut. Color encodes the audio + beat context:
+    #   Blue  = cut lands on a music beat (well-timed musical edit)
+    #   Yellow = cut over music but off-beat
+    #   Green = cut over dialogue (story-driven)
+    #   White = cut over silence/ambient (transition or B-roll handoff)
     bridge.progress(90, 100, "Placing markers…")
     markers_added = 0
     markers_failed = 0
     for entry in plan:
+        audio_type = entry.get("audioType")
+        if entry.get("onBeat") and audio_type == "musikk":
+            color = "Blue"
+        elif audio_type == "musikk":
+            color = "Yellow"
+        elif audio_type == "dialog/tale":
+            color = "Green"
+        else:
+            color = "White"
+
+        # Annotate marker name with audio + beat hint so it shows in
+        # the Resolve markers list without opening the note.
+        suffix = ""
+        if entry.get("onBeat") and audio_type == "musikk":
+            suffix = " ♪ på beat"
+        elif audio_type == "musikk":
+            delta = entry.get("beatDelta")
+            if delta is not None:
+                suffix = f" ♪ {delta * 1000:+.0f}ms"
+        marker_name = f"{entry['name']}{suffix}"
+
+        note_lines = [
+            f"Varighet: {entry.get('durationSeconds', 0):.1f}s",
+            f"Lyd: {audio_type or '?'}",
+        ]
+        if entry.get("motionScore") is not None:
+            note_lines.append(f"Bevegelse: {int(entry['motionScore'] * 100)}%")
+        if entry.get("beatDelta") is not None:
+            note_lines.append(f"Beat-delta: {entry['beatDelta'] * 1000:+.0f}ms")
+
         try:
             ok = timeline.AddMarker(
-                entry["frame"],   # frameId
-                "Yellow",          # color
-                entry["name"],     # name
-                "",                # note
-                1,                  # duration
-                "",                # customData
+                entry["frame"],
+                color,
+                marker_name,
+                " · ".join(note_lines),
+                1,
+                "",
             )
             if ok:
                 markers_added += 1
@@ -385,6 +653,12 @@ def run(params: dict, dry_run: bool) -> None:
 
     bridge.progress(100, 100, "Done.")
 
+    music_total = sum(s["end"] - s["start"] for s in audio_sections if s["type"] == "music")
+    dialogue_total = sum(s["end"] - s["start"] for s in audio_sections if s["type"] == "dialogue")
+    silence_total = sum(s["end"] - s["start"] for s in audio_sections if s["type"] == "silence")
+    on_beat_cuts = sum(1 for e in plan if e.get("onBeat") and e.get("audioType") == "musikk")
+    off_beat_cuts = sum(1 for e in plan if e.get("audioType") == "musikk" and not e.get("onBeat"))
+
     bridge.result({
         "projectName": project.GetName(),
         "timelineName": timeline_name,
@@ -394,6 +668,15 @@ def run(params: dict, dry_run: bool) -> None:
         "markersAdded": markers_added,
         "markersFailed": markers_failed,
         "narrated": narrate,
+        "audioBreakdown": {
+            "musicSeconds": music_total,
+            "dialogueSeconds": dialogue_total,
+            "silenceSeconds": silence_total,
+            "beatsDetected": len(beats),
+            "onBeatCuts": on_beat_cuts,
+            "offBeatCuts": off_beat_cuts,
+            "musicEditPrecisionPct": round(100 * on_beat_cuts / max(1, on_beat_cuts + off_beat_cuts)),
+        },
         "samplePlan": plan[:15],
     })
 
