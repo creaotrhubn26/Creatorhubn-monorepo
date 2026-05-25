@@ -119,24 +119,26 @@ export function ParamDialog({ script, dryRun, defaults, onCancel, onConfirm }: P
     for (const inp of inputs) {
       const raw = values[inp.key] ?? "";
       // Skip empty optional fields entirely so Python's params.get(..., default)
-      // can return its fallback. Sending '' as the value makes get() return ''
-      // and breaks float()/int() coercion downstream.
+      // can return its fallback.
       if (raw === "") continue;
+      // JSON literal? (arrays/objects pasted in)
       if (raw.startsWith("{") || raw.startsWith("[")) {
         try {
           parsed[inp.key] = JSON.parse(raw);
           continue;
         } catch {
-          // fall through to string
+          /* fall through to string */
         }
       }
+      // Only number-typed fields get numeric coercion. Text fields stay
+      // strings even if they contain digits ('240' as a tag-name must
+      // not become int 240 — bit downstream Python on set(int)).
       if (inp.type === "number") {
         const num = Number(raw);
         parsed[inp.key] = Number.isFinite(num) ? num : raw;
-        continue;
+      } else {
+        parsed[inp.key] = raw;
       }
-      const num = Number(raw);
-      parsed[inp.key] = Number.isFinite(num) && raw.trim() !== "" && !isNaN(num) ? num : raw;
     }
     onConfirm(parsed);
   }
