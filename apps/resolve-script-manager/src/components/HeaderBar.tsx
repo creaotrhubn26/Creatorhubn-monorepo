@@ -2,6 +2,47 @@ import { useEffect, useState } from "react";
 import type { HealthStatus, ProjectTemplateSummary } from "../types";
 import { IconGear, IconBox, IconEye, IconMagicCut } from "./Icons";
 import { UserProfile } from "./UserProfile";
+import { useDepHealth, type DepHealth } from "../hooks/useDepHealth";
+
+function DepHealthPill({ onOpen }: { onOpen: () => void }) {
+  const { state } = useDepHealth();
+  const colorByStatus: Record<DepHealth, { bg: string; border: string; dot: string; text: string }> = {
+    green: { bg: "rgba(74,212,138,0.12)", border: "rgba(74,212,138,0.45)", dot: "#4ad48a", text: "#4ad48a" },
+    amber: { bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.45)", dot: "#f59e0b", text: "#f59e0b" },
+    red: { bg: "rgba(239,79,111,0.12)", border: "rgba(239,79,111,0.45)", dot: "#ef4f6f", text: "#ef4f6f" },
+    unknown: { bg: "rgba(184,168,216,0.08)", border: "rgba(184,168,216,0.25)", dot: "#8674a8", text: "#b8a8d8" },
+  };
+  const c = colorByStatus[state.status];
+  const labels: Record<DepHealth, string> = {
+    green: "Deps OK",
+    amber: "Deps: valgfritt mangler",
+    red: "Deps: mangler",
+    unknown: "Deps: sjekker…",
+  };
+  return (
+    <button
+      onClick={onOpen}
+      title={state.message}
+      style={{
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        color: c.text,
+        borderRadius: 999,
+        padding: "3px 10px 3px 8px",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 11,
+        fontWeight: 600,
+        marginLeft: 8,
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: c.dot }} />
+      {labels[state.status]}
+    </button>
+  );
+}
 
 function readSignedIn(): boolean {
   try {
@@ -98,6 +139,7 @@ export function HeaderBar({
           <span className="dot" />
           {connectionLabel(health)}
         </span>
+        <DepHealthPill onOpen={onOpenDependencies} />
       </div>
 
       <div className="header-actions">
