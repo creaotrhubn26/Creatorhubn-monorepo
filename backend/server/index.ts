@@ -36592,76 +36592,8 @@ app.post("/api/user/kv/:key", async (req, res) => {
   });
 });
 
-// File management status API used by dashboard and admin test panels
-app.get("/api/file-management/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    uploadService: "online",
-    downloadService: "online",
-    storageService: "online",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get("/api/file-management/stats", (_req, res) => {
-  const jobs = Array.from(compatAudioJobsStore.values());
-  const activeUploads = jobs.filter(
-    (job) => job.status === "pending" || job.status === "processing",
-  ).length;
-  const completedUploads = jobs.filter(
-    (job) => job.status === "completed",
-  ).length;
-  const failedUploads = jobs.filter((job) => job.status === "error").length;
-  const totalStorageGB = 100;
-  const usedStorageGB = Math.max(
-    1,
-    Math.min(
-      95,
-      Math.round((completedUploads * 0.4 + activeUploads * 0.2) * 10) / 10,
-    ),
-  );
-  const storageUsedPercent = Number(
-    ((usedStorageGB / totalStorageGB) * 100).toFixed(1),
-  );
-
-  res.json({
-    activeOperations: activeUploads,
-    upload: {
-      active: activeUploads,
-      completed: completedUploads,
-      failed: failedUploads,
-    },
-    download: { active: 0, completed: completedUploads, failed: 0 },
-    storageTotalGB: totalStorageGB,
-    storageUsedGB: usedStorageGB,
-    storageAvailableGB: Number((totalStorageGB - usedStorageGB).toFixed(1)),
-    storageUsedPercent,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get("/api/file-management/google-drive/status", (req, res) => {
-  const userId = compatResolveUserId(req);
-  const connected = userId !== "guest";
-  res.status(200).json({
-    connected,
-    provider: "google-drive",
-    mode: connected ? "user" : "guest",
-    lastChecked: new Date().toISOString(),
-  });
-});
-
-app.get("/api/file-management/google-photos/status", (req, res) => {
-  const userId = compatResolveUserId(req);
-  const connected = userId !== "guest";
-  res.status(200).json({
-    connected,
-    provider: "google-photos",
-    mode: connected ? "user" : "guest",
-    lastChecked: new Date().toISOString(),
-  });
-});
-
+// /api/file-management/* — dead-code dupes slettet (live versions er
+// fortsatt i index.ts ved 32089+).
 // Communication integration health
 app.get("/api/communication/google-chat/status", async (req, res) => {
   try {
