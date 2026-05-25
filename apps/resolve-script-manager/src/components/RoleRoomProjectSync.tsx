@@ -11,17 +11,21 @@
  */
 
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   fetchMyProductions,
   fetchRoleRoomScenes,
   fetchRoleRoomEquipment,
   fetchRoleRoomLiveSetState,
+  probeMediaFiles,
   type RoleRoomProduction,
   type RoleRoomScene,
   type RoleRoomEquipment,
   type RoleRoomProjectSettings,
   type RoleRoomClip,
+  type ProbeSummary,
 } from "../api";
+import type { MountedCard } from "../types";
 
 interface ProjectContext {
   scenes: RoleRoomScene[];
@@ -30,12 +34,22 @@ interface ProjectContext {
   clips: RoleRoomClip[];
 }
 
+function classifyExpectedStandard(fps: number | null | undefined): string | null {
+  if (fps == null) return null;
+  if (Math.abs(fps - 25) < 0.02 || Math.abs(fps - 50) < 0.02) return "PAL";
+  if (Math.abs(fps - 29.97) < 0.05 || Math.abs(fps - 30) < 0.02 || Math.abs(fps - 59.94) < 0.05 || Math.abs(fps - 60) < 0.02) return "NTSC";
+  if (Math.abs(fps - 23.976) < 0.05 || Math.abs(fps - 24) < 0.02) return "Cinema";
+  return null;
+}
+
 export function RoleRoomProjectSync() {
   const [productions, setProductions] = useState<RoleRoomProduction[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [context, setContext] = useState<ProjectContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<ProbeSummary | null>(null);
 
   async function loadProductions() {
     setLoading(true);
@@ -82,7 +96,33 @@ export function RoleRoomProjectSync() {
 
   useEffect(() => {
     void loadContext(selected);
+    setProbeResult(null);
   }, [selected]);
+
+  async function probeMountedCards() {
+    setProbing(true);
+    setError(null);
+    try {
+      const cards = await invoke<MountedCard[]>("list_mounted_cards");
+      const paths: string[] = [];
+      for (const card of cards) {
+        for (const clip of card.clips || []) {
+          if (clip.path) paths.push(clip.path);
+        }
+      }
+      if (paths.length === 0) {
+        setError("Ingen mountede kort funnet — koble til et minnekort først.");
+        setProbing(false);
+        return;
+      }
+      const result = await probeMediaFiles(paths);
+      setProbeResult(result);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProbing(false);
+    }
+  }
 
   return (
     <div style={{
@@ -192,8 +232,138 @@ export function RoleRoomProjectSync() {
         }}>
           <strong style={{ color: "#f0eaff" }}>Foreslåtte Resolve-innstillinger:</strong>{" "}
           {context.projectSettings.resolution && <>resolution {context.projectSettings.resolution} · </>}
-          {context.projectSettings.frameRate && <>{context.projectSettings.frameRate} fps · </>}
+          {context.projectSettings.frameRate && (
+            <>
+              {context.projectSettings.frameRate} fps
+              {(() => {
+                const std = classifyExpectedStandard(context.projectSettings?.frameRate ?? null);
+                return std ? ` (${std})` : "";
+              })()}
+              {" · "}
+            </>
+          )}
           {context.projectSettings.colorScience && <>{context.projectSettings.colorScience}</>}
+        </div>
+      )}
+
+      {/* PAL/NTSC file-probe section */}
+      {context && (
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid rgba(160,48,192,0.20)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <strong style={{ fontSize: 13 }}>Sjekk faktiske file-formater</strong>
+            <button
+              onClick={probeMountedCards}
+              disabled={probing}
+              style={{
+                background: "#a030c0",
+                border: "none",
+                color: "white",
+                borderRadius: 6,
+                padding: "6px 12px",
+                cursor: probing ? "default" : "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {probing ? "Sjekker…" : "Probe mountede kort"}
+            </button>
+          </div>
+
+          {probeResult && (() => {
+            if (!probeResult.ffprobeAvailable) {
+              return (
+                <div style={{ padding: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.4)", color: "#a16207", borderRadius: 6, fontSize: 12 }}>
+                  ffprobe ikke funnet på maskinen. Installer med <code>brew install ffmpeg</code> for å aktivere format-sjekk.
+                </div>
+              );
+            }
+            const expectedStd = classifyExpectedStandard(context.projectSettings?.frameRate ?? null);
+            const actualStd = probeResult.dominantStandard;
+            const mismatch = expectedStd && actualStd && expectedStd !== actualStd;
+            return (
+              <div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 10 }}>
+                  <Counter label="Filer sjekket" value={`${probeResult.probedCount}/${probeResult.totalFiles}`} small />
+                  <Counter label="Standard" value={actualStd || "–"} small />
+                  <Counter label="FPS" value={probeResult.dominantFrameRate?.toFixed(2) || "–"} small />
+                  <Counter label="Oppløsning" value={probeResult.dominantResolution || "–"} small />
+                </div>
+
+                {mismatch && (
+                  <div style={{ padding: 10, background: "rgba(239,79,111,0.10)", border: "1px solid rgba(239,79,111,0.4)", color: "#ef4f6f", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
+                    ⚠ Standard-mismatch: utstyret er konfigurert for <strong>{expectedStd}</strong>, men filene på kortet er <strong>{actualStd}</strong>.
+                    Sjekk at kameraet ble satt i riktig modus før shoot.
+                  </div>
+                )}
+
+                {probeResult.mixedStandards && (
+                  <div style={{ padding: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.4)", color: "#a16207", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
+                    ⚠ Blandet format på kortet (PAL + NTSC + Cinema). Resolve-prosjektet må enten settes til dominant standard, eller klippene må konformes ved import.
+                  </div>
+                )}
+
+                {!mismatch && !probeResult.mixedStandards && expectedStd && actualStd === expectedStd && (
+                  <div style={{ padding: 10, background: "rgba(74,212,138,0.10)", border: "1px solid rgba(74,212,138,0.4)", color: "#4ad48a", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
+                    ✓ Filer matcher utstyrs-standard ({expectedStd}). Trygt å importere.
+                  </div>
+                )}
+
+                {/* Log-curve detection + CST recommendation */}
+                {probeResult.dominantLogCurve && (
+                  <div style={{
+                    padding: 10,
+                    background: "rgba(160,48,192,0.10)",
+                    borderLeft: "3px solid #a030c0",
+                    borderRadius: 4,
+                    fontSize: 12,
+                    color: "#d8c8e8",
+                    marginBottom: 8,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <strong style={{ color: "#f0eaff", fontSize: 13 }}>
+                        Detektert log-kurve: {probeResult.dominantLogCurve.label}
+                      </strong>
+                      <span style={{ fontSize: 11, color: "#8674a8" }}>
+                        sikkerhet {Math.round(probeResult.dominantLogCurve.confidence * 100)}% ({probeResult.dominantLogCurve.source})
+                      </span>
+                    </div>
+                    {(probeResult.dominantLogCurve.suggestedCstInputGamma || probeResult.dominantLogCurve.suggestedCstInputGamut) && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ color: "#f0eaff", fontWeight: 600 }}>Resolve CST-forslag:</div>
+                        <ul style={{ margin: "4px 0 0 18px", padding: 0, color: "#d8c8e8" }}>
+                          {probeResult.dominantLogCurve.suggestedCstInputGamma && (
+                            <li>Input Gamma: <code>{probeResult.dominantLogCurve.suggestedCstInputGamma}</code></li>
+                          )}
+                          {probeResult.dominantLogCurve.suggestedCstInputGamut && (
+                            <li>Input Gamut: <code>{probeResult.dominantLogCurve.suggestedCstInputGamut}</code></li>
+                          )}
+                          <li>Output: <code>Rec.709 Gamma 2.4</code> (default leveranse)</li>
+                        </ul>
+                      </div>
+                    )}
+                    {probeResult.dominantLogCurve.confidence < 0.7 && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: "#a16207" }}>
+                        ⚠ Lavt sikkerhetstall — anbefalingen baserer seg på filnavn-mønster, ikke metadata.
+                        Bekreft mot kamera-spesifikasjon før du setter CST.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {probeResult.mixedLogCurves && (
+                  <div style={{ padding: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.4)", color: "#a16207", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
+                    ⚠ Blandet log-kurve på kortet — flere kameraer/profiler. Each clip vil kreve eget input transform i Color page.
+                  </div>
+                )}
+
+                {probeResult.errorCount > 0 && (
+                  <div style={{ fontSize: 11, color: "#8674a8" }}>
+                    {probeResult.errorCount} fil(er) kunne ikke probes — sannsynligvis ikke-video eller korrupt.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

@@ -246,3 +246,47 @@ export async function fetchMySeats(): Promise<{
 }> {
   return invoke("role_room_my_seats");
 }
+
+// ─── Media probing (ffprobe) ─────────────────────────────────────────────
+
+export interface LogCurveGuess {
+  label: string; // e.g. "Canon C-Log 2 (guessed)", "S-Log 3", "HLG"
+  confidence: number; // 0..1
+  source: string; // "ffprobe_transfer" | "filename" | "codec_container"
+  suggestedCstInputGamma?: string;
+  suggestedCstInputGamut?: string;
+}
+
+export interface MediaInfo {
+  path: string;
+  fileName: string;
+  width?: number;
+  height?: number;
+  frameRate?: number;
+  durationSeconds?: number;
+  codec?: string;
+  colorSpace?: string;
+  colorTransfer?: string;
+  colorPrimaries?: string;
+  videoStandard: string; // "PAL" | "NTSC" | "Cinema" | "Other"
+  logCurve?: LogCurveGuess;
+  error?: string;
+}
+
+export interface ProbeSummary {
+  files: MediaInfo[];
+  totalFiles: number;
+  probedCount: number;
+  errorCount: number;
+  dominantFrameRate?: number;
+  dominantResolution?: string;
+  dominantStandard?: string; // "PAL" | "NTSC" | "Cinema" | "Other"
+  dominantLogCurve?: LogCurveGuess;
+  mixedStandards: boolean;
+  mixedLogCurves: boolean;
+  ffprobeAvailable: boolean;
+}
+
+export async function probeMediaFiles(paths: string[]): Promise<ProbeSummary> {
+  return invoke("probe_media_files", { paths });
+}

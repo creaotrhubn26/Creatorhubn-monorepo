@@ -6,6 +6,7 @@ mod card_watcher;
 mod cull;
 mod folder_watcher;
 mod history;
+mod media_probe;
 mod python;
 mod role_room_api;
 
@@ -401,6 +402,7 @@ pub fn run() {
             role_room_api::role_room_fetch_live_set_state,
             role_room_api::role_room_my_productions,
             role_room_api::role_room_my_seats,
+            media_probe::probe_media_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
