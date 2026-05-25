@@ -30,6 +30,7 @@ import type { Pool } from 'pg';
 import { loadPersistedAuthSession, persistAuthSession } from './auth-session-store.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
+import { sendEmail } from './casting-reminder-sender.js';
 import {
   countActiveSeats,
   deletePairingCode,
@@ -996,6 +997,10 @@ export function createPostAgentRouter(
         return;
       }
 
+      // Fire-and-forget: notify the crew member that they now have access.
+      // Doesn't block the response — email failures shouldn't break the grant.
+      void notifyCrewOfGrant(targetEmail, targetUserId, projectId, ownerUserId);
+
       res.json({
         granted,
         userId: targetUserId,
@@ -1003,6 +1008,106 @@ export function createPostAgentRouter(
       });
     },
   );
+
+  async function notifyCrewOfGrant(
+    fallbackEmail: string,
+    targetUserId: string,
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<void> {
+    try {
+      // Look up the crew member's email + name (fallback to the email used in the grant)
+      const { rows: targetRows } = await pool.query(
+        `SELECT email, first_name, last_name FROM users WHERE id = $1 LIMIT 1`,
+        [targetUserId],
+      );
+      const crewEmail = (targetRows[0]?.email || fallbackEmail || '').trim();
+      if (!crewEmail) return;
+      const crewName = [targetRows[0]?.first_name, targetRows[0]?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      const { rows: ownerRows } = await pool.query(
+        `SELECT email, first_name, last_name FROM users WHERE id = $1 LIMIT 1`,
+        [ownerUserId],
+      );
+      const ownerName = [ownerRows[0]?.first_name, ownerRows[0]?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || ownerRows[0]?.email || 'Produksjonslederen';
+
+      const { rows: projectRows } = await pool.query(
+        `SELECT title, name FROM projects WHERE id = $1 LIMIT 1`,
+        [projectId],
+      );
+      const productionName = projectRows[0]?.title || projectRows[0]?.name || 'produksjonen';
+
+      const greeting = crewName ? `Hei ${crewName.split(' ')[0]},` : 'Hei,';
+      const subject = `Du har fått Post Agent-tilgang til ${productionName}`;
+      const text = `${greeting}
+
+${ownerName} har gitt deg tilgang til The Role Room Post Agent for produksjonen "${productionName}".
+
+Slik kommer du i gang:
+
+  1. Last ned Post Agent for Mac (Apple Silicon kreves):
+     https://creatorhubn.com/link
+
+  2. Logg inn med Role Room-kontoen din (${crewEmail}).
+
+  3. Velg "${productionName}" i prosjekt-pickeren — appen leser automatisk
+     scener, utstyr og klipp som er fanget under shoot.
+
+Post Agent kjører lokalt på Mac-en din — ingen filer forlater maskinen utenom
+thumbnails som sendes til Claude Vision for klipp-scoring.
+
+Spørsmål? Svar på denne eposten.
+
+— The Role Room`;
+
+      const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
+  <div style="border-left: 3px solid #a030c0; padding-left: 16px; margin-bottom: 24px;">
+    <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Du har fått Post Agent-tilgang</h2>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+  </div>
+
+  <p>${greeting}</p>
+
+  <p><strong>${ownerName}</strong> har gitt deg tilgang til The Role Room Post Agent for denne produksjonen.</p>
+
+  <p style="margin-top: 24px;"><strong>Slik kommer du i gang:</strong></p>
+  <ol style="padding-left: 20px;">
+    <li style="margin-bottom: 8px;">Last ned <a href="https://creatorhubn.com/link" style="color: #a030c0; text-decoration: none; font-weight: 600;">Post Agent for Mac</a> (Apple Silicon).</li>
+    <li style="margin-bottom: 8px;">Logg inn med Role Room-kontoen din (<code>${crewEmail}</code>).</li>
+    <li style="margin-bottom: 8px;">Velg <strong>${productionName}</strong> i prosjekt-pickeren — appen leser scener, utstyr og fangede klipp automatisk.</li>
+  </ol>
+
+  <p style="background: #f4eefd; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #4a2e7a;">
+    <strong>Privacy:</strong> Post Agent kjører lokalt på Mac-en din. Ingen filer forlater maskinen
+    utenom thumbnails som sendes til Claude Vision for klipp-scoring.
+  </p>
+
+  <p style="margin-top: 32px; font-size: 13px; color: #6e3fc7;">
+    Spørsmål? Svar på denne eposten.<br>
+    — The Role Room
+  </p>
+</div>`;
+
+      const result = await sendEmail({
+        to: crewEmail,
+        subject,
+        text,
+        html,
+        fromName: 'The Role Room',
+      });
+      if (!result.success) {
+        console.warn('[post-agent] crew-grant email failed:', result.error || 'unknown');
+      }
+    } catch (err) {
+      console.warn('[post-agent] notifyCrewOfGrant threw:', (err as Error).message);
+    }
+  }
 
   router.delete(
     '/team/:projectId/grant/:userId',
