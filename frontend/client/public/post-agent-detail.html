@@ -536,6 +536,9 @@
         clearAlert();
         var toGrant = pendingCrew.filter(function (c) { return !c.alreadyGranted; });
         var errors = [];
+        var subscriptionMissing = false;
+        var ctaUrl = null;
+        var ctaLabel = null;
         for (var i = 0; i < toGrant.length; i++) {
           var c = toGrant[i];
           try {
@@ -546,12 +549,26 @@
               body: JSON.stringify({ email: c.email }),
             });
             var b = await r.json();
-            if (!r.ok) errors.push(c.email + ': ' + (b.detail || b.error || 'HTTP ' + r.status));
+            if (!r.ok) {
+              if (b.error === 'owner_subscription_required') {
+                subscriptionMissing = true;
+                ctaUrl = b.actionUrl || '/billing/post-agent';
+                ctaLabel = b.actionLabel || 'Sett opp billing';
+                break; // No point trying the rest — same lead, same missing sub
+              }
+              errors.push(c.email + ': ' + (b.detail || b.error || 'HTTP ' + r.status));
+            }
           } catch (e) {
             errors.push(c.email + ': nettverksfeil');
           }
         }
-        if (errors.length > 0) {
+        if (subscriptionMissing) {
+          alertArea.innerHTML =
+            '<div class="alert error">Du må ha et aktivt Role Room-abonnement før du kan tildele Post Agent-seats. Seat-fakturering legges som en line-item på ditt eksisterende abonnement.<br><br>' +
+            '<a href="' + ctaUrl + '" class="login-link" style="display:inline-block;margin-top:8px">' + ctaLabel + '</a></div>';
+          confirmTeamBtn.disabled = false;
+          confirmTeamBtn.textContent = 'Bekreft tilgang';
+        } else if (errors.length > 0) {
           showAlert('Noen seats feilet:<br>' + errors.join('<br>'));
           confirmTeamBtn.disabled = false;
           confirmTeamBtn.textContent = 'Bekreft tilgang';

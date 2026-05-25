@@ -961,8 +961,41 @@ export function createPostAgentRouter(
         targetUserId = rows[0].id;
       }
 
+      // Pre-flight: confirm owner has an active Stripe subscription before
+      // writing the seat — otherwise we'd grant access without billing
+      // (the seat row is created but syncStripeQuantity silently fails with
+      // 'owner_has_no_subscription'). Block early with a self-service CTA.
+      const { rows: subCheck } = await pool.query(
+        `SELECT 1 FROM subscriptions
+         WHERE user_id = $1 AND status IN ('active','trialing')
+         LIMIT 1`,
+        [ownerUserId],
+      );
+      if (subCheck.length === 0) {
+        res.status(402).json({
+          error: 'owner_subscription_required',
+          detail:
+            'Du må ha et aktivt Role Room-abonnement før du kan tildele Post Agent-seats. Seat-fakturering legges som en line-item på ditt eksisterende abonnement.',
+          actionUrl: '/billing/post-agent',
+          actionLabel: 'Sett opp billing først',
+        });
+        return;
+      }
+
       const granted = await grantTeamSeat(pool, projectId, targetUserId, ownerUserId);
       const sync = await syncStripeQuantity(projectId, ownerUserId);
+
+      // Roll back the grant if Stripe sync failed for any reason —
+      // otherwise crew gets free access and we lose money on the AI bill.
+      if (!sync.ok) {
+        await revokeTeamSeat(pool, projectId, targetUserId).catch(() => null);
+        res.status(502).json({
+          error: 'stripe_sync_failed',
+          detail: sync.error || 'Stripe-syncen feilet — seat ble rullet tilbake.',
+        });
+        return;
+      }
+
       res.json({
         granted,
         userId: targetUserId,
