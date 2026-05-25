@@ -90,6 +90,82 @@ def _load_cached_beat_session() -> dict:
         return {}
 
 
+def _synthesize_session_from_resolve() -> dict:
+    """When no cull session exists, build a synthetic 'all-keeps' session
+    from the currently-open Resolve project's Media Pool. Lets the
+    music-video workflow run on a freshly-imported batch without a cull step.
+    """
+    try:
+        conn = bridge.ResolveConnection()
+        if not conn.connect() or not conn.project:
+            return {}
+        media_pool = conn.project.GetMediaPool()
+        if not media_pool:
+            return {}
+
+        decisions = []
+        seen_paths: set[str] = set()
+
+        def _walk(folder):
+            try:
+                for clip in folder.GetClipList() or []:
+                    try:
+                        path = clip.GetClipProperty("File Path") or ""
+                        name = clip.GetName() or ""
+                        if not path or path in seen_paths:
+                            continue
+                        ext = os.path.splitext(path)[1].lower()
+                        if ext not in {".mp4", ".mov", ".mxf", ".mts", ".m2ts", ".avi", ".mkv", ".m4v", ".braw"}:
+                            continue
+                        seen_paths.add(path)
+                        try:
+                            duration_str = clip.GetClipProperty("Duration") or ""
+                        except Exception:  # noqa: BLE001
+                            duration_str = ""
+                        decisions.append({
+                            "clipPath": path,
+                            "clipName": name,
+                            "decision": "keep",
+                            "scene": None,
+                            "durationSeconds": _parse_duration_string(duration_str),
+                        })
+                    except Exception:  # noqa: BLE001
+                        continue
+                for sub in folder.GetSubFolderList() or []:
+                    _walk(sub)
+            except Exception:  # noqa: BLE001
+                pass
+
+        _walk(media_pool.GetRootFolder())
+        if not decisions:
+            return {}
+        return {
+            "sourcePath": "(Resolve Media Pool)",
+            "decisions": decisions,
+            "synthesized": True,
+        }
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"Resolve fallback failed: {exc}")
+        return {}
+
+
+def _parse_duration_string(s: str) -> float | None:
+    """Parse Resolve's duration string 'HH:MM:SS:FF' or 'HH:MM:SS.mmm' → seconds."""
+    if not s:
+        return None
+    try:
+        parts = s.replace(".", ":").split(":")
+        if len(parts) == 4:
+            h, m, sec, frames = parts
+            return int(h) * 3600 + int(m) * 60 + int(sec) + int(frames) / 25.0
+        if len(parts) == 3:
+            h, m, sec = parts
+            return int(h) * 3600 + int(m) * 60 + float(sec)
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
 def _load_latest_cull_session() -> dict:
     """Fallback: find the most-recent cull session JSON saved by the Tauri
     save_cull_session command. Lets this step run independently after a
@@ -155,7 +231,22 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             )
 
     if not session or not session.get("decisions"):
-        bridge.error("session.decisions[] is required — run cull_folder first.")
+        # Last-resort fallback: scan the currently-open Resolve project's
+        # Media Pool for video clips and synthesize an all-keeps session.
+        # Useful for music-video workflow that doesn't include a cull step.
+        synthesized = _synthesize_session_from_resolve()
+        if synthesized.get("decisions"):
+            session = synthesized
+            bridge.log(
+                f"No cull session — using {len(session['decisions'])} clips from "
+                f"current Resolve project's Media Pool"
+            )
+
+    if not session or not session.get("decisions"):
+        bridge.error(
+            "Trenger klipp å bruke på beat-gridet. Enten: (1) kjør cull_folder/Magic Cut først, "
+            "ELLER (2) åpne et Resolve-prosjekt med klipp i Media Pool."
+        )
         sys.exit(1)
 
     if dry_run:
