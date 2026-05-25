@@ -34,8 +34,15 @@ import {
   Stack,
   Tab,
   Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
+  Paper,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
@@ -91,7 +98,7 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -3341,6 +3348,119 @@ const STATUS_TONES: Record<string, { bg: string; fg: string; label: string }> = 
   not_interested: { bg: 'rgba(239,68,68,0.10)', fg: '#fca5a5', label: 'Ikke interessert' },
 };
 
+interface PostAgentSeatRow {
+  userId: string;
+  projectId: string;
+  projectName: string;
+  grantedAt?: string;
+  crew: { email?: string; name: string };
+  lead: { email?: string; name: string };
+}
+
+interface PostAgentSeatsResponse {
+  seats: PostAgentSeatRow[];
+  summary: { activeSeatCount: number; seatPriceNok: number; monthlyMrrNok: number };
+  degraded?: boolean;
+  detail?: string;
+}
+
+function PostAgentSeatsTab() {
+  const [data, setData] = useState<PostAgentSeatsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const keys = ['creatorhub_auth_token', 'role_room_auth_token', 'authToken', 'sessionToken'];
+    let bearer: string | null = null;
+    for (const k of keys) {
+      const v = (typeof window !== 'undefined' && window.localStorage.getItem(k)) || null;
+      if (v) { bearer = v.trim(); break; }
+    }
+    const headers: Record<string, string> = bearer ? { Authorization: `Bearer ${bearer}` } : {};
+    fetch('/api/post-agent/admin/team-seats', { credentials: 'include', headers })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<PostAgentSeatsResponse>;
+      })
+      .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
+      .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress size={20} /></Box>;
+  if (error) return <Alert severity="error">Kunne ikke laste seats: {error}</Alert>;
+  if (!data) return null;
+
+  const { seats, summary } = data;
+
+  return (
+    <Stack spacing={3}>
+      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
+        Alle aktive Post Agent team-seats på tvers av produksjoner. MRR baseres på {summary.seatPriceNok} NOK/seat/mnd.
+      </Typography>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
+        <Card sx={{ background: 'linear-gradient(135deg, rgba(160,48,192,0.18), rgba(110,63,199,0.08))', border: '1px solid rgba(160,48,192,0.35)' }}>
+          <CardContent>
+            <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 1 }}>Aktive seats</Typography>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '2rem' }}>{summary.activeSeatCount}</Typography>
+          </CardContent>
+        </Card>
+        <Card sx={{ background: 'linear-gradient(135deg, rgba(74,212,138,0.18), rgba(54,162,108,0.08))', border: '1px solid rgba(74,212,138,0.35)' }}>
+          <CardContent>
+            <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 1 }}>Månedlig MRR</Typography>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '2rem' }}>
+              {summary.monthlyMrrNok.toLocaleString('nb-NO')} NOK
+            </Typography>
+          </CardContent>
+        </Card>
+        <Card sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <CardContent>
+            <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 1 }}>Pris/seat</Typography>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '2rem' }}>{summary.seatPriceNok} NOK</Typography>
+          </CardContent>
+        </Card>
+      </Box>
+
+      {seats.length === 0 ? (
+        <Alert severity="info">Ingen aktive seats ennå.</Alert>
+      ) : (
+        <TableContainer component={Paper} sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ color: 'rgba(203,213,225,0.8)', fontWeight: 700 }}>Produksjon</TableCell>
+                <TableCell sx={{ color: 'rgba(203,213,225,0.8)', fontWeight: 700 }}>Crew-medlem</TableCell>
+                <TableCell sx={{ color: 'rgba(203,213,225,0.8)', fontWeight: 700 }}>Lead</TableCell>
+                <TableCell sx={{ color: 'rgba(203,213,225,0.8)', fontWeight: 700 }}>Gitt</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {seats.map((s, i) => (
+                <TableRow key={`${s.projectId}-${s.userId}-${i}`}>
+                  <TableCell sx={{ color: '#fff' }}>{s.projectName}</TableCell>
+                  <TableCell sx={{ color: '#fff' }}>
+                    <Box>{s.crew.name}</Box>
+                    {s.crew.email && <Box sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>{s.crew.email}</Box>}
+                  </TableCell>
+                  <TableCell sx={{ color: 'rgba(203,213,225,0.85)' }}>
+                    <Box>{s.lead.name}</Box>
+                    {s.lead.email && <Box sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>{s.lead.email}</Box>}
+                  </TableCell>
+                  <TableCell sx={{ color: 'rgba(203,213,225,0.7)' }}>
+                    {s.grantedAt ? new Date(s.grantedAt).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Stack>
+  );
+}
+
 function PresenceTab() {
   const [section, setSection] = useState<'channels' | 'posts' | 'contacts' | 'mentions'>('channels');
 
@@ -4223,6 +4343,7 @@ export default function AdminRoom() {
   else if (tab === 'presence') content = <PresenceTab />;
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
   else if (tab === 'prototype-testers') content = <PrototypeTestersTab />;
+  else if (tab === 'post-agent-seats') content = <PostAgentSeatsTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4265,6 +4386,7 @@ export default function AdminRoom() {
           <Tab value="presence" label="Presence" />
           <Tab value="role-nav" label="Rolle-navigasjon" />
           <Tab value="prototype-testers" label="Prototype-testere" />
+          <Tab value="post-agent-seats" label="Post Agent Seats" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>

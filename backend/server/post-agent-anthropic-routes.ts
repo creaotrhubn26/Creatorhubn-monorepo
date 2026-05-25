@@ -1216,6 +1216,58 @@ Spørsmål? Svar på denne eposten.
     });
   });
 
+  /** Admin: list all active Post Agent team-seats across all productions,
+   *  with crew + lead names + summary (count, MRR). Admin/super_admin only.
+   */
+  router.get('/admin/team-seats', userAuth, async (req: Request, res: Response) => {
+    const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+    const role = session?.role || '';
+    if (role !== 'admin' && role !== 'super_admin') {
+      res.status(403).json({ error: 'admin_only' });
+      return;
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT s.user_id, s.project_id, s.granted_at, s.granted_by,
+                cu.email AS crew_email, cu.first_name AS crew_first_name, cu.last_name AS crew_last_name,
+                p.title AS project_title, p.name AS project_name,
+                lu.email AS lead_email, lu.first_name AS lead_first_name, lu.last_name AS lead_last_name
+         FROM post_agent_team_seats s
+         LEFT JOIN users cu ON cu.id = s.user_id
+         LEFT JOIN projects p ON p.id = s.project_id
+         LEFT JOIN users lu ON lu.id = s.granted_by
+         WHERE s.is_active = true
+         ORDER BY s.granted_at DESC NULLS LAST
+         LIMIT 500`,
+      );
+      const seats = rows.map((r) => ({
+        userId: r.user_id,
+        projectId: r.project_id,
+        projectName: r.project_title || r.project_name || 'Untitled production',
+        grantedAt: r.granted_at,
+        crew: {
+          email: r.crew_email,
+          name: [r.crew_first_name, r.crew_last_name].filter(Boolean).join(' ') || r.crew_email || '?',
+        },
+        lead: {
+          email: r.lead_email,
+          name: [r.lead_first_name, r.lead_last_name].filter(Boolean).join(' ') || r.lead_email || '?',
+        },
+      }));
+      const seatPrice = 299;
+      res.json({
+        seats,
+        summary: {
+          activeSeatCount: seats.length,
+          seatPriceNok: seatPrice,
+          monthlyMrrNok: seats.length * seatPrice,
+        },
+      });
+    } catch (e) {
+      res.json({ seats: [], summary: { activeSeatCount: 0, seatPriceNok: 299, monthlyMrrNok: 0 }, degraded: true, detail: (e as Error).message });
+    }
+  });
+
   /** Crew members from a project who could be seated (have an email).
    *  Marks ones who already have an active team-seat so the marketplace UI
    *  can pre-check + disable them instead of double-granting.
