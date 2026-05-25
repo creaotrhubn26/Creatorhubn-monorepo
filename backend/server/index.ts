@@ -516,6 +516,7 @@ import { setupSeoBotRoutes } from "./seo-bot-routes";
 import { setupGooglePhotosRoutes } from "./google-photos-routes";
 import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
+import { setupSalesRoutes } from "./sales-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -32897,257 +32898,7 @@ function mapSalesLeadRow(row: Record<string, unknown>) {
   };
 }
 
-// GET /api/sales/analytics/:userId — sales dashboard analytics
-app.get("/api/sales/analytics/:userId", async (req, res) => {
-  try {
-    const paramUserId = readString(req.params.userId);
-    const queryUserId = readString(req.query.userId);
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const userId = paramUserId || queryUserId || headerUserId;
-
-    if (!userId || userId === "guest") {
-      return res.json({
-        totalLeads: 0,
-        activeDeals: 0,
-        conversionRate: 0,
-        totalValue: 0,
-        averageDealSize: 0,
-        salesCycle: 0,
-        closedDeals: 0,
-        monthlyTarget: 0,
-        topSources: [],
-      });
-    }
-
-    const latestAnalytics = await pool
-      .query(
-        `SELECT total_leads, active_deals, conversion_rate, total_value, average_deal_size, sales_cycle, closed_deals, top_sources
-         FROM sales_analytics
-         WHERE user_id = $1
-         ORDER BY period_end DESC NULLS LAST, created_at DESC
-         LIMIT 1`,
-        [userId],
-      )
-      .catch(() => ({ rows: [] }));
-
-    if (latestAnalytics.rows.length > 0) {
-      const row = latestAnalytics.rows[0] as Record<string, unknown>;
-      return res.json({
-        totalLeads: Number(row.total_leads || 0),
-        activeDeals: Number(row.active_deals || 0),
-        conversionRate: Number(row.conversion_rate || 0),
-        totalValue: Number(row.total_value || 0),
-        averageDealSize: Number(row.average_deal_size || 0),
-        salesCycle: Number(row.sales_cycle || 0),
-        closedDeals: Number(row.closed_deals || 0),
-        monthlyTarget: Number(row.total_value || 0),
-        topSources: Array.isArray(row.top_sources) ? row.top_sources : [],
-      });
-    }
-
-    const aggregate = await pool
-      .query(
-        `SELECT
-           COUNT(*)::int AS total_leads,
-           COUNT(*) FILTER (WHERE status NOT IN ('closed','lost'))::int AS active_deals,
-           COUNT(*) FILTER (WHERE status = 'closed')::int AS closed_deals,
-           COALESCE(SUM(value), 0)::numeric AS total_value,
-           COALESCE(AVG(value), 0)::numeric AS average_deal_size,
-           COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(next_follow, NOW()) - COALESCE(created_at, NOW()))) / 86400), 0)::numeric AS sales_cycle_days
-         FROM sales_leads
-         WHERE user_id = $1`,
-        [userId],
-      )
-      .catch(() => ({
-        rows: [
-          {
-            total_leads: 0,
-            active_deals: 0,
-            closed_deals: 0,
-            total_value: 0,
-            average_deal_size: 0,
-            sales_cycle_days: 0,
-          },
-        ],
-      }));
-
-    const sources = await pool
-      .query(
-        `SELECT source,
-                COUNT(*)::int AS leads,
-                COUNT(*) FILTER (WHERE status = 'closed')::int AS converted
-         FROM sales_leads
-         WHERE user_id = $1
-         GROUP BY source
-         ORDER BY leads DESC
-         LIMIT 10`,
-        [userId],
-      )
-      .catch(() => ({ rows: [] }));
-
-    const row = aggregate.rows[0] as Record<string, unknown>;
-    const totalLeads = Number(row.total_leads || 0);
-    const closedDeals = Number(row.closed_deals || 0);
-    const conversionRate =
-      totalLeads > 0
-        ? Number(((closedDeals / totalLeads) * 100).toFixed(2))
-        : 0;
-
-    const topSources = sources.rows.map(
-      (sourceRow: Record<string, unknown>) => {
-        const leads = Number(sourceRow.leads || 0);
-        const converted = Number(sourceRow.converted || 0);
-        return {
-          source: String(sourceRow.source || "unknown"),
-          leads,
-          conversion:
-            leads > 0 ? Number(((converted / leads) * 100).toFixed(2)) : 0,
-        };
-      },
-    );
-
-    res.json({
-      totalLeads,
-      activeDeals: Number(row.active_deals || 0),
-      conversionRate,
-      totalValue: Number(row.total_value || 0),
-      averageDealSize: Number(row.average_deal_size || 0),
-      salesCycle: Number(row.sales_cycle_days || 0),
-      closedDeals,
-      monthlyTarget: Number(row.total_value || 0),
-      topSources,
-    });
-  } catch (error) {
-    console.error("Error fetching sales analytics:", error);
-    if (isMissingRelationError(error)) {
-      return res.json({
-        totalLeads: 0,
-        activeDeals: 0,
-        conversionRate: 0,
-        totalValue: 0,
-        averageDealSize: 0,
-        salesCycle: 0,
-        closedDeals: 0,
-        monthlyTarget: 0,
-        topSources: [],
-      });
-    }
-    res.status(500).json({ error: "Could not fetch sales analytics" });
-  }
-});
-
-// GET /api/sales/leads/:status — filtered leads list
-app.get("/api/sales/leads/:status", async (req, res) => {
-  try {
-    const status = readString(req.params.status) || "all";
-    const queryUserId = readString(req.query.userId);
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const userId = queryUserId || headerUserId;
-
-    if (!userId || userId === "guest") {
-      return res.json([]);
-    }
-
-    const storageShape = await resolveSalesLeadsStorageShape();
-    const params: string[] = [userId];
-    let query = `${buildSalesLeadSelectQuery(storageShape)} WHERE user_id = $1`;
-
-    if (status !== "all") {
-      params.push(status);
-      query += ` AND status = $${params.length}`;
-    }
-
-    query += " ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 300";
-
-    const result = await pool.query(query, params);
-    res.json(
-      result.rows.map((row: Record<string, unknown>) => mapSalesLeadRow(row)),
-    );
-  } catch (error) {
-    console.error("Error fetching sales leads:", error);
-    if (isMissingRelationError(error) || isMissingColumnError(error)) {
-      return res.json([]);
-    }
-    res.status(500).json({ error: "Could not fetch sales leads" });
-  }
-});
-
-// PUT /api/sales/leads/:leadId — update lead status/details
-app.put("/api/sales/leads/:leadId", async (req, res) => {
-  try {
-    const leadId = readString(req.params.leadId);
-    if (!leadId) {
-      return res.status(400).json({ error: "Lead ID is required" });
-    }
-
-    const storageShape = await resolveSalesLeadsStorageShape();
-    const payload = req.body as Record<string, unknown>;
-    const updates: string[] = [];
-    const params: unknown[] = [];
-
-    const assign = (column: string, value: unknown) => {
-      params.push(value);
-      updates.push(`${column} = $${params.length}`);
-    };
-
-    if (readString(payload.status))
-      assign("status", readString(payload.status));
-    if (readNumber(payload.probability) !== null)
-      assign("probability", readNumber(payload.probability));
-    if (readString(payload.nextFollow)) {
-      assign(
-        storageShape === "legacy" ? "expected_close_date" : "next_follow",
-        readString(payload.nextFollow),
-      );
-    }
-    if (readString(payload.lastContact) && storageShape === "modern") {
-      assign("last_contact", readString(payload.lastContact));
-    }
-    if (readNumber(payload.value) !== null) {
-      assign(
-        storageShape === "legacy" ? "estimated_value" : "value",
-        readNumber(payload.value),
-      );
-    }
-    if (readString(payload.projectId) && storageShape === "modern")
-      assign("project_id", readString(payload.projectId));
-    if (readString(payload.notes)) {
-      assign(
-        storageShape === "legacy" ? "notes" : "special_requests",
-        readString(payload.notes),
-      );
-    }
-    if (readString(payload.timeline) && storageShape === "modern")
-      assign("timeline", readString(payload.timeline));
-    if (readString(payload.location) && storageShape === "modern")
-      assign("location", readString(payload.location));
-
-    updates.push("updated_at = NOW()");
-
-    params.push(leadId);
-    const result = await pool.query(
-      `UPDATE sales_leads
-       SET ${updates.join(", ")}
-       WHERE id = $${params.length}
-       RETURNING ${buildSalesLeadSelectColumns(storageShape)}`,
-      params,
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: "Lead not found" });
-    }
-
-    res.json(mapSalesLeadRow(result.rows[0] as Record<string, unknown>));
-  } catch (error) {
-    console.error("Error updating sales lead:", error);
-    if (isMissingRelationError(error) || isMissingColumnError(error)) {
-      return res
-        .status(503)
-        .json({ error: "Sales leads table is not available" });
-    }
-    res.status(500).json({ error: "Could not update sales lead" });
-  }
-});
+// /api/sales/* (4 unike endpoints) → ./sales-routes.ts
 
 function getSpeedDialPreferenceKey(
   sessionId: string,
@@ -37705,95 +37456,7 @@ app.get("/api/google-workspace/storage/:userId", async (req, res) => {
   }
 });
 
-app.get("/api/sales/leads", (req, res) => {
-  const userId = compatResolveUserId(req);
-  const leads = ensureCompatSalesLeads(userId);
-  res.json(leads);
-});
-
-app.get("/api/sales/leads/:status", (req, res) => {
-  const userId = compatResolveUserId(req);
-  const rawStatus = readString(req.params.status) || "all";
-  const normalizedStatus = rawStatus.replace(/,/g, "").trim().toLowerCase();
-  const leads = ensureCompatSalesLeads(userId);
-  if (!normalizedStatus || normalizedStatus === "all") {
-    return res.json(leads);
-  }
-  res.json(
-    leads.filter(
-      (lead) => String(lead.status).toLowerCase() === normalizedStatus,
-    ),
-  );
-});
-
-app.put("/api/sales/leads/:leadId", (req, res) => {
-  const userId = compatResolveUserId(req);
-  const leadId = req.params.leadId;
-  const leads = ensureCompatSalesLeads(userId);
-  const index = leads.findIndex((lead) => lead.id === leadId);
-  if (index < 0) {
-    return res.status(404).json({ success: false, error: "Lead not found" });
-  }
-  const updated = {
-    ...leads[index],
-    ...(req.body || {}),
-    lastContact: new Date().toISOString(),
-  };
-  leads[index] = updated;
-  compatSalesLeadsStore.set(userId, leads);
-  void compatStoreSet(dbCompatSalesLeadsKey(userId), leads);
-  res.json(updated);
-});
-
-app.get("/api/sales/analytics/:userId", (req, res) => {
-  const userId = readString(req.params.userId) || compatResolveUserId(req);
-  const leads = ensureCompatSalesLeads(userId);
-  const totalLeads = leads.length;
-  const closedDeals = leads.filter(
-    (lead) => lead.status === "closed" || lead.status === "converted",
-  ).length;
-  const activeDeals = leads.filter(
-    (lead) => !["lost", "closed"].includes(lead.status),
-  ).length;
-  const totalValue = leads.reduce(
-    (sum, lead) => sum + (lead.estimatedValue || lead.value || 0),
-    0,
-  );
-  const averageDealSize = totalLeads > 0 ? totalValue / totalLeads : 0;
-  const conversionRate =
-    totalLeads > 0 ? Number(((closedDeals / totalLeads) * 100).toFixed(1)) : 0;
-
-  const sourceMap = new Map<string, { leads: number; converted: number }>();
-  for (const lead of leads) {
-    const source = lead.source || "unknown";
-    const entry = sourceMap.get(source) || { leads: 0, converted: 0 };
-    entry.leads += 1;
-    if (lead.status === "closed" || lead.status === "converted")
-      entry.converted += 1;
-    sourceMap.set(source, entry);
-  }
-
-  const topSources = Array.from(sourceMap.entries()).map(([source, stats]) => ({
-    source,
-    leads: stats.leads,
-    conversion:
-      stats.leads > 0
-        ? Number(((stats.converted / stats.leads) * 100).toFixed(1))
-        : 0,
-  }));
-
-  res.json({
-    totalLeads,
-    activeDeals,
-    conversionRate,
-    totalValue,
-    averageDealSize: Number(averageDealSize.toFixed(2)),
-    salesCycle: 30,
-    closedDeals,
-    monthlyTarget: 100000,
-    topSources,
-  });
-});
+// /api/sales/* — dup-fallbacks slettet (live versions i ./sales-routes.ts)
 
 app.get("/api/external-data/ssb/economic", (req, res) => {
   const region = readString(req.query.region) || "Norge";
@@ -87912,6 +87575,22 @@ setupDeliveriesRoutes({ app, pool, normalizeEventType });
 // /api/audio-settings/* — 7 endpoints (ducking-/eq-presets, mixer-settings).
 // In-memory stores er kun brukt av disse handlerne; flyttet inn i modulen.
 setupAudioSettingsRoutes({ app });
+
+// /api/sales/* — 4 unike endpoints (3 DB-baserte + 1 compat-fallback for
+// /api/sales/leads uten :status). 3 dead-code-dups slettet i samme commit
+// (Express bruker first-registered, så de var allerede ute av drift).
+setupSalesRoutes({
+  app,
+  pool,
+  resolveSalesLeadsStorageShape,
+  buildSalesLeadSelectQuery,
+  buildSalesLeadSelectColumns,
+  mapSalesLeadRow,
+  ensureCompatSalesLeads,
+  compatResolveUserId,
+  isMissingRelationError,
+  isMissingColumnError,
+});
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
