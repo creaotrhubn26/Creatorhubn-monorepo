@@ -1160,6 +1160,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "identify_and_download_source_songs",
+      "name": "Identify & Download Source Songs",
+      "category": "audio",
+      "scriptPath": "scripts/audio/identify_and_download_source_songs.py",
+      "description": "Detekterer musikk-seksjoner i en eksportert film, audio-fingerprinter dem via Chromaprint, slår opp i AcoustID, laster ned matchede sanger fra YouTube via yt-dlp. Lagrer cache som build_highlight_from_picks plasserer på eget audio-track.",
+      "requiredInputs": [
+        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
+        {"key": "acoustidApiKey", "label": "AcoustID API key (optional)", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "build_highlight_from_picks",
       "name": "Build Highlight from Approved Picks",
       "category": "timeline",

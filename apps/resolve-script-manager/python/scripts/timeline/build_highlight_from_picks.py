@@ -131,12 +131,108 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     placed = media_pool.AppendToTimeline(append_specs)
     placed_count = len(placed) if isinstance(placed, list) else 0
 
+    # Place identified source songs on a separate audio track if available.
+    # Each song's startSec on the timeline = where its section landed in the
+    # rebuilt highlight (we map original-video-timecode → highlight-timecode).
+    songs_placed = []
+    songs_cache_path = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_identified_songs.json"
+    )
+    if os.path.isfile(songs_cache_path):
+        try:
+            with open(songs_cache_path) as f:
+                songs_data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            songs_data = {}
+        sections = songs_data.get("sections", []) if isinstance(songs_data, dict) else []
+        downloaded = [s for s in sections if s.get("downloadedPath") and os.path.isfile(s["downloadedPath"])]
+        if downloaded:
+            # Determine track number: source has linked audio on A1+
+            try:
+                existing_audio = timeline.GetTrackCount("audio") or 1
+            except Exception:  # noqa: BLE001
+                existing_audio = 1
+            # Add a new audio track for the source songs
+            song_track = existing_audio + 1
+            try:
+                timeline.AddTrack("audio")
+                bridge.log(f"Added A{song_track} for clean source songs")
+            except Exception as exc:  # noqa: BLE001
+                bridge.warn(f"Could not add song track: {exc}")
+                song_track = existing_audio
+
+            # Build map: for each downloaded section, find where in the highlight
+            # its time-range maps to. The highlight is a sequential cut of picks,
+            # so we walk picks_sorted accumulating timeline-time.
+            try:
+                timeline_start_frame = int(timeline.GetStartFrame() or 0)
+            except Exception:  # noqa: BLE001
+                timeline_start_frame = 0
+
+            highlight_time = 0.0
+            song_placements: list[tuple[str, float, float]] = []  # (path, timeline_start_sec, dur)
+            for p in picks_sorted:
+                pick_start = float(p.get("startSec") or 0)
+                pick_end = float(p.get("endSec") or 0)
+                pick_dur = max(0.0, pick_end - pick_start)
+                for section in downloaded:
+                    sec_start = float(section.get("startSec") or 0)
+                    sec_end = float(section.get("endSec") or 0)
+                    # Does this section overlap with the pick's source range?
+                    overlap_start = max(sec_start, pick_start)
+                    overlap_end = min(sec_end, pick_end)
+                    if overlap_end > overlap_start:
+                        # Place the song at the highlight-timeline position
+                        # corresponding to where the overlap starts within the pick
+                        offset_in_pick = overlap_start - pick_start
+                        timeline_pos = highlight_time + offset_in_pick
+                        song_placements.append((
+                            section["downloadedPath"],
+                            timeline_pos,
+                            overlap_end - overlap_start,
+                        ))
+                highlight_time += pick_dur
+
+            if song_placements:
+                # Deduplicate by path (one song imported once, placed multiple times)
+                unique_paths = list(dict.fromkeys(p[0] for p in song_placements))
+                imported_songs: dict[str, Any] = {}
+                for path in unique_paths:
+                    items = media_pool.ImportMedia([path]) or []
+                    if items:
+                        imported_songs[path] = items[0]
+                for path, t_start, t_dur in song_placements:
+                    item = imported_songs.get(path)
+                    if not item:
+                        continue
+                    record_frame = timeline_start_frame + int(round(t_start * fps))
+                    spec = [{
+                        "mediaPoolItem": item,
+                        "mediaType": 2,
+                        "trackIndex": song_track,
+                        "recordFrame": record_frame,
+                    }]
+                    placed_song = media_pool.AppendToTimeline(spec)
+                    if isinstance(placed_song, list) and placed_song:
+                        songs_placed.append({"path": path, "timelineStartSec": round(t_start, 2)})
+
+                if songs_placed:
+                    bridge.log(f"Placed {len(songs_placed)} song instance(s) on A{song_track}")
+                    # Mute linked audio (A1..A_existing) so only clean songs play
+                    for t in range(1, existing_audio + 1):
+                        try:
+                            timeline.SetTrackEnable("audio", t, False)
+                        except Exception:  # noqa: BLE001
+                            pass
+                    bridge.log(f"Muted A1..A{existing_audio} — clean songs on A{song_track} play solo")
+
     bridge.progress(100, 100, "Ferdig.")
     bridge.result({
         "timelineName": timeline_name,
         "picksApproved": len(picks),
         "shotsPlaced": placed_count,
         "totalDurationSec": round(total, 1),
+        "songsPlaced": songs_placed,
     })
 
 

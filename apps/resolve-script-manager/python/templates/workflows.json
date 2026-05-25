@@ -15,6 +15,17 @@
       {"order": 8, "scriptId": "backup_project", "label": "Backup Project"}
     ]
   },
+  "wedding_highlight_with_clean_audio": {
+    "id": "wedding_highlight_with_clean_audio",
+    "name": "Bryllup — Highlight med ren YouTube-audio",
+    "description": "Ta en lang ferdig wedding-film, plukk beste 4+ min, identifiser sangene fra audio-fingerprint, last dem ned fra YouTube, og legg dem på eget audio-track (original audio mutes men forblir synlig).",
+    "projectTemplate": "wedding_film",
+    "steps": [
+      {"order": 1, "scriptId": "extract_highlight_from_film", "label": "Extract highlight (interactive review)"},
+      {"order": 2, "scriptId": "identify_and_download_source_songs", "label": "Identify + download source songs from YouTube"},
+      {"order": 3, "scriptId": "build_highlight_from_picks", "label": "Build timeline with clean audio under"}
+    ]
+  },
   "wedding_review_finished_film": {
     "id": "wedding_review_finished_film",
     "name": "Bryllup — Analysér ferdig film",
