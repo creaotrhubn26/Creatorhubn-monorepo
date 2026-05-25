@@ -59,6 +59,8 @@ import {
 } from '@mui/icons-material';
 import ChapterEditor from './ChapterEditor';
 import GalleryFeedbackDialog from './GalleryFeedbackDialog';
+import useGalleryEventStream from '@/hooks/useGalleryEventStream';
+import { Snackbar, Alert as AlertBar } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -171,6 +173,16 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   const [settingsOpenFor, setSettingsOpenFor] = useState<PhotographerGallery | null>(null);
   const [eventsOpenFor, setEventsOpenFor] = useState<PhotographerGallery | null>(null);
   const [feedbackOpenFor, setFeedbackOpenFor] = useState<PhotographerGallery | null>(null);
+  // Slice 9X.85 — live broadcast: ny klient-kommentar / utvalg-submit dukker
+  // opp som toast med klikkbar handling. Stine slipper å refresh-e.
+  const [liveToast, setLiveToast] = useState<{
+    message: string;
+    galleryId: string;
+    kind: 'video.comment-added' | 'gallery.selection-submitted';
+  } | null>(null);
+  useGalleryEventStream({
+    onEvent: (e) => setLiveToast({ message: e.message, galleryId: e.galleryId, kind: e.kind }),
+  });
 
   // Slice 9X.2 — read prefill params from the URL once on mount. When
   // the deep-link sets autoCreate=1, open the dialog pre-populated
@@ -372,6 +384,38 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
           onClose={() => setFeedbackOpenFor(null)}
         />
       )}
+
+      <Snackbar
+        open={Boolean(liveToast)}
+        autoHideDuration={6000}
+        onClose={() => setLiveToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <AlertBar
+          severity={liveToast?.kind === 'gallery.selection-submitted' ? 'success' : 'info'}
+          onClose={() => setLiveToast(null)}
+          action={
+            liveToast && (
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() => {
+                  const g = galleries.find((x) => x.id === liveToast.galleryId);
+                  if (g) {
+                    if (liveToast.kind === 'video.comment-added') setFeedbackOpenFor(g);
+                    else setEventsOpenFor(g);
+                  }
+                  setLiveToast(null);
+                }}
+              >
+                Åpne
+              </Button>
+            )
+          }
+        >
+          {liveToast?.message}
+        </AlertBar>
+      </Snackbar>
     </Box>
   );
 };
