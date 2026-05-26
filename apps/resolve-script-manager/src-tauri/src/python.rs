@@ -126,7 +126,19 @@ pub async fn spawn_python(
         }),
     );
 
-    let mut cmd = Command::new("python3");
+    // Prefer the Post Agent's bundled venv if it exists (ships ML deps that
+    // system /usr/bin/python3 lacks: shazamio, librosa, scipy, torch, etc.).
+    // Fall back to system python3 on PATH if the venv hasn't been created.
+    let venv_python: Option<PathBuf> = std::env::var("HOME").ok().map(|h| {
+        PathBuf::from(h)
+            .join("Library/Application Support/no.creatorhubn.roleroom-post-agent")
+            .join("venv-py312/bin/python")
+    });
+    let python_bin: PathBuf = match venv_python {
+        Some(p) if p.is_file() => p,
+        _ => PathBuf::from("python3"),
+    };
+    let mut cmd = Command::new(&python_bin);
     cmd.arg(&script_path);
     // Inject user-configured env vars (ANTHROPIC_API_KEY, HF_TOKEN, RESOLVE_*)
     if let Some(settings) = app.try_state::<AppSettings>() {
