@@ -269,6 +269,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [pickOverrides, setPickOverrides] = useState<Record<number, { startSec?: number; endSec?: number }>>({});
   const [trimMode, setTrimMode] = useState(false);
 
+  // ─── Persist edit state per-project to localStorage ───
+  // Key = source-video path. State: title, included chapters, pickOverrides,
+  // activePickOrder, activeSongIdx. Restored next time editor opens same video.
+  const stateKey = useMemo(() => payload ? `trrpa.creative_editor.${payload.sourceVideo}` : null, [payload]);
+
   // ─── Load picks + advisor ───
   useEffect(() => {
     if (!picksPath) { setLoadError("No picks path provided"); return; }
@@ -276,17 +281,57 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       .then((r) => r.json())
       .then((data: PicksPayload) => {
         setPayload(data);
-        // Derive default project title from source-video filename
-        const base = data.sourceVideo.split("/").pop() ?? "Highlight";
-        const clean = base.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
-        setProjectTitle(clean);
-        // Include all chapters by default
-        const chapters = new Set<string>();
-        for (const p of data.picks) chapters.add((p.chapter || "details").toLowerCase());
-        setIncludedChapters(chapters);
+        // Try restoring saved edit-state for this source video
+        const key = `trrpa.creative_editor.${data.sourceVideo}`;
+        let restored = false;
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const s = JSON.parse(raw);
+            if (s.projectTitle)      setProjectTitle(s.projectTitle);
+            if (Array.isArray(s.includedChapters)) setIncludedChapters(new Set(s.includedChapters));
+            if (s.pickOverrides)     setPickOverrides(s.pickOverrides);
+            if (Array.isArray(s.activePickOrder)) setActivePickOrder(s.activePickOrder);
+            if (typeof s.activeSongIdx === "number") setActiveSongIdx(s.activeSongIdx);
+            restored = true;
+          }
+        } catch (e) {
+          // Corrupt localStorage entry → ignore and use defaults
+          console.warn("Could not restore creative-editor state:", e);
+        }
+        if (!restored) {
+          // Derive default project title from source-video filename
+          const base = data.sourceVideo.split("/").pop() ?? "Highlight";
+          const clean = base.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+          setProjectTitle(clean);
+          // Include all chapters by default
+          const chapters = new Set<string>();
+          for (const p of data.picks) chapters.add((p.chapter || "details").toLowerCase());
+          setIncludedChapters(chapters);
+        }
       })
       .catch((e) => setLoadError(`Failed to load picks: ${e}`));
   }, [picksPath]);
+
+  // Auto-save state on changes (debounced via timeout)
+  useEffect(() => {
+    if (!stateKey || !payload) return;
+    const handle = setTimeout(() => {
+      try {
+        localStorage.setItem(stateKey, JSON.stringify({
+          projectTitle,
+          includedChapters: Array.from(includedChapters),
+          pickOverrides,
+          activePickOrder,
+          activeSongIdx,
+          savedAt: Date.now(),
+        }));
+      } catch (e) {
+        console.warn("Could not save creative-editor state:", e);
+      }
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx]);
 
   useEffect(() => {
     if (!advisorPath) return;
@@ -576,6 +621,8 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
         videoPath: payload.sourceVideo,
         outputPath,
         musicStrategy: "main+climax",
+        // User's song selection from header dropdown (else falls back to advisor #1)
+        mainSongTitle: activeSong?.title,
         // Pass current editor-state so trim/reorder/segment-toggle persists into render
         pickOverrides: pickOverrides,
         pickOrder: activePickOrder ?? undefined,

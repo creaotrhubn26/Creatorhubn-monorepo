@@ -327,28 +327,40 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     total_pick_dur = sum(p.get("durationSec") or (p["endSec"] - p["startSec"]) for p in picks)
     bridge.log(f"{len(picks)} picks totalling {total_pick_dur:.1f}s")
 
-    # Strategy → song selection
+    # User-override hooks from frontend music-dropdown
+    def find_song(title: str | None) -> dict | None:
+        if not title: return None
+        t = title.lower().strip()
+        for s in songs:
+            if (s.get("title") or "").lower().strip() == t:
+                return s
+        return None
+
+    user_main = find_song(params.get("mainSongTitle"))
+    user_climax = find_song(params.get("climaxSongTitle"))
+
     if strategy == "single":
-        main_song = songs[0]
+        main_song = user_main or songs[0]
         climax_song = None
     elif strategy in ("main+climax", "auto"):
-        main_song = songs[0]
-        # Climax should provide UPWARD energy ramp — prefer a higher-BPM song
-        # than the main one. If none are faster, fall back to most-different.
-        main_bpm = main_song.get("bpm") or 100
-        candidates = [s for s in songs[1:] if s.get("bpm")]
-        faster = [s for s in candidates if s["bpm"] > main_bpm]
-        if faster:
-            # Among faster ones, pick the one closest to main_bpm * 1.5 (sweet spot
-            # for energy contrast without feeling jarring)
-            target = main_bpm * 1.5
-            climax_song = min(faster, key=lambda s: abs(s["bpm"] - target))
-        elif candidates:
-            climax_song = max(candidates, key=lambda s: abs(s["bpm"] - main_bpm))
+        main_song = user_main or songs[0]
+        if user_climax:
+            climax_song = user_climax
         else:
-            climax_song = None
+            # Climax should provide UPWARD energy ramp — prefer a higher-BPM song
+            # than the main one. If none are faster, fall back to most-different.
+            main_bpm = main_song.get("bpm") or 100
+            candidates = [s for s in songs if s.get("bpm") and s != main_song]
+            faster = [s for s in candidates if s["bpm"] > main_bpm]
+            if faster:
+                target = main_bpm * 1.5
+                climax_song = min(faster, key=lambda s: abs(s["bpm"] - target))
+            elif candidates:
+                climax_song = max(candidates, key=lambda s: abs(s["bpm"] - main_bpm))
+            else:
+                climax_song = None
     else:
-        main_song = songs[0]
+        main_song = user_main or songs[0]
         climax_song = None
     bridge.log(f"Main song: '{main_song['title']}' by {main_song['artist']} "
                f"({main_song.get('bpm','?')} BPM, {main_song['percentOfMusic']:.0f}% of source)")
