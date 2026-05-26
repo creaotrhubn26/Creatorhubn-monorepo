@@ -67181,6 +67181,7 @@ setupMeetingNotesRoutes({
 // in-memory compat-stores som hydrueres ved oppstart.
 setupDavinciResolveRoutes({
   app,
+  requireUserSession,
   compatResolveUserId,
   getCompatResolveStatus,
   isRecord,

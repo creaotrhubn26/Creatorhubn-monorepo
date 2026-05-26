@@ -4,6 +4,7 @@ import { readString } from "./_shared";
 
 export interface DavinciResolveRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   compatResolveUserId: (req: express.Request) => string;
   getCompatResolveStatus: (userId: string) => any;
   isRecord: (value: unknown) => value is Record<string, unknown>;
@@ -26,6 +27,7 @@ export function setupDavinciResolveRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     compatResolveUserId,
     getCompatResolveStatus,
     isRecord,
@@ -41,12 +43,14 @@ export function setupDavinciResolveRoutes(
   } = deps;
 
   app.get("/api/davinci-resolve/status", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const status = getCompatResolveStatus(userId);
     res.json(status);
   });
 
   app.post("/api/davinci-resolve/projects", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const projectId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
@@ -84,6 +88,7 @@ export function setupDavinciResolveRoutes(
   app.post(
     "/api/davinci-resolve/projects/:projectId/timelines",
     (req, res) => {
+      if (!requireUserSession(req, res)) return;
       const userId = compatResolveUserId(req);
       const projectId = req.params.projectId;
       const project = compatResolveProjectsStore.get(projectId);
@@ -167,12 +172,14 @@ export function setupDavinciResolveRoutes(
   });
 
   app.get("/api/davinci-resolve/execution-history", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const history = compatResolveExecutionHistoryStore.get(userId) || [];
     res.json(history);
   });
 
   app.post("/api/davinci-resolve/execute-script", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const scriptName = readString(req.body?.scriptName) || "UnknownScript";
     const timestamp = new Date().toISOString();
@@ -189,7 +196,8 @@ export function setupDavinciResolveRoutes(
     res.json({ success: true, scriptName, timestamp });
   });
 
-  app.post("/api/davinci-resolve/install-scripts", (_req, res) => {
+  app.post("/api/davinci-resolve/install-scripts", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({ success: true, message: "Scripts installed" });
   });
 }
