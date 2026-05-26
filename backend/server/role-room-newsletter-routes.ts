@@ -269,6 +269,94 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
     }
   });
 
+  // 1×1 transparent gif for open-tracking
+  const TRANSPARENT_GIF = Buffer.from(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+    "base64",
+  );
+
+  app.get("/api/newsletter/role-room/track/open.gif", async (req, res) => {
+    const issueId = asString(req.query.issue);
+    const signupId = asString(req.query.signup);
+    res.setHeader("Content-Type", "image/gif");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.send(TRANSPARENT_GIF);
+    // Log etter respons så vi ikke blokkerer pixel-load
+    if (!issueId || !signupId) return;
+    void (async () => {
+      try {
+        const ipHash = (() => {
+          const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+          if (!ip) return null;
+          return crypto.createHash("sha256").update(`${process.env.NEWSLETTER_IP_SALT ?? "salt"}:${ip}`).digest("hex");
+        })();
+        const ua = (req.headers["user-agent"] ?? "").toString().slice(0, 80);
+        await pool.query(
+          `INSERT INTO role_room_newsletter_issue_opens (issue_id, signup_id, ip_hash, user_agent_short)
+           VALUES ($1, $2, $3, $4)`,
+          [issueId, signupId, ipHash, ua],
+        );
+        await pool.query(
+          `UPDATE role_room_newsletter_issues SET
+             open_count = open_count + 1,
+             unique_open_count = (SELECT COUNT(DISTINCT signup_id) FROM role_room_newsletter_issue_opens WHERE issue_id = $1)
+           WHERE id = $1`,
+          [issueId],
+        );
+      } catch (err) {
+        console.error("[newsletter-tracking] open log failed", err);
+      }
+    })();
+  });
+
+  app.get("/api/newsletter/role-room/track/click", async (req, res) => {
+    const issueId = asString(req.query.issue);
+    const signupId = asString(req.query.signup);
+    const destination = asString(req.query.to);
+    if (!destination) {
+      res.status(400).send("Missing destination");
+      return;
+    }
+    // Sjekk at destinasjonen er en gyldig URL — beskytt mot open-redirect-attack.
+    try {
+      const url = new URL(destination);
+      if (!["http:", "https:"].includes(url.protocol)) {
+        res.status(400).send("Invalid destination");
+        return;
+      }
+    } catch {
+      res.status(400).send("Invalid destination");
+      return;
+    }
+    res.redirect(302, destination);
+    if (!issueId || !signupId) return;
+    void (async () => {
+      try {
+        const ipHash = (() => {
+          const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+          if (!ip) return null;
+          return crypto.createHash("sha256").update(`${process.env.NEWSLETTER_IP_SALT ?? "salt"}:${ip}`).digest("hex");
+        })();
+        const ua = (req.headers["user-agent"] ?? "").toString().slice(0, 80);
+        await pool.query(
+          `INSERT INTO role_room_newsletter_issue_clicks (issue_id, signup_id, destination_url, ip_hash, user_agent_short)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [issueId, signupId, destination, ipHash, ua],
+        );
+        await pool.query(
+          `UPDATE role_room_newsletter_issues SET
+             click_count = click_count + 1,
+             unique_click_count = (SELECT COUNT(DISTINCT signup_id) FROM role_room_newsletter_issue_clicks WHERE issue_id = $1)
+           WHERE id = $1`,
+          [issueId],
+        );
+      } catch (err) {
+        console.error("[newsletter-tracking] click log failed", err);
+      }
+    })();
+  });
+
   // Også POST for one-click-unsubscribe (RFC 8058)
   app.post("/api/newsletter/role-room/unsubscribe", async (req, res) => {
     const token = asString(req.query.token) || asString((req.body as Record<string, unknown> | undefined)?.token);
@@ -384,6 +472,10 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
       set("body_html", markdownToHtml(md));
     }
     if (body.scheduledFor !== undefined) set("scheduled_for", asString(body.scheduledFor));
+    if (body.audienceFilter !== undefined) {
+      const f = asString(body.audienceFilter, "all") ?? "all";
+      set("audience_filter", f);
+    }
     if (updates.length === 0) {
       res.status(400).json({ error: "Ingen felter å oppdatere" });
       return;
@@ -483,10 +575,26 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
         return;
       }
 
+      // Audience-filtrering: 'all' (default), 'tier1-advocates' (kun advocates
+      // fra industry_targets), 'source-*' (signups med spesifikk pillar-source)
+      const filter = issue.audience_filter ?? "all";
+      let whereClause = "status = 'confirmed' AND unsubscribed_at IS NULL";
+      const params: unknown[] = [];
+      if (filter === "tier1-advocates") {
+        // Send kun til signups som har e-post som matcher en T1 advocate
+        whereClause += ` AND LOWER(email) IN (SELECT LOWER(email) FROM role_room_industry_targets WHERE tier = 'T1' AND status = 'advocate' AND email IS NOT NULL)`;
+      } else if (filter === "tier1-engaged") {
+        whereClause += ` AND LOWER(email) IN (SELECT LOWER(email) FROM role_room_industry_targets WHERE tier = 'T1' AND status IN ('engaged','advocate') AND email IS NOT NULL)`;
+      } else if (typeof filter === "string" && filter.startsWith("source-")) {
+        params.push(filter.replace(/^source-/, ""));
+        whereClause += ` AND source = $${params.length}`;
+      }
+
       const subscribersRes = await pool.query(
         `SELECT id, email, unsubscribe_token
            FROM role_room_newsletter_signups
-          WHERE status = 'confirmed' AND unsubscribed_at IS NULL`,
+          WHERE ${whereClause}`,
+        params,
       );
       const subscribers = subscribersRes.rows as { id: string; email: string; unsubscribe_token: string | null }[];
 
@@ -509,6 +617,8 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
               preheader: issue.preheader ?? "",
               bodyHtml: issue.body_html ?? markdownToHtml(issue.body_markdown),
               unsubscribeToken: sub.unsubscribe_token,
+              issueId: issue.id,
+              signupId: sub.id,
             });
             if (result.sent) {
               sentCount += 1;

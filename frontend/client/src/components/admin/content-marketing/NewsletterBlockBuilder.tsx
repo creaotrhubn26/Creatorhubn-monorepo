@@ -46,7 +46,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CloseIcon from '@mui/icons-material/Close';
-import { newsletterAiApi, type NewsletterAiContentScore, type NewsletterAiSubject, type NewsletterBlock } from '../../../services/adminRoomApi';
+import { newsletterAiApi, type NewsletterAiContentScore, type NewsletterAiSubject, type NewsletterAudienceFilter, type NewsletterBlock } from '../../../services/adminRoomApi';
 
 /**
  * Pikselperfekt block-builder for Norwegian Casting Brief.
@@ -63,10 +63,12 @@ interface BuilderProps {
   title: string;
   subject: string;
   preheader: string;
+  audienceFilter: NewsletterAudienceFilter;
   onChange: (blocks: NewsletterBlock[]) => void;
   onTitleChange: (next: string) => void;
   onSubjectChange: (next: string) => void;
   onPreheaderChange: (next: string) => void;
+  onAudienceFilterChange: (next: NewsletterAudienceFilter) => void;
 }
 
 const PALETTE: Array<{ type: NewsletterBlock['type']; label: string; icon: React.ReactElement }> = [
@@ -95,7 +97,7 @@ function blankBlock(type: NewsletterBlock['type']): NewsletterBlock {
 }
 
 export function NewsletterBlockBuilder(props: BuilderProps) {
-  const { initialBlocks, title, subject, preheader, onChange, onTitleChange, onSubjectChange, onPreheaderChange } = props;
+  const { initialBlocks, title, subject, preheader, audienceFilter, onChange, onTitleChange, onSubjectChange, onPreheaderChange, onAudienceFilterChange } = props;
   const [blocks, setBlocks] = useState<NewsletterBlock[]>(initialBlocks);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [aiDialog, setAiDialog] = useState<null | 'first-draft' | 'subject-lines' | 'rewrite' | 'content-score'>(null);
@@ -162,6 +164,29 @@ export function NewsletterBlockBuilder(props: BuilderProps) {
         <TextField size="small" label="Tittel" value={title} onChange={(e) => onTitleChange(e.target.value)} sx={{ flex: 1, minWidth: 200 }} />
         <TextField size="small" label="Subject" value={subject} onChange={(e) => onSubjectChange(e.target.value)} sx={{ flex: 1, minWidth: 200 }} />
         <TextField size="small" label="Preheader" value={preheader} onChange={(e) => onPreheaderChange(e.target.value)} sx={{ flex: 1.5, minWidth: 200 }} />
+        <Select
+          size="small"
+          value={audienceFilter}
+          onChange={(e) => onAudienceFilterChange(e.target.value as NewsletterAudienceFilter)}
+          sx={{ minWidth: 200 }}
+          renderValue={(v) => (
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Typography sx={{ fontSize: '0.78rem', color: 'rgba(203,213,225,0.7)' }}>Send til:</Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#fff' }}>
+                {v === 'all' ? 'Alle confirmed' : v === 'tier1-advocates' ? 'T1 Advocates' : v === 'tier1-engaged' ? 'T1 Engaged' : String(v)}
+              </Typography>
+            </Stack>
+          )}
+        >
+          <MenuItem value="all">Alle confirmed subscribers</MenuItem>
+          <MenuItem value="tier1-engaged">T1 Engaged (CRM)</MenuItem>
+          <MenuItem value="tier1-advocates">T1 Advocates (CRM) — eksklusiv</MenuItem>
+          <MenuItem value="source-casting-scam-signs">Source: Trust pillar</MenuItem>
+          <MenuItem value="source-child-consent-film">Source: Compliance pillar</MenuItem>
+          <MenuItem value="source-casting-report-2026">Source: Casting Report</MenuItem>
+          <MenuItem value="source-founder-pov">Source: Founder POV</MenuItem>
+          <MenuItem value="source-selvtape-tips">Source: How-To pillar</MenuItem>
+        </Select>
       </Box>
 
       <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px 1fr 280px' }, overflow: 'hidden' }}>

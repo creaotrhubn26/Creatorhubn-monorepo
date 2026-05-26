@@ -1150,6 +1150,8 @@ export const migrationsApi = {
 
 export type NewsletterIssueStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
 
+export type NewsletterAudienceFilter = 'all' | 'tier1-advocates' | 'tier1-engaged' | `source-${string}`;
+
 export interface NewsletterIssue {
   id: string;
   user_id: string;
@@ -1165,6 +1167,11 @@ export interface NewsletterIssue {
   sent_at: string | null;
   sent_count: number;
   failed_count: number;
+  open_count?: number;
+  click_count?: number;
+  unique_open_count?: number;
+  unique_click_count?: number;
+  audience_filter?: NewsletterAudienceFilter;
   created_at: string;
   updated_at: string;
   body_length?: number;
@@ -1178,6 +1185,7 @@ export type NewsletterIssueInput = {
   bodyMarkdown?: string;
   bodyBlocks?: NewsletterBlock[];
   scheduledFor?: string | null;
+  audienceFilter?: NewsletterAudienceFilter;
 };
 
 export type NewsletterBlock =

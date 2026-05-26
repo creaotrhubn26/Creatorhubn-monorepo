@@ -141,19 +141,49 @@ export async function sendNewsletterConfirmEmail(opts: { to: string; confirmToke
   }
 }
 
+/**
+ * Injiserer tracking i body-HTML:
+ *  - Rewriter alle <a href="..."> til redirect via /api/newsletter/role-room/track/click
+ *  - Legger til 1×1 transparent pixel rett før </body> (eller på slutten av body)
+ */
+function injectTracking(bodyHtml: string, opts: { issueId: string; signupId: string }): string {
+  const base = publicOrigin();
+  const params = `issue=${encodeURIComponent(opts.issueId)}&signup=${encodeURIComponent(opts.signupId)}`;
+
+  // Rewrite href-er — skip mailto, tel og allerede-tracked links
+  const trackedBody = bodyHtml.replace(/href="([^"]+)"/g, (match, url) => {
+    if (typeof url !== "string") return match;
+    if (url.startsWith("mailto:") || url.startsWith("tel:") || url.startsWith("#")) return match;
+    if (url.includes("/api/newsletter/role-room/")) return match;
+    return `href="${base}/api/newsletter/role-room/track/click?${params}&to=${encodeURIComponent(url)}"`;
+  });
+
+  const pixel = `<img src="${base}/api/newsletter/role-room/track/open.gif?${params}" alt="" width="1" height="1" style="display:block;width:1px;height:1px;opacity:0;">`;
+  return `${trackedBody}\n${pixel}`;
+}
+
 export async function sendNewsletterIssueToRecipient(opts: {
   to: string;
   subject: string;
   preheader: string;
   bodyHtml: string;
   unsubscribeToken: string;
+  issueId?: string;
+  signupId?: string;
 }): Promise<{ sent: boolean; error?: string }> {
   const transporter = getTransporter();
   if (!transporter) return { sent: false, error: "SMTP not configured" };
   const unsubscribeUrl = `${publicOrigin()}/api/newsletter/role-room/unsubscribe?token=${encodeURIComponent(opts.unsubscribeToken)}`;
-  const html = wrapBrandedHtml({ previewText: opts.preheader, bodyHtml: opts.bodyHtml, unsubscribeUrl });
+
+  // Tracking aktiveres kun når både issueId og signupId er gitt (ekte send,
+  // ikke test-send). Test-sends får uten tracking for å unngå å skitne stats.
+  const trackedBody = opts.issueId && opts.signupId
+    ? injectTracking(opts.bodyHtml, { issueId: opts.issueId, signupId: opts.signupId })
+    : opts.bodyHtml;
+
+  const html = wrapBrandedHtml({ previewText: opts.preheader, bodyHtml: trackedBody, unsubscribeUrl });
   try {
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: getFromAddress(),
       to: opts.to,
       subject: opts.subject,

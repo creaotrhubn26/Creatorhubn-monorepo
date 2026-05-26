@@ -23,6 +23,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import {
   newsletterIssuesApi,
   newsletterApi,
+  type NewsletterAudienceFilter,
   type NewsletterBlock,
   type NewsletterIssue,
   type NewsletterIssueStatus,
@@ -228,10 +229,33 @@ export function NewsletterStudioTab() {
                   </Stack>
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>{issue.title}</Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>{issue.subject}</Typography>
+                  {issue.audience_filter && issue.audience_filter !== 'all' ? (
+                    <Chip
+                      label={issue.audience_filter === 'tier1-advocates' ? 'T1 Advocates' : issue.audience_filter === 'tier1-engaged' ? 'T1 Engaged' : issue.audience_filter}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(244,114,182,0.18)', color: '#f9a8d4', fontWeight: 700, fontSize: '0.65rem', height: 18, mt: 0.5 }}
+                    />
+                  ) : null}
                   {issue.status === 'sent' ? (
-                    <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.75rem', mt: 0.5 }}>
-                      Sendt {issue.sent_at ? new Date(issue.sent_at).toLocaleString('nb-NO') : '—'} · {issue.sent_count} ok, {issue.failed_count} feilet
-                    </Typography>
+                    <Box sx={{ mt: 0.75, display: 'flex', gap: 1.5, flexWrap: 'wrap', rowGap: 0.5 }}>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.74rem' }}>
+                        Sendt {issue.sent_at ? new Date(issue.sent_at).toLocaleString('nb-NO') : '—'} · {issue.sent_count} ok, {issue.failed_count} feilet
+                      </Typography>
+                      {(issue.sent_count ?? 0) > 0 ? (
+                        <>
+                          <Chip
+                            label={`Åpnet ${issue.unique_open_count ?? 0}/${issue.sent_count} (${Math.round(((issue.unique_open_count ?? 0) / issue.sent_count) * 100)}%)`}
+                            size="small"
+                            sx={{ bgcolor: 'rgba(34,197,94,0.15)', color: '#86efac', fontWeight: 700, fontSize: '0.68rem', height: 18 }}
+                          />
+                          <Chip
+                            label={`Klikk ${issue.unique_click_count ?? 0} (${Math.round(((issue.unique_click_count ?? 0) / (issue.unique_open_count || issue.sent_count)) * 100)}%)`}
+                            size="small"
+                            sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700, fontSize: '0.68rem', height: 18 }}
+                          />
+                        </>
+                      ) : null}
+                    </Box>
                   ) : null}
                 </Box>
                 <Stack direction="row" spacing={0.5}>
@@ -294,6 +318,7 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
   const [preheader, setPreheader] = useState('');
   const [bodyMarkdown, setBodyMarkdown] = useState('');
   const [bodyBlocks, setBodyBlocks] = useState<NewsletterBlock[]>([]);
+  const [audienceFilter, setAudienceFilter] = useState<NewsletterAudienceFilter>('all');
   const [saving, setSaving] = useState(false);
   const lastSavedRef = useRef<string>('');
 
@@ -305,6 +330,7 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
       setPreheader(initial.preheader ?? '');
       setBodyMarkdown(initial.body_markdown);
       setBodyBlocks(initial.body_blocks ?? []);
+      setAudienceFilter(initial.audience_filter ?? 'all');
       lastSavedRef.current = JSON.stringify(initial.body_blocks ?? []);
     } else {
       const weekNum = Math.ceil((new Date().getTime() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
@@ -313,6 +339,7 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
       setPreheader('Ukens data, founder POV, behind-the-cast og risk-varsler.');
       setBodyMarkdown(STARTER_TEMPLATE.replace('{{nummer}}', String(weekNum)));
       setBodyBlocks([]);
+      setAudienceFilter('all');
       lastSavedRef.current = '[]';
     }
   }, [open, initial]);
@@ -325,9 +352,9 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
     setSaving(true);
     try {
       if (initial) {
-        await newsletterIssuesApi.patch(initial.id, { title, subject, preheader: preheader || null, bodyMarkdown, bodyBlocks });
+        await newsletterIssuesApi.patch(initial.id, { title, subject, preheader: preheader || null, bodyMarkdown, bodyBlocks, audienceFilter });
       } else {
-        await newsletterIssuesApi.create({ title, subject, preheader: preheader || null, bodyMarkdown, bodyBlocks });
+        await newsletterIssuesApi.create({ title, subject, preheader: preheader || null, bodyMarkdown, bodyBlocks, audienceFilter });
       }
       lastSavedRef.current = blocksJson;
       onSaved();
@@ -361,10 +388,12 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
           title={title}
           subject={subject}
           preheader={preheader}
+          audienceFilter={audienceFilter}
           onChange={setBodyBlocks}
           onTitleChange={setTitle}
           onSubjectChange={setSubject}
           onPreheaderChange={setPreheader}
+          onAudienceFilterChange={setAudienceFilter}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5, borderTop: '1px solid rgba(148,163,184,0.14)' }}>
