@@ -673,6 +673,97 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
     }
   });
 
+  // ── Public web-arkiv ──────────────────────────────────────────────
+
+  app.get("/api/newsletter/role-room/brief", async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT slug, title, subject, preheader, published_at, seo_description,
+                COALESCE(audience_count_estimate, sent_count) AS reach
+           FROM role_room_newsletter_issues
+          WHERE published_to_web = TRUE AND status = 'sent'
+          ORDER BY published_at DESC NULLS LAST, sent_at DESC NULLS LAST
+          LIMIT 100`,
+      );
+      res.json({ issues: result.rows });
+    } catch (err) {
+      console.error("[newsletter-brief] list error", err);
+      res.status(500).json({ error: "Kunne ikke hente brief-arkiv" });
+    }
+  });
+
+  app.get("/api/newsletter/role-room/brief/:slug", async (req, res) => {
+    try {
+      const slug = req.params.slug;
+      const result = await pool.query(
+        `SELECT id, slug, title, subject, preheader, body_html, body_blocks,
+                published_at, seo_description, sent_count
+           FROM role_room_newsletter_issues
+          WHERE published_to_web = TRUE AND status = 'sent' AND slug = $1`,
+        [slug],
+      );
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Utgave ikke funnet eller ikke publisert" });
+        return;
+      }
+      // Inkrement view-count async
+      void pool.query(`UPDATE role_room_newsletter_issues SET web_view_count = web_view_count + 1 WHERE id = $1`, [result.rows[0].id]);
+      res.json({ issue: result.rows[0] });
+    } catch (err) {
+      console.error("[newsletter-brief] get error", err);
+      res.status(500).json({ error: "Kunne ikke hente utgave" });
+    }
+  });
+
+  app.post("/api/admin-room/newsletter/role-room/issues/:id/publish", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const seoDescription = asString(body.seoDescription);
+    try {
+      const result = await pool.query(
+        `UPDATE role_room_newsletter_issues
+            SET published_to_web = TRUE,
+                published_at = COALESCE(published_at, NOW()),
+                seo_description = COALESCE($1, seo_description, preheader),
+                updated_at = NOW()
+          WHERE id = $2 AND user_id = $3 AND status = 'sent'
+          RETURNING *`,
+        [seoDescription, req.params.id, session.userId],
+      );
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Utgave ikke funnet eller ikke sendt enda — kun sendte utgaver kan publiseres" });
+        return;
+      }
+      res.json({ ok: true, item: result.rows[0] });
+    } catch (err) {
+      console.error("[newsletter-publish] error", err);
+      res.status(500).json({ error: "Kunne ikke publisere" });
+    }
+  });
+
+  app.post("/api/admin-room/newsletter/role-room/issues/:id/unpublish", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      const result = await pool.query(
+        `UPDATE role_room_newsletter_issues
+            SET published_to_web = FALSE, updated_at = NOW()
+          WHERE id = $1 AND user_id = $2
+          RETURNING *`,
+        [req.params.id, session.userId],
+      );
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Utgave ikke funnet" });
+        return;
+      }
+      res.json({ ok: true, item: result.rows[0] });
+    } catch (err) {
+      console.error("[newsletter-unpublish] error", err);
+      res.status(500).json({ error: "Kunne ikke avpublisere" });
+    }
+  });
+
   // ── Templates CRUD ────────────────────────────────────────────────
 
   app.get("/api/admin-room/newsletter/role-room/templates", async (req, res) => {

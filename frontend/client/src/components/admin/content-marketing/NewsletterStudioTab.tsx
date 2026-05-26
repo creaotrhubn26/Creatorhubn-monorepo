@@ -21,6 +21,8 @@ import SendIcon from '@mui/icons-material/Send';
 import ScienceIcon from '@mui/icons-material/Science';
 import CloseIcon from '@mui/icons-material/Close';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import PublicIcon from '@mui/icons-material/Public';
+import PublicOffIcon from '@mui/icons-material/PublicOff';
 import {
   newsletterIssuesApi,
   newsletterApi,
@@ -217,6 +219,27 @@ export function NewsletterStudioTab() {
       setError((err as Error).message);
     }
   }
+  async function handlePublish(issue: NewsletterIssue) {
+    const desc = window.prompt(`Publisere "${issue.title}" på theroleroom.com/brief/${issue.slug}?\n\nSEO-beskrivelse (valgfri):`, issue.seo_description ?? issue.preheader ?? '');
+    if (desc === null) return;
+    try {
+      await newsletterIssuesApi.publish(issue.id, desc || undefined);
+      setSnackbar(`Publisert på theroleroom.com/brief/${issue.slug}`);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  async function handleUnpublish(issue: NewsletterIssue) {
+    if (!window.confirm(`Fjern "${issue.title}" fra web-arkivet?`)) return;
+    try {
+      await newsletterIssuesApi.unpublish(issue.id);
+      setSnackbar('Avpublisert');
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
   async function handleUnschedule(issue: NewsletterIssue) {
     if (!window.confirm(`Avbryt planlagt sending av "${issue.title}"?`)) return;
     try {
@@ -290,6 +313,17 @@ export function NewsletterStudioTab() {
                       sx={{ bgcolor: 'rgba(244,114,182,0.18)', color: '#f9a8d4', fontWeight: 700, fontSize: '0.65rem', height: 18, mt: 0.5 }}
                     />
                   ) : null}
+                  {issue.published_to_web ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+                      <PublicIcon sx={{ fontSize: '0.9rem', color: '#34d399' }} />
+                      <Typography component="a" href={`/brief/${issue.slug}`} target="_blank" rel="noreferrer" sx={{ color: '#34d399', fontSize: '0.74rem', fontWeight: 600, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                        theroleroom.com/brief/{issue.slug}
+                      </Typography>
+                      {(issue.web_view_count ?? 0) > 0 ? (
+                        <Chip label={`${issue.web_view_count} visninger`} size="small" sx={{ bgcolor: 'rgba(52,211,153,0.15)', color: '#86efac', fontSize: '0.65rem', height: 18, fontWeight: 700 }} />
+                      ) : null}
+                    </Box>
+                  ) : null}
                   {issue.status === 'sent' ? (
                     <Box sx={{ mt: 0.75, display: 'flex', gap: 1.5, flexWrap: 'wrap', rowGap: 0.5 }}>
                       <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.74rem' }}>
@@ -320,6 +354,17 @@ export function NewsletterStudioTab() {
                   <Button size="small" variant="outlined" startIcon={<ScienceIcon />} onClick={() => handleSendTest(issue)} sx={{ textTransform: 'none', fontWeight: 600 }}>
                     Test
                   </Button>
+                  {issue.status === 'sent' ? (
+                    issue.published_to_web ? (
+                      <Button size="small" variant="outlined" startIcon={<PublicOffIcon />} onClick={() => handleUnpublish(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: 'rgba(203,213,225,0.85)' }}>
+                        Skjul fra web
+                      </Button>
+                    ) : (
+                      <Button size="small" variant="outlined" startIcon={<PublicIcon />} onClick={() => handlePublish(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: '#34d399', borderColor: 'rgba(52,211,153,0.4)' }}>
+                        Publiser til web
+                      </Button>
+                    )
+                  ) : null}
                   {issue.status === 'scheduled' ? (
                     <>
                       <Button size="small" variant="outlined" startIcon={<ScheduleIcon />} onClick={() => handleUnschedule(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: '#fbbf24', borderColor: 'rgba(251,191,36,0.4)' }}>

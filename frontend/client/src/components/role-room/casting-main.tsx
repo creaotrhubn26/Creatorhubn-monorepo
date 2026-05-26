@@ -12,6 +12,7 @@ import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSE
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
 import MarketingPageRouter from '@/components/admin/content-marketing/MarketingPageRouter';
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
+import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { detectLocale } from './cms/useLocale';
 import { ToastProvider } from './components/ToastStack';
@@ -109,6 +110,11 @@ function CastingStandaloneAppContent() {
     [localeCtx.pathname],
   );
 
+  const briefRoute = useMemo(
+    () => parsePublicBriefPath(localeCtx.pathname),
+    [localeCtx.pathname],
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -136,6 +142,12 @@ function CastingStandaloneAppContent() {
 
   if (marketingPageKey) {
     return <MarketingPageRouter pageKey={marketingPageKey} />;
+  }
+
+  if (briefRoute) {
+    return briefRoute.kind === 'index'
+      ? <PublicBriefIndex />
+      : <PublicBriefDetail slug={briefRoute.slug} />;
   }
 
   if (isEducationPath) {

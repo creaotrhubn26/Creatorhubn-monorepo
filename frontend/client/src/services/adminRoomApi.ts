@@ -1172,6 +1172,10 @@ export interface NewsletterIssue {
   unique_open_count?: number;
   unique_click_count?: number;
   audience_filter?: NewsletterAudienceFilter;
+  published_to_web?: boolean;
+  published_at?: string | null;
+  web_view_count?: number;
+  seo_description?: string | null;
   created_at: string;
   updated_at: string;
   body_length?: number;
@@ -1269,6 +1273,15 @@ export const newsletterIssuesApi = {
   },
   clicks: async (id: string): Promise<{ links: Array<{ destination_url: string; total_clicks: number; unique_clicks: number }>; sentCount: number }> => {
     return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/clicks`);
+  },
+  publish: async (id: string, seoDescription?: string): Promise<{ ok: boolean; item: NewsletterIssue }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/publish`, {
+      method: 'POST',
+      body: JSON.stringify(seoDescription ? { seoDescription } : {}),
+    });
+  },
+  unpublish: async (id: string): Promise<{ ok: boolean; item: NewsletterIssue }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/unpublish`, { method: 'POST' });
   },
 };
 

@@ -312,6 +312,26 @@
       "destination": "/theroleroom.html"
     },
     {
+      "source": "/brief",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/brief/:slug",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
       "source": "/presse",
       "has": [
         {
