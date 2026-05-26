@@ -15,6 +15,17 @@
       {"order": 8, "scriptId": "backup_project", "label": "Backup Project"}
     ]
   },
+  "south_asian_wedding_delivery": {
+    "id": "south_asian_wedding_delivery",
+    "name": "Pakistansk/Indisk bryllup — Multi-event leveranse",
+    "description": "Multi-day delivery-pakke for sør-asiatiske bryllup: produserer separate timelines for Mehndi, Sangeet, Haldi, Nikkah, Walima + en kombinert 15-18 min full-story. Genre `south_asian_wedding` aktiverer Urdu/Hindi/Arabic emotional-vocab, garland-exchange-detection via GroundingDINO, og bhangra/garba action-patterns.",
+    "projectTemplate": "wedding_film",
+    "steps": [
+      {"order": 1, "scriptId": "extract_highlight_from_film", "label": "Extract highlight (genre=south_asian_wedding)"},
+      {"order": 2, "scriptId": "build_highlight_from_picks", "label": "Build main highlight"},
+      {"order": 3, "scriptId": "build_delivery_variants", "label": "Build per-event timelines (mehndi/sangeet/haldi/nikkah/walima + full)"}
+    ]
+  },
   "wedding_delivery_pack": {
     "id": "wedding_delivery_pack",
     "name": "Bryllup — Hele leveranse-pakken",

@@ -57,6 +57,17 @@ EMOTIONAL_KEYWORDS_NO = {
     "perfekt", "drøm", "drømmer", "hjerte", "hjertet", "hjerter",
     "minne", "minner", "minnet", "spesielle", "ekte", "støttet", "betyr",
     "betydd", "vi to", "oss to", "sammen", "for alltid", "fra dag én",
+    # Norsk-islamic religious / wedding vocab — norske imamer mikser
+    # arabisk og norsk under Nikkah ("Allah velsigne dere", "Gud gi dere
+    # lykke", "i Profetens navn", "vi ber for ekteparet"). Disse termene
+    # surfacer som highlight-worthy øyeblikk når de uttales:
+    "velsignelse", "velsigne", "velsignet", "velsignede",
+    "allah", "gud", "profeten", "profet", "tro", "troen",
+    "bønn", "bønner", "ber", "ber for", "barmhjertige",
+    "ekteskap", "ekteparet", "brud", "brudgom",
+    "rettferdighet", "tilgivelse", "fred", "sannhet",
+    "i allahs navn", "guds vilje", "den nådige",
+    "ja", "jeg vil",  # likestilt med "qabool" i nikkah-kontekst
 }
 EMOTIONAL_KEYWORDS_EN = {
     "love", "loved", "loving", "lovely", "proud", "family", "friends",
@@ -64,6 +75,69 @@ EMOTIONAL_KEYWORDS_EN = {
     "perfect", "dream", "dreams", "heart", "memory", "memories", "special",
     "always", "support", "supported", "together", "first time", "since",
     "future", "promise", "vow", "blessing", "blessed", "grateful",
+}
+
+# Urdu / Hindi / Punjabi emotional vocabulary for South Asian weddings.
+# Roman-script transliteration matches typical WhisperX output for
+# code-mixed speeches (which is the norm at Pakistani/Indian weddings).
+EMOTIONAL_KEYWORDS_UR_HI = {
+    # Love / heart
+    "pyaar", "pyar", "mohabbat", "muhabbat", "dil", "ishq", "prem",
+    # Joy / happiness
+    "khushi", "khushiyaan", "khushiyon", "anand", "khush",
+    # Family
+    "parivar", "khandaan", "khaandan", "ammi", "abbu", "maa", "papa",
+    "bhai", "behen", "didi", "bhabhi", "ammi-abbu",
+    # Forever / always / from-the-start
+    "hamesha", "sada", "zindagi", "saath", "ek hi", "humesha",
+    # Blessing / prayer / dua
+    "dua", "duaayein", "duaen", "barakah", "barkat", "ashirvad",
+    # Beauty / specialness
+    "khoobsurat", "sundar", "anokhi", "khaas", "yaadgar",
+    # Memory / yaad
+    "yaad", "yaadein", "yaadon",
+    # Promise / wedding-vow concepts
+    "vaada", "vaadon", "ahd", "qabool",
+    # Tears / emotion in speeches
+    "aansoo", "aansu", "rooh",
+    # Common celebratory phrases (multi-word)
+    "mubarak ho", "mubarak", "shukriya", "shukran",
+    "behteen", "best of luck",
+    # Romantic phrases
+    "tum mere", "hum tum", "saath rahenge", "kabhi nahi", "tumhare bina",
+}
+
+# Arabic vocabulary for the Nikkah / Islamic wedding portions. Pakistani
+# og indiske muslim-bryllup har nikkah-ceremoni på arabisk (qabool, mahr,
+# wali, shahada) + religiøse fraser brukt gjennom hele eventen
+# (alhamdulillah, mashallah, inshallah). WhisperX detekterer arabic
+# språkkode automatisk når audio er primært arabisk; ved code-mix
+# (Arabic + Urdu) union'er vi vokab-settene.
+EMOTIONAL_KEYWORDS_AR = {
+    # Nikkah-spesifikke ord (selve vielsen)
+    "qabool", "qubool", "qabool hai", "ijab", "qubool kiya",
+    "mahr", "meher", "mehr", "wali", "shahada", "shahadah",
+    "nikkah", "nikah", "nikaah",
+    # Allmenne religiøse/emosjonelle fraser brukt i alle ceremoni-deler
+    "alhamdulillah", "alhamdolillah", "alhamdulilah",
+    "bismillah", "bismillah-ir-rahman", "rahman", "rahim",
+    "mashallah", "ma sha allah", "mashaallah",
+    "subhanallah", "subhan allah",
+    "inshallah", "in sha allah", "insha allah",
+    "barakallah", "barak allah", "barakah", "barakat",
+    "ameen", "amin", "ammeen",
+    # Familie / blessing-fraser
+    "habib", "habibi", "habibti", "hubb", "mahabba",
+    "umm", "abba", "abi", "wallah",
+    "salam", "assalamu alaikum", "alaikum salam", "salaam",
+    # Religious ceremony-vocabulary
+    "rasool", "rasul", "rasulullah", "muhammad sallallahu",
+    "salaa", "salah", "namaz", "iman",
+    # Wedding-specific congratulatory
+    "mabrook", "mabrouk", "mubarak",  # also in Urdu set — overlap fine
+    "khair", "khayr",  # goodness
+    # Common emotional fillers in Nikkah-speeches
+    "rabbi", "rabb", "qadr", "fitr",
 }
 
 FILLER_PATTERNS = (
@@ -186,14 +260,39 @@ def _score_segment(seg: dict, lang_hint: str | None,
     else:
         length_score = 0.2
 
-    # Emotional keywords
+    # Emotional keywords — language-aware vocab selection.
+    # Pakistani/indiske muslim-bryllup har typisk Nikkah på arabisk +
+    # speeches på Urdu/Punjabi/Hindi + family-snakk på English. WhisperX
+    # detekterer dominant språk per segment, men code-mix er normen, så
+    # vi union'er relevante sett.
     text_lc = text.lower()
+    # Code-mix er den vanligste situasjonen for nordiske bryllup:
+    #   - Norsk-norske bryllup:        NO + EN (engelske toasts)
+    #   - Norske muslim-bryllup:       NO + EN + AR + UR_HI (imam mikser
+    #                                  arabisk + norsk + engelsk under
+    #                                  Nikkah, family-speeches på urdu+norsk)
+    #   - Engelske bryllup:            EN + AR + UR_HI
+    #   - Pakistanske/indiske:         UR_HI + AR + EN
+    # Vi union'er aggressive på alle de relevante settene heller enn å
+    # være for restriktiv — false-positives på emosjonell-score koster
+    # mindre enn false-negatives (manglende quotes).
     if lang_hint and lang_hint.startswith("no"):
-        vocab = EMOTIONAL_KEYWORDS_NO
+        # Norsk-Pakistansk-Muslim bryllup-scenario — full union
+        vocab = (EMOTIONAL_KEYWORDS_NO | EMOTIONAL_KEYWORDS_EN
+                 | EMOTIONAL_KEYWORDS_UR_HI | EMOTIONAL_KEYWORDS_AR)
     elif lang_hint == "en":
-        vocab = EMOTIONAL_KEYWORDS_EN
+        vocab = (EMOTIONAL_KEYWORDS_EN | EMOTIONAL_KEYWORDS_NO
+                 | EMOTIONAL_KEYWORDS_UR_HI | EMOTIONAL_KEYWORDS_AR)
+    elif lang_hint in ("ur", "hi", "pa"):
+        vocab = (EMOTIONAL_KEYWORDS_UR_HI | EMOTIONAL_KEYWORDS_AR
+                 | EMOTIONAL_KEYWORDS_EN | EMOTIONAL_KEYWORDS_NO)
+    elif lang_hint == "ar":
+        # Nikkah-segmentet — norsk imam koder mikser arabisk + norsk + engelsk
+        vocab = (EMOTIONAL_KEYWORDS_AR | EMOTIONAL_KEYWORDS_NO
+                 | EMOTIONAL_KEYWORDS_EN | EMOTIONAL_KEYWORDS_UR_HI)
     else:
-        vocab = EMOTIONAL_KEYWORDS_NO | EMOTIONAL_KEYWORDS_EN
+        vocab = (EMOTIONAL_KEYWORDS_NO | EMOTIONAL_KEYWORDS_EN
+                 | EMOTIONAL_KEYWORDS_UR_HI | EMOTIONAL_KEYWORDS_AR)
     emotional_hits = sum(1 for w in vocab if w in text_lc)
     emotional_score = min(1.0, emotional_hits / 3.0)
 

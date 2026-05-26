@@ -96,6 +96,52 @@ CORPORATE: GenreConfig = {
     "chapter_targets": None,
 }
 
+SOUTH_ASIAN_WEDDING: GenreConfig = {
+    "description": (
+        "Pakistansk / indisk bryllup — multi-day event (Mehndi/Sangeet/"
+        "Haldi/Nikkah/Reception/Walima). Andre cinematic-cues enn vestlig: "
+        "garland-exchange, fire-ceremony, ingen kake/kiss-fokus, dhol/shehnai "
+        "lydlandskap, Urdu/Hindi/Punjabi speeches."
+    ),
+    "weights": {
+        # Faces vektes høyere — south asian wedding-shots har ofte 8-12
+        # family-medlemmer per shot, og family-screen-time er kulturelt mer
+        # sentralt enn vestlig couple-fokus.
+        "faces": 0.22,
+        # wedding_events YOLOv8-heuristikker er Western-centric (cake/kiss)
+        # — reduce vekten. open_vocab tar over via prompts.
+        "wedding_events": 0.05,
+        "emotional_peak": 0.12,
+        "bokeh": 0.08,
+        "slowmo": 0.08,
+        "color_grade": 0.04,
+        # Speech-vekt nøytral — Urdu/Hindi-dialog er ofte sterk content
+        # (vows, dua, family-messages) ikke "shot we'd cut around"
+        "speech": -0.04,
+        "exposure": -0.08,    # mindre streng — high-saturation red/gold normalt
+        "audio_events": 0.16, # dhol/applaus/crying/dance-music sentralt
+        "aesthetic": 0.13,
+        "pose": 0.10,
+        # open_vocab veies tungt — SA-prompts dekker garland/mandap/lehenga
+        # som YOLOv8 ikke ser
+        "open_vocab": 0.16,
+        "action": 0.14,       # bhangra/garba/dance-actions
+        "depth": 0.08,
+        "music_features": 0.0,
+    },
+    "chapter_targets": {
+        # Multi-day-pakke. Hver event er en egen Resolve-timeline om
+        # build_delivery_variants kjøres med SA-aware variant-list.
+        "mehndi":    0.15,  # henna-night
+        "sangeet":   0.18,  # music-night, mest dance-shots
+        "haldi":     0.10,  # turmeric ceremony, lekent + farger
+        "nikkah":    0.22,  # selve vielsen
+        "reception": 0.20,  # walima/reception
+        "dance":     0.15,  # post-reception party
+    },
+}
+
+
 DOCUMENTARY: GenreConfig = {
     "description": "Documentary — natural moments, narrative arc",
     "weights": {
@@ -125,6 +171,11 @@ GENRES: dict[str, GenreConfig] = {
     "music_video": MUSIC_VIDEO,
     "corporate": CORPORATE,
     "documentary": DOCUMENTARY,
+    "south_asian_wedding": SOUTH_ASIAN_WEDDING,
+    # Aliases
+    "pakistani_wedding": SOUTH_ASIAN_WEDDING,
+    "indian_wedding": SOUTH_ASIAN_WEDDING,
+    "desi_wedding": SOUTH_ASIAN_WEDDING,
 }
 
 

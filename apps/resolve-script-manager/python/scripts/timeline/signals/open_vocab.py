@@ -41,6 +41,38 @@ DEFAULT_WEDDING_PROMPTS: list[tuple[str, float]] = [
 ]
 
 
+# South Asian (Pakistani / Indian / Bangladeshi / Sri Lankan) wedding prompts.
+# Lehenga (red/maroon/gold), sherwani (groom), garland-exchange (varmala/
+# jaymala), henna (mehndi), turmeric paste (haldi), fire-ceremony (havan),
+# dhol drums, mandap canopy.
+DEFAULT_SOUTH_ASIAN_WEDDING_PROMPTS: list[tuple[str, float]] = [
+    ("a bride in red lehenga",                    0.95),
+    ("a bride in maroon sari",                    0.90),
+    ("a groom in sherwani",                       0.85),
+    ("a groom in kurta",                          0.75),
+    ("garland exchange between bride and groom",  1.00),  # varmala/jaymala
+    ("varmala ceremony",                          1.00),
+    ("jaymala garland",                           0.95),
+    ("henna patterns on hands",                   0.85),  # mehndi
+    ("mehndi design on hand",                     0.85),
+    ("turmeric paste on face",                    0.80),  # haldi
+    ("haldi ceremony",                            0.85),
+    ("fire ceremony with sacred fire",            0.95),  # havan / saat phere
+    ("a sacred fire pit",                         0.85),
+    ("couple walking around fire",                0.90),  # saat phere
+    ("mandap canopy at wedding",                  0.80),
+    ("dhol drummer playing",                      0.70),
+    ("traditional Indian sweets",                 0.50),
+    ("nikkah signing of marriage contract",       0.85),
+    ("bidaai farewell",                           0.85),
+    ("baraat groom procession on horse",          0.80),
+    ("bollywood dance group",                     0.75),
+    ("bhangra dancers",                           0.80),
+    ("priest pandit officiating",                 0.55),
+    ("guests in traditional indian attire",       0.35),
+]
+
+
 def available() -> bool:
     try:
         import groundingdino  # noqa: F401
@@ -112,6 +144,16 @@ def _detect_prompts(model, image_path: str,
         except Exception:  # noqa: BLE001
             continue
     return out
+
+
+def get_prompts_for_genre(genre: str) -> list[tuple[str, float]]:
+    """Return the appropriate prompt-set based on genre name. Used by
+    extract_highlight_from_film so SA-weddings auto-get SA-prompts."""
+    g = (genre or "").lower().replace("-", "_")
+    if g in ("south_asian_wedding", "pakistani_wedding", "indian_wedding",
+            "desi_wedding"):
+        return DEFAULT_SOUTH_ASIAN_WEDDING_PROMPTS
+    return DEFAULT_WEDDING_PROMPTS
 
 
 def compute(ffmpeg: str, ffprobe: str, video: str,

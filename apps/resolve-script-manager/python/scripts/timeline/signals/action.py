@@ -22,6 +22,7 @@ import tempfile
 # Subset of Kinetics-710 / SSv2 class indices weighted for wedding/social.
 # Indices may need lookup against the model's id2label dict at inference time.
 WEDDING_ACTION_PATTERNS: dict[str, float] = {
+    # Generic / Western
     "dancing":          0.95,
     "hugging":          0.85,
     "kissing":          1.00,
@@ -37,6 +38,28 @@ WEDDING_ACTION_PATTERNS: dict[str, float] = {
     "talking":          0.20,
     "walking":          0.10,
     "sitting":          0.10,
+
+    # South Asian wedding actions (Kinetics-400 + Kinetics-700 har disse).
+    # Boost: dans-tradisjoner + ceremonial gestures + religious actions.
+    "bharatanatyam":    0.95,  # Indian classical dance
+    "dancing ballet":   0.85,  # general dance-classifier mapping
+    "dancing macarena": 0.80,
+    "dancing gangnam style": 0.75,
+    "playing drums":    0.70,  # dhol / tabla
+    "drumming fingers": 0.55,
+    "playing flute":    0.55,  # shehnai-like
+    "throwing flowers": 0.85,  # bouquet / petal-toss / aarti
+    "kissing hand":     0.80,  # respect-gesture (paying respects to elders)
+    "blessing":         0.85,
+    "praying":          0.85,
+    "lighting candle":  0.60,  # diya / lamp lighting
+    "henna":            0.80,  # if in Kinetics labels
+    "applying makeup":  0.50,  # bride-prep
+    "bowing":           0.65,  # pranam / aadab respect gesture
+    "shaking hands":    0.30,
+    "embracing":        0.85,  # SA family-embraces common in highlights
+    "feeding":          0.60,  # mithai feeding ceremony
+    "tying knot":       0.85,  # gathbandhan / hand-tying
 }
 
 

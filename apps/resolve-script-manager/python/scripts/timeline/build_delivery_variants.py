@@ -92,6 +92,61 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "chapter_mix": {"ceremony": 1.0},  # ONLY ceremony chapter
         "description": "Kun ceremony-chapter, vow-fokus",
     },
+    # ── South Asian multi-event variants ────────────────────────────────
+    # Hver event = en egen Resolve-timeline. Forutsetter at picks-cache
+    # har chapter-labels matching disse navnene (extract_highlight_from_film
+    # med genre=south_asian_wedding genererer disse via signals/chapters.py).
+    "mehndi": {
+        "label": "Mehndi (Henna)",
+        "target_sec": 240.0,
+        "max_sec": 360.0,
+        "score_floor": 0.30,
+        "chapter_mix": {"mehndi": 1.0},
+        "description": "Henna-natt — kvinner, latter, henna-designs",
+    },
+    "sangeet": {
+        "label": "Sangeet",
+        "target_sec": 300.0,
+        "max_sec": 420.0,
+        "score_floor": 0.30,
+        "chapter_mix": {"sangeet": 1.0},
+        "description": "Music-night — choreografierte dance-performances",
+    },
+    "haldi": {
+        "label": "Haldi",
+        "target_sec": 180.0,
+        "max_sec": 240.0,
+        "score_floor": 0.30,
+        "chapter_mix": {"haldi": 1.0},
+        "description": "Turmeric-ceremony — lekent, gult/oransje, familiær",
+    },
+    "nikkah": {
+        "label": "Nikkah / Pheras",
+        "target_sec": 360.0,
+        "max_sec": 480.0,
+        "score_floor": 0.20,
+        "chapter_mix": {"nikkah": 1.0},
+        "description": "Selve vielsen — Arabic qabool / saat phere / mandap",
+    },
+    "walima": {
+        "label": "Walima / Reception",
+        "target_sec": 360.0,
+        "max_sec": 480.0,
+        "score_floor": 0.30,
+        "chapter_mix": {"reception": 1.0},
+        "description": "Walima — reception, food, family-meet-greet",
+    },
+    "south_asian_full": {
+        "label": "South Asian — Full Story",
+        "target_sec": 900.0,  # 15 min
+        "max_sec": 1080.0,    # 18 min
+        "score_floor": 0.0,
+        "chapter_mix": {
+            "mehndi": 0.13, "sangeet": 0.17, "haldi": 0.10,
+            "nikkah": 0.25, "reception": 0.20, "dance": 0.15,
+        },
+        "description": "Full multi-day pakke (15-18 min) — alle 6 events",
+    },
 }
 
 
