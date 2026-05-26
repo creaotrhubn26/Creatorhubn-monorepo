@@ -3,6 +3,7 @@ import { readBoolean, readString } from "./_shared";
 
 export interface GoogleWalletRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   buildCompatWalletOrganizations: () => unknown;
   compatHeaderString: (value: unknown) => string | null;
   compatResolveUserId: (req: express.Request) => string;
@@ -21,6 +22,7 @@ export interface GoogleWalletRoutesDeps {
 export function setupGoogleWalletRoutes(deps: GoogleWalletRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     buildCompatWalletOrganizations,
     compatHeaderString,
     compatResolveUserId,
@@ -58,6 +60,7 @@ export function setupGoogleWalletRoutes(deps: GoogleWalletRoutesDeps): void {
   app.post(
     "/api/google-wallet/create-membership-card",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const body = isRecord(req.body) ? req.body : {};
         const paymentId =
@@ -115,6 +118,7 @@ export function setupGoogleWalletRoutes(deps: GoogleWalletRoutesDeps): void {
   app.put(
     "/api/google-wallet/membership-cards/:id",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const cardId = compatHeaderString(req.params.id);
         if (!cardId) {
@@ -186,6 +190,7 @@ export function setupGoogleWalletRoutes(deps: GoogleWalletRoutesDeps): void {
   app.delete(
     "/api/google-wallet/membership-cards/:id",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const cardId = compatHeaderString(req.params.id);
         if (!cardId) {
@@ -224,6 +229,7 @@ export function setupGoogleWalletRoutes(deps: GoogleWalletRoutesDeps): void {
   );
 
   app.post("/api/google-wallet/send-to-wallet/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const cardId = compatHeaderString(req.params.id);
       if (!cardId) {

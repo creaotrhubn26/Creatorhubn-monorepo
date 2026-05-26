@@ -67116,6 +67116,7 @@ setupSubmissionsRoutes({
 // Bruker compat-storens membership-card-lager.
 setupGoogleWalletRoutes({
   app,
+  requireUserSession,
   buildCompatWalletOrganizations,
   compatHeaderString,
   compatResolveUserId,
@@ -67235,6 +67236,7 @@ setupSeoBotRoutes({
 setupGooglePhotosRoutes({
   app,
   pool,
+  requireUserSession,
   showcaseMediaUpload,
   buildGooglePhotosStatusSnapshot,
   getShowcaseGoogleAlbums,
@@ -67388,6 +67390,7 @@ setupVideoAnalysisRoutes({
 setupGooglePeopleRoutes({
   app,
   pool,
+  requireUserSession,
   resolveRoleRoomGoogleConnection,
   derivePreferredGoogleWorkspaceOauthApps,
 });

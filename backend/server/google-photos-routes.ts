@@ -7,6 +7,7 @@ import { readString, readStringArray } from "./_shared";
 export interface GooglePhotosRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   showcaseMediaUpload: Multer;
   buildGooglePhotosStatusSnapshot: () => Promise<any>;
   getShowcaseGoogleAlbums: (userId: string) => Promise<any[]>;
@@ -29,6 +30,7 @@ export function setupGooglePhotosRoutes(
   const {
     app,
     pool,
+    requireUserSession,
     showcaseMediaUpload,
     buildGooglePhotosStatusSnapshot,
     getShowcaseGoogleAlbums,
@@ -118,6 +120,7 @@ export function setupGooglePhotosRoutes(
   );
 
   app.post("/api/google-photos/albums/create", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const userId =
@@ -152,6 +155,7 @@ export function setupGooglePhotosRoutes(
   app.post(
     "/api/google-photos/albums/:albumId/share",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const userId =
           readString(req.headers["x-user-id"]) ||
@@ -191,6 +195,7 @@ export function setupGooglePhotosRoutes(
     "/api/google-photos/upload",
     showcaseMediaUpload.any(),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const albumId = readString(req.body?.albumId) || null;
         if (!albumId) {
@@ -241,6 +246,7 @@ export function setupGooglePhotosRoutes(
   );
 
   app.post("/api/google-photos/upload-for-edit", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const imageIds = readStringArray(payload.imageIds);

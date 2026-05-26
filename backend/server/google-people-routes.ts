@@ -14,6 +14,7 @@ const GOOGLE_PEOPLE_WRITE_SCOPES = [
 export interface GooglePeopleRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   resolveRoleRoomGoogleConnection: (
     pool: Pool,
     userId: string | null,
@@ -30,6 +31,7 @@ export function setupGooglePeopleRoutes(
   const {
     app,
     pool,
+    requireUserSession,
     resolveRoleRoomGoogleConnection,
     derivePreferredGoogleWorkspaceOauthApps,
   } = deps;
@@ -361,6 +363,7 @@ export function setupGooglePeopleRoutes(
   });
 
   app.post("/api/google/people/create-contact", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
       const googleClient = await buildGooglePeopleClient(req, payload);
@@ -461,6 +464,7 @@ export function setupGooglePeopleRoutes(
   app.put(
     "/api/google/people/update-contact/:contactId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { contactId } = req.params;
         const payload = (req.body || {}) as Record<string, unknown>;
@@ -579,6 +583,7 @@ export function setupGooglePeopleRoutes(
   app.post(
     "/api/google/people/set-contact-photo/:contactId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { contactId } = req.params;
         const payload = (req.body || {}) as Record<string, unknown>;
@@ -638,6 +643,7 @@ export function setupGooglePeopleRoutes(
   app.post(
     "/api/google/people/sync-contacts-to-showcase",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const payload = (req.body || {}) as Record<string, unknown>;
         const googleClient = await buildGooglePeopleClient(req, payload);
