@@ -67289,6 +67289,7 @@ setupCmsRoutes({ app, pool, ensureCmsSchema, requireUserSession });
 // Stripe-kall — compat-store + Fiken-flag toggles.
 setupPaymentsRoutes({
   app,
+  requireUserSession,
   isRecord,
   compatHeaderString,
   compatResolveUserId,

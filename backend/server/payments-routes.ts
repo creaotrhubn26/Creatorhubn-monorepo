@@ -4,6 +4,7 @@ import { readString } from "./_shared";
 
 export interface PaymentsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   isRecord: (value: unknown) => value is Record<string, unknown>;
   compatHeaderString: (value: unknown) => string | null;
   compatResolveUserId: (req: express.Request) => string;
@@ -50,6 +51,7 @@ export interface PaymentsRoutesDeps {
 export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     isRecord,
     compatHeaderString,
     compatResolveUserId,
@@ -196,6 +198,7 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
   });
 
   app.post("/api/payments/create-payment-intent", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const body = isRecord(req.body) ? req.body : {};
       const email =
@@ -271,6 +274,7 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
   });
 
   app.post("/api/google-pay/process-payment", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const body = isRecord(req.body) ? req.body : {};
       const paymentIntent = isRecord(body.paymentIntent)
@@ -403,6 +407,7 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
   });
 
   app.post("/api/payments/send-receipt", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const body = isRecord(req.body) ? req.body : {};
       const identifier =
@@ -450,6 +455,7 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
   });
 
   app.post("/api/payments/fiken-register", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = compatResolveUserId(req);
       const body = isRecord(req.body) ? req.body : {};
