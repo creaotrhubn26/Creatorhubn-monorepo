@@ -11,8 +11,15 @@ export interface AuthRoutesDeps {
   getRoleRoomCommercialLoginGate: (...args: any[]) => any;
   getTableColumns: (tableName: string) => Promise<Set<string>>;
   isRoleRoomCommercialLoginIntent: (...args: any[]) => boolean;
-  normalizeAdminProfession: (value: unknown) => string;
+  normalizeAdminProfession: (
+    value: unknown,
+    roleId?: string | null,
+  ) => string | null;
   normalizeAdminRoleId: (value: unknown) => string;
+  ActiveSessionData?: never;
+  ADMIN_SESSION_ROLES: Set<string>;
+  pendingTwoFactorLogins: Map<string, any>;
+  activeSessions: Map<string, any>;
   persistAuthSession: (...args: any[]) => Promise<void>;
   purgeExpiredPendingTwoFactor: () => void;
   readActiveSessionToken: (req: any) => string | null;
@@ -37,7 +44,11 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
     readActiveSessionToken,
     resolveActiveSessionFromRequest,
     adminRoleCatalogById,
+    ADMIN_SESSION_ROLES,
+    pendingTwoFactorLogins,
+    activeSessions,
   } = deps;
+  type ActiveSessionData = any;
 
   app.post("/api/auth/login", async (req, res) => {
     try {
