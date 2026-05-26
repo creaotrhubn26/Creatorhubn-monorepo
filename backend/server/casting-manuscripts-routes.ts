@@ -94,6 +94,7 @@ import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingManuscriptsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   manuscriptsService: CastingManuscriptsService;
   /**
    * Service for revisjons-historikk (diff/restore-API). Trenger
@@ -136,7 +137,7 @@ function readProjectId(payload: any, fallback = ""): string {
 export function setupCastingManuscriptsRoutes(
   deps: CastingManuscriptsRoutesDeps,
 ): void {
-  const { app, manuscriptsService, revisionsService } = deps;
+  const { app, requireUserSession, manuscriptsService, revisionsService } = deps;
 
   // ── Manuscripts ────────────────────────────────────────────────────
 
@@ -155,6 +156,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.post("/api/casting/manuscripts", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId =
@@ -202,6 +204,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.put("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const manuscriptId = req.params.manuscriptId;
       const existing =
@@ -242,6 +245,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.delete("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const manuscriptId = req.params.manuscriptId;
       // F1 enforcement: hvis klient sender If-Match med stale version → 412.
@@ -275,6 +279,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.post("/api/casting/scenes", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId = readManuscriptId(payload);
@@ -329,6 +334,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.post("/api/casting/dialogue", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId = readManuscriptId(payload);
@@ -369,6 +375,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.delete("/api/casting/dialogue/:dialogueId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const dialogueId = req.params.dialogueId;
       const location =
@@ -406,6 +413,7 @@ export function setupCastingManuscriptsRoutes(
   );
 
   app.post("/api/casting/revisions", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId = readManuscriptId(payload);
@@ -511,6 +519,7 @@ export function setupCastingManuscriptsRoutes(
   app.post(
     "/api/casting/manuscripts/:manuscriptId/restore-revision/:revisionId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const result = await revisionsService.restoreRevision(
           req.params.manuscriptId,
@@ -548,6 +557,7 @@ export function setupCastingManuscriptsRoutes(
   app.post(
     "/api/casting/manuscripts/:manuscriptId/import",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const contentType =
           (req.headers["content-type"] ?? "").toString().toLowerCase();
@@ -710,6 +720,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.post("/api/casting/acts", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId = readManuscriptId(payload);
@@ -766,6 +777,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.put("/api/casting/acts/:actId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const actId = req.params.actId;
       const payload = req.body && typeof req.body === "object" ? req.body : {};
@@ -807,6 +819,7 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.delete("/api/casting/acts/:actId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const actId = req.params.actId;
       const location = await manuscriptsService.findActLocation(actId);

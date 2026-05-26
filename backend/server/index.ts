@@ -31490,6 +31490,7 @@ setupCastingAgreementsRoutes({
 //   av casting-projects DELETE-cascade).
 setupCastingManuscriptsRoutes({
   app,
+  requireUserSession,
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
 });
