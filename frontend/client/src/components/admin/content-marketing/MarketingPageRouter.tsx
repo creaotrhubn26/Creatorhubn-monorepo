@@ -5,6 +5,7 @@ import CastingReport2026Page from './CastingReport2026Page';
 import BehindTheCastPage from './BehindTheCastPage';
 import FounderPovPage from './FounderPovPage';
 import SelvtapeTipsPage from './SelvtapeTipsPage';
+import OperativsystemPage from './OperativsystemPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -46,6 +47,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <FounderPovPage />;
     case 'selvtape-tips':
       return <SelvtapeTipsPage />;
+    case 'operativsystem':
+      return <OperativsystemPage />;
     default:
       return null;
   }

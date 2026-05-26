@@ -13,7 +13,8 @@ export type MarketingPageKey =
   | 'casting-rapport-2026'
   | 'bak-castingen'
   | 'vart-syn'
-  | 'selvtape-tips';
+  | 'selvtape-tips'
+  | 'operativsystem';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -166,6 +167,26 @@ Hele begrunnelsen: https://theroleroom.com/vart-syn`,
 5. Slutt med stillhet. 3 sekunder. Ikke "tusen takk!" — det dreper magien.
 
 Full guide for norske skuespillere: https://theroleroom.com/selvtape-tips`,
+  },
+  {
+    key: 'operativsystem',
+    path: '/operativsystem',
+    title: 'Operativsystemet bak The Role Room — slik bygger vi i et 500-personers marked | The Role Room',
+    description:
+      'Syv prinsipper for hvordan The Role Room driver forretningsutvikling i norsk filmbransje: tid-multiplikator, quality at scale, memory-extension-CRM, GEO/AI-citation som moat, compliance som differensiering, referral-graf og mental availability.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `Vi har publisert operativsystemet bak The Role Room.
+
+Klassisk startup-instinkt er å holde driftsprinsipper hemmelige. Vi gjør motsatt. Tre grunner:
+
+1. Bransjen ser tankegangen vår før de møter produktet — det bygger tillit raskere enn en demo.
+2. Andre norske grunnleggere kan kopiere prinsippene og styrke hele økosystemet.
+3. Vi setter en standard for hvordan vi forventer å bli kommunisert tilbake til — uten å måtte si det høyt.
+
+Syv prinsipper, fra "20 personaliserte slår 200 generiske" til "AI-citation som langsiktig moat".
+
+Les hele: https://theroleroom.com/operativsystem`,
   },
 ];
 
