@@ -67791,6 +67791,7 @@ setupAudioRoutes({
   app,
   pool,
   db,
+  requireUserSession,
   getAudioBufferFromUrl,
   seedFromString,
   generateWaveform,

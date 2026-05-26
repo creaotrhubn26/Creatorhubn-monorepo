@@ -9,6 +9,7 @@ export interface AudioRoutesDeps {
   app: express.Application;
   pool: Pool;
   db: NodePgDatabase<typeof schema>;
+  requireUserSession: (req: any, res: any) => any;
   getAudioBufferFromUrl: (audioUrl: string) => Promise<any>;
   seedFromString: (value: string) => number;
   generateWaveform: (samples: number, seed: number) => number[];
@@ -30,6 +31,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
     app,
     pool,
     db,
+    requireUserSession,
     getAudioBufferFromUrl,
     seedFromString,
     generateWaveform,
@@ -50,6 +52,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.post("/api/audio/waveform/analyze", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const audioUrl = readString(req.body?.audioUrl) || "";
       const samples = Number(req.body?.samples || 100);
@@ -72,6 +75,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.post("/api/audio/loudness", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const audioUrl = readString(req.body?.audioUrl) || "";
       if (!audioUrl)
@@ -105,6 +109,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.post("/api/audio/spectral-analysis", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const audioUrl = readString(req.body?.audioUrl) || "";
       const fftSize = Number(req.body?.fftSize || 2048);
@@ -124,6 +129,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.post("/api/audio/compare-reference", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const mixUrl = readString(req.body?.mixUrl) || "";
       const referenceUrl = readString(req.body?.referenceUrl) || "";
@@ -156,6 +162,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.post("/api/audio/match-levels", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const mixUrl = readString(req.body?.mixUrl) || "";
       const referenceUrl = readString(req.body?.referenceUrl) || "";
@@ -208,6 +215,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.post("/api/audio/versions", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { projectId, name, description, audioUrl, settings, userId } =
         req.body || {};
@@ -235,6 +243,7 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.delete("/api/audio/versions/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const id = req.params.id;
       await db
