@@ -67751,6 +67751,7 @@ setupProjectsRoutes({
 setupRoleRoomDealsRoutes({
   app,
   pool,
+  requireUserSession,
   compatStoreSet,
   createProjectAgreementRecord,
   dbLegacyContractsKey,
@@ -67764,7 +67765,7 @@ setupRoleRoomDealsRoutes({
   legacyContractsByProject,
   legacyProjectAgreementsByProject,
 });
-setupRoleRoomInvitesTicketsRoutes({ app, pool });
+setupRoleRoomInvitesTicketsRoutes({ app, pool, requireUserSession, requireAdminSession });
 setupProjectsOutliersRoutes({ app, pool, db });
 setupPricingRoutes({ app, pool, requireUserSession, getPricingUserId });
 setupAccountingRoutes({

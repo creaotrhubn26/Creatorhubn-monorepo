@@ -5,12 +5,14 @@ import crypto from "crypto";
 export interface RoleRoomInvitesTicketsRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => any;
 }
 
 export function setupRoleRoomInvitesTicketsRoutes(
   deps: RoleRoomInvitesTicketsRoutesDeps,
 ): void {
-  const { app, pool } = deps;
+  const { app, pool, requireUserSession, requireAdminSession } = deps;
 
   async function ensureRoleRoomTesterInvitesTable(): Promise<boolean> {
     try {
@@ -40,6 +42,7 @@ export function setupRoleRoomInvitesTicketsRoutes(
   }
 
   app.post("/api/role-room/tester-invites", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       if (!(await ensureRoleRoomTesterInvitesTable())) {
         return res.status(503).json({ error: "Tester invites table unavailable" });
@@ -223,6 +226,7 @@ export function setupRoleRoomInvitesTicketsRoutes(
   const VALID_TICKET_STATUSES = new Set(["open", "in_progress", "resolved", "closed"]);
 
   app.post("/api/role-room/tickets", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       if (!(await ensureRoleRoomTicketsTable())) {
         return res.status(503).json({ error: "Tickets table unavailable" });
@@ -325,6 +329,7 @@ export function setupRoleRoomInvitesTicketsRoutes(
   });
 
   app.patch("/api/role-room/tickets/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       if (!(await ensureRoleRoomTicketsTable())) {
         return res.status(503).json({ error: "Tickets table unavailable" });

@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 export interface RoleRoomDealsRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   compatStoreSet: (key: string, value: unknown) => Promise<void>;
   createProjectAgreementRecord: (...args: any[]) => any;
   dbLegacyContractsKey: (...args: any[]) => string;
@@ -24,6 +25,7 @@ export function setupRoleRoomDealsRoutes(
   const {
     app,
     pool,
+    requireUserSession,
     compatStoreSet,
     createProjectAgreementRecord,
     dbLegacyContractsKey,
@@ -39,6 +41,7 @@ export function setupRoleRoomDealsRoutes(
   } = deps;
 
   app.post("/api/role-room/offers", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -69,6 +72,7 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.put("/api/role-room/offers/:offerId/respond", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     let location = findByIdInProjectMap(
       legacyOffersByProject,
       req.params.offerId,
@@ -104,6 +108,7 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.post("/api/role-room/contracts", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -136,6 +141,7 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.put("/api/role-room/contracts/:contractId/sign", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     let location = findByIdInProjectMap(
       legacyContractsByProject,
       req.params.contractId,
@@ -170,6 +176,7 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.post("/api/role-room/project-agreements", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const agreement = createProjectAgreementRecord(req.body || {});
     if (!agreement) {
       res
