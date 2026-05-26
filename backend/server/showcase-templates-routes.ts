@@ -36,12 +36,13 @@ type Db = NodePgDatabase<typeof schema>;
 export interface ShowcaseTemplatesRoutesDeps {
   app: express.Application;
   db: Db;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupShowcaseTemplatesRoutes(
   deps: ShowcaseTemplatesRoutesDeps,
 ): void {
-  const { app, db } = deps;
+  const { app, db, requireUserSession } = deps;
 
   app.get("/api/showcase/templates", async (req, res) => {
     try {
@@ -71,6 +72,7 @@ export function setupShowcaseTemplatesRoutes(
   });
 
   app.post("/api/showcase/templates", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const [created] = await db
@@ -100,6 +102,7 @@ export function setupShowcaseTemplatesRoutes(
   });
 
   app.put("/api/showcase/templates/:templateId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const [updated] = await db
@@ -129,6 +132,7 @@ export function setupShowcaseTemplatesRoutes(
   });
 
   app.delete("/api/showcase/templates/:templateId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const [deleted] = await db
         .delete(schema.showcaseTemplates)

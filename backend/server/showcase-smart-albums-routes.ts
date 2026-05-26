@@ -40,15 +40,17 @@ export interface ShowcaseSmartAlbumsRoutesDeps {
   app: express.Application;
   pool: Pool;
   db: Db;
+  requireUserSession: (req: any, res: any) => any;
   mapShowcaseItemRow: (row: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export function setupShowcaseSmartAlbumsRoutes(
   deps: ShowcaseSmartAlbumsRoutesDeps,
 ): void {
-  const { app, pool, db, mapShowcaseItemRow } = deps;
+  const { app, pool, db, requireUserSession, mapShowcaseItemRow } = deps;
 
   app.post("/api/showcase/smart-albums", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const [created] = await db
@@ -89,6 +91,7 @@ export function setupShowcaseSmartAlbumsRoutes(
   });
 
   app.post("/api/showcase/smart-albums/:albumId/update", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const albumId = req.params.albumId;
       const albumRows = await db

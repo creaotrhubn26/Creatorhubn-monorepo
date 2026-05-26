@@ -127,6 +127,7 @@ export interface ShowcaseMiscRoutesDeps {
   app: express.Application;
   pool: Pool;
   db: Db;
+  requireUserSession: (req: any, res: any) => any;
   mapShowcaseItemRow: (row: Record<string, unknown>) => Record<string, unknown>;
   createShowcaseItemRecord: (
     payload: Record<string, unknown>,
@@ -144,6 +145,7 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
     app,
     pool,
     db,
+    requireUserSession,
     mapShowcaseItemRow,
     createShowcaseItemRecord,
     resolveShowcasePricing,
@@ -153,6 +155,7 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
 
   // POST /api/showcase/sets — Create showcase set
   app.post("/api/showcase/sets", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { name, description, categoryId, items, userId } = req.body;
       const id = crypto.randomUUID();
@@ -187,6 +190,7 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
 
   // POST /api/showcase/email — Share showcase via email
   app.post("/api/showcase/email", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { to, subject } = req.body;
       console.log(`[Showcase Email] Sending to ${to}: ${subject}`);
@@ -245,6 +249,7 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
 
   // PUT /api/showcase/settings — UPSERT showcase-innstillinger (50+ felt)
   app.put("/api/showcase/settings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const userId =
@@ -364,6 +369,7 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
 
   // POST /api/showcase — Bare create (proxy til createShowcaseItemRecord)
   app.post("/api/showcase", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const created = await createShowcaseItemRecord(
         req.body as Record<string, unknown>,
@@ -377,6 +383,7 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
 
   // POST /api/showcase/calculate-selection-price — Utled pris fra valgt antall
   app.post("/api/showcase/calculate-selection-price", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const selectedImages = readStringArray(payload.selectedImages);
@@ -424,6 +431,7 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
 
   // POST /api/showcase/link-project — Koble showcase til prosjekt-kontekst
   app.post("/api/showcase/link-project", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const userId =

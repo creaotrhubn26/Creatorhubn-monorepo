@@ -73476,6 +73476,7 @@ setupShowcaseMiscRoutes({
   app,
   pool,
   db,
+  requireUserSession,
   mapShowcaseItemRow,
   createShowcaseItemRecord,
   resolveShowcasePricing,
@@ -73587,7 +73588,7 @@ setupShowcasePricingRoutes({ app, resolveShowcasePricing });
 
 
 // ── Showcase templates — flyttet til ./showcase-templates-routes.ts
-setupShowcaseTemplatesRoutes({ app, db });
+setupShowcaseTemplatesRoutes({ app, db, requireUserSession });
 
 
 
@@ -73618,7 +73619,7 @@ setupShowcaseImageOpsRoutes({
 
 // ── Showcase smart-albums — flyttet til ./showcase-smart-albums-routes.ts
 //   POST create + POST :albumId/update.
-setupShowcaseSmartAlbumsRoutes({ app, pool, db, mapShowcaseItemRow });
+setupShowcaseSmartAlbumsRoutes({ app, pool, db, requireUserSession, mapShowcaseItemRow });
 
 
 
