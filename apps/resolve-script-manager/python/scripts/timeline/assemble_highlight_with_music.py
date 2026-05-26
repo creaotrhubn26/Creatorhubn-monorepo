@@ -371,12 +371,27 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         is_climax = (climax_pick is not None and p == climax_pick)
         if is_climax and climax_info:
             cb = climax_info["beat_times"]
-            yt_raw = p["startSec"] + climax_sync["sync_offset"]
-            idx = bisect.bisect_left(cb, yt_raw)
-            yt_start = cb[idx]
+            # Decide whether to cross-correlate or use chorus-aligned start:
+            # cross-correlation only makes sense if the climax-song actually
+            # plays at this pick's source-time. Check if pick overlaps any
+            # section where the song was detected in source.
+            pick_t = p["startSec"]
+            overlaps_section = any(
+                sec["startSec"] <= pick_t <= sec["endSec"]
+                for sec in climax_song.get("sections", [])
+            )
+            if overlaps_section:
+                yt_raw = pick_t + climax_sync["sync_offset"]
+                idx = bisect.bisect_left(cb, yt_raw)
+            else:
+                # Different song from what's in source here → start at the
+                # song's chorus position (its most-impactful moment)
+                idx = bisect.bisect_left(cb, climax_info["chorus_start"])
+            # Safety: clamp to keep idx + n_beats within bounds
             n_beats = 5
-            yt_end_idx = min(idx + n_beats, len(cb) - 1)
-            yt_end = cb[yt_end_idx]
+            idx = max(0, min(idx, len(cb) - n_beats - 1))
+            yt_start = cb[idx]
+            yt_end = cb[idx + n_beats]
             dur = yt_end - yt_start
             mid = (p["startSec"] + p["endSec"]) / 2
             specs.append({"pick": p, "is_climax": True,
