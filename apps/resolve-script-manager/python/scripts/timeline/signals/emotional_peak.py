@@ -85,7 +85,7 @@ def _motion_sustain(ffmpeg: str, video: str, start: float, end: float) -> float:
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.score[:=]\s*([\d.]+)", r.stderr)]
     except Exception:  # noqa: BLE001
         return 0.0
     if not deltas:

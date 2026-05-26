@@ -55,7 +55,7 @@ def _clip_motion_profile(ffmpeg: str, video_path: str, max_seconds: float = 90.0
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.score[:=]\s*([\d.]+)", r.stderr)]
     except Exception:  # noqa: BLE001
         deltas = []
     if not deltas:

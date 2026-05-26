@@ -2,9 +2,17 @@
 
 Uses ffmpeg's `signalstats` filter to extract Y-channel min/max per
 frame. Computes the fraction of frames with clipped highlights
-(YMAX >= 250) or clipped shadows (YMIN <= 4). Score = 1.0 if clean,
-0.0 if fully clipped. Returned as positive value (1 = good); the
-orchestrator multiplies by negative weight to apply as penalty.
+(YMAX >= 250) or clipped shadows (YMIN <= 4).
+
+Returns 1.0 = FULLY CLIPPED (bad), 0.0 = clean. The orchestrator
+multiplies by the genre's NEGATIVE weight, so:
+   penalty = (-0.10) × 1.0 = -0.10  on clipped shots
+   penalty = (-0.10) × 0.0 =  0.00  on clean shots
+Higher signal-value = worse exposure = larger negative contribution.
+
+(Previous version returned the inverse and clean shots got penalized
+instead of clipped ones — discovered during real-world validation on
+Bjarne's 4K wedding footage.)
 """
 
 from __future__ import annotations
@@ -44,10 +52,14 @@ def _score_shot(ffmpeg: str, video: str, start: float, end: float) -> float:
         return 1.0
     avg_high = sum(highs) / len(highs) if highs else 0.0
     avg_low = sum(lows) / len(lows) if lows else 0.0
-    # A frame with > 3% clipped pixels in either tail is considered bad
-    # Score = 1 - (sum of clipping fractions, capped at 1)
-    penalty = min(1.0, (max(0.0, avg_high - 0.03) + max(0.0, avg_low - 0.03)) * 4.0)
-    return max(0.0, 1.0 - penalty)
+    # A frame with > 3% clipped pixels in either tail is considered bad.
+    # We RETURN the clipping-amount directly so 0=clean, 1=fully clipped.
+    # Orchestrator multiplies by negative genre-weight → clipped = penalty.
+    clipping_amount = min(
+        1.0,
+        (max(0.0, avg_high - 0.03) + max(0.0, avg_low - 0.03)) * 4.0,
+    )
+    return clipping_amount
 
 
 def compute(ffmpeg: str, ffprobe: str, video: str,

@@ -133,6 +133,16 @@ def _chapter_names(n: int) -> list[str]:
         return ["first_half", "second_half"]
     if n == 4:
         return ["prep", "ceremony", "reception", "dance"]
+    if n == 5:
+        # Jewish wedding 5-event-pattern (Tisch/Bedeken, Ceremony,
+        # Reception, Hora, Dance) eller western 5-act wedding
+        return ["prep", "ceremony", "reception", "hora", "dance"]
+    if n == 6:
+        # South Asian / Pakistani / Indian multi-day pattern. Must match
+        # the keys i genre_weights.py SOUTH_ASIAN_WEDDING.chapter_targets.
+        return ["mehndi", "sangeet", "haldi", "nikkah", "reception", "dance"]
+    if n == 7:
+        return ["mehndi", "sangeet", "haldi", "nikkah", "reception", "dance", "outro"]
     return [f"chapter_{i+1}" for i in range(n)]
 
 

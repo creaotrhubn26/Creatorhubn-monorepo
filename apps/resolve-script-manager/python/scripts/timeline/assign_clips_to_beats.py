@@ -105,7 +105,7 @@ def _compute_motion_period(ffmpeg: str, video_path: str, max_seconds: float = 12
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.score[:=]\s*([\d.]+)", r.stderr)]
     except Exception:  # noqa: BLE001
         return None
     if len(deltas) < 8:
@@ -164,7 +164,7 @@ def _probe_motion_score(ffmpeg: str, video_path: str, sample_seconds: float = 5.
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.score[:=]\s*([\d.]+)", r.stderr)]
         if not deltas:
             return None
         avg = sum(deltas) / len(deltas)

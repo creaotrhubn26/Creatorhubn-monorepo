@@ -434,7 +434,7 @@ def measure_motion(ffmpeg: str, video: str, start_sec: float, end_sec: float) ->
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.score[:=]\s*([\d.]+)", r.stderr)]
         if not deltas:
             return None
         avg = sum(deltas) / len(deltas)

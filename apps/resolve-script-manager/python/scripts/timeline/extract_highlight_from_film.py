@@ -121,11 +121,16 @@ def shot_motion_score(ffmpeg: str, video: str, start: float, end: float) -> floa
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.mafd=([\d.]+)", r.stderr)]
+        deltas = [float(m) for m in re.findall(r"lavfi\.scd\.score[:=]\s*([\d.]+)", r.stderr)]
         if not deltas:
             return 0.0
-        avg = sum(deltas) / len(deltas)
-        return min(1.0, avg / 30.0)
+        # 90th-percentile rather than mean so a brief motion-burst in an
+        # otherwise still shot registers. Divided by 5 — wedding-shot
+        # scdet-scores typically peak 0-5 (was /30 which compressed
+        # practical values to 0.01-0.06 across the board).
+        deltas_sorted = sorted(deltas)
+        p90 = deltas_sorted[max(0, int(len(deltas_sorted) * 0.9) - 1)]
+        return min(1.0, max(0.0, p90 / 5.0))
     except Exception:  # noqa: BLE001
         return 0.0
 
