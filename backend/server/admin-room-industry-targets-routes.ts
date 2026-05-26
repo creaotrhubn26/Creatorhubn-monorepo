@@ -234,6 +234,31 @@ export function setupAdminIndustryTargetsRoutes(deps: AdminRoomRoutesDeps): void
     if (body.nextActionDue !== undefined) set("next_action_due", asString(body.nextActionDue));
     if (body.tags !== undefined) set("tags", asJsonbArray(body.tags), "jsonb");
     if (body.metadata !== undefined) set("metadata", asJsonbObject(body.metadata), "jsonb");
+    // Outreach Plan-felter (migrasjon 172)
+    if (body.recentProductions !== undefined) set("recent_productions", asJsonbArray(body.recentProductions), "jsonb");
+    if (body.mutualConnection !== undefined) set("mutual_connection", asString(body.mutualConnection));
+    if (body.referredById !== undefined) set("referred_by_id", asString(body.referredById));
+    if (body.referralGeneration !== undefined) {
+      const gen = Number(body.referralGeneration);
+      if (!Number.isFinite(gen) || gen < 0 || gen > 9) {
+        res.status(400).json({ error: "referralGeneration må være mellom 0 og 9" });
+        return;
+      }
+      set("referral_generation", gen);
+    }
+    if (body.firstContactAt !== undefined) set("first_contact_at", asString(body.firstContactAt));
+    if (body.meetingAt !== undefined) set("meeting_at", asString(body.meetingAt));
+    if (body.pilotStartedAt !== undefined) set("pilot_started_at", asString(body.pilotStartedAt));
+    if (body.loomSentAt !== undefined) set("loom_sent_at", asString(body.loomSentAt));
+    if (body.thankYouSentAt !== undefined) set("thank_you_sent_at", asString(body.thankYouSentAt));
+    if (body.askReadiness !== undefined) {
+      const ar = Number(body.askReadiness);
+      if (!Number.isFinite(ar) || ar < 0 || ar > 3) {
+        res.status(400).json({ error: "askReadiness må være 0, 1, 2 eller 3" });
+        return;
+      }
+      set("ask_readiness", ar);
+    }
 
     if (updates.length === 0) {
       res.status(400).json({ error: "Ingen felter å oppdatere" });

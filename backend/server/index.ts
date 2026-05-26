@@ -358,6 +358,7 @@ import {
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
+import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterAiRoutes } from "./role-room-newsletter-ai-routes";
 import { setupTheRoleRoomSitemapRoutes } from "./theroleroom-sitemap-routes";
@@ -17727,6 +17728,15 @@ setupAdminInvestorsRoutes({
 
 // ── Industry targets (Tier-1 CRM) — driver content-marketing-engagement-system
 setupAdminIndustryTargetsRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── Outreach-system (templates + AI-personalisering per Outreach Plan)
+setupAdminOutreachRoutes({
   app,
   pool,
   getActiveSessionFromRequest,

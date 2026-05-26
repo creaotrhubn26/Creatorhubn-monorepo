@@ -29,9 +29,13 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import BoltIcon from '@mui/icons-material/Bolt';
 import CloseIcon from '@mui/icons-material/Close';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
   industryTargetsApi,
   newsletterApi,
+  outreachApi,
   INDUSTRY_SEGMENT_LABELS,
   INDUSTRY_STATUS_LABELS,
   INDUSTRY_TIER_LABELS,
@@ -45,6 +49,8 @@ import {
   type IndustryTier,
   type NewsletterSignup,
   type NewsletterTotals,
+  type OutreachTemplate,
+  type OutreachPersonalizedResult,
 } from '../../../services/adminRoomApi';
 
 /**
@@ -86,6 +92,7 @@ export function IndustryTargetsTab() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTarget, setEditingTarget] = useState<IndustryTarget | null>(null);
   const [engagementTarget, setEngagementTarget] = useState<IndustryTarget | null>(null);
+  const [outreachTarget, setOutreachTarget] = useState<IndustryTarget | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -287,6 +294,9 @@ export function IndustryTargetsTab() {
                       <IconButton size="small" onClick={() => setEngagementTarget(target)} title="Logg engagement">
                         <BoltIcon fontSize="small" sx={{ color: '#fcd34d' }} />
                       </IconButton>
+                      <IconButton size="small" onClick={() => setOutreachTarget(target)} title="Generér personlig outreach (Claude)">
+                        <AutoAwesomeIcon fontSize="small" sx={{ color: '#22d3ee' }} />
+                      </IconButton>
                       <IconButton size="small" onClick={() => handleEdit(target)} title="Rediger">
                         <EditOutlinedIcon fontSize="small" sx={{ color: '#c4b5fd' }} />
                       </IconButton>
@@ -403,6 +413,12 @@ export function IndustryTargetsTab() {
           </Stack>
         </DialogContent>
       </Dialog>
+
+      <OutreachDialog
+        target={outreachTarget}
+        onClose={() => setOutreachTarget(null)}
+        onError={setError}
+      />
     </Box>
   );
 }
@@ -555,6 +571,218 @@ function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
           {saving ? 'Lagrer…' : initial ? 'Lagre endringer' : 'Opprett target'}
         </Button>
       </DialogActions>
+    </Dialog>
+  );
+}
+
+// ── Outreach-dialog: target + template → Claude → personlig melding ──
+
+const SEGMENT_TO_OUTREACH_SEGMENTS: Partial<Record<IndustrySegment, Array<OutreachTemplate['segment']>>> = {
+  casting_director: ['casting_director'],
+  producer: ['producer'],
+  press: ['press'],
+  nsf: ['union'],
+  nfi: ['institution'],
+  skuda: ['institution'],
+  agency: ['agency'],
+};
+
+function OutreachDialog({ target, onClose, onError }: { target: IndustryTarget | null; onClose: () => void; onError: (msg: string) => void }) {
+  const [templates, setTemplates] = useState<OutreachTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [extraContext, setExtraContext] = useState('');
+  const [result, setResult] = useState<OutreachPersonalizedResult | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Last templates når dialog åpnes
+  useEffect(() => {
+    if (!target) {
+      setTemplates([]);
+      setSelectedTemplateId('');
+      setExtraContext('');
+      setResult(null);
+      return;
+    }
+    setLoadingTemplates(true);
+    outreachApi
+      .listTemplates()
+      .then((items) => {
+        setTemplates(items);
+        // Auto-velg en relevant template basert på target.segment
+        const preferred = SEGMENT_TO_OUTREACH_SEGMENTS[target.segment] ?? [];
+        const match = items.find((t) => preferred.includes(t.segment) && t.is_default);
+        if (match) setSelectedTemplateId(match.id);
+      })
+      .catch((err) => onError((err as Error).message))
+      .finally(() => setLoadingTemplates(false));
+  }, [target, onError]);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateId) ?? null,
+    [templates, selectedTemplateId],
+  );
+
+  async function handleGenerate() {
+    if (!target || !selectedTemplate) return;
+    setGenerating(true);
+    setResult(null);
+    try {
+      const res = await outreachApi.personalize({
+        targetId: target.id,
+        templateId: selectedTemplate.id,
+        extraContext: extraContext.trim() || undefined,
+      });
+      setResult(res);
+    } catch (err) {
+      onError((err as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(result.personalized);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      onError('Kunne ikke kopiere — prøv manuelt');
+    }
+  }
+
+  if (!target) return null;
+
+  const recentProductions = target.recent_productions ?? [];
+
+  return (
+    <Dialog open={target !== null} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <AutoAwesomeIcon sx={{ color: '#22d3ee' }} />
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>AI-personalisert outreach</Typography>
+            <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.78rem' }}>
+              {target.full_name}{target.role_title ? ` — ${target.role_title}` : ''}{target.company ? `, ${target.company}` : ''}
+            </Typography>
+          </Box>
+        </Stack>
+        <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2.5} sx={{ pt: 1 }}>
+          {/* Target-fakta-summary */}
+          <Box sx={{ p: 1.75, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.14)' }}>
+            <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.75, fontWeight: 700 }}>
+              Fakta Claude bruker
+            </Typography>
+            <Stack direction="row" flexWrap="wrap" spacing={1} sx={{ rowGap: 0.5 }}>
+              <Chip size="small" label={INDUSTRY_SEGMENT_LABELS[target.segment]} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 600, fontSize: '0.72rem' }} />
+              {target.city ? <Chip size="small" label={target.city} sx={{ bgcolor: 'rgba(34,211,238,0.15)', color: '#67e8f9', fontWeight: 600, fontSize: '0.72rem' }} /> : null}
+              {target.mutual_connection ? <Chip size="small" label={`Via: ${target.mutual_connection}`} sx={{ bgcolor: 'rgba(244,114,182,0.16)', color: '#f9a8d4', fontWeight: 600, fontSize: '0.72rem' }} /> : null}
+              {recentProductions.length === 0 ? (
+                <Chip size="small" label="Ingen produksjoner registrert" sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', fontWeight: 600, fontSize: '0.72rem' }} />
+              ) : (
+                recentProductions.slice(0, 3).map((p) => (
+                  <Chip key={p.title} size="small" label={p.year ? `${p.title} (${p.year})` : p.title} sx={{ bgcolor: 'rgba(52,211,153,0.15)', color: '#86efac', fontWeight: 600, fontSize: '0.72rem' }} />
+                ))
+              )}
+            </Stack>
+            {recentProductions.length === 0 ? (
+              <Typography sx={{ color: 'rgba(252,165,165,0.85)', fontSize: '0.74rem', mt: 1 }}>
+                Tips: Legg til siste produksjoner i target-redigering for at Claude skal kunne henvise spesifikt til arbeidet deres.
+              </Typography>
+            ) : null}
+          </Box>
+
+          {/* Template-velger */}
+          <FormControl fullWidth size="small" disabled={loadingTemplates || generating}>
+            <InputLabel sx={{ color: 'rgba(203,213,225,0.7)' }}>Velg mal</InputLabel>
+            <Select
+              value={selectedTemplateId}
+              label="Velg mal"
+              onChange={(e) => { setSelectedTemplateId(e.target.value); setResult(null); }}
+              sx={{ color: '#fff', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
+            >
+              {templates.map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.title}{t.is_default ? ' · Plan-anbefalt' : ''}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {selectedTemplate ? (
+            <Box>
+              <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.75, fontWeight: 700 }}>
+                Mal-skjelett
+              </Typography>
+              <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.5)', border: '1px solid rgba(148,163,184,0.12)', fontSize: '0.82rem', lineHeight: 1.55, color: 'rgba(203,213,225,0.78)', whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto' }}>
+                {selectedTemplate.body}
+              </Box>
+            </Box>
+          ) : null}
+
+          {/* Ekstra kontekst */}
+          <TextField
+            label="Ekstra kontekst (valgfri)"
+            placeholder='F.eks. "Hun delte en Rushprint-artikkel om barneskuespillere i forrige uke — referer til det"'
+            size="small"
+            multiline
+            minRows={2}
+            maxRows={5}
+            value={extraContext}
+            onChange={(e) => setExtraContext(e.target.value)}
+            disabled={generating}
+            InputLabelProps={{ sx: { color: 'rgba(203,213,225,0.7)' } }}
+            InputProps={{
+              sx: {
+                color: '#fff',
+                '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' },
+              },
+            }}
+          />
+
+          {/* Generér-knapp + resultat */}
+          {!result ? (
+            <Button
+              variant="contained"
+              onClick={handleGenerate}
+              disabled={!selectedTemplate || generating}
+              startIcon={generating ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <AutoAwesomeIcon />}
+              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#22d3ee', color: '#0a0a0f', '&:hover': { bgcolor: '#06b6d4' } }}
+            >
+              {generating ? 'Claude jobber …' : 'Generér personlig melding'}
+            </Button>
+          ) : (
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>
+                  Ferdig melding · {result.templateChannel === 'dm' ? 'LinkedIn-DM' : result.templateChannel === 'email' ? 'Mail' : result.templateChannel}
+                </Typography>
+                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={handleCopy} sx={{ textTransform: 'none', color: copied ? '#86efac' : '#22d3ee', fontWeight: 700 }}>
+                  {copied ? 'Kopiert ✓' : 'Kopier'}
+                </Button>
+              </Stack>
+              <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.3)', whiteSpace: 'pre-wrap', fontSize: '0.92rem', lineHeight: 1.65, color: 'rgba(229,231,235,0.95)' }}>
+                {result.personalized}
+              </Box>
+              {result.unresolvedPlaceholders.length > 0 ? (
+                <Alert severity="warning" sx={{ mt: 1.5, bgcolor: 'rgba(251,191,36,0.1)', color: '#fde68a', '& .MuiAlert-icon': { color: '#fbbf24' } }}>
+                  Uerstattede plassholdere: {result.unresolvedPlaceholders.join(', ')}. Fyll inn manuelt før sending.
+                </Alert>
+              ) : null}
+              <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1.5 }}>
+                <Button onClick={() => { setResult(null); }} sx={{ textTransform: 'none', color: 'rgba(203,213,225,0.7)' }}>
+                  Generér på nytt
+                </Button>
+              </Stack>
+            </Box>
+          )}
+        </Stack>
+      </DialogContent>
     </Dialog>
   );
 }

@@ -626,6 +626,12 @@ export type IndustryEngagementKind =
   | 'post_share'
   | 'other';
 
+export interface IndustryTargetProduction {
+  title: string;
+  year?: number;
+  role?: string;
+}
+
 export interface IndustryTarget {
   id: string;
   user_id: string;
@@ -648,6 +654,17 @@ export interface IndustryTarget {
   engagement_count: number;
   tags: string[];
   metadata: Record<string, unknown>;
+  // Outreach Plan-felter (migrasjon 172)
+  recent_productions?: IndustryTargetProduction[];
+  mutual_connection?: string | null;
+  referred_by_id?: string | null;
+  referral_generation?: number;
+  first_contact_at?: string | null;
+  meeting_at?: string | null;
+  pilot_started_at?: string | null;
+  loom_sent_at?: string | null;
+  thank_you_sent_at?: string | null;
+  ask_readiness?: number;
   created_at: string;
   updated_at: string;
 }
@@ -669,6 +686,16 @@ export type IndustryTargetInput = {
   nextActionDue?: string | null;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  recentProductions?: IndustryTargetProduction[];
+  mutualConnection?: string | null;
+  referredById?: string | null;
+  referralGeneration?: number;
+  firstContactAt?: string | null;
+  meetingAt?: string | null;
+  pilotStartedAt?: string | null;
+  loomSentAt?: string | null;
+  thankYouSentAt?: string | null;
+  askReadiness?: number;
 };
 
 export interface IndustryTargetStats {
@@ -779,6 +806,90 @@ export const industryTargetsApi = {
     input: IndustryEngagementInput,
   ): Promise<{ engagement: IndustryEngagement; target: IndustryTarget }> => {
     return jsonFetch(`/industry-targets/${encodeURIComponent(id)}/engagement`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Outreach (templates + AI-personalisering per Outreach Plan)
+// ─────────────────────────────────────────────────────────
+
+export type OutreachTemplateSegment =
+  | 'casting_director'
+  | 'producer'
+  | 'union'
+  | 'institution'
+  | 'press'
+  | 'agency'
+  | 'other';
+
+export type OutreachTemplateChannel = 'dm' | 'email' | 'phone' | 'in_person' | 'loom';
+export type OutreachTemplateLanguage = 'no' | 'en';
+
+export interface OutreachTemplate {
+  id: string;
+  user_id: string | null;
+  slug: string;
+  title: string;
+  segment: OutreachTemplateSegment;
+  channel: OutreachTemplateChannel;
+  language: OutreachTemplateLanguage;
+  description: string | null;
+  body: string;
+  variables: string[];
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutreachPersonalizedResult {
+  personalized: string;
+  templateTitle: string;
+  templateChannel: OutreachTemplateChannel;
+  templateLanguage: OutreachTemplateLanguage;
+  unresolvedPlaceholders: string[];
+  target: { id: string; fullName: string };
+}
+
+export const outreachApi = {
+  listTemplates: async (filter?: { segment?: OutreachTemplateSegment; language?: OutreachTemplateLanguage }): Promise<OutreachTemplate[]> => {
+    const params = new URLSearchParams();
+    if (filter?.segment) params.set('segment', filter.segment);
+    if (filter?.language) params.set('language', filter.language);
+    const query = params.toString();
+    const data = await jsonFetch<{ items: OutreachTemplate[] }>(`/outreach-templates${query ? `?${query}` : ''}`);
+    return data.items;
+  },
+  createTemplate: async (input: {
+    slug: string;
+    title: string;
+    segment: OutreachTemplateSegment;
+    channel?: OutreachTemplateChannel;
+    language?: OutreachTemplateLanguage;
+    description?: string | null;
+    body: string;
+    variables?: string[];
+  }): Promise<OutreachTemplate> => {
+    const data = await jsonFetch<{ item: OutreachTemplate }>('/outreach-templates', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patchTemplate: async (id: string, input: Partial<Omit<OutreachTemplate, 'id' | 'user_id' | 'slug' | 'is_default' | 'created_at' | 'updated_at'>>): Promise<OutreachTemplate> => {
+    const data = await jsonFetch<{ item: OutreachTemplate }>(`/outreach-templates/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  removeTemplate: async (id: string): Promise<void> => {
+    await jsonFetch(`/outreach-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  personalize: async (input: { targetId: string; templateId: string; extraContext?: string }): Promise<OutreachPersonalizedResult> => {
+    return jsonFetch('/outreach-templates/personalize', {
       method: 'POST',
       body: JSON.stringify(input),
     });
