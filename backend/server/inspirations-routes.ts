@@ -5,12 +5,13 @@ import crypto from "crypto";
 export interface InspirationsRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupInspirationsRoutes(
   deps: InspirationsRoutesDeps,
 ): void {
-  const { app, pool } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   app.get("/api/inspirations/categories", async (_req, res) => {
     try {
@@ -167,6 +168,7 @@ export function setupInspirationsRoutes(
   );
 
   app.post("/api/inspirations/:vendorId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { vendorId } = req.params;
       const {
@@ -242,6 +244,7 @@ export function setupInspirationsRoutes(
   app.patch(
     "/api/inspirations/:vendorId/:inspirationId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { vendorId, inspirationId } = req.params;
         const updates = req.body;
@@ -304,6 +307,7 @@ export function setupInspirationsRoutes(
   app.delete(
     "/api/inspirations/:vendorId/:inspirationId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { vendorId, inspirationId } = req.params;
         await pool.query(
@@ -334,6 +338,7 @@ export function setupInspirationsRoutes(
   app.post(
     "/api/inspirations/:vendorId/:inspirationId/media",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { vendorId, inspirationId } = req.params;
         const inspiration = await pool.query(
@@ -380,6 +385,7 @@ export function setupInspirationsRoutes(
   app.delete(
     "/api/inspirations/:vendorId/:inspirationId/media/:mediaId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { vendorId, inspirationId, mediaId } = req.params;
         const inspiration = await pool.query(

@@ -24,6 +24,7 @@ import crypto from "crypto";
 export interface WeddingAssistantsRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -120,7 +121,7 @@ function rowToAssistant(r: any): any {
 }
 
 export function setupWeddingAssistantsRoutes(deps: WeddingAssistantsRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── GET /api/wedding/:weddingId/assistants ────────────────────
   app.get("/api/wedding/:weddingId/assistants", async (req, res) => {
@@ -145,6 +146,7 @@ export function setupWeddingAssistantsRoutes(deps: WeddingAssistantsRoutesDeps):
 
   // ─── POST /api/wedding/:weddingId/assistants ──────────────────
   app.post("/api/wedding/:weddingId/assistants", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -242,6 +244,7 @@ export function setupWeddingAssistantsRoutes(deps: WeddingAssistantsRoutesDeps):
 
   // ─── PUT /api/wedding/:weddingId/assistants/:assistantId ──────
   app.put("/api/wedding/:weddingId/assistants/:assistantId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
@@ -281,6 +284,7 @@ export function setupWeddingAssistantsRoutes(deps: WeddingAssistantsRoutesDeps):
 
   // ─── DELETE /api/wedding/:weddingId/assistants/:assistantId ──
   app.delete("/api/wedding/:weddingId/assistants/:assistantId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

@@ -362,6 +362,7 @@ import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
 import { setupAdminPlatformCostSyncRoutes } from "./admin-room-platform-cost-sync-routes";
 import { setupAdminPlatformStatusRoutes } from "./admin-room-platform-status-routes";
+import { setupAdminMigrationsRoutes } from "./admin-room-migrations-routes";
 import { setupPresenceHeartbeatRoutes } from "./presence-heartbeat-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
 import { setupAdminDecksRoutes } from "./admin-room-decks-routes";
@@ -17775,6 +17776,15 @@ setupAdminPlatformStatusRoutes({
   requireAdminRoomAccess,
   logAdminActivity,
   getRoleRoomStripeClient,
+});
+
+// ── Migrations — admin-trigger av migrate.sh fra Admin Room
+setupAdminMigrationsRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
 });
 
 // ── Presence heartbeat — auth-gated POST /api/presence/heartbeat (30s ping)
@@ -67055,7 +67065,7 @@ setupWeddingGalleryDeliveryRoutes({ app, pool, getPricingUserId });
 setupWebPushRoutes({ app, pool, getPricingUserId });
 
 // Slice 9X.44 — Assistent-fotografer + profit-split.
-setupWeddingAssistantsRoutes({ app, pool, getPricingUserId });
+setupWeddingAssistantsRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.45 — Auto-delt Drive-mappe for assistent-leveranse + polling.
 setupWeddingAssistantDriveRoutes({ app, pool, getPricingUserId });
@@ -67266,7 +67276,7 @@ setupExternalDataRoutes({ app });
 
 // /api/inspirations/* — 11 endpoints (categories, public browse/inquiry,
 // vendor CRUD + media + inquiries). Selvstendig — kun pool + crypto.
-setupInspirationsRoutes({ app, pool });
+setupInspirationsRoutes({ app, pool, requireUserSession });
 
 // /api/cms/* — 11 endpoints (admin fields/content-types CRUD + stats +
 // public content GET + write). Dep-injiserer ensureCmsSchema (initialiserer
