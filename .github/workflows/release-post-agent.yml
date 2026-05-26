@@ -72,16 +72,19 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Apple Developer ID — optional. If not set, app will not be code-
-          # signed for Gatekeeper (users see the "unidentified developer"
-          # warning on first launch). Sign yourself before public release.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri build -- --target ${{ matrix.target }}
+
+      # Apple Developer ID codesign + notarize. Only runs when APPLE_CERTIFICATE
+      # secret is set — without it the .app stays "unidentified developer".
+      # When you have a cert: add APPLE_CERTIFICATE (base64 .p12) +
+      # APPLE_CERTIFICATE_PASSWORD + APPLE_SIGNING_IDENTITY + APPLE_ID +
+      # APPLE_PASSWORD + APPLE_TEAM_ID as repo secrets, then replace this
+      # block's env-removal with a conditional re-run of `tauri build`.
+      - name: (skipped) Apple codesign — no APPLE_CERTIFICATE secret
+        if: ${{ secrets.APPLE_CERTIFICATE == '' }}
+        run: |
+          echo "::notice::App built UNSIGNED. Users will see Gatekeeper warning on first launch."
+          echo "::notice::To enable codesigning, add APPLE_CERTIFICATE + related secrets — see RELEASE.md."
 
       - name: Collect artifacts
         id: artifacts
