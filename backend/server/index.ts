@@ -67500,6 +67500,7 @@ setupMarketplaceRoutes({ app, db, requireUserSession });
 setupWeddingProjectsRoutes({
   app,
   pool,
+  requireUserSession,
   compatResolveUserId,
   mapProjectRow,
 });

@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 export interface WeddingProjectsRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   compatResolveUserId: (req: express.Request) => string;
   mapProjectRow: (row: any) => any;
 }
@@ -11,9 +12,10 @@ export interface WeddingProjectsRoutesDeps {
 export function setupWeddingProjectsRoutes(
   deps: WeddingProjectsRoutesDeps,
 ): void {
-  const { app, pool, compatResolveUserId, mapProjectRow } = deps;
+  const { app, pool, requireUserSession, compatResolveUserId, mapProjectRow } = deps;
 
   app.get("/api/wedding-projects", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = compatResolveUserId(req);
       const params: Array<string> = [];
@@ -47,6 +49,7 @@ export function setupWeddingProjectsRoutes(
   });
 
   app.get("/api/wedding-projects/:projectId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "SELECT * FROM legacy.projects WHERE id = $1 LIMIT 1",
