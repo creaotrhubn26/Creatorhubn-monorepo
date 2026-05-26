@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import {
   executeScript,
@@ -35,6 +35,7 @@ import { SettingsModal, loadSettings, settingsToEnvVars } from "./components/Set
 import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
+import { CommandPalette } from "./components/CommandPalette";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { MagicCutDialog } from "./components/MagicCutDialog";
@@ -63,6 +64,7 @@ export default function App() {
   const [showMediaPool, setShowMediaPool] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showDependencies, setShowDependencies] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
@@ -131,6 +133,67 @@ export default function App() {
         setRuns(latestByScript);
       })
       .catch((e: unknown) => setLoadError(String(e)));
+  }, []);
+
+  // #286 + #287 — Native macOS notifications on workflow finished + sound on fail.
+  // Uses the Web Notifications API (works inside Tauri WebView) so we don't
+  // need an extra tauri-plugin-notification dep. Requests permission lazily
+  // on first run. Plays a Web-Audio "thud" on failure as audible alert.
+  const notifyRef = useRef<{
+    permission: NotificationPermission | "unknown";
+    requested: boolean;
+  }>({ permission: "unknown", requested: false });
+
+  const playFailureSound = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      // Descending two-tone "uh-oh" pattern
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(220, ctx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(); osc.stop(ctx.currentTime + 0.55);
+    } catch { /* AudioContext unavailable; silent fallback */ }
+  }, []);
+
+  const fireNotification = useCallback(async (
+    title: string, body: string, isFailure: boolean,
+  ) => {
+    if (typeof Notification === "undefined") return;
+    const n = notifyRef.current;
+    if (n.permission === "unknown" && !n.requested) {
+      n.requested = true;
+      try {
+        n.permission = await Notification.requestPermission();
+      } catch { /* user dismissed */ }
+    }
+    if (Notification.permission !== "granted") return;
+    try {
+      new Notification(title, {
+        body,
+        silent: isFailure,  // we provide our own louder sound on failure
+        tag: "post-agent-run",  // de-dupe rapid runs
+      });
+    } catch { /* WebView may block in some contexts */ }
+    if (isFailure) playFailureSound();
+  }, [playFailureSound]);
+
+  // #222 — Cmd+K opens the command palette
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        const tag = (e.target as HTMLElement | null)?.tagName?.toUpperCase();
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        setShowPalette((s) => !s);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // Subscribe to native-menu events (#186 + #187 + #129)
@@ -225,6 +288,20 @@ export default function App() {
         // After any script completes, kick the Media Pool sidebar to refresh
         if (event.scriptId !== "get_media_pool_state") {
           setMediaPoolRefreshTrigger((t) => t + 1);
+        }
+        // #286 / #287 — surface completion as a native notification.
+        // Don't notify on health_check / get_media_pool_state etc. — internal
+        // helpers that run frequently would create notification spam.
+        const internalScripts = new Set([
+          "health_check", "get_media_pool_state", "check_dependencies",
+        ]);
+        if (event.scriptId && !internalScripts.has(event.scriptId)) {
+          const succeeded = !!event.succeeded;
+          void fireNotification(
+            succeeded ? "Script ferdig" : "Script feilet",
+            `${event.scriptId} · exit ${event.exitCode ?? "?"}`,
+            !succeeded,
+          );
         }
       }
     }).then((u) => {
@@ -477,6 +554,41 @@ export default function App() {
           <span className="footer-version">v0.1.0</span>
         </span>
       </footer>
+
+      <CommandPalette
+        open={showPalette}
+        onClose={() => setShowPalette(false)}
+        registry={registry}
+        workflows={workflows}
+        onRunScript={(script, dryRun) => handleTrigger(script, dryRun)}
+        onSelectWorkflow={(id) => { setSelectedWorkflowId(id); setView("pipeline"); }}
+        actions={[
+          { id: "health_check", title: "Run health-check",
+            subtitle: "verify Resolve + venv + ffmpeg + disks",
+            handler: () => void handleHealthCheck() },
+          { id: "clear_logs", title: "Clear logs",
+            subtitle: "wipe the right-side log panel",
+            handler: () => setEvents([]) },
+          { id: "open_dependencies", title: "Open Dependencies modal",
+            subtitle: "install/verify ffmpeg, whisperx, librosa, cv2…",
+            handler: () => setShowDependencies(true) },
+          { id: "open_settings", title: "Open Settings",
+            subtitle: "API keys, paths, preferences",
+            handler: () => setShowSettings(true) },
+          { id: "toggle_media_pool", title: "Toggle Media Pool sidebar",
+            subtitle: "show/hide right sidebar",
+            handler: () => setShowMediaPool((s) => !s) },
+          { id: "view_pipeline", title: "View: Pipeline",
+            subtitle: "main workflow view",
+            handler: () => setView("pipeline") },
+          { id: "view_cull", title: "View: Cull",
+            subtitle: "magic-cut for batch culling",
+            handler: () => setView("cull") },
+          { id: "view_audio", title: "View: Audio",
+            subtitle: "audio QC + sync tools",
+            handler: () => setView("audio") },
+        ]}
+      />
 
       {pendingDialog && (
         <ParamDialog
