@@ -9,6 +9,7 @@
  * pipeline view) live behind cmd-K / Advanced menu — not on the home.
  */
 
+import type { JSX } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { ProjectTemplateSummary } from "../types";
 import {
