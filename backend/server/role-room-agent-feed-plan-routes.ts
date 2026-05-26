@@ -41,6 +41,15 @@ import {
   saveFeedPlan,
   type RoleRoomFeedApprovalState,
 } from "./role-room-feed-plan.js";
+import {
+  submitPostsForReview,
+  reviewBusinessDays,
+  getApprovalPolicy,
+  setApprovalPolicy,
+  canTransitionToPublishable,
+  isClientActor,
+  isPublishable,
+} from "./role-room-material-approval.js";
 import { recommendFeedPost } from "./role-room-feed-recommend.js";
 import {
   refreshStrategyWithClaude,
@@ -728,6 +737,50 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       success: true,
       touched,
       posts: saved?.posts ?? nextPosts,
+    });
+  });
+
+  // ── Send materiell til kunden for godkjenning (§5.1) ─────────────────────
+  // Setter valgte poster til 'awaiting_client' + en virkedags-frist. Hvis
+  // kunden ikke svarer innen fristen auto-godkjennes de (§5.2, cron-sweep).
+  app.post("/api/role-room/agent/feed-plan/:projectId/:platform/submit-review", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+
+    const { projectId, platform } = req.params;
+    if (!projectId || !isSupportedFeedPlatform(platform)) {
+      return res.status(400).json({ success: false, error: "projectId og støttet plattform er påkrevd." });
+    }
+
+    const body = (req.body || {}) as Record<string, unknown>;
+    const postIds = Array.isArray(body.postIds) ? body.postIds.map((id) => String(id)) : [];
+    if (postIds.length === 0) {
+      return res.status(400).json({ success: false, error: "postIds[] kan ikke være tom" });
+    }
+
+    const result = await submitPostsForReview(
+      pool,
+      projectId,
+      platform,
+      postIds,
+      session.email ?? session.userId ?? "ukjent",
+    );
+    if (result.submitted === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Ingen av de oppgitte postIds finnes i planen",
+      });
+    }
+
+    return res.json({
+      success: true,
+      submitted: result.submitted,
+      reviewDeadline: result.deadline,
+      businessDays: reviewBusinessDays(),
     });
   });
 

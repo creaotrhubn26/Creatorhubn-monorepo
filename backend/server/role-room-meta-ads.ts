@@ -14,10 +14,12 @@
  *   • ads_management   (write — campaigns/adsets/ads)
  *   • ads_read         (read — insights)
  *
- * The existing Instagram OAuth already requests `ads_read` + `attribution_read`.
- * For write-paths we need `ads_management`, which requires a separate Meta App
- * Review submission (4–6 weeks). Until then, treat this module as the API-side
- * ready, awaiting OAuth scope.
+ * The Instagram OAuth scope list (REQUIRED_SCOPES in role-room-instagram-oauth.ts)
+ * already requests `ads_read`, `ads_management`, `business_management` and
+ * `attribution_read`. The remaining gate is Meta App Review *advanced access*
+ * for those scopes (a Meta-dashboard approval, ~4–6 weeks) — until granted, only
+ * the developers/testers/admins of the Meta app can exercise the write paths.
+ * See docs/role-room/meta-app-review.md for the submission checklist.
  */
 
 const META_GRAPH_VERSION = "v21.0";
@@ -186,6 +188,89 @@ async function metaRequest<T>(
 // ─────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────
+// Granted-asset visibility — which Pages the client gave us access to.
+// The `tasks` array on /me/accounts reflects exactly what the client granted
+// in Business Manager; 'MANAGE' === full admin.
+// ─────────────────────────────────────────────────────────
+
+/** Meta Page task whose presence means full admin access. */
+export const META_ADMIN_TASK = "MANAGE";
+
+export interface MetaManagedPage {
+  id: string;
+  name: string;
+  category: string | null;
+  /** The client's brand logo — the Page profile picture. */
+  pictureUrl: string | null;
+  tasks: string[]; // ADVERTISE | ANALYZE | CREATE_CONTENT | MESSAGING | MODERATE | MANAGE
+  isAdmin: boolean; // tasks includes MANAGE
+  accessLevel: "admin" | "limited";
+  instagramBusinessAccount: { id: string; username: string | null; profilePictureUrl: string | null } | null;
+}
+
+/** Human-readable Norwegian label for a Meta Page task. */
+export function metaTaskLabel(task: string): string {
+  switch (task) {
+    case "MANAGE":
+      return "Full admin";
+    case "CREATE_CONTENT":
+      return "Lage innhold";
+    case "ADVERTISE":
+      return "Annonsere";
+    case "ANALYZE":
+      return "Innsikt/statistikk";
+    case "MODERATE":
+      return "Moderere";
+    case "MESSAGING":
+      return "Meldinger";
+    default:
+      return task;
+  }
+}
+
+/**
+ * List the Pages the authenticated producer has been granted access to, with
+ * the access level the client assigned. Requires pages_show_list (+ instagram_basic
+ * for the linked IG account) — both in the OAuth scope list.
+ */
+export async function listManagedPages(accessToken: string): Promise<MetaManagedPage[]> {
+  const data = await metaRequest<{
+    data: Array<{
+      id: string;
+      name: string;
+      category?: string;
+      picture?: { data?: { url?: string } };
+      tasks?: string[];
+      instagram_business_account?: { id: string; username?: string; profile_picture_url?: string };
+    }>;
+  }>("GET", "/me/accounts", accessToken, undefined, {
+    fields:
+      "id,name,category,picture{url},tasks,instagram_business_account{id,username,profile_picture_url}",
+    limit: 200,
+  });
+  return (data.data ?? []).map((p) => {
+    const tasks = Array.isArray(p.tasks) ? p.tasks : [];
+    const isAdmin = tasks.includes(META_ADMIN_TASK);
+    return {
+      id: p.id,
+      name: p.name,
+      category: p.category ?? null,
+      pictureUrl: p.picture?.data?.url ?? null,
+      tasks,
+      isAdmin,
+      accessLevel: isAdmin ? "admin" : "limited",
+      instagramBusinessAccount: p.instagram_business_account
+        ? {
+            id: p.instagram_business_account.id,
+            username: p.instagram_business_account.username ?? null,
+            profilePictureUrl: p.instagram_business_account.profile_picture_url ?? null,
+          }
+        : null,
+    };
+  });
+}
 
 /** Discover ad accounts the user can manage. */
 export async function listAdAccounts(accessToken: string): Promise<MetaAdAccount[]> {

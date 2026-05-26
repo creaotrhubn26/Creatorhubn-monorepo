@@ -37,6 +37,7 @@ import RoleRoomMobileShotListView from './components/production-mobile/RoleRoomM
 import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobileCrewView';
 import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
 import CarouselPanel from './components/producer/carousel/CarouselPanel';
+import GrantedAssetsCard from './components/producer/GrantedAssetsCard';
 import AdminRoom from '../../pages/AdminRoom';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
@@ -1004,6 +1005,12 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   ) : null
                 }
               />
+
+              {isProductionMode(activeProfessionMode) && (
+                <Box sx={{ px: 2 }}>
+                  <GrantedAssetsCard />
+                </Box>
+              )}
 
               {isProductionMode(activeProfessionMode) && selectedProjectId && (
                 <Box sx={{ px: 2 }}>

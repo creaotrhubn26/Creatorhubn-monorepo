@@ -37,16 +37,27 @@ describe("recommendAdsBudget", () => {
     expect(out.perPlatform.linkedin).toBe(0);
   });
 
-  it("management fee = 15 % of recommended spend; incl. VAT applies 25 %", () => {
+  it("management fee = 20 % påslag of recommended spend; incl. VAT applies 25 %", () => {
     const out = recommendAdsBudget({
       industryCategory: "restaurant",
       monthlyRevenueNok: 350_000,
     });
-    expect(out.managementFeeNok).toBeCloseTo(out.totalRecommendedNok * 0.15, 1);
+    expect(out.managementFeeNok).toBeCloseTo(out.totalRecommendedNok * 0.2, 1);
+    expect(out.managementFeeRate).toBe(0.2);
     expect(out.managementFeeInclVatNok).toBeCloseTo(
       out.managementFeeNok * 1.25,
       1,
     );
+  });
+
+  it("per-client managementFeeRate override flows through the recommendation", () => {
+    const out = recommendAdsBudget({
+      industryCategory: "restaurant",
+      monthlyRevenueNok: 350_000,
+      managementFeeRate: 0.15,
+    });
+    expect(out.managementFeeRate).toBe(0.15);
+    expect(out.managementFeeNok).toBeCloseTo(out.totalRecommendedNok * 0.15, 1);
   });
 
   it("ecommerce scales higher than restaurant for same revenue", () => {
@@ -131,15 +142,29 @@ describe("recommendAdsBudget", () => {
 });
 
 describe("computeManagementFee", () => {
-  it("computes 15 % fee + 25 % MVA on 17 150 NOK spend", () => {
+  it("computes 20 % påslag + 25 % MVA on 17 150 NOK spend (MedInnova §4.1)", () => {
     const out = computeManagementFee(17_150);
-    expect(out.managementFeeNok).toBeCloseTo(2_572.5, 1);
-    expect(out.vatNok).toBeCloseTo(2_572.5 * 0.25, 1);
-    expect(out.totalInclVatNok).toBeCloseTo(2_572.5 * 1.25, 1);
+    const fee = 17_150 * 0.2; // 3 430
+    expect(out.managementFeeRate).toBe(0.2);
+    expect(out.managementFeeNok).toBeCloseTo(fee, 1);
+    expect(out.vatNok).toBeCloseTo(fee * 0.25, 1);
+    expect(out.totalInclVatNok).toBeCloseTo(fee * 1.25, 1);
+  });
+
+  it("honours a per-client fee-rate override", () => {
+    const out = computeManagementFee(10_000, 0.15);
+    expect(out.managementFeeRate).toBe(0.15);
+    expect(out.managementFeeNok).toBeCloseTo(1_500, 1);
+  });
+
+  it("falls back to the default for out-of-range rates", () => {
+    expect(computeManagementFee(10_000, -1).managementFeeRate).toBe(0.2);
+    expect(computeManagementFee(10_000, 2).managementFeeRate).toBe(0.2);
+    expect(computeManagementFee(10_000, NaN).managementFeeRate).toBe(0.2);
   });
 
   it("respects exported constants", () => {
-    expect(MANAGEMENT_FEE_RATE).toBe(0.15);
+    expect(MANAGEMENT_FEE_RATE).toBe(0.2);
     expect(VAT_RATE).toBe(0.25);
   });
 });

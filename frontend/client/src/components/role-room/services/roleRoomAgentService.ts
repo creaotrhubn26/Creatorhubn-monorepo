@@ -953,6 +953,50 @@ export interface RoleRoomInstagramConnection {
   profileRefreshedAt: string | null;
 }
 
+// ── Granted ad-asset overview (which Pages/accounts the client gave admin to) ──
+
+export interface RoleRoomGrantedMetaPage {
+  id: string;
+  name: string;
+  category: string | null;
+  /** The client's brand logo — the Page profile picture. */
+  pictureUrl: string | null;
+  tasks: string[];
+  isAdmin: boolean;
+  accessLevel: 'admin' | 'limited';
+  accessLabels: string[];
+  instagramBusinessAccount: { id: string; username: string | null; profilePictureUrl: string | null } | null;
+}
+
+export interface RoleRoomGrantedLinkedInAsset {
+  assetType: 'ad_account' | 'organization';
+  id: string;
+  name: string | null;
+  logoUrl: string | null;
+  role: string;
+  roleLabel: string;
+  isAdmin: boolean;
+}
+
+export interface RoleRoomGrantedAdminAsset {
+  platform: 'meta' | 'linkedin';
+  assetType: string;
+  id: string;
+  name: string | null;
+  /** Client brand logo (Meta Page/IG picture) when available. */
+  logoUrl: string | null;
+  accessSummary: string;
+}
+
+export interface RoleRoomGrantedAssets {
+  hasAdminAccess: boolean;
+  adminAssets: RoleRoomGrantedAdminAsset[];
+  platforms: {
+    meta: { connected: boolean; pages?: RoleRoomGrantedMetaPage[]; adminCount?: number };
+    linkedin: { connected: boolean; assets?: RoleRoomGrantedLinkedInAsset[]; adminCount?: number };
+  };
+}
+
 export type RoleRoomInstagramJobStatus =
   | 'queued'
   | 'uploading'
@@ -1236,6 +1280,28 @@ export const roleRoomAgentService = {
       imageHostingConfigured: Boolean(payload?.imageHostingConfigured),
       rateLimitPer24h: Number(payload?.rateLimitPer24h ?? 50),
       connections: Array.isArray(payload?.connections) ? payload.connections : [],
+    };
+  },
+
+  async fetchGrantedAdsAssets(): Promise<RoleRoomGrantedAssets> {
+    const empty: RoleRoomGrantedAssets = {
+      hasAdminAccess: false,
+      adminAssets: [],
+      platforms: { meta: { connected: false }, linkedin: { connected: false } },
+    };
+    const response = await fetch('/api/role-room/ads/assets', {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return empty;
+    const payload = await response.json().catch(() => null);
+    if (!payload || typeof payload !== 'object') return empty;
+    return {
+      hasAdminAccess: Boolean(payload.hasAdminAccess),
+      adminAssets: Array.isArray(payload.adminAssets) ? payload.adminAssets : [],
+      platforms: {
+        meta: payload.platforms?.meta ?? { connected: false },
+        linkedin: payload.platforms?.linkedin ?? { connected: false },
+      },
     };
   },
 

@@ -24,6 +24,7 @@ import { createGoogleMeetLink } from "./google-meet";
 export interface WeddingAssistantCollabDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -39,7 +40,7 @@ async function ensureSchema(pool: any): Promise<void> {
 }
 
 export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── GET /api/photographer/assistants/history ────────────────
   // Gruppér på assistant_email/assistant_user_id, returner siste rolle,
@@ -129,6 +130,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
   // ─── POST /api/photographer/assistants/quick-invite ──────────
   // Re-invite en tidligere assistent til et nytt bryllup.
   app.post("/api/photographer/assistants/quick-invite", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
@@ -200,6 +202,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
 
   // ─── POST /api/wedding/:weddingId/assistants/:assistantId/schedule-brief ───
   app.post("/api/wedding/:weddingId/assistants/:assistantId/schedule-brief", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -276,6 +279,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
 
   // ─── DELETE /api/wedding/:weddingId/assistants/:assistantId/brief ─────
   app.delete("/api/wedding/:weddingId/assistants/:assistantId/brief", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

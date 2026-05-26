@@ -99,7 +99,7 @@ describe("upsertAttributionDaily", () => {
 });
 
 describe("recordManagementFee", () => {
-  it("computes 15% fee + 25% MVA + correct billing period", async () => {
+  it("computes 20% påslag + 25% MVA + idempotent upsert on campaign+day", async () => {
     const { pool, calls } = poolWith([{ rows: [{ id: "fee-1" }], rowCount: 1 }]);
 
     const out = await recordManagementFee(pool, {
@@ -110,14 +110,35 @@ describe("recordManagementFee", () => {
       recordedAt: new Date("2026-05-07T12:00:00Z"),
     });
 
-    expect(out.managementFeeNok).toBe(150);
-    expect(out.totalInclVatNok).toBe(187.5);
+    expect(out.managementFeeRate).toBe(0.2);
+    expect(out.managementFeeNok).toBe(200);
+    expect(out.totalInclVatNok).toBe(250);
     expect(out.period).toBe("2026-05");
-    // params: userId, campaignId, platform, period, spend, fee, vat_rate, incl, meter
+    expect(out.usageDate).toBe("2026-05-07");
+    // Idempotency: re-running the daily poll must not double-count.
+    expect(calls[0].sql).toContain("ON CONFLICT (campaign_id, usage_date)");
+    // params: userId, campaignId, platform, period, usage_date, spend, fee, rate, vat_rate, incl, meter
     expect(calls[0].params?.[3]).toBe("2026-05");
-    expect(calls[0].params?.[5]).toBe(150);
-    expect(calls[0].params?.[6]).toBe(0.25);
-    expect(calls[0].params?.[7]).toBe(187.5);
+    expect(calls[0].params?.[4]).toBe("2026-05-07");
+    expect(calls[0].params?.[5]).toBe(1000);
+    expect(calls[0].params?.[6]).toBe(200);
+    expect(calls[0].params?.[7]).toBe(0.2);
+    expect(calls[0].params?.[8]).toBe(0.25);
+    expect(calls[0].params?.[9]).toBe(250);
+  });
+
+  it("honours a per-client fee-rate override", async () => {
+    const { pool } = poolWith([{ rows: [{ id: "fee-2" }], rowCount: 1 }]);
+    const out = await recordManagementFee(pool, {
+      userId: "u-1",
+      campaignId: "c-1",
+      platform: "meta",
+      spendNok: 1000,
+      feeRate: 0.15,
+      usageDate: "2026-05-07",
+    });
+    expect(out.managementFeeRate).toBe(0.15);
+    expect(out.managementFeeNok).toBe(150);
   });
 });
 

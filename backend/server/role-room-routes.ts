@@ -145,15 +145,35 @@ import {
   pauseCampaign as pauseMetaCampaign,
   resumeCampaign as resumeMetaCampaign,
   endCampaign as endMetaCampaign,
+  listManagedPages as listMetaManagedPages,
+  metaTaskLabel,
   MetaAdsApiError,
   type MetaCampaignObjective,
 } from './role-room-meta-ads.js';
+import {
+  listGrantedLinkedInAssets,
+  linkedInRoleLabel,
+} from './role-room-linkedin-ads.js';
 import {
   insertCampaign,
   updateCampaignStatus,
   getCampaignById,
   listCampaignsForUser,
+  sumManagementFeeForPeriod,
 } from './role-room-ads-db.js';
+import { syncMetaCampaignSpend, syncCampaignSpend } from './role-room-ads-sync.js';
+import {
+  buildAdsConnectorRegistry,
+  buildPlatformTokenResolver,
+} from './role-room-ads-cron.js';
+import {
+  buildAdsAuthUrl,
+  exchangeAdsCodeForToken,
+  adsOauthClientCreds,
+  upsertAdsOauthConnection,
+  listAdsOauthConnections,
+  ADS_OAUTH_SCOPES,
+} from './role-room-ads-oauth.js';
 import {
   listInstagramConnections,
   ensureFreshConnection,
@@ -21756,6 +21776,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           sourceAssetId,
           audienceConfig,
           creativeConfig,
+          managementFeeRate,
         } = req.body ?? {};
 
         if (!projectId || !adAccountId || !name || !objective) {
@@ -21796,6 +21817,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           status: 'paused',
           goal: goal ?? null,
           dailyBudgetNok: dailyBudgetNok ?? null,
+          managementFeeRate:
+            typeof managementFeeRate === 'number' ? managementFeeRate : null,
           audienceConfig: audienceConfig ?? null,
           creativeConfig: creativeConfig ?? null,
         });
@@ -21915,6 +21938,311 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaigns });
       } catch (error) {
         res.status(500).json({ error: 'Failed to list campaigns', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Ads 2.0 — spend sync + client innsyn (§4 + §5.3) ─────
+  // Manual sync trigger: pull insights → attribution → påslag-ledger for one
+  // campaign. The daily cron-sweep calls the same orchestrator over all users.
+  router.post(
+    '/ads/meta/campaigns/:campaignId/sync',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) {
+          return res.status(404).json({ error: 'campaign_not_found' });
+        }
+        if (campaign.platform !== 'meta' || !campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'not_a_meta_campaign' });
+        }
+        const token = await resolveMetaToken(userId);
+        if (!token) return res.status(412).json({ error: 'meta_not_connected' });
+
+        const sinceISO = typeof req.body?.sinceISO === 'string' ? req.body.sinceISO : undefined;
+        const untilISO = typeof req.body?.untilISO === 'string' ? req.body.untilISO : undefined;
+
+        const result = await syncMetaCampaignSpend(pool, {
+          campaign,
+          accessToken: token,
+          sinceISO,
+          untilISO,
+        });
+        res.json({ sync: result });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+      }
+    },
+  );
+
+  // Generic per-platform manual sync — works for Meta, Google Ads and LinkedIn
+  // Ads via the connector registry + per-platform token resolver.
+  router.post(
+    '/ads/campaigns/:campaignId/sync',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) {
+          return res.status(404).json({ error: 'campaign_not_found' });
+        }
+        if (!campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'missing_external_campaign_id' });
+        }
+        const connector = buildAdsConnectorRegistry()[campaign.platform];
+        if (!connector) {
+          return res.status(400).json({ error: 'unsupported_platform', detail: campaign.platform });
+        }
+        const token = await buildPlatformTokenResolver(pool)(campaign.platform, userId);
+        if (!token) {
+          return res.status(412).json({ error: 'platform_not_connected', detail: campaign.platform });
+        }
+        const sinceISO = typeof req.body?.sinceISO === 'string' ? req.body.sinceISO : undefined;
+        const untilISO = typeof req.body?.untilISO === 'string' ? req.body.untilISO : undefined;
+        const result = await syncCampaignSpend(
+          pool,
+          { campaign, accessToken: token, sinceISO, untilISO },
+          { connector },
+        );
+        res.json({ sync: result });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+      }
+    },
+  );
+
+  // Client-facing spend report (§5.3): faktisk annonsekostnad + 20 % påslag per
+  // periode (YYYY-MM). This is the innsyn-grunnlaget the customer can verify.
+  router.get(
+    '/ads/spend/summary',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const period =
+          typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
+            ? req.query.period
+            : new Date().toISOString().slice(0, 7);
+
+        const summary = await sumManagementFeeForPeriod(pool, userId, period);
+        res.json({
+          period,
+          spendNok: summary.totalSpendNok,
+          managementFeeNok: summary.totalFeeNok,
+          managementFeeInclVatNok: summary.totalInclVatNok,
+          effectiveFeeRate: summary.effectiveFeeRate,
+          perPlatform: summary.perPlatform,
+          // Total invoiced to the client per §4.2: faktisk annonsekostnad + påslag.
+          totalClientCostExVatNok: summary.totalSpendNok + summary.totalFeeNok,
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load spend summary', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Ads OAuth — dedicated ads-scoped consent (Google Ads + LinkedIn Ads) ──
+  // Deliberately separate from the Workspace/login OAuth so we never force
+  // ads-consent on login users. Tokens land in role_room_ads_oauth_connections
+  // and power resolveToken('google'|'linkedin', …) in the sweep.
+  const ADS_OAUTH_PLATFORMS = new Set(['google', 'linkedin']);
+
+  router.get(
+    '/ads/connections',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const connections = await listAdsOauthConnections(pool, userId);
+        res.json({
+          connections: connections.map((c) => ({
+            platform: c.platform,
+            connectionState: c.connectionState,
+            scopes: c.scopes,
+            accountRef: c.accountRef,
+            tokenExpiresAt: c.tokenExpiresAt,
+          })),
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list ads connections', detail: String(error) });
+      }
+    },
+  );
+
+  // Granted-asset overview shown to the producer at login: which Pages / ad
+  // accounts / Company Pages the CLIENT has given them access to — across Meta
+  // and LinkedIn — with admin access clearly flagged.
+  router.get(
+    '/ads/assets',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const resolveToken = buildPlatformTokenResolver(pool);
+
+        type AdminAsset = {
+          platform: 'meta' | 'linkedin';
+          assetType: string;
+          id: string;
+          name: string | null;
+          logoUrl: string | null;
+          accessSummary: string;
+        };
+        const adminAssets: AdminAsset[] = [];
+
+        // ── Meta Pages ──
+        let meta: Record<string, unknown> = { connected: false };
+        const metaToken = await resolveToken('meta', userId).catch(() => null);
+        if (metaToken) {
+          const pages = await listMetaManagedPages(metaToken).catch(() => []);
+          const decorated = pages.map((p) => ({
+            ...p,
+            accessLabels: p.tasks.map(metaTaskLabel),
+          }));
+          meta = {
+            connected: true,
+            pages: decorated,
+            adminCount: pages.filter((p) => p.isAdmin).length,
+          };
+          for (const p of pages) {
+            if (p.isAdmin) {
+              adminAssets.push({
+                platform: 'meta',
+                assetType: p.instagramBusinessAccount ? 'page+instagram' : 'page',
+                id: p.id,
+                name: p.name,
+                logoUrl: p.pictureUrl ?? p.instagramBusinessAccount?.profilePictureUrl ?? null,
+                accessSummary: 'Full admin',
+              });
+            }
+          }
+        }
+
+        // ── LinkedIn ad accounts + Company Pages ──
+        let linkedin: Record<string, unknown> = { connected: false };
+        const liToken = await resolveToken('linkedin', userId).catch(() => null);
+        if (liToken) {
+          const assets = await listGrantedLinkedInAssets(liToken).catch(() => []);
+          const decorated = assets.map((a) => ({ ...a, roleLabel: linkedInRoleLabel(a.role) }));
+          linkedin = {
+            connected: true,
+            assets: decorated,
+            adminCount: assets.filter((a) => a.isAdmin).length,
+          };
+          for (const a of assets) {
+            if (a.isAdmin) {
+              adminAssets.push({
+                platform: 'linkedin',
+                assetType: a.assetType,
+                id: a.id,
+                name: a.name,
+                logoUrl: a.logoUrl,
+                accessSummary: linkedInRoleLabel(a.role),
+              });
+            }
+          }
+        }
+
+        res.json({
+          hasAdminAccess: adminAssets.length > 0,
+          adminAssets,
+          platforms: { meta, linkedin },
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load granted assets', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/ads/:platform/oauth/start',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const platform = String(req.params.platform);
+        if (!ADS_OAUTH_PLATFORMS.has(platform)) {
+          return res.status(400).json({ error: 'unsupported_platform', detail: platform });
+        }
+        const typedPlatform = platform as 'google' | 'linkedin';
+        const creds = adsOauthClientCreds(typedPlatform);
+        if (!creds) {
+          return res.status(400).json({
+            error: 'oauth_not_configured',
+            detail: `${platform} ads OAuth client-creds mangler i env`,
+          });
+        }
+        const browserOrigin =
+          sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req);
+        const redirectUri = `${browserOrigin}/api/role-room/ads/${platform}/oauth/callback`;
+        const returnPath = typeof req.body?.returnPath === 'string' ? req.body.returnPath : '/';
+        const stateId = crypto.randomUUID();
+        await persistOauthState(
+          pool,
+          stateId,
+          { platform, browserOrigin, redirectUri, returnPath, userId, createdAt: Date.now() },
+          new Date(Date.now() + 10 * 60 * 1000),
+        );
+        const authorizationUrl = buildAdsAuthUrl(typedPlatform, {
+          clientId: creds.clientId,
+          redirectUri,
+          state: stateId,
+        });
+        if (!authorizationUrl) return res.status(400).json({ error: 'unsupported_platform' });
+        res.json({ success: true, authorizationUrl, stateId, scopes: ADS_OAUTH_SCOPES[typedPlatform] });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to start ads OAuth', detail: String(error) });
+      }
+    },
+  );
+
+  router.get(
+    '/ads/:platform/oauth/callback',
+    async (req: Request, res: Response) => {
+      try {
+        const platform = String(req.params.platform);
+        const stateId = typeof req.query.state === 'string' ? req.query.state : '';
+        const code = typeof req.query.code === 'string' ? req.query.code : '';
+        const state = stateId
+          ? await loadOauthState<{
+              platform: string;
+              browserOrigin: string | null;
+              redirectUri: string;
+              returnPath: string;
+              userId: string;
+            }>(pool, stateId)
+          : null;
+        if (!state || state.platform !== platform || !code) {
+          return res.status(400).json({ error: 'invalid_oauth_state' });
+        }
+        const typedPlatform = platform as 'google' | 'linkedin';
+        const creds = adsOauthClientCreds(typedPlatform);
+        if (!creds) return res.status(400).json({ error: 'oauth_not_configured' });
+
+        const tokens = await exchangeAdsCodeForToken(typedPlatform, {
+          code,
+          clientId: creds.clientId,
+          clientSecret: creds.clientSecret,
+          redirectUri: state.redirectUri,
+        });
+        await upsertAdsOauthConnection(pool, {
+          userId: state.userId,
+          platform: typedPlatform,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken ?? null,
+          expiresInSec: tokens.expiresInSec,
+          scopes: ADS_OAUTH_SCOPES[typedPlatform] ?? [],
+        });
+        const base = state.browserOrigin ?? '';
+        res.redirect(`${base}${state.returnPath}?adsOauthStatus=connected&platform=${platform}`);
+      } catch (error) {
+        res.status(500).json({ error: 'ads_oauth_callback_failed', detail: String(error) });
       }
     },
   );

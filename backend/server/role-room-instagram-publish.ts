@@ -28,6 +28,7 @@ import {
 } from './role-room-instagram-image-upload.js';
 import { normalizeReelDataUrl } from './role-room-video-normalize.js';
 import { markFeedPlanPostFailed } from './role-room-feed-plan.js';
+import { assertPostPublishable } from './role-room-material-approval.js';
 import { notifyPublishFailure } from './social-publish-failure-notifier.js';
 
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
@@ -471,6 +472,13 @@ export async function queueAndPublish(
   if (!conn) throw new Error('Instagram-tilkoblingen finnes ikke eller tilhører ikke deg');
   if (conn.connectionState !== 'connected') {
     throw new Error('Instagram-tilkoblingen er utløpt. Koble til på nytt.');
+  }
+
+  // §5.1 client-approval gate: don't publish material the client hasn't approved
+  // (or that hasn't auto-approved past its review deadline, §5.2). Operational
+  // kill-switch: MATERIAL_APPROVAL_GATE=off.
+  if (process.env.MATERIAL_APPROVAL_GATE !== 'off') {
+    await assertPostPublishable(pool, input.projectId, input.feedPlanPostId);
   }
 
   // Resolve the data-URL list based on media type:

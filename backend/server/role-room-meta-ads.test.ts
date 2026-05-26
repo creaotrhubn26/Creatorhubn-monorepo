@@ -11,6 +11,8 @@ import {
   createAd,
   getCampaignInsights,
   normalizeInsightsRow,
+  listManagedPages,
+  metaTaskLabel,
   MetaAdsApiError,
   type MetaInsightsRow,
 } from "./role-room-meta-ads.js";
@@ -282,5 +284,59 @@ describe("normalizeInsightsRow", () => {
     expect(out.impressions).toBeNull();
     expect(out.spendNok).toBeNull();
     expect(out.conversions).toBeNull();
+  });
+});
+
+describe("listManagedPages", () => {
+  it("flags admin pages (MANAGE) and maps the linked IG account", async () => {
+    const { fn, calls } = mockFetch([
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [
+            {
+              id: "page_admin",
+              name: "PreVisit",
+              category: "Medical",
+              picture: { data: { url: "https://logo/previsit.png" } },
+              tasks: ["MANAGE", "CREATE_CONTENT", "ADVERTISE", "ANALYZE"],
+              instagram_business_account: { id: "ig_1", username: "previsit", profile_picture_url: "https://x/p.jpg" },
+            },
+            {
+              id: "page_limited",
+              name: "Analytics-only Page",
+              category: "Brand",
+              tasks: ["ANALYZE"],
+            },
+          ],
+        },
+      },
+    ]);
+    __setMetaAdsFetch(fn as never);
+
+    const pages = await listManagedPages("TOKEN_X");
+
+    expect(calls[0].url).toContain("/me/accounts");
+    expect(calls[0].url).toContain("tasks");
+    expect(pages).toHaveLength(2);
+
+    const admin = pages.find((p) => p.id === "page_admin")!;
+    expect(admin.isAdmin).toBe(true);
+    expect(admin.accessLevel).toBe("admin");
+    expect(admin.pictureUrl).toBe("https://logo/previsit.png"); // client brand logo
+    expect(calls[0].url).toContain("picture");
+    expect(admin.instagramBusinessAccount?.username).toBe("previsit");
+
+    const limited = pages.find((p) => p.id === "page_limited")!;
+    expect(limited.isAdmin).toBe(false);
+    expect(limited.accessLevel).toBe("limited");
+    expect(limited.instagramBusinessAccount).toBeNull();
+  });
+
+  it("maps task codes to Norwegian labels", () => {
+    expect(metaTaskLabel("MANAGE")).toBe("Full admin");
+    expect(metaTaskLabel("CREATE_CONTENT")).toBe("Lage innhold");
+    expect(metaTaskLabel("UNKNOWN_TASK")).toBe("UNKNOWN_TASK");
   });
 });

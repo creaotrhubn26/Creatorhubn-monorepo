@@ -18,6 +18,7 @@ export const SUPPORTED_FEED_PLATFORMS: readonly RoleRoomFeedPlatform[] = [
 
 export type RoleRoomFeedApprovalState =
   | 'draft'
+  | 'awaiting_client' // submitted to client for review (MedInnova-avtalen §5.1)
   | 'approved'
   | 'scheduled'
   | 'published'
@@ -26,6 +27,7 @@ export type RoleRoomFeedApprovalState =
 
 const APPROVAL_STATES: ReadonlyArray<RoleRoomFeedApprovalState> = [
   'draft',
+  'awaiting_client',
   'approved',
   'scheduled',
   'published',
@@ -55,6 +57,12 @@ export interface RoleRoomFeedPostInput {
   approvalChangedAt?: string | null;
   approvalChangedBy?: string | null;
   approvalNote?: string | null;
+  // Klient-review-flyt (§5.1–5.2): når materiell sendes til kunden settes
+  // reviewRequestedAt + reviewDeadline. Hvis kunden ikke svarer innen fristen
+  // auto-godkjennes posten (§5.2).
+  reviewRequestedAt?: string | null;
+  reviewRequestedBy?: string | null;
+  reviewDeadline?: string | null;
   // LinkedIn-spesifikk: hvis satt, publiser som bedrift i stedet for
   // som personlig profil. Format: 'urn:li:organization:12345'. Null
   // = publiser som @bruker. Settes via "Publiser som"-dropdown i UI.
@@ -142,6 +150,12 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
       typeof record.approvalChangedBy === 'string' ? clipString(record.approvalChangedBy, 200) : null,
     approvalNote:
       typeof record.approvalNote === 'string' ? clipString(record.approvalNote, 1000) : null,
+    reviewRequestedAt:
+      typeof record.reviewRequestedAt === 'string' ? clipString(record.reviewRequestedAt, 40) : null,
+    reviewRequestedBy:
+      typeof record.reviewRequestedBy === 'string' ? clipString(record.reviewRequestedBy, 200) : null,
+    reviewDeadline:
+      typeof record.reviewDeadline === 'string' ? clipString(record.reviewDeadline, 40) : null,
     linkedInOrganizationUrn:
       typeof record.linkedInOrganizationUrn === 'string' &&
       record.linkedInOrganizationUrn.startsWith('urn:li:organization:')
@@ -225,6 +239,30 @@ export async function saveFeedPlan(
 
 export function isSupportedPlatform(value: unknown): value is RoleRoomFeedPlatform {
   return typeof value === 'string' && SUPPORTED_FEED_PLATFORMS.includes(value as RoleRoomFeedPlatform);
+}
+
+/**
+ * All feed plans that contain at least one post awaiting client review.
+ * JSONB containment keeps the scan cheap. Used by the auto-approve sweep (§5.2).
+ */
+export async function listFeedPlansAwaitingClient(
+  pool: Pool,
+  limit = 500,
+): Promise<RoleRoomFeedPlanRow[]> {
+  try {
+    const result = await pool.query(
+      `SELECT id, project_id, platform, posts, brand_snapshot, updated_by, created_at, updated_at
+         FROM role_room_feed_plans
+        WHERE posts @> '[{"approvalState":"awaiting_client"}]'::jsonb
+        ORDER BY updated_at DESC
+        LIMIT $1`,
+      [limit],
+    );
+    return result.rows.map(mapRow);
+  } catch (error) {
+    console.error('[role-room-feed-plan] listFeedPlansAwaitingClient failed', error);
+    return [];
+  }
 }
 
 /**

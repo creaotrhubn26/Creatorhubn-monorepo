@@ -5,7 +5,9 @@
  *
  * - Budget-recommendation engine (industry × revenue × goal × growth-phase)
  * - Per-platform allocation
- * - Management-fee math (15 % of media spend, MVA-aware)
+ * - Management-fee math (default 20 % påslag of media spend, MVA-aware,
+ *   per-client override). Matches Creatorhub↔MedInnova-avtalen §4.1:
+ *   "påslag på 20 % av det beløpet som faktisk er brukt", eks. mva.
  * - Stripe meter-event helpers (one meter per platform, fires on daily metrics-poll)
  *
  * See memory/ads_2_0_architecture.md for the full design.
@@ -141,6 +143,8 @@ export interface BudgetRecommendationInput {
   monthlyRevenueNok: number;
   goal?: AdsGoal;
   growthPhase?: GrowthPhase;
+  /** Per-client påslag (0–1). Defaults to MANAGEMENT_FEE_RATE (0.20). */
+  managementFeeRate?: number;
 }
 
 export interface BudgetRecommendationOutput {
@@ -150,18 +154,35 @@ export interface BudgetRecommendationOutput {
   perPlatform: Record<AdsPlatform, number>;
   managementFeeNok: number;
   managementFeeInclVatNok: number;
+  managementFeeRate: number;
   rationale: {
     industry: string;
     marketingShareUsed: number;
     digitalAdsShareUsed: number;
     goalModifier: number;
     growthModifier: number;
+    managementFeeRate: number;
     formula: string;
   };
 }
 
-export const MANAGEMENT_FEE_RATE = 0.15;
+/**
+ * Default påslag (markup) on actual media spend. Creatorhub's standard
+ * agency rate per the signed MedInnova-avtale (§4.1) is 20 %. Individual
+ * clients can override via the per-campaign `managementFeeRate` column
+ * (Migration 129) — the rate used is persisted on each ledger row so the
+ * fakturagrunnlag stays auditable (§5.4) even if the default changes later.
+ */
+export const MANAGEMENT_FEE_RATE = 0.2;
 export const VAT_RATE = 0.25;
+
+/** Clamp an incoming fee-rate to a sane range, falling back to the default. */
+export function resolveManagementFeeRate(rate?: number | null): number {
+  if (rate == null || !Number.isFinite(rate) || rate < 0 || rate > 1) {
+    return MANAGEMENT_FEE_RATE;
+  }
+  return rate;
+}
 
 function midpoint(range: [number, number]): number {
   return (range[0] + range[1]) / 2;
@@ -178,6 +199,7 @@ export function recommendAdsBudget(
   const digitalShare = midpoint(factors.digitalAdsShareOfMarketing);
   const goalMod = GOAL_MODIFIERS[goal];
   const growthMod = GROWTH_PHASE_MODIFIERS[growthPhase];
+  const feeRate = resolveManagementFeeRate(input.managementFeeRate);
 
   const total =
     Math.max(0, input.monthlyRevenueNok) *
@@ -207,7 +229,7 @@ export function recommendAdsBudget(
     linkedin: total * factors.platformAllocation.linkedin,
   };
 
-  const managementFee = total * MANAGEMENT_FEE_RATE;
+  const managementFee = total * feeRate;
   const managementFeeInclVat = managementFee * (1 + VAT_RATE);
 
   return {
@@ -222,12 +244,14 @@ export function recommendAdsBudget(
     },
     managementFeeNok: round2(managementFee),
     managementFeeInclVatNok: round2(managementFeeInclVat),
+    managementFeeRate: feeRate,
     rationale: {
       industry: factors.description,
       marketingShareUsed: marketingShare,
       digitalAdsShareUsed: digitalShare,
       goalModifier: goalMod,
       growthModifier: growthMod,
+      managementFeeRate: feeRate,
       formula:
         "revenue × marketingShare × digitalAdsShare × goalModifier × growthModifier",
     },
@@ -251,16 +275,30 @@ export const ADS_METER_EVENT_NAMES: Record<AdsPlatform, string> = {
 
 export interface ManagementFeeBreakdown {
   spendNok: number;
+  managementFeeRate: number;
   managementFeeNok: number;
   vatNok: number;
   totalInclVatNok: number;
 }
 
-export function computeManagementFee(spendNok: number): ManagementFeeBreakdown {
-  const fee = spendNok * MANAGEMENT_FEE_RATE;
+/**
+ * Compute the påslag (markup) on actual media spend.
+ *
+ * @param spendNok  Actual ad spend in NOK for the period/day.
+ * @param feeRate   Per-client påslag (0–1). Defaults to MANAGEMENT_FEE_RATE
+ *                  (0.20 — Creatorhub↔MedInnova §4.1). Out-of-range values
+ *                  fall back to the default.
+ */
+export function computeManagementFee(
+  spendNok: number,
+  feeRate?: number,
+): ManagementFeeBreakdown {
+  const rate = resolveManagementFeeRate(feeRate);
+  const fee = spendNok * rate;
   const vat = fee * VAT_RATE;
   return {
     spendNok: round2(spendNok),
+    managementFeeRate: rate,
     managementFeeNok: round2(fee),
     vatNok: round2(vat),
     totalInclVatNok: round2(fee + vat),
