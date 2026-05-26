@@ -37,6 +37,7 @@ export type SubTabValue =
   | 'shotlist'
   | 'mannskap'
   | 'agent'
+  | 'economy'
   | 'admin-room';
 
 export interface RoleNavConfigEntry {
@@ -74,14 +75,14 @@ export const DEFAULT_TABS_BY_ROLE: Record<UserRoleType, SubTabValue[]> = {
   ],
   content_producer: [
     'candidates', 'brief', 'planner', 'approval',
-    'roles', 'carousel', 'publishing', 'schedule', 'agent',
+    'economy', 'roles', 'carousel', 'publishing', 'schedule', 'agent',
   ],
   client_reviewer: [
-    'approval', 'brief', 'roles', 'schedule',
+    'economy', 'approval', 'brief', 'roles', 'schedule',
     'candidates',
   ],
   agency: [
-    'approval', 'brief', 'roles', 'schedule',
+    'economy', 'approval', 'brief', 'roles', 'schedule',
     'candidates', 'planner',
   ],
   writer: [
