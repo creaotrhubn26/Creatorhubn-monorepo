@@ -81,10 +81,16 @@ async function run() {
     }
   }
 
-  // Optionally run migrate script if present
+  // Optionally run migrate script if present.
+  // SKIP_BOOT_MIGRATE=1 hopper over migrate.sh ved oppstart — viktig på
+  // Render hvor migrate-loopen gjennom ~165 SQL-filer tar > port-scan-
+  // timeouten på Starter-plan og hver deploy ender som update_failed.
+  // Migrasjoner kjøres i stedet manuelt (psql direkte) eller via en
+  // separat Render Job.
   try {
     const { spawnSync } = await import('node:child_process');
-    if (existsSync(migrateScript)) {
+    const skipBootMigrate = process.env.SKIP_BOOT_MIGRATE === '1' || process.env.SKIP_BOOT_MIGRATE === 'true';
+    if (existsSync(migrateScript) && !skipBootMigrate) {
       console.log('🔄 Running migrate.sh before start...');
       const res = spawnSync('bash', [migrateScript], { stdio: 'inherit', env: process.env });
       if (res.status !== 0) {
@@ -92,6 +98,8 @@ async function run() {
       } else {
         console.log('✅ Migration step complete');
       }
+    } else if (skipBootMigrate) {
+      console.log('⏭️  Skipping migrate.sh at boot (SKIP_BOOT_MIGRATE=1)');
     }
 
     if (isRenderRuntime && !shouldRunRenderBootSeed) {
