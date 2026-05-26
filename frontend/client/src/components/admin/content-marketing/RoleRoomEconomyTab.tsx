@@ -61,6 +61,7 @@ import {
   type RoleRoomTimeseriesPoint,
 } from '../../../services/adminRoomApi';
 import PlatformStatusCard from './PlatformStatusCard';
+import MigrationsCard from './MigrationsCard';
 
 /**
  * Role Room økonomi-tab — Stripe-subscribers, kostnads-margin og plattform-kostnader
@@ -170,6 +171,7 @@ export function RoleRoomEconomyTab() {
       {error ? <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert> : null}
 
       <PlatformStatusCard />
+      <MigrationsCard />
 
       <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
         <Box>

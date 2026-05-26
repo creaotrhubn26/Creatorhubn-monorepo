@@ -1115,3 +1115,31 @@ export const platformStatusApi = {
     return jsonFetch('/platform-status');
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// Migrations — admin-trigger av migrate.sh
+// ─────────────────────────────────────────────────────────
+
+export interface MigrationsState {
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  startedAt: string | null;
+  finishedAt: string | null;
+  triggeredBy: string | null;
+  lastLogLines: string[];
+  exitCode: number | null;
+  errorMessage: string | null;
+  appliedThisRun: number;
+  skippedThisRun: number;
+  lockHeld: boolean;
+  pendingFiles?: string[];
+  pendingCount?: number;
+}
+
+export const migrationsApi = {
+  status: async (): Promise<MigrationsState> => {
+    return jsonFetch('/migrations/status');
+  },
+  run: async (): Promise<{ ok: boolean; state: MigrationsState; message: string }> => {
+    return jsonFetch('/migrations/run', { method: 'POST' });
+  },
+};
