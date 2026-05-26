@@ -62,6 +62,7 @@ interface PersistShowcaseAssetParams {
 export interface ShowcaseImageOpsRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   showcaseMediaUpload: Multer;
   fileBufferToDataUrl: (file: Express.Multer.File) => string;
   persistUploadedShowcaseAsset: (
@@ -93,6 +94,7 @@ export function setupShowcaseImageOpsRoutes(
   const {
     app,
     pool,
+    requireUserSession,
     showcaseMediaUpload,
     fileBufferToDataUrl,
     persistUploadedShowcaseAsset,
@@ -108,6 +110,7 @@ export function setupShowcaseImageOpsRoutes(
     "/api/showcase/upload-media",
     showcaseMediaUpload.any(),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const files = Array.isArray(req.files)
           ? (req.files as Express.Multer.File[])
@@ -149,6 +152,7 @@ export function setupShowcaseImageOpsRoutes(
     "/api/showcase/bulk-upload",
     showcaseMediaUpload.any(),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const files = Array.isArray(req.files)
           ? (req.files as Express.Multer.File[])
@@ -212,6 +216,7 @@ export function setupShowcaseImageOpsRoutes(
   );
 
   app.post("/api/showcase/enhance-photo", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const itemId = readString(payload.imageId);
@@ -236,6 +241,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/crop", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const itemIds = readStringArray(payload.itemIds);
@@ -266,6 +272,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/watermark", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const itemIds = readStringArray(payload.itemIds);
@@ -295,6 +302,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/copy-images", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const imageIds = readStringArray(payload.imageIds);
@@ -323,6 +331,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/move-images", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const imageIds = readStringArray(payload.imageIds);
@@ -342,6 +351,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/toggle-favorite", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const imageIds = readStringArray(req.body?.imageIds);
       const rows = await pool.query(
@@ -365,6 +375,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/archive-images", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const imageIds = readStringArray(req.body?.imageIds);
       await pool.query(
@@ -382,6 +393,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.delete("/api/showcase/delete-images", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const imageIds = readStringArray(req.body?.imageIds);
       await pool.query(`DELETE FROM showcase_items WHERE id = ANY($1)`, [imageIds]);
@@ -393,6 +405,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/quick-transform", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const imageIds = readStringArray(payload.imageIds);
@@ -432,6 +445,7 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/bulk-download", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const imageIds = readStringArray(req.body?.imageIds);
       const rows = await pool.query(

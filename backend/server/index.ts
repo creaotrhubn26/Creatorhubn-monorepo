@@ -73602,6 +73602,7 @@ setupShowcaseTemplatesRoutes({ app, db });
 setupShowcaseImageOpsRoutes({
   app,
   pool,
+  requireUserSession,
   showcaseMediaUpload,
   fileBufferToDataUrl,
   persistUploadedShowcaseAsset,
