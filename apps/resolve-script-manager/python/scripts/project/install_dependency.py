@@ -160,6 +160,39 @@ def run(params: dict, dry_run: bool) -> None:
     if isinstance(packages, str):
         packages = [packages]
 
+    # Fix: some DependenciesModal entries pass `"tensorflow tensorflow-hub"` as
+    # one string (multiple pkgs separated by space). pip parses that as a
+    # single invalid requirement → exit 1. Split on whitespace so each pkg
+    # becomes its own argv entry.
+    expanded: list[str] = []
+    for pkg in packages:
+        if isinstance(pkg, str) and " " in pkg.strip():
+            expanded.extend(pkg.split())
+        else:
+            expanded.append(pkg)
+    packages = expanded
+
+    # Pre-flight: face_recognition needs to compile dlib from source, which
+    # requires cmake + C++ compiler. Detect + install cmake via brew first.
+    if manager == "pip" and any(
+        (isinstance(p, str) and p.lower().split("==")[0].strip() == "face_recognition")
+        for p in packages
+    ):
+        brew = shutil.which("brew") or "/opt/homebrew/bin/brew"
+        cmake_ok = shutil.which("cmake") is not None
+        if not cmake_ok and os.path.isfile(brew):
+            bridge.log("face_recognition krever dlib (compiled fra C++). Installerer cmake først…")
+            stream_subprocess([brew, "install", "cmake"], "brew-cmake-prereq")
+            cmake_ok = shutil.which("cmake") is not None
+        if not cmake_ok:
+            bridge.error(
+                "face_recognition krever cmake (for å bygge dlib fra source). "
+                "Installer manuelt: `brew install cmake`. Alternativt: skip "
+                "face_recognition — Post Agent fungerer uten (faces-signalet "
+                "fallback'er til OpenCV Haar cascade)."
+            )
+            sys.exit(1)
+
     if dry_run:
         bridge.result({
             "summary": f"Dry run — would install {len(packages)} packages via {manager}: {packages}",
