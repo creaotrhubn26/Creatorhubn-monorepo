@@ -25,14 +25,19 @@ class GenreConfig(TypedDict):
 WEDDING: GenreConfig = {
     "description": "Bryllup — emotional moments, faces, cinematic shots",
     "weights": {
-        "faces": 0.25,           # couple/family screen-time is critical
-        "wedding_events": 0.20,  # ring/kiss/cake-cutting must be in
-        "emotional_peak": 0.15,  # tears + crescendo
-        "bokeh": 0.10,           # cinematic close-ups
-        "slowmo": 0.10,          # 60p/120p slow-mo conformed
-        "color_grade": 0.05,
-        "speech": -0.12,         # dialog-only shots don't carry highlight
+        "faces": 0.20,           # couple/family screen-time is critical
+        "wedding_events": 0.15,  # ring/kiss/cake-cutting must be in
+        "emotional_peak": 0.10,  # tears + crescendo
+        "bokeh": 0.08,           # cinematic close-ups
+        "slowmo": 0.08,          # 60p/120p slow-mo conformed
+        "color_grade": 0.04,
+        "speech": -0.10,         # dialog-only shots don't carry highlight
         "exposure": -0.10,
+        # NEW signals from R2-batch-3:
+        "audio_events": 0.18,    # applaus/latter/gråt — sterke moment-markører
+        "aesthetic":    0.15,    # LAION cinematic-score
+        "pose":         0.12,    # kneeling / raised-hand / praying
+        "open_vocab":   0.10,    # bride/ring/cake detection (text-prompt)
     },
     "chapter_targets": {
         "ceremony": 0.35,
@@ -46,12 +51,17 @@ MUSIC_VIDEO: GenreConfig = {
     "weights": {
         "wedding_events": 0.0,
         "faces": 0.05,
-        "emotional_peak": 0.20,
-        "bokeh": 0.15,
-        "slowmo": 0.20,
-        "color_grade": 0.10,
+        "emotional_peak": 0.15,
+        "bokeh": 0.12,
+        "slowmo": 0.18,
+        "color_grade": 0.08,
         "speech": -0.05,
         "exposure": -0.05,
+        # NEW:
+        "audio_events": 0.05,   # music dominant, ikke applause
+        "aesthetic":    0.20,   # cinematic-look mest viktig for MV
+        "pose":         0.15,   # dance-poses + performance-gestures
+        "open_vocab":   0.0,    # wedding-prompts ikke relevant
     },
     "chapter_targets": None,
 }
@@ -62,11 +72,16 @@ CORPORATE: GenreConfig = {
         "faces": 0.20,
         "wedding_events": 0.0,
         "emotional_peak": 0.05,
-        "bokeh": 0.10,
+        "bokeh": 0.08,
         "slowmo": 0.0,
-        "color_grade": 0.15,
+        "color_grade": 0.12,
         "speech": 0.05,           # speech is content here, not penalty
         "exposure": -0.15,        # corporate must be clean
+        # NEW:
+        "audio_events": 0.0,     # ingen vekt — corporate er rolig
+        "aesthetic":    0.15,    # professional-look counts
+        "pose":         0.05,    # standing + sitting OK
+        "open_vocab":   0.0,
     },
     "chapter_targets": None,
 }
@@ -76,12 +91,17 @@ DOCUMENTARY: GenreConfig = {
     "weights": {
         "faces": 0.15,
         "wedding_events": 0.0,
-        "emotional_peak": 0.20,
+        "emotional_peak": 0.15,
         "bokeh": 0.05,
         "slowmo": 0.05,
         "color_grade": 0.05,
         "speech": 0.0,            # neutral — depends on shot context
         "exposure": -0.10,
+        # NEW:
+        "audio_events": 0.15,    # laughter/tears/applause = documentary gold
+        "aesthetic":    0.10,
+        "pose":         0.08,
+        "open_vocab":   0.05,    # generic pattern-detection
     },
     "chapter_targets": None,
 }

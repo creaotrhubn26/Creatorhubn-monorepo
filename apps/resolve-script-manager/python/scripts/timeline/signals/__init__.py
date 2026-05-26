@@ -55,6 +55,18 @@ REGISTRY: tuple[SignalSpec, ...] = (
     {"name": "chapters", "module": "chapters",
      "description": "ceremony/reception/dance segmentation",
      "requires": ("librosa", "scikit-learn",)},
+    {"name": "audio_events", "module": "audio_events",
+     "description": "YAMNet audio-event detection (applaus/latter/gråt)",
+     "requires": ("tensorflow", "tensorflow-hub",)},
+    {"name": "aesthetic", "module": "aesthetic",
+     "description": "LAION CLIP-aesthetic-predictor cinematic-score",
+     "requires": ("open_clip_torch", "torch",)},
+    {"name": "pose", "module": "pose",
+     "description": "MediaPipe pose-landmarks → kneeling/praying/raised-hand",
+     "requires": ("mediapipe",)},
+    {"name": "open_vocab", "module": "open_vocab",
+     "description": "GroundingDINO text-prompt detection (bride/ring/cake)",
+     "requires": ("groundingdino-py", "torch",)},
 )
 
 

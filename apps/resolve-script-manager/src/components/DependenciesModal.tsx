@@ -38,6 +38,12 @@ const DISPLAY_ORDER: Array<{ key: string; label: string; manager?: "brew" | "pip
   { key: "ultralytics", label: "ultralytics (YOLOv8 wedding-events)", manager: "pip", pipPkg: "ultralytics" },
   { key: "sklearn", label: "scikit-learn (chapter clustering)", manager: "pip", pipPkg: "scikit-learn" },
   { key: "face_recognition", label: "face_recognition (optional, known-faces match)", manager: "pip", pipPkg: "face_recognition" },
+  { key: "tensorflow", label: "tensorflow + tensorflow-hub (YAMNet audio-events)", manager: "pip", pipPkg: "tensorflow tensorflow-hub" },
+  { key: "open_clip", label: "open_clip_torch (LAION aesthetic-predictor)", manager: "pip", pipPkg: "open_clip_torch" },
+  { key: "mediapipe", label: "mediapipe (pose-landmarks + ceremony-gestures)", manager: "pip", pipPkg: "mediapipe" },
+  { key: "groundingdino", label: "groundingdino-py (open-vocab detection)", manager: "pip", pipPkg: "groundingdino-py" },
+  { key: "demucs", label: "demucs (vocal/stem-separation)", manager: "pip", pipPkg: "demucs" },
+  { key: "boto3", label: "boto3 (R2 model-bucket downloads)", manager: "pip", pipPkg: "boto3" },
   { key: "resolve", label: "DaVinci Resolve" },
 ];
 
