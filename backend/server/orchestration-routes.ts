@@ -8,12 +8,13 @@ export interface OrchestrationRoutesDeps {
   app: express.Application;
   pool: Pool;
   db: NodePgDatabase<typeof schema>;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupOrchestrationRoutes(
   deps: OrchestrationRoutesDeps,
 ): void {
-  const { app, pool, db } = deps;
+  const { app, pool, db, requireUserSession } = deps;
 
   // In-memory storage for orchestration state (in production, use Redis/DB)
   const orchestrationStates: Record<string, Record<string, any>> = {};
@@ -63,6 +64,7 @@ export function setupOrchestrationRoutes(
 
   // Trigger orchestration
   app.post("/api/orchestration/trigger", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const { orchestrationId, triggerData, sessionId } = req.body;
 
     if (!orchestrationStates[sessionId]) {
@@ -107,6 +109,7 @@ export function setupOrchestrationRoutes(
 
   // Stop orchestration
   app.post("/api/orchestration/stop", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const { orchestrationId, sessionId } = req.body;
 
     if (
@@ -170,6 +173,7 @@ export function setupOrchestrationRoutes(
 
   // Save custom workflow - DB-first with in-memory fallback
   app.post("/api/orchestration/workflows/:userId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const { userId } = req.params;
     const workflow = req.body;
 
@@ -237,6 +241,7 @@ export function setupOrchestrationRoutes(
   app.delete(
     "/api/orchestration/workflows/:userId/:workflowId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       const { userId, workflowId } = req.params;
 
       try {
@@ -266,6 +271,7 @@ export function setupOrchestrationRoutes(
   app.post(
     "/api/orchestration/workflows/:userId/:workflowId/execute",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       const { userId, workflowId } = req.params;
       const { context, steps: bodySteps, workflowName } = req.body || {};
 
@@ -331,6 +337,7 @@ export function setupOrchestrationRoutes(
   app.post(
     "/api/orchestration/workflows/runs/:runId/steps/:stepIndex/confirm",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { confirmManualStep } = await import('./workflow-execution-engine.js');
         await confirmManualStep(pool, req.params.runId, parseInt(req.params.stepIndex, 10), req.body?.note);
@@ -345,6 +352,7 @@ export function setupOrchestrationRoutes(
   app.post(
     "/api/orchestration/workflows/runs/:runId/steps/:stepIndex/retry",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { retryStep } = await import('./workflow-execution-engine.js');
         const result = await retryStep(pool, req.params.runId, parseInt(req.params.stepIndex, 10));
@@ -359,6 +367,7 @@ export function setupOrchestrationRoutes(
   app.post(
     "/api/orchestration/workflows/runs/:runId/cancel",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { cancelRun } = await import('./workflow-execution-engine.js');
         const result = await cancelRun(pool, req.params.runId);
@@ -387,6 +396,7 @@ export function setupOrchestrationRoutes(
   app.put(
     "/api/orchestration/workflows/:userId/:workflowId/schedule",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { upsertSchedule } = await import('./workflow-scheduler.js');
         const row = await upsertSchedule(pool, {
@@ -408,6 +418,7 @@ export function setupOrchestrationRoutes(
   app.delete(
     "/api/orchestration/workflows/:userId/:workflowId/schedule",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { deleteSchedule } = await import('./workflow-scheduler.js');
         await deleteSchedule(pool, req.params.userId, req.params.workflowId);
@@ -439,6 +450,7 @@ export function setupOrchestrationRoutes(
   app.put(
     "/api/orchestration/workflows/:userId/:workflowId/triggers/:eventType",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { upsertTrigger } = await import('./workflow-triggers.js');
         const row = await upsertTrigger(pool, {
@@ -459,6 +471,7 @@ export function setupOrchestrationRoutes(
   app.delete(
     "/api/orchestration/workflows/:userId/:workflowId/triggers/:eventType",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { deleteTrigger } = await import('./workflow-triggers.js');
         await deleteTrigger(pool, req.params.userId, req.params.workflowId, req.params.eventType as any);

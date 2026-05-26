@@ -67806,7 +67806,7 @@ setupAdminMiscRoutes({
   dbCompatAdminInteractionKey,
   compatAdminInteractionLog,
 });
-setupOrchestrationRoutes({ app, pool, db });
+setupOrchestrationRoutes({ app, pool, db, requireUserSession });
 setupAuthRoutes({
   app,
   pool,
