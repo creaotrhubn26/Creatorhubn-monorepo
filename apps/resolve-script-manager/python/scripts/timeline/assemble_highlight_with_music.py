@@ -282,6 +282,42 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     with open(ADVISOR_PATH) as f: advisor = json.load(f)
 
     picks = pick_data["picks"]
+
+    # Apply pickOverrides from frontend (Trim-toolbar in CreativeEditorView).
+    # Format: { "<pickIndex>": { "startSec": float, "endSec": float } }
+    overrides_raw = params.get("pickOverrides") or {}
+    overrides: dict[int, dict] = {}
+    if isinstance(overrides_raw, dict):
+        for k, v in overrides_raw.items():
+            try: overrides[int(k)] = v if isinstance(v, dict) else {}
+            except (TypeError, ValueError): continue
+    if overrides:
+        n_applied = 0
+        for p in picks:
+            o = overrides.get(p.get("index"))
+            if not o: continue
+            if "startSec" in o: p["startSec"] = float(o["startSec"])
+            if "endSec"   in o: p["endSec"]   = float(o["endSec"])
+            p["durationSec"] = max(0.1, p["endSec"] - p["startSec"])
+            n_applied += 1
+        bridge.log(f"Applied {n_applied} pick-overrides from Trim-toolbar")
+
+    # pickOrder from Generate Alternate Edit — if supplied, reorder picks
+    pick_order_raw = params.get("pickOrder")
+    if isinstance(pick_order_raw, list) and pick_order_raw:
+        order_map = {idx: i for i, idx in enumerate(pick_order_raw)}
+        picks = [p for p in picks if p.get("index") in order_map]
+        picks.sort(key=lambda p: order_map[p["index"]])
+        bridge.log(f"Reordered picks per pickOrder: {len(picks)} picks")
+
+    # excludedChapters from CreativeEditorView segment-checkboxes
+    excluded_raw = params.get("excludedChapters") or []
+    if isinstance(excluded_raw, list) and excluded_raw:
+        ex = {str(c).lower() for c in excluded_raw}
+        before = len(picks)
+        picks = [p for p in picks if (p.get("chapter") or "details").lower() not in ex]
+        bridge.log(f"Filtered out {before - len(picks)} picks from excluded chapters: {sorted(ex)}")
+
     songs = advisor.get("uniqueSongs", [])
     if not songs:
         bridge.error("Advisor has no songs to recommend")

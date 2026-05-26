@@ -568,10 +568,18 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
     try {
       const safeTitle = projectTitle.replace(/[^\w\s-]/g, "").trim() || "Highlight";
       const outputPath = `~/Desktop/${safeTitle}.mp4`;
+      // Compute excluded chapters (those NOT in includedChapters set)
+      const allChapters = new Set<string>();
+      payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
+      const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
       const summary = await executeScript("assemble_highlight_with_music", {
         videoPath: payload.sourceVideo,
         outputPath,
         musicStrategy: "main+climax",
+        // Pass current editor-state so trim/reorder/segment-toggle persists into render
+        pickOverrides: pickOverrides,
+        pickOrder: activePickOrder ?? undefined,
+        excludedChapters: excluded,
       }, false);
       const resultEvent = summary.events.find(e => e.type === "result");
       const r = resultEvent?.value as { outputPath?: string; durationSec?: number } | undefined;
@@ -587,7 +595,7 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
     } finally {
       setExportBusy(false);
     }
-  }, [exportBusy, payload, projectTitle]);
+  }, [exportBusy, payload, projectTitle, pickOverrides, activePickOrder, includedChapters]);
 
   // ─── Trim: update local override for focused pick ───
   const applyTrim = useCallback((pickIndex: number, startSec?: number, endSec?: number) => {
