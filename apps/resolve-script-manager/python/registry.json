@@ -1217,6 +1217,58 @@
       "requiresTimeline": false
     },
     {
+      "id": "upscale_to_4k",
+      "name": "Upscale to 4K (Real-ESRGAN + R2 weights)",
+      "category": "video",
+      "scriptPath": "scripts/video/upscale_to_4k.py",
+      "description": "Per-frame 4× upscale via Real-ESRGAN x4plus. 1080p → 4K master for premium delivery. Krever R2-credentials + realesrgan pip. ~0.8 fps på Apple Silicon M2 → 4 min highlight = ~2 timer.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
+        {"key": "scale", "label": "Scale factor (2/3/4, default 4)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "interpolate_slow_motion",
+      "name": "Interpolate slow-motion (RIFE + R2 weights)",
+      "category": "video",
+      "scriptPath": "scripts/video/interpolate_slow_motion.py",
+      "description": "Frame-interp via RIFE v4.6 for buttery slow-mo (24fps → 60fps eller annet target). Real camera-slow-mo-look vs ffmpeg minterpolate mush. Fall-back til ffmpeg minterpolate hvis RIFE-weights eller python-pakke mangler.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
+        {"key": "targetFps", "label": "Target fps (default 60)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "isolate_vocals_with_demucs",
+      "name": "Isolate vocals + stems (Demucs)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/isolate_vocals_with_demucs.py",
+      "description": "Demucs 4-stem separation (vocals/drums/bass/other) for renere transkripsjon eller music-video stem-cuts. Modeller fra HuggingFace (ikke R2). MPS-accelerated på Apple Silicon.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input audio/video", "type": "file", "required": true},
+        {"key": "model", "label": "Model (htdemucs/htdemucs_ft/mdx_extra/mdx_q, default htdemucs)", "type": "text", "required": false},
+        {"key": "twoStems", "label": "Two-stems mode (vocals/drums/bass/other, blank = all 4)", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "enhance_with_gfpgan",
       "name": "Enhance faces (GFPGAN + R2 weights)",
       "category": "video",
@@ -1317,7 +1369,8 @@
         {"key": "scoreFloor", "label": "Score floor (0..1, default 0.50)", "type": "number", "required": false},
         {"key": "whisperModel", "label": "WhisperX model (default large-v3)", "type": "text", "required": false},
         {"key": "language", "label": "Language hint (auto/no/nb/en, default auto)", "type": "text", "required": false},
-        {"key": "burnCaptions", "label": "Burn captions (default yes)", "type": "boolean", "required": false}
+        {"key": "burnCaptions", "label": "Burn captions (default yes)", "type": "boolean", "required": false},
+        {"key": "backgroundStyle", "label": "Background style (black/blurred, default black)", "type": "text", "required": false}
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",

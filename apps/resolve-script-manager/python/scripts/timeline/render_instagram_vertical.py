@@ -34,6 +34,15 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import bridge
 
+# Allow ai_models import as top-level package
+_PYTHON_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _PYTHON_ROOT not in sys.path:
+    sys.path.insert(0, _PYTHON_ROOT)
+try:
+    import ai_models  # noqa: E402
+except ImportError:
+    ai_models = None  # type: ignore[assignment]
+
 
 CACHE_PATH = os.path.expanduser(
     "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_highlight_picks.json"
@@ -109,6 +118,97 @@ def _select_instagram_picks(all_picks: list[dict], target_sec: float,
 
 
 _YOLO_MODEL = None
+_SAM2_PREDICTOR = None
+
+
+def _sam2_predictor():
+    """Lazy-load SAM2 (Segment Anything 2) for subject-mask-based reframe.
+    Falls back gracefully if sam2 package or R2 weights are unavailable.
+    """
+    global _SAM2_PREDICTOR
+    if _SAM2_PREDICTOR is not None:
+        return _SAM2_PREDICTOR
+    if ai_models is None:
+        return None
+    try:
+        from sam2.build_sam import build_sam2  # type: ignore
+        from sam2.sam2_image_predictor import SAM2ImagePredictor  # type: ignore
+        import torch  # type: ignore
+    except ImportError:
+        return None
+    weights = ai_models.ensure_local_model("sam2-small")
+    if not weights:
+        return None
+    try:
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        # Config name follows checkpoint convention
+        cfg = "sam2_hiera_s.yaml"
+        sam2_model = build_sam2(cfg, weights, device=device)
+        _SAM2_PREDICTOR = SAM2ImagePredictor(sam2_model)
+        return _SAM2_PREDICTOR
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"SAM2 setup failed: {exc}")
+        return None
+
+
+def _detect_subject_mask_centroid_sam2(
+    ffmpeg: str, source_video: str, ts_sec: float, frame_width: int,
+) -> tuple[float, float] | None:
+    """SAM2-based subject-centroid (#R2 batch upgrade — V4).
+
+    Uses YOLOv8 person-bbox as a prompt for SAM2 segmentation, then
+    returns centroid of the mask (more precise than bbox center when the
+    subject is e.g. lifted in a dance pose).
+
+    Returns (cx, cy) in source-pixel coordinates, or None on failure.
+    """
+    predictor = _sam2_predictor()
+    yolo = _yolo_model()
+    if predictor is None or yolo is None:
+        return None
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix="ig_sam2_", suffix=".jpg")
+    os.close(fd)
+    try:
+        r = subprocess.run(
+            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+             "-ss", f"{ts_sec:.3f}", "-i", source_video,
+             "-vframes", "1", "-q:v", "3",
+             "-vf", f"scale={frame_width}:-1",
+             tmp],
+            capture_output=True, timeout=15,
+        )
+        if r.returncode != 0 or not os.path.exists(tmp):
+            return None
+        import cv2  # type: ignore
+        import numpy as np
+        img = cv2.imread(tmp)
+        if img is None:
+            return None
+        # 1. YOLO person-bbox as box-prompt for SAM2
+        results = yolo(img, verbose=False, conf=0.35, classes=[0])
+        if not results or len(results[0].boxes) == 0:
+            return None
+        boxes = results[0].boxes.xyxy.cpu().numpy()
+        # 2. SAM2 inference
+        predictor.set_image(img)
+        masks, scores, _ = predictor.predict(
+            box=boxes, multimask_output=False,
+        )
+        # 3. Centroid of the union of all masks
+        if masks is None or len(masks) == 0:
+            return None
+        union = np.any(masks, axis=0) if masks.ndim == 3 else masks
+        ys, xs = np.where(union)
+        if len(xs) == 0:
+            return None
+        return float(np.mean(xs)), float(np.mean(ys))
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"SAM2 inference failed: {exc}")
+        return None
+    finally:
+        try: os.unlink(tmp)
+        except OSError: pass
 
 
 def _yolo_model():
@@ -218,6 +318,11 @@ def _compute_smart_crop_x(ffmpeg: str, source_video: str, picks: list[dict],
         samples_x: list[float] = []
         for frac in (0.25, 0.50, 0.75):
             ts = start + (end - start) * frac
+            # Prefer SAM2 mask-centroid (V4) → YOLO bbox (V3) → face cascade (V2)
+            cxy = _detect_subject_mask_centroid_sam2(ffmpeg, source_video, ts, probe_width)
+            if cxy is not None:
+                samples_x.append(cxy[0])
+                continue
             cx = _detect_subject_center_x(ffmpeg, source_video, ts, probe_width)
             if cx is not None:
                 samples_x.append(cx)
@@ -232,10 +337,12 @@ def _compute_smart_crop_x(ffmpeg: str, source_video: str, picks: list[dict],
 def _build_per_pick_filter_complex(
     picks: list[dict], smart_x_by_pick: dict[int, int],
     width: int, height: int, probe_width: int = 640,
+    background_style: str = "black",
 ) -> str:
     """Build the ffmpeg filter_complex graph that:
        - trims source by each pick's [start, end]
        - applies per-pick smart-crop X (or center if no face data)
+       - composites subject over chosen background style
        - scales to 1080×1920
        - concats all picks
     Returns the full -filter_complex argument string.
@@ -251,20 +358,36 @@ def _build_per_pick_filter_complex(
         # then apply at runtime via ih*9/16 strip width.
         if i in smart_x_by_pick:
             face_cx_rel = smart_x_by_pick[i] / probe_width  # 0..1 across frame
-            # x = clamp(face_cx_rel * iw - strip_w/2, 0, iw - strip_w)
             crop_x_expr = (
                 f"max(0,min(iw-ih*9/16,{face_cx_rel:.4f}*iw-ih*9/16/2))"
             )
         else:
-            # Center-crop fallback
             crop_x_expr = "(iw-ih*9/16)/2"
-        v_chains.append(
-            f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS,"
-            f"crop=w='ih*9/16':h=ih:x='{crop_x_expr}':y=0,"
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"
-            f"[v{i}]"
-        )
+
+        # Build per-pick visual chain based on background style
+        trim_v = f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS"
+        if background_style == "blurred":
+            # Split the trimmed stream → blurred fill behind + foreground crop
+            # 1. Blur-fill: scale source to 1080×1920 (cover, no crop), heavy gblur
+            # 2. Foreground: 9:16 smart-crop + scale-to-height
+            # 3. Overlay foreground centered over blur-fill
+            v_chains.append(
+                f"{trim_v},split=2[t{i}fg][t{i}bg];"
+                f"[t{i}bg]scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height},gblur=sigma=30,eq=brightness=-0.15[bg{i}];"
+                f"[t{i}fg]crop=w='ih*9/16':h=ih:x='{crop_x_expr}':y=0,"
+                f"scale=-2:{height}[fg{i}];"
+                f"[bg{i}][fg{i}]overlay=(W-w)/2:0[v{i}]"
+            )
+        else:
+            # "black" default — original chain
+            v_chains.append(
+                f"{trim_v},"
+                f"crop=w='ih*9/16':h=ih:x='{crop_x_expr}':y=0,"
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"
+                f"[v{i}]"
+            )
         a_chains.append(
             f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{i}]"
         )
@@ -284,15 +407,23 @@ def _build_per_pick_filter_complex(
 def _concat_picks_to_vertical(
     ffmpeg: str, source_video: str, picks: list[dict], out_path: str,
     width: int = 1080, height: int = 1920,
+    background_style: str = "black",
 ) -> bool:
     """Build the 9:16 intermediate via ffmpeg per-pick smart-crop concat.
 
-    (#483 V2) Per-pick crops follow the face-centroid horizontally so the
-    couple/subjects stay in frame instead of being chopped off at the
-    edge by a static center-crop.
+    Per-pick crops follow the subject-mask centroid (SAM2 → YOLO → face
+    fallback) so the couple/subject stays in frame instead of being
+    chopped off at the edge.
 
-    Falls back to single-pass center-crop if smart-crop graph fails (very
-    long pick-lists can exceed ffmpeg's filter-complex limits).
+    background_style:
+      "black"         — solid black bars (default, smallest file)
+      "blurred"       — same frame blurred + scaled to fill (REMBG-like
+                        social-feed look; no model download needed, pure
+                        ffmpeg gblur+scale fallback)
+      "blurred-rembg" — REAL REMBG U2Net background-removal + gaussian-
+                        blurred fill (requires R2 + rembg pip pkg)
+
+    Falls back to single-pass center-crop if smart-crop graph fails.
     """
     if not picks:
         return False
@@ -308,7 +439,7 @@ def _concat_picks_to_vertical(
         bridge.log("Smart-crop: no faces detected anywhere → center-crop fallback")
 
     filter_complex = _build_per_pick_filter_complex(
-        picks, smart_x, width, height,
+        picks, smart_x, width, height, background_style=background_style,
     )
     cmd = [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
@@ -503,6 +634,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     burn_captions = params.get("burnCaptions")
     burn_captions = True if burn_captions is None else bool(burn_captions)
     hf_token = params.get("hfToken") or os.environ.get("HF_TOKEN")
+    # Background style — "black" / "blurred" (ffmpeg gblur) / "blurred-rembg"
+    background_style = (params.get("backgroundStyle") or "black").strip().lower()
+    if background_style not in ("black", "blurred", "blurred-rembg"):
+        background_style = "black"
 
     cached = _load_picks()
     all_picks = cached.get("picks") or []
@@ -550,8 +685,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         })
         return
 
-    bridge.progress(5, 100, f"Splicing {len(picks)} picks + center-crop 9:16…")
-    if not _concat_picks_to_vertical(ffmpeg, source_video, picks, intermediate_path):
+    bridge.progress(5, 100,
+                    f"Splicing {len(picks)} picks + crop 9:16 ({background_style} bg)…")
+    if not _concat_picks_to_vertical(
+        ffmpeg, source_video, picks, intermediate_path,
+        background_style=background_style,
+    ):
         bridge.error("ffmpeg concat failed — see logs")
         sys.exit(1)
     bridge.log(f"Intermediate: {intermediate_path} ({os.path.getsize(intermediate_path)//1024} KB)")
