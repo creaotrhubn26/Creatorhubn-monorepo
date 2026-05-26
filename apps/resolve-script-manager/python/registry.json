@@ -1195,6 +1195,27 @@
       "requiresTimeline": false
     },
     {
+      "id": "render_instagram_vertical",
+      "name": "Render Instagram Vertical (9:16 + auto-captions)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/render_instagram_vertical.py",
+      "description": "Tar approved picks fra cache, splicer + center-crop til 9:16 vertikal, transkriberer via WhisperX, brenner captions inn med ASS-styling. Produserer ferdig MP4 ved siden av source — klar til upload på Instagram/TikTok/Reels. Ingen Resolve-API touch.",
+      "requiredInputs": [
+        {"key": "targetDurationSec", "label": "Target duration (sec, default 60)", "type": "number", "required": false},
+        {"key": "maxDurationSec", "label": "Max duration (sec, default 75)", "type": "number", "required": false},
+        {"key": "scoreFloor", "label": "Score floor (0..1, default 0.50)", "type": "number", "required": false},
+        {"key": "whisperModel", "label": "WhisperX model (default large-v3)", "type": "text", "required": false},
+        {"key": "language", "label": "Language hint (auto/no/nb/en, default auto)", "type": "text", "required": false},
+        {"key": "burnCaptions", "label": "Burn captions (default yes)", "type": "boolean", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "build_delivery_variants",
       "name": "Build Delivery Variants (teaser/IG/gjestebok/couple/family/ceremony)",
       "category": "timeline",

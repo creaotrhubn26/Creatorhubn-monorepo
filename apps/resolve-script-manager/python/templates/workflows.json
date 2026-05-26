@@ -23,7 +23,8 @@
     "steps": [
       {"order": 1, "scriptId": "extract_highlight_from_film", "label": "Extract highlight (interactive review)"},
       {"order": 2, "scriptId": "build_highlight_from_picks", "label": "Build main highlight (4-6 min)"},
-      {"order": 3, "scriptId": "build_delivery_variants", "label": "Build alle 6 leveringsvarianter (teaser/IG/gjestebok/couple/family/ceremony)"}
+      {"order": 3, "scriptId": "build_delivery_variants", "label": "Build alle 6 leveringsvarianter (teaser/IG/gjestebok/couple/family/ceremony)"},
+      {"order": 4, "scriptId": "render_instagram_vertical", "label": "Render Instagram MP4 (9:16 + captions)"}
     ]
   },
   "wedding_highlight_with_clean_audio": {
