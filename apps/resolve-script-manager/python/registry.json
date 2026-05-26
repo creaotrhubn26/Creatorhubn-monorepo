@@ -1198,6 +1198,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "detect_song_sections",
+      "name": "Detect Song Sections (intro/verse/chorus/bridge/drop)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/detect_song_sections.py",
+      "description": "Strukturell segmentering via librosa recurrence-matrix + spectral-clustering på MFCC. Labels: intro/verse/pre_chorus/chorus/bridge/drop/build_up/outro. Cache → last_song_sections.json som assign_clips_to_beats leser for variable cut-density per seksjon (chorus = 2-beat cuts, verse = 4-beat, bridge = 8-beat).",
+      "requiredInputs": [
+        {"key": "musicPath", "label": "Music file (blank = bruk cached fra detect_music_beats)", "type": "file", "required": false},
+        {"key": "forceRecompute", "label": "Force recompute (ignorer cache)", "type": "boolean", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "extract_speech_quotes",
       "name": "Extract Speech Quotes (best moments from speeches)",
       "category": "audio",

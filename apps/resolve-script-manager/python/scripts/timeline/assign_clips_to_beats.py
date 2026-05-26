@@ -278,6 +278,78 @@ def _build_segments(beats: list[float], segment_beats: int, prefer_downbeats: bo
     return segments
 
 
+# #517 — section-specific cut-density.
+# Number of beats per cut. Shorter = more cuts = higher energy feel.
+SECTION_BEATS_PER_CUT: dict[str, int] = {
+    "drop":       1,   # rapid-fire on drops
+    "chorus":     2,   # tight cuts during chorus
+    "build_up":   2,
+    "pre_chorus": 2,
+    "verse":      4,   # standard pacing
+    "bridge":     8,   # let bridge breathe
+    "intro":      8,
+    "outro":      8,
+    "other":      4,
+}
+
+
+def _load_song_sections() -> list[dict]:
+    """Read last_song_sections.json output from detect_song_sections.py.
+    Returns [] if no sections cached — caller falls back to uniform pacing."""
+    import json as _json
+    path = os.path.expanduser(
+        "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_song_sections.json"
+    )
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path) as f:
+            data = _json.load(f)
+        return data.get("segments") or []
+    except (OSError, _json.JSONDecodeError):
+        return []
+
+
+def _section_label_at(time_sec: float, sections: list[dict]) -> str:
+    """Return section.label for the section covering `time_sec`, or 'other'."""
+    for s in sections:
+        if float(s.get("startSec") or 0) <= time_sec < float(s.get("endSec") or 0):
+            return str(s.get("label") or "other")
+    return "other"
+
+
+def _build_segments_with_sections(
+    beats: list[float], downbeats: list[float], prefer_downbeats: bool,
+    sections: list[dict],
+) -> list[tuple[float, float, str]]:
+    """Variable-density segments using song-section labels (#517).
+
+    Walks beats grouping by SECTION_BEATS_PER_CUT[section_label] so chorus
+    gets 2-beat cuts, verse 4-beat cuts, bridge 8-beat etc. Returns
+    [(start_sec, end_sec, section_label), ...].
+
+    Falls back to uniform 4-beat cuts when no sections cached.
+    """
+    if not beats:
+        return []
+    if not sections:
+        # Standard behaviour: 4-beat uniform
+        plain = _build_segments(beats, 4, prefer_downbeats, downbeats)
+        return [(s, e, "other") for (s, e) in plain]
+
+    # Use beats (not downbeats) as the time-grid so we have fine-grained control.
+    grid = beats[:]
+    segments: list[tuple[float, float, str]] = []
+    i = 0
+    while i < len(grid) - 1:
+        label = _section_label_at(grid[i], sections)
+        stride = SECTION_BEATS_PER_CUT.get(label, 4)
+        j = min(i + stride, len(grid) - 1)
+        segments.append((grid[i], grid[j], label))
+        i = j
+    return segments
+
+
 def _load_cached_beat_session() -> dict:
     """Fallback: read the last detect_music_beats result from disk so workflow
     steps can be run independently in the Tauri UI without manually re-passing
@@ -497,14 +569,28 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             )
             sys.exit(1)
 
-    segments = _build_segments(beats, segment_beats, prefer_downbeats, downbeats)
+    # #517 — section-aware variable cuts. Cache from detect_song_sections.
+    song_sections = _load_song_sections()
+    if song_sections:
+        labelled = _build_segments_with_sections(beats, downbeats, prefer_downbeats, song_sections)
+        segments = [(s, e) for (s, e, _label) in labelled]
+        segment_labels = [label for (_s, _e, label) in labelled]
+        bridge.log(
+            f"Section-aware pacing active: {len(segments)} segments across "
+            f"{len(set(segment_labels))} section-types"
+        )
+    else:
+        segments = _build_segments(beats, segment_beats, prefer_downbeats, downbeats)
+        segment_labels = ["other"] * len(segments)
+        bridge.log("No song-section cache — using uniform pacing")
+
     if not segments:
         bridge.error("Could not derive any cut-segments from the beat grid.")
         sys.exit(1)
 
     bridge.log(
         f"Mapping {len(kept)} clips across {len(segments)} segments "
-        f"(beat stride: {segment_beats}, prefer downbeats: {prefer_downbeats})"
+        f"(prefer downbeats: {prefer_downbeats})"
     )
 
     # ─── Energy-curve assignment ─────────────────────────────────────────
@@ -551,6 +637,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     assignments: list[dict] = [{} for _ in range(n)]
     recent_clips: list[str] = []
     recent_phashes: list[int] = []  # parallel — len matches recent_clips
+    # #509 — per-section clip-usage tracking so vi ikke gjenbruker same shot
+    # i verse + chorus + bridge. Lar music-video føles som distinkte "scener".
+    section_clip_usage: dict[str, set[str]] = {}
 
     PHASH_NEAR_THRESHOLD = 8      # Hamming dist < 8/64 → strong penalty
     PHASH_SIMILAR_THRESHOLD = 16  # dist < 16/64       → mild penalty
@@ -569,6 +658,19 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             return 0.18
         return 0.0
 
+    def _section_penalty(c: dict, current_section: str) -> float:
+        """#509 — penalize clips already used in the CURRENT section.
+        Encourages clip-variety within each verse/chorus/bridge.
+        Different sections use different shots → music-video feels like
+        distinct scenes rather than the same b-roll on repeat."""
+        if not current_section or current_section == "other":
+            return 0.0
+        path = c.get("clipPath") or ""
+        used = section_clip_usage.get(current_section)
+        if used and path in used:
+            return 0.30  # moderate penalty — allowed to repeat if needed
+        return 0.0
+
     def _tempo_bonus(c: dict) -> float:
         if beat_period_sec is None:
             return 0.0
@@ -579,10 +681,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         if not available:
             available = list(kept)  # exhaustion: allow reuse
         demand = _energy_demand(seg_idx)
+        current_section = segment_labels[seg_idx] if seg_idx < len(segment_labels) else "other"
         # Sort available by combined score:
         #  1. Distance from energy demand (closer = better, lower is better)
         #  - 0.3 × user-preference bias (positive = keep history)
         #  + pHash dedupe penalty (positive = similar to recent → push down)
+        #  + section-repeat penalty (#509) — already-used-in-section pushed down
         #  - tempo-match bonus (positive = camera-pan aligns with beat)
         #  2. Highlight score (-)
         #  3. Quality score (-)
@@ -592,6 +696,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 abs(_clip_energy(c) - demand)
                 - 0.3 * _user_pref_score(c.get("clipPath"), user_profile)
                 + _phash_penalty(c)
+                + _section_penalty(c, current_section)
                 - _tempo_bonus(c),
                 -(c.get("highlightScore") or 0),
                 -(c.get("qualityScore") or 0),
@@ -610,6 +715,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             recent_phashes.append(pick["phash"])
         else:
             recent_phashes.append(0)  # placeholder to keep parallel index
+        # Record usage in current section (#509)
+        if current_section and pick.get("clipPath"):
+            section_clip_usage.setdefault(current_section, set()).add(pick["clipPath"])
 
         start_sec, end_sec = segments[seg_idx]
         clip = pick
@@ -629,8 +737,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 if beat_period_sec else None
             ),
             "energyDemand": round(demand, 3),
+            "section": current_section,  # #517 — surface song-section label
         }
-        bridge.progress(seg_idx, n, f"Assigning clip {seg_idx + 1}/{n} (demand {demand:.2f})")
+        bridge.progress(seg_idx, n, f"Assigning {seg_idx + 1}/{n} [{current_section}] demand {demand:.2f}")
 
     result = {
         "segments": assignments,

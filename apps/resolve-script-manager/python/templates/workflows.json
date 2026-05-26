@@ -74,15 +74,16 @@
   "music_video_beat_sync": {
     "id": "music_video_beat_sync",
     "name": "Music Video — Beat-synket",
-    "description": "Beat-synket music video: detekter beats fra source-sang og plasser klipp på beat-grid",
+    "description": "Beat-synket music video: detekter beats + song-seksjoner (intro/verse/chorus/bridge/drop) og plasser klipp med variable cut-density per seksjon.",
     "projectTemplate": "music_video",
     "steps": [
       {"order": 1, "scriptId": "import_media_from_folder", "label": "Import Media"},
       {"order": 2, "scriptId": "organize_by_camera", "label": "Organize Bins"},
       {"order": 3, "scriptId": "detect_music_beats", "label": "Detect Beats (librosa)"},
-      {"order": 4, "scriptId": "assign_clips_to_beats", "label": "Assign Clips → Beats"},
-      {"order": 5, "scriptId": "place_clips_on_beat_grid", "label": "Build Beat-grid Timeline"},
-      {"order": 6, "scriptId": "create_render_queue", "label": "Render Queue"}
+      {"order": 4, "scriptId": "detect_song_sections", "label": "Detect Sections (chorus/verse/drop)"},
+      {"order": 5, "scriptId": "assign_clips_to_beats", "label": "Assign Clips → Beats (section-aware)"},
+      {"order": 6, "scriptId": "place_clips_on_beat_grid", "label": "Build Beat-grid Timeline"},
+      {"order": 7, "scriptId": "create_render_queue", "label": "Render Queue"}
     ]
   },
   "documentary_longform": {
