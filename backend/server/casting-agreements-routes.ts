@@ -63,6 +63,7 @@ import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingAgreementsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
   legacyOffersByProject: Map<string, any[]>;
@@ -88,6 +89,7 @@ export function setupCastingAgreementsRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     compatStoreGet,
     compatStoreSet,
     legacyOffersByProject,
@@ -152,6 +154,7 @@ export function setupCastingAgreementsRoutes(
   // ── Offers ─────────────────────────────────────────────────────────
 
   app.post("/api/casting/offers", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -182,6 +185,7 @@ export function setupCastingAgreementsRoutes(
   });
 
   app.put("/api/casting/offers/:offerId/respond", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     let location = findByIdInProjectMap(
       legacyOffersByProject,
       req.params.offerId,
@@ -219,6 +223,7 @@ export function setupCastingAgreementsRoutes(
   // ── Contracts ──────────────────────────────────────────────────────
 
   app.post("/api/casting/contracts", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -251,6 +256,7 @@ export function setupCastingAgreementsRoutes(
   });
 
   app.put("/api/casting/contracts/:contractId/sign", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     let location = findByIdInProjectMap(
       legacyContractsByProject,
       req.params.contractId,
@@ -287,6 +293,7 @@ export function setupCastingAgreementsRoutes(
   // ── Project-agreements ─────────────────────────────────────────────
 
   app.post("/api/casting/project-agreements", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const agreement = createProjectAgreementRecord(req.body || {});
     if (!agreement) {
       res
@@ -313,6 +320,7 @@ export function setupCastingAgreementsRoutes(
   app.put(
     "/api/casting/project-agreements/:agreementId/status",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       let location = findByIdInProjectMap(
         legacyProjectAgreementsByProject,
         req.params.agreementId,

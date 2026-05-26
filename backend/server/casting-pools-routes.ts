@@ -44,6 +44,7 @@ import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingPoolsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
   compatStoreDelete: (storeKey: string) => Promise<void>;
@@ -55,6 +56,7 @@ export interface CastingPoolsRoutesDeps {
 export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     compatStoreGet,
     compatStoreSet,
     compatStoreDelete,
@@ -96,6 +98,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/candidate-pool", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const payload = req.body || {};
     const candidateId =
       typeof payload.id === "string" && payload.id.trim()
@@ -116,6 +119,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.delete("/api/casting/candidate-pool/:candidateId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const candidateId = req.params.candidateId;
     legacyCandidatePool.delete(candidateId);
     await compatStoreDelete(dbLegacyCandidatePoolKey(candidateId));
@@ -123,6 +127,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/candidate-pool/import-to-project", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const poolCandidateId =
       typeof req.body?.poolCandidateId === "string"
         ? req.body.poolCandidateId
@@ -146,6 +151,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/candidates/copy-to-project", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const candidateId =
       typeof req.body?.candidateId === "string" ? req.body.candidateId : "";
     const targetProjectId =
@@ -167,6 +173,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/candidates/save-to-pool", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const candidateId =
       typeof req.body?.candidateId === "string" ? req.body.candidateId : "";
     if (!candidateId) {
@@ -212,6 +219,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/role-pool", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const payload = req.body || {};
     const roleId =
       typeof payload.id === "string" && payload.id.trim()
@@ -232,6 +240,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.delete("/api/casting/role-pool/:roleId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const roleId = req.params.roleId;
     legacyRolePool.delete(roleId);
     await compatStoreDelete(dbLegacyRolePoolKey(roleId));
@@ -239,6 +248,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/role-pool/import-to-project", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const poolRoleId =
       typeof req.body?.poolRoleId === "string" ? req.body.poolRoleId : "";
     const targetProjectId =
@@ -259,6 +269,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/roles/save-to-pool", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const roleId = typeof req.body?.roleId === "string" ? req.body.roleId : "";
     if (!roleId) {
       res.status(400).json({ success: false, error: "roleId is required" });

@@ -37,12 +37,13 @@ import type express from "express";
 
 export interface CastingMiscRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
 }
 
 export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
-  const { app, compatStoreGet, compatStoreSet } = deps;
+  const { app, requireUserSession, compatStoreGet, compatStoreSet } = deps;
 
   const legacyFavoritesStore = new Map<string, string[]>();
 
@@ -86,6 +87,7 @@ export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
   app.post(
     ["/api/casting/favorites/:projectId/:favoriteType", "/api/role-room/favorites/:projectId/:favoriteType"],
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       const { projectId, favoriteType } = req.params;
       const itemIds = Array.isArray(req.body?.itemIds)
         ? req.body.itemIds.filter((id: unknown) => typeof id === "string")
@@ -105,6 +107,7 @@ export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
   app.post(
     ["/api/casting/favorites/:projectId/:favoriteType/add", "/api/role-room/favorites/:projectId/:favoriteType/add"],
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       const { projectId, favoriteType } = req.params;
       const itemId = typeof req.body?.itemId === "string" ? req.body.itemId : "";
       if (!itemId) {
@@ -133,6 +136,7 @@ export function setupCastingMiscRoutes(deps: CastingMiscRoutesDeps): void {
   app.post(
     ["/api/casting/favorites/:projectId/:favoriteType/remove", "/api/role-room/favorites/:projectId/:favoriteType/remove"],
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       const { projectId, favoriteType } = req.params;
       const itemId = typeof req.body?.itemId === "string" ? req.body.itemId : "";
       if (!itemId) {

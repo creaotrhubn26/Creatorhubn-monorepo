@@ -31450,6 +31450,7 @@ app.use("/api/casting", (req, res, next) => {
 //   andre clusters — verifisert).
 setupCastingPoolsRoutes({
   app,
+  requireUserSession,
   compatStoreGet,
   compatStoreSet,
   compatStoreDelete,
@@ -31461,6 +31462,7 @@ setupCastingPoolsRoutes({
 //   legacyFavoritesStore Map + key-helpers internt.
 setupCastingMiscRoutes({
   app,
+  requireUserSession,
   compatStoreGet,
   compatStoreSet,
 });
@@ -31470,6 +31472,7 @@ setupCastingMiscRoutes({
 //   Maps deles med /api/role-room (samme referanser passes via deps).
 setupCastingAgreementsRoutes({
   app,
+  requireUserSession,
   compatStoreGet,
   compatStoreSet,
   legacyOffersByProject,
