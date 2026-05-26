@@ -24,10 +24,12 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import {
   newsletterIssuesApi,
   newsletterApi,
+  newsletterTemplatesApi,
   type NewsletterAudienceFilter,
   type NewsletterBlock,
   type NewsletterIssue,
   type NewsletterIssueStatus,
+  type NewsletterTemplate,
 } from '../../../services/adminRoomApi';
 import NewsletterBlockBuilder from './NewsletterBlockBuilder';
 
@@ -117,6 +119,9 @@ export function NewsletterStudioTab() {
   const [error, setError] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<NewsletterIssue | null>(null);
+  const [editorSeed, setEditorSeed] = useState<NewsletterTemplate | null>(null);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [clickReportFor, setClickReportFor] = useState<NewsletterIssue | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [subscriberStats, setSubscriberStats] = useState<{ confirmed: number; pending: number; total: number } | null>(null);
 
@@ -146,7 +151,13 @@ export function NewsletterStudioTab() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   function handleNew() {
+    // Åpne template-picker først; brukeren velger en mal eller "Tom" → editor.
+    setTemplatePickerOpen(true);
+  }
+  function handlePickTemplate(template: NewsletterTemplate | null) {
+    setTemplatePickerOpen(false);
     setEditing(null);
+    setEditorSeed(template);
     setEditorOpen(true);
   }
   function handleEdit(issue: NewsletterIssue) {
@@ -294,7 +305,8 @@ export function NewsletterStudioTab() {
                           <Chip
                             label={`Klikk ${issue.unique_click_count ?? 0} (${Math.round(((issue.unique_click_count ?? 0) / (issue.unique_open_count || issue.sent_count)) * 100)}%)`}
                             size="small"
-                            sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700, fontSize: '0.68rem', height: 18 }}
+                            onClick={() => setClickReportFor(issue)}
+                            sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700, fontSize: '0.68rem', height: 18, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(167,139,250,0.28)' } }}
                           />
                         </>
                       ) : null}
@@ -351,8 +363,22 @@ export function NewsletterStudioTab() {
       <IssueEditor
         open={editorOpen}
         initial={editing}
-        onClose={() => { setEditorOpen(false); setEditing(null); }}
-        onSaved={async () => { setEditorOpen(false); setEditing(null); await refresh(); setSnackbar('Lagret'); }}
+        seed={editorSeed}
+        onClose={() => { setEditorOpen(false); setEditing(null); setEditorSeed(null); }}
+        onSaved={async () => { setEditorOpen(false); setEditing(null); setEditorSeed(null); await refresh(); setSnackbar('Lagret'); }}
+        onError={setError}
+      />
+
+      <TemplatePicker
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        onPick={handlePickTemplate}
+        onError={setError}
+      />
+
+      <ClickReportDialog
+        issue={clickReportFor}
+        onClose={() => setClickReportFor(null)}
         onError={setError}
       />
 
@@ -370,12 +396,13 @@ export function NewsletterStudioTab() {
 interface IssueEditorProps {
   open: boolean;
   initial: NewsletterIssue | null;
+  seed?: NewsletterTemplate | null;
   onClose: () => void;
   onSaved: () => void;
   onError: (msg: string) => void;
 }
 
-function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorProps) {
+function IssueEditor({ open, initial, seed, onClose, onSaved, onError }: IssueEditorProps) {
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
   const [preheader, setPreheader] = useState('');
@@ -399,13 +426,24 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
       const weekNum = Math.ceil((new Date().getTime() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
       setTitle(`Uke ${weekNum} — ${new Date().toLocaleDateString('nb-NO', { day: '2-digit', month: 'long' })}`);
       setSubject(`Norwegian Casting Brief — Uke ${weekNum}`);
-      setPreheader('Ukens data, founder POV, behind-the-cast og risk-varsler.');
+      setPreheader(seed?.preheader ?? 'Ukens data, founder POV, behind-the-cast og risk-varsler.');
       setBodyMarkdown(STARTER_TEMPLATE.replace('{{nummer}}', String(weekNum)));
-      setBodyBlocks([]);
+      // Hvis seed-template valgt, bruk dens blokker; ellers tom.
+      // Erstatt "__" i header med ukenummer for å unngå manuell editing.
+      if (seed?.body_blocks) {
+        const seeded = seed.body_blocks.map((b) => {
+          if (b.type === 'header') return { ...b, text: b.text.replace(/__/g, String(weekNum)) };
+          return b;
+        });
+        setBodyBlocks(seeded);
+        lastSavedRef.current = JSON.stringify(seeded);
+      } else {
+        setBodyBlocks([]);
+        lastSavedRef.current = '[]';
+      }
       setAudienceFilter('all');
-      lastSavedRef.current = '[]';
     }
-  }, [open, initial]);
+  }, [open, initial, seed]);
 
   const blocksJson = JSON.stringify(bodyBlocks);
   const isDirty = blocksJson !== lastSavedRef.current || (initial && (title !== initial.title || subject !== initial.subject || preheader !== (initial.preheader ?? '')));
@@ -461,13 +499,135 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5, borderTop: '1px solid rgba(148,163,184,0.14)' }}>
         <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.78rem', flex: 1 }}>
-          {bodyMarkdown.length} tegn · {isDirty ? 'Ikke lagret' : 'Lagret'}
+          {bodyBlocks.length} blokker · {isDirty ? 'Ikke lagret' : 'Lagret'}
         </Typography>
+        <Button
+          onClick={async () => {
+            const name = window.prompt('Navn på mal:', `${title} (mal)`);
+            if (!name) return;
+            try {
+              await newsletterTemplatesApi.create({
+                name,
+                description: `Lagret ${new Date().toLocaleDateString('nb-NO')} fra utgave "${title}"`,
+                preheader: preheader || null,
+                bodyBlocks,
+              });
+              onError(`Lagret som mal: ${name}`);
+            } catch (err) {
+              onError((err as Error).message);
+            }
+          }}
+          sx={{ textTransform: 'none', color: 'rgba(203,213,225,0.85)' }}
+        >
+          Lagre som mal
+        </Button>
         <Button onClick={onClose} sx={{ textTransform: 'none' }}>Lukk</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
           {saving ? 'Lagrer…' : 'Lagre utkast'}
         </Button>
       </DialogActions>
+    </Dialog>
+  );
+}
+
+// ── Template picker — vises før Ny utgave-editor ─────────────────────
+
+function TemplatePicker({ open, onClose, onPick, onError }: { open: boolean; onClose: () => void; onPick: (template: NewsletterTemplate | null) => void; onError: (msg: string) => void }) {
+  const [templates, setTemplates] = useState<NewsletterTemplate[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    newsletterTemplatesApi.list().then(setTemplates).catch((err) => onError((err as Error).message)).finally(() => setLoading(false));
+  }, [open, onError]);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>Velg mal for ny utgave</Typography>
+        <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
+      </DialogTitle>
+      <DialogContent>
+        {loading ? (
+          <Typography sx={{ color: 'rgba(203,213,225,0.6)', textAlign: 'center', py: 4 }}>Laster …</Typography>
+        ) : (
+          <Stack spacing={1.5}>
+            <Box
+              onClick={() => onPick(null)}
+              sx={{ p: 2, borderRadius: 1.5, border: '1px dashed rgba(148,163,184,0.3)', cursor: 'pointer', '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.06)' } }}
+            >
+              <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>Tom utgave</Typography>
+              <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.8rem', mt: 0.5 }}>Start fra blanke ark — bygg fra bunnen med block-builder.</Typography>
+            </Box>
+            {templates.map((t) => (
+              <Box
+                key={t.id}
+                onClick={() => onPick(t)}
+                sx={{ p: 2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.18)', cursor: 'pointer', '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' } }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, flexWrap: 'wrap', rowGap: 0.5 }}>
+                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>{t.name}</Typography>
+                  {t.is_default ? <Chip label="Standard" size="small" sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 700, fontSize: '0.62rem', height: 16 }} /> : null}
+                  <Chip label={`${t.body_blocks.length} blokker`} size="small" sx={{ bgcolor: 'rgba(148,163,184,0.15)', color: '#cbd5e1', fontSize: '0.62rem', height: 16 }} />
+                </Stack>
+                {t.description ? <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.82rem' }}>{t.description}</Typography> : null}
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Click-rapport for en sent issue ──────────────────────────────────
+
+function ClickReportDialog({ issue, onClose, onError }: { issue: NewsletterIssue | null; onClose: () => void; onError: (msg: string) => void }) {
+  const [links, setLinks] = useState<Array<{ destination_url: string; total_clicks: number; unique_clicks: number }>>([]);
+  const [sentCount, setSentCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!issue) return;
+    setLoading(true);
+    newsletterIssuesApi.clicks(issue.id).then((r) => { setLinks(r.links); setSentCount(r.sentCount); }).catch((err) => onError((err as Error).message)).finally(() => setLoading(false));
+  }, [issue, onError]);
+
+  return (
+    <Dialog open={issue !== null} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>Klikk-rapport</Typography>
+          {issue ? <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.78rem' }}>{issue.title}</Typography> : null}
+        </Box>
+        <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
+      </DialogTitle>
+      <DialogContent>
+        {loading ? (
+          <Typography sx={{ color: 'rgba(203,213,225,0.6)', textAlign: 'center', py: 4 }}>Laster …</Typography>
+        ) : links.length === 0 ? (
+          <Typography sx={{ color: 'rgba(203,213,225,0.6)', textAlign: 'center', py: 4 }}>Ingen klikk registrert ennå.</Typography>
+        ) : (
+          <Stack spacing={1}>
+            {links.map((link) => {
+              const ctr = sentCount > 0 ? (link.unique_clicks / sentCount) * 100 : 0;
+              return (
+                <Box key={link.destination_url} sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(15,23,42,0.4)' }}>
+                  <Typography sx={{ color: '#a78bfa', fontSize: '0.85rem', fontWeight: 600, wordBreak: 'break-all', mb: 0.5 }}>
+                    {link.destination_url}
+                  </Typography>
+                  <Stack direction="row" spacing={1.5}>
+                    <Chip label={`${link.total_clicks} klikk`} size="small" sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700, fontSize: '0.7rem' }} />
+                    <Chip label={`${link.unique_clicks} unike`} size="small" sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 700, fontSize: '0.7rem' }} />
+                    <Chip label={`CTR ${ctr.toFixed(1)}%`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fde68a', fontWeight: 700, fontSize: '0.7rem' }} />
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+      </DialogContent>
     </Dialog>
   );
 }

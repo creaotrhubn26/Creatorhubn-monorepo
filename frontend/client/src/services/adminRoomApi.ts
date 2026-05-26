@@ -1267,4 +1267,41 @@ export const newsletterIssuesApi = {
   unschedule: async (id: string): Promise<{ ok: boolean; item: NewsletterIssue }> => {
     return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/unschedule`, { method: 'POST' });
   },
+  clicks: async (id: string): Promise<{ links: Array<{ destination_url: string; total_clicks: number; unique_clicks: number }>; sentCount: number }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/clicks`);
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Newsletter templates
+// ─────────────────────────────────────────────────────────
+
+export interface NewsletterTemplate {
+  id: string;
+  user_id: string | null;
+  slug: string;
+  name: string;
+  description: string | null;
+  preheader: string | null;
+  body_blocks: NewsletterBlock[];
+  is_default: boolean;
+  use_count: number;
+  updated_at: string;
+}
+
+export const newsletterTemplatesApi = {
+  list: async (): Promise<NewsletterTemplate[]> => {
+    const data = await jsonFetch<{ items: NewsletterTemplate[] }>('/newsletter/role-room/templates');
+    return data.items;
+  },
+  create: async (input: { name: string; description?: string | null; preheader?: string | null; bodyBlocks: NewsletterBlock[] }): Promise<NewsletterTemplate> => {
+    const data = await jsonFetch<{ item: NewsletterTemplate }>('/newsletter/role-room/templates', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/newsletter/role-room/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
 };

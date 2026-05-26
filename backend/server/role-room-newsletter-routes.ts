@@ -673,6 +673,105 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
     }
   });
 
+  // ── Templates CRUD ────────────────────────────────────────────────
+
+  app.get("/api/admin-room/newsletter/role-room/templates", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      const result = await pool.query(
+        `SELECT id, slug, name, description, preheader, is_default, use_count, body_blocks, updated_at
+           FROM role_room_newsletter_templates
+          WHERE user_id IS NULL OR user_id = $1
+          ORDER BY is_default DESC, updated_at DESC`,
+        [session.userId],
+      );
+      res.json({ items: result.rows });
+    } catch (err) {
+      console.error("[newsletter-templates] list error", err);
+      res.status(500).json({ error: "Kunne ikke hente maler" });
+    }
+  });
+
+  app.post("/api/admin-room/newsletter/role-room/templates", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const name = asString(body.name);
+    const slug = asString(body.slug) || (name ? name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) : null);
+    if (!name || !slug) {
+      res.status(400).json({ error: "name er påkrevd" });
+      return;
+    }
+    const blocks = asBlocks(body.bodyBlocks);
+    try {
+      const result = await pool.query(
+        `INSERT INTO role_room_newsletter_templates
+           (user_id, slug, name, description, preheader, body_blocks)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+         RETURNING *`,
+        [session.userId, slug, name, asString(body.description), asString(body.preheader), JSON.stringify(blocks)],
+      );
+      res.status(201).json({ item: result.rows[0] });
+    } catch (err) {
+      console.error("[newsletter-templates] create error", err);
+      res.status(500).json({ error: "Kunne ikke opprette mal" });
+    }
+  });
+
+  app.delete("/api/admin-room/newsletter/role-room/templates/:id", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      const result = await pool.query(
+        `DELETE FROM role_room_newsletter_templates WHERE id = $1 AND user_id = $2 RETURNING name`,
+        [req.params.id, session.userId],
+      );
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Mal ikke funnet (system-maler kan ikke slettes)" });
+        return;
+      }
+      res.status(204).end();
+    } catch (err) {
+      console.error("[newsletter-templates] delete error", err);
+      res.status(500).json({ error: "Kunne ikke slette mal" });
+    }
+  });
+
+  // ── Per-link click-rapport ────────────────────────────────────────
+
+  app.get("/api/admin-room/newsletter/role-room/issues/:id/clicks", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      // Verifiser at issuen tilhører user
+      const issueRes = await pool.query(
+        `SELECT id, sent_count FROM role_room_newsletter_issues WHERE id = $1 AND user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (issueRes.rows.length === 0) {
+        res.status(404).json({ error: "Utgave ikke funnet" });
+        return;
+      }
+      const linksRes = await pool.query(
+        `SELECT
+           destination_url,
+           COUNT(*)::int AS total_clicks,
+           COUNT(DISTINCT signup_id)::int AS unique_clicks
+         FROM role_room_newsletter_issue_clicks
+        WHERE issue_id = $1
+        GROUP BY destination_url
+        ORDER BY total_clicks DESC
+        LIMIT 50`,
+        [req.params.id],
+      );
+      res.json({ links: linksRes.rows, sentCount: issueRes.rows[0].sent_count });
+    } catch (err) {
+      console.error("[newsletter-clicks] error", err);
+      res.status(500).json({ error: "Kunne ikke hente click-rapport" });
+    }
+  });
+
   // ── Schedule + cron-loop ──────────────────────────────────────────
 
   app.post("/api/admin-room/newsletter/role-room/issues/:id/schedule", async (req, res) => {
