@@ -31,6 +31,9 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import CloseIcon from '@mui/icons-material/Close';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CircularProgress from '@mui/material/CircularProgress';
 import {
   industryTargetsApi,
@@ -186,6 +189,8 @@ export function IndustryTargetsTab() {
 
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
+      <OutreachWeek1Checklist />
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(6, 1fr)' }, gap: 1.5, mb: 3 }}>
         <StatCard label="Targets totalt" value={stats?.totals.total ?? 0} accent="#a78bfa" />
         <StatCard label="T1 (daglig)" value={stats?.totals.tier_t1 ?? 0} accent="#f472b6" />
@@ -282,6 +287,23 @@ export function IndustryTargetsTab() {
                           {[target.role_title, target.company].filter(Boolean).join(' · ')}
                         </Typography>
                       ) : null}
+                      {target.referred_by_id ? (() => {
+                        const referrer = targets.find((t) => t.id === target.referred_by_id);
+                        return referrer ? (
+                          <Chip
+                            label={`Via ${referrer.full_name} · G${target.referral_generation ?? 1}`}
+                            size="small"
+                            sx={{
+                              mt: 0.5,
+                              height: 18,
+                              bgcolor: 'rgba(244,114,182,0.16)',
+                              color: '#f9a8d4',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                            }}
+                          />
+                        ) : null;
+                      })() : null}
                     </Box>
                   </TableCell>
                   <TableCell>
@@ -398,6 +420,7 @@ export function IndustryTargetsTab() {
       <TargetDrawer
         open={drawerOpen}
         initial={editingTarget}
+        allTargets={targets}
         onClose={() => setDrawerOpen(false)}
         onSaved={async () => {
           setDrawerOpen(false);
@@ -443,6 +466,132 @@ export function IndustryTargetsTab() {
         onError={setError}
       />
     </Box>
+  );
+}
+
+// ── Week-1 onboarding-checklist fra Outreach Plan side 11 ───────────
+// Persisteres til localStorage så Daniel beholder progresjonen ved
+// reload. "Skjul"-knapp ved bunnen setter hidden=true permanent.
+
+const WEEK1_STORAGE_KEY = 'roleroom-outreach-week1-v1';
+const WEEK1_DAYS: Array<{ day: string; label: string; action: string }> = [
+  { day: 'Mon', label: 'Foundation', action: 'Bygg CRM. List 15 CDs + 30 produsenter. Finn én felles kontakt per target.' },
+  { day: 'Tue', label: 'LinkedIn-rytme', action: 'Sett opp LinkedIn-engagement — 30 min/dag på substantive kommentarer mot Tier-1 targets.' },
+  { day: 'Wed', label: 'Første CD-DM', action: 'Skriv personaliserte DM-er til topp 5 CDs. Send 1 (bruk AI-utkast på en target).' },
+  { day: 'Thu', label: 'Første produsent-mail', action: 'Skriv personaliserte mailer til topp 5 produsenter. Send 1.' },
+  { day: 'Fri', label: 'Første møte', action: 'Kaffe eller møte booket med 1 CD eller 1 produsent. Hvis ingen møter — meldingen er feil, skriv om.' },
+  { day: 'Sat', label: 'Rushprint-utkast', action: 'Skriv guest-artikkel (1.200 ord). Topic-forslag: AI-klausuler, casting-tid-data, eller barne-compliance.' },
+  { day: 'Sun', label: 'Hvile', action: 'Norsk forretningskultur respekterer arbeidsfri. Outreach på søndag signaliserer desperasjon.' },
+];
+
+function loadWeek1State(): { done: boolean[]; hidden: boolean } {
+  if (typeof window === 'undefined') return { done: Array(7).fill(false), hidden: false };
+  try {
+    const raw = window.localStorage.getItem(WEEK1_STORAGE_KEY);
+    if (!raw) return { done: Array(7).fill(false), hidden: false };
+    const parsed = JSON.parse(raw);
+    return {
+      done: Array.isArray(parsed.done) && parsed.done.length === 7 ? parsed.done.map(Boolean) : Array(7).fill(false),
+      hidden: !!parsed.hidden,
+    };
+  } catch {
+    return { done: Array(7).fill(false), hidden: false };
+  }
+}
+
+function saveWeek1State(state: { done: boolean[]; hidden: boolean }): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(WEEK1_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    /* localStorage kan være blokkert — gi opp stille */
+  }
+}
+
+function OutreachWeek1Checklist() {
+  const [state, setState] = useState(loadWeek1State);
+
+  function toggle(idx: number) {
+    const next = { ...state, done: state.done.map((d, i) => (i === idx ? !d : d)) };
+    setState(next);
+    saveWeek1State(next);
+  }
+
+  function hideForever() {
+    const next = { ...state, hidden: true };
+    setState(next);
+    saveWeek1State(next);
+  }
+
+  if (state.hidden) return null;
+
+  const doneCount = state.done.filter(Boolean).length;
+  const allDone = doneCount === 7;
+
+  return (
+    <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.28)', position: 'relative' }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5 }}>
+        <Stack direction="row" alignItems="center" spacing={1.25}>
+          <RocketLaunchIcon sx={{ color: '#22d3ee', fontSize: 22 }} />
+          <Box>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1rem' }}>
+              Outreach Plan · Uke 1-handlingsliste
+              {allDone ? <Chip label="Ferdig!" size="small" sx={{ ml: 1.5, height: 18, bgcolor: 'rgba(34,197,94,0.2)', color: '#86efac', fontWeight: 700, fontSize: '0.66rem' }} /> : null}
+            </Typography>
+            <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem' }}>
+              {doneCount} / 7 fullført · Per dokumentet: "Hvis null møter etter fredag — meldingen er feil, skriv om"
+            </Typography>
+          </Box>
+        </Stack>
+        <Button size="small" onClick={hideForever} sx={{ textTransform: 'none', color: 'rgba(203,213,225,0.55)', fontSize: '0.74rem' }}>
+          Skjul permanent
+        </Button>
+      </Stack>
+      <Stack spacing={0.75}>
+        {WEEK1_DAYS.map((row, idx) => {
+          const done = state.done[idx];
+          return (
+            <Stack
+              key={row.day}
+              direction="row"
+              spacing={1.25}
+              alignItems="flex-start"
+              onClick={() => toggle(idx)}
+              sx={{
+                cursor: 'pointer',
+                p: 0.75,
+                borderRadius: 1,
+                opacity: done ? 0.55 : 1,
+                '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
+              }}
+            >
+              {done ? (
+                <CheckBoxIcon fontSize="small" sx={{ color: '#22d3ee', mt: 0.25 }} />
+              ) : (
+                <CheckBoxOutlineBlankIcon fontSize="small" sx={{ color: 'rgba(148,163,184,0.55)', mt: 0.25 }} />
+              )}
+              <Box sx={{ minWidth: 48 }}>
+                <Typography sx={{ color: done ? 'rgba(203,213,225,0.55)' : '#22d3ee', fontWeight: 800, fontSize: '0.74rem', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  {row.day}
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.5)', fontSize: '0.66rem' }}>{row.label}</Typography>
+              </Box>
+              <Typography
+                sx={{
+                  flex: 1,
+                  color: done ? 'rgba(203,213,225,0.55)' : '#e2e8f0',
+                  fontSize: '0.84rem',
+                  lineHeight: 1.5,
+                  textDecoration: done ? 'line-through' : 'none',
+                }}
+              >
+                {row.action}
+              </Typography>
+            </Stack>
+          );
+        })}
+      </Stack>
+    </Paper>
   );
 }
 
@@ -527,6 +676,7 @@ function StatCard({ label, value, accent, hint }: StatCardProps) {
 interface TargetDrawerProps {
   open: boolean;
   initial: IndustryTarget | null;
+  allTargets: IndustryTarget[];
   onClose: () => void;
   onSaved: () => void;
 }
@@ -562,7 +712,7 @@ function parseProductions(text: string): IndustryTargetProduction[] {
     });
 }
 
-function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
+function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDrawerProps) {
   const [form, setForm] = useState<IndustryTargetInput>({});
   const [productionsText, setProductionsText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -588,6 +738,8 @@ function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
         nextActionDue: initial.next_action_due,
         recentProductions: initial.recent_productions ?? [],
         mutualConnection: initial.mutual_connection ?? '',
+        referredById: initial.referred_by_id ?? null,
+        referralGeneration: initial.referral_generation ?? 0,
       });
       setProductionsText(serializeProductions(initial.recent_productions ?? []));
     } else {
@@ -706,6 +858,28 @@ function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
                 onChange={(e) => setForm((p) => ({ ...p, mutualConnection: e.target.value }))}
                 placeholder="Eks: Maria Hansen (Stella), Anders Berg (NFI)"
               />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Warm-intro fra (referral-kilde)</InputLabel>
+                <Select
+                  label="Warm-intro fra (referral-kilde)"
+                  value={form.referredById ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value || null;
+                    const referrer = v ? allTargets.find((t) => t.id === v) : null;
+                    const inferredGen = referrer ? Math.max(1, (referrer.referral_generation ?? 0) + 1) : 0;
+                    setForm((p) => ({ ...p, referredById: v, referralGeneration: inferredGen }));
+                  }}
+                >
+                  <MenuItem value=""><em>(Cold target — ingen intro)</em></MenuItem>
+                  {allTargets
+                    .filter((t) => t.id !== initial?.id)
+                    .map((t) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {t.full_name}{t.company ? ` · ${t.company}` : ''}{t.referral_generation ? ` · G${t.referral_generation}` : ''}
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
             </Stack>
           </Box>
         </Stack>
