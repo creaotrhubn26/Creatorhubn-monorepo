@@ -252,6 +252,19 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [exportResult, setExportResult] = useState<{ outputPath: string; durationSec: number } | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  // Real suggestion cards from Claude
+  type SuggestionAction = "focus" | "trim" | "skip" | "promote";
+  type Suggestion = {
+    title: string;
+    description: string;
+    targetPickIndex: number;
+    action: SuggestionAction;
+    primaryLabel?: string;
+  };
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggBusy, setSuggBusy] = useState(false);
+  const [suggError, setSuggError] = useState<string | null>(null);
+
   // Trim state — adjusts focused pick's startSec/endSec via local override
   const [pickOverrides, setPickOverrides] = useState<Record<number, { startSec?: number; endSec?: number }>>({});
   const [trimMode, setTrimMode] = useState(false);
@@ -445,6 +458,106 @@ Du MÅ kalle generate_alternate_edit-verktøyet med en re-ordned pickOrder + rat
       setAltBusy(null);
     }
   }, [altBusy, filteredPicks, projectTitle, activeSong]);
+
+  // ─── Real Suggestion Cards: Claude analyserer + foreslår 3 konkrete forbedringer ───
+  const fetchSuggestions = useCallback(async () => {
+    if (suggBusy || filteredPicks.length === 0) return;
+    setSuggBusy(true);
+    setSuggError(null);
+    const pickSummary = filteredPicks.map((p, i) => ({
+      pos: i + 1, index: p.index, duration: p.durationSec,
+      score: p.score, chapter: p.chapter ?? "?",
+      topSignals: p.signals
+        ? Object.entries(p.signals)
+            .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+            .slice(0, 3)
+            .map(([k, v]) => `${k}=${(v as number).toFixed(2)}`)
+            .join(",")
+        : "",
+    }));
+    const systemPrompt = `Du er en AI Creative Director som ser etter konkrete forbedringer i en wedding-highlight. Du skal returnere NØYAKTIG 3 actionable forslag basert på sekvensen og signal-data.
+
+Sekvens (${filteredPicks.length} picks):
+${pickSummary.map(p => `  pos ${p.pos}: shot#${p.index} chapter=${p.chapter} ${p.duration.toFixed(2)}s score=${p.score.toFixed(2)} signals[${p.topSignals}]`).join("\n")}
+
+Project: "${projectTitle}" — total ${formatTime(totalDuration)}
+Story balance: Romantikk ${balance.romantikk}%, Familie ${balance.familie}%, Detaljer ${balance.detaljer}%, Emosjon ${balance.emosjon}%, Energi ${balance.energi}%
+
+For hvert forslag oppgi:
+  title (norsk, kort 3-7 ord)
+  description (norsk, 1 setning som forklarer hvorfor)
+  targetPickIndex (faktisk shot#-index fra sekvensen)
+  action: "focus" (vis klippet) | "trim" (juster lengde) | "skip" (fjern) | "promote" (flytt til høyere posisjon)
+
+Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
+    try {
+      const resp: any = await invoke("claude_chat", {
+        messages: [{ role: "user", content: "Gi 3 konkrete forbedringsforslag for denne sekvensen." }],
+        system: systemPrompt,
+        model: "claude-opus-4-7",
+        maxTokens: 1200,
+        tools: [{
+          name: "generate_suggestions",
+          description: "Return 3 actionable improvement suggestions for the highlight",
+          input_schema: {
+            type: "object",
+            properties: {
+              suggestions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title:           { type: "string" },
+                    description:     { type: "string" },
+                    targetPickIndex: { type: "integer" },
+                    action:          { type: "string", enum: ["focus", "trim", "skip", "promote"] },
+                  },
+                  required: ["title", "description", "targetPickIndex", "action"],
+                },
+                minItems: 3,
+                maxItems: 3,
+              },
+            },
+            required: ["suggestions"],
+          },
+        }],
+      });
+      const blocks = resp?.content ?? [];
+      const toolBlock = blocks.find((b: any) => b.type === "tool_use" && b.name === "generate_suggestions");
+      if (!toolBlock) throw new Error("Claude returnerte ikke tool-call.");
+      const raw = (toolBlock.input?.suggestions ?? []) as Suggestion[];
+      const validIdx = new Set(filteredPicks.map(p => p.index));
+      const clean = raw.filter(s => validIdx.has(s.targetPickIndex));
+      if (clean.length === 0) throw new Error("Claude foreslo picks som ikke finnes i sekvensen.");
+      setSuggestions(clean);
+    } catch (e: any) {
+      setSuggError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil"));
+    } finally {
+      setSuggBusy(false);
+    }
+  }, [suggBusy, filteredPicks, projectTitle, totalDuration, balance]);
+
+  // ─── Apply suggestion: execute the suggested action ───
+  const applySuggestion = useCallback((s: Suggestion) => {
+    const idx = filteredPicks.findIndex(p => p.index === s.targetPickIndex);
+    if (idx < 0) return;
+    setFocusedPickIdx(idx);
+    if (s.action === "trim") {
+      setTrimMode(true);
+    } else if (s.action === "skip") {
+      // Add to excluded — toggle off chapter that contains only this pick if possible,
+      // else just inform user (more nuanced "skip individual pick" is future-work).
+      const pick = filteredPicks[idx];
+      const chapter = (pick.chapter || "details").toLowerCase();
+      const sameChapter = filteredPicks.filter(p => (p.chapter || "details").toLowerCase() === chapter);
+      if (sameChapter.length === 1) toggleChapter(chapter);
+    } else if (s.action === "promote") {
+      // Move pick to front of order
+      const newOrder = [s.targetPickIndex, ...filteredPicks.filter(p => p.index !== s.targetPickIndex).map(p => p.index)];
+      setActivePickOrder(newOrder);
+    }
+    // For "focus" action — just focus, already done above
+  }, [filteredPicks, toggleChapter]);
 
   // ─── Eksport: kall assemble_highlight_with_music for å render MP4 ───
   const handleExport = useCallback(async () => {
@@ -818,14 +931,29 @@ ${ctxLines.join("\n")}`;
             </div>
           </div>
 
-          {/* Claude status bar (Phase 3 placeholder — shows real state, no fake messages) */}
+          {/* Claude status bar — wired to real actions */}
           <div className="ce-claude-status">
             <div className="ce-claude-status-icon"><IconSparkle size={14} /></div>
             <div className="ce-claude-status-text">
-              Claude ser på tidslinjen din … <span className="ce-collab">● Samarbeider</span>
+              {suggBusy ? "Claude analyserer sekvensen …"
+                : suggestions.length > 0 ? `Claude har ${suggestions.length} forslag klare`
+                : "Claude ser på tidslinjen din"}
+              <span className="ce-collab"> ● Samarbeider</span>
             </div>
-            <button className="ce-claude-ask">⚪ Be Claude om råd</button>
-            <button className="ce-claude-suggest">✨ Vis forslag <span className="ce-badge">3</span></button>
+            <button
+              className="ce-claude-ask"
+              onClick={analyzeNarrativeFlow}
+              disabled={flowBusy}
+            >
+              {flowBusy ? "🔍 Analyserer …" : "🔍 Analyser flyt"}
+            </button>
+            <button
+              className="ce-claude-suggest"
+              onClick={fetchSuggestions}
+              disabled={suggBusy}
+            >
+              {suggBusy ? "✨ Henter …" : <>✨ {suggestions.length > 0 ? "Oppdater" : "Hent"} forslag {suggestions.length > 0 && <span className="ce-badge">{suggestions.length}</span>}</>}
+            </button>
           </div>
 
           {/* Timeline strip */}
@@ -1012,26 +1140,45 @@ ${ctxLines.join("\n")}`;
 
           <div className="ce-claude-suggestions">
             <div className="ce-claude-suggest-header">
-              <span>Forslag (3)</span>
-              <button className="ce-claude-accept-all">Godta alle</button>
+              <span>Forslag {suggestions.length > 0 && `(${suggestions.length})`}</span>
+              <button
+                className="ce-claude-accept-all"
+                onClick={fetchSuggestions}
+                disabled={suggBusy}
+              >
+                {suggBusy ? "Henter…" : suggestions.length > 0 ? "Hent på nytt" : "Hent forslag"}
+              </button>
             </div>
-            <SuggestionCard
-              thumb={segments[3]?.picks[0]?.thumbnailPath}
-              title="Juster lengden på «Portretter»"
-              desc="Jeg foreslår å kutte 10–15 sekunder for å stramme opp flyten."
-            />
-            <SuggestionCard
-              thumb={segments[1]?.picks[0]?.thumbnailPath}
-              title="Legg til reaksjon etter første kyss"
-              desc="Et klipp av gjestenes reaksjon vil forsterke øyeblikket."
-            />
-            <SuggestionCard
-              thumb={segments[5]?.picks[0]?.thumbnailPath}
-              title="Bytt rekkefølge på taler og dans"
-              desc="Å legge taler før første dans gir bedre emosjonell oppbygging."
-              primaryLabel="Prøv rekkefølge"
-              secondaryLabel="Se mer"
-            />
+            {suggError && <div className="ce-claude-alt-error">⚠ {suggError}</div>}
+            {!suggBusy && suggestions.length === 0 && !suggError && (
+              <div className="ce-suggest-empty">
+                Klikk "Hent forslag" så analyserer Claude sekvensen og gir 3 konkrete forbedringer.
+              </div>
+            )}
+            {suggestions.map((s, i) => {
+              const targetPick = filteredPicks.find(p => p.index === s.targetPickIndex);
+              const actionLabel = {
+                focus: "Vis klipp",
+                trim:  "Juster lengde",
+                skip:  "Fjern",
+                promote: "Flytt frem",
+              }[s.action];
+              return (
+                <SuggestionCard
+                  key={`${s.targetPickIndex}-${i}`}
+                  thumb={targetPick?.thumbnailPath}
+                  title={s.title}
+                  desc={s.description}
+                  primaryLabel={actionLabel}
+                  secondaryLabel="Se klipp"
+                  onPrimary={() => applySuggestion(s)}
+                  onSecondary={() => {
+                    const idx = filteredPicks.findIndex(p => p.index === s.targetPickIndex);
+                    if (idx >= 0) setFocusedPickIdx(idx);
+                  }}
+                />
+              );
+            })}
           </div>
 
           <div className="ce-claude-chat">
@@ -1187,12 +1334,14 @@ function TrimPanel({ pick, originalPick, onChange, onReset }: {
   );
 }
 
-function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", secondaryLabel = "Se klipp" }: {
+function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", secondaryLabel = "Se klipp", onPrimary, onSecondary }: {
   thumb?: string;
   title: string;
   desc: string;
   primaryLabel?: string;
   secondaryLabel?: string;
+  onPrimary?: () => void;
+  onSecondary?: () => void;
 }) {
   return (
     <div className="ce-suggest-card">
@@ -1205,8 +1354,8 @@ function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", sec
         <div className="ce-suggest-title">{title}</div>
         <div className="ce-suggest-desc">{desc}</div>
         <div className="ce-suggest-actions">
-          <button className="ce-suggest-primary">{primaryLabel}</button>
-          <button className="ce-suggest-secondary">{secondaryLabel}</button>
+          <button className="ce-suggest-primary" onClick={onPrimary}>{primaryLabel}</button>
+          <button className="ce-suggest-secondary" onClick={onSecondary}>{secondaryLabel}</button>
         </div>
       </div>
     </div>
