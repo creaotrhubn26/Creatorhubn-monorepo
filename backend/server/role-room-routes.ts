@@ -160,7 +160,17 @@ import {
   getCampaignById,
   listCampaignsForUser,
   sumManagementFeeForPeriod,
+  sumSpendForProjectPeriod,
 } from './role-room-ads-db.js';
+import {
+  getBudget,
+  setBudget,
+  requestOverage,
+  approveOverage,
+  assertWithinBudget,
+  computeBudgetStatus,
+  BudgetExceededError,
+} from './role-room-ads-budget.js';
 import { syncMetaCampaignSpend, syncCampaignSpend } from './role-room-ads-sync.js';
 import {
   buildAdsConnectorRegistry,
@@ -21879,10 +21889,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const token = await resolveMetaToken(userId);
         if (!token) return res.status(412).json({ error: 'meta_not_connected' });
 
+        // §2.3 budget gate: don't resume spending once the period cap is reached
+        // (unless the client has approved a higher ramme).
+        const period = new Date().toISOString().slice(0, 7);
+        const spent = await sumSpendForProjectPeriod(pool, campaign.projectId, period);
+        await assertWithinBudget(pool, campaign.projectId, period, spent);
+
         await resumeMetaCampaign(token, campaign.externalCampaignId);
         const updated = await updateCampaignStatus(pool, campaign.id, 'active');
         res.json({ campaign: updated });
       } catch (error) {
+        if (error instanceof BudgetExceededError) {
+          return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+        }
         if (error instanceof MetaAdsApiError) {
           return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
         }
@@ -22043,6 +22062,119 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load spend summary', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Ads budsjett-tak (§3 / §2.3) ─────────────────────────
+  // Kunden setter maks annonsekostnad per periode; produsenten kan ikke
+  // overskride uten kundens skriftlige godkjenning (overage).
+  async function isClientForProject(req: Request, projectId: string): Promise<boolean> {
+    const record = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    const effective = getEffectiveProjectRoleRecord(req, record);
+    const role = (effective?.role ?? '').toLowerCase();
+    return role === 'client' || role === 'client_reviewer';
+  }
+
+  const currentPeriod = () => new Date().toISOString().slice(0, 7);
+
+  router.get(
+    '/ads/budget',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        const period = typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
+          ? req.query.period
+          : currentPeriod();
+        const budget = await getBudget(pool, projectId, period);
+        const actualSpendNok = await sumSpendForProjectPeriod(pool, projectId, period);
+        const status = computeBudgetStatus({
+          hasBudget: !!budget,
+          maxSpendNok: budget?.maxSpendNok ?? 0,
+          approvedOverageNok: budget?.approvedOverageNok ?? 0,
+          actualSpendNok,
+          overageRequestedNok: budget?.overageRequestedNok ?? null,
+        });
+        res.json({ period, status, canEdit: await isClientForProject(req, projectId) });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load budget', detail: String(error) });
+      }
+    },
+  );
+
+  router.put(
+    '/ads/budget',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, maxSpendNok } = req.body ?? {};
+        const period = typeof req.body?.period === 'string' && /^\d{4}-\d{2}$/.test(req.body.period)
+          ? req.body.period
+          : currentPeriod();
+        if (!projectId || typeof maxSpendNok !== 'number' || maxSpendNok < 0) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'projectId + maxSpendNok (>=0) required' });
+        }
+        if (!(await isClientForProject(req, projectId))) {
+          return res.status(403).json({ error: 'client_only', detail: 'Bare kunden kan sette budsjettet (§3.1).' });
+        }
+        const identifiers = getUserIdentifiers(req);
+        const budget = await setBudget(pool, projectId, period, maxSpendNok, identifiers[0] ?? 'klient');
+        res.json({ budget });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to set budget', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/ads/budget/request-overage',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, requestedNok, note } = req.body ?? {};
+        const period = typeof req.body?.period === 'string' && /^\d{4}-\d{2}$/.test(req.body.period)
+          ? req.body.period
+          : currentPeriod();
+        if (!projectId || typeof requestedNok !== 'number' || requestedNok < 0) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'projectId + requestedNok (>=0) required' });
+        }
+        const identifiers = getUserIdentifiers(req);
+        const budget = await requestOverage(
+          pool, projectId, period, requestedNok,
+          typeof note === 'string' ? note : null,
+          identifiers[0] ?? 'produsent',
+        );
+        if (!budget) return res.status(404).json({ error: 'budget_not_set', detail: 'Kunden må sette et budsjett først.' });
+        res.json({ budget });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to request overage', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/ads/budget/approve-overage',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, approvedOverageNok } = req.body ?? {};
+        const period = typeof req.body?.period === 'string' && /^\d{4}-\d{2}$/.test(req.body.period)
+          ? req.body.period
+          : currentPeriod();
+        if (!projectId || typeof approvedOverageNok !== 'number' || approvedOverageNok < 0) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'projectId + approvedOverageNok (>=0) required' });
+        }
+        if (!(await isClientForProject(req, projectId))) {
+          return res.status(403).json({ error: 'client_only', detail: 'Bare kunden kan godkjenne en høyere ramme (§2.3).' });
+        }
+        const identifiers = getUserIdentifiers(req);
+        const budget = await approveOverage(pool, projectId, period, approvedOverageNok, identifiers[0] ?? 'klient');
+        if (!budget) return res.status(404).json({ error: 'budget_not_set' });
+        res.json({ budget });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to approve overage', detail: String(error) });
       }
     },
   );

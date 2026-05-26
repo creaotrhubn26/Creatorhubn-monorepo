@@ -379,5 +379,24 @@ export async function sumManagementFeeForPeriod(
   };
 }
 
+/**
+ * Total actual ad spend (NOK, eks. påslag) for all campaigns in a project for a
+ * billing period. This is what the §3 budget cap compares against (§3.2).
+ */
+export async function sumSpendForProjectPeriod(
+  pool: Pool,
+  projectId: string,
+  period: string,
+): Promise<number> {
+  const result = await pool.query<{ spend: string }>(
+    `SELECT COALESCE(SUM(f.spend_nok), 0)::text AS spend
+       FROM ads_management_fee_usage f
+       JOIN ads_campaigns c ON c.id = f.campaign_id
+      WHERE c.project_id = $1 AND f.billing_period = $2`,
+    [projectId, period],
+  );
+  return Number(result.rows[0]?.spend ?? 0);
+}
+
 // Re-export so consumers don't have to pull from two modules.
 export { ADS_METER_EVENT_NAMES };
