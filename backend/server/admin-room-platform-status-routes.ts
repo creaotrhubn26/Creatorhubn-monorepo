@@ -102,7 +102,9 @@ async function checkNeon(): Promise<ProviderStatus> {
     return { ...base, health: 'unconfigured', message: 'NEON_API_KEY ikke satt', metrics: {} };
   }
   try {
-    const response = await fetchWithTimeout('https://console.neon.tech/api/v2/projects?limit=100', {
+    const orgId = process.env.NEON_ORG_ID;
+    const url = `https://console.neon.tech/api/v2/projects?limit=100${orgId ? `&org_id=${encodeURIComponent(orgId)}` : ''}`;
+    const response = await fetchWithTimeout(url, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!response.ok) throw new Error(`Neon HTTP ${response.status}`);

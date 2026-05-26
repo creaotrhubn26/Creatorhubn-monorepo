@@ -129,7 +129,9 @@ interface NeonProjectSummary {
 
 async function fetchNeonProjects(token: string): Promise<NeonProjectSummary[]> {
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
-  const response = await fetch('https://console.neon.tech/api/v2/projects?limit=100', { headers });
+  const orgId = process.env.NEON_ORG_ID;
+  const url = `https://console.neon.tech/api/v2/projects?limit=100${orgId ? `&org_id=${encodeURIComponent(orgId)}` : ''}`;
+  const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`Neon API ${response.status}`);
   const payload = await response.json() as { projects: NeonProjectSummary[] };
   return payload.projects ?? [];
