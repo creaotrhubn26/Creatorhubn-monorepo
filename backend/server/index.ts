@@ -67564,6 +67564,7 @@ setupContractsRoutes({
   app,
   pool,
   db,
+  requireUserSession,
   mapContractRecord,
   fetchContractById,
   syncContractLifecycleArtifacts,

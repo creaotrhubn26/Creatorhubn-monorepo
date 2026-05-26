@@ -17,6 +17,7 @@ export interface ContractsRoutesDeps {
   app: express.Application;
   pool: Pool;
   db: NodePgDatabase<typeof schema>;
+  requireUserSession: (req: any, res: any) => any;
   mapContractRecord: (row: any) => any;
   fetchContractById: (contractId: string) => Promise<any>;
   syncContractLifecycleArtifacts: (params: any) => Promise<void>;
@@ -32,6 +33,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
     app,
     pool,
     db,
+    requireUserSession,
     mapContractRecord,
     fetchContractById,
     syncContractLifecycleArtifacts,
@@ -576,6 +578,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
 
@@ -694,6 +697,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.put("/api/contracts/:contractId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
 
@@ -807,6 +811,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/sign", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
 
@@ -1038,6 +1043,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/google-esignature", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const preferredUserId = await resolveContractUserId(req);
       const response = await sendContractGoogleESignature(pool, {
@@ -1072,6 +1078,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/backup-drive", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const preferredUserId = await resolveContractUserId(req);
       const response = await prepareContractGoogleESignature(pool, {
@@ -1128,6 +1135,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/prepare",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const preferredUserId = await resolveContractUserId(req);
         const response = await prepareContractGoogleESignature(pool, {
@@ -1165,6 +1173,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/send",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const preferredUserId = await resolveContractUserId(req);
         const response = await sendContractGoogleESignature(pool, {
@@ -1200,6 +1209,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/sync",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const preferredUserId = await resolveContractUserId(req);
         const response = await syncContractGoogleESignature(pool, {
@@ -1238,6 +1248,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/status",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const preferredUserId = await resolveContractUserId(req);
         const status = readString(req.body?.status) as any;
@@ -1300,6 +1311,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   );
 
   app.put("/api/contracts/:contractId/status", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const status = normalizeContractStatusValue(req.body?.status);
@@ -1335,6 +1347,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.delete("/api/contracts/:contractId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const contract = await fetchContractById(req.params.contractId);
@@ -1408,6 +1421,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/send-email", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
 
