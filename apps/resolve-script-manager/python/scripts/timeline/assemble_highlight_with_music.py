@@ -239,9 +239,22 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
 
     output_path = (params.get("outputPath") or "").strip()
+    base = os.path.splitext(os.path.basename(video_path))[0]
+    default_filename = f"{base}_highlight.mp4"
     if not output_path:
-        base = os.path.splitext(os.path.basename(video_path))[0]
-        output_path = os.path.expanduser(f"~/Desktop/{base}_highlight.mp4")
+        output_path = os.path.expanduser(f"~/Desktop/{default_filename}")
+    else:
+        output_path = os.path.expanduser(output_path)
+        # If user passed a directory, append our default filename
+        if os.path.isdir(output_path) or output_path.endswith(("/", os.sep)):
+            output_path = os.path.join(output_path.rstrip(os.sep), default_filename)
+        elif not os.path.splitext(output_path)[1]:
+            # No extension — assume it's a directory-like path
+            output_path = os.path.join(output_path, default_filename)
+        elif not output_path.lower().endswith(".mp4"):
+            # Has wrong extension — replace with .mp4
+            output_path = os.path.splitext(output_path)[0] + ".mp4"
+    bridge.log(f"Output: {output_path}")
 
     strategy = (params.get("musicStrategy") or "main+climax").lower()
     xfade_normal = float(params.get("crossfadeSec") or 0.30)

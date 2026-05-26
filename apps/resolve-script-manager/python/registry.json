@@ -1476,7 +1476,7 @@
       "description": "Ende-til-ende pipeline: leser cached picks + music advisor, velger hovedlåt (mest dominerende av source) + climax-låt (energi-kontrast med høyere BPM), laster ned begge fra YouTube, cross-correlate audio-sync mot source, smart-reorder picks (ascending score + climax sist), beat-snap pick-durations, og rendrer 1080p MP4 med crossfades (0.3s normal, 1.5s exp-curve inn til climax). Erstatter 6 manuelle iterasjoner med ett kommando-kall.",
       "requiredInputs": [
         {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
-        {"key": "outputPath", "label": "Output MP4 path (default ~/Desktop)", "type": "text", "required": false},
+        {"key": "outputPath", "label": "Output mappe ELLER full .mp4-path (default ~/Desktop/<filmnavn>_highlight.mp4)", "type": "text", "required": false},
         {"key": "musicStrategy", "label": "Music strategy: main+climax | single | auto", "type": "text", "required": false},
         {"key": "crossfadeSec", "label": "Normal crossfade duration (default 0.30)", "type": "number", "required": false},
         {"key": "climaxCrossfadeSec", "label": "Climax crossfade duration (default 1.50)", "type": "number", "required": false}
