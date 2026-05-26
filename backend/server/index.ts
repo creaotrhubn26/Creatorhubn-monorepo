@@ -359,6 +359,7 @@ import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterAiRoutes } from "./role-room-newsletter-ai-routes";
+import { setupTheRoleRoomSitemapRoutes } from "./theroleroom-sitemap-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
 import { setupAdminPlatformCostSyncRoutes } from "./admin-room-platform-cost-sync-routes";
 import { setupAdminPlatformStatusRoutes } from "./admin-room-platform-status-routes";
@@ -17742,6 +17743,9 @@ setupNewsletterAiRoutes({
   requireAdminRoomAccess,
   logAdminActivity,
 });
+
+// ── Dynamisk theroleroom-sitemap.xml — inkluderer publiserte brief-utgaver
+setupTheRoleRoomSitemapRoutes({ app, pool });
 
 // ── Role Room economy — Stripe-subscribers, kostnads-margin, plattform-kostnader
 setupAdminRoleRoomEconomyRoutes({

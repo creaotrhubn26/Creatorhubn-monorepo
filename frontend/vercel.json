@@ -91,7 +91,7 @@
           "value": "(www\\.)?theroleroom\\.com"
         }
       ],
-      "destination": "/theroleroom-sitemap.xml"
+      "destination": "https://creatorhub-backend-rtbl.onrender.com/api/theroleroom-sitemap.xml"
     },
     {
       "source": "/cdn/(.*)",
