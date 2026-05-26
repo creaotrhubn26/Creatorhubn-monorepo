@@ -53,6 +53,7 @@ docker/
 *.md
 !README.md
 !ipad/CaptureApp/TESTFLIGHT.md
+!apps/resolve-script-manager/RELEASE.md
 docs/
 !docs/
 !docs/role-room/
