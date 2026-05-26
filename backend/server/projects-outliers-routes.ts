@@ -16,31 +16,9 @@ export function setupProjectsOutliersRoutes(
 ): void {
   const { app, requireUserSession, pool, db } = deps;
 
-  app.get("/api/projects/:projectId/story-logic", async (req, res) => {
-    console.warn("Deprecated unauthenticated Story Logic route blocked", {
-      projectId: req.params.projectId,
-      method: req.method,
-    });
-    res.status(410).json({
-      error: "story_logic_moved_to_role_room",
-      replacement: "/api/role-room/projects/:projectId/story-logic",
-    });
-  });
-
-  app.post("/api/projects/:projectId/story-logic", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
-    console.warn("Deprecated unauthenticated Story Logic route blocked", {
-      projectId: req.params.projectId,
-      method: req.method,
-    });
-    res.status(410).json({
-      error: "story_logic_moved_to_role_room",
-      replacement: "/api/role-room/projects/:projectId/story-logic",
-    });
-  });
-
-  app.delete("/api/projects/:projectId/story-logic", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+  // Live story-logic ligger i role-room-routes.ts; disse stubs blokkerer
+  // gammel non-authenticated URL for alle metoder (GET/POST/PUT/DELETE/PATCH).
+  app.all("/api/projects/:projectId/story-logic", (req, res) => {
     console.warn("Deprecated unauthenticated Story Logic route blocked", {
       projectId: req.params.projectId,
       method: req.method,
