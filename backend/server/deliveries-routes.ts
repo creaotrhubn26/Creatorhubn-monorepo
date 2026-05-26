@@ -5,11 +5,12 @@ import crypto from "crypto";
 export interface DeliveriesRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   normalizeEventType: (value: unknown) => string | null;
 }
 
 export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
-  const { app, pool, normalizeEventType } = deps;
+  const { app, pool, requireUserSession, normalizeEventType } = deps;
 
   // MUST be BEFORE parameterized /:vendorId routes to avoid shadowing
   app.get("/api/deliveries/access/:accessCode", async (req, res) => {
@@ -36,6 +37,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
   });
 
   app.get("/api/deliveries/:vendorId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { vendorId } = req.params;
       const { status } = req.query;
@@ -55,6 +57,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
   });
 
   app.get("/api/deliveries/:vendorId/:deliveryId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { vendorId, deliveryId } = req.params;
       const delivery = await pool.query(
@@ -76,6 +79,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
   });
 
   app.post("/api/deliveries/:vendorId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { vendorId } = req.params;
       const {
@@ -133,6 +137,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
   });
 
   app.patch("/api/deliveries/:vendorId/:deliveryId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { vendorId, deliveryId } = req.params;
       const updates = req.body;
@@ -184,6 +189,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
   });
 
   app.delete("/api/deliveries/:vendorId/:deliveryId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { vendorId, deliveryId } = req.params;
       await pool.query(
@@ -207,6 +213,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
   app.post(
     "/api/deliveries/:vendorId/:deliveryId/items",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { vendorId, deliveryId } = req.params;
         const delivery = await pool.query(
@@ -253,6 +260,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
   app.delete(
     "/api/deliveries/:vendorId/:deliveryId/items/:itemId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const { vendorId, deliveryId, itemId } = req.params;
         const delivery = await pool.query(

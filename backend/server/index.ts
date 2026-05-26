@@ -67232,7 +67232,7 @@ setupGooglePhotosRoutes({
 
 // /api/deliveries/* — 8 endpoints (public access + vendor CRUD for
 // deliveries og items). Selvstendig — kun pool + normalizeEventType.
-setupDeliveriesRoutes({ app, pool, normalizeEventType });
+setupDeliveriesRoutes({ app, pool, requireUserSession, normalizeEventType });
 
 // /api/audio-settings/* — 7 endpoints (ducking-/eq-presets, mixer-settings).
 // In-memory stores er kun brukt av disse handlerne; flyttet inn i modulen.
