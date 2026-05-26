@@ -67603,6 +67603,7 @@ setupCommunityRoutes({
   hasTable,
   tableExistsCache,
   tableColumnsCache,
+  requireUserSession,
 });
 setupUserRoutes({
   app,

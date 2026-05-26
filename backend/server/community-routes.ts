@@ -91,6 +91,7 @@ export interface CommunityRoutesDeps {
   hasTable: (tableName: string) => Promise<boolean>;
   tableExistsCache: Map<string, boolean>;
   tableColumnsCache: Map<string, Set<string>>;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
@@ -103,6 +104,7 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
     onboardUserToCommunity,
     hasTable,
     tableExistsCache,
+    requireUserSession,
     tableColumnsCache,
   } = deps;
 
@@ -1146,34 +1148,41 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
     res.json({ success: true });
   });
 
-  app.get("/api/community/mentors", (_req, res) => {
+  app.get("/api/community/mentors", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({ success: true, mentors: [] });
   });
 
-  app.get("/api/community/mentors/check-eligibility", (_req, res) => {
+  app.get("/api/community/mentors/check-eligibility", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({ success: true, eligible: false });
   });
 
-  app.get("/api/community/notifications/:userId/unread-count", (_req, res) => {
+  app.get("/api/community/notifications/:userId/unread-count", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({ success: true, count: 0 });
   });
 
-  app.get("/api/community/notifications/:userId/preferences", (_req, res) => {
+  app.get("/api/community/notifications/:userId/preferences", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({
       success: true,
       preferences: COMMUNITY_DEFAULT_NOTIFICATION_PREFERENCES,
     });
   });
 
-  app.put("/api/community/notifications/:userId/preferences", (_req, res) => {
+  app.put("/api/community/notifications/:userId/preferences", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({ success: true });
   });
 
-  app.post("/api/community/notifications/:userId/preferences", (_req, res) => {
+  app.post("/api/community/notifications/:userId/preferences", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({ success: true });
   });
 
-  app.get("/api/community/unanswered", (_req, res) => {
+  app.get("/api/community/unanswered", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({ success: true, unanswered: [], messages: [] });
   });
 
