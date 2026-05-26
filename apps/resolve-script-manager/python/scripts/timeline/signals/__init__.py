@@ -67,6 +67,15 @@ REGISTRY: tuple[SignalSpec, ...] = (
     {"name": "open_vocab", "module": "open_vocab",
      "description": "GroundingDINO text-prompt detection (bride/ring/cake)",
      "requires": ("groundingdino-py", "torch",)},
+    {"name": "action", "module": "action",
+     "description": "VideoMAE v2 action-classification (dancing/kissing/clapping)",
+     "requires": ("transformers", "torch",)},
+    {"name": "depth", "module": "depth",
+     "description": "Depth Anything v2 cinematic-depth-distribution score",
+     "requires": ("transformers", "torch",)},
+    {"name": "music_features", "module": "music_features",
+     "description": "MERT music-encoder for global mood/genre context",
+     "requires": ("transformers", "torch", "librosa",)},
 )
 
 

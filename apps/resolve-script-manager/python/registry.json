@@ -1217,6 +1217,38 @@
       "requiresTimeline": false
     },
     {
+      "id": "denoise_video",
+      "name": "Denoise video grain (Restormer + R2 weights)",
+      "category": "video",
+      "scriptPath": "scripts/video/denoise_video.py",
+      "description": "Transformer-basert grain-removal for low-light ceremony / ISO 6400+ footage. Krever R2-credentials + basicsr pip. ~2 fps på Apple Silicon M2 → 4-min input ≈ 50 min processing.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input video", "type": "file", "required": true}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "verify_audio_sync",
+      "name": "Verify audio-visual sync (SyncNet QC)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/verify_audio_sync.py",
+      "description": "Sjekk at lip-sync er korrekt på ferdig render før levering. Returnerer offset i frames + confidence. Catcher drift fra ffmpeg-splice eller variable-fps source. Krever R2-credentials + syncnet_python.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Rendered video", "type": "file", "required": true}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "upscale_to_4k",
       "name": "Upscale to 4K (Real-ESRGAN + R2 weights)",
       "category": "video",

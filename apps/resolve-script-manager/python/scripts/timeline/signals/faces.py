@@ -125,16 +125,111 @@ def _detect_and_match_face_recognition(image_path: str,
         return _count_faces_cv2(image_path), 0
 
 
-def _score(total: int, matched: int) -> float:
-    """Combine face-count + known-match into a single 0..1 signal."""
+def _score(total: int, matched: int, smile_bonus: float = 0.0) -> float:
+    """Combine face-count + known-match + smile-attribute into a single 0..1 signal.
+
+    smile_bonus: 0..0.15 — small additional boost for smiling/expressive faces
+    (FaceXFormer attribute), added on top of count + identity. Smiling shots
+    in highlights are typically more emotionally engaging.
+    """
     if total == 0:
         return 0.0
-    # Base curve: 1 face = 0.4, 2 = 0.75, 3 = 0.95, 4+ = 1.0
     base_curve = {1: 0.40, 2: 0.75, 3: 0.95}
     base = base_curve.get(total, 1.0 if total >= 4 else 0.0)
-    # Known-face bonus: each matched face up to 2 adds 0.10 (caps at 1.0)
     bonus = min(0.20, matched * 0.10)
-    return min(1.0, base + bonus)
+    return min(1.0, base + bonus + smile_bonus)
+
+
+# ─── FaceXFormer attribute extension (smile / age / expression) ─────────
+#
+# FaceXFormer (KAIST, ~250MB) gjør single-pass attribute-prediction:
+# age, gender, expression (smile / neutral / serious / surprised),
+# eye-glasses, hat, head-pose. Vi bruker kun `expression` for smile-bonus
+# i wedding-context: smiling shots scorer høyere enn neutral.
+#
+# Krever R2-downloaded FaceXFormer-weights + facexformer pip-package
+# (research, ikke clean pip). V1: graceful no-op om manglende — base
+# faces-signal fungerer uten.
+
+_FACEXFORMER_MODEL = None
+
+
+def _load_facexformer():
+    global _FACEXFORMER_MODEL
+    if _FACEXFORMER_MODEL is not None:
+        return _FACEXFORMER_MODEL
+    try:
+        sys_path_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+        if sys_path_root not in sys.path:
+            sys.path.insert(0, sys_path_root)
+        import ai_models  # noqa: E402
+    except ImportError:
+        return None
+    weights = ai_models.ensure_local_model("facexformer") if hasattr(
+        ai_models, "REGISTRY") and "facexformer" in ai_models.REGISTRY else None
+    if not weights:
+        return None
+    try:
+        # facexformer reference repo: https://github.com/Kartik-3004/facexformer
+        # The package isn't on PyPI under that name — users must install from
+        # source. If unavailable, return None (signal still functions without).
+        import facexformer  # type: ignore
+        from facexformer.network import FaceXFormer  # type: ignore
+        import torch  # type: ignore
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        model = FaceXFormer()
+        state = torch.load(weights, map_location=device)
+        model.load_state_dict(state.get("state_dict", state))
+        model = model.to(device)
+        model.eval()
+        _FACEXFORMER_MODEL = model
+        return model
+    except (ImportError, Exception):  # noqa: BLE001
+        return None
+
+
+def _smile_bonus_for_image(image_path: str, face_locations: list) -> float:
+    """If FaceXFormer is available, run it on each face crop and return a
+    smile-bonus 0..0.15. No-op if model unavailable."""
+    model = _load_facexformer()
+    if model is None or not face_locations:
+        return 0.0
+    try:
+        import cv2  # type: ignore
+        import torch  # type: ignore
+        img = cv2.imread(image_path)
+        if img is None:
+            return 0.0
+        smiles = 0
+        for (x, y, w, h) in face_locations:
+            x, y, w, h = int(x), int(y), int(w), int(h)
+            crop = img[y:y+h, x:x+w]
+            if crop.size == 0:
+                continue
+            resized = cv2.resize(crop, (224, 224))
+            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.
+            tensor = tensor.unsqueeze(0).to(next(model.parameters()).device)
+            with torch.no_grad():
+                out = model(tensor)
+                # FaceXFormer multi-head output — expression head returns
+                # logits over [neutral, happy, sad, surprised, angry, ...]
+                if isinstance(out, dict) and "expression" in out:
+                    expr_logits = out["expression"]
+                elif isinstance(out, (tuple, list)):
+                    expr_logits = out[0]
+                else:
+                    expr_logits = out
+                pred = int(torch.argmax(expr_logits, dim=-1).item())
+                # Heuristic: label-index 1 typically = "happy/smile" in
+                # standard expression-recognition datasets (FER2013-order)
+                if pred in (1, 3):  # happy or surprised (both positive valence)
+                    smiles += 1
+        # Cap bonus: max 0.15 when all faces smile
+        return min(0.15, smiles * 0.05)
+    except Exception:  # noqa: BLE001
+        return 0.0
 
 
 def compute(ffmpeg: str, ffprobe: str, video: str,
@@ -153,7 +248,27 @@ def compute(ffmpeg: str, ffprobe: str, video: str,
             else:
                 total = _count_faces_cv2(tmp)
                 matched = 0
-            out[i] = _score(total, matched)
+            # FaceXFormer smile-attribute bonus (#R2-batch-4)
+            # Needs raw bounding-boxes — re-detect to get them
+            smile_bonus = 0.0
+            try:
+                import cv2  # type: ignore
+                img = cv2.imread(tmp, cv2.IMREAD_GRAYSCALE)
+                if img is not None:
+                    cascade_path = os.path.join(
+                        cv2.data.haarcascades, "haarcascade_frontalface_default.xml"
+                    )
+                    if os.path.isfile(cascade_path):
+                        cascade = cv2.CascadeClassifier(cascade_path)
+                        boxes = cascade.detectMultiScale(
+                            img, scaleFactor=1.2, minNeighbors=5,
+                            minSize=(40, 40),
+                        )
+                        if boxes is not None and len(boxes) > 0:
+                            smile_bonus = _smile_bonus_for_image(tmp, boxes)
+            except Exception:  # noqa: BLE001
+                pass
+            out[i] = _score(total, matched, smile_bonus=smile_bonus)
         except Exception:  # noqa: BLE001
             out[i] = 0.0
         finally:

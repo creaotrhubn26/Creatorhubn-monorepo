@@ -34,10 +34,14 @@ WEDDING: GenreConfig = {
         "speech": -0.10,         # dialog-only shots don't carry highlight
         "exposure": -0.10,
         # NEW signals from R2-batch-3:
-        "audio_events": 0.18,    # applaus/latter/gråt — sterke moment-markører
-        "aesthetic":    0.15,    # LAION cinematic-score
-        "pose":         0.12,    # kneeling / raised-hand / praying
-        "open_vocab":   0.10,    # bride/ring/cake detection (text-prompt)
+        "audio_events": 0.15,    # applaus/latter/gråt — sterke moment-markører
+        "aesthetic":    0.12,    # LAION cinematic-score
+        "pose":         0.10,    # kneeling / raised-hand / praying
+        "open_vocab":   0.08,    # bride/ring/cake detection (text-prompt)
+        # NEW from R2-batch-4 (kun positive vekter; defer 0 for global signals):
+        "action":       0.12,    # VideoMAE per-shot action-classification
+        "depth":        0.08,    # Depth-cinematic (shallow-DOF signal)
+        "music_features": 0.0,   # global context, not per-shot
     },
     "chapter_targets": {
         "ceremony": 0.35,
@@ -59,9 +63,12 @@ MUSIC_VIDEO: GenreConfig = {
         "exposure": -0.05,
         # NEW:
         "audio_events": 0.05,   # music dominant, ikke applause
-        "aesthetic":    0.20,   # cinematic-look mest viktig for MV
-        "pose":         0.15,   # dance-poses + performance-gestures
+        "aesthetic":    0.18,   # cinematic-look mest viktig for MV
+        "pose":         0.13,   # dance-poses + performance-gestures
         "open_vocab":   0.0,    # wedding-prompts ikke relevant
+        "action":       0.15,   # dance/performance-actions
+        "depth":        0.10,   # cinematic shallow-DOF
+        "music_features": 0.0,  # global context for section-archetypes
     },
     "chapter_targets": None,
 }
@@ -79,9 +86,12 @@ CORPORATE: GenreConfig = {
         "exposure": -0.15,        # corporate must be clean
         # NEW:
         "audio_events": 0.0,     # ingen vekt — corporate er rolig
-        "aesthetic":    0.15,    # professional-look counts
+        "aesthetic":    0.13,    # professional-look counts
         "pose":         0.05,    # standing + sitting OK
         "open_vocab":   0.0,
+        "action":       0.05,
+        "depth":        0.08,
+        "music_features": 0.0,
     },
     "chapter_targets": None,
 }
@@ -98,10 +108,13 @@ DOCUMENTARY: GenreConfig = {
         "speech": 0.0,            # neutral — depends on shot context
         "exposure": -0.10,
         # NEW:
-        "audio_events": 0.15,    # laughter/tears/applause = documentary gold
-        "aesthetic":    0.10,
-        "pose":         0.08,
+        "audio_events": 0.13,    # laughter/tears/applause = documentary gold
+        "aesthetic":    0.08,
+        "pose":         0.06,
         "open_vocab":   0.05,    # generic pattern-detection
+        "action":       0.10,
+        "depth":        0.05,
+        "music_features": 0.0,
     },
     "chapter_targets": None,
 }
