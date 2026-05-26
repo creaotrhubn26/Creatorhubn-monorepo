@@ -23,7 +23,10 @@ import CloseIcon from '@mui/icons-material/Close';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
+import InsightsIcon from '@mui/icons-material/Insights';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import {
+  newsletterAiApi,
   newsletterIssuesApi,
   newsletterApi,
   newsletterTemplatesApi,
@@ -32,6 +35,7 @@ import {
   type NewsletterIssue,
   type NewsletterIssueStatus,
   type NewsletterTemplate,
+  type NewsletterWeeklyInsights,
 } from '../../../services/adminRoomApi';
 import NewsletterBlockBuilder from './NewsletterBlockBuilder';
 
@@ -124,6 +128,7 @@ export function NewsletterStudioTab() {
   const [editorSeed, setEditorSeed] = useState<NewsletterTemplate | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [clickReportFor, setClickReportFor] = useState<NewsletterIssue | null>(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [subscriberStats, setSubscriberStats] = useState<{ confirmed: number; pending: number; total: number } | null>(null);
 
@@ -269,6 +274,9 @@ export function NewsletterStudioTab() {
               <Chip label={`${subscriberStats.pending} avventer`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fde68a', fontWeight: 700 }} />
             </>
           ) : null}
+          <Button variant="outlined" startIcon={<InsightsIcon />} onClick={() => setInsightsOpen(true)} sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)' }}>
+            Ukens innsikt
+          </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleNew} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
             Ny utgave
           </Button>
@@ -424,6 +432,12 @@ export function NewsletterStudioTab() {
       <ClickReportDialog
         issue={clickReportFor}
         onClose={() => setClickReportFor(null)}
+        onError={setError}
+      />
+
+      <WeeklyInsightsDialog
+        open={insightsOpen}
+        onClose={() => setInsightsOpen(false)}
         onError={setError}
       />
 
@@ -670,6 +684,155 @@ function ClickReportDialog({ issue, onClose, onError }: { issue: NewsletterIssue
                 </Box>
               );
             })}
+          </Stack>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Weekly Insights — Claude-forslag fra ukens data ─────────────────
+
+function WeeklyInsightsDialog({ open, onClose, onError }: { open: boolean; onClose: () => void; onError: (msg: string) => void }) {
+  const [data, setData] = useState<NewsletterWeeklyInsights | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) { setData(null); return; }
+    setLoading(true);
+    newsletterAiApi.weeklyInsights()
+      .then(setData)
+      .catch((err) => onError((err as Error).message))
+      .finally(() => setLoading(false));
+  }, [open, onError]);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <InsightsIcon sx={{ color: '#a78bfa' }} />
+          <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Ukens innsikt — Claude-forslag</Typography>
+        </Stack>
+        <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
+      </DialogTitle>
+      <DialogContent>
+        {loading ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Stack alignItems="center" spacing={1}>
+              <AutoAwesomeIcon sx={{ color: '#a78bfa', fontSize: '2rem' }} />
+              <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.88rem' }}>Aggregér data + Claude analyserer …</Typography>
+            </Stack>
+          </Box>
+        ) : !data ? null : (
+          <Stack spacing={2.5}>
+            {/* Forslag */}
+            {data.suggestion ? (
+              <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(167,139,250,0.4)' }}>
+                <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.5 }}>
+                  Forslag fra Claude
+                </Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.3, mb: 1.5 }}>
+                  {data.suggestion.topic}
+                </Typography>
+                <Typography sx={{ color: 'rgba(229,231,235,0.85)', fontSize: '0.9rem', lineHeight: 1.65, mb: 1.5 }}>
+                  {data.suggestion.why}
+                </Typography>
+                <Box sx={{ p: 1.25, borderRadius: 1, bgcolor: 'rgba(34,197,94,0.08)', borderLeft: '3px solid #22c55e', mb: 1.5 }}>
+                  <Typography sx={{ color: '#86efac', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.5 }}>Data-anker</Typography>
+                  <Typography sx={{ color: 'rgba(229,231,235,0.9)', fontSize: '0.88rem' }}>{data.suggestion.dataAnchor}</Typography>
+                </Box>
+                <Box sx={{ p: 1.25, borderRadius: 1, bgcolor: 'rgba(251,191,36,0.08)', borderLeft: '3px solid #fbbf24', mb: 1.5 }}>
+                  <Typography sx={{ color: '#fde68a', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.5 }}>Åpningshook</Typography>
+                  <Typography sx={{ color: 'rgba(229,231,235,0.9)', fontSize: '0.88rem', fontStyle: 'italic' }}>{data.suggestion.draftHook}</Typography>
+                </Box>
+                {data.suggestion.angleAlternatives.length > 0 ? (
+                  <Box>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', fontWeight: 700, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Alternative vinkler</Typography>
+                    <Stack spacing={0.5}>
+                      {data.suggestion.angleAlternatives.map((alt) => (
+                        <Typography key={alt} sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.85rem' }}>· {alt}</Typography>
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : null}
+              </Box>
+            ) : data.suggestionError ? (
+              <Alert severity="warning">Claude-forslag feilet: {data.suggestionError}</Alert>
+            ) : null}
+
+            {/* Snapshot */}
+            <Box>
+              <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1 }}>
+                Rådata — siste 7 dager
+              </Typography>
+              <Stack spacing={1.5}>
+                {data.snapshot.signups.length > 0 ? (
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.14)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem', mb: 0.75 }}>Newsletter-signups per kilde</Typography>
+                    <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+                      {data.snapshot.signups.map((s) => (
+                        <Chip
+                          key={s.source}
+                          label={`${s.source}: ${s.last_7d}${s.change_pct !== null ? ` (${s.change_pct > 0 ? '+' : ''}${s.change_pct}%)` : ''}`}
+                          size="small"
+                          sx={{
+                            bgcolor: s.change_pct !== null && s.change_pct > 0 ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.15)',
+                            color: s.change_pct !== null && s.change_pct > 0 ? '#86efac' : '#cbd5e1',
+                            fontWeight: 700,
+                            fontSize: '0.72rem',
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : null}
+
+                {data.snapshot.tier1Activity.length > 0 ? (
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.14)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem', mb: 0.75 }}>T1/T2-aktivitet ({data.snapshot.tier1Activity.length})</Typography>
+                    <Stack spacing={0.5}>
+                      {data.snapshot.tier1Activity.slice(0, 6).map((a, idx) => (
+                        <Typography key={idx} sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                          • <strong>{a.name}</strong> ({a.tier} {a.segment}) — {a.kind}{a.note ? `: "${a.note}"` : ''}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : null}
+
+                {data.snapshot.topClickedLinks.length > 0 ? (
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.14)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem', mb: 0.75 }}>Mest klikket (siste 30d)</Typography>
+                    <Stack spacing={0.5}>
+                      {data.snapshot.topClickedLinks.slice(0, 5).map((c) => (
+                        <Typography key={c.url} sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem', wordBreak: 'break-all' }}>
+                          <Chip label={c.clicks} size="small" sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', height: 18, fontSize: '0.65rem', mr: 0.75, fontWeight: 700 }} />
+                          {c.url}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : null}
+
+                {data.snapshot.bestPerformingIssues.length > 0 ? (
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.14)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem', mb: 0.75 }}>Best open rate hittil</Typography>
+                    <Stack spacing={0.5}>
+                      {data.snapshot.bestPerformingIssues.map((i, idx) => (
+                        <Typography key={idx} sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                          <Chip label={i.open_rate_pct !== null ? `${i.open_rate_pct}%` : '—'} size="small" sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac', height: 18, fontSize: '0.65rem', mr: 0.75, fontWeight: 700 }} />
+                          {i.title}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : null}
+              </Stack>
+            </Box>
+
+            <Typography sx={{ color: 'rgba(203,213,225,0.45)', fontSize: '0.72rem', textAlign: 'center' }}>
+              Generert {new Date(data.generatedAt).toLocaleString('nb-NO')}
+            </Typography>
           </Stack>
         )}
       </DialogContent>

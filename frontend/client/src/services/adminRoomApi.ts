@@ -1212,7 +1212,30 @@ export interface NewsletterAiContentScore {
   improvements: Array<{ issue: string; suggestion: string }>;
 }
 
+export interface NewsletterWeeklyInsights {
+  snapshot: {
+    period: string;
+    signups: Array<{ source: string; last_7d: number; prev_7d: number; change_pct: number | null }>;
+    tier1Activity: Array<{ kind: string; name: string; tier: string; segment: string; note: string | null }>;
+    topClickedLinks: Array<{ url: string; clicks: number }>;
+    bestPerformingIssues: Array<{ title: string; subject: string; open_rate_pct: number | null }>;
+    recentSubjects: Array<{ title: string; subject: string }>;
+  };
+  suggestion: {
+    topic: string;
+    why: string;
+    dataAnchor: string;
+    draftHook: string;
+    angleAlternatives: string[];
+  } | null;
+  suggestionError: string | null;
+  generatedAt: string;
+}
+
 export const newsletterAiApi = {
+  weeklyInsights: async (): Promise<NewsletterWeeklyInsights> => {
+    return jsonFetch('/newsletter/role-room/ai/weekly-insights');
+  },
   subjectLines: async (input: { title: string; summary?: string; bodyMarkdown?: string }): Promise<{ subjects: NewsletterAiSubject[] }> => {
     return jsonFetch('/newsletter/role-room/ai/subject-lines', { method: 'POST', body: JSON.stringify(input) });
   },
