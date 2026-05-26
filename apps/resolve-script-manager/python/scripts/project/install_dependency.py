@@ -151,6 +151,14 @@ def _augmented_env() -> dict:
         if os.path.isdir(p) and p not in parts:
             parts.insert(0, p)
     env["PATH"] = ":".join(parts)
+
+    # CMake 4.x har fjernet bakoverkompatibilitet med CMake < 3.5. Eldre
+    # source-pakker (dlib 19.22.x, mange research-repoer) har fortsatt
+    # `cmake_minimum_required(VERSION 2.8)` og krasjer ved configure-trinn:
+    #   "Compatibility with CMake < 3.5 has been removed from CMake."
+    # CMake leser CMAKE_POLICY_VERSION_MINIMUM fra env og injecter det som
+    # min-version-policy hvis source ikke har en kompatibel verdi.
+    env.setdefault("CMAKE_POLICY_VERSION_MINIMUM", "3.5")
     return env
 
 
