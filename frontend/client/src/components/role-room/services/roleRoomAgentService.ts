@@ -970,6 +970,25 @@ export interface RoleRoomApprovalPolicy {
   canEdit: boolean;
 }
 
+export interface RoleRoomBudgetStatus {
+  hasBudget: boolean;
+  maxSpendNok: number;
+  approvedOverageNok: number;
+  effectiveCapNok: number;
+  actualSpendNok: number;
+  remainingNok: number;
+  utilizationPct: number;
+  isOverBudget: boolean;
+  isNearBudget: boolean;
+  overageRequestedNok: number | null;
+}
+
+export interface RoleRoomBudgetResult {
+  period: string;
+  status: RoleRoomBudgetStatus;
+  canEdit: boolean;
+}
+
 // ── Granted ad-asset overview (which Pages/accounts the client gave admin to) ──
 
 export interface RoleRoomGrantedMetaPage {
@@ -1350,6 +1369,42 @@ export const roleRoomAgentService = {
         body: JSON.stringify({ requireClientApproval }),
       },
     );
+    return response.ok;
+  },
+
+  async fetchAdsBudget(projectId: string, period?: string): Promise<RoleRoomBudgetResult | null> {
+    const qs = new URLSearchParams({ projectId, ...(period ? { period } : {}) });
+    const response = await fetch(`/api/role-room/ads/budget?${qs.toString()}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return null;
+    return (await response.json().catch(() => null)) as RoleRoomBudgetResult | null;
+  },
+
+  async setAdsBudget(projectId: string, maxSpendNok: number, period?: string): Promise<boolean> {
+    const response = await fetch('/api/role-room/ads/budget', {
+      method: 'PUT',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, maxSpendNok, ...(period ? { period } : {}) }),
+    });
+    return response.ok;
+  },
+
+  async requestAdsOverage(projectId: string, requestedNok: number, note?: string, period?: string): Promise<boolean> {
+    const response = await fetch('/api/role-room/ads/budget/request-overage', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, requestedNok, note, ...(period ? { period } : {}) }),
+    });
+    return response.ok;
+  },
+
+  async approveAdsOverage(projectId: string, approvedOverageNok: number, period?: string): Promise<boolean> {
+    const response = await fetch('/api/role-room/ads/budget/approve-overage', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, approvedOverageNok, ...(period ? { period } : {}) }),
+    });
     return response.ok;
   },
 
