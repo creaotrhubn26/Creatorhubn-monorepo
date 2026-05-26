@@ -35,6 +35,7 @@ import { SettingsModal, loadSettings, settingsToEnvVars } from "./components/Set
 import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
+import { CreativeEditorView } from "./components/CreativeEditorView";
 import { CommandPalette } from "./components/CommandPalette";
 import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
@@ -68,6 +69,7 @@ export default function App() {
   const [showPalette, setShowPalette] = useState(false);
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
+  const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
   useEffect(() => {
@@ -594,6 +596,11 @@ export default function App() {
           { id: "view_audio", title: "View: Audio",
             subtitle: "audio QC + sync tools",
             handler: () => setView("audio") },
+          { id: "creative_editor", title: "Åpne Creative Editor",
+            subtitle: "Pixel-perfect editor med segments + timeline + Claude assistent",
+            handler: () => setCreativeEditorPath(
+              "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_highlight_picks.json"
+            ) },
         ]}
       />
 
@@ -660,6 +667,14 @@ export default function App() {
           picksPath={highlightReviewPath}
           onClose={() => setHighlightReviewPath(null)}
           onBuilt={() => setHighlightReviewPath(null)}
+        />
+      )}
+
+      {creativeEditorPath && (
+        <CreativeEditorView
+          picksPath={creativeEditorPath}
+          advisorPath={creativeEditorPath.replace(/last_highlight_picks\.json$/, "music_advisor.json")}
+          onClose={() => setCreativeEditorPath(null)}
         />
       )}
 
