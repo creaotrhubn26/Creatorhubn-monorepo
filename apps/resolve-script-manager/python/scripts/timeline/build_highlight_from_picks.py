@@ -99,10 +99,20 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     source_item = items[0]
 
     bridge.progress(50, 100, "Creating timeline…")
+    # Auto-suffix if a timeline with this name already exists in the project
     timeline = media_pool.CreateEmptyTimeline(timeline_name)
     if not timeline:
-        bridge.error(f"CreateEmptyTimeline('{timeline_name}') returned None — name may exist")
-        sys.exit(1)
+        original_name = timeline_name
+        for n in range(2, 100):
+            candidate = f"{original_name} {n}"
+            timeline = media_pool.CreateEmptyTimeline(candidate)
+            if timeline:
+                timeline_name = candidate
+                bridge.log(f"Timeline '{original_name}' existed; created '{candidate}' instead")
+                break
+        else:
+            bridge.error(f"Could not create timeline after 100 attempts (project has > 100 with name '{original_name}'?)")
+            sys.exit(1)
     conn.project.SetCurrentTimeline(timeline)
 
     try:
