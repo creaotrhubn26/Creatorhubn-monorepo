@@ -1184,7 +1184,26 @@
       "category": "timeline",
       "scriptPath": "scripts/timeline/build_highlight_from_picks.py",
       "description": "Tar approved picks fra interactive review og bygger den endelige Resolve-timeline. Kjøres etter extract_highlight_from_film i review-mode.",
-      "requiredInputs": [],
+      "requiredInputs": [
+        {"key": "audioMix", "label": "Audio-mix (music_only / dialog_preserve)", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "build_delivery_variants",
+      "name": "Build Delivery Variants (teaser/IG/gjestebok/couple/family/ceremony)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_delivery_variants.py",
+      "description": "Produser flere Resolve-timelines fra samme approved picks — én per leveringsformat (teaser 30s, instagram 60s, gjestebok 3-4 min, couple 8-10 min, family 12-15 min, ceremony-only). Hver har sin egen duration + chapter-mix.",
+      "requiredInputs": [
+        {"key": "variants", "label": "Variants (comma-sep, blank = alle 6)", "type": "text", "required": false},
+        {"key": "timelinePrefix", "label": "Timeline-navn prefix (blank = source-basename)", "type": "text", "required": false}
+      ],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",
       "status": "ready",

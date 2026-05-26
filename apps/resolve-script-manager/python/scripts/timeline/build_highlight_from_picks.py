@@ -40,6 +40,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     picks = params.get("picks") or []
     source_video = (params.get("sourceVideo") or "").strip()
     timeline_name = (params.get("timelineName") or "").strip()
+    # #432 audio-ducking strategy:
+    #   "music_only"     — mute linked audio entirely (default, original behavior)
+    #   "dialog_preserve" — keep linked audio + reduce music -6dB so dialog cuts through
+    audio_mix = (params.get("audioMix") or "music_only").strip().lower()
+    if audio_mix not in ("music_only", "dialog_preserve"):
+        audio_mix = "music_only"
 
     if not picks or not source_video:
         cached = _load_cached_picks()
@@ -219,9 +225,6 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 if songs_placed:
                     bridge.log(f"Placed {len(songs_placed)} song instance(s) on A{song_track}")
                     # #53: verify song-placement-overlap before muting linked audio.
-                    # If songs only cover a fraction of the highlight, muting
-                    # everything leaves the uncovered sections silent — much
-                    # worse than keeping the original audio under those parts.
                     covered_sec = sum(t_dur for (_p, _ts, t_dur) in song_placements)
                     highlight_sec = total
                     coverage = covered_sec / highlight_sec if highlight_sec > 0 else 0
@@ -229,7 +232,27 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                         f"Song-coverage check: {covered_sec:.1f}s of "
                         f"{highlight_sec:.1f}s highlight = {coverage:.0%}"
                     )
-                    if coverage >= 0.6:
+                    # #432: branch on audioMix strategy
+                    if audio_mix == "dialog_preserve":
+                        # Keep linked audio audible. Reduce music clip volume so
+                        # the camera audio (where dialog/speeches live) cuts
+                        # through. Resolve TimelineItem.SetProperty('Volume', n)
+                        # is in dB-equivalent units roughly mapping to:
+                        #   1.0 = 0dB,   0.5 ≈ -6dB,   0.25 ≈ -12dB
+                        try:
+                            song_items = timeline.GetItemListInTrack("audio", song_track) or []
+                            for itm in song_items:
+                                try:
+                                    itm.SetProperty("Volume", 0.5)
+                                except Exception:  # noqa: BLE001
+                                    pass
+                            bridge.log(
+                                f"audioMix=dialog_preserve — reduced A{song_track} by ~-6dB, "
+                                f"kept A1..A{existing_audio} unmuted so dialog cuts through"
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            bridge.warn(f"Could not lower song volume: {exc}")
+                    elif coverage >= 0.6:
                         for t in range(1, existing_audio + 1):
                             try:
                                 timeline.SetTrackEnable("audio", t, False)

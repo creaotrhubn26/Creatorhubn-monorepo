@@ -15,6 +15,17 @@
       {"order": 8, "scriptId": "backup_project", "label": "Backup Project"}
     ]
   },
+  "wedding_delivery_pack": {
+    "id": "wedding_delivery_pack",
+    "name": "Bryllup — Hele leveranse-pakken",
+    "description": "Etter at du har approved picks i review-UI-en, produser teaser (30s), Instagram (60s), gjestebok (3-4 min), couple (8-10 min), family (12-15 min) og ceremony-only som separate Resolve-timelines. Hver timeline har sin egen duration + chapter-mix.",
+    "projectTemplate": "wedding_film",
+    "steps": [
+      {"order": 1, "scriptId": "extract_highlight_from_film", "label": "Extract highlight (interactive review)"},
+      {"order": 2, "scriptId": "build_highlight_from_picks", "label": "Build main highlight (4-6 min)"},
+      {"order": 3, "scriptId": "build_delivery_variants", "label": "Build alle 6 leveringsvarianter (teaser/IG/gjestebok/couple/family/ceremony)"}
+    ]
+  },
   "wedding_highlight_with_clean_audio": {
     "id": "wedding_highlight_with_clean_audio",
     "name": "Bryllup — Highlight med ren YouTube-audio",
