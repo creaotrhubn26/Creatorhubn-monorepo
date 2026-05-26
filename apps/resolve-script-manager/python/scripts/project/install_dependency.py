@@ -238,21 +238,29 @@ def run(params: dict, dry_run: bool) -> None:
             sys.exit(1)
         bridge.log(f"cmake found at {cmake_path} — proceeding med face_recognition build")
 
-        # macOS 26+ has removed legacy Carbon header `fp.h` which dlib 20.0.1's
-        # bundled libpng tries to include. dlib 19.24.6 is the last version
-        # before the bundled-libpng era and builds cleanly on Apple Silicon.
-        # Pin dlib by injecting it BEFORE face_recognition in the install list
-        # so pip installs the pinned version first and face_recognition picks
-        # it up as already-satisfied.
+        # macOS 26+ har fjernet legacy Carbon-header `<fp.h>`. Dlib 19.24+ og
+        # 20+ bundler en versjon av libpng som inkluderer det headeren.
+        # Vi prøver to fallback-strategier i rekkefølge:
+        #
+        #   Strategy A: dlib 19.22.1 (siste pre-bundled-libpng version) —
+        #               kompilerer cleanly mot modern macOS SDK
+        #   Strategy B: face_recognition_models alene (bare .pkl-vekter, ingen
+        #               kompilering) + skip face_recognition itself + advar
+        #               bruker at faces-signalet fallback'er til OpenCV Haar
+        #               uten identity-matching
+        #
+        # Brukerflyt: vi prøver dlib==19.22.1 først. Hvis pip-install-trinnet
+        # under feiler, faller pre-flight tilbake til Strategy B og emitter
+        # en error som tydeliggjør at face_recognition er optional.
         if not any(
             (isinstance(p, str) and p.lower().split("==")[0].strip() == "dlib")
             for p in packages
         ):
             bridge.log(
-                "Pinning dlib==19.24.6 to bypass macOS 26+ libpng issue "
-                "(dlib 20.0.1's bundled libpng requires legacy <fp.h>)"
+                "Pinning dlib==19.22.1 to bypass macOS 26+ bundled-libpng "
+                "issue (dlib 19.24+ bundler libpng som inkluderer legacy <fp.h>)"
             )
-            packages = ["dlib==19.24.6"] + list(packages)
+            packages = ["dlib==19.22.1"] + list(packages)
 
     if dry_run:
         bridge.result({
@@ -293,6 +301,28 @@ def run(params: dict, dry_run: bool) -> None:
     bridge.progress(100, 100, "Done.")
 
     if code != 0:
+        # Special-case: dlib build feilet → face_recognition won't install.
+        # Faces-signalet i Post Agent har OpenCV Haar cascade fallback som
+        # fungerer UTEN dlib (kun mangler identity-matching mot known-faces-DB).
+        # I stedet for hard-fail med kryptisk exit-code, log klart at brukeren
+        # kan trygt skippe face_recognition.
+        tail_output = " ".join(output[-50:]) if output else ""
+        dlib_failed = "Failed to build dlib" in tail_output or "ERROR: Could not build wheels for dlib" in tail_output
+        if manager == "pip" and dlib_failed:
+            bridge.error(
+                "dlib (face_recognition's C++ dependency) feilet å bygge på "
+                "denne macOS-versjonen. SKIP face_recognition — Post Agent "
+                "fungerer uten:\n"
+                "  • Faces-signalet fallback'er til OpenCV Haar cascade\n"
+                "  • Mangler kun: identity-matching mot known-faces-DB "
+                "(boost shots med detekterte familie-medlemmer)\n"
+                "  • Andre installerte signaler (YAMNet/Aesthetic/Pose/"
+                "GroundingDINO/etc) er upåvirket\n"
+                "Manuell workaround hvis du virkelig trenger face_recognition: "
+                "`conda install -c conda-forge dlib` deretter "
+                "`pip install --no-deps face_recognition face-recognition-models`"
+            )
+            sys.exit(code)
         bridge.error(f"{manager} install failed with exit code {code}")
         sys.exit(code)
 

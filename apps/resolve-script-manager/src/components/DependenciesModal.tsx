@@ -37,7 +37,7 @@ const DISPLAY_ORDER: Array<{ key: string; label: string; manager?: "brew" | "pip
   { key: "webrtcvad", label: "webrtcvad (speech detection)", manager: "pip", pipPkg: "webrtcvad" },
   { key: "ultralytics", label: "ultralytics (YOLOv8 wedding-events)", manager: "pip", pipPkg: "ultralytics" },
   { key: "sklearn", label: "scikit-learn (chapter clustering)", manager: "pip", pipPkg: "scikit-learn" },
-  { key: "face_recognition", label: "face_recognition (optional, known-faces match)", manager: "pip", pipPkg: "face_recognition" },
+  { key: "face_recognition", label: "face_recognition (OPTIONAL — known-faces match, kan feile på macOS 26+)", manager: "pip", pipPkg: "face_recognition" },
   { key: "tensorflow", label: "tensorflow + tensorflow-hub (YAMNet audio-events)", manager: "pip", pipPkg: "tensorflow tensorflow-hub" },
   { key: "open_clip", label: "open_clip_torch (LAION aesthetic-predictor)", manager: "pip", pipPkg: "open_clip_torch" },
   { key: "mediapipe", label: "mediapipe (pose-landmarks + ceremony-gestures)", manager: "pip", pipPkg: "mediapipe" },
