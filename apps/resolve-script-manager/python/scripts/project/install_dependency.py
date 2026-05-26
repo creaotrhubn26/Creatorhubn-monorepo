@@ -238,6 +238,22 @@ def run(params: dict, dry_run: bool) -> None:
             sys.exit(1)
         bridge.log(f"cmake found at {cmake_path} — proceeding med face_recognition build")
 
+        # macOS 26+ has removed legacy Carbon header `fp.h` which dlib 20.0.1's
+        # bundled libpng tries to include. dlib 19.24.6 is the last version
+        # before the bundled-libpng era and builds cleanly on Apple Silicon.
+        # Pin dlib by injecting it BEFORE face_recognition in the install list
+        # so pip installs the pinned version first and face_recognition picks
+        # it up as already-satisfied.
+        if not any(
+            (isinstance(p, str) and p.lower().split("==")[0].strip() == "dlib")
+            for p in packages
+        ):
+            bridge.log(
+                "Pinning dlib==19.24.6 to bypass macOS 26+ libpng issue "
+                "(dlib 20.0.1's bundled libpng requires legacy <fp.h>)"
+            )
+            packages = ["dlib==19.24.6"] + list(packages)
+
     if dry_run:
         bridge.result({
             "summary": f"Dry run — would install {len(packages)} packages via {manager}: {packages}",
