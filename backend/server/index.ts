@@ -360,6 +360,8 @@ import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
+import { setupAdminPlatformCostSyncRoutes } from "./admin-room-platform-cost-sync-routes";
+import { setupAdminPlatformStatusRoutes } from "./admin-room-platform-status-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
 import { setupAdminDecksRoutes } from "./admin-room-decks-routes";
 import { setupAdminBusinessPlanRoutes } from "./admin-room-business-plan-routes";
@@ -575,6 +577,7 @@ import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
 import { setupAudioRoutes } from "./audio-routes";
 import { setupPlatformRoutes } from "./platform-routes";
+import { setupAdminMiscRoutes } from "./admin-misc-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -17749,6 +17752,25 @@ setupAdminRoleRoomEconomyRoutes({
   getRoleRoomStripeClient,
 });
 
+// ── Platform cost sync — live-hent fra Render/Neon/Vercel API
+setupAdminPlatformCostSyncRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── Platform status — aggregert sanntidsbilde + aktive innloggede brukere
+setupAdminPlatformStatusRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+  getRoleRoomStripeClient,
+});
+
 // ── Partner contacts — endpoints flyttet til ./admin-room-partners-routes.ts
 setupAdminPartnersRoutes({
   app,
@@ -26477,36 +26499,7 @@ setupAdminUsersRoutes({
 
 // /api/davinci-resolve/* (8 endpoints) → ./davinci-resolve-routes.ts
 
-app.get("/api/admin/gdpr-settings", (req, res) => {
-  res.json({
-    cookieConsentEnabled: false,
-    dataRetentionDays: 365,
-    gdprEnabled: true,
-  });
-});
 
-app.get("/api/admin/profession-types", async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT name AS id, display_name AS name, is_active AS enabled, sort_order AS "sortOrder", description, category FROM profession_types WHERE is_active = true ORDER BY sort_order',
-    );
-    if (result.rows.length > 0) {
-      return res.json(result.rows);
-    }
-  } catch (err) {
-    console.warn(
-      "profession_types DB read failed, using fallback:",
-      (err as any).message,
-    );
-  }
-  // Fallback
-  res.json([
-    { id: "photographer", name: "Fotograf", enabled: true },
-    { id: "videographer", name: "Videograf", enabled: true },
-    { id: "music_producer", name: "Musikk Produsent", enabled: true },
-    { id: "enterprise", name: "Enterprise", enabled: true },
-  ]);
-});
 // ── Evendi misc — flyttet til ./evendi-misc-routes.ts
 //   16 endpoints: vendor-categories, products, photo-shots, schedule-events,
 //   resolve-couple, unified-access-code, checklist/budget seed+list, speeches,
@@ -26544,24 +26537,6 @@ app.get("/api/auth/public-session", (req, res) => {
 });
 
 // Admin interaction logging for prototype feedback instrumentation
-app.post("/api/admin/log-interaction", async (req, res) => {
-  const userId = compatResolveUserId(req);
-  const logEntry = {
-    id: crypto.randomUUID(),
-    userId,
-    action: req.body?.action || "unknown",
-    details: req.body?.details || null,
-    timestamp: req.body?.timestamp || new Date().toISOString(),
-    userType: req.body?.userType || "unknown",
-    prototypeTester: req.body?.prototypeTester || null,
-    createdAt: new Date().toISOString(),
-  };
-  compatAdminInteractionLog.push(logEntry);
-  if (compatAdminInteractionLog.length > 5000)
-    compatAdminInteractionLog.shift();
-  await compatStoreSet(dbCompatAdminInteractionKey(logEntry.id), logEntry);
-  res.json({ success: true, logEntry });
-});
 
 async function getCompatUiPreferences(
   userId: string,
@@ -48661,45 +48636,6 @@ setupEvendiPlanningRoutes({ app, pool, resolveCoupleId });
 
 
 // Admin smoke tests via Evendi bridge
-app.get("/api/admin/smoke-tests/evendi", async (req, res) => {
-  try {
-    if (!isEvendiSmokeAuthorized(req)) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-
-    const projectId = (req.query.projectId as string) || "local-user";
-
-    const [
-      showcaseCategories,
-      showcaseItems,
-      worklogList,
-      worklogStats,
-      landingDesktop,
-      landingMobile,
-    ] = await Promise.all([
-      runEvendiSmoke("/api/showcase/categories?profession=videographer"),
-      runEvendiSmoke("/api/showcase/profession/videographer"),
-      runEvendiSmoke(`/api/projects/${encodeURIComponent(projectId)}/worklog`),
-      runEvendiSmoke(
-        `/api/projects/${encodeURIComponent(projectId)}/worklog/stats`,
-      ),
-      runEvendiSmoke("/api/pages/landing-desktop/published"),
-      runEvendiSmoke("/api/pages/landing-mobile/published"),
-    ]);
-
-    res.json({
-      showcaseCategories,
-      showcaseItems,
-      worklogList,
-      worklogStats,
-      landingDesktop,
-      landingMobile,
-    });
-  } catch (error: any) {
-    console.error("Evendi smoke test error:", error?.message || error);
-    res.status(502).json({ error: "Evendi smoke test failed" });
-  }
-});
 
 
 
@@ -68951,6 +68887,16 @@ setupPlatformRoutes({
   app,
   ensureCompatPlatformSubscriptionPlanOverridesLoaded,
   buildCompatPlatformSubscriptionPlans,
+});
+setupAdminMiscRoutes({
+  app,
+  pool,
+  isEvendiSmokeAuthorized,
+  runEvendiSmoke,
+  compatResolveUserId,
+  compatStoreSet,
+  dbCompatAdminInteractionKey,
+  compatAdminInteractionLog,
 });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
