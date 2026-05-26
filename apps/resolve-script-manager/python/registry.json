@@ -1198,6 +1198,43 @@
       "requiresTimeline": false
     },
     {
+      "id": "denoise_audio",
+      "name": "Denoise audio (ffmpeg afftdn + loudnorm)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/denoise_audio.py",
+      "description": "Cleaner camera-audio for outdoor weddings: highpass + adaptive noise-reduction + LUFS-normalize. V1 = ffmpeg only (instant). V2 vil bytte til FullSubNet+/FlowSE fra R2 for spektral-aware denoise.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input audio/video", "type": "file", "required": true},
+        {"key": "profile", "label": "Profile (wedding/podcast/music_video/broadcast/gentle)", "type": "text", "required": false},
+        {"key": "noiseReductionDb", "label": "Noise-reduction dB (default per profile)", "type": "number", "required": false},
+        {"key": "targetLufs", "label": "Target LUFS (default per profile)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "enhance_with_gfpgan",
+      "name": "Enhance faces (GFPGAN + R2 weights)",
+      "category": "video",
+      "scriptPath": "scripts/video/enhance_with_gfpgan.py",
+      "description": "Restore grainy/low-light faces i highlight via GFPGAN v1.4. Krever R2-credentials + gfpgan pip-pakke. Tar ~1-2 fps på Apple Silicon; bekreft duration før commit. Output: <input>_face_restored.mp4.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
+        {"key": "weight", "label": "Restore strength 0..1 (default 0.5)", "type": "number", "required": false},
+        {"key": "upscale", "label": "Upscale factor 1/2/4 (default 1)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "detect_song_sections",
       "name": "Detect Song Sections (intro/verse/chorus/bridge/drop)",
       "category": "audio",
@@ -1225,7 +1262,8 @@
         {"key": "whisperModel", "label": "WhisperX model (default large-v3)", "type": "text", "required": false},
         {"key": "language", "label": "Language hint (auto/no/nb/en, default auto)", "type": "text", "required": false},
         {"key": "perSpeaker", "label": "Quotes per speaker (default 2)", "type": "number", "required": false},
-        {"key": "maxQuotes", "label": "Max quotes overall (default 8)", "type": "number", "required": false}
+        {"key": "maxQuotes", "label": "Max quotes overall (default 8)", "type": "number", "required": false},
+        {"key": "useR2Models", "label": "Prefer R2 over HuggingFace (default no)", "type": "boolean", "required": false}
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",

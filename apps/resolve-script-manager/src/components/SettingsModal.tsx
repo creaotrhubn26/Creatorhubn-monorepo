@@ -19,6 +19,11 @@ interface Settings {
   RESOLVE_SCRIPT_LIB: string;
   RESOLVE_SCRIPT_MANAGER_FFMPEG: string;
   RESOLVE_SCRIPT_MANAGER_WHISPERX: string;
+  // R2 model-bucket (foundation for SAM2 / GFPGAN / Whisper / etc. downloads)
+  R2_ENDPOINT: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
+  R2_MODELS_BUCKET: string;
   defaultDeliveryTarget: string;
   defaultOutputFolder: string;
   defaultWhisperModel: string;
@@ -42,6 +47,10 @@ const DEFAULT_SETTINGS: Settings = {
   RESOLVE_SCRIPT_LIB: "",
   RESOLVE_SCRIPT_MANAGER_FFMPEG: "",
   RESOLVE_SCRIPT_MANAGER_WHISPERX: "",
+  R2_ENDPOINT: "",
+  R2_ACCESS_KEY_ID: "",
+  R2_SECRET_ACCESS_KEY: "",
+  R2_MODELS_BUCKET: "ml-models",
   defaultDeliveryTarget: "wedding",
   defaultOutputFolder: "",
   defaultWhisperModel: "base",
@@ -70,6 +79,10 @@ export function settingsToEnvVars(settings: Settings): Record<string, string> {
     RESOLVE_SCRIPT_LIB: settings.RESOLVE_SCRIPT_LIB,
     RESOLVE_SCRIPT_MANAGER_FFMPEG: settings.RESOLVE_SCRIPT_MANAGER_FFMPEG,
     RESOLVE_SCRIPT_MANAGER_WHISPERX: settings.RESOLVE_SCRIPT_MANAGER_WHISPERX,
+    R2_ENDPOINT: settings.R2_ENDPOINT,
+    R2_ACCESS_KEY_ID: settings.R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY: settings.R2_SECRET_ACCESS_KEY,
+    R2_MODELS_BUCKET: settings.R2_MODELS_BUCKET,
   };
 }
 
@@ -383,6 +396,33 @@ export function SettingsModal({ onClose }: Props) {
               <input type="text" placeholder="/opt/homebrew/bin/whisperx"
                 value={settings.RESOLVE_SCRIPT_MANAGER_WHISPERX}
                 onChange={(e) => update("RESOLVE_SCRIPT_MANAGER_WHISPERX", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>R2_ENDPOINT</label>
+              <input type="text" placeholder="https://<account>.r2.cloudflarestorage.com"
+                value={settings.R2_ENDPOINT}
+                onChange={(e) => update("R2_ENDPOINT", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>R2_ACCESS_KEY_ID</label>
+              <input type="password" placeholder="S3-compatible access key"
+                value={settings.R2_ACCESS_KEY_ID}
+                onChange={(e) => update("R2_ACCESS_KEY_ID", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>R2_SECRET_ACCESS_KEY</label>
+              <input type="password" placeholder="S3-compatible secret"
+                value={settings.R2_SECRET_ACCESS_KEY}
+                onChange={(e) => update("R2_SECRET_ACCESS_KEY", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>R2_MODELS_BUCKET</label>
+              <input type="text" placeholder="ml-models"
+                value={settings.R2_MODELS_BUCKET}
+                onChange={(e) => update("R2_MODELS_BUCKET", e.target.value)} />
+              <div className="settings-help">
+                Lar Post Agent laste ned SAM2 / GFPGAN / Whisper / FullSubNet+ etc. fra Role Room R2 i stedet for HuggingFace.
+              </div>
             </div>
             <button className="small ghost" onClick={() => setAdminMode(false)} style={{ marginTop: 6 }}>
               Lock admin section

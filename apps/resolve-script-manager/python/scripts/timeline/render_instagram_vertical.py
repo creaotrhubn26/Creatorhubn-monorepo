@@ -108,20 +108,40 @@ def _select_instagram_picks(all_picks: list[dict], target_sec: float,
     return selected
 
 
-def _detect_face_center_x(ffmpeg: str, source_video: str, ts_sec: float,
-                          frame_width: int) -> float | None:
-    """Sample one frame at `ts_sec` and return the face-centroid X (in
-    source-video pixels). Returns None if no face detected or cv2 unavailable.
+_YOLO_MODEL = None
 
-    Used by per-pick smart-crop (#483 V2) — instead of always center-cropping,
-    we shift the 9:16 strip horizontally so detected faces stay in frame.
-    """
+
+def _yolo_model():
+    """Lazy-load ultralytics YOLOv8n model. Returns None if unavailable.
+    Same model used by signals/wedding_events.py — already in our deps."""
+    global _YOLO_MODEL
+    if _YOLO_MODEL is not None:
+        return _YOLO_MODEL
     try:
-        import cv2  # type: ignore
+        from ultralytics import YOLO  # type: ignore
+        _YOLO_MODEL = YOLO("yolov8n.pt")
+        return _YOLO_MODEL
     except ImportError:
         return None
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"YOLOv8 load failed: {exc}")
+        return None
+
+
+def _detect_subject_center_x(ffmpeg: str, source_video: str, ts_sec: float,
+                             frame_width: int) -> float | None:
+    """Sample one frame and return SUBJECT-centroid X (#483 V3).
+
+    Upgrade-path over face-detection:
+      V1 (deprecated): static center-crop, lost ~44% of horizontal frame
+      V2: OpenCV Haar face-cascade, only worked when faces were front-facing
+      V3: YOLOv8 person-detection (back-of-head / dancing / wide / profile
+          all OK; couples + family shots return bbox-union centroid)
+
+    Falls back to face-cascade if YOLOv8 unavailable, to center if neither.
+    """
     import tempfile
-    fd, tmp = tempfile.mkstemp(prefix="ig_face_", suffix=".jpg")
+    fd, tmp = tempfile.mkstemp(prefix="ig_subject_", suffix=".jpg")
     os.close(fd)
     try:
         r = subprocess.run(
@@ -133,6 +153,25 @@ def _detect_face_center_x(ffmpeg: str, source_video: str, ts_sec: float,
             capture_output=True, timeout=15,
         )
         if r.returncode != 0 or not os.path.exists(tmp):
+            return None
+
+        # Preferred: YOLOv8 person-detection
+        model = _yolo_model()
+        if model is not None:
+            try:
+                results = model(tmp, verbose=False, conf=0.35, classes=[0])  # 0 = person
+                if results and len(results[0].boxes) > 0:
+                    boxes = results[0].boxes.xyxy.cpu().numpy().tolist()
+                    # Union-centroid of all persons (couple/family safe)
+                    xs = [(b[0] + b[2]) / 2 for b in boxes]
+                    return float(sum(xs) / len(xs))
+            except Exception as exc:  # noqa: BLE001
+                bridge.warn(f"YOLOv8 inference failed, falling back to face cascade: {exc}")
+
+        # Fallback: OpenCV Haar face-cascade (V2 behavior)
+        try:
+            import cv2  # type: ignore
+        except ImportError:
             return None
         img = cv2.imread(tmp, cv2.IMREAD_GRAYSCALE)
         if img is None:
@@ -147,7 +186,6 @@ def _detect_face_center_x(ffmpeg: str, source_video: str, ts_sec: float,
                                          minSize=(40, 40))
         if faces is None or len(faces) == 0:
             return None
-        # Average centroid of all detected faces (handles couple/family shots)
         centers_x = [(x + w / 2) for (x, y, w, h) in faces]
         return float(sum(centers_x) / len(centers_x))
     except Exception:  # noqa: BLE001
@@ -155,6 +193,10 @@ def _detect_face_center_x(ffmpeg: str, source_video: str, ts_sec: float,
     finally:
         try: os.unlink(tmp)
         except OSError: pass
+
+
+# Backward-compat alias — older code paths still reference the V2 name
+_detect_face_center_x = _detect_subject_center_x
 
 
 def _compute_smart_crop_x(ffmpeg: str, source_video: str, picks: list[dict],
@@ -176,7 +218,7 @@ def _compute_smart_crop_x(ffmpeg: str, source_video: str, picks: list[dict],
         samples_x: list[float] = []
         for frac in (0.25, 0.50, 0.75):
             ts = start + (end - start) * frac
-            cx = _detect_face_center_x(ffmpeg, source_video, ts, probe_width)
+            cx = _detect_subject_center_x(ffmpeg, source_video, ts, probe_width)
             if cx is not None:
                 samples_x.append(cx)
         if not samples_x:

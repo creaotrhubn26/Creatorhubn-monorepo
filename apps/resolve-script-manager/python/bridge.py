@@ -481,6 +481,112 @@ def cache_path_for(
 
 # ─── Disk-space safety (#87) ──────────────────────────────────────────────
 
+# ─── R2 model download (#R2 batch) ────────────────────────────────────────
+#
+# The Role Room backend already hosts a curated set of ML model weights in
+# Cloudflare R2 (Whisper variants, SAM2, GFPGAN, Real-ESRGAN, REMBG,
+# SyncNet, FlowSE, FullSubNet+, etc.). Post Agent scripts can opt-in to
+# download these instead of pulling from HuggingFace — faster from CDN-
+# adjacent regions and no rate-limits.
+#
+# Credentials are read from env vars (loaded by Tauri from SettingsModal):
+#   R2_ENDPOINT             https://<account>.r2.cloudflarestorage.com
+#   R2_ACCESS_KEY_ID        S3-compatible access key
+#   R2_SECRET_ACCESS_KEY    S3-compatible secret
+#   R2_MODELS_BUCKET        bucket name (default: "ml-models")
+#
+# If creds are missing, callers fall back to HuggingFace / pip-package
+# auto-download. Nothing breaks if R2 is not configured.
+
+_R2_CACHE_DIR = os.path.expanduser(
+    "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/ai_models_cache"
+)
+
+
+def r2_is_configured() -> bool:
+    return bool(
+        os.environ.get("R2_ENDPOINT")
+        and os.environ.get("R2_ACCESS_KEY_ID")
+        and os.environ.get("R2_SECRET_ACCESS_KEY")
+    )
+
+
+def r2_download(
+    r2_key: str,
+    expected_min_bytes: int = 1_000_000,
+    force: bool = False,
+) -> str | None:
+    """Download an R2 object to local cache. Returns local file path or None.
+
+    Cache layout: `{cache}/<r2_key>` mirroring the R2 path. Re-downloads
+    if file is missing or smaller than expected_min_bytes. Set force=True
+    to re-fetch regardless.
+
+    Requires boto3 (lazy import) — falls back gracefully if unavailable.
+    """
+    if not r2_is_configured():
+        warn("R2 credentials not set — skip download (configure in Settings)")
+        return None
+
+    cache_path = os.path.join(_R2_CACHE_DIR, r2_key.lstrip("/"))
+    if not force and os.path.isfile(cache_path):
+        try:
+            if os.path.getsize(cache_path) >= expected_min_bytes:
+                return cache_path
+        except OSError:
+            pass
+
+    try:
+        import boto3
+        from botocore.client import Config as _BotoConfig
+        from botocore.exceptions import ClientError
+    except ImportError:
+        warn("boto3 not installed — `pip install boto3` to enable R2 downloads")
+        return None
+
+    endpoint = os.environ["R2_ENDPOINT"]
+    access_key = os.environ["R2_ACCESS_KEY_ID"]
+    secret_key = os.environ["R2_SECRET_ACCESS_KEY"]
+    bucket = os.environ.get("R2_MODELS_BUCKET") or "ml-models"
+
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    tmp_path = cache_path + ".tmp"
+
+    log(f"R2 download → {r2_key} (bucket: {bucket})")
+    try:
+        client = boto3.client(
+            "s3", endpoint_url=endpoint,
+            aws_access_key_id=access_key, aws_secret_access_key=secret_key,
+            region_name="auto",
+            config=_BotoConfig(signature_version="s3v4"),
+        )
+        client.download_file(bucket, r2_key, tmp_path)
+        os.replace(tmp_path, cache_path)
+        log(f"R2 downloaded {os.path.getsize(cache_path) // (1024**2)} MB → {cache_path}")
+        return cache_path
+    except ClientError as exc:
+        # Try fallback buckets (matches backend naming convention)
+        for fb in ("ml-models2", "models", "creatorhubn-models"):
+            if fb == bucket:
+                continue
+            try:
+                log(f"R2 retry with bucket '{fb}'…")
+                client.download_file(fb, r2_key, tmp_path)
+                os.replace(tmp_path, cache_path)
+                log(f"R2 downloaded from '{fb}' → {cache_path}")
+                return cache_path
+            except ClientError:
+                continue
+        warn(f"R2 download failed for {r2_key}: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        warn(f"R2 download exception: {exc}")
+    finally:
+        if os.path.isfile(tmp_path):
+            try: os.unlink(tmp_path)
+            except OSError: pass
+    return None
+
+
 def check_disk_space(
     path: str,
     required_gb: float = 1.0,
