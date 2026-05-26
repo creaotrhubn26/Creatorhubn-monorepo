@@ -613,6 +613,18 @@ export type IndustrySegment =
   | 'nsf'
   | 'skuda'
   | 'agency'
+  // Crew-segments (migrasjon 174)
+  | 'dp'
+  | 'sound'
+  | 'editor'
+  | 'production_designer'
+  | 'costume_designer'
+  | 'gaffer'
+  | 'script_supervisor'
+  | 'composer'
+  | 'vfx'
+  | 'filmforbund'
+  | 'crew_other'
   | 'other';
 export type IndustryStatus = 'cold' | 'warm' | 'engaged' | 'advocate' | 'paused';
 export type IndustryEngagementKind =
@@ -665,6 +677,10 @@ export interface IndustryTarget {
   loom_sent_at?: string | null;
   thank_you_sent_at?: string | null;
   ask_readiness?: number;
+  // Crew-felter (migrasjon 174)
+  union_membership?: string | null;
+  crew_specialty?: string | null;
+  reel_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -696,6 +712,10 @@ export type IndustryTargetInput = {
   loomSentAt?: string | null;
   thankYouSentAt?: string | null;
   askReadiness?: number;
+  // Crew-felter (migrasjon 174)
+  unionMembership?: string | null;
+  crewSpecialty?: string | null;
+  reelUrl?: string | null;
 };
 
 export interface IndustryTargetStats {
@@ -748,6 +768,18 @@ export const INDUSTRY_SEGMENT_LABELS: Record<IndustrySegment, string> = {
   nsf: 'Norsk Skuespillerforbund',
   skuda: 'Skuda',
   agency: 'Skuespilleragentur',
+  // Crew-segments (migrasjon 174)
+  dp: 'DP / foto (cinematographer)',
+  sound: 'Lyd (production sound)',
+  editor: 'Klipper / editor',
+  production_designer: 'Scenedesigner',
+  costume_designer: 'Kostymedesigner',
+  gaffer: 'Gaffer / lys',
+  script_supervisor: 'Scripter / continuity',
+  composer: 'Komponist / lyddesigner',
+  vfx: 'VFX / post-supervisor',
+  filmforbund: 'Norsk Filmforbund',
+  crew_other: 'Crew — annet',
   other: 'Annet',
 };
 

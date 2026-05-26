@@ -27,6 +27,18 @@ const VALID_SEGMENTS = new Set([
   "nsf",
   "skuda",
   "agency",
+  // Crew-segments (migrasjon 174)
+  "dp",
+  "sound",
+  "editor",
+  "production_designer",
+  "costume_designer",
+  "gaffer",
+  "script_supervisor",
+  "composer",
+  "vfx",
+  "filmforbund",
+  "crew_other",
   "other",
 ]);
 const VALID_STATUSES = new Set([
@@ -259,6 +271,10 @@ export function setupAdminIndustryTargetsRoutes(deps: AdminRoomRoutesDeps): void
       }
       set("ask_readiness", ar);
     }
+    // Crew-felter (migrasjon 174)
+    if (body.unionMembership !== undefined) set("union_membership", asString(body.unionMembership));
+    if (body.crewSpecialty !== undefined) set("crew_specialty", asString(body.crewSpecialty));
+    if (body.reelUrl !== undefined) set("reel_url", asString(body.reelUrl));
 
     if (updates.length === 0) {
       res.status(400).json({ error: "Ingen felter å oppdatere" });

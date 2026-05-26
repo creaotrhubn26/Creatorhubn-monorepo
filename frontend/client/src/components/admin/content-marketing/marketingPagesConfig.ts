@@ -17,7 +17,8 @@ export type MarketingPageKey =
   | 'operativsystem'
   | 'norsk-casting-ordliste'
   | 'arbeidstilsynet-guide-produksjon'
-  | 'sentimental-value-effekten';
+  | 'sentimental-value-effekten'
+  | 'crew-i-norge-2026';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -251,6 +252,36 @@ Verktøykjeden vi har i dag — fragmentert e-post, Facebook-grupper, manuell ve
 Om 30 år vil norske foreldre se Sentimental Value med barna sine. Spørsmålet er hvilken infrastruktur den industrien vi nå bygger fortjener.
 
 Hele essayet: https://theroleroom.com/sentimental-value-effekten`,
+  },
+  {
+    key: 'crew-i-norge-2026',
+    path: '/crew-i-norge-2026',
+    title: 'Crew i norsk filmbransje 2026 — størrelse, struktur og smerter | The Role Room',
+    description:
+      'Anslag av norsk crew-marked: ~120-150 DP-er, ~200-250 klippere, ~80-100 lyd-folk, ~1.800 Filmforbund-medlemmer. Fem strukturelle smerter i dagens booking-flyt og hva The Role Room gjør med dem.',
+    pillar: 'data',
+    published: true,
+    linkedinDraft: `Norsk filmbransje crew i tall:
+
+~120-150 aktive frilans-DP-er
+~80-100 lyd-folk (production sound)
+~200-250 klippere/editors
+~50-70 scenedesignere
+~40-60 kostymedesignere
+~1.800 Filmforbund-medlemmer totalt
+
+Og likevel er booking fortsatt sentrert rundt Facebook-grupper og tekstmeldinger. Line producer bruker 3-5 timer per crew-rolle på å finne tilgjengelig person.
+
+Fem strukturelle smerter:
+1. Fragmentert booking
+2. Ingen sentral kreditt-verifisering
+3. Tariff-undergraving
+4. Manuell A-melding / A1-erklæring
+5. HMS-compliance som ingen tracker
+
+Vi bygger The Role Room sammen med Norsk Filmforbund — ikke i konkurranse. Plattformen er mer verdifull jo sterkere forbundet er.
+
+Hele datasettet: https://theroleroom.com/crew-i-norge-2026`,
   },
 ];
 

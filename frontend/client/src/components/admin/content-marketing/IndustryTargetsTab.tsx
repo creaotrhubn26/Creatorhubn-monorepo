@@ -740,6 +740,9 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
         mutualConnection: initial.mutual_connection ?? '',
         referredById: initial.referred_by_id ?? null,
         referralGeneration: initial.referral_generation ?? 0,
+        unionMembership: initial.union_membership ?? '',
+        crewSpecialty: initial.crew_specialty ?? '',
+        reelUrl: initial.reel_url ?? '',
       });
       setProductionsText(serializeProductions(initial.recent_productions ?? []));
     } else {
@@ -880,6 +883,40 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
                     ))}
                 </Select>
               </FormControl>
+
+              {/* Crew-spesifikke felter (migrasjon 174) */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <FormControl size="small" sx={{ flex: 1 }}>
+                  <InputLabel>Fagforening</InputLabel>
+                  <Select
+                    label="Fagforening"
+                    value={form.unionMembership ?? ''}
+                    onChange={(e) => setForm((p) => ({ ...p, unionMembership: e.target.value || null }))}
+                  >
+                    <MenuItem value=""><em>(ukjent / ikke relevant)</em></MenuItem>
+                    <MenuItem value="filmforbund">Norsk Filmforbund (crew)</MenuItem>
+                    <MenuItem value="nsf">NSF (skuespillere)</MenuItem>
+                    <MenuItem value="ingen">Ikke fagforeningsmedlem</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  label="Crew-spesialisering"
+                  size="small"
+                  sx={{ flex: 1 }}
+                  value={form.crewSpecialty ?? ''}
+                  onChange={(e) => setForm((p) => ({ ...p, crewSpecialty: e.target.value }))}
+                  placeholder="Eks: dokumentar, drama, kommersiell"
+                />
+              </Stack>
+              <TextField
+                label="Reel / portefølje-URL"
+                size="small"
+                fullWidth
+                value={form.reelUrl ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, reelUrl: e.target.value }))}
+                placeholder="https://vimeo.com/... eller https://nettside.no"
+                helperText="Kritisk for DP/regissør-outreach — de svarer ikke uten å kunne sjekke reel."
+              />
             </Stack>
           </Box>
         </Stack>

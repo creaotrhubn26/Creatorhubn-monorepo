@@ -9,6 +9,7 @@ import OperativsystemPage from './OperativsystemPage';
 import NorskCastingOrdlistePage from './NorskCastingOrdlistePage';
 import ArbeidstilsynetGuidePage from './ArbeidstilsynetGuidePage';
 import SentimentalValueEffektenPage from './SentimentalValueEffektenPage';
+import CrewINorgePage from './CrewINorgePage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -58,6 +59,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <ArbeidstilsynetGuidePage />;
     case 'sentimental-value-effekten':
       return <SentimentalValueEffektenPage />;
+    case 'crew-i-norge-2026':
+      return <CrewINorgePage />;
     default:
       return null;
   }
