@@ -211,8 +211,17 @@ def run(params: dict, dry_run: bool) -> None:
     bridge.progress(11, 14, "scikit-learn (pip)")
     sklearn_pkg = check_python_module("sklearn")
 
-    bridge.progress(12, 14, "face_recognition (pip, optional)")
+    bridge.progress(12, 14, "face_recognition (pip, OPTIONAL — disabled on macOS 26+)")
     face_rec_pkg = check_python_module("face_recognition")
+    if not face_rec_pkg.get("installed"):
+        # Override the install-command so the UI doesn't show a button for it —
+        # dlib doesn't compile on macOS 26+ no matter which version we try.
+        face_rec_pkg["installCommand"] = None
+        face_rec_pkg["note"] = (
+            "Optional. Bruker OpenCV Haar cascade fallback i faces-signalet. "
+            "Manuell install (krever conda): conda install -c conda-forge dlib "
+            "&& pip install face_recognition"
+        )
 
     bridge.progress(13, 14, "DaVinci Resolve")
     resolve = check_resolve()
