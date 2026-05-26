@@ -359,6 +359,7 @@ import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
+import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterAiRoutes } from "./role-room-newsletter-ai-routes";
 import { setupTheRoleRoomSitemapRoutes } from "./theroleroom-sitemap-routes";
@@ -17781,6 +17782,15 @@ setupAdminIndustryTargetsRoutes({
 
 // ── Outreach-system (templates + AI-personalisering per Outreach Plan)
 setupAdminOutreachRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── AI-citation-tracker (måler om GEO-strategien faktisk fører til at AI-modeller siterer oss)
+setupAdminAiCitationRoutes({
   app,
   pool,
   getActiveSessionFromRequest,

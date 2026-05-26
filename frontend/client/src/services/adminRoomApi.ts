@@ -891,6 +891,113 @@ export const industryTargetsApi = {
 };
 
 // ─────────────────────────────────────────────────────────
+// AI-citation-tracker (GEO-effect-måling)
+// ─────────────────────────────────────────────────────────
+
+export interface AiCitationQuery {
+  id: string;
+  user_id: string | null;
+  query_text: string;
+  language: string;
+  category: string;
+  expected_mention: string;
+  expected_url_fragment: string | null;
+  competitor_terms: string[];
+  active: boolean;
+  created_at: string;
+}
+
+export interface AiCitationResult {
+  id: string;
+  query_id: string;
+  provider: string;
+  model: string;
+  mentioned: boolean;
+  mention_position: number | null;
+  url_cited: boolean;
+  competitor_mentions: string[];
+  tokens_input: number | null;
+  tokens_output: number | null;
+  cost_usd: number | null;
+  checked_at: string;
+  error_message: string | null;
+  response_preview: string;
+  query_text: string;
+  category: string;
+}
+
+export interface AiCitationDashboard {
+  overall: {
+    total_checks?: number;
+    mentions?: number;
+    url_citations?: number;
+    queries_checked?: number;
+    providers_checked?: number;
+    last_check_at?: string | null;
+  };
+  perProvider: Array<{
+    provider: string;
+    model: string;
+    total: number;
+    mentions: number;
+    url_citations: number;
+  }>;
+  perQuery: Array<{
+    id: string;
+    query_text: string;
+    category: string;
+    total_checks: number;
+    mentions: number;
+    last_check_at: string | null;
+  }>;
+  timeseries: Array<{ week_start: string; total: number; mentions: number }>;
+}
+
+export interface AiCitationRunResult {
+  ok: boolean;
+  queriesChecked: number;
+  totalChecks: number;
+  totalMentions: number;
+  mentionRate: number;
+  errors: string[];
+}
+
+export const aiCitationApi = {
+  listQueries: async (): Promise<AiCitationQuery[]> => {
+    const data = await jsonFetch<{ items: AiCitationQuery[] }>('/ai-citation/queries');
+    return data.items;
+  },
+  createQuery: async (input: { queryText: string; category?: string; language?: string; competitorTerms?: string[] }): Promise<AiCitationQuery> => {
+    const data = await jsonFetch<{ item: AiCitationQuery }>('/ai-citation/queries', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  toggleQuery: async (id: string, active: boolean): Promise<AiCitationQuery> => {
+    const data = await jsonFetch<{ item: AiCitationQuery }>(`/ai-citation/queries/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active }),
+    });
+    return data.item;
+  },
+  results: async (filter?: { queryId?: string; limit?: number }): Promise<AiCitationResult[]> => {
+    const params = new URLSearchParams();
+    if (filter?.queryId) params.set('queryId', filter.queryId);
+    if (filter?.limit) params.set('limit', String(filter.limit));
+    const query = params.toString();
+    const data = await jsonFetch<{ items: AiCitationResult[] }>(`/ai-citation/results${query ? `?${query}` : ''}`);
+    return data.items;
+  },
+  dashboard: async (): Promise<AiCitationDashboard> => {
+    return jsonFetch<AiCitationDashboard>('/ai-citation/dashboard');
+  },
+  run: async (): Promise<AiCitationRunResult> => {
+    return jsonFetch<AiCitationRunResult>('/ai-citation/run', { method: 'POST' });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
 // Outreach (templates + AI-personalisering per Outreach Plan)
 // ─────────────────────────────────────────────────────────
 
