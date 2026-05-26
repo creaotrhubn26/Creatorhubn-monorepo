@@ -45,6 +45,7 @@ import {
   type IndustryStatus,
   type IndustryTarget,
   type IndustryTargetInput,
+  type IndustryTargetProduction,
   type IndustryTargetStats,
   type IndustryTier,
   type NewsletterSignup,
@@ -154,6 +155,17 @@ export function IndustryTargetsTab() {
 
   const tier1Comments = stats?.tier1CommentsLast30d ?? 0;
   const tier1CommentTarget = 5;
+  const askReadyCount = targets.filter((t) => (t.ask_readiness ?? 0) === 3).length;
+
+  async function handleSetAskReadiness(target: IndustryTarget, next: number) {
+    try {
+      await industryTargetsApi.patch(target.id, { askReadiness: next });
+      // Optimistisk oppdatering uten full refresh — beholder filter/scroll-tilstand
+      setTargets((prev) => prev.map((t) => (t.id === target.id ? { ...t, ask_readiness: next } : t)));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   return (
     <Box>
@@ -183,6 +195,12 @@ export function IndustryTargetsTab() {
           value={`${tier1Comments} / ${tier1CommentTarget}`}
           accent={tier1Comments >= tier1CommentTarget ? '#22c55e' : '#fbbf24'}
           hint={`Plan-mål: ${tier1CommentTarget}/mnd`}
+        />
+        <StatCard
+          label="Klar for ask"
+          value={askReadyCount}
+          accent={askReadyCount > 0 ? '#22d3ee' : '#64748b'}
+          hint="Touch 1+2 ferdig"
         />
         <StatCard
           label="Newsletter total"
@@ -236,7 +254,7 @@ export function IndustryTargetsTab() {
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Segment</TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Status</TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Sist engasjert</TableCell>
-              <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Antall</TableCell>
+              <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 140 }} title="3-touch-regel fra Outreach Plan">3-touch</TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 220 }}>Handlinger</TableCell>
             </TableRow>
           </TableHead>
@@ -288,7 +306,12 @@ export function IndustryTargetsTab() {
                       ? new Date(target.last_engaged_at).toLocaleDateString('nb-NO', { year: 'numeric', month: 'short', day: 'numeric' })
                       : <span style={{ opacity: 0.45 }}>—</span>}
                   </TableCell>
-                  <TableCell sx={{ color: '#fff', fontWeight: 700 }}>{target.engagement_count}</TableCell>
+                  <TableCell>
+                    <TouchCadence
+                      value={target.ask_readiness ?? 0}
+                      onChange={(next) => handleSetAskReadiness(target, next)}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={0.5}>
                       <IconButton size="small" onClick={() => setEngagementTarget(target)} title="Logg engagement">
@@ -423,6 +446,59 @@ export function IndustryTargetsTab() {
   );
 }
 
+// ── Touch-cadence-dots: 3-touch-regel fra Outreach Plan ─────────────
+// 0 = ingen touch ennå · 1 = engaged offentlig · 2 = ga value · 3 = klar for ask
+const TOUCH_LABELS = [
+  'Ingen touch ennå',
+  'Touch 1 — engaged offentlig (kommentar, repost)',
+  'Touch 2 — ga substantiv value (artikkel, stat, intro)',
+  'Touch 3 — klar for ask (DM, mail, møte)',
+];
+const TOUCH_COLORS = ['#475569', '#fbbf24', '#a78bfa', '#22d3ee'];
+
+function TouchCadence({ value, onChange }: { value: number; onChange: (next: number) => void }) {
+  const clamped = Math.max(0, Math.min(3, value));
+  return (
+    <Stack direction="row" spacing={0.5} alignItems="center">
+      {[1, 2, 3].map((step) => {
+        const reached = step <= clamped;
+        return (
+          <Box
+            key={step}
+            onClick={() => onChange(clamped === step ? step - 1 : step)}
+            title={TOUCH_LABELS[step]}
+            sx={{
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              cursor: 'pointer',
+              bgcolor: reached ? TOUCH_COLORS[step] : 'transparent',
+              border: `2px solid ${reached ? TOUCH_COLORS[step] : 'rgba(148,163,184,0.35)'}`,
+              transition: 'all 0.18s ease',
+              '&:hover': { transform: 'scale(1.18)', boxShadow: `0 0 0 3px ${TOUCH_COLORS[step]}33` },
+            }}
+          />
+        );
+      })}
+      {clamped === 3 ? (
+        <Chip
+          label="ASK"
+          size="small"
+          sx={{
+            ml: 0.75,
+            height: 18,
+            bgcolor: 'rgba(34,211,238,0.18)',
+            color: '#22d3ee',
+            fontSize: '0.62rem',
+            fontWeight: 800,
+            letterSpacing: '0.1em',
+          }}
+        />
+      ) : null}
+    </Stack>
+  );
+}
+
 interface StatCardProps {
   label: string;
   value: number | string;
@@ -455,8 +531,40 @@ interface TargetDrawerProps {
   onSaved: () => void;
 }
 
+// Hjelper: serialiser/parse recent_productions for textarea-input
+// Format: én produksjon per linje, "Tittel (år) — rolle" — alle felt utenom tittel er valgfrie
+function serializeProductions(items: IndustryTargetProduction[]): string {
+  return items
+    .map((p) => {
+      let line = p.title;
+      if (p.year) line += ` (${p.year})`;
+      if (p.role) line += ` — ${p.role}`;
+      return line;
+    })
+    .join('\n');
+}
+
+function parseProductions(text: string): IndustryTargetProduction[] {
+  return text
+    .split(/\r?\n/)
+    .map((raw) => raw.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const yearMatch = line.match(/\((\d{4})\)/);
+      const year = yearMatch ? Number(yearMatch[1]) : undefined;
+      const withoutYear = line.replace(/\s*\(\d{4}\)/, '').trim();
+      const [titlePart, ...rolePart] = withoutYear.split(/\s*[—–-]\s*/);
+      const role = rolePart.length > 0 ? rolePart.join(' — ').trim() : undefined;
+      const production: IndustryTargetProduction = { title: titlePart.trim() };
+      if (year !== undefined) production.year = year;
+      if (role) production.role = role;
+      return production;
+    });
+}
+
 function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
   const [form, setForm] = useState<IndustryTargetInput>({});
+  const [productionsText, setProductionsText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -478,9 +586,13 @@ function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
         notes: initial.notes,
         nextAction: initial.next_action,
         nextActionDue: initial.next_action_due,
+        recentProductions: initial.recent_productions ?? [],
+        mutualConnection: initial.mutual_connection ?? '',
       });
+      setProductionsText(serializeProductions(initial.recent_productions ?? []));
     } else {
       setForm({ tier: 'T2', segment: 'producer', status: 'cold' });
+      setProductionsText('');
     }
     setError(null);
   }, [initial, open]);
@@ -493,10 +605,14 @@ function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
     setSaving(true);
     setError(null);
     try {
+      const payload: IndustryTargetInput = {
+        ...form,
+        recentProductions: parseProductions(productionsText),
+      };
       if (initial) {
-        await industryTargetsApi.patch(initial.id, form);
+        await industryTargetsApi.patch(initial.id, payload);
       } else {
-        await industryTargetsApi.create(form);
+        await industryTargetsApi.create(payload);
       }
       onSaved();
     } catch (err) {
@@ -563,6 +679,35 @@ function TargetDrawer({ open, initial, onClose, onSaved }: TargetDrawerProps) {
           <TextField label="Neste handling" size="small" fullWidth value={form.nextAction ?? ''} onChange={(e) => setForm((p) => ({ ...p, nextAction: e.target.value }))} />
           <TextField label="Frist neste handling" size="small" type="date" InputLabelProps={{ shrink: true }} fullWidth value={form.nextActionDue ?? ''} onChange={(e) => setForm((p) => ({ ...p, nextActionDue: e.target.value || null }))} />
           <TextField label="Notater" size="small" multiline minRows={3} fullWidth value={form.notes ?? ''} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
+
+          {/* Outreach Plan-info — driver Claude-personalisering */}
+          <Box sx={{ pt: 1.5, borderTop: '1px solid rgba(148,163,184,0.18)' }}>
+            <Typography sx={{ color: '#22d3ee', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 1.5 }}>
+              Outreach-fakta · brukes av AI-personalisering
+            </Typography>
+            <Stack spacing={1.5}>
+              <TextField
+                label="Siste produksjoner"
+                size="small"
+                multiline
+                minRows={3}
+                fullWidth
+                value={productionsText}
+                onChange={(e) => setProductionsText(e.target.value)}
+                placeholder={'Én per linje. Format: "Tittel (år) — rolle"\nEks:\nSentimental Value (2025) — casting director\nThe Worst Person in the World (2021)'}
+                helperText="Claude bruker disse til å henvise spesifikt til arbeidet deres i personlige meldinger."
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="Mutual connection (hvem kan introdusere deg?)"
+                size="small"
+                fullWidth
+                value={form.mutualConnection ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, mutualConnection: e.target.value }))}
+                placeholder="Eks: Maria Hansen (Stella), Anders Berg (NFI)"
+              />
+            </Stack>
+          </Box>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
