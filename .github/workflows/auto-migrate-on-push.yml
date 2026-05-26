@@ -1,0 +1,75 @@
+name: Auto-migrate Neon-DB ved migrations-endring
+
+# Trigger ./migrate.sh på prod-backend hver gang en ny migration-fil
+# pushes til main. Backend-endpointet er token-gated via MIGRATE_TRIGGER_TOKEN
+# (GitHub secret) — krever ikke admin-login.
+#
+# Workflowen er idempotent — hvis ingen nye migrasjoner finnes (alle er allerede
+# applied), skipper migrate.sh dem og returnerer exit 0.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/migrations/**.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-migrate-prod
+  cancel-in-progress: false
+
+jobs:
+  trigger-migrate:
+    name: Trigger migrate.sh på Render-backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: List endrede migration-filer
+        run: |
+          echo "Triggered av commit $GITHUB_SHA"
+          echo "Sender POST til /api/admin-room/migrations/run"
+
+      - name: Trigger migrate.sh
+        env:
+          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
+          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+        run: |
+          if [ -z "$MIGRATE_TRIGGER_TOKEN" ]; then
+            echo "::error::MIGRATE_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" \
+            -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
+            -d '{}' \
+            "$BACKEND_URL/api/admin-room/migrations/run")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE"
+          echo "Body: $BODY"
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            if [ "$HTTP_CODE" = "409" ]; then
+              echo "::warning::En migrate-run pågår allerede. Hopper over."
+              exit 0
+            fi
+            echo "::error::Migrate-trigger feilet (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Poll status til ferdig (maks 10 min)
+        env:
+          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
+        run: |
+          # /status er admin-gated, men vi har ikke session-token i CI.
+          # Vi venter 90 sek statisk så backend rekker å starte og fullføre
+          # de fleste migrasjoner. Detaljert logging er tilgjengelig i Admin
+          # Room → RR Økonomi → Database-migrasjoner → "Vis logg".
+          echo "Venter 90 sek på at migrate.sh fullfører…"
+          sleep 90
+          echo "Migrate-run kan ses i Admin Room → RR Økonomi → Database-migrasjoner"

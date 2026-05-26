@@ -96,8 +96,26 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
   });
 
   app.post("/api/admin-room/migrations/run", async (req, res) => {
-    const session = requireAdminRoomAccess(req, res);
-    if (!session) return;
+    // To-veis auth: enten admin-session ELLER MIGRATE_TRIGGER_TOKEN i header.
+    // Token-pathen lar GitHub Actions trigge migrate automatisk ved push
+    // uten å være logget inn som produkteier.
+    const triggerHeader = req.headers["x-migrate-trigger-token"];
+    const triggerToken = typeof triggerHeader === "string" ? triggerHeader : "";
+    const expectedToken = process.env.MIGRATE_TRIGGER_TOKEN ?? "";
+
+    let actorEmail = "system";
+    let actorUserId = "ci";
+    if (expectedToken && triggerToken && triggerToken === expectedToken) {
+      actorEmail = (typeof req.headers["x-migrate-trigger-source"] === "string"
+        ? req.headers["x-migrate-trigger-source"] as string
+        : "github-actions");
+      actorUserId = "ci-migrate";
+    } else {
+      const session = requireAdminRoomAccess(req, res);
+      if (!session) return;
+      actorEmail = session.email;
+      actorUserId = session.userId;
+    }
 
     if (runLock || currentState.status === "running") {
       res.status(409).json({
@@ -112,8 +130,8 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       status: "running",
       startedAt: new Date().toISOString(),
       finishedAt: null,
-      triggeredBy: session.email,
-      lastLogLines: [`▶ Trigget av ${session.email} ${new Date().toISOString()}`],
+      triggeredBy: actorEmail,
+      lastLogLines: [`▶ Trigget av ${actorEmail} ${new Date().toISOString()}`],
       exitCode: null,
       errorMessage: null,
       appliedThisRun: 0,
@@ -159,11 +177,11 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       runLock = false;
       try {
         await logAdminActivity({
-          userId: session.userId,
+          userId: actorUserId,
           entityType: "migrations_run",
           action: code === 0 ? "completed" : "failed",
-          summary: `${currentState.appliedThisRun} applied, ${currentState.skippedThisRun} skipped (exit ${code})`,
-          details: { exitCode: code, appliedCount: currentState.appliedThisRun, skippedCount: currentState.skippedThisRun },
+          summary: `${currentState.appliedThisRun} applied, ${currentState.skippedThisRun} skipped (exit ${code}, by ${actorEmail})`,
+          details: { exitCode: code, appliedCount: currentState.appliedThisRun, skippedCount: currentState.skippedThisRun, actor: actorEmail },
         });
       } catch {
         // logging-feil skal ikke krasje migrate-flowen
