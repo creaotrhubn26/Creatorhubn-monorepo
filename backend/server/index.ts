@@ -67714,7 +67714,8 @@ setupProjectsRoutes({
   dbCompatProjectStateKey,
   dispatchClientGalleryNotification,
   ensureCompatProjectState,
-  isLocalDevelopmentWorkspaceUserId,
+  isLocalDevelopmentWorkspaceUserId: (value: string | null | undefined): boolean =>
+    typeof value === "string" && (value === "local-admin" || value === "dev-local-user" || value.startsWith("dev-")),
   listProjectChangeLog,
   loadCompatProjectState,
   persistCompatProjectState,
@@ -67767,7 +67768,8 @@ setupFileManagementRoutes({
   pool,
   compatResolveUserId,
   resolveActiveSessionFromRequest,
-  isLocalDevelopmentWorkspaceUserId,
+  isLocalDevelopmentWorkspaceUserId: (value: string | null | undefined): boolean =>
+    typeof value === "string" && (value === "local-admin" || value === "dev-local-user" || value.startsWith("dev-")),
   isMissingRelationError,
   ensureGoogleWorkspaceConnectionsSchema,
   resolveRoleRoomGoogleConnection,
