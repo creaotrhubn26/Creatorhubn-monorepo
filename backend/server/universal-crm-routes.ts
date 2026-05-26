@@ -4,12 +4,14 @@ import type { Pool } from "pg";
 export interface UniversalCrmRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
-  const { app, pool } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   app.get("/api/universal-crm/customers", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         profession,
@@ -79,6 +81,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Get a single customer with project link
    */
   app.get("/api/universal-crm/customers/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "SELECT c.*, p.name as project_name, p.status as project_status FROM crm_customers c LEFT JOIN legacy.projects p ON c.project_id = p.id WHERE c.id = $1",
@@ -124,6 +127,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Create a new CRM customer
    */
   app.post("/api/universal-crm/customers", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         name,
@@ -196,6 +200,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Get a single customer by ID
    */
   app.get("/api/universal-crm/customers/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "SELECT * FROM crm_customers WHERE id = $1",
@@ -233,6 +238,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Update a customer
    */
   app.put("/api/universal-crm/customers/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -308,6 +314,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Delete a customer
    */
   app.delete("/api/universal-crm/customers/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM crm_customers WHERE id = $1 RETURNING id",
@@ -328,6 +335,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * CRM dashboard statistics
    */
   app.get("/api/universal-crm/stats", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { profession } = req.query as Record<string, string>;
       const profFilter = profession ? " AND profession = $1" : "";
@@ -409,6 +417,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // ============================================================
 
   app.get("/api/universal-crm/deals", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         customer_id,
@@ -439,6 +448,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/deals", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         customerId,
@@ -486,6 +496,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.put("/api/universal-crm/deals/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const allowed = [
         "customer_id",
@@ -527,6 +538,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // ============================================================
 
   app.get("/api/universal-crm/activities", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         customer_id,
@@ -562,6 +574,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/activities", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         customerId,
@@ -608,6 +621,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // ============================================================
 
   app.get("/api/universal-crm/tasks", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         customer_id,
@@ -643,6 +657,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/tasks", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         customerId,
@@ -686,6 +701,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.put("/api/universal-crm/tasks/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const allowed = [
         "customer_id",
@@ -726,6 +742,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // ============================================================
 
   app.get("/api/universal-crm/pipeline-stages", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const rows = await pool.query(
         "SELECT * FROM crm_pipeline_stages WHERE is_active = true ORDER BY position ASC",
@@ -738,6 +755,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/pipeline-stages", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { name, description, position, color } = req.body;
       if (!name) return res.status(400).json({ error: "Name is required" });
@@ -766,6 +784,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // ============================================================
 
   app.get("/api/universal-crm/email-templates", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const rows = await pool.query(
         "SELECT * FROM crm_email_templates WHERE is_active = true ORDER BY name ASC",

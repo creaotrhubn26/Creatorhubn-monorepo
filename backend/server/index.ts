@@ -67683,7 +67683,7 @@ setupPriceAdministrationRoutes({
   COMPAT_PLATFORM_SUBSCRIPTION_PLAN_OVERRIDES_STORE_KEY,
   compatPlatformSubscriptionPlanOverridesStore,
 });
-setupUniversalCrmRoutes({ app, pool });
+setupUniversalCrmRoutes({ app, pool, requireUserSession });
 setupWeddingRoutes({
   app,
   pool,
