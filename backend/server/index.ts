@@ -408,11 +408,38 @@ import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-acce
 import {
   ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX,
   ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX,
+  ROLE_ROOM_STRIPE_PRODUCT_TAX_CODE,
+  ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS,
+  ROLE_ROOM_ACTIVATED_JOURNEY_STATUS,
+  ROLE_ROOM_ACTIVATION_TOKEN_TTL_MS,
+  ROLE_ROOM_PAYMENT_REMINDER_HOURS,
+  ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
+  ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
+  ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+  ROLE_ROOM_REMINDER_INTERVAL_MS,
+  ROLE_ROOM_REMINDER_STATUS_COMPAT_KEY,
   normalizeRoleRoomCommercialPersona,
   splitRoleRoomContactName,
   getRoleRoomCommercialPlan,
   roleRoomCommercialCheckoutSessionKey,
   roleRoomCommercialSubscriptionKey,
+  getRoleRoomStripeSecretKey,
+  getRoleRoomStripeWebhookSecret,
+  getRoleRoomStripePriceId,
+  getDefaultRoleRoomPublicOrigin,
+  normalizeRoleRoomBrowserOrigin,
+  parseRoleRoomReminderHours,
+  isRoleRoomReminderRunnerEnabled,
+  buildRoleRoomCheckoutReturnUrl,
+  buildRoleRoomBillingReturnUrl,
+  buildRoleRoomActivationUrl,
+  buildRoleRoomActivationReturnUrl,
+  hashRoleRoomActivationToken,
+  generateRoleRoomActivationToken,
+  isRoleRoomClientReviewerRole,
+  isRoleRoomCommercialLoginIntent,
+  shouldSendRoleRoomReminder,
+  buildRoleRoomCommercialReminderSummary,
   type RoleRoomCommercialPersona,
   type RoleRoomCommercialAccessPayloadMember,
   type RoleRoomCommercialAccessResult,
@@ -26236,66 +26263,13 @@ const CREATORHUB_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
 
 let creatorHubStripeClient: Stripe | null | undefined;
 let roleRoomStripeClient: Stripe | null | undefined;
-const ROLE_ROOM_STRIPE_PRODUCT_TAX_CODE = "txcd_10103001";
-const ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS =
-  "role_room_activation_required";
-const ROLE_ROOM_ACTIVATED_JOURNEY_STATUS = "role_room_access_activated";
-const ROLE_ROOM_ACTIVATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 14;
-const ROLE_ROOM_PAYMENT_REMINDER_HOURS = parseRoleRoomReminderHours(
-  process.env.ROLE_ROOM_PAYMENT_REMINDER_HOURS,
-  [2, 24, 72, 168],
-);
-const ROLE_ROOM_ACTIVATION_REMINDER_HOURS = parseRoleRoomReminderHours(
-  process.env.ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
-  [24, 72, 168],
-);
-const ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS =
-  parseRoleRoomReminderHours(
-    process.env.ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
-    [168],
-  )[0] || 168;
-const ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS =
-  parseRoleRoomReminderHours(
-    process.env.ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
-    [168],
-  )[0] || 168;
-const ROLE_ROOM_REMINDER_INTERVAL_MS =
-  Math.max(
-    15,
-    Number.parseInt(
-      normalizeMailConfigValue(process.env.ROLE_ROOM_REMINDER_INTERVAL_MINUTES) ||
-        "60",
-      10,
-    ) || 60,
-  ) *
-  60 *
-  1000;
-const ROLE_ROOM_REMINDER_STATUS_COMPAT_KEY = "role-room:billing:reminders:status";
+// ROLE_ROOM_* konstanter + reminder-hours flyttet til ./role-room-billing-routes.ts (chunk 1B).
 
 // RoleRoomCommercialActivationStatus, RoleRoomCommercialBillingStatus,
 // RoleRoomCommercialReminderDeliverySummary, RoleRoomCommercialReminderSweepSummary
 // flyttet til ./role-room-billing-routes.ts.
 
-function parseRoleRoomReminderHours(
-  value: unknown,
-  fallback: number[],
-): number[] {
-  const normalized = normalizeMailConfigValue(value);
-  const parsed = normalized
-    .split(",")
-    .map((entry) => Number.parseInt(entry.trim(), 10))
-    .filter((entry) => Number.isFinite(entry) && entry > 0)
-    .map((entry) => Math.floor(entry));
-
-  return parsed.length > 0 ? parsed : [...fallback];
-}
-
-function isRoleRoomReminderRunnerEnabled() {
-  const normalized = normalizeMailConfigValue(
-    process.env.ROLE_ROOM_REMINDERS_ENABLED,
-  ).toLowerCase();
-  return !["0", "false", "off", "no"].includes(normalized);
-}
+// parseRoleRoomReminderHours + isRoleRoomReminderRunnerEnabled flyttet til ./role-room-billing-routes.ts.
 
 // roleRoomCommercialCheckoutSessionKey + roleRoomCommercialSubscriptionKey
 // flyttet til ./role-room-billing-routes.ts.
@@ -26427,27 +26401,8 @@ function buildCreatorHubCheckoutReturnUrl(input: {
     .replace("%7BCHECKOUT_SESSION_ID%7D", "{CHECKOUT_SESSION_ID}");
 }
 
-function getRoleRoomStripeSecretKey() {
-  return normalizeMailConfigValue(
-    process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY,
-  );
-}
-
-function getRoleRoomStripeWebhookSecret() {
-  return normalizeMailConfigValue(process.env.STRIPE_WEBHOOK_SECRET);
-}
-
-function getRoleRoomStripePriceId(persona: RoleRoomCommercialPersona) {
-  if (persona === "production_team") {
-    return normalizeMailConfigValue(
-      process.env.ROLE_ROOM_STRIPE_PRICE_ID_PRODUCTION_TEAM,
-    );
-  }
-
-  return normalizeMailConfigValue(
-    process.env.ROLE_ROOM_STRIPE_PRICE_ID_CONTENT_PRODUCER,
-  );
-}
+// getRoleRoomStripeSecretKey + getRoleRoomStripeWebhookSecret + getRoleRoomStripePriceId
+// flyttet til ./role-room-billing-routes.ts.
 
 function getRoleRoomStripeClient() {
   const secretKey = getRoleRoomStripeSecretKey();
@@ -26462,136 +26417,14 @@ function getRoleRoomStripeClient() {
   return roleRoomStripeClient;
 }
 
-function getDefaultRoleRoomPublicOrigin() {
-  return (
-    normalizeMailConfigValue(process.env.ROLE_ROOM_PUBLIC_URL) ||
-    normalizeMailConfigValue(process.env.PUBLIC_APP_URL) ||
-    "https://theroleroom.com"
-  );
-}
+// getDefaultRoleRoomPublicOrigin + normalizeRoleRoomBrowserOrigin +
+// buildRoleRoomCheckoutReturnUrl + buildRoleRoomBillingReturnUrl
+// flyttet til ./role-room-billing-routes.ts.
 
-function normalizeRoleRoomBrowserOrigin(value: unknown) {
-  const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw) {
-    return getDefaultRoleRoomPublicOrigin();
-  }
-
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return getDefaultRoleRoomPublicOrigin();
-    }
-    return parsed.origin;
-  } catch {
-    return getDefaultRoleRoomPublicOrigin();
-  }
-}
-
-function buildRoleRoomCheckoutReturnUrl(input: {
-  browserOrigin: string;
-  returnPath?: string | null;
-  status: "success" | "cancel";
-  includeSessionId?: boolean;
-}) {
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
-  const url = new URL(rawPath, input.browserOrigin);
-  url.searchParams.set("rrCheckout", input.status);
-  if (input.includeSessionId) {
-    url.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
-  } else {
-    url.searchParams.delete("session_id");
-  }
-  return url
-    .toString()
-    .replace("%7BCHECKOUT_SESSION_ID%7D", "{CHECKOUT_SESSION_ID}");
-}
-
-function buildRoleRoomBillingReturnUrl(input: {
-  browserOrigin: string;
-  returnPath?: string | null;
-}) {
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
-  const url = new URL(rawPath, input.browserOrigin);
-  url.searchParams.set("rrBilling", "updated");
-  return url.toString();
-}
-
-function isRoleRoomClientReviewerRole(value: unknown) {
-  const normalized = toAdminString(value);
-  return normalized === "client" || normalized === "client_reviewer";
-}
-
-function isRoleRoomCommercialLoginIntent(input: {
-  loginAs?: unknown;
-  requestedRole?: unknown;
-}) {
-  const loginAs = toAdminString(input.loginAs);
-  if (loginAs === "production_team") {
-    return true;
-  }
-
-  if (loginAs === "content_producer") {
-    return !isRoleRoomClientReviewerRole(input.requestedRole);
-  }
-
-  return false;
-}
-
-function hashRoleRoomActivationToken(token: string) {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-function generateRoleRoomActivationToken() {
-  return crypto.randomBytes(32).toString("hex");
-}
-
-function buildRoleRoomActivationUrl(input: {
-  token: string;
-  browserOrigin?: string | null;
-  returnPath?: string | null;
-}) {
-  const browserOrigin =
-    normalizeRoleRoomBrowserOrigin(input.browserOrigin) ||
-    getDefaultRoleRoomPublicOrigin();
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
-  const url = new URL("/api/role-room/billing/activate", browserOrigin);
-  url.searchParams.set("token", input.token);
-  url.searchParams.set("browserOrigin", browserOrigin);
-  url.searchParams.set("returnPath", rawPath);
-  return url.toString();
-}
-
-function buildRoleRoomActivationReturnUrl(input: {
-  browserOrigin?: string | null;
-  returnPath?: string | null;
-  status: "success" | "error";
-  message?: string | null;
-}) {
-  const browserOrigin =
-    normalizeRoleRoomBrowserOrigin(input.browserOrigin) ||
-    getDefaultRoleRoomPublicOrigin();
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
-  const url = new URL(rawPath, browserOrigin);
-  url.searchParams.set("rrActivation", input.status);
-  if (input.message) {
-    url.searchParams.set("rrActivationMessage", input.message);
-  } else {
-    url.searchParams.delete("rrActivationMessage");
-  }
-  return url.toString();
-}
+// isRoleRoomClientReviewerRole + isRoleRoomCommercialLoginIntent +
+// hashRoleRoomActivationToken + generateRoleRoomActivationToken +
+// buildRoleRoomActivationUrl + buildRoleRoomActivationReturnUrl
+// flyttet til ./role-room-billing-routes.ts.
 
 function getRoleRoomCommercialActivationStatus(
   inviteRequest: Record<string, unknown> | null | undefined,
@@ -26635,52 +26468,8 @@ function getRoleRoomCommercialPaymentPendingSince(
   );
 }
 
-function shouldSendRoleRoomReminder(input: {
-  anchorAt?: string | null;
-  lastSentAt?: string | null;
-  sentCount?: number | null;
-  thresholdHours: number[];
-  repeatHours: number;
-}) {
-  const anchorTime = Date.parse(String(input.anchorAt || ""));
-  if (!Number.isFinite(anchorTime) || anchorTime <= 0) {
-    return false;
-  }
-
-  const count = Math.max(0, Math.floor(input.sentCount || 0));
-  const now = Date.now();
-  if (count < input.thresholdHours.length) {
-    return (
-      now - anchorTime >= input.thresholdHours[count] * 60 * 60 * 1000
-    );
-  }
-
-  const lastSentTime = Date.parse(String(input.lastSentAt || ""));
-  if (!Number.isFinite(lastSentTime) || lastSentTime <= 0) {
-    return false;
-  }
-
-  return now - lastSentTime >= input.repeatHours * 60 * 60 * 1000;
-}
-
-function buildRoleRoomCommercialReminderSummary(
-  reason: "startup" | "interval" | "manual",
-): RoleRoomCommercialReminderSweepSummary {
-  const startedAt = new Date().toISOString();
-  return {
-    reason,
-    startedAt,
-    finishedAt: startedAt,
-    isRunning: true,
-    paymentCandidates: 0,
-    paymentRemindersSent: 0,
-    activationCandidates: 0,
-    activationRemindersSent: 0,
-    failures: 0,
-    skipped: 0,
-    notes: [],
-  };
-}
+// shouldSendRoleRoomReminder + buildRoleRoomCommercialReminderSummary
+// flyttet til ./role-room-billing-routes.ts.
 
 function doesRoleRoomCommercialPaymentMatchCurrentSetup(input: {
   inviteRequest: Record<string, unknown> | null | undefined;
