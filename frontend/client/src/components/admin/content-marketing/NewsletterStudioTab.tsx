@@ -20,6 +20,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SendIcon from '@mui/icons-material/Send';
 import ScienceIcon from '@mui/icons-material/Science';
 import CloseIcon from '@mui/icons-material/Close';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import {
   newsletterIssuesApi,
   newsletterApi,
@@ -181,6 +182,40 @@ export function NewsletterStudioTab() {
       setError((err as Error).message);
     }
   }
+  async function handleSchedule(issue: NewsletterIssue) {
+    // Default: kommende fredag 08:00 norsk tid
+    const now = new Date();
+    const friday = new Date(now);
+    const dow = now.getDay(); // 0=søn, 5=fre
+    const daysUntilFriday = (5 - dow + 7) % 7 || 7;
+    friday.setDate(now.getDate() + daysUntilFriday);
+    friday.setHours(8, 0, 0, 0);
+    const defaultIso = friday.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
+    const input = window.prompt(`Planlegg sending av "${issue.title}".\n\nFormat: YYYY-MM-DDTHH:mm (lokal norsk tid)`, defaultIso);
+    if (!input) return;
+    const scheduledDate = new Date(input);
+    if (!Number.isFinite(scheduledDate.getTime())) {
+      setError('Ugyldig datoformat');
+      return;
+    }
+    try {
+      await newsletterIssuesApi.schedule(issue.id, scheduledDate.toISOString());
+      setSnackbar(`Planlagt for ${scheduledDate.toLocaleString('nb-NO')}`);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  async function handleUnschedule(issue: NewsletterIssue) {
+    if (!window.confirm(`Avbryt planlagt sending av "${issue.title}"?`)) return;
+    try {
+      await newsletterIssuesApi.unschedule(issue.id);
+      setSnackbar('Planlegging avbrutt');
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   return (
     <Box>
@@ -229,6 +264,14 @@ export function NewsletterStudioTab() {
                   </Stack>
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>{issue.title}</Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>{issue.subject}</Typography>
+                  {issue.status === 'scheduled' && issue.scheduled_for ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+                      <ScheduleIcon sx={{ fontSize: '0.9rem', color: '#fbbf24' }} />
+                      <Typography sx={{ color: '#fde68a', fontSize: '0.78rem', fontWeight: 600 }}>
+                        Planlagt for {new Date(issue.scheduled_for).toLocaleString('nb-NO', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </Typography>
+                    </Box>
+                  ) : null}
                   {issue.audience_filter && issue.audience_filter !== 'all' ? (
                     <Chip
                       label={issue.audience_filter === 'tier1-advocates' ? 'T1 Advocates' : issue.audience_filter === 'tier1-engaged' ? 'T1 Engaged' : issue.audience_filter}
@@ -258,23 +301,43 @@ export function NewsletterStudioTab() {
                     </Box>
                   ) : null}
                 </Box>
-                <Stack direction="row" spacing={0.5}>
+                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
                   <Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => handleEdit(issue)} sx={{ textTransform: 'none', fontWeight: 600 }}>
                     Rediger
                   </Button>
                   <Button size="small" variant="outlined" startIcon={<ScienceIcon />} onClick={() => handleSendTest(issue)} sx={{ textTransform: 'none', fontWeight: 600 }}>
                     Test
                   </Button>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<SendIcon />}
-                    disabled={issue.status === 'sending' || issue.status === 'sent' || (subscriberStats?.confirmed ?? 0) === 0}
-                    onClick={() => handleSendToAll(issue)}
-                    sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}
-                  >
-                    Send
-                  </Button>
+                  {issue.status === 'scheduled' ? (
+                    <>
+                      <Button size="small" variant="outlined" startIcon={<ScheduleIcon />} onClick={() => handleUnschedule(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: '#fbbf24', borderColor: 'rgba(251,191,36,0.4)' }}>
+                        Avbryt planlegging
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<ScheduleIcon />}
+                        disabled={issue.status === 'sending' || issue.status === 'sent' || (subscriberStats?.confirmed ?? 0) === 0}
+                        onClick={() => handleSchedule(issue)}
+                        sx={{ textTransform: 'none', fontWeight: 600 }}
+                      >
+                        Planlegg
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<SendIcon />}
+                        disabled={issue.status === 'sending' || issue.status === 'sent' || (subscriberStats?.confirmed ?? 0) === 0}
+                        onClick={() => handleSendToAll(issue)}
+                        sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}
+                      >
+                        Send nå
+                      </Button>
+                    </>
+                  )}
                   <IconButton size="small" onClick={() => handleDelete(issue)} disabled={issue.status === 'sending'}>
                     <DeleteOutlineIcon fontSize="small" sx={{ color: 'rgba(248,113,113,0.85)' }} />
                   </IconButton>

@@ -672,6 +672,170 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
       res.status(500).json({ error: "Kunne ikke starte sending" });
     }
   });
+
+  // ── Schedule + cron-loop ──────────────────────────────────────────
+
+  app.post("/api/admin-room/newsletter/role-room/issues/:id/schedule", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const scheduledFor = asString(body.scheduledFor);
+    if (!scheduledFor) {
+      res.status(400).json({ error: "scheduledFor (ISO datetime) er påkrevd" });
+      return;
+    }
+    const parsedDate = new Date(scheduledFor);
+    if (!Number.isFinite(parsedDate.getTime())) {
+      res.status(400).json({ error: "scheduledFor må være gyldig ISO datetime" });
+      return;
+    }
+    if (parsedDate.getTime() < Date.now() - 60_000) {
+      res.status(400).json({ error: "scheduledFor må være i fremtiden" });
+      return;
+    }
+    try {
+      const result = await pool.query(
+        `UPDATE role_room_newsletter_issues
+            SET status = 'scheduled', scheduled_for = $1, updated_at = NOW()
+          WHERE id = $2 AND user_id = $3 AND status IN ('draft', 'scheduled')
+          RETURNING *`,
+        [parsedDate.toISOString(), req.params.id, session.userId],
+      );
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Utgave ikke funnet eller kan ikke planlegges (allerede sendt?)" });
+        return;
+      }
+      res.json({ ok: true, item: result.rows[0] });
+    } catch (err) {
+      console.error("[newsletter-issues] schedule error", err);
+      res.status(500).json({ error: "Kunne ikke planlegge utgaven" });
+    }
+  });
+
+  app.post("/api/admin-room/newsletter/role-room/issues/:id/unschedule", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      const result = await pool.query(
+        `UPDATE role_room_newsletter_issues
+            SET status = 'draft', scheduled_for = NULL, updated_at = NOW()
+          WHERE id = $1 AND user_id = $2 AND status = 'scheduled'
+          RETURNING *`,
+        [req.params.id, session.userId],
+      );
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Utgave ikke funnet eller ikke planlagt" });
+        return;
+      }
+      res.json({ ok: true, item: result.rows[0] });
+    } catch (err) {
+      console.error("[newsletter-issues] unschedule error", err);
+      res.status(500).json({ error: "Kunne ikke avbryte planlegging" });
+    }
+  });
+
+  // In-process scheduler: hvert minutt sjekker vi om noen scheduled issues
+  // har scheduled_for <= NOW. Hvis ja, plukker vi opp én og kaller send-logikken
+  // ved å oppdatere status til 'sending' og kjøre send-loopen.
+  // Idempotent: status='sending' låser issuen så parallelle workers ikke
+  // dobbeltsender (UPDATE ... WHERE status='scheduled' RETURNING).
+  async function runScheduledDispatch(): Promise<void> {
+    try {
+      const claimed = await pool.query(
+        `UPDATE role_room_newsletter_issues
+            SET status = 'sending', updated_at = NOW()
+          WHERE id IN (
+            SELECT id FROM role_room_newsletter_issues
+             WHERE status = 'scheduled' AND scheduled_for IS NOT NULL AND scheduled_for <= NOW()
+             ORDER BY scheduled_for ASC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED
+          )
+          RETURNING *`,
+      );
+      const issue = claimed.rows[0];
+      if (!issue) return;
+      console.info(`[newsletter-scheduler] dispatching ${issue.id} (${issue.slug})`);
+
+      // Filter-spec — samme logikk som /send-endpoint
+      const filter = issue.audience_filter ?? "all";
+      let whereClause = "status = 'confirmed' AND unsubscribed_at IS NULL";
+      const params: unknown[] = [];
+      if (filter === "tier1-advocates") {
+        whereClause += ` AND LOWER(email) IN (SELECT LOWER(email) FROM role_room_industry_targets WHERE tier = 'T1' AND status = 'advocate' AND email IS NOT NULL)`;
+      } else if (filter === "tier1-engaged") {
+        whereClause += ` AND LOWER(email) IN (SELECT LOWER(email) FROM role_room_industry_targets WHERE tier = 'T1' AND status IN ('engaged','advocate') AND email IS NOT NULL)`;
+      } else if (typeof filter === "string" && filter.startsWith("source-")) {
+        params.push(filter.replace(/^source-/, ""));
+        whereClause += ` AND source = $${params.length}`;
+      }
+      const subscribersRes = await pool.query(
+        `SELECT id, email, unsubscribe_token FROM role_room_newsletter_signups WHERE ${whereClause}`,
+        params,
+      );
+      const subscribers = subscribersRes.rows as { id: string; email: string; unsubscribe_token: string | null }[];
+
+      let sentCount = 0;
+      let failedCount = 0;
+      for (const sub of subscribers) {
+        if (!sub.unsubscribe_token) { failedCount += 1; continue; }
+        try {
+          const result = await sendNewsletterIssueToRecipient({
+            to: sub.email,
+            subject: issue.subject,
+            preheader: issue.preheader ?? "",
+            bodyHtml: issue.body_html ?? markdownToHtml(issue.body_markdown),
+            unsubscribeToken: sub.unsubscribe_token,
+            issueId: issue.id,
+            signupId: sub.id,
+          });
+          if (result.sent) {
+            sentCount += 1;
+            await pool.query(
+              `INSERT INTO role_room_newsletter_issue_sends (issue_id, signup_id, email, status, sent_at)
+               VALUES ($1, $2, $3, 'sent', NOW())
+               ON CONFLICT (issue_id, signup_id) DO UPDATE SET status='sent', sent_at=NOW(), error_message=NULL`,
+              [issue.id, sub.id, sub.email],
+            );
+          } else {
+            failedCount += 1;
+            await pool.query(
+              `INSERT INTO role_room_newsletter_issue_sends (issue_id, signup_id, email, status, error_message)
+               VALUES ($1, $2, $3, 'failed', $4)
+               ON CONFLICT (issue_id, signup_id) DO UPDATE SET status='failed', error_message=EXCLUDED.error_message`,
+              [issue.id, sub.id, sub.email, result.error ?? "unknown"],
+            );
+          }
+        } catch (err) {
+          failedCount += 1;
+          await pool.query(
+            `INSERT INTO role_room_newsletter_issue_sends (issue_id, signup_id, email, status, error_message)
+             VALUES ($1, $2, $3, 'failed', $4)
+             ON CONFLICT (issue_id, signup_id) DO UPDATE SET status='failed', error_message=EXCLUDED.error_message`,
+            [issue.id, sub.id, sub.email, (err as Error).message],
+          );
+        }
+      }
+      await pool.query(
+        `UPDATE role_room_newsletter_issues
+            SET status = 'sent', sent_at = NOW(), sent_count = $1, failed_count = $2, updated_at = NOW()
+          WHERE id = $3`,
+        [sentCount, failedCount, issue.id],
+      );
+      console.info(`[newsletter-scheduler] ${issue.id} sent: ${sentCount} ok, ${failedCount} failed`);
+    } catch (err) {
+      console.error("[newsletter-scheduler] tick error", err);
+    }
+  }
+
+  // Start scheduler hvis ikke explicitly disabled
+  if (process.env.NEWSLETTER_SCHEDULER_ENABLED !== "false") {
+    const interval = setInterval(() => { void runScheduledDispatch(); }, 60_000);
+    interval.unref();
+    // Første tick rett etter boot (etter 10 sek så DB er klar)
+    setTimeout(() => { void runScheduledDispatch(); }, 10_000).unref();
+    console.info("[newsletter-scheduler] started — polling every 60s");
+  }
 }
 
 function htmlPage(title: string, message: string): string {

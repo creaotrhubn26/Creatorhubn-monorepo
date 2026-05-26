@@ -1258,4 +1258,13 @@ export const newsletterIssuesApi = {
   send: async (id: string): Promise<{ ok: boolean; recipientCount: number; message: string }> => {
     return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/send`, { method: 'POST' });
   },
+  schedule: async (id: string, scheduledFor: string): Promise<{ ok: boolean; item: NewsletterIssue }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify({ scheduledFor }),
+    });
+  },
+  unschedule: async (id: string): Promise<{ ok: boolean; item: NewsletterIssue }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/unschedule`, { method: 'POST' });
+  },
 };
