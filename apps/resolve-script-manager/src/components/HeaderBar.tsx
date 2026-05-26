@@ -83,6 +83,7 @@ interface Props {
   onTemplateChange: (id: string) => void;
   onSetupProject: () => void;
   onMagicCut: () => void;
+  onOpenCreativeEditor: () => void;
   onOpenSettings: () => void;
   onOpenDependencies: () => void;
   onOpenWatch: () => void;
@@ -120,6 +121,7 @@ export function HeaderBar({
   onTemplateChange,
   onSetupProject,
   onMagicCut,
+  onOpenCreativeEditor,
   onOpenSettings,
   onOpenDependencies,
   onOpenWatch,
@@ -209,6 +211,19 @@ export function HeaderBar({
                 <div className="header-menu-divider" />
                 <button onClick={() => { setMenuOpen(false); onMagicCut(); }} disabled={busy}>
                   <IconMagicCut /> Magic Cut (current template)
+                </button>
+                <div className="header-menu-divider" />
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenCreativeEditor(); }}
+                  disabled={busy}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(160,48,192,0.20), rgba(110,63,199,0.20))",
+                    border: "1px solid rgba(160,48,192,0.40)",
+                    color: "#f0eaff",
+                    fontWeight: 600,
+                  }}
+                >
+                  🎬 Creative Editor (Story-driven)
                 </button>
               </div>
             </>

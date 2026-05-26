@@ -441,6 +441,9 @@ export default function App() {
         onTemplateChange={setActiveTemplateId}
         onSetupProject={() => setShowOnboarding(true)}
         onMagicCut={() => setShowMagicCut(true)}
+        onOpenCreativeEditor={() => setCreativeEditorPath(
+          "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_highlight_picks.json"
+        )}
         onOpenSettings={() => setShowSettings(true)}
         onOpenDependencies={() => setShowDependencies(true)}
         onOpenWatch={() => setShowWatch(true)}
