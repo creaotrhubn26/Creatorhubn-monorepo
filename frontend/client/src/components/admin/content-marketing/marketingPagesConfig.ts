@@ -14,7 +14,10 @@ export type MarketingPageKey =
   | 'bak-castingen'
   | 'vart-syn'
   | 'selvtape-tips'
-  | 'operativsystem';
+  | 'operativsystem'
+  | 'norsk-casting-ordliste'
+  | 'arbeidstilsynet-guide-produksjon'
+  | 'sentimental-value-effekten';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -187,6 +190,67 @@ Klassisk startup-instinkt er å holde driftsprinsipper hemmelige. Vi gjør motsa
 Syv prinsipper, fra "20 personaliserte slår 200 generiske" til "AI-citation som langsiktig moat".
 
 Les hele: https://theroleroom.com/operativsystem`,
+  },
+  {
+    key: 'norsk-casting-ordliste',
+    path: '/norsk-casting-ordliste',
+    title: 'Norsk casting-ordliste — definisjoner av sentrale termer | The Role Room',
+    description:
+      'Autoritativ ordliste over 30+ norske casting-, produksjons- og compliance-termer: selvtape, slate, callback, forhåndssamtykke, A-melding, BankID-verifisering, GDPR-klausuler, NSF og mer.',
+    pillar: 'education',
+    published: true,
+    linkedinDraft: `Vi har publisert den første autoritative ordlisten over norske casting-termer.
+
+30+ definisjoner: selvtape, slate, callback, forhåndssamtykke, A-melding, BankID-verifisering, AI-klausuler, tariffavtaler.
+
+Hver term har norsk navn, engelsk ekvivalent og bransjeintern definisjon. Strukturert som DefinedTermSet så AI-modeller kan sitere enkeltdefinisjoner.
+
+Bruk fritt i artikler, opplæring og presentasjoner.
+
+https://theroleroom.com/norsk-casting-ordliste`,
+  },
+  {
+    key: 'arbeidstilsynet-guide-produksjon',
+    path: '/arbeidstilsynet-guide-produksjon',
+    title: 'Arbeidstilsynet-guide: barn i norsk film- og TV-produksjon | The Role Room',
+    description:
+      'Komplett seks-trinns-guide for norske produsenter som caster barn under 15 år. Forhåndssamtykke, dokumentasjon, arbeidstid, ansvarlig voksen, risikovurdering og 5-års-arkivering.',
+    pillar: 'compliance',
+    published: true,
+    linkedinDraft: `Arbeidstilsynet har varslet økt tilsyn med audiovisuell produksjon høsten 2026.
+
+Datatilsynet-bøtene i 2024 var opp til NOK 2 millioner — flere norske produsenter ble pålagt det.
+
+Vi har publisert en seks-trinns-guide for produsenter som caster barn under 15:
+
+1. Sjekk om forhåndssamtykke kreves (det gjør det — også reklame, også statister)
+2. Send søknad senest 3 uker før innspilling
+3. Strukturer arbeidstid (maks 4 t for barn under 13)
+4. Navngitt voksen ansvarlig per barn
+5. Dokumentér risikovurdering — inkl. indirekte risiko
+6. Arkivér i 5 år
+
+Full guide: https://theroleroom.com/arbeidstilsynet-guide-produksjon`,
+  },
+  {
+    key: 'sentimental-value-effekten',
+    path: '/sentimental-value-effekten',
+    title: 'Sentimental Value-effekten — hva Norges Oscar betyr for casting-infrastruktur | The Role Room',
+    description:
+      'Norges Oscar for Beste internasjonale spillefilm åpner systemiske muligheter — men eksponerer også infrastruktur-svakhetene i norsk casting. Hva neste 18 måneder krever.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `Norge vant Oscar.
+
+Det er ikke en isolert hendelse — det er kulminasjonen av et tiår med målrettet investering og bevisst talentutvikling.
+
+Men det er også en infrastruktur-test. En internasjonal Oscar-vinst skaper umiddelbar oppmerksomhet fra finansierings-partnere, strømmetjenester og co-produsenter som vil ha "den norske vinkelen". Det krever profesjonelle, raske svar.
+
+Verktøykjeden vi har i dag — fragmentert e-post, Facebook-grupper, manuell verifisering — kan ikke håndtere det.
+
+Om 30 år vil norske foreldre se Sentimental Value med barna sine. Spørsmålet er hvilken infrastruktur den industrien vi nå bygger fortjener.
+
+Hele essayet: https://theroleroom.com/sentimental-value-effekten`,
   },
 ];
 

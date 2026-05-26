@@ -6,6 +6,9 @@ import BehindTheCastPage from './BehindTheCastPage';
 import FounderPovPage from './FounderPovPage';
 import SelvtapeTipsPage from './SelvtapeTipsPage';
 import OperativsystemPage from './OperativsystemPage';
+import NorskCastingOrdlistePage from './NorskCastingOrdlistePage';
+import ArbeidstilsynetGuidePage from './ArbeidstilsynetGuidePage';
+import SentimentalValueEffektenPage from './SentimentalValueEffektenPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -49,6 +52,12 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <SelvtapeTipsPage />;
     case 'operativsystem':
       return <OperativsystemPage />;
+    case 'norsk-casting-ordliste':
+      return <NorskCastingOrdlistePage />;
+    case 'arbeidstilsynet-guide-produksjon':
+      return <ArbeidstilsynetGuidePage />;
+    case 'sentimental-value-effekten':
+      return <SentimentalValueEffektenPage />;
     default:
       return null;
   }
