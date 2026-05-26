@@ -176,8 +176,8 @@ async function fetchAllRoleRoomSubscribers(stripe: Stripe): Promise<StripeSubscr
         price?.recurring?.interval_count ?? null,
       );
       // Stripe v19: current_period_end er flyttet fra Subscription til items.data[i].
-      const firstItem = sub.items?.data?.[0] as { current_period_end?: number } | undefined;
-      const periodEnd = firstItem?.current_period_end ?? null;
+      const periodEnd =
+        (firstItem as { current_period_end?: number } | undefined)?.current_period_end ?? null;
       rows.push({
         customerId: typeof customer === "string" ? customer : customer.id,
         customerEmail: !isDeleted ? (customer as Stripe.Customer).email ?? null : null,

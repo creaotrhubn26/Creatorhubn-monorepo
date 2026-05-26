@@ -112,7 +112,7 @@ export async function sweepOnce(pool: Pool): Promise<{ refreshed: number; failed
                   last_error = $2,
                   updated_at = now()
             WHERE id = $1 AND connection_state = 'connected'`,
-          [candidate.id, (error as Error).message.slice(0, 500)],
+          [candidate.id, String(error instanceof Error ? error.message : error).slice(0, 500)],
         );
       } catch {
         /* ignore — best effort */
