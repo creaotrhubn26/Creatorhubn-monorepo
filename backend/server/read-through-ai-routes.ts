@@ -8,9 +8,9 @@
  *     playback sounds like acting, not narration.
  *
  * Consent + audit: caller passes projectId. The route records every call
- * in role_room_ai_audit_log via logAiCall(). Full requireActiveConsent()
- * enforcement is TODO — tracked alongside the project's existing AI
- * consent surface.
+ * in role_room_ai_audit_log via logAiCall() og blokkerer mot
+ * requireActiveConsent(anthropic, full_context) før Claude-call.
+ * Bearer-Auth via requireAuth middleware.
  */
 
 import {

@@ -7,8 +7,8 @@
  *   POST /api/live-set/ai/end-of-day         → brief + crew message draft
  *
  * Same auth/audit contract as read-through-ai-routes.ts: caller passes
- * projectId; every call goes through logAiCall. Consent enforcement is
- * TODO (tracked with the read-through route).
+ * projectId; every call goes through logAiCall + requireActiveConsent
+ * (Anthropic, full_context). Bearer-Auth via requireAuth middleware.
  */
 
 import {
