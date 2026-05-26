@@ -155,7 +155,7 @@ def acoustid_lookup(api_key: str, fingerprint: str, duration: int) -> list[dict]
         "client": api_key,
         "duration": str(duration),
         "fingerprint": fingerprint,
-        "meta": "recordings+releasegroups+compress",
+        "meta": "recordings,releasegroups",
     }
     full_url = url + "?" + urllib.parse.urlencode(params)
     try:
