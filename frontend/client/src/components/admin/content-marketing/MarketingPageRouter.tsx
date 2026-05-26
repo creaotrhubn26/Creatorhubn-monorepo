@@ -2,6 +2,9 @@ import { useEffect } from 'react';
 import CastingScamSignsPage from './CastingScamSignsPage';
 import ChildConsentFilmPage from './ChildConsentFilmPage';
 import CastingReport2026Page from './CastingReport2026Page';
+import BehindTheCastPage from './BehindTheCastPage';
+import FounderPovPage from './FounderPovPage';
+import SelvtapeTipsPage from './SelvtapeTipsPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -37,6 +40,12 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <ChildConsentFilmPage />;
     case 'casting-rapport-2026':
       return <CastingReport2026Page />;
+    case 'bak-castingen':
+      return <BehindTheCastPage />;
+    case 'vart-syn':
+      return <FounderPovPage />;
+    case 'selvtape-tips':
+      return <SelvtapeTipsPage />;
     default:
       return null;
   }

@@ -7,7 +7,13 @@
  * uppublisertes sider returnerer 404-fallback (eller standard landing).
  */
 
-export type MarketingPageKey = 'casting-svindel-tegn' | 'barn-samtykke-film' | 'casting-rapport-2026';
+export type MarketingPageKey =
+  | 'casting-svindel-tegn'
+  | 'barn-samtykke-film'
+  | 'casting-rapport-2026'
+  | 'bak-castingen'
+  | 'vart-syn'
+  | 'selvtape-tips';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -106,6 +112,60 @@ Full huskeliste: https://theroleroom.com/barn-samtykke-film`,
 Det betyr at hovedproblemet i norsk casting ikke er "flere skuespillere". Det er "bedre koordinering av eksisterende talent".
 
 Full rapport publiseres i oktober. Tegn deg på her: https://theroleroom.com/casting-rapport-2026`,
+  },
+  {
+    key: 'bak-castingen',
+    path: '/bak-castingen',
+    title: 'Bak castingen — ekte historier fra norsk film og TV | The Role Room',
+    description:
+      'Tre historier fra norsk casting i 2026: nyutdannet hovedrolle, casting director om "det riktige valget", produsent som castet 12 BankID-verifiserte statister på 38 timer.',
+    pillar: 'behind-the-cast',
+    published: true,
+    linkedinDraft: `Tre måneder siden var Maren student ved Den Norske Filmskolen. I dag er hun cast som hovedrollen i en NRK-dramaserie.
+
+Det som skilte henne fra de andre søkerne var ikke teknikk. Det var én ting: en 90-sekunders selvtape som ikke prøvde å være imponerende. Bare ærlig.
+
+Castingdirektøren brukte 14 sekunder før hun la den i shortlist-mappen.
+
+"Jeg trodde jeg måtte sprenge skjermen. Det jeg trengte var å være helt rolig — og så kjøre én linje med mening." — Maren
+
+Hele historien + to til (CD-spotlight + produsent-historie): https://theroleroom.com/bak-castingen`,
+  },
+  {
+    key: 'vart-syn',
+    path: '/vart-syn',
+    title: 'Vårt syn — tre meninger som vil gjøre oss upopulære i norsk filmbransje | The Role Room',
+    description:
+      'Daniel Qazi, grunnlegger av The Role Room, om sikkerhet for mindreårige, AI uten rettighets-klausuler og kreditt-verifisering som produkt-fundament.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `Tre meninger som vil gjøre meg upopulær i norsk filmbransje:
+
+1. Åpne casting-plattformer er ikke trygge for skuespillere under 18. Punktum.
+2. AI-castingverktøy uten eksplisitte rettighets-klausuler er ulovlig — ikke "etisk gråsone".
+3. En skuespillerprofil uten verifisert produksjonskreditt er verdiløs som produkt.
+
+Hvis du er uenig — kom gjerne i kommentarene. Jeg har endret mening før.
+
+Hele begrunnelsen: https://theroleroom.com/vart-syn`,
+  },
+  {
+    key: 'selvtape-tips',
+    path: '/selvtape-tips',
+    title: 'Fem ting castere ser etter i selvtaper (selv om de ikke sier det høyt) | The Role Room',
+    description:
+      'Konkret huskeliste for skuespillere: slate, stillhet før første replikk, øye-kontakt mot linsen, klesvalg, riktig avslutning. Optimalisert for norsk casting i 2026.',
+    pillar: 'education',
+    published: true,
+    linkedinDraft: `Fem ting castere ser etter i selvtaper — som de ikke alltid sier høyt:
+
+1. Slate ærlig — navn, alder, agentur. 7 sekunder.
+2. Stillhet før første replikk. 2 sekunder. Castere puster også.
+3. Øynene treffer kameraets linse, ikke partnerens. Linsen er publikum.
+4. Outfits som ikke distraherer. Solid farge. Aldri hvit, aldri mønster.
+5. Slutt med stillhet. 3 sekunder. Ikke "tusen takk!" — det dreper magien.
+
+Full guide for norske skuespillere: https://theroleroom.com/selvtape-tips`,
   },
 ];
 
