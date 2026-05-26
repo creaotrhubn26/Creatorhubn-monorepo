@@ -108,28 +108,205 @@ def _select_instagram_picks(all_picks: list[dict], target_sec: float,
     return selected
 
 
+def _detect_face_center_x(ffmpeg: str, source_video: str, ts_sec: float,
+                          frame_width: int) -> float | None:
+    """Sample one frame at `ts_sec` and return the face-centroid X (in
+    source-video pixels). Returns None if no face detected or cv2 unavailable.
+
+    Used by per-pick smart-crop (#483 V2) — instead of always center-cropping,
+    we shift the 9:16 strip horizontally so detected faces stay in frame.
+    """
+    try:
+        import cv2  # type: ignore
+    except ImportError:
+        return None
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix="ig_face_", suffix=".jpg")
+    os.close(fd)
+    try:
+        r = subprocess.run(
+            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+             "-ss", f"{ts_sec:.3f}", "-i", source_video,
+             "-vframes", "1", "-q:v", "3",
+             "-vf", f"scale={frame_width}:-1",
+             tmp],
+            capture_output=True, timeout=15,
+        )
+        if r.returncode != 0 or not os.path.exists(tmp):
+            return None
+        img = cv2.imread(tmp, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return None
+        cascade_path = os.path.join(
+            cv2.data.haarcascades, "haarcascade_frontalface_default.xml"
+        )
+        if not os.path.isfile(cascade_path):
+            return None
+        cascade = cv2.CascadeClassifier(cascade_path)
+        faces = cascade.detectMultiScale(img, scaleFactor=1.2, minNeighbors=5,
+                                         minSize=(40, 40))
+        if faces is None or len(faces) == 0:
+            return None
+        # Average centroid of all detected faces (handles couple/family shots)
+        centers_x = [(x + w / 2) for (x, y, w, h) in faces]
+        return float(sum(centers_x) / len(centers_x))
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        try: os.unlink(tmp)
+        except OSError: pass
+
+
+def _compute_smart_crop_x(ffmpeg: str, source_video: str, picks: list[dict],
+                          probe_width: int = 640) -> dict[int, int]:
+    """Per-pick crop-X offset in probe-resolution pixels.
+    Returns {pick_idx: x_offset} where the 9:16 strip (ih*9/16 wide)
+    should start. None of these are absolute — they're scaled back to
+    source dimensions at filter-time.
+
+    For each pick: sample 3 frames evenly across the shot, detect faces,
+    use median X-centroid. Falls back to center-crop if no faces.
+    """
+    out: dict[int, int] = {}
+    for i, p in enumerate(picks):
+        start = float(p.get("startSec") or 0)
+        end = float(p.get("endSec") or 0)
+        if end <= start:
+            continue
+        samples_x: list[float] = []
+        for frac in (0.25, 0.50, 0.75):
+            ts = start + (end - start) * frac
+            cx = _detect_face_center_x(ffmpeg, source_video, ts, probe_width)
+            if cx is not None:
+                samples_x.append(cx)
+        if not samples_x:
+            continue
+        samples_x.sort()
+        face_cx = samples_x[len(samples_x) // 2]  # median
+        out[i] = int(round(face_cx))
+    return out
+
+
+def _build_per_pick_filter_complex(
+    picks: list[dict], smart_x_by_pick: dict[int, int],
+    width: int, height: int, probe_width: int = 640,
+) -> str:
+    """Build the ffmpeg filter_complex graph that:
+       - trims source by each pick's [start, end]
+       - applies per-pick smart-crop X (or center if no face data)
+       - scales to 1080×1920
+       - concats all picks
+    Returns the full -filter_complex argument string.
+    """
+    v_chains = []
+    a_chains = []
+    for i, p in enumerate(picks):
+        start = float(p.get("startSec") or 0)
+        end = float(p.get("endSec") or 0)
+        if end <= start:
+            continue
+        # Convert probe-resolution face-x to source-resolution proportion (0..1)
+        # then apply at runtime via ih*9/16 strip width.
+        if i in smart_x_by_pick:
+            face_cx_rel = smart_x_by_pick[i] / probe_width  # 0..1 across frame
+            # x = clamp(face_cx_rel * iw - strip_w/2, 0, iw - strip_w)
+            crop_x_expr = (
+                f"max(0,min(iw-ih*9/16,{face_cx_rel:.4f}*iw-ih*9/16/2))"
+            )
+        else:
+            # Center-crop fallback
+            crop_x_expr = "(iw-ih*9/16)/2"
+        v_chains.append(
+            f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS,"
+            f"crop=w='ih*9/16':h=ih:x='{crop_x_expr}':y=0,"
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"
+            f"[v{i}]"
+        )
+        a_chains.append(
+            f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{i}]"
+        )
+    n = len(v_chains)
+    v_inputs = "".join(f"[v{i}]" for i, _ in enumerate(picks)
+                       if (float(picks[i].get('endSec') or 0)
+                           > float(picks[i].get('startSec') or 0)))
+    a_inputs = "".join(f"[a{i}]" for i, _ in enumerate(picks)
+                       if (float(picks[i].get('endSec') or 0)
+                           > float(picks[i].get('startSec') or 0)))
+    concat_v = f"{v_inputs}concat=n={n}:v=1:a=0[vconcat]"
+    concat_a = f"{a_inputs}concat=n={n}:v=0:a=1[aconcat]"
+    loudnorm = "[aconcat]loudnorm=I=-14:TP=-1:LRA=11[aout]"
+    return ";".join(v_chains + a_chains + [concat_v, concat_a, loudnorm])
+
+
 def _concat_picks_to_vertical(
     ffmpeg: str, source_video: str, picks: list[dict], out_path: str,
     width: int = 1080, height: int = 1920,
 ) -> bool:
-    """Build the 9:16 intermediate via ffmpeg select+concat. We use a single
-    pass with select-filter and crop-filter so we never write per-pick
-    intermediates (faster + no quality loss to disk)."""
+    """Build the 9:16 intermediate via ffmpeg per-pick smart-crop concat.
+
+    (#483 V2) Per-pick crops follow the face-centroid horizontally so the
+    couple/subjects stay in frame instead of being chopped off at the
+    edge by a static center-crop.
+
+    Falls back to single-pass center-crop if smart-crop graph fails (very
+    long pick-lists can exceed ffmpeg's filter-complex limits).
+    """
     if not picks:
         return False
 
-    # Build select expression: between(t, start, end) OR'd per pick.
+    # Try smart-crop graph first
+    smart_x = _compute_smart_crop_x(ffmpeg, source_video, picks)
+    if smart_x:
+        bridge.log(
+            f"Smart-crop: {len(smart_x)}/{len(picks)} picks have face-data "
+            f"(remainder fall back to center)"
+        )
+    else:
+        bridge.log("Smart-crop: no faces detected anywhere → center-crop fallback")
+
+    filter_complex = _build_per_pick_filter_complex(
+        picks, smart_x, width, height,
+    )
+    cmd = [
+        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+        "-i", source_video,
+        "-filter_complex", filter_complex,
+        "-map", "[vconcat]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-r", "30",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+        "-movflags", "+faststart",
+        out_path,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+    except subprocess.TimeoutExpired:
+        bridge.warn("ffmpeg smart-crop concat timed out after 20 min")
+        return False
+    if r.returncode != 0:
+        bridge.warn(
+            f"smart-crop concat failed ({(r.stderr or '')[-300:]}) — "
+            "falling back to center-crop single-pass"
+        )
+        return _concat_center_crop_fallback(
+            ffmpeg, source_video, picks, out_path, width, height,
+        )
+    return os.path.isfile(out_path) and os.path.getsize(out_path) > 1024
+
+
+def _concat_center_crop_fallback(
+    ffmpeg: str, source_video: str, picks: list[dict], out_path: str,
+    width: int, height: int,
+) -> bool:
+    """Original single-pass center-crop. Used when smart-crop filter_complex
+    is too large or otherwise fails."""
     sel_parts = [f"between(t,{p['startSec']:.3f},{p['endSec']:.3f})" for p in picks]
     sel_expr = "+".join(sel_parts)
-    # Audio select needs identical expression but with `aselect`.
     cmd = [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
         "-i", source_video,
         "-vf",
-        # 1) select frames inside any pick range
-        # 2) re-stamp timestamps so output is gap-free
-        # 3) center-crop 16:9 → 9:16: take vertical strip of width=ih*9/16
-        # 4) scale to exact 1080×1920
         f"select='{sel_expr}',setpts=N/FRAME_RATE/TB,"
         f"crop=w='ih*9/16':h=ih:x='(iw-ih*9/16)/2':y=0,"
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
@@ -145,10 +322,9 @@ def _concat_picks_to_vertical(
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
     except subprocess.TimeoutExpired:
-        bridge.warn("ffmpeg concat timed out after 15 min")
         return False
     if r.returncode != 0:
-        bridge.warn(f"ffmpeg concat failed: {(r.stderr or '')[-400:]}")
+        bridge.warn(f"center-crop fallback failed: {(r.stderr or '')[-300:]}")
         return False
     return os.path.isfile(out_path) and os.path.getsize(out_path) > 1024
 

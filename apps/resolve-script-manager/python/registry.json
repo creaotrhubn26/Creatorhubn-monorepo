@@ -1162,6 +1162,26 @@
       "requiresTimeline": false
     },
     {
+      "id": "extract_speech_quotes",
+      "name": "Extract Speech Quotes (best moments from speeches)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/extract_speech_quotes.py",
+      "description": "Kjører WhisperX på en lang ceremony/speech-fil, scorer hvert segment på length-fit + emotional vocabulary + audio-reaction-spike etter + speaker-diversity, returnerer topp N quote-segmenter med timecode. Cache for downstream Resolve-markers eller standalone-clip-builder.",
+      "requiredInputs": [
+        {"key": "audioPath", "label": "Audio/video file (ceremony eller speech)", "type": "file", "required": true},
+        {"key": "whisperModel", "label": "WhisperX model (default large-v3)", "type": "text", "required": false},
+        {"key": "language", "label": "Language hint (auto/no/nb/en, default auto)", "type": "text", "required": false},
+        {"key": "perSpeaker", "label": "Quotes per speaker (default 2)", "type": "number", "required": false},
+        {"key": "maxQuotes", "label": "Max quotes overall (default 8)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "identify_and_download_source_songs",
       "name": "Identify & Download Source Songs",
       "category": "audio",
