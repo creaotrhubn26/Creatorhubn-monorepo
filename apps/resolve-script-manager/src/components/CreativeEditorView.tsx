@@ -227,6 +227,17 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [chatError, setChatError] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Hover-preview state — when mouse-over segment, play that pick
+  const [hoveredPickIdx, setHoveredPickIdx] = useState<number | null>(null);
+
+  // Generate Alternate Edit state
+  type AltVariant = "cinematic" | "emotional" | "social" | "luxury" | "documentary";
+  const [altMenuOpen, setAltMenuOpen] = useState(false);
+  const [altBusy, setAltBusy] = useState<AltVariant | null>(null);
+  const [altError, setAltError] = useState<string | null>(null);
+  const [activePickOrder, setActivePickOrder] = useState<number[] | null>(null);
+  const [altRationale, setAltRationale] = useState<{ variant: AltVariant; text: string } | null>(null);
+
   // ─── Load picks + advisor ───
   useEffect(() => {
     if (!picksPath) { setLoadError("No picks path provided"); return; }
@@ -258,17 +269,26 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const segments = useMemo(() => payload ? groupBySegments(payload.picks) : [], [payload]);
   const filteredPicks = useMemo(() => {
     if (!payload) return [];
-    return payload.picks
-      .filter((p) => includedChapters.has((p.chapter || "details").toLowerCase()))
-      .sort((a, b) => a.startSec - b.startSec);
-  }, [payload, includedChapters]);
+    const base = payload.picks
+      .filter((p) => includedChapters.has((p.chapter || "details").toLowerCase()));
+    // If an alternate edit order is active, sort by that order; else chronological.
+    if (activePickOrder) {
+      const orderMap = new Map(activePickOrder.map((idx, i) => [idx, i]));
+      return base
+        .filter(p => orderMap.has(p.index))
+        .sort((a, b) => (orderMap.get(a.index) ?? 0) - (orderMap.get(b.index) ?? 0));
+    }
+    return base.sort((a, b) => a.startSec - b.startSec);
+  }, [payload, includedChapters, activePickOrder]);
   const balance = useMemo(() => computeHistorybalance(filteredPicks), [filteredPicks]);
   const totalDuration = useMemo(() => filteredPicks.reduce((s, p) => s + p.durationSec, 0), [filteredPicks]);
   const songs = advisor?.uniqueSongs ?? [];
   const activeSong = songs[activeSongIdx];
 
   const videoSrc = useMemo(() => payload ? convertFileSrc(payload.sourceVideo) : "", [payload]);
-  const focusedPick = filteredPicks[focusedPickIdx];
+  // When hover is active, play that segment; else play focused
+  const activePick = (hoveredPickIdx != null && filteredPicks[hoveredPickIdx]) || filteredPicks[focusedPickIdx];
+  const focusedPick = activePick;
 
   // ─── Video playback: seek to focused pick + loop within range ───
   useEffect(() => {
@@ -314,6 +334,92 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       return next;
     });
   }, []);
+
+  // ─── Generate Alternate Edit: Claude tool-use to reorder picks ───
+  const generateAlternate = useCallback(async (variant: AltVariant) => {
+    if (altBusy) return;
+    setAltBusy(variant);
+    setAltError(null);
+    setAltMenuOpen(false);
+    const variantPrompts: Record<AltVariant, string> = {
+      cinematic:   "Cinematic — slow, atmospheric, long emotional holds. Prioriter shots med høy aesthetic/bokeh-score og sakte pacing. Bygg en filmatisk bue.",
+      emotional:   "Emotional — fokus på tårer, klem, latter, øyeblikk av nærhet. Prioriter shots med høy emotional_peak / pose / faces. Lang holding på reaksjoner.",
+      social:      "Social media — kort, kvikk, høy energi. Korte rytmiske cuts (≤1s hver), action-shots, beat-matchet til musikken. Hook i de første 3 sekundene.",
+      luxury:      "Luxury wedding — elegante portretter, detalj-shots (ringer, blomster), nøye komposisjon. Slow-mo og bokeh prioriteres.",
+      documentary: "Documentary — naturlig kronologi, vitne-shots, behind-the-scenes. Mindre styling, mer 'å være der'. Speech-rich segmenter inkluderes.",
+    };
+    const pickSummary = filteredPicks.map(p => ({
+      index: p.index,
+      duration: p.durationSec,
+      score: p.score,
+      chapter: p.chapter ?? "?",
+      signals: p.signals
+        ? Object.entries(p.signals)
+            .filter(([_, v]) => (v ?? 0) > 0.3)
+            .map(([k, v]) => `${k}=${(v as number).toFixed(2)}`)
+            .join(",")
+        : "",
+    }));
+    const systemPrompt = `Du er en AI Creative Director som re-ordner picks for å lage en alternativ edit i en spesifikk stil. Du må returnere en gyldig sekvens av pick-indeksene (subset av tilgjengelige picks), i den rekkefølgen de skal spille av.
+
+Tilgjengelige picks (${pickSummary.length} stk):
+${pickSummary.map(p => `  shot#${p.index}: ${p.duration.toFixed(2)}s, chapter=${p.chapter}, score=${p.score.toFixed(2)}, signals[${p.signals}]`).join("\n")}
+
+Project: "${projectTitle}"
+Main song: ${activeSong ? `${activeSong.title} (${activeSong.bpm ?? "?"} BPM)` : "(ingen)"}
+
+Stil: ${variant.toUpperCase()}
+${variantPrompts[variant]}
+
+Du MÅ kalle generate_alternate_edit-verktøyet med en re-ordned pickOrder + rationale (norsk, 2-3 setninger).`;
+    try {
+      const resp: any = await invoke("claude_chat", {
+        messages: [{ role: "user", content: `Generer ${variant}-versjon. Du må kalle generate_alternate_edit-tool.` }],
+        system: systemPrompt,
+        model: "claude-opus-4-7",
+        maxTokens: 800,
+        tools: [{
+          name: "generate_alternate_edit",
+          description: "Re-order picks for an alternate edit in a specific style",
+          input_schema: {
+            type: "object",
+            properties: {
+              variant:   { type: "string", enum: ["cinematic", "emotional", "social", "luxury", "documentary"] },
+              pickOrder: { type: "array", items: { type: "integer" },
+                           description: "Reordered pick indices (subset). Each integer is a pick.index from the list above." },
+              rationale: { type: "string", description: "Short Norwegian rationale (2-3 sentences) for the ordering" },
+            },
+            required: ["variant", "pickOrder", "rationale"],
+          },
+        }],
+      });
+      // Find tool_use block in response.content
+      const blocks = resp?.content ?? [];
+      const toolBlock = blocks.find((b: any) => b.type === "tool_use" && b.name === "generate_alternate_edit");
+      if (!toolBlock) {
+        const txt = blocks.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+        throw new Error(`Claude returnerte ikke tool-call. Tekst: ${txt.slice(0, 200)}`);
+      }
+      const input = toolBlock.input ?? {};
+      const order: number[] = Array.isArray(input.pickOrder) ? input.pickOrder : [];
+      const rationale: string = input.rationale ?? "(ingen rationale)";
+      // Validate order — must all be valid pick indices
+      const validIdx = new Set(filteredPicks.map(p => p.index));
+      const cleanOrder = order.filter(i => validIdx.has(i));
+      if (cleanOrder.length === 0) {
+        throw new Error(`Claude returnerte tom eller ugyldig pickOrder (${order.length} items, ${cleanOrder.length} valid).`);
+      }
+      setActivePickOrder(cleanOrder);
+      setAltRationale({ variant, text: rationale });
+      // Focus first pick of the alternate order
+      const firstIdx = filteredPicks.findIndex(p => p.index === cleanOrder[0]);
+      if (firstIdx >= 0) setFocusedPickIdx(firstIdx);
+    } catch (e: any) {
+      setAltError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil"));
+    } finally {
+      setAltBusy(null);
+    }
+  }, [altBusy, filteredPicks, projectTitle, activeSong]);
 
   // ─── Claude chat: send message + receive reply ───
   const sendChat = useCallback(async (text: string) => {
@@ -458,6 +564,16 @@ ${ctxLines.join("\n")}`;
                   onClick={() => {
                     const idx = filteredPicks.findIndex(p => p.index === firstPick.index);
                     if (idx >= 0) setFocusedPickIdx(idx);
+                  }}
+                  onMouseEnter={() => {
+                    const idx = filteredPicks.findIndex(p => p.index === firstPick.index);
+                    if (idx >= 0) {
+                      setHoveredPickIdx(idx);
+                      videoRef.current?.play().catch(() => {});
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredPickIdx(null);
                   }}
                 >
                   <div className="ce-segment-num">{i + 1}</div>
@@ -638,6 +754,49 @@ ${ctxLines.join("\n")}`;
               <div className="ce-claude-progress-fill" style={{ width: "82%" }} />
             </div>
             <div className="ce-claude-progress-pct">82%</div>
+          </div>
+
+          <div className="ce-claude-alt">
+            <button
+              className="ce-claude-alt-btn"
+              onClick={() => setAltMenuOpen((v) => !v)}
+              disabled={altBusy !== null}
+            >
+              {altBusy ? <>✨ Genererer {altBusy}-versjon…</> : <>✨ Generate Alternate Edit ▾</>}
+            </button>
+            {altMenuOpen && (
+              <div className="ce-claude-alt-menu">
+                {(["cinematic","emotional","social","luxury","documentary"] as AltVariant[]).map(v => (
+                  <button
+                    key={v}
+                    className="ce-claude-alt-item"
+                    onClick={() => generateAlternate(v)}
+                  >
+                    <div className="ce-claude-alt-item-name">{v.charAt(0).toUpperCase()+v.slice(1)}</div>
+                    <div className="ce-claude-alt-item-desc">
+                      {v === "cinematic"   && "Slow, atmosfærisk, lange holds"}
+                      {v === "emotional"   && "Tårer, klem, latter — nærhet"}
+                      {v === "social"      && "Kort, kvikk, beat-matchet"}
+                      {v === "luxury"      && "Elegant, portretter, detaljer"}
+                      {v === "documentary" && "Naturlig kronologi, vitnespor"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {altRationale && (
+              <div className="ce-claude-alt-rationale">
+                <strong>{altRationale.variant.charAt(0).toUpperCase()+altRationale.variant.slice(1)}:</strong>{" "}
+                {altRationale.text}
+                <button
+                  className="ce-claude-alt-clear"
+                  onClick={() => { setActivePickOrder(null); setAltRationale(null); }}
+                >
+                  Tilbakestill
+                </button>
+              </div>
+            )}
+            {altError && <div className="ce-claude-alt-error">⚠ {altError}</div>}
           </div>
 
           <div className="ce-claude-suggestions">
