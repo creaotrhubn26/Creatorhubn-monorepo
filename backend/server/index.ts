@@ -67571,7 +67571,10 @@ setupContractsRoutes({
   getActiveSessionFromRequest,
   normalizeJsonArrayField,
   toNumericValue,
-  toBiNumericMetric,
+  toBiNumericMetric: (value: unknown, fallback = 0): number => {
+    const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+    return Number.isFinite(parsed) ? parsed : fallback;
+  },
   calculateContractHash,
 });
 setupBusinessRoutes({ app, pool, requireUserSession });
