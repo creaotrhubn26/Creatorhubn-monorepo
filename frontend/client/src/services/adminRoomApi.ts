@@ -1255,6 +1255,32 @@ export const newsletterAiApi = {
   }> => {
     return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(issueId)}/repurpose`, { method: 'POST' });
   },
+  voiceDraft: async (audio: Blob, filename: string): Promise<{
+    transcript: string;
+    linkedinEssay: string;
+    newsletterIntro: string;
+    quoteCards: Array<{ quote: string; attribution: string }>;
+  }> => {
+    const token = getAuthToken();
+    const form = new FormData();
+    form.append('audio', audio, filename);
+    const response = await fetch(`${BASE}/newsletter/role-room/ai/voice-draft`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const body = await response.json();
+        detail = body?.error || body?.detail || '';
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+    }
+    return response.json();
+  },
 };
 
 export const newsletterIssuesApi = {

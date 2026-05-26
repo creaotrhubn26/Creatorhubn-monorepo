@@ -27,6 +27,10 @@ import InsightsIcon from '@mui/icons-material/Insights';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import MicIcon from '@mui/icons-material/Mic';
+import StopIcon from '@mui/icons-material/Stop';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import CircularProgress from '@mui/material/CircularProgress';
 import {
   newsletterAiApi,
@@ -133,6 +137,7 @@ export function NewsletterStudioTab() {
   const [clickReportFor, setClickReportFor] = useState<NewsletterIssue | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [repurposeFor, setRepurposeFor] = useState<NewsletterIssue | null>(null);
+  const [voiceDraftOpen, setVoiceDraftOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [subscriberStats, setSubscriberStats] = useState<{ confirmed: number; pending: number; total: number } | null>(null);
 
@@ -280,6 +285,9 @@ export function NewsletterStudioTab() {
           ) : null}
           <Button variant="outlined" startIcon={<InsightsIcon />} onClick={() => setInsightsOpen(true)} sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)' }}>
             Ukens innsikt
+          </Button>
+          <Button variant="outlined" startIcon={<MicIcon />} onClick={() => setVoiceDraftOpen(true)} sx={{ textTransform: 'none', fontWeight: 700, color: '#22d3ee', borderColor: 'rgba(34,211,238,0.5)' }}>
+            Voice memo
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleNew} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
             Ny utgave
@@ -459,6 +467,13 @@ export function NewsletterStudioTab() {
       <RepurposeDialog
         issue={repurposeFor}
         onClose={() => setRepurposeFor(null)}
+        onError={setError}
+        onCopied={(label) => setSnackbar(`${label} kopiert til utklippstavlen`)}
+      />
+
+      <VoiceDraftDialog
+        open={voiceDraftOpen}
+        onClose={() => setVoiceDraftOpen(false)}
         onError={setError}
         onCopied={(label) => setSnackbar(`${label} kopiert til utklippstavlen`)}
       />
@@ -987,6 +1002,292 @@ function RepurposeDialog({ issue, onClose, onError, onCopied }: { issue: Newslet
             <Typography sx={{ color: 'rgba(203,213,225,0.5)', fontSize: '0.72rem', textAlign: 'center', mt: 2 }}>
               Repurposed via Claude. Editér fritt før posting — tonen skal være din.
             </Typography>
+          </Stack>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Voice memo → AI-draft dialog ───────────────────────────────────
+
+interface VoiceDraftResult {
+  transcript: string;
+  linkedinEssay: string;
+  newsletterIntro: string;
+  quoteCards: Array<{ quote: string; attribution: string }>;
+}
+
+function VoiceDraftDialog({ open, onClose, onError, onCopied }: { open: boolean; onClose: () => void; onError: (msg: string) => void; onCopied: (label: string) => void }) {
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'processing' | 'done'>('idle');
+  const [elapsed, setElapsed] = useState(0);
+  const [result, setResult] = useState<VoiceDraftResult | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const elapsedTimerRef = useRef<number | null>(null);
+
+  function stopElapsedTimer() {
+    if (elapsedTimerRef.current !== null) {
+      window.clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+  }
+
+  function reset() {
+    stopElapsedTimer();
+    mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+    setPhase('idle');
+    setElapsed(0);
+    setResult(null);
+  }
+
+  useEffect(() => () => stopElapsedTimer(), []);
+
+  async function sendForProcessing(blob: Blob, filename: string) {
+    setPhase('processing');
+    try {
+      const data = await newsletterAiApi.voiceDraft(blob, filename);
+      setResult(data);
+      setPhase('done');
+    } catch (err) {
+      onError((err as Error).message);
+      setPhase('idle');
+    }
+  }
+
+  async function startRecording() {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      onError('Nettleseren støtter ikke mikrofon-opptak — last opp en lyd-fil i stedet');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+        stopElapsedTimer();
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        stream.getTracks().forEach((t) => t.stop());
+        sendForProcessing(blob, 'voice-memo.webm');
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setPhase('recording');
+      setElapsed(0);
+      const startedAt = Date.now();
+      elapsedTimerRef.current = window.setInterval(() => {
+        setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+      }, 250);
+    } catch (err) {
+      onError(`Kunne ikke starte opptak: ${(err as Error).message}`);
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+  }
+
+  function handleFileUpload(file: File) {
+    if (file.size > 25 * 1024 * 1024) {
+      onError('Fil for stor — Whisper API tar maks 25MB. Komprimér eller del opp.');
+      return;
+    }
+    sendForProcessing(file, file.name);
+  }
+
+  async function copyToClipboard(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      onCopied(label);
+    } catch {
+      onError('Kunne ikke kopiere — prøv manuelt');
+    }
+  }
+
+  function handleClose() {
+    if (phase === 'recording') stopRecording();
+    reset();
+    onClose();
+  }
+
+  function fmtTime(s: number): string {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  }
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <MicIcon sx={{ color: '#22d3ee' }} />
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>Voice memo → AI-utkast</Typography>
+            <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.78rem' }}>
+              Snakk i 5-30 min. Claude lager LinkedIn-essay + newsletter-intro + 3 quote-cards.
+            </Typography>
+          </Box>
+        </Stack>
+        <IconButton onClick={handleClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
+      </DialogTitle>
+      <DialogContent>
+        {phase === 'idle' ? (
+          <Box sx={{ py: 4 }}>
+            <Stack alignItems="center" spacing={2.5}>
+              <IconButton
+                onClick={startRecording}
+                sx={{
+                  width: 88,
+                  height: 88,
+                  bgcolor: 'rgba(34,211,238,0.15)',
+                  border: '2px solid rgba(34,211,238,0.5)',
+                  '&:hover': { bgcolor: 'rgba(34,211,238,0.25)' },
+                }}
+              >
+                <MicIcon sx={{ fontSize: 44, color: '#22d3ee' }} />
+              </IconButton>
+              <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>Start opptak</Typography>
+              <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.82rem', textAlign: 'center', maxWidth: 380 }}>
+                Eller last opp en lyd-fil du har spilt inn andre steder (mp3, m4a, webm, wav — maks 25MB).
+              </Typography>
+              <Button
+                variant="outlined"
+                component="label"
+                startIcon={<UploadFileIcon />}
+                sx={{ textTransform: 'none', color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)' }}
+              >
+                Last opp lyd-fil
+                <input
+                  type="file"
+                  accept="audio/*"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                  }}
+                />
+              </Button>
+            </Stack>
+          </Box>
+        ) : phase === 'recording' ? (
+          <Box sx={{ py: 4 }}>
+            <Stack alignItems="center" spacing={2.5}>
+              <Box sx={{ position: 'relative' }}>
+                <IconButton
+                  onClick={stopRecording}
+                  sx={{
+                    width: 88,
+                    height: 88,
+                    bgcolor: 'rgba(239,68,68,0.18)',
+                    border: '2px solid rgba(239,68,68,0.6)',
+                    animation: 'pulse 1.4s ease-in-out infinite',
+                    '@keyframes pulse': {
+                      '0%, 100%': { boxShadow: '0 0 0 0 rgba(239,68,68,0.4)' },
+                      '50%': { boxShadow: '0 0 0 14px rgba(239,68,68,0)' },
+                    },
+                    '&:hover': { bgcolor: 'rgba(239,68,68,0.28)' },
+                  }}
+                >
+                  <StopIcon sx={{ fontSize: 44, color: '#fca5a5' }} />
+                </IconButton>
+              </Box>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <FiberManualRecordIcon sx={{ color: '#ef4444', fontSize: 14, animation: 'blink 1s infinite', '@keyframes blink': { '50%': { opacity: 0.3 } } }} />
+                <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.5rem', fontFamily: 'monospace' }}>{fmtTime(elapsed)}</Typography>
+              </Stack>
+              <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.85rem' }}>
+                Klikk for å stoppe og generere utkast
+              </Typography>
+            </Stack>
+          </Box>
+        ) : phase === 'processing' ? (
+          <Box sx={{ py: 6, textAlign: 'center' }}>
+            <Stack alignItems="center" spacing={2}>
+              <CircularProgress size={36} sx={{ color: '#22d3ee' }} />
+              <Typography sx={{ color: '#fff', fontWeight: 700 }}>Behandler voice memo…</Typography>
+              <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.85rem', maxWidth: 320 }}>
+                Whisper transkriberer, deretter destillerer Claude tråden til 3 utkast. Kan ta 30-90 sekunder.
+              </Typography>
+            </Stack>
+          </Box>
+        ) : !result ? null : (
+          <Stack spacing={3} sx={{ pt: 1 }}>
+            {/* Transkripsjon */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontWeight: 700, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Transkripsjon (Whisper)
+                </Typography>
+                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(result.transcript, 'Transkripsjon')} sx={{ textTransform: 'none', color: '#94a3b8', fontWeight: 600 }}>
+                  Kopier
+                </Button>
+              </Stack>
+              <Box sx={{ p: 1.75, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.7)', border: '1px solid rgba(148,163,184,0.12)', maxHeight: 180, overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: '0.82rem', lineHeight: 1.6, color: 'rgba(203,213,225,0.78)' }}>
+                {result.transcript}
+              </Box>
+            </Box>
+
+            {/* LinkedIn-essay */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>LinkedIn-essay</Typography>
+                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(result.linkedinEssay, 'LinkedIn-essay')} sx={{ textTransform: 'none', color: '#a78bfa', fontWeight: 700 }}>
+                  Kopier
+                </Button>
+              </Stack>
+              <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.5)', border: '1px solid rgba(148,163,184,0.14)', whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.65, color: 'rgba(229,231,235,0.9)' }}>
+                {result.linkedinEssay}
+              </Box>
+              <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.72rem', mt: 0.5 }}>
+                {result.linkedinEssay.length} tegn
+              </Typography>
+            </Box>
+
+            {/* Newsletter-intro */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>Newsletter-intro</Typography>
+                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(result.newsletterIntro, 'Newsletter-intro')} sx={{ textTransform: 'none', color: '#34d399', fontWeight: 700 }}>
+                  Kopier
+                </Button>
+              </Stack>
+              <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: 'rgba(52,211,153,0.07)', border: '1px solid rgba(52,211,153,0.25)', whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.65, color: 'rgba(229,231,235,0.9)' }}>
+                {result.newsletterIntro}
+              </Box>
+            </Box>
+
+            {/* Quote-cards */}
+            <Box>
+              <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem', mb: 1 }}>
+                Quote-cards
+              </Typography>
+              <Stack spacing={1}>
+                {result.quoteCards.map((qc, idx) => (
+                  <Box key={idx} sx={{ p: 1.75, borderRadius: 1.5, bgcolor: 'rgba(34,211,238,0.08)', borderLeft: '3px solid #22d3ee', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography sx={{ color: '#e2e8f0', fontSize: '0.92rem', lineHeight: 1.6, fontStyle: 'italic' }}>
+                        "{qc.quote}"
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.74rem', mt: 0.5 }}>— {qc.attribution}</Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => copyToClipboard(`"${qc.quote}"\n— ${qc.attribution}`, `Quote-card ${idx + 1}`)} sx={{ color: 'rgba(34,211,238,0.7)' }}>
+                      <ContentCopyIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+
+            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ pt: 1 }}>
+              <Button onClick={reset} sx={{ textTransform: 'none', color: 'rgba(203,213,225,0.7)' }}>
+                Nytt opptak
+              </Button>
+            </Stack>
           </Stack>
         )}
       </DialogContent>

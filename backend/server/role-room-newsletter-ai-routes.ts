@@ -15,8 +15,35 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import multer from "multer";
 import type { AdminRoomRoutesDeps } from "./_shared";
 import { asString } from "./_shared";
+
+const voiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB — Whisper API hard max
+});
+
+async function transcribeWithWhisper(buffer: Buffer, filename: string, mime: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY er ikke satt — voice-draft krever Whisper-tilgang");
+  const form = new FormData();
+  form.append("file", new File([new Uint8Array(buffer)], filename, { type: mime }));
+  form.append("model", "whisper-1");
+  form.append("language", "no");
+  form.append("response_format", "json");
+  const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Whisper API error ${resp.status}: ${errText.slice(0, 300)}`);
+  }
+  const data = (await resp.json()) as { text?: string };
+  return data.text ?? "";
+}
 
 let cachedClient: Anthropic | null = null;
 function getAnthropic(): Anthropic {
@@ -493,4 +520,91 @@ Returnér KUN gyldig JSON:
       res.status(500).json({ error: (err as Error).message });
     }
   });
+
+  // 5. Voice-draft — Founder voice memo → Whisper → Claude → 3 utkast
+  // Realiserer Monday-slot fra Content Marketing Plan: 30-min voice memo
+  // blir til LinkedIn-essay + newsletter-intro + 3 quote-cards uten manuell
+  // omskriving. Bruker eksisterende OPENAI_API_KEY for transkripsjon, så
+  // ingen ny env-konfig trengs.
+  app.post(
+    "/api/admin-room/newsletter/role-room/ai/voice-draft",
+    voiceUpload.single("audio"),
+    async (req, res) => {
+      const session = requireAdminRoomAccess(req, res);
+      if (!session) return;
+      const file = (req as unknown as { file?: Express.Multer.File }).file;
+      if (!file || !file.buffer || file.buffer.length === 0) {
+        res.status(400).json({ error: "Lyd-fil mangler i 'audio'-feltet" });
+        return;
+      }
+      try {
+        const transcript = await transcribeWithWhisper(
+          file.buffer,
+          file.originalname || "memo.webm",
+          file.mimetype || "audio/webm",
+        );
+        if (!transcript.trim()) {
+          res.status(422).json({ error: "Whisper returnerte tom transkripsjon — sjekk lydkvalitet" });
+          return;
+        }
+
+        const raw = await callClaude({
+          user: `Du får et voice memo fra Daniel Qazi, grunnlegger av The Role Room. Han bruker 15-30 minutter mandag morgen til å snakke om uka — observasjoner fra norsk filmbransje, tanker om casting/compliance/talent, ting han har snakket med produsenter/CDer om.
+
+VOICE MEMO TRANSKRIPSJON (norsk, kan ha pause-ord, gjentakelser, gå-utenfor-tema):
+"""
+${transcript.slice(0, 8000)}
+"""
+
+DIN OPPGAVE: Hent ut den skarpeste tråden og lag 3 utkast.
+
+REGLER:
+- Behold Daniels stemme (direkte, konkret, uten konsulent-jargong)
+- Aldri legg til informasjon han ikke nevnte — bare destillér, ikke utvid
+- Hvis han nevner et tall eller en spesifikk hendelse, bevar den eksakt
+- Norsk bokmål, bransjeintern stemme
+
+GENERÉR:
+
+1. **LinkedIn-essay** (700-1100 tegn med linjeskift):
+   - Founder-POV-tone: én tese, 3-5 korte avsnitt med konkret begrunnelse
+   - Start med scroll-stopper-setning
+   - Avslutt med invitasjon til kommentar
+   - Ikke markdown-headers, kun linjeskift
+
+2. **Newsletter-intro** (300-500 tegn, kan limes inn øverst i Norwegian Casting Brief):
+   - "Hei — denne uken..."-tone
+   - Én konkret observasjon + hva det betyr for leseren
+
+3. **3 quote-cards** (sitérbare standalone, hver maks 200 tegn):
+   - Selvstendige sitater fra det Daniel sa
+   - Helst direkte sitat hvis det funker — ellers stram-redigert paraphrase
+
+Returnér KUN gyldig JSON:
+{
+  "linkedinEssay": "tekst med linjeskift",
+  "newsletterIntro": "tekst",
+  "quoteCards": [
+    { "quote": "≤200 tegn", "attribution": "Daniel Qazi, The Role Room" },
+    ...
+  ]
+}`,
+          maxTokens: 3000,
+        });
+        const parsed = safeParseJson<{
+          linkedinEssay: string;
+          newsletterIntro: string;
+          quoteCards: Array<{ quote: string; attribution: string }>;
+        }>(raw);
+        if (!parsed) {
+          res.status(502).json({ error: "Kunne ikke parse Claude-respons", raw, transcript });
+          return;
+        }
+        res.json({ transcript, ...parsed });
+      } catch (err) {
+        console.error("[newsletter-ai] voice-draft error", err);
+        res.status(500).json({ error: (err as Error).message });
+      }
+    },
+  );
 }
