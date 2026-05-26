@@ -175,7 +175,9 @@ async function fetchAllRoleRoomSubscribers(stripe: Stripe): Promise<StripeSubscr
         price?.recurring?.interval ?? null,
         price?.recurring?.interval_count ?? null,
       );
-      const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end ?? null;
+      // Stripe v19: current_period_end er flyttet fra Subscription til items.data[i].
+      const firstItem = sub.items?.data?.[0] as { current_period_end?: number } | undefined;
+      const periodEnd = firstItem?.current_period_end ?? null;
       rows.push({
         customerId: typeof customer === "string" ? customer : customer.id,
         customerEmail: !isDeleted ? (customer as Stripe.Customer).email ?? null : null,
@@ -415,7 +417,9 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
         stripeCustomer,
         subscriptions: subscriptions.map((sub) => {
           const price = sub.items.data[0]?.price;
-          const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end ?? null;
+          // Stripe v19: current_period_end er flyttet fra Subscription til items.data[i].
+      const firstItem = sub.items?.data?.[0] as { current_period_end?: number } | undefined;
+      const periodEnd = firstItem?.current_period_end ?? null;
           return {
             id: sub.id,
             status: sub.status,
@@ -710,7 +714,9 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
         summary: `Stripe sub ${sub.id} ${immediate ? "kansellert umiddelbart" : "kanselleres ved periode-slutt"}`,
         details: typeof body.reason === "string" ? { reason: body.reason } : undefined,
       });
-      const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end ?? null;
+      // Stripe v19: current_period_end er flyttet fra Subscription til items.data[i].
+      const firstItem = sub.items?.data?.[0] as { current_period_end?: number } | undefined;
+      const periodEnd = firstItem?.current_period_end ?? null;
       res.json({
         ok: true,
         subscription: {

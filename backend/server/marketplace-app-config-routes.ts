@@ -377,12 +377,18 @@ export function registerMarketplaceAppConfigRoutes(
               return {
                 id: s.id,
                 status: s.status,
-                currentPeriodStart: s.current_period_start
-                  ? new Date(s.current_period_start * 1000).toISOString()
-                  : null,
-                currentPeriodEnd: s.current_period_end
-                  ? new Date(s.current_period_end * 1000).toISOString()
-                  : null,
+                // Stripe v19: current_period_start/end er flyttet fra Subscription til items.data[i].
+                ...((): { currentPeriodStart: string | null; currentPeriodEnd: string | null } => {
+                  const firstItem = s.items?.data?.[0] as { current_period_start?: number; current_period_end?: number } | undefined;
+                  return {
+                    currentPeriodStart: firstItem?.current_period_start
+                      ? new Date(firstItem.current_period_start * 1000).toISOString()
+                      : null,
+                    currentPeriodEnd: firstItem?.current_period_end
+                      ? new Date(firstItem.current_period_end * 1000).toISOString()
+                      : null,
+                  };
+                })(),
                 cancelAtPeriodEnd: !!s.cancel_at_period_end,
                 canceledAt: s.canceled_at
                   ? new Date(s.canceled_at * 1000).toISOString()

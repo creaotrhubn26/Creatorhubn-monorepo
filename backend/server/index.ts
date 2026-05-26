@@ -1105,21 +1105,26 @@ app.post(
         case "invoice.paid": {
           const invoice = event.data.object as Stripe.Invoice;
           await syncCreatorHubStripeInvoice(invoice);
+          // Stripe v19: invoice.subscription er fjernet — slå opp via
+          // invoice.parent.subscription_details.subscription (samme mønster
+          // som dance-billing-service.ts:688-700).
+          const subRef = (invoice as { parent?: { subscription_details?: { subscription?: string | { id: string } } } })
+            .parent?.subscription_details?.subscription;
+          const subId = subRef
+            ? typeof subRef === 'string' ? subRef : subRef.id
+            : '';
           // Slice 9X.70 — GA4 server-side track for renewal-revenue
           const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id || '';
           trackStripeEvent(customerId, 'subscription_renewed', {
             amount: (invoice.amount_paid || 0) / 100,
             currency: invoice.currency || 'nok',
             invoice_id: invoice.id,
-            subscription_id: typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id || '',
+            subscription_id: subId,
             value: (invoice.amount_paid || 0) / 100,
           });
           // Slice 9X.79 — Event-trigger: invoice.paid
           void (async () => {
             try {
-              const subId = typeof invoice.subscription === 'string'
-                ? invoice.subscription
-                : invoice.subscription?.id || '';
               if (!subId) return;
               const rec = await readCreatorHubStripeCheckoutRecordBySubscriptionId(subId);
               if (!rec?.userId) return;
