@@ -67644,6 +67644,7 @@ setupUserRoutes({
 setupQuotesRoutes({
   app,
   pool,
+  requireUserSession,
   compatStoreSet,
   compatStoreGet,
   ensureQuotesCompatibilitySchema,

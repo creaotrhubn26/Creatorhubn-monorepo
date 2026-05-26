@@ -5,6 +5,7 @@ import PDFDocument from "pdfkit";
 export interface QuotesRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   compatStoreSet: (key: string, value: unknown) => Promise<void>;
   compatStoreGet: <T>(key: string) => Promise<T | null>;
   ensureQuotesCompatibilitySchema: () => Promise<void>;
@@ -25,6 +26,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   const {
     app,
     pool,
+    requireUserSession,
     compatStoreSet,
     compatStoreGet,
     ensureQuotesCompatibilitySchema,
@@ -539,6 +541,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/reminders/config", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId =
         typeof req.body?.userId === "string" && req.body.userId.trim()
@@ -583,6 +586,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/reminders/trigger", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -641,6 +645,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/items", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -782,6 +787,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/create", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = await resolveQuoteUserId(req);
       const row = await insertSharedQuote(req.body, userId);
@@ -1057,6 +1063,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id/status", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1107,6 +1114,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id/link-project", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1135,6 +1143,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/:id/create-chat", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1177,6 +1186,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/:id/send-email", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1213,6 +1223,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1377,6 +1388,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.delete("/api/quotes/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
