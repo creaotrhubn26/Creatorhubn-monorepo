@@ -67773,7 +67773,9 @@ setupFileManagementRoutes({
   isMissingRelationError,
   ensureGoogleWorkspaceConnectionsSchema,
   resolveRoleRoomGoogleConnection,
-  selectFallbackRoleRoomConnection,
+  // Stub — file-management-routes har sin egen lokale implementasjon
+  // som shadower deps-versjonen. Trygt å bare returnere null.
+  selectFallbackRoleRoomConnection: async (..._args: unknown[]): Promise<null> => null,
   derivePreferredGoogleWorkspaceOauthApps,
   hasAnyGrantedScope,
   readGrantedGoogleScopes,
