@@ -67572,7 +67572,7 @@ setupContractsRoutes({
   toBiNumericMetric,
   calculateContractHash,
 });
-setupBusinessRoutes({ app, pool });
+setupBusinessRoutes({ app, pool, requireUserSession });
 setupAnalyticsRoutes({
   app,
   pool,

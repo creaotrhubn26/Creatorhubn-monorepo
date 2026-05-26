@@ -5,10 +5,11 @@ import { readString } from "./_shared";
 export interface BusinessRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
-  const { app, pool } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   const norwegianRegionData: Record<
     string,
@@ -443,6 +444,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // POST /api/business/surveys — Create or update a BI survey
   app.post("/api/business/surveys", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         id,
@@ -896,6 +898,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // POST /api/business/swot-items — Create SWOT item
   app.post("/api/business/swot-items", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = readString(req.body?.userId);
       const profession = readString(req.body?.profession);
@@ -972,6 +975,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // PUT /api/business/swot-items — Update SWOT item
   app.put("/api/business/swot-items", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const swotId = readString(req.body?.id);
       const requesterId =
@@ -1055,6 +1059,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // DELETE /api/business/swot-items/:itemId — Delete SWOT item
   app.delete("/api/business/swot-items/:itemId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const itemId = req.params.itemId;
       const requesterId =
@@ -1266,6 +1271,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // POST /api/business/personas — Create persona
   app.post("/api/business/personas", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = readString(req.body?.userId);
       const profession = readString(req.body?.profession);
@@ -1349,6 +1355,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // PUT /api/business/personas — Update persona
   app.put("/api/business/personas", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const personaId = readString(req.body?.id);
       const requesterId =
@@ -1434,6 +1441,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // DELETE /api/business/personas/:personaId — Archive persona
   app.delete("/api/business/personas/:personaId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const requesterId =
         readString(req.headers["x-user-id"]) ?? readString(req.query.userId);
@@ -1659,6 +1667,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // POST /api/business/newsletter-campaigns — Create newsletter campaign draft or schedule
   app.post("/api/business/newsletter-campaigns", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = readString(req.body?.userId);
       const subject = readString(req.body?.subject);
