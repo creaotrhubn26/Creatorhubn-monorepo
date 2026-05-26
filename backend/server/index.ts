@@ -67161,6 +67161,7 @@ setupMeetingNotesRoutes({
   app,
   pool,
   isRecord,
+  requireUserSession,
   getUserIdFromAuth,
   compatResolveUserId,
   normalizeJsonObjectField,

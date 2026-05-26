@@ -7,6 +7,7 @@ export interface MeetingNotesRoutesDeps {
   app: express.Application;
   pool: Pool;
   isRecord: (value: unknown) => value is Record<string, unknown>;
+  requireUserSession: (req: any, res: any) => any;
   getUserIdFromAuth: (req: any) => string | null;
   compatResolveUserId: (req: express.Request) => string;
   normalizeJsonObjectField: (value: unknown) => Record<string, unknown> | null;
@@ -45,6 +46,7 @@ export function setupMeetingNotesRoutes(
     app,
     pool,
     isRecord,
+    requireUserSession,
     getUserIdFromAuth,
     compatResolveUserId,
     normalizeJsonObjectField,
@@ -62,6 +64,7 @@ export function setupMeetingNotesRoutes(
   } = deps;
 
   app.post("/api/meeting-notes/ai-process", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const body = isRecord(req.body) ? req.body : {};
       const mode: any =
@@ -119,6 +122,7 @@ export function setupMeetingNotesRoutes(
   });
 
   app.post("/api/meeting-notes/writing-assist", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const body = isRecord(req.body) ? req.body : {};
       const text = readString(body.text) || "";
@@ -183,6 +187,7 @@ export function setupMeetingNotesRoutes(
   });
 
   app.get("/api/meeting-notes", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
 
@@ -220,6 +225,7 @@ export function setupMeetingNotesRoutes(
   });
 
   app.get("/api/meeting-notes/:meetingId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
       const result = await pool.query(
@@ -237,6 +243,7 @@ export function setupMeetingNotesRoutes(
   });
 
   app.post("/api/meeting-notes", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
       const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
@@ -342,6 +349,7 @@ export function setupMeetingNotesRoutes(
   });
 
   app.put("/api/meeting-notes/:meetingId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
       const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
@@ -462,6 +470,7 @@ export function setupMeetingNotesRoutes(
   });
 
   app.post("/api/meeting-notes/google-backup", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
       const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
