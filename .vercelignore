@@ -1,0 +1,14 @@
+# Vercel project rootDirectory = "frontend", so only frontend/ is needed for the
+# build. Exclude the rest of the monorepo + build artifacts to cut upload size
+# and avoid broken artifacts in unrelated packages. NB: do NOT exclude asset
+# types like *.png/*.mp4 globally — many are imported by components.
+/apps
+/backend
+/tools
+/docs
+/migrations
+/.playwright-mcp
+/.git
+node_modules
+frontend/client/dist
+frontend/e2e
