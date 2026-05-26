@@ -574,6 +574,7 @@ import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
 import { setupAudioRoutes } from "./audio-routes";
+import { setupPlatformRoutes } from "./platform-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -24584,12 +24585,6 @@ app.get("/api/backup/download/latest", async (req, res) => {
   }
 });
 
-app.get("/api/platform/subscription-plans", async (_req, res) => {
-  await ensureCompatPlatformSubscriptionPlanOverridesLoaded();
-  res.json({
-    plans: buildCompatPlatformSubscriptionPlans(),
-  });
-});
 
 app.post("/api/platform/billing/checkout-session", async (req, res) => {
   try {
@@ -27046,14 +27041,6 @@ app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
 });
 
 // Platform stats
-app.get("/api/platform/stats", (req, res) => {
-  res.json({
-    totalUsers: 1250,
-    activeProjects: 340,
-    completedProjects: 890,
-    totalRevenue: 0,
-  });
-});
 
 // ============================================================================
 // Invite Request Routes (vendor/professional signup workflow)
@@ -48276,12 +48263,6 @@ app.get("/api/photo-enhancement/contracts", async (_req, res) => {
   // Gallery image tracking) eventuelt setter opp ekte kontrakt-flyt.
   res.json([]);
 });
-app.get("/api/platform/features", async (_req, res) => {
-  // PlatformPricingService-frontend cacher resultatet og har egen
-  // fallback til hardcoded features hvis listen er tom. Returnerer
-  // strukturen frontend forventer ({features: []}).
-  res.json({ features: [] });
-});
 
 
 // GET /api/wedding/timeline/:timelineId/ical — iCal export for a timeline (token required)
@@ -68965,6 +68946,11 @@ setupAudioRoutes({
   generateWaveform,
   generateSpectrum,
   audioFileStore,
+});
+setupPlatformRoutes({
+  app,
+  ensureCompatPlatformSubscriptionPlanOverridesLoaded,
+  buildCompatPlatformSubscriptionPlans,
 });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
