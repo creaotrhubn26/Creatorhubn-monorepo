@@ -4,11 +4,12 @@ import type { Pool } from "pg";
 export interface PricingRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
 export function setupPricingRoutes(deps: PricingRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   app.get("/api/pricing/categories/:userId", async (req, res) => {
     try {
@@ -38,6 +39,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.post("/api/pricing/categories", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         userId,
@@ -81,6 +83,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.put("/api/pricing/categories/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { id } = req.params;
       const data = req.body;
@@ -132,6 +135,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.delete("/api/pricing/categories/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM pricing_categories WHERE id = $1 RETURNING id",
@@ -181,6 +185,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.post("/api/pricing/services", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         userId,
@@ -219,6 +224,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.put("/api/pricing/services/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { id } = req.params;
       const data = req.body;
@@ -272,6 +278,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.delete("/api/pricing/services/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM pricing_services WHERE id = $1 RETURNING id",
@@ -345,6 +352,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.post("/api/pricing/packages", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         userId,
@@ -388,6 +396,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.put("/api/pricing/packages/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { id } = req.params;
       const data = req.body;
@@ -436,6 +445,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.delete("/api/pricing/packages/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       // Try pricing_packages first, then packages
       let result = await pool.query(
@@ -488,6 +498,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.post("/api/pricing/customer-pricing", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         userId,
@@ -523,6 +534,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.put("/api/pricing/customer-pricing/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { id } = req.params;
       const data = req.body;
@@ -563,6 +575,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   });
 
   app.delete("/api/pricing/customer-pricing/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM customer_pricing WHERE id = $1 RETURNING id",

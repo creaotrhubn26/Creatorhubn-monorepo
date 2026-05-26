@@ -67742,7 +67742,7 @@ setupRoleRoomDealsRoutes({
 });
 setupRoleRoomInvitesTicketsRoutes({ app, pool });
 setupProjectsOutliersRoutes({ app, pool, db });
-setupPricingRoutes({ app, pool, getPricingUserId });
+setupPricingRoutes({ app, pool, requireUserSession, getPricingUserId });
 setupAccountingRoutes({
   app,
   pool,
