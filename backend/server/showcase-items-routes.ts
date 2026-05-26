@@ -39,6 +39,7 @@ import crypto from "crypto";
 export interface ShowcaseItemsRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   updateShowcaseItemRecord: (
     itemId: string,
     payload: Record<string, unknown>,
@@ -47,10 +48,17 @@ export interface ShowcaseItemsRoutesDeps {
 }
 
 export function setupShowcaseItemsRoutes(deps: ShowcaseItemsRoutesDeps): void {
-  const { app, pool, updateShowcaseItemRecord, mapShowcaseItemRow } = deps;
+  const {
+    app,
+    pool,
+    requireUserSession,
+    updateShowcaseItemRecord,
+    mapShowcaseItemRow,
+  } = deps;
 
   // POST /api/showcase/items — Create showcase item
   app.post("/api/showcase/items", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         title,
@@ -93,6 +101,7 @@ export function setupShowcaseItemsRoutes(deps: ShowcaseItemsRoutesDeps): void {
 
   // PATCH /api/showcase/items/:itemId — Update showcase item
   app.patch("/api/showcase/items/:itemId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { itemId } = req.params;
       const updates = req.body;
@@ -139,6 +148,7 @@ export function setupShowcaseItemsRoutes(deps: ShowcaseItemsRoutesDeps): void {
 
   // DELETE /api/showcase/items/:itemId — Delete showcase item
   app.delete("/api/showcase/items/:itemId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { itemId } = req.params;
       const result = await pool.query(
@@ -156,6 +166,7 @@ export function setupShowcaseItemsRoutes(deps: ShowcaseItemsRoutesDeps): void {
 
   // Legacy URL: PUT /api/showcase/:itemId
   app.put("/api/showcase/:itemId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const updated = await updateShowcaseItemRecord(
         req.params.itemId,
@@ -173,6 +184,7 @@ export function setupShowcaseItemsRoutes(deps: ShowcaseItemsRoutesDeps): void {
 
   // Legacy URL: DELETE /api/showcase/:itemId
   app.delete("/api/showcase/:itemId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM showcase_items WHERE id = $1 RETURNING *",
@@ -190,6 +202,7 @@ export function setupShowcaseItemsRoutes(deps: ShowcaseItemsRoutesDeps): void {
 
   // Alias: PUT /api/showcase/items/:itemId (samme som legacy PUT /:itemId)
   app.put("/api/showcase/items/:itemId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const updated = await updateShowcaseItemRecord(
         req.params.itemId,
@@ -207,6 +220,7 @@ export function setupShowcaseItemsRoutes(deps: ShowcaseItemsRoutesDeps): void {
 
   // Alias: PUT /api/showcase/update-metadata/:itemId (samme som over)
   app.put("/api/showcase/update-metadata/:itemId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const updated = await updateShowcaseItemRecord(
         req.params.itemId,

@@ -73463,6 +73463,7 @@ setupShowcaseCategoriesRoutes({
 setupShowcaseItemsRoutes({
   app,
   pool,
+  requireUserSession,
   updateShowcaseItemRecord,
   mapShowcaseItemRow,
 });
