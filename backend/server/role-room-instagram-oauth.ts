@@ -564,7 +564,7 @@ export async function ensureFreshConnection(
                 last_error = $2,
                 updated_at = now()
           WHERE id = $1`,
-        [connection.id, (error as Error).message.slice(0, 500)],
+        [connection.id, String(error instanceof Error ? error.message : error).slice(0, 500)],
       )
       .catch(() => {});
     throw error;

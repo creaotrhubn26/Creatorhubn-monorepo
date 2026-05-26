@@ -953,6 +953,23 @@ export interface RoleRoomInstagramConnection {
   profileRefreshedAt: string | null;
 }
 
+// ── Ads spend report (§5.3): faktisk annonsekostnad + 20 % påslag per periode ──
+
+export interface RoleRoomAdsSpendSummary {
+  period: string; // YYYY-MM
+  spendNok: number;
+  managementFeeNok: number;
+  managementFeeInclVatNok: number;
+  effectiveFeeRate: number | null;
+  totalClientCostExVatNok: number;
+  perPlatform: Record<string, number>;
+}
+
+export interface RoleRoomApprovalPolicy {
+  requireClientApproval: boolean;
+  canEdit: boolean;
+}
+
 // ── Granted ad-asset overview (which Pages/accounts the client gave admin to) ──
 
 export interface RoleRoomGrantedMetaPage {
@@ -1281,6 +1298,59 @@ export const roleRoomAgentService = {
       rateLimitPer24h: Number(payload?.rateLimitPer24h ?? 50),
       connections: Array.isArray(payload?.connections) ? payload.connections : [],
     };
+  },
+
+  async fetchAdsSpendSummary(period?: string): Promise<RoleRoomAdsSpendSummary> {
+    const empty: RoleRoomAdsSpendSummary = {
+      period: period ?? new Date().toISOString().slice(0, 7),
+      spendNok: 0,
+      managementFeeNok: 0,
+      managementFeeInclVatNok: 0,
+      effectiveFeeRate: null,
+      totalClientCostExVatNok: 0,
+      perPlatform: {},
+    };
+    const qs = period ? `?period=${encodeURIComponent(period)}` : '';
+    const response = await fetch(`/api/role-room/ads/spend/summary${qs}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return empty;
+    const payload = await response.json().catch(() => null);
+    if (!payload || typeof payload !== 'object') return empty;
+    return {
+      period: typeof payload.period === 'string' ? payload.period : empty.period,
+      spendNok: Number(payload.spendNok ?? 0),
+      managementFeeNok: Number(payload.managementFeeNok ?? 0),
+      managementFeeInclVatNok: Number(payload.managementFeeInclVatNok ?? 0),
+      effectiveFeeRate: payload.effectiveFeeRate == null ? null : Number(payload.effectiveFeeRate),
+      totalClientCostExVatNok: Number(payload.totalClientCostExVatNok ?? 0),
+      perPlatform: payload.perPlatform && typeof payload.perPlatform === 'object' ? payload.perPlatform : {},
+    };
+  },
+
+  async fetchApprovalPolicy(projectId: string): Promise<RoleRoomApprovalPolicy> {
+    const response = await fetch(
+      `/api/role-room/agent/feed-plan/${encodeURIComponent(projectId)}/approval-policy`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) return { requireClientApproval: true, canEdit: false };
+    const payload = await response.json().catch(() => null);
+    return {
+      requireClientApproval: payload?.requireClientApproval !== false,
+      canEdit: Boolean(payload?.canEdit),
+    };
+  },
+
+  async setApprovalPolicy(projectId: string, requireClientApproval: boolean): Promise<boolean> {
+    const response = await fetch(
+      `/api/role-room/agent/feed-plan/${encodeURIComponent(projectId)}/approval-policy`,
+      {
+        method: 'PUT',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requireClientApproval }),
+      },
+    );
+    return response.ok;
   },
 
   async fetchGrantedAdsAssets(): Promise<RoleRoomGrantedAssets> {

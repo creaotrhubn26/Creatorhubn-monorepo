@@ -565,10 +565,14 @@ export function createPostAgentRouter(
       });
 
       const active = subs.data.filter((s) => s.status === 'active' || s.status === 'trialing');
-      const out = active.map((s) => ({
+      const out = active.map((s) => {
+        // Stripe v19: current_period_end er flyttet fra Subscription til items.data[i]
+        const firstItem = s.items?.data?.[0] as { current_period_end?: number } | undefined;
+        const currentPeriodEnd = firstItem?.current_period_end ?? null;
+        return ({
         id: s.id,
         status: s.status,
-        currentPeriodEnd: s.current_period_end,
+        currentPeriodEnd,
         cancelAtPeriodEnd: s.cancel_at_period_end,
         items: s.items.data.map((it) => {
           const product = it.price?.product as any;
@@ -588,7 +592,8 @@ export function createPostAgentRouter(
             monthlyEquivalent: perMonth,
           };
         }),
-      }));
+        });
+      });
 
       // Sum monthlyEquivalent across all NOK items (skip mixed-currency totals)
       let totalMonthlyNok = 0;

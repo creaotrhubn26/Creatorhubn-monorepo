@@ -38,6 +38,7 @@ import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobil
 import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
 import CarouselPanel from './components/producer/carousel/CarouselPanel';
 import GrantedAssetsCard from './components/producer/GrantedAssetsCard';
+import ClientEconomyPanel from './components/producer/ClientEconomyPanel';
 import AdminRoom from '../../pages/AdminRoom';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
@@ -101,6 +102,7 @@ import {
   YouTube as YouTubeIcon,
   AutoFixHigh as AutoFixHighIcon,
   AccountCircle as AccountCircleIcon,
+  Paid as PaidIcon,
 } from '@mui/icons-material';
 import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
@@ -322,6 +324,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     'shotlist': { label: 'Shotliste', Icon: TheaterIcon },
     'mannskap': { label: 'Mannskap', Icon: GroupIcon },
     'agent': { label: 'Agent', Icon: AutoFixHighIcon },
+    'economy': { label: 'Økonomi', Icon: PaidIcon },
     'admin-room': { label: 'Admin Room', Icon: AutoFixHighIcon, highlight: true },
   };
   const isAdminUser = auth.user?.role === 'admin' || auth.user?.role === 'super_admin';
@@ -1186,6 +1189,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 )}
                 {subTab === 'carousel' && (
                   <CarouselPanel projectId={selectedProjectId} />
+                )}
+                {subTab === 'economy' && (
+                  <ClientEconomyPanel projectId={selectedProjectId} userRole={auth.user?.role ?? null} />
                 )}
                 {subTab === 'admin-room'
                   && (profileEmail || '').trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL && (
