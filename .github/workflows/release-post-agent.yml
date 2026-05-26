@@ -1,0 +1,166 @@
+name: Release Post Agent
+
+# Triggered by pushing a tag matching post-agent-v*  (e.g. post-agent-v0.1.1).
+# Builds the macOS Tauri app, signs it with the updater minisign key, and
+# uploads .app.tar.gz + .app.tar.gz.sig + latest.json manifest to a GitHub
+# Release. The Tauri updater plugin reads latest.json from
+#   https://github.com/<owner>/<repo>/releases/latest/download/post-agent-darwin-aarch64.json
+# (and -x86_64) to detect new versions.
+
+on:
+  push:
+    tags:
+      - 'post-agent-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 0.1.1)'
+        required: true
+
+permissions:
+  contents: write  # needed to create a Release + upload artifacts
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-mac:
+    name: Build (macOS ${{ matrix.target }})
+    runs-on: macos-14  # Apple Silicon runner
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch_label: darwin-aarch64
+          - target: x86_64-apple-darwin
+            arch_label: darwin-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Strip "post-agent-v" prefix from tag
+            VERSION="${GITHUB_REF#refs/tags/post-agent-v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/resolve-script-manager/src-tauri
+
+      - name: Install npm deps
+        working-directory: apps/resolve-script-manager
+        run: npm ci
+
+      - name: Build Tauri app
+        working-directory: apps/resolve-script-manager
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple Developer ID — optional. If not set, app will not be code-
+          # signed for Gatekeeper (users see the "unidentified developer"
+          # warning on first launch). Sign yourself before public release.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Collect artifacts
+        id: artifacts
+        shell: bash
+        run: |
+          BUNDLE_DIR="apps/resolve-script-manager/src-tauri/target/${{ matrix.target }}/release/bundle"
+          TARBALL=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" | head -1)
+          SIG=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz.sig" | head -1)
+          DMG=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" | head -1)
+          if [ -z "$TARBALL" ] || [ -z "$SIG" ]; then
+            echo "::error::Expected .app.tar.gz + .sig in $BUNDLE_DIR/macos"
+            ls -R "$BUNDLE_DIR" || true
+            exit 1
+          fi
+          # Rename so the GitHub Release filename is predictable for the updater URL
+          mkdir -p staging
+          cp "$TARBALL" "staging/post-agent-${{ matrix.arch_label }}.app.tar.gz"
+          cp "$SIG"     "staging/post-agent-${{ matrix.arch_label }}.app.tar.gz.sig"
+          if [ -n "$DMG" ]; then
+            cp "$DMG"   "staging/post-agent-${{ matrix.arch_label }}.dmg"
+          fi
+          echo "tarball=staging/post-agent-${{ matrix.arch_label }}.app.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "sig=staging/post-agent-${{ matrix.arch_label }}.app.tar.gz.sig" >> "$GITHUB_OUTPUT"
+          [ -n "$DMG" ] && echo "dmg=staging/post-agent-${{ matrix.arch_label }}.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Generate updater manifest
+        shell: bash
+        run: |
+          SIG_CONTENT=$(cat "${{ steps.artifacts.outputs.sig }}")
+          PUB_URL="https://github.com/${{ github.repository }}/releases/download/post-agent-v${{ steps.ver.outputs.version }}/post-agent-${{ matrix.arch_label }}.app.tar.gz"
+          cat > "staging/post-agent-${{ matrix.arch_label }}.json" <<EOF
+          {
+            "version": "${{ steps.ver.outputs.version }}",
+            "notes": "See release notes on GitHub",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "${{ matrix.arch_label == 'darwin-aarch64' && 'darwin-aarch64' || 'darwin-x86_64' }}": {
+                "signature": "$SIG_CONTENT",
+                "url": "$PUB_URL"
+              }
+            }
+          }
+          EOF
+          cat "staging/post-agent-${{ matrix.arch_label }}.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: post-agent-${{ matrix.arch_label }}
+          path: staging/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-mac
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="post-agent-v${{ github.event.inputs.version }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          files: dist/*
+          fail_on_unmatched_files: true
