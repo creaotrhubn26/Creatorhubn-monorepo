@@ -18,9 +18,20 @@ import type { AdminRoomRoutesDeps } from "./_shared";
 import { asString } from "./_shared";
 import {
   markdownToHtml,
+  renderBlocksToHtml,
   sendNewsletterConfirmEmail,
   sendNewsletterIssueToRecipient,
+  type NewsletterBlock,
 } from "./role-room-newsletter-email-service";
+
+function asBlocks(value: unknown): NewsletterBlock[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((b): b is NewsletterBlock => {
+    if (!b || typeof b !== "object") return false;
+    const obj = b as Record<string, unknown>;
+    return typeof obj.id === "string" && typeof obj.type === "string";
+  });
+}
 
 interface NewsletterRoutesDeps {
   app: express.Application;
@@ -332,13 +343,15 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
     const subject = asString(body.subject) ?? `Norwegian Casting Brief — ${title}`;
     const preheader = asString(body.preheader);
     const markdown = asString(body.bodyMarkdown) ?? "";
+    const blocks = asBlocks(body.bodyBlocks);
+    const renderedHtml = blocks.length > 0 ? renderBlocksToHtml(blocks) : markdownToHtml(markdown);
     try {
       const result = await pool.query(
         `INSERT INTO role_room_newsletter_issues
-           (user_id, slug, title, subject, preheader, body_markdown, body_html, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
+           (user_id, slug, title, subject, preheader, body_markdown, body_html, body_blocks, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'draft')
          RETURNING *`,
-        [session.userId, slug, title, subject, preheader, markdown, markdownToHtml(markdown)],
+        [session.userId, slug, title, subject, preheader, markdown, renderedHtml, JSON.stringify(blocks)],
       );
       res.status(201).json({ item: result.rows[0] });
     } catch (err) {
@@ -353,14 +366,19 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const updates: string[] = [];
     const params: unknown[] = [];
-    function set(col: string, val: unknown) {
+    function set(col: string, val: unknown, cast?: string) {
       params.push(val);
-      updates.push(`${col} = $${params.length}`);
+      const placeholder = cast ? `$${params.length}::${cast}` : `$${params.length}`;
+      updates.push(`${col} = ${placeholder}`);
     }
     if (body.title !== undefined) set("title", asString(body.title));
     if (body.subject !== undefined) set("subject", asString(body.subject));
     if (body.preheader !== undefined) set("preheader", asString(body.preheader));
-    if (body.bodyMarkdown !== undefined) {
+    if (body.bodyBlocks !== undefined) {
+      const blocks = asBlocks(body.bodyBlocks);
+      set("body_blocks", JSON.stringify(blocks), "jsonb");
+      set("body_html", renderBlocksToHtml(blocks));
+    } else if (body.bodyMarkdown !== undefined) {
       const md = asString(body.bodyMarkdown) ?? "";
       set("body_markdown", md);
       set("body_html", markdownToHtml(md));

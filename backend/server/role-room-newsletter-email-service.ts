@@ -167,6 +167,63 @@ export async function sendNewsletterIssueToRecipient(opts: {
   }
 }
 
+// ── Block-based content rendering ────────────────────────────────────────
+
+export type NewsletterBlock =
+  | { id: string; type: "header"; level?: 1 | 2 | 3; text: string }
+  | { id: string; type: "text"; markdown: string }
+  | { id: string; type: "image"; url: string; alt?: string; caption?: string }
+  | { id: string; type: "cta"; label: string; url: string; align?: "left" | "center" | "right" }
+  | { id: string; type: "divider" }
+  | { id: string; type: "quote"; text: string; attribution?: string };
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export function renderBlocksToHtml(blocks: NewsletterBlock[]): string {
+  if (!Array.isArray(blocks) || blocks.length === 0) return "";
+  const parts: string[] = [];
+  for (const block of blocks) {
+    switch (block.type) {
+      case "header": {
+        const level = block.level && [1, 2, 3].includes(block.level) ? block.level : 1;
+        parts.push(`<h${level}>${escapeHtml(block.text)}</h${level}>`);
+        break;
+      }
+      case "text":
+        parts.push(markdownToHtml(block.markdown));
+        break;
+      case "image": {
+        const img = `<img src="${escapeHtml(block.url)}" alt="${escapeHtml(block.alt ?? "")}" style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;">`;
+        const caption = block.caption
+          ? `<p style="text-align:center;font-size:13px;color:rgba(229,231,235,0.6);margin-top:8px;">${escapeHtml(block.caption)}</p>`
+          : "";
+        parts.push(`<figure style="margin:24px 0;">${img}${caption}</figure>`);
+        break;
+      }
+      case "cta": {
+        const align = block.align ?? "center";
+        parts.push(
+          `<p style="text-align:${align};margin:28px 0;"><a href="${escapeHtml(block.url)}" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(block.label)}</a></p>`,
+        );
+        break;
+      }
+      case "divider":
+        parts.push(`<hr style="border:none;border-top:1px solid rgba(255,255,255,0.12);margin:32px 0;">`);
+        break;
+      case "quote": {
+        const attribution = block.attribution
+          ? `<footer style="color:rgba(229,231,235,0.6);font-size:13px;margin-top:8px;">— ${escapeHtml(block.attribution)}</footer>`
+          : "";
+        parts.push(`<blockquote>${escapeHtml(block.text)}${attribution}</blockquote>`);
+        break;
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
 export function markdownToHtml(md: string): string {
   // Minimal markdown-renderer — bevisst enkel for å unngå tunge deps.
   // Hvis du trenger full markdown-støtte, bytt til `marked` eller `remark`.

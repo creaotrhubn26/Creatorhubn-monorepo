@@ -1159,6 +1159,7 @@ export interface NewsletterIssue {
   preheader: string | null;
   body_markdown: string;
   body_html: string | null;
+  body_blocks?: NewsletterBlock[];
   status: NewsletterIssueStatus;
   scheduled_for: string | null;
   sent_at: string | null;
@@ -1175,7 +1176,43 @@ export type NewsletterIssueInput = {
   subject?: string;
   preheader?: string | null;
   bodyMarkdown?: string;
+  bodyBlocks?: NewsletterBlock[];
   scheduledFor?: string | null;
+};
+
+export type NewsletterBlock =
+  | { id: string; type: 'header'; level?: 1 | 2 | 3; text: string }
+  | { id: string; type: 'text'; markdown: string }
+  | { id: string; type: 'image'; url: string; alt?: string; caption?: string }
+  | { id: string; type: 'cta'; label: string; url: string; align?: 'left' | 'center' | 'right' }
+  | { id: string; type: 'divider' }
+  | { id: string; type: 'quote'; text: string; attribution?: string };
+
+export interface NewsletterAiSubject {
+  text: string;
+  rationale: string;
+}
+
+export interface NewsletterAiContentScore {
+  score: number;
+  breakdown: Record<string, number>;
+  strengths: string[];
+  improvements: Array<{ issue: string; suggestion: string }>;
+}
+
+export const newsletterAiApi = {
+  subjectLines: async (input: { title: string; summary?: string; bodyMarkdown?: string }): Promise<{ subjects: NewsletterAiSubject[] }> => {
+    return jsonFetch('/newsletter/role-room/ai/subject-lines', { method: 'POST', body: JSON.stringify(input) });
+  },
+  firstDraft: async (prompt: string): Promise<{ title: string; blocks: NewsletterBlock[] }> => {
+    return jsonFetch('/newsletter/role-room/ai/first-draft', { method: 'POST', body: JSON.stringify({ prompt }) });
+  },
+  rewriteBlock: async (text: string, tone: 'shorter' | 'sharper' | 'friendlier' | 'stronger_hook'): Promise<{ rewritten: string }> => {
+    return jsonFetch('/newsletter/role-room/ai/rewrite-block', { method: 'POST', body: JSON.stringify({ text, tone }) });
+  },
+  contentScore: async (input: { title: string; subject: string; content: string }): Promise<NewsletterAiContentScore> => {
+    return jsonFetch('/newsletter/role-room/ai/content-score', { method: 'POST', body: JSON.stringify(input) });
+  },
 };
 
 export const newsletterIssuesApi = {

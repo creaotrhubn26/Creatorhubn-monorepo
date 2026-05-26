@@ -23,9 +23,11 @@ import CloseIcon from '@mui/icons-material/Close';
 import {
   newsletterIssuesApi,
   newsletterApi,
+  type NewsletterBlock,
   type NewsletterIssue,
   type NewsletterIssueStatus,
 } from '../../../services/adminRoomApi';
+import NewsletterBlockBuilder from './NewsletterBlockBuilder';
 
 /**
  * Newsletter Studio — eget dashboard for å skrive og sende Norwegian
@@ -291,6 +293,7 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
   const [subject, setSubject] = useState('');
   const [preheader, setPreheader] = useState('');
   const [bodyMarkdown, setBodyMarkdown] = useState('');
+  const [bodyBlocks, setBodyBlocks] = useState<NewsletterBlock[]>([]);
   const [saving, setSaving] = useState(false);
   const lastSavedRef = useRef<string>('');
 
@@ -301,30 +304,32 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
       setSubject(initial.subject);
       setPreheader(initial.preheader ?? '');
       setBodyMarkdown(initial.body_markdown);
-      lastSavedRef.current = initial.body_markdown;
+      setBodyBlocks(initial.body_blocks ?? []);
+      lastSavedRef.current = JSON.stringify(initial.body_blocks ?? []);
     } else {
       const weekNum = Math.ceil((new Date().getTime() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
       setTitle(`Uke ${weekNum} — ${new Date().toLocaleDateString('nb-NO', { day: '2-digit', month: 'long' })}`);
       setSubject(`Norwegian Casting Brief — Uke ${weekNum}`);
       setPreheader('Ukens data, founder POV, behind-the-cast og risk-varsler.');
       setBodyMarkdown(STARTER_TEMPLATE.replace('{{nummer}}', String(weekNum)));
-      lastSavedRef.current = '';
+      setBodyBlocks([]);
+      lastSavedRef.current = '[]';
     }
   }, [open, initial]);
 
-  const previewHtml = useMemo(() => renderPreview(bodyMarkdown), [bodyMarkdown]);
-  const isDirty = bodyMarkdown !== lastSavedRef.current || (initial && (title !== initial.title || subject !== initial.subject || preheader !== (initial.preheader ?? '')));
+  const blocksJson = JSON.stringify(bodyBlocks);
+  const isDirty = blocksJson !== lastSavedRef.current || (initial && (title !== initial.title || subject !== initial.subject || preheader !== (initial.preheader ?? '')));
 
   async function handleSave() {
     if (!title.trim()) { onError('Tittel er påkrevd'); return; }
     setSaving(true);
     try {
       if (initial) {
-        await newsletterIssuesApi.patch(initial.id, { title, subject, preheader: preheader || null, bodyMarkdown });
+        await newsletterIssuesApi.patch(initial.id, { title, subject, preheader: preheader || null, bodyMarkdown, bodyBlocks });
       } else {
-        await newsletterIssuesApi.create({ title, subject, preheader: preheader || null, bodyMarkdown });
+        await newsletterIssuesApi.create({ title, subject, preheader: preheader || null, bodyMarkdown, bodyBlocks });
       }
-      lastSavedRef.current = bodyMarkdown;
+      lastSavedRef.current = blocksJson;
       onSaved();
     } catch (err) {
       onError((err as Error).message);
@@ -351,71 +356,16 @@ function IssueEditor({ open, initial, onClose, onSaved, onError }: IssueEditorPr
         <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
       </DialogTitle>
       <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <Box sx={{ p: 2, borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-            <TextField label="Tittel" size="small" fullWidth value={title} onChange={(e) => setTitle(e.target.value)} />
-            <TextField label="Emnefelt (Subject)" size="small" fullWidth value={subject} onChange={(e) => setSubject(e.target.value)} />
-            <TextField label="Preheader (gråtekst i innboks)" size="small" fullWidth value={preheader} onChange={(e) => setPreheader(e.target.value)} />
-          </Stack>
-        </Box>
-        <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 0, overflow: 'hidden' }}>
-          <Box sx={{ borderRight: { md: '1px solid rgba(148,163,184,0.08)' }, overflow: 'auto' }}>
-            <TextField
-              multiline
-              fullWidth
-              minRows={20}
-              value={bodyMarkdown}
-              onChange={(e) => setBodyMarkdown(e.target.value)}
-              variant="outlined"
-              placeholder="# Skriv markdown her …"
-              sx={{
-                height: '100%',
-                '& .MuiOutlinedInput-root': {
-                  height: '100%',
-                  alignItems: 'flex-start',
-                  bgcolor: 'rgba(2,6,23,0.7)',
-                  borderRadius: 0,
-                  fontFamily: '"JetBrains Mono", Menlo, monospace',
-                  fontSize: '0.82rem',
-                  lineHeight: 1.65,
-                  color: '#e2e8f0',
-                  '& fieldset': { border: 'none' },
-                },
-                '& textarea': { height: '100% !important' },
-              }}
-            />
-          </Box>
-          <Box sx={{ overflow: 'auto', bgcolor: PREVIEW_BG, p: 3 }}>
-            <Box sx={{ maxWidth: 560, mx: 'auto' }}>
-              <Box sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', pb: 2, mb: 3 }}>
-                <Typography sx={{ color: BRAND, fontFamily: '"Courier New", monospace', fontSize: '0.75rem', letterSpacing: '0.25em', textTransform: 'uppercase', fontWeight: 700 }}>
-                  Norwegian Casting Brief
-                </Typography>
-              </Box>
-              <Box
-                sx={{
-                  color: '#e5e7eb',
-                  fontSize: '0.92rem',
-                  lineHeight: 1.7,
-                  '& h1': { color: '#fff', fontSize: '1.7rem', lineHeight: 1.3, m: '0 0 1rem' },
-                  '& h2': { color: '#fff', fontSize: '1.2rem', lineHeight: 1.3, m: '1.75rem 0 0.75rem' },
-                  '& h3': { color: '#fff', fontSize: '1rem', lineHeight: 1.3, m: '1.5rem 0 0.5rem' },
-                  '& p': { m: '0 0 1rem' },
-                  '& a': { color: '#a78bfa' },
-                  '& blockquote': { borderLeft: `3px solid ${BRAND}`, pl: 2, color: 'rgba(229,231,235,0.78)', m: '1rem 0' },
-                  '& ul, & ol': { pl: 3, my: 1.5 },
-                  '& li': { my: 0.5 },
-                  '& strong': { color: '#fff' },
-                }}
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
-              <Box sx={{ mt: 5, pt: 3, borderTop: '1px solid rgba(255,255,255,0.08)', color: 'rgba(229,231,235,0.5)', fontSize: '0.72rem', lineHeight: 1.6 }}>
-                Du mottar denne fordi du meldte deg på via theroleroom.com. [Meld deg av]<br />
-                The Role Room · Et produkt fra CreatorHub Norge AS · Oslo, Norge
-              </Box>
-            </Box>
-          </Box>
-        </Box>
+        <NewsletterBlockBuilder
+          initialBlocks={bodyBlocks}
+          title={title}
+          subject={subject}
+          preheader={preheader}
+          onChange={setBodyBlocks}
+          onTitleChange={setTitle}
+          onSubjectChange={setSubject}
+          onPreheaderChange={setPreheader}
+        />
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5, borderTop: '1px solid rgba(148,163,184,0.14)' }}>
         <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.78rem', flex: 1 }}>
