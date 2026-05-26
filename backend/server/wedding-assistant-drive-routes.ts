@@ -37,6 +37,7 @@ const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 export interface WeddingAssistantDriveRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -205,10 +206,11 @@ export async function pollAllAssistantFolders(pool: any): Promise<number> {
 }
 
 export function setupWeddingAssistantDriveRoutes(deps: WeddingAssistantDriveRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── POST setup-drive-folder ───────────────────────────────────
   app.post("/api/wedding/:weddingId/assistants/:assistantId/setup-drive-folder", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -303,6 +305,7 @@ export function setupWeddingAssistantDriveRoutes(deps: WeddingAssistantDriveRout
   // On-demand sjekk (når Stine åpner AssistantsPanel kalles denne for å
   // gi henne ferskest mulig file-count selv mellom background-polls).
   app.post("/api/wedding/:weddingId/assistants/:assistantId/check-drive", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
@@ -326,6 +329,7 @@ export function setupWeddingAssistantDriveRoutes(deps: WeddingAssistantDriveRout
   // ─── POST mark-files-viewed ────────────────────────────────────
   // Nullstiller "nye filer siden sist sett"-badge.
   app.post("/api/wedding/:weddingId/assistants/:assistantId/mark-files-viewed", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

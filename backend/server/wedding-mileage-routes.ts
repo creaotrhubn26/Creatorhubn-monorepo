@@ -25,6 +25,7 @@ import type express from "express";
 export interface WeddingMileageRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -255,7 +256,7 @@ async function getTimelineDestinations(
 }
 
 export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // Hent business_address: users.business_address (oppdatert i settings)
   // → fallback til invite_requests.business_address (lagret ved sign-up
@@ -344,6 +345,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
 
   // ─── PUT /api/photographer/vehicle ────────────────────────────────
   app.put("/api/photographer/vehicle", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -441,6 +443,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
 
   // ─── POST /api/wedding/:weddingId/mileage/calculate ───────────────
   app.post("/api/wedding/:weddingId/mileage/calculate", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -699,6 +702,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
 
   // ─── POST /api/wedding/:weddingId/mileage/mark-exported ───────────
   app.post("/api/wedding/:weddingId/mileage/mark-exported", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);

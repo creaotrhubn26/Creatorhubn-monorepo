@@ -21,6 +21,7 @@ import crypto from "crypto";
 export interface WeddingExpensesRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -62,7 +63,7 @@ function rowToExpense(r: any): any {
 }
 
 export function setupWeddingExpensesRoutes(deps: WeddingExpensesRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── GET /api/wedding/:weddingId/expenses ─────────────────────
   app.get("/api/wedding/:weddingId/expenses", async (req, res) => {
@@ -89,6 +90,7 @@ export function setupWeddingExpensesRoutes(deps: WeddingExpensesRoutesDeps): voi
 
   // ─── POST /api/wedding/:weddingId/expenses ────────────────────
   app.post("/api/wedding/:weddingId/expenses", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -132,6 +134,7 @@ export function setupWeddingExpensesRoutes(deps: WeddingExpensesRoutesDeps): voi
 
   // ─── DELETE /api/wedding/:weddingId/expenses/:expenseId ───────
   app.delete("/api/wedding/:weddingId/expenses/:expenseId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

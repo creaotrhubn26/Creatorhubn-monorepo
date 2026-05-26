@@ -20,6 +20,7 @@ import type express from "express";
 export interface WeddingGalleryDeliveryRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -65,7 +66,7 @@ function rowToDelivery(r: any): any {
 }
 
 export function setupWeddingGalleryDeliveryRoutes(deps: WeddingGalleryDeliveryRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── GET /api/wedding/:weddingId/gallery-delivery ──────────────
   app.get("/api/wedding/:weddingId/gallery-delivery", async (req, res) => {
@@ -89,6 +90,7 @@ export function setupWeddingGalleryDeliveryRoutes(deps: WeddingGalleryDeliveryRo
   // ─── PUT /api/wedding/:weddingId/gallery-delivery ─────────────
   // Upsert: setter deadline, valgfri gallery_id-kobling, valgfri status-override
   app.put("/api/wedding/:weddingId/gallery-delivery", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -117,6 +119,7 @@ export function setupWeddingGalleryDeliveryRoutes(deps: WeddingGalleryDeliveryRo
 
   // ─── POST .../mark-proof-sent ──────────────────────────────────
   app.post("/api/wedding/:weddingId/gallery-delivery/mark-proof-sent", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -138,6 +141,7 @@ export function setupWeddingGalleryDeliveryRoutes(deps: WeddingGalleryDeliveryRo
 
   // ─── POST .../mark-delivered ───────────────────────────────────
   app.post("/api/wedding/:weddingId/gallery-delivery/mark-delivered", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);

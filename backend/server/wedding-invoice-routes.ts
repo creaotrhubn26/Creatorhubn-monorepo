@@ -23,6 +23,7 @@ import type express from "express";
 export interface WeddingInvoiceRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -201,7 +202,7 @@ async function aggregateInvoice(pool: any, weddingId: string, photographerId: st
 }
 
 export function setupWeddingInvoiceRoutes(deps: WeddingInvoiceRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── GET /api/wedding/:weddingId/invoice-summary ───────────────
   app.get("/api/wedding/:weddingId/invoice-summary", async (req, res) => {
@@ -221,6 +222,7 @@ export function setupWeddingInvoiceRoutes(deps: WeddingInvoiceRoutesDeps): void 
   // Lagrer snapshot, klar for sending. Tar valgfri override av lines
   // (Stine kan justere før send).
   app.post("/api/wedding/:weddingId/invoice", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -258,6 +260,7 @@ export function setupWeddingInvoiceRoutes(deps: WeddingInvoiceRoutesDeps): void 
 
   // ─── POST /api/wedding/:weddingId/invoice/:invoiceId/mark-sent ──
   app.post("/api/wedding/:weddingId/invoice/:invoiceId/mark-sent", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

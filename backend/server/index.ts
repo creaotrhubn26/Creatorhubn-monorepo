@@ -67041,25 +67041,25 @@ function getPricingUserId(req: any): string {
 }
 
 // Slice 9X.33 — Kjøregodtgjørelse fra wedding-timeline + Vegvesen-bil.
-setupWeddingMileageRoutes({ app, pool, getPricingUserId });
+setupWeddingMileageRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.34 + 9X.35 — Foto-lokasjons-katalog + community-bidrag.
 setupPhotoVenuesRoutes({ app, pool, getPricingUserId, requireAdminSession });
 
 // Slice 9X.36 — Pre-bryllup walkthrough-sjekkliste.
-setupWeddingWalkthroughRoutes({ app, pool, getPricingUserId });
+setupWeddingWalkthroughRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.37 — Plan-B-lokasjoner ved dårlig vær.
-setupWeddingLocationAlternativesRoutes({ app, pool, getPricingUserId });
+setupWeddingLocationAlternativesRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.40 — Bryllupsdag-utlegg (parkering, lunsj, gaver).
-setupWeddingExpensesRoutes({ app, pool, getPricingUserId });
+setupWeddingExpensesRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.41 — Post-bryllup faktura-sammenstilling.
-setupWeddingInvoiceRoutes({ app, pool, getPricingUserId });
+setupWeddingInvoiceRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.42 — Galleri-leveringsflyt med proof + favoritter.
-setupWeddingGalleryDeliveryRoutes({ app, pool, getPricingUserId });
+setupWeddingGalleryDeliveryRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.43 — Web Push (VAPID) for PWA-varsler.
 setupWebPushRoutes({ app, pool, getPricingUserId });
@@ -67068,13 +67068,13 @@ setupWebPushRoutes({ app, pool, getPricingUserId });
 setupWeddingAssistantsRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.45 — Auto-delt Drive-mappe for assistent-leveranse + polling.
-setupWeddingAssistantDriveRoutes({ app, pool, getPricingUserId });
+setupWeddingAssistantDriveRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.46 — Sub-kontrakt mellom hovedfotograf og assistent.
 setupWeddingAssistantSubcontractRoutes({ app, pool });
 
 // Slice 9X.47 + 9X.48 — Rolodex over tidligere samarbeid + brief-Meet.
-setupWeddingAssistantCollabRoutes({ app, pool, getPricingUserId });
+setupWeddingAssistantCollabRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
 setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId });
@@ -67900,7 +67900,7 @@ setInterval(() => {
 setupAdminConfigCheckRoutes({ app, pool, requireAdminSession });
 
 // Slice 9X.49 — Brief-notater + AI-sammendrag.
-setupWeddingAssistantBriefNotesRoutes({ app, pool, getPricingUserId });
+setupWeddingAssistantBriefNotesRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.50 — GDPR for assistent (samtykke + sletting + anonymisering).
 setupWeddingAssistantGdprRoutes({ app, pool, getPricingUserId, requireAdminSession });

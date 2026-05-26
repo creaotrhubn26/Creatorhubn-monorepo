@@ -22,6 +22,7 @@ import type express from "express";
 export interface WeddingWalkthroughRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -470,7 +471,7 @@ async function ensureSchema(pool: any): Promise<void> {
 }
 
 export function setupWeddingWalkthroughRoutes(deps: WeddingWalkthroughRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── GET /api/wedding/:weddingId/walkthrough ────────────────────
   app.get("/api/wedding/:weddingId/walkthrough", async (req, res) => {
@@ -555,6 +556,7 @@ export function setupWeddingWalkthroughRoutes(deps: WeddingWalkthroughRoutesDeps
 
   // ─── POST /api/wedding/:weddingId/walkthrough/:itemKey ─────────
   app.post("/api/wedding/:weddingId/walkthrough/:itemKey", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);

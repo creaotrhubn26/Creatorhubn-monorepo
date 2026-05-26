@@ -27,6 +27,7 @@ import { sendPushToUser } from "./web-push-routes";
 export interface WeddingLocationAlternativesRoutesDeps {
   app: express.Application;
   pool: any;
+  requireUserSession: (req: any, res: any) => any;
   getPricingUserId: (req: any) => string;
 }
 
@@ -76,7 +77,7 @@ function rowToLocation(r: any): any {
 export function setupWeddingLocationAlternativesRoutes(
   deps: WeddingLocationAlternativesRoutesDeps,
 ): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, requireUserSession, getPricingUserId } = deps;
 
   // ─── GET /api/wedding/:weddingId/locations-with-alternatives ───
   app.get("/api/wedding/:weddingId/locations-with-alternatives", async (req, res) => {
@@ -101,6 +102,7 @@ export function setupWeddingLocationAlternativesRoutes(
 
   // ─── POST /api/wedding/:weddingId/locations/:primaryId/alternatives ───
   app.post("/api/wedding/:weddingId/locations/:primaryId/alternatives", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const { primaryId, weddingId } = req.params;
@@ -143,6 +145,7 @@ export function setupWeddingLocationAlternativesRoutes(
 
   // ─── PUT /api/wedding/:weddingId/locations/:locId/weather-flags ───
   app.put("/api/wedding/:weddingId/locations/:locId/weather-flags", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const { isIndoor, weatherDependent } = req.body || {};
@@ -170,6 +173,7 @@ export function setupWeddingLocationAlternativesRoutes(
   // Plan-B-aktivering: flytt alle wedding_timeline_events.location_id fra
   // primary til denne alternativen. Sett aktivasjons-status.
   app.post("/api/wedding/:weddingId/locations/:altId/activate", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -298,6 +302,7 @@ export function setupWeddingLocationAlternativesRoutes(
 
   // ─── POST /api/wedding/:weddingId/locations/:altId/deactivate ───
   app.post("/api/wedding/:weddingId/locations/:altId/deactivate", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const { weddingId, altId } = req.params;
