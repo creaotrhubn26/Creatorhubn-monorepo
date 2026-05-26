@@ -1248,6 +1248,13 @@ export const newsletterAiApi = {
   contentScore: async (input: { title: string; subject: string; content: string }): Promise<NewsletterAiContentScore> => {
     return jsonFetch('/newsletter/role-room/ai/content-score', { method: 'POST', body: JSON.stringify(input) });
   },
+  repurpose: async (issueId: string): Promise<{
+    linkedinEssay: string;
+    instagramCarousel: Array<{ slideNumber: number; headline: string; body: string }>;
+    quoteCards: Array<{ quote: string; attribution: string }>;
+  }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(issueId)}/repurpose`, { method: 'POST' });
+  },
 };
 
 export const newsletterIssuesApi = {

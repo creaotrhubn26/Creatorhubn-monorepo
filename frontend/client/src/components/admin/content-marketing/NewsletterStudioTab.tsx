@@ -25,6 +25,9 @@ import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
 import InsightsIcon from '@mui/icons-material/Insights';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import ShareIcon from '@mui/icons-material/Share';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
   newsletterAiApi,
   newsletterIssuesApi,
@@ -129,6 +132,7 @@ export function NewsletterStudioTab() {
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [clickReportFor, setClickReportFor] = useState<NewsletterIssue | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [repurposeFor, setRepurposeFor] = useState<NewsletterIssue | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [subscriberStats, setSubscriberStats] = useState<{ confirmed: number; pending: number; total: number } | null>(null);
 
@@ -363,15 +367,26 @@ export function NewsletterStudioTab() {
                     Test
                   </Button>
                   {issue.status === 'sent' ? (
-                    issue.published_to_web ? (
-                      <Button size="small" variant="outlined" startIcon={<PublicOffIcon />} onClick={() => handleUnpublish(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: 'rgba(203,213,225,0.85)' }}>
-                        Skjul fra web
+                    <>
+                      {issue.published_to_web ? (
+                        <Button size="small" variant="outlined" startIcon={<PublicOffIcon />} onClick={() => handleUnpublish(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: 'rgba(203,213,225,0.85)' }}>
+                          Skjul fra web
+                        </Button>
+                      ) : (
+                        <Button size="small" variant="outlined" startIcon={<PublicIcon />} onClick={() => handlePublish(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: '#34d399', borderColor: 'rgba(52,211,153,0.4)' }}>
+                          Publiser til web
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<ShareIcon />}
+                        onClick={() => setRepurposeFor(issue)}
+                        sx={{ textTransform: 'none', fontWeight: 600, color: '#fb923c', borderColor: 'rgba(251,146,60,0.4)' }}
+                      >
+                        Cross-post
                       </Button>
-                    ) : (
-                      <Button size="small" variant="outlined" startIcon={<PublicIcon />} onClick={() => handlePublish(issue)} sx={{ textTransform: 'none', fontWeight: 600, color: '#34d399', borderColor: 'rgba(52,211,153,0.4)' }}>
-                        Publiser til web
-                      </Button>
-                    )
+                    </>
                   ) : null}
                   {issue.status === 'scheduled' ? (
                     <>
@@ -439,6 +454,13 @@ export function NewsletterStudioTab() {
         open={insightsOpen}
         onClose={() => setInsightsOpen(false)}
         onError={setError}
+      />
+
+      <RepurposeDialog
+        issue={repurposeFor}
+        onClose={() => setRepurposeFor(null)}
+        onError={setError}
+        onCopied={(label) => setSnackbar(`${label} kopiert til utklippstavlen`)}
       />
 
       <Snackbar
@@ -832,6 +854,138 @@ function WeeklyInsightsDialog({ open, onClose, onError }: { open: boolean; onClo
 
             <Typography sx={{ color: 'rgba(203,213,225,0.45)', fontSize: '0.72rem', textAlign: 'center' }}>
               Generert {new Date(data.generatedAt).toLocaleString('nb-NO')}
+            </Typography>
+          </Stack>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Cross-post repurposing dialog ──────────────────────────────────
+
+interface RepurposeContent {
+  linkedinEssay: string;
+  instagramCarousel: Array<{ slideNumber: number; headline: string; body: string }>;
+  quoteCards: Array<{ quote: string; attribution: string }>;
+}
+
+function RepurposeDialog({ issue, onClose, onError, onCopied }: { issue: NewsletterIssue | null; onClose: () => void; onError: (msg: string) => void; onCopied: (label: string) => void }) {
+  const [content, setContent] = useState<RepurposeContent | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!issue) { setContent(null); return; }
+    setLoading(true);
+    newsletterAiApi.repurpose(issue.id)
+      .then(setContent)
+      .catch((err) => onError((err as Error).message))
+      .finally(() => setLoading(false));
+  }, [issue, onError]);
+
+  async function copyToClipboard(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      onCopied(label);
+    } catch {
+      onError('Kunne ikke kopiere — prøv manuelt');
+    }
+  }
+
+  return (
+    <Dialog open={issue !== null} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <ShareIcon sx={{ color: '#fb923c' }} />
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>Cross-post — 1 utgave → 3 formater</Typography>
+            {issue ? <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.78rem' }}>{issue.title}</Typography> : null}
+          </Box>
+        </Stack>
+        <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
+      </DialogTitle>
+      <DialogContent>
+        {loading ? (
+          <Box sx={{ textAlign: 'center', py: 5 }}>
+            <Stack alignItems="center" spacing={1}>
+              <CircularProgress size={28} sx={{ color: '#fb923c' }} />
+              <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.85rem' }}>Claude genererer LinkedIn-essay + IG-carousel + quote-cards…</Typography>
+            </Stack>
+          </Box>
+        ) : !content ? null : (
+          <Stack spacing={3}>
+            {/* LinkedIn-essay */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>LinkedIn-essay</Typography>
+                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(content.linkedinEssay, 'LinkedIn-essay')} sx={{ textTransform: 'none', color: '#a78bfa', fontWeight: 700 }}>
+                  Kopier
+                </Button>
+              </Stack>
+              <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.5)', border: '1px solid rgba(148,163,184,0.14)', whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.65, color: 'rgba(229,231,235,0.9)' }}>
+                {content.linkedinEssay}
+              </Box>
+              <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.72rem', mt: 0.5 }}>
+                {content.linkedinEssay.length} tegn (LinkedIn max 3000)
+              </Typography>
+            </Box>
+
+            {/* Instagram-carousel */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>Instagram-carousel ({content.instagramCarousel.length} slides)</Typography>
+                <Button
+                  size="small"
+                  startIcon={<ContentCopyIcon fontSize="small" />}
+                  onClick={() => copyToClipboard(
+                    content.instagramCarousel.map((s) => `Slide ${s.slideNumber}: ${s.headline}\n${s.body}`).join('\n\n---\n\n'),
+                    'Hele carousel-teksten',
+                  )}
+                  sx={{ textTransform: 'none', color: '#a78bfa', fontWeight: 700 }}
+                >
+                  Kopier alle
+                </Button>
+              </Stack>
+              <Stack spacing={1.25}>
+                {content.instagramCarousel.map((slide) => (
+                  <Box key={slide.slideNumber} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(251,146,60,0.06)', border: '1px solid rgba(251,146,60,0.25)', display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                    <Chip label={`#${slide.slideNumber}`} size="small" sx={{ bgcolor: 'rgba(251,146,60,0.2)', color: '#fb923c', fontWeight: 800, fontSize: '0.7rem', height: 22, minWidth: 32 }} />
+                    <Box sx={{ flex: 1 }}>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.88rem', mb: 0.5 }}>{slide.headline}</Typography>
+                      <Typography sx={{ color: 'rgba(229,231,235,0.85)', fontSize: '0.82rem', lineHeight: 1.5 }}>{slide.body}</Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => copyToClipboard(`${slide.headline}\n${slide.body}`, `Slide ${slide.slideNumber}`)} sx={{ color: 'rgba(167,139,250,0.7)' }}>
+                      <ContentCopyIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+
+            {/* Quote-cards */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>Quote-cards (evergreen-sitater)</Typography>
+              </Stack>
+              <Stack spacing={1}>
+                {content.quoteCards.map((qc, idx) => (
+                  <Box key={idx} sx={{ p: 1.75, borderRadius: 1.5, bgcolor: 'rgba(139,92,246,0.08)', borderLeft: '3px solid #8b5cf6', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography sx={{ color: '#e2e8f0', fontSize: '0.92rem', lineHeight: 1.6, fontStyle: 'italic' }}>
+                        "{qc.quote}"
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.74rem', mt: 0.5 }}>— {qc.attribution}</Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => copyToClipboard(`"${qc.quote}"\n— ${qc.attribution}`, `Quote-card ${idx + 1}`)} sx={{ color: 'rgba(167,139,250,0.7)' }}>
+                      <ContentCopyIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+
+            <Typography sx={{ color: 'rgba(203,213,225,0.5)', fontSize: '0.72rem', textAlign: 'center', mt: 2 }}>
+              Repurposed via Claude. Editér fritt før posting — tonen skal være din.
             </Typography>
           </Stack>
         )}

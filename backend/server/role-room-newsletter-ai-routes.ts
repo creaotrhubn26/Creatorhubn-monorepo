@@ -345,6 +345,101 @@ Returnér KUN den omskrevne teksten — ingen forklaring, ingen kode-fences.`,
     }
   });
 
+  // 5. Repurpose — én newsletter-utgave til LinkedIn-essay + IG-carousel + quote-cards
+  app.post("/api/admin-room/newsletter/role-room/issues/:id/repurpose", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      const issueRes = await pool.query(
+        `SELECT title, subject, preheader, body_html, body_markdown, body_blocks, slug, published_to_web
+           FROM role_room_newsletter_issues
+          WHERE id = $1 AND user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      const issue = issueRes.rows[0];
+      if (!issue) {
+        res.status(404).json({ error: "Utgave ikke funnet" });
+        return;
+      }
+
+      // Flatten blocks til lesbar tekst for Claude
+      const blocks: Array<Record<string, unknown>> = Array.isArray(issue.body_blocks) ? issue.body_blocks : [];
+      const flattenedContent = blocks.length > 0
+        ? blocks.map((b) => {
+            if (b.type === "header") return `## ${b.text ?? ""}`;
+            if (b.type === "text") return String(b.markdown ?? "");
+            if (b.type === "quote") return `> ${b.text ?? ""}${b.attribution ? ` — ${b.attribution}` : ""}`;
+            if (b.type === "cta") return `[${b.label ?? ""}](${b.url ?? ""})`;
+            return "";
+          }).filter(Boolean).join("\n\n")
+        : issue.body_markdown || "";
+
+      const briefUrl = issue.published_to_web
+        ? `https://theroleroom.com/brief/${issue.slug}`
+        : "https://theroleroom.com";
+
+      const raw = await callClaude({
+        user: `Du skal "repurpose" en utgave av Norwegian Casting Brief til 3 andre formater for distribusjon på LinkedIn og Instagram. Dette er 1-piece-to-10-outputs-prinsippet fra Daniels Content Marketing-plan.
+
+UTGAVE-TITTEL: ${issue.title}
+SUBJECT: ${issue.subject}
+URL HVIS PUBLISERT: ${briefUrl}
+
+INNHOLD:
+"""
+${flattenedContent.slice(0, 8000)}
+"""
+
+GENERER 3 FORMATER:
+
+1. **LinkedIn-essay** (norsk, profesjonell tone, 700-1100 tegn inkludert linjeskift):
+   - Start med en scroll-stopper-setning som matcher utgavens kjernetese
+   - 3-5 korte avsnitt med konkrete eksempler/data fra utgaven
+   - Ikke konsulent-jargong
+   - Avslutt med invitasjon til kommentar ELLER lenke til briefen
+   - LinkedIn-formattering: bruk linjeskift, ingen markdown-headers
+
+2. **Instagram-carousel** (4-6 slides, hver maks 140 tegn):
+   - Slide 1: hook med stor tese
+   - Slide 2-N: ett konkret poeng/data per slide
+   - Siste slide: CTA ("Få hele briefen — link i bio")
+   - Slides skal kunne stå alene som visuelle kort
+
+3. **3 quote-cards** (sitérbare for Twitter/LinkedIn/Instagram-post som standalone-bilde):
+   - Hver må være ≤200 tegn
+   - Selvstendig poeng — krever ingen kontekst
+   - Liker "sniteringer du kan poste 6 måneder fra nå og fortsatt slå"
+
+Returnér KUN gyldig JSON:
+{
+  "linkedinEssay": "tekst på 700-1100 tegn med linjeskift",
+  "instagramCarousel": [
+    { "slideNumber": 1, "headline": "kort header", "body": "1-2 setninger maks 140 tegn" },
+    ...
+  ],
+  "quoteCards": [
+    { "quote": "selvstendig sitat maks 200 tegn", "attribution": "Norwegian Casting Brief" },
+    ...
+  ]
+}`,
+        maxTokens: 3000,
+      });
+      const parsed = safeParseJson<{
+        linkedinEssay: string;
+        instagramCarousel: Array<{ slideNumber: number; headline: string; body: string }>;
+        quoteCards: Array<{ quote: string; attribution: string }>;
+      }>(raw);
+      if (!parsed) {
+        res.status(502).json({ error: "Kunne ikke parse Claude-respons", raw });
+        return;
+      }
+      res.json(parsed);
+    } catch (err) {
+      console.error("[newsletter-ai] repurpose error", err);
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   // 4. Content score — analyse + forbedringer
   app.post("/api/admin-room/newsletter/role-room/ai/content-score", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
