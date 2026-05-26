@@ -10,6 +10,9 @@ import TalentPortalView from './components/TalentPortalView';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
+import MarketingPageRouter from '@/components/admin/content-marketing/MarketingPageRouter';
+import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
+import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { detectLocale } from './cms/useLocale';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
@@ -101,6 +104,11 @@ function CastingStandaloneAppContent() {
     [localeCtx.pathname],
   );
 
+  const marketingPageKey = useMemo(
+    () => parseMarketingPagePath(localeCtx.pathname),
+    [localeCtx.pathname],
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -126,6 +134,10 @@ function CastingStandaloneAppContent() {
     return <PressKitPage locale={localeCtx.locale} />;
   }
 
+  if (marketingPageKey) {
+    return <MarketingPageRouter pageKey={marketingPageKey} />;
+  }
+
   if (isEducationPath) {
     return <RoleRoomEducationPartnershipPage locale={localeCtx.locale} />;
   }
@@ -137,6 +149,9 @@ function CastingStandaloneRuntimeContent() {
   // Check if user is logged in - determines which view to show
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authResolved, setAuthResolved] = useState(false);
+
+  // Presence-heartbeat: pinger /api/presence/heartbeat hvert 30s mens innlogget
+  usePresenceHeartbeat(isAuthenticated);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
   const [processingClientInviteLogin, setProcessingClientInviteLogin] = useState(false);
   const handledGoogleTransferRef = useRef<string | null>(null);

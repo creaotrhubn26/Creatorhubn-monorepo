@@ -552,14 +552,17 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
 
       {/* Cmd+K command palette — søk og hopp mellom 18 paneler */}
       <CommandPalette
-        commands={visibleTabs.map((t) => ({
-          id: `tab-${t.id}`,
-          label: t.label,
-          description: t.description,
-          category: 'Hopp til',
-          keywords: [t.id, t.label.toLowerCase()],
-          onSelect: () => setActiveTabId(t.id),
-        }))}
+        commands={visibleTabs.map((t) => {
+          const tabLabel = labels[t.labelToken] ?? t.id;
+          return {
+            id: `tab-${t.id}`,
+            label: tabLabel,
+            description: t.descriptionToken ? labels[t.descriptionToken] : undefined,
+            category: 'Hopp til',
+            keywords: [t.id, tabLabel.toLowerCase()],
+            onSelect: () => setActiveTabId(t.id),
+          };
+        })}
       />
 
       {/* Persistent help-knapp nederst-høyre */}

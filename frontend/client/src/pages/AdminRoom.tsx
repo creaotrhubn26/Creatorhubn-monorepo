@@ -86,6 +86,9 @@ import {
 } from '../services/adminRoomApi';
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
+import { ContentMarketingTab } from '../components/admin/content-marketing/ContentMarketingTab';
+import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
+import { RoleRoomEconomyTab } from '../components/admin/content-marketing/RoleRoomEconomyTab';
 import { RoleRoomTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
@@ -98,7 +101,7 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'content-marketing' | 'industry-crm' | 'role-room-economy';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4344,6 +4347,9 @@ export default function AdminRoom() {
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
   else if (tab === 'prototype-testers') content = <PrototypeTestersTab />;
   else if (tab === 'post-agent-seats') content = <PostAgentSeatsTab />;
+  else if (tab === 'content-marketing') content = <ContentMarketingTab />;
+  else if (tab === 'industry-crm') content = <IndustryTargetsTab />;
+  else if (tab === 'role-room-economy') content = <RoleRoomEconomyTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4387,6 +4393,9 @@ export default function AdminRoom() {
           <Tab value="role-nav" label="Rolle-navigasjon" />
           <Tab value="prototype-testers" label="Prototype-testere" />
           <Tab value="post-agent-seats" label="Post Agent Seats" />
+          <Tab value="content-marketing" label="Content marketing" />
+          <Tab value="industry-crm" label="Tier-1 CRM" />
+          <Tab value="role-room-economy" label="RR Økonomi" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>

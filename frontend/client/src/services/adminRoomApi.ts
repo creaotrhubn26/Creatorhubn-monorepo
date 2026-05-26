@@ -597,3 +597,521 @@ export const decksApi = {
     });
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// Industry targets (Tier-1 CRM)
+// ─────────────────────────────────────────────────────────
+
+export type IndustryTier = 'T1' | 'T2' | 'T3';
+export type IndustrySegment =
+  | 'casting_director'
+  | 'producer'
+  | 'director'
+  | 'actor'
+  | 'press'
+  | 'nfi'
+  | 'nsf'
+  | 'skuda'
+  | 'agency'
+  | 'other';
+export type IndustryStatus = 'cold' | 'warm' | 'engaged' | 'advocate' | 'paused';
+export type IndustryEngagementKind =
+  | 'comment'
+  | 'dm'
+  | 'email'
+  | 'meeting'
+  | 'phone'
+  | 'event'
+  | 'mention'
+  | 'post_share'
+  | 'other';
+
+export interface IndustryTarget {
+  id: string;
+  user_id: string;
+  full_name: string;
+  role_title: string | null;
+  company: string | null;
+  segment: IndustrySegment;
+  tier: IndustryTier;
+  status: IndustryStatus;
+  linkedin_url: string | null;
+  instagram_handle: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  notes: string | null;
+  last_engaged_at: string | null;
+  last_engaged_kind: string | null;
+  next_action: string | null;
+  next_action_due: string | null;
+  engagement_count: number;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type IndustryTargetInput = {
+  fullName?: string;
+  roleTitle?: string | null;
+  company?: string | null;
+  segment?: IndustrySegment;
+  tier?: IndustryTier;
+  status?: IndustryStatus;
+  linkedinUrl?: string | null;
+  instagramHandle?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  notes?: string | null;
+  nextAction?: string | null;
+  nextActionDue?: string | null;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+export interface IndustryTargetStats {
+  totals: {
+    total?: number;
+    tier_t1?: number;
+    tier_t2?: number;
+    tier_t3?: number;
+    engaged?: number;
+    advocates?: number;
+    active_last_30d?: number;
+  };
+  tier1CommentsLast30d: number;
+}
+
+export interface IndustryEngagement {
+  id: string;
+  target_id: string;
+  user_id: string;
+  kind: IndustryEngagementKind;
+  direction: 'inbound' | 'outbound';
+  channel: string | null;
+  summary: string | null;
+  occurred_at: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export type IndustryEngagementInput = {
+  kind: IndustryEngagementKind;
+  direction?: 'inbound' | 'outbound';
+  channel?: string | null;
+  summary?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export const INDUSTRY_TIER_LABELS: Record<IndustryTier, string> = {
+  T1: 'T1 — Daglig (CDs, A-produsenter, NSF/NFI-direkte)',
+  T2: 'T2 — Ukentlig (line producers, agenter, presse-faste)',
+  T3: 'T3 — Månedlig (extras-pipeline, bredere bransje)',
+};
+
+export const INDUSTRY_SEGMENT_LABELS: Record<IndustrySegment, string> = {
+  casting_director: 'Casting director',
+  producer: 'Produsent',
+  director: 'Regissør',
+  actor: 'Skuespiller',
+  press: 'Presse / journalist',
+  nfi: 'NFI',
+  nsf: 'Norsk Skuespillerforbund',
+  skuda: 'Skuda',
+  agency: 'Skuespilleragentur',
+  other: 'Annet',
+};
+
+export const INDUSTRY_STATUS_LABELS: Record<IndustryStatus, string> = {
+  cold: 'Kald — ikke kontaktet',
+  warm: 'Varm — har sett oss',
+  engaged: 'Engasjert — kommenterer / DMer',
+  advocate: 'Talsperson — anbefaler aktivt',
+  paused: 'Pauset — ikke prioritert nå',
+};
+
+export const INDUSTRY_ENGAGEMENT_KIND_LABELS: Record<IndustryEngagementKind, string> = {
+  comment: 'Kommentar på post',
+  dm: 'DM / privat melding',
+  email: 'E-post',
+  meeting: 'Møte / kaffe',
+  phone: 'Telefon',
+  event: 'Eventmøte',
+  mention: 'Nevnt oss i sin post',
+  post_share: 'Delte vår post',
+  other: 'Annet',
+};
+
+export const industryTargetsApi = {
+  list: async (filter?: { tier?: IndustryTier; segment?: IndustrySegment; status?: IndustryStatus }): Promise<IndustryTarget[]> => {
+    const params = new URLSearchParams();
+    if (filter?.tier) params.set('tier', filter.tier);
+    if (filter?.segment) params.set('segment', filter.segment);
+    if (filter?.status) params.set('status', filter.status);
+    const query = params.toString();
+    const data = await jsonFetch<{ items: IndustryTarget[] }>(`/industry-targets${query ? `?${query}` : ''}`);
+    return data.items;
+  },
+  stats: async (): Promise<IndustryTargetStats> => {
+    return jsonFetch<IndustryTargetStats>('/industry-targets/stats');
+  },
+  create: async (input: IndustryTargetInput): Promise<IndustryTarget> => {
+    const data = await jsonFetch<{ item: IndustryTarget }>('/industry-targets', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patch: async (id: string, input: IndustryTargetInput): Promise<IndustryTarget> => {
+    const data = await jsonFetch<{ item: IndustryTarget }>(`/industry-targets/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/industry-targets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  logEngagement: async (
+    id: string,
+    input: IndustryEngagementInput,
+  ): Promise<{ engagement: IndustryEngagement; target: IndustryTarget }> => {
+    return jsonFetch(`/industry-targets/${encodeURIComponent(id)}/engagement`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Newsletter (Norwegian Casting Brief) — admin-stats
+// ─────────────────────────────────────────────────────────
+
+export interface NewsletterTotals {
+  total: number;
+  confirmed: number;
+  pending: number;
+  unsubscribed: number;
+  new_last_7d: number;
+  new_last_30d: number;
+}
+
+export interface NewsletterSignup {
+  id: string;
+  email: string;
+  source: string;
+  status: string;
+  locale: string;
+  consented_at: string;
+  confirmed_at: string | null;
+  unsubscribed_at: string | null;
+  created_at: string;
+}
+
+export const newsletterApi = {
+  stats: async (): Promise<{ totals: NewsletterTotals; bySource: Array<{ source: string; count: number }> }> => {
+    return jsonFetch('/newsletter/role-room/stats');
+  },
+  recentSignups: async (limit = 50): Promise<NewsletterSignup[]> => {
+    const data = await jsonFetch<{ items: NewsletterSignup[] }>(
+      `/newsletter/role-room/signups?limit=${encodeURIComponent(limit)}`,
+    );
+    return data.items;
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Role Room Economy — Stripe subscribers + kostnads-margin
+// ─────────────────────────────────────────────────────────
+
+export interface RoleRoomSubscriber {
+  customerId: string;
+  customerEmail: string | null;
+  customerName: string | null;
+  customerCreated: string | null;
+  subscriptionId: string | null;
+  status: string;
+  planNickname: string | null;
+  planAmountUsd: number;
+  monthlyContributionUsd: number;
+  currency: string | null;
+  interval: string | null;
+  trialEndsAt: string | null;
+  cancelAt: string | null;
+  canceledAt: string | null;
+  currentPeriodEnd: string | null;
+  userId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profession: string | null;
+  isRoleRoomProfession: boolean;
+  userCreatedAt: string | null;
+  aiCostUsd30d: number;
+  hostingUsd30d: number;
+  totalCostUsd30d: number;
+  marginUsd30d: number;
+  marginPct: number | null;
+}
+
+export interface RoleRoomEconomyAggregate {
+  mrrUsd: number;
+  arrUsd: number;
+  mrrNok: number;
+  arrNok: number;
+  activeCount: number;
+  trialingCount: number;
+  pastDueCount: number;
+  canceledLast30d: number;
+  newLast30d: number;
+  churnRatePct: number;
+  aiCostUsd30d: number;
+  hostingUsd30d: number;
+  platformFixedCostsUsd30d: number;
+  platformFixedCostsTotalMonthlyUsd: number;
+  fixedCostsByCategoryUsd: Record<string, number>;
+  fixedCostsByVendorUsd: Array<{ name: string; vendor: string | null; allocatedUsd: number }>;
+  totalCostUsd30d: number;
+  marginUsd30d: number;
+  marginPct: number | null;
+  meta: { nokPerUsd: number };
+}
+
+export interface RoleRoomTimeseriesPoint {
+  monthLabel: string;
+  mrrUsd: number;
+  activeCount: number;
+  newCount: number;
+  churnCount: number;
+  aiCostUsd: number;
+}
+
+export interface RoleRoomSubscriberDetail {
+  user: {
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    profession: string | null;
+    company_name: string | null;
+    created_at: string;
+  };
+  stripeCustomer: { id: string; email: string | null; name: string | null; created: number } | null;
+  subscriptions: Array<{
+    id: string;
+    status: string;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+    canceledAt: string | null;
+    trialEnd: string | null;
+    priceNickname: string | null;
+    priceUsd: number;
+    currency: string | null;
+    interval: string | null;
+    intervalCount: number | null;
+  }>;
+  invoices: Array<{
+    id: string;
+    number: string | null;
+    status: string | null;
+    total: number;
+    amountPaid: number;
+    amountDue: number;
+    currency: string;
+    created: string;
+    hostedInvoiceUrl: string | null;
+    invoicePdf: string | null;
+  }>;
+  upcomingInvoice: { total: number; amountDue: number; currency: string; periodEnd: string | null } | null;
+  paymentMethods: Array<{ id: string; brand: string | null; last4: string | null; expMonth: number | null; expYear: number | null; country: string | null }>;
+  economy: {
+    monthlyContributionUsd: number;
+    lifetimeRevenueUsd: number;
+    aiCostUsd30d: number;
+    hostingUsd30d: number;
+    totalCostUsd30d: number;
+    marginUsd30d: number;
+    marginPct: number | null;
+    aiUsageByDay: Array<{ day: string; cost_usd: number; call_count: number }>;
+    aiUsageByFeature: Array<{ feature: string; cost_usd: number; call_count: number }>;
+    nokPerUsd: number;
+  };
+}
+
+export type PlatformCostCategory =
+  | 'ai' | 'hosting' | 'cdn' | 'storage' | 'database' | 'devtool' | 'monitoring' | 'email' | 'other';
+
+export type PlatformCostAllocation = 'role_room_only' | 'total_platform' | 'per_active_user';
+
+export type PlatformCostSource = 'manual' | 'render' | 'neon' | 'vercel' | 'stripe' | 'anthropic' | 'google';
+
+export interface PlatformFixedCost {
+  id: string;
+  user_id: string;
+  name: string;
+  vendor: string | null;
+  category: PlatformCostCategory;
+  amount_usd_monthly: string;
+  amount_native_monthly: string | null;
+  native_currency: string | null;
+  allocation_method: PlatformCostAllocation;
+  role_room_share_pct: string;
+  billing_interval: 'monthly' | 'yearly' | 'one_time';
+  active: boolean;
+  starts_on: string | null;
+  ends_on: string | null;
+  notes: string | null;
+  source: PlatformCostSource;
+  external_id: string | null;
+  last_synced_at: string | null;
+  auto_managed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PlatformFixedCostInput = {
+  name?: string;
+  vendor?: string | null;
+  category?: PlatformCostCategory;
+  amountUsdMonthly?: number;
+  amountNativeMonthly?: number | null;
+  nativeCurrency?: string | null;
+  allocationMethod?: PlatformCostAllocation;
+  roleRoomSharePct?: number;
+  billingInterval?: 'monthly' | 'yearly' | 'one_time';
+  active?: boolean;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  notes?: string | null;
+};
+
+export const PLATFORM_COST_CATEGORY_LABELS: Record<PlatformCostCategory, string> = {
+  ai: 'AI / LLM',
+  hosting: 'Hosting',
+  cdn: 'CDN / Edge',
+  storage: 'Lagring / Blob',
+  database: 'Database',
+  devtool: 'Utviklerverktøy',
+  monitoring: 'Monitoring',
+  email: 'E-post',
+  other: 'Annet',
+};
+
+export const PLATFORM_COST_ALLOCATION_LABELS: Record<PlatformCostAllocation, string> = {
+  role_room_only: 'Kun Role Room (100% allokeres)',
+  total_platform: 'Hele plattformen (split etter share-%)',
+  per_active_user: 'Per aktiv bruker (multipliseres)',
+};
+
+export const roleRoomEconomyApi = {
+  subscribers: async (): Promise<{ items: RoleRoomSubscriber[]; meta: { nokPerUsd: number; hostingAllocationUsdMonthly: number; totalCount: number; activeCount: number } }> => {
+    return jsonFetch('/role-room/economy/subscribers');
+  },
+  subscriber: async (userId: string): Promise<RoleRoomSubscriberDetail> => {
+    return jsonFetch(`/role-room/economy/subscribers/${encodeURIComponent(userId)}`);
+  },
+  aggregate: async (): Promise<RoleRoomEconomyAggregate> => {
+    return jsonFetch('/role-room/economy/aggregate');
+  },
+  timeseries: async (): Promise<{ months: RoleRoomTimeseriesPoint[]; meta: { nokPerUsd: number } }> => {
+    return jsonFetch('/role-room/economy/timeseries');
+  },
+  pauseSubscription: async (subscriptionId: string): Promise<{ ok: boolean }> => {
+    return jsonFetch(`/role-room/subscription/${encodeURIComponent(subscriptionId)}/pause`, { method: 'POST' });
+  },
+  resumeSubscription: async (subscriptionId: string): Promise<{ ok: boolean }> => {
+    return jsonFetch(`/role-room/subscription/${encodeURIComponent(subscriptionId)}/resume`, { method: 'POST' });
+  },
+  cancelSubscription: async (subscriptionId: string, opts: { immediate?: boolean; reason?: string } = {}): Promise<{ ok: boolean }> => {
+    return jsonFetch(`/role-room/subscription/${encodeURIComponent(subscriptionId)}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    });
+  },
+  reactivateSubscription: async (subscriptionId: string): Promise<{ ok: boolean }> => {
+    return jsonFetch(`/role-room/subscription/${encodeURIComponent(subscriptionId)}/reactivate`, { method: 'POST' });
+  },
+};
+
+export const platformFixedCostsApi = {
+  list: async (): Promise<PlatformFixedCost[]> => {
+    const data = await jsonFetch<{ items: PlatformFixedCost[] }>('/platform-fixed-costs');
+    return data.items;
+  },
+  create: async (input: PlatformFixedCostInput): Promise<PlatformFixedCost> => {
+    const data = await jsonFetch<{ item: PlatformFixedCost }>('/platform-fixed-costs', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patch: async (id: string, input: PlatformFixedCostInput): Promise<PlatformFixedCost> => {
+    const data = await jsonFetch<{ item: PlatformFixedCost }>(`/platform-fixed-costs/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/platform-fixed-costs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  refreshRender: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
+    return jsonFetch('/platform-fixed-costs/refresh/render', { method: 'POST' });
+  },
+  refreshNeon: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
+    return jsonFetch('/platform-fixed-costs/refresh/neon', { method: 'POST' });
+  },
+  refreshVercel: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
+    return jsonFetch('/platform-fixed-costs/refresh/vercel', { method: 'POST' });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Platform status — aggregert sanntidsbilde
+// ─────────────────────────────────────────────────────────
+
+export type ProviderHealth = 'ok' | 'warning' | 'error' | 'unconfigured';
+
+export interface ProviderStatus {
+  provider: string;
+  health: ProviderHealth;
+  message: string;
+  metrics: Record<string, string | number>;
+  dashboardUrl: string;
+  lastCheckedAt: string;
+}
+
+export interface UserPresenceActive {
+  id: string;
+  email: string | null;
+  name: string | null;
+  profession: string | null;
+  lastLoginAt: string;
+  minutesAgo: number;
+  currentRoute?: string | null;
+  isIdle?: boolean | null;
+  userAgentShort?: string | null;
+}
+
+export interface UserPresenceSummary {
+  activeNow: number;
+  activeLast24h: number;
+  activeLast7d: number;
+  totalRoleRoomUsers: number;
+  recentUsers: UserPresenceActive[];
+}
+
+export interface PlatformStatusResponse {
+  overall: ProviderHealth;
+  summary: { okCount: number; warningCount: number; errorCount: number; unconfiguredCount: number };
+  providers: ProviderStatus[];
+  presence: UserPresenceSummary;
+  checkedAt: string;
+}
+
+export const platformStatusApi = {
+  fetch: async (): Promise<PlatformStatusResponse> => {
+    return jsonFetch('/platform-status');
+  },
+};

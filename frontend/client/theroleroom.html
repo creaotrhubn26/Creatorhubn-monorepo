@@ -36,9 +36,60 @@
       "@type": "Organization",
       "@id": "https://theroleroom.com/#organization",
       "name": "The Role Room",
+      "legalName": "CreatorHub Norge AS",
+      "alternateName": ["theroleroom", "Role Room"],
       "url": "https://theroleroom.com",
-      "logo": "https://theroleroom.com/TheRoleRoom_App_Logo.png",
-      "email": "support@theroleroom.com"
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+        "width": "1024",
+        "height": "1024"
+      },
+      "email": "support@theroleroom.com",
+      "foundingDate": "2024",
+      "foundingLocation": {
+        "@type": "Place",
+        "address": {
+          "@type": "PostalAddress",
+          "addressCountry": "NO",
+          "addressRegion": "Oslo"
+        }
+      },
+      "areaServed": [
+        { "@type": "Country", "name": "Norway" },
+        { "@type": "Country", "name": "Sweden" },
+        { "@type": "Country", "name": "Denmark" },
+        { "@type": "Country", "name": "Finland" }
+      ],
+      "knowsAbout": [
+        "Casting",
+        "Film production management",
+        "Audition scheduling",
+        "Talent management",
+        "Crew management",
+        "Production scheduling",
+        "Storyboard",
+        "Shotlist",
+        "Norsk filmbransje"
+      ],
+      "knowsLanguage": [
+        { "@type": "Language", "name": "Norsk Bokmål", "alternateName": "nb-NO" },
+        { "@type": "Language", "name": "English", "alternateName": "en-US" }
+      ],
+      "contactPoint": [
+        {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "support@theroleroom.com",
+          "availableLanguage": ["Norwegian", "English"],
+          "areaServed": ["NO", "SE", "DK", "FI"]
+        }
+      ],
+      "parentOrganization": {
+        "@type": "Organization",
+        "name": "CreatorHub Norge AS",
+        "url": "https://creatorhubn.com"
+      }
     }
   </script>
   <script type="application/ld+json" data-seo-ld="website">
@@ -117,6 +168,102 @@
       "itemListElement": [
         { "@type": "ListItem", "position": 1, "name": "Hjem", "item": "https://theroleroom.com/" }
       ]
+    }
+  </script>
+  <script type="application/ld+json" data-seo-ld="faq">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "@id": "https://theroleroom.com/#faq",
+      "inLanguage": "no-NO",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Hva er The Role Room?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The Role Room er en norsk casting- og produksjonsplattform for film, TV og innholdsproduksjon. Den samler roller, kandidater, auditions, manus, storyboard, crew, lokasjoner og opptaksplan i ett arbeidsrom — som et nordisk alternativ til StudioBinder, Casting Networks, MovieMagic, Yamdu og Setkeeper, med norsk språk, GDPR-trygg datalagring i EU/EØS og integrert AI-agent."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Hvem står bak The Role Room?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The Role Room er bygget av CreatorHub Norge AS — et norsk teknologiselskap som leverer produksjons- og samarbeidsverktøy for kreative team. Plattformen er utviklet i samarbeid med norske castere, regissører og produsenter."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Hvor mye koster The Role Room?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Basis-tilgang til The Role Room er gratis. Det inkluderer prosjekter, casting-pipeline, talent-database, manus, storyboard og audition-planlegging. Betalt plan kommer med Live Set Pro-modus, ubegrenset crew, avansert kalender og AI-agent-bruk over en gratis kvote."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Er The Role Room et alternativ til StudioBinder?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja. The Role Room er bygget som et nordisk alternativ til StudioBinder, men med flere forskjeller: hele appen er på norsk, data lagres i EU/EØS under GDPR, det er en integrert AI-agent uten ekstra abonnement, og det er en dedikert talentportal hvor skuespillere kan registrere seg direkte uten per-session-betaling."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Hvordan fungerer audition-planleggingen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Casting director oppretter audition-økter med tids-slots og inviterer kandidater via lenke eller e-post. Kandidater bekrefter automatisk, og de kan også spille inn selvtape direkte i appen uten ekstern fil-deling. Alle opptak samles per rolle, og castet kan vurderes i grid eller via Kanban-status med 7 trinn."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kan studenter bruke The Role Room?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja. Studenter ved norske film-, TV- og produksjons-utdanninger (Filmskolen, NISS, Westerdals, NTNU og lignende) kan bruke The Role Room gratis for studieoppgaver, eksamen og masterprosjekt. Plattformen dekker hele kjeden fra manus til opptak."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Hvor lagres dataene mine?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "All kundedata lagres i EU/EØS hos databehandlere som er godkjent under GDPR. The Role Room signerer databehandler-avtale (DPA) med alle kunder, og data deles ikke utenfor EU/EØS uten eksplisitt samtykke."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Støtter The Role Room norske barneskuespillere?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja. Plattformen har innebygd AML-compliance-tracker som overvåker pause-tider og arbeidsregler for mindreårige skuespillere i tråd med norsk arbeidsmiljølov. Foresatt-samtykke og medvirkningsregler håndteres i samtykkemodulen."
+          }
+        }
+      ]
+    }
+  </script>
+  <script type="application/ld+json" data-seo-ld="aboutpage">
+    {
+      "@context": "https://schema.org",
+      "@type": "AboutPage",
+      "@id": "https://theroleroom.com/#aboutpage",
+      "url": "https://theroleroom.com/",
+      "name": "Om The Role Room",
+      "inLanguage": "no-NO",
+      "description": "The Role Room er en norsk casting- og produksjonsplattform bygget av CreatorHub Norge AS, lansert 2026, med GDPR-trygg datalagring i EU/EØS og integrert AI-agent.",
+      "mainEntity": {
+        "@id": "https://theroleroom.com/#software"
+      },
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [".geo-speakable", "[data-speakable]"]
+      },
+      "primaryImageOfPage": "https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp",
+      "publisher": {
+        "@id": "https://theroleroom.com/#organization"
+      }
     }
   </script>
   <script type="application/ld+json" data-seo-ld="howto">
@@ -276,6 +423,24 @@
           title: 'The Role Room for dansestudio og koreografer',
           description: 'Audition, ensemble-administrasjon, prøveplan og forestillings-koordinering for danse-studio og koreografer. Gratis å prøve.',
           canonical: 'https://theroleroom.com/dansestudio',
+          ogImage: 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp'
+        },
+        '/casting-svindel-tegn': {
+          title: 'Slik kjenner du igjen en falsk casting director — The Role Room',
+          description: 'Fem røde flagg for casting-svindel mot norske skuespillere: pre-payment, off-platform-kommunikasjon, ikke-eksisterende produksjoner. Hvor du melder fra hvis du allerede er rammet.',
+          canonical: 'https://theroleroom.com/casting-svindel-tegn',
+          ogImage: 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp'
+        },
+        '/barn-samtykke-film': {
+          title: 'Forhåndssamtykke for barn under 15 år i norsk film og TV — The Role Room',
+          description: 'Norsk arbeidsmiljølov, Arbeidstilsynet og GDPR for barneskuespillere. Søknadsfrist 3 uker, maks 4 timer/dag, bøter opp til NOK 2 millioner. Hva produsenter må vite før de caster.',
+          canonical: 'https://theroleroom.com/barn-samtykke-film',
+          ogImage: 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp'
+        },
+        '/casting-rapport-2026': {
+          title: 'Norwegian Casting Report 2026 — The Role Room',
+          description: 'Den første åpne data-rapporten om norsk casting. 50 casting calls, 60 dager, 17 intervjuer. Median pipeline-tid, fragmentert verktøykjede, selvtape-adopsjon, mangfold og compliance — sammenlignet med Sverige og Danmark.',
+          canonical: 'https://theroleroom.com/casting-rapport-2026',
           ogImage: 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp'
         }
       };
