@@ -409,7 +409,9 @@ const PrivacyPolicy: React.FC = () => {
               <ListItem disableGutters><ListItemText primary="Teknisk drift og lagring" secondary="Hosting, database, logging, sikkerhet, backup og overvåking." /></ListItem>
               <ListItem disableGutters><ListItemText primary="Betalings- og fakturaleverandører" secondary="Stripe og tilknyttede betalingstjenester når du gjennomfører kjøp eller mottar faktura/kvittering." /></ListItem>
               <ListItem disableGutters><ListItemText primary="Google-tjenester" secondary="Google Workspace og Google Places når du eller en administrator kobler til slike tjenester for dokumenter, kalender, bedriftsdata eller reviews." /></ListItem>
-              <ListItem disableGutters><ListItemText primary="AI- og søketjenester" secondary="OpenAI, Cohere og tilsvarende leverandører når du bruker funksjoner som genererer forslag, oppsummeringer eller bedriftsanalyse." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Meta Platforms — Facebook, Instagram, Marketing API" secondary="Når du eller en administrator kobler til Facebook Page eller Instagram Business-konto for publisering og betalt annonsering. Behandler: Meta Platforms Ireland Limited. Detaljer i seksjon 9 nedenfor." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="LinkedIn — Marketing API + Ads Reporting" secondary="Når du eller en administrator kobler til LinkedIn Page eller LinkedIn Ad Account for betalt annonsering. Behandler: LinkedIn Ireland Unlimited Company." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="AI- og søketjenester" secondary="Anthropic, OpenAI, Cohere og tilsvarende leverandører når du bruker funksjoner som genererer forslag, oppsummeringer eller bedriftsanalyse." /></ListItem>
               <ListItem disableGutters><ListItemText primary="Offentlige myndigheter" secondary="Når dette er lovpålagt eller nødvendig for å forsvare rettskrav." /></ListItem>
             </List>
             <Paper sx={{ ...panelSx, mt: 2 }}>
@@ -557,7 +559,71 @@ const PrivacyPolicy: React.FC = () => {
 
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
-              9. Klage til Datatilsynet
+              9. Meta-integrasjoner (Facebook, Instagram, Marketing API)
+            </Typography>
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Når en administrator kobler en Facebook Page eller Instagram Business-konto til
+              plattformen, behandler vi data fra Meta Platforms for å levere publisering,
+              insights og betalt annonsering. Behandler: Meta Platforms Ireland Limited. Overføring
+              utenfor EU/EØS skjer kun med gyldig overføringsgrunnlag (EU Standard Contractual Clauses).
+            </Typography>
+            <Paper sx={panelSx}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                Tillatelser (scopes) vi ber om når du kobler til Meta
+              </Typography>
+              <List dense>
+                <ListItem disableGutters><ListItemText primary="instagram_basic + instagram_content_publish" secondary="Lese Instagram Business-profilens grunninfo og publisere innhold (bilder, videoer, karuseller, Reels) du eksplisitt har godkjent for publisering." /></ListItem>
+                <ListItem disableGutters><ListItemText primary="pages_show_list + pages_manage_metadata + pages_manage_posts" secondary="Liste hvilke Facebook Pages du administrerer, abonnere på Page-hendelser via webhooks og publisere/redigere innlegg du har godkjent." /></ListItem>
+                <ListItem disableGutters><ListItemText primary="ads_management + ads_read + pages_manage_ads" secondary="Opprette, pause, hente innsikt fra og avslutte betalte annonse-kampanjer du eksplisitt har bestilt. Vi henter daglig spend-data for å beregne forbruk og påslag i samsvar med avtalen din." /></ListItem>
+                <ListItem disableGutters><ListItemText primary="business_management" secondary="Lese og administrere assets innenfor din Business Manager (annonsekontoer, sider, pixels) som du har gitt oss tilgang til." /></ListItem>
+                <ListItem disableGutters><ListItemText primary="attribution_read" secondary="Lese attribusjons-data for de annonsene vi drifter på dine vegne for å beregne konverteringer og effekt." /></ListItem>
+              </List>
+              <Typography variant="body2" sx={{ color: bodyColor, mt: 2 }}>
+                Vi ber kun om scopes som er nødvendige for funksjonene du faktisk bruker, og kun for
+                de assetene (Pages, Instagram-kontoer, ad accounts) du eksplisitt godkjenner ved tilkobling.
+              </Typography>
+            </Paper>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mt: 3, mb: 1 }}>
+              Hva vi lagrer
+            </Typography>
+            <List>
+              <ListItem disableGutters><ListItemText primary="Tilkoblingsdata" secondary="OAuth-tokens (kryptert), Page ID, Instagram Business Account ID, ad account ID, scopes som ble innvilget, tilkoblings-tidspunkt og hvem som godkjente." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Publiserings-historikk" secondary="Innlegg du har godkjent og publisert via plattformen — innhold, mediafiler, status (utkast/godkjent/publisert), tidsstempler og responser fra Meta." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Ads-forbruk og insights" secondary="Daglig spend (NOK), impressions, klikk, CPM/CPC, konverteringer og påslag-ledger per kampanje per dag. Brukes til faktura, klient-innsyn og effektmåling." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Webhook-hendelser" secondary="Page-/Instagram-aktivitet vi abonnerer på (kommentarer, meldinger som krever respons) lagres kun så lenge det er nødvendig for å rute hendelsen i appen." /></ListItem>
+            </List>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mt: 3, mb: 1 }}>
+              Lagringstid og sletting
+            </Typography>
+            <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+              Tilkoblings-tokens slettes umiddelbart når du frakobler integrasjonen eller sletter kontoen.
+              Publiserings-historikk og ads-forbruks-ledger lagres så lenge prosjektet/abonnementet er
+              aktivt og i samsvar med bokføringsloven (typisk 5 år for fakturadata).
+              Meta-spesifikk data-sletting (User Data Deletion Request) håndteres via vårt
+              callback-endepunkt og bekreftes innen 30 dager — se{' '}
+              <a href="/data-deletion" style={{ color: brand.accent, fontWeight: 700 }}>
+                /data-deletion
+              </a>{' '}
+              for prosessen.
+            </Typography>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mt: 2, mb: 1 }}>
+              Din kontroll
+            </Typography>
+            <Typography variant="body2" sx={{ color: bodyColor }}>
+              Du kan når som helst (1) frakoble integrasjonen i plattform-innstillingene,
+              (2) trekke tilbake spesifikke tillatelser via Meta-kontoinnstillingene dine
+              (Facebook → Innstillinger → Apper og nettsteder), eller (3) be om sletting via
+              datasletting-prosessen. Vi behandler aldri Meta-data for andre formål enn de scopes du
+              har gitt samtykke til, og deler aldri Meta-data med tredjeparter for deres egne
+              markedsføringsformål.
+            </Typography>
+          </Box>
+
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              10. Klage til Datatilsynet
             </Typography>
             <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
               Hvis du mener behandlingen vår bryter personvernlovgivningen, kan du kontakte oss først eller sende klage til Datatilsynet.
