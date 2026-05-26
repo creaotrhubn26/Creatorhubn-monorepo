@@ -1162,6 +1162,42 @@
       "requiresTimeline": false
     },
     {
+      "id": "export_edl_from_picks",
+      "name": "Export EDL from approved picks",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/export_edl_from_picks.py",
+      "description": "Skriver CMX 3600 EDL fra approved picks-cache for utveksling med Premiere/Avid/FCP. Drop-frame støttet for 29.97/59.94. Output ved siden av source-fil.",
+      "requiredInputs": [
+        {"key": "outputPath", "label": "Output .edl path (blank = ved siden av source)", "type": "text", "required": false},
+        {"key": "dropFrame", "label": "Drop-frame timecode (for NTSC)", "type": "boolean", "required": false},
+        {"key": "title", "label": "EDL title (blank = source-basename)", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "render_quick_preview",
+      "name": "Render Quick Preview (ffmpeg, ingen Resolve)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/render_quick_preview.py",
+      "description": "Rask 720p H.264 preview av approved picks via ffmpeg-concat. Ingen Resolve-render trengs — bruk for å bekrefte rough-cut før commit til full timeline-render.",
+      "requiredInputs": [
+        {"key": "preset", "label": "Preset (fast / balanced / hq)", "type": "text", "required": false},
+        {"key": "height", "label": "Output height (default 720)", "type": "number", "required": false},
+        {"key": "onlyApproved", "label": "Bare approved picks (default yes)", "type": "boolean", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "extract_speech_quotes",
       "name": "Extract Speech Quotes (best moments from speeches)",
       "category": "audio",

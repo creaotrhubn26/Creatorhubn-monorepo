@@ -415,3 +415,101 @@ def idempotent_mark_done(
             }, f, indent=2)
     except OSError:
         pass  # Checkpoint failures are silent — they only hurt re-run perf
+
+
+# ─── Content-addressable cache (#64) ──────────────────────────────────────
+#
+# Many scripts compute derived data from media files (librosa beats, ffprobe
+# metadata, OpenCV face-detection, chroma fingerprints…). Same file +
+# unchanged mtime ⇒ same derived data. The cache lives under
+#   ~/Library/Application Support/.../derived_cache/<namespace>/<hash>.<ext>
+# and is keyed on (file path, mtime ns, size) — same scheme as media_probe.rs.
+
+_DERIVED_CACHE_DIR = os.path.expanduser(
+    "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/derived_cache"
+)
+
+
+def cache_path_for(
+    namespace: str,
+    source_path: str,
+    extra_key: str = "",
+    extension: str = "json",
+) -> str | None:
+    """Return a deterministic cache-file path for a derived computation.
+
+    Args:
+        namespace: short ID for the kind of derived data
+                  (e.g. "librosa-beats", "ffprobe", "phash").
+        source_path: absolute path to the input media file.
+        extra_key: optional param-string that affects the computation
+                  (e.g. sample-rate, model-name). Mixed into the cache key
+                  so changing the param invalidates without manual cleanup.
+        extension: file extension for the cache artifact ("json", "npy",
+                  "wav", "pkl"…).
+
+    Returns:
+        Absolute path to a (possibly not-yet-existing) cache file, or None
+        if source_path doesn't exist on disk.
+
+    Usage:
+        cp = bridge.cache_path_for("librosa-beats", song_path,
+                                   extra_key=f"sr={sr}")
+        if cp and os.path.isfile(cp):
+            # cache hit — load it
+            with open(cp) as f: return json.load(f)
+        # cache miss — compute, then write
+        result = expensive_compute()
+        with open(cp, "w") as f: json.dump(result, f)
+    """
+    import hashlib
+    if not source_path or not os.path.isfile(source_path):
+        return None
+    try:
+        stat = os.stat(source_path)
+    except OSError:
+        return None
+    key_blob = f"{source_path}|{stat.st_mtime_ns}|{stat.st_size}|{extra_key}"
+    digest = hashlib.sha256(key_blob.encode("utf-8")).hexdigest()[:16]
+    ns_dir = os.path.join(_DERIVED_CACHE_DIR, namespace)
+    try:
+        os.makedirs(ns_dir, exist_ok=True)
+    except OSError:
+        return None
+    return os.path.join(ns_dir, f"{digest}.{extension}")
+
+
+# ─── Disk-space safety (#87) ──────────────────────────────────────────────
+
+def check_disk_space(
+    path: str,
+    required_gb: float = 1.0,
+    warn_only: bool = False,
+) -> bool:
+    """Verify that the volume hosting `path` has at least `required_gb` free.
+
+    Returns True if sufficient space (or check failed gracefully).
+    Returns False + emits an error if space is too low and warn_only=False.
+    Emits a warning instead (and still returns True) when warn_only=True.
+
+    Default 1 GB is reasonable for most scripts; renderers should pass
+    higher values matching the expected output size.
+    """
+    import shutil
+    try:
+        _total, _used, free = shutil.disk_usage(path)
+    except OSError as exc:
+        warn(f"Could not check disk space at {path}: {exc}")
+        return True  # don't block on probe failure
+    free_gb = free / (2 ** 30)
+    if free_gb >= required_gb:
+        return True
+    msg = (
+        f"Disk-space warning: only {free_gb:.1f} GB free at {path} "
+        f"(script expected at least {required_gb:.1f} GB)"
+    )
+    if warn_only:
+        warn(msg)
+        return True
+    error(msg, freeGb=round(free_gb, 1), requiredGb=required_gb, path=path)
+    return False

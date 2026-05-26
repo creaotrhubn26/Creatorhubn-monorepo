@@ -66,27 +66,68 @@ def find_ffmpeg() -> str | None:
 
 
 def detect_beats_librosa(audio_path: str) -> dict:
-    """Optional librosa-based beat detection. Returns {} if librosa missing."""
+    """Optional librosa-based beat detection. Returns {} if librosa missing.
+
+    Output keys: beats[], tempo (BPM), duration (sec), key (str), keyConfidence.
+    Cached per (audio_path, mtime, size) via bridge.cache_path_for so re-runs
+    are instant. (#60 — key + tempo as metadata; #64 — librosa cache)
+    """
+    cache_path = bridge.cache_path_for(
+        "librosa-beats-key", audio_path, extra_key="sr=22050,v2",
+    )
+    if cache_path and os.path.isfile(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+            if isinstance(cached, dict) and cached.get("beats"):
+                bridge.log(f"Librosa cache hit ({cache_path})")
+                return cached
+        except (OSError, json.JSONDecodeError):
+            pass  # stale or corrupt → recompute
+
     venv_py = os.path.expanduser(
         "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/venv-py312/bin/python"
     )
     python = venv_py if os.path.isfile(venv_py) else "python3"
+    # Krumhansl-Schmuckler-style key estimation via chroma-mean vs major/minor
+    # profile correlation. Cheap, well-documented, and good enough for the
+    # use-case (metadata tag, not transposition).
     snippet = (
         "import sys, json\n"
         "try:\n"
-        "  import librosa\n"
+        "  import librosa, numpy as np\n"
         "except ImportError:\n"
         "  print(json.dumps({'error': 'librosa_not_installed'})); sys.exit(0)\n"
         "y, sr = librosa.load(sys.argv[1], sr=22050)\n"
         "tempo, beats = librosa.beat.beat_track(y=y, sr=sr)\n"
         "times = librosa.frames_to_time(beats, sr=sr).tolist()\n"
         "duration = float(librosa.get_duration(y=y, sr=sr))\n"
-        "print(json.dumps({'beats': times, 'tempo': float(tempo), 'duration': duration}))\n"
+        # Key detection
+        "chroma = librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1)\n"
+        "major = np.array([6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88])\n"
+        "minor = np.array([6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17])\n"
+        "key_names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']\n"
+        "best = ('C major', -1.0)\n"
+        "for shift in range(12):\n"
+        "  c = np.roll(chroma, -shift)\n"
+        "  maj_corr = float(np.corrcoef(c, major)[0,1])\n"
+        "  min_corr = float(np.corrcoef(c, minor)[0,1])\n"
+        "  if maj_corr > best[1]:\n"
+        "    best = (f'{key_names[shift]} major', maj_corr)\n"
+        "  if min_corr > best[1]:\n"
+        "    best = (f'{key_names[shift]} minor', min_corr)\n"
+        "print(json.dumps({\n"
+        "  'beats': times,\n"
+        "  'tempo': float(tempo),\n"
+        "  'duration': duration,\n"
+        "  'key': best[0],\n"
+        "  'keyConfidence': round(float(best[1]), 3),\n"
+        "}))\n"
     )
     try:
         r = subprocess.run(
             [python, "-c", snippet, audio_path],
-            capture_output=True, text=True, timeout=180,
+            capture_output=True, text=True, timeout=240,
         )
         for line in (r.stdout or "").splitlines()[::-1]:
             line = line.strip()
@@ -98,6 +139,12 @@ def detect_beats_librosa(audio_path: str) -> dict:
                     if "error" in data:
                         bridge.warn(f"librosa not available: {data['error']}")
                         return {}
+                    if cache_path:
+                        try:
+                            with open(cache_path, "w", encoding="utf-8") as f:
+                                json.dump(data, f)
+                        except OSError:
+                            pass
                     return data
             except json.JSONDecodeError:
                 continue
@@ -216,6 +263,8 @@ def run(params: dict, dry_run: bool) -> None:
         "localAudioPath": final_path,
         "durationSeconds": duration,
         "tempo": beat_data.get("tempo"),
+        "key": beat_data.get("key"),
+        "keyConfidence": beat_data.get("keyConfidence"),
         "beatsDetected": len(beat_data.get("beats", [])),
         "beats": beat_data.get("beats", []),
         "videoId": video_id,
