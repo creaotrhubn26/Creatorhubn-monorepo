@@ -1,0 +1,75 @@
+name: Daglig ads-attribution-sweep
+
+# Trigger ads-attribution-tick på prod-backend hver morgen kl 06:00 CET.
+# Endepunktet kjører runAdsAttributionSweep over alle aktive kunder:
+# henter spend fra Meta/Google/LinkedIn → attribution per dag → påslag-ledger
+# (kun finalized dager < today UTC) → best-effort Stripe-meter.
+#
+# Tick-endepunktet er token-gated via ADS_CRON_SECRET (GitHub secret + Render env).
+# Forventet ledetid: 5-60 sekunder avhengig av antall kunder + plattformer.
+#
+# MedInnova-avtalen aktiverer 2026-06-01. Denne workflowen sikrer at spend-sync
+# kjøres daglig uten avhengighet til ekstern scheduler.
+
+on:
+  schedule:
+    # 06:00 CET = 05:00 UTC vinter / 04:00 UTC sommer
+    # GitHub Actions cron er alltid UTC — vi velger 05:00 UTC som balanse
+    # (07:00 CET sommer, 06:00 CET vinter). Meta Insights API har typisk
+    # ferdig prosessert forrige dags spend ~03:00 UTC.
+    - cron: '0 5 * * *'
+  # Manuell trigger fra GitHub UI for testing / catch-up etter outages
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ads-attribution-prod
+  cancel-in-progress: false
+
+jobs:
+  trigger-attribution-tick:
+    name: POST /api/internal/ads/attribution-tick
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send tick til backend
+        env:
+          ADS_CRON_SECRET: ${{ secrets.ADS_CRON_SECRET }}
+          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+        run: |
+          if [ -z "$ADS_CRON_SECRET" ]; then
+            echo "::error::ADS_CRON_SECRET secret er ikke satt i GitHub. Sett den lik Render-env-variabelen."
+            exit 1
+          fi
+
+          echo "Triggered av $GITHUB_EVENT_NAME ($GITHUB_RUN_ID)"
+          echo "Sender POST til /api/internal/ads/attribution-tick"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $ADS_CRON_SECRET" \
+            -d '{}' \
+            --max-time 300 \
+            "$BACKEND_URL/api/internal/ads/attribution-tick")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP $HTTP_CODE"
+          echo "Body: $BODY"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            if [ "$HTTP_CODE" = "401" ]; then
+              echo "::error::Ugyldig ADS_CRON_SECRET — GitHub-secret matcher ikke Render-env."
+            elif [ "$HTTP_CODE" = "503" ]; then
+              echo "::error::ADS_CRON_SECRET er ikke satt på Render-backend."
+            else
+              echo "::error::Attribution-tick feilet (HTTP $HTTP_CODE)"
+            fi
+            exit 1
+          fi
+
+          echo "::notice::Daglig ads-attribution-sweep ferdig"
