@@ -26,8 +26,8 @@ def available() -> bool:
     return True
 
 
-HIGH_RE = re.compile(r"lavfi\.signalstats\.YHIGH=([\d.]+)")
-LOW_RE = re.compile(r"lavfi\.signalstats\.YLOW=([\d.]+)")
+YMAX_RE = re.compile(r"lavfi\.signalstats\.YMAX=([\d.]+)")
+YMIN_RE = re.compile(r"lavfi\.signalstats\.YMIN=([\d.]+)")
 
 
 def _score_shot(ffmpeg: str, video: str, start: float, end: float) -> float:
@@ -42,24 +42,28 @@ def _score_shot(ffmpeg: str, video: str, start: float, end: float) -> float:
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     except Exception:  # noqa: BLE001
-        return 1.0  # unknown → don't penalize
+        return 0.0  # unknown → don't penalize (treat as clean)
     out = r.stderr
-    # YHIGH = fraction (0..1) of pixels with Y >= 235 (broadcast-illegal high)
-    # YLOW  = fraction (0..1) of pixels with Y <= 16  (broadcast-illegal low)
-    highs = [float(m) for m in HIGH_RE.findall(out)]
-    lows = [float(m) for m in LOW_RE.findall(out)]
-    if not highs and not lows:
-        return 1.0
-    avg_high = sum(highs) / len(highs) if highs else 0.0
-    avg_low = sum(lows) / len(lows) if lows else 0.0
-    # A frame with > 3% clipped pixels in either tail is considered bad.
-    # We RETURN the clipping-amount directly so 0=clean, 1=fully clipped.
-    # Orchestrator multiplies by negative genre-weight → clipped = penalty.
-    clipping_amount = min(
-        1.0,
-        (max(0.0, avg_high - 0.03) + max(0.0, avg_low - 0.03)) * 4.0,
-    )
-    return clipping_amount
+    # signalstats outputs PIXEL VALUES (0..255), not fractions:
+    #   YMAX = max Y value in this frame
+    #   YMIN = min Y value in this frame
+    #   YHIGH/YLOW = 90th/10th percentile pixel values
+    # We treat a frame as "clipped" if YMAX >= 250 (highlights pegged) OR
+    # YMIN <= 5 (shadows crushed). Score = fraction of clipped frames.
+    ymax = [float(m) for m in YMAX_RE.findall(out)]
+    ymin = [float(m) for m in YMIN_RE.findall(out)]
+    n = max(len(ymax), len(ymin))
+    if n == 0:
+        return 0.0
+    clipped = 0
+    for i in range(n):
+        hi = ymax[i] if i < len(ymax) else 0.0
+        lo = ymin[i] if i < len(ymin) else 255.0
+        if hi >= 250.0 or lo <= 5.0:
+            clipped += 1
+    # Return clipping-fraction (0=clean, 1=every frame clipped). Orchestrator
+    # multiplies by negative genre-weight → clipped = penalty.
+    return clipped / n
 
 
 def compute(ffmpeg: str, ffprobe: str, video: str,
