@@ -67398,7 +67398,7 @@ setupCouplesRoutes({
 // approve-music-producer, create-user, reject-user). 2 prototype-tester-
 // requests dups var interleaved og slettet i samme commit (live versions
 // ved 54093+ er uendret).
-setupAdminProvisioningRoutes({ app, pool });
+setupAdminProvisioningRoutes({ app, pool, requireAdminSession });
 
 // /api/emails/* — 5 endpoints (CustomerInquiryCenter henter submissions
 // som email-meldinger: recent, stats, contacts, PATCH star, PATCH read).

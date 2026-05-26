@@ -4,14 +4,16 @@ import type { Pool } from "pg";
 export interface AdminProvisioningRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireAdminSession: (req: any, res: any) => any;
 }
 
 export function setupAdminProvisioningRoutes(
   deps: AdminProvisioningRoutesDeps,
 ): void {
-  const { app, pool } = deps;
+  const { app, pool, requireAdminSession } = deps;
 
-  app.get("/api/admin-provisioning/users", async (_req, res) => {
+  app.get("/api/admin-provisioning/users", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const result = await pool.query(
         `SELECT id, email, first_name, last_name, profession, company_name,
@@ -48,7 +50,8 @@ export function setupAdminProvisioningRoutes(
     }
   });
 
-  app.get("/api/admin-provisioning/pending-approvals", async (_req, res) => {
+  app.get("/api/admin-provisioning/pending-approvals", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const result = await pool.query(
         `SELECT id, email, first_name, last_name, profession, company_name,
@@ -77,6 +80,7 @@ export function setupAdminProvisioningRoutes(
   app.post(
     "/api/admin-provisioning/approve-music-producer",
     async (req, res) => {
+      if (!requireAdminSession(req, res)) return;
       try {
         const { userId, userType, enableIntegrations } = req.body;
 
@@ -135,6 +139,7 @@ export function setupAdminProvisioningRoutes(
   );
 
   app.post("/api/admin-provisioning/create-user", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const {
         email,
@@ -162,6 +167,7 @@ export function setupAdminProvisioningRoutes(
   });
 
   app.post("/api/admin-provisioning/reject-user", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const { userId, reason } = req.body;
 
