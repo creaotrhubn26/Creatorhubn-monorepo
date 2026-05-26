@@ -36,6 +36,7 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CommandPalette } from "./components/CommandPalette";
+import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { MagicCutDialog } from "./components/MagicCutDialog";
@@ -65,6 +66,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showDependencies, setShowDependencies] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
@@ -555,6 +557,8 @@ export default function App() {
         </span>
       </footer>
 
+      {showLearning && <LearningView onClose={() => setShowLearning(false)} />}
+
       <CommandPalette
         open={showPalette}
         onClose={() => setShowPalette(false)}
@@ -575,6 +579,9 @@ export default function App() {
           { id: "open_settings", title: "Open Settings",
             subtitle: "API keys, paths, preferences",
             handler: () => setShowSettings(true) },
+          { id: "open_learning", title: "Vis hva systemet har lært",
+            subtitle: "per-project + global læringsprofil + sist 10 økter",
+            handler: () => setShowLearning(true) },
           { id: "toggle_media_pool", title: "Toggle Media Pool sidebar",
             subtitle: "show/hide right sidebar",
             handler: () => setShowMediaPool((s) => !s) },

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from typing import Any
@@ -40,7 +41,20 @@ CACHE_DIR = os.path.expanduser(
     "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
 )
 PREFERENCES_DIR = os.path.join(CACHE_DIR, "preferences")
-PROFILE_PATH = os.path.join(PREFERENCES_DIR, "profile.json")
+PROFILE_PATH = os.path.join(PREFERENCES_DIR, "profile.json")  # global aggregate
+PROJECT_PROFILES_DIR = os.path.join(PREFERENCES_DIR, "by_project")
+
+
+def _empty_profile(version: int = 3) -> dict:
+    return {
+        "version": version,
+        "totalLearningSessions": 0,
+        "clipPreferences": {},   # clipPath → {keeps, replacements, contexts[], replacementStreak}
+        "energyCurveDeltas": {}, # segmentBin → {sum, count}
+        "durationDeltas": {},    # segmentBin → {sum, count}
+        "blacklist": [],         # clipPaths the user keeps rejecting (3x consecutive replacement)
+        "reorderEvents": [],     # (#618) per-session record of how user reordered picks
+    }
 
 
 def _load_snapshot() -> dict:
@@ -54,35 +68,71 @@ def _load_snapshot() -> dict:
         return {}
 
 
-def _load_profile() -> dict:
-    if not os.path.isfile(PROFILE_PATH):
-        return {
-            "version": 2,
-            "totalLearningSessions": 0,
-            "clipPreferences": {},   # clipPath → { keeps: n, replacements: n, contexts: [...], replacementStreak: n }
-            "energyCurveDeltas": {}, # segmentBin → avg(user_demand − auto_demand)
-            "durationDeltas": {},    # segmentBin → avg(user_duration − auto_duration) seconds
-            "blacklist": [],         # clipPaths the user keeps rejecting (3x consecutive replacement)
-        }
+def _project_profile_path(project_name: str) -> str:
+    """Path for per-project profile (#601). Sanitises name for filename use."""
+    safe = re.sub(r"[^\w\-]+", "_", project_name or "default")[:80]
+    return os.path.join(PROJECT_PROFILES_DIR, f"{safe}.json")
+
+
+def _load_profile(path: str) -> dict:
+    if not os.path.isfile(path):
+        return _empty_profile()
     try:
-        with open(PROFILE_PATH) as f:
+        with open(path) as f:
             data = json.load(f)
             for key in ("clipPreferences", "energyCurveDeltas", "durationDeltas"):
                 data.setdefault(key, {})
             data.setdefault("totalLearningSessions", 0)
             data.setdefault("blacklist", [])
-            data.setdefault("version", 2)
+            data.setdefault("reorderEvents", [])
+            data.setdefault("version", 3)
             return data
     except (OSError, json.JSONDecodeError):
-        return {"version": 2, "totalLearningSessions": 0,
-                "clipPreferences": {}, "energyCurveDeltas": {},
-                "durationDeltas": {}, "blacklist": []}
+        return _empty_profile()
 
 
-def _save_profile(profile: dict) -> None:
-    os.makedirs(PREFERENCES_DIR, exist_ok=True)
-    with open(PROFILE_PATH, "w") as f:
+def _save_profile(profile: dict, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
         json.dump(profile, f, indent=2)
+
+
+def _detect_reorder_events(auto_segs: list[dict], current_items: list[dict]) -> list[dict]:
+    """#618 — detect when the user moved a kept clip to a different position
+    in the timeline (vs the auto-placement order). Returns a list of
+    {clipPath, autoIndex, userIndex} events.
+
+    Algorithm: for each clipPath that appears in both auto + current with
+    same file-path, compare its ordinal position (sorted by start-time).
+    A clip that was 3rd in auto-placement but 1st in current = +2 reorder.
+    """
+    if not auto_segs or not current_items:
+        return []
+    # Order by start-time (kept), build path → ordinal-index map
+    auto_sorted = sorted(
+        [s for s in auto_segs if s.get("clipPath")],
+        key=lambda s: float(s.get("startSec") or 0),
+    )
+    user_sorted = sorted(
+        [c for c in current_items if c.get("path")],
+        key=lambda c: float(c.get("startSec") or 0),
+    )
+    auto_pos: dict[str, int] = {}
+    for i, s in enumerate(auto_sorted):
+        path = s["clipPath"]
+        # First-occurrence position only (clip used twice → record earliest)
+        auto_pos.setdefault(path, i)
+    events: list[dict] = []
+    for i, c in enumerate(user_sorted):
+        path = c.get("path") or ""
+        if path in auto_pos and auto_pos[path] != i:
+            events.append({
+                "clipPath": path,
+                "autoIndex": auto_pos[path],
+                "userIndex": i,
+                "delta": i - auto_pos[path],
+            })
+    return events
 
 
 def _read_current_v1_items() -> list[dict]:
@@ -226,9 +276,31 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         f"{moved} moved, {inserted_by_user} inserted by you"
     )
 
-    # Update profile
-    profile = _load_profile()
-    profile["totalLearningSessions"] = profile.get("totalLearningSessions", 0) + 1
+    # (#601) Update BOTH global aggregate AND per-project profile.
+    # Per-project profile lets a "music_video" project's preferences NOT
+    # bleed into "wedding" project recommendations. Global aggregate
+    # remains for cross-project learning ("Bjarne always uses LUT-X").
+    project_name = (snapshot.get("projectName") or "default").strip() or "default"
+    global_profile = _load_profile(PROFILE_PATH)
+    project_profile = _load_profile(_project_profile_path(project_name))
+    global_profile["totalLearningSessions"] = global_profile.get("totalLearningSessions", 0) + 1
+    project_profile["totalLearningSessions"] = project_profile.get("totalLearningSessions", 0) + 1
+
+    # (#618) Capture reorder events — clips that were moved to a different
+    # ordinal position in the timeline by the user.
+    reorder_events = _detect_reorder_events(matches and [m["auto"] for m in matches] or [],
+                                            current_items)
+    if reorder_events:
+        bridge.log(f"Detected {len(reorder_events)} reorder events")
+        # Bounded history: keep last 50 per profile
+        for prof in (global_profile, project_profile):
+            prof["reorderEvents"] = (prof.get("reorderEvents") or []) + reorder_events
+            prof["reorderEvents"] = prof["reorderEvents"][-50:]
+
+    # Backward-compat: `profile` variable below references the GLOBAL profile
+    # so existing logic continues to update it. Per-project mirrors the same
+    # mutations via the loop below.
+    profile = global_profile
 
     blacklist_set: set[str] = set(profile.get("blacklist", []))
     newly_blacklisted: list[str] = []
@@ -273,6 +345,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     profile["blacklist"] = sorted(blacklist_set)
 
+    # Mirror the same mutations into the per-project profile so it can stand
+    # alone (assign_clips_to_beats reads project-specific when available).
+    project_profile["clipPreferences"] = json.loads(json.dumps(profile["clipPreferences"]))
+    project_profile["durationDeltas"] = json.loads(json.dumps(profile["durationDeltas"]))
+    project_profile["blacklist"] = list(profile["blacklist"])
+
     # Save individual session record
     os.makedirs(PREFERENCES_DIR, exist_ok=True)
     session_path = os.path.join(
@@ -299,7 +377,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "userInserted": unmatched_current,
         }, f, indent=2)
 
-    _save_profile(profile)
+    _save_profile(global_profile, PROFILE_PATH)
+    _save_profile(project_profile, _project_profile_path(project_name))
 
     # Compute current-most-replaced clips (= clips user dislikes)
     most_replaced = sorted(
@@ -322,9 +401,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         "removed": removed,
         "moved": moved,
         "insertedByUser": inserted_by_user,
+        "reorderEvents": len(reorder_events),
         "sessionRecord": session_path,
         "markdownReport": md_path,
-        "profilePath": PROFILE_PATH,
+        "globalProfilePath": PROFILE_PATH,
+        "projectProfilePath": _project_profile_path(project_name),
+        "projectName": project_name,
         "newlyBlacklisted": newly_blacklisted,
         "totalBlacklisted": len(profile["blacklist"]),
         "mostReplacedClips": [

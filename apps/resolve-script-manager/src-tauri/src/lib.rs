@@ -351,6 +351,83 @@ async fn get_python_root(app: AppHandle) -> Result<String, String> {
     Ok(python_root(&app)?.display().to_string())
 }
 
+/// (#614) Reads the user-learning profile from disk so the LearningView
+/// UI can display what the system has learned. Returns:
+///   { global: <profile>, projects: { name: <profile> }, sessions: [...] }
+/// where each profile is the JSON shape written by learn_from_user_edit.py.
+#[tauri::command]
+async fn read_learning_profile() -> Result<Value, String> {
+    let base = std::path::PathBuf::from(
+        std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?,
+    )
+    .join("Library/Application Support/no.creatorhubn.roleroom-post-agent/preferences");
+
+    let read_json = |p: &std::path::Path| -> Option<Value> {
+        let bytes = std::fs::read(p).ok()?;
+        serde_json::from_slice::<Value>(&bytes).ok()
+    };
+
+    let global = read_json(&base.join("profile.json"))
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    // Per-project profiles
+    let mut projects: HashMap<String, Value> = HashMap::new();
+    if let Ok(entries) = std::fs::read_dir(base.join("by_project")) {
+        for e in entries.flatten() {
+            let path = e.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                    if let Some(v) = read_json(&path) {
+                        projects.insert(name.to_string(), v);
+                    }
+                }
+            }
+        }
+    }
+
+    // Recent learning-session records (each session = one learn_from_user_edit run)
+    let mut sessions: Vec<Value> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&base) {
+        let mut paths: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|n| n.starts_with("edit_") && n.ends_with(".json"))
+                    .unwrap_or(false)
+            })
+            .collect();
+        paths.sort_by(|a, b| b.cmp(a)); // newest first by name (timestamp)
+        for path in paths.into_iter().take(10) {
+            if let Some(mut v) = read_json(&path) {
+                if let Some(obj) = v.as_object_mut() {
+                    obj.insert(
+                        "_path".into(),
+                        Value::String(path.display().to_string()),
+                    );
+                    obj.insert(
+                        "_filename".into(),
+                        Value::String(
+                            path.file_name()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("")
+                                .to_string(),
+                        ),
+                    );
+                }
+                sessions.push(v);
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "global": global,
+        "projects": projects,
+        "recentSessions": sessions,
+    }))
+}
+
 /// (#186 + #187) Build the native macOS menubar with the standard
 /// App / File / Edit / View / Window structure. Adds a custom
 /// "Re-run last workflow" item under File with cmd+R shortcut that
@@ -461,6 +538,7 @@ pub fn run() {
             execute_script,
             open_script_folder,
             get_python_root,
+            read_learning_profile,
             get_run_history,
             clear_run_history,
             get_app_data_dir,
