@@ -49,6 +49,18 @@
       {"order": 3, "scriptId": "build_highlight_from_picks", "label": "Build timeline with clean audio under"}
     ]
   },
+  "wedding_music_driven_highlight": {
+    "id": "wedding_music_driven_highlight",
+    "name": "Bryllup — AI music-driven highlight (advisor)",
+    "description": "Mest komplette pipeline: ekstraher beste shots med 14 signaler, skann hele filmen for å identifisere alle sanger (Shazam), få anbefalinger om hvor mange sanger highlighten skal ha basert på lengde, og bygg final MP4 med (a) hovedlåt = dominerende sang fra source, (b) climax-låt = energi-kontrast med høyere BPM, (c) audio-sync via cross-correlation, (d) beat-snap til sangens tempo, (e) crossfades. Optional steg 4 legger Resolve-markers så bruker kan finjustere cuts i Edit page.",
+    "projectTemplate": "wedding_film",
+    "steps": [
+      {"order": 1, "scriptId": "extract_highlight_from_film", "label": "Ekstraher picks (interactive review)"},
+      {"order": 2, "scriptId": "scan_and_recommend_music", "label": "Skann + identifiser alle sanger (Advisor)"},
+      {"order": 3, "scriptId": "assemble_highlight_with_music", "label": "Bygg final MP4 ende-til-ende"},
+      {"order": 4, "scriptId": "apply_beat_markers_to_resolve", "label": "(Optional) Legg beat-markers på Resolve-timeline"}
+    ]
+  },
   "wedding_review_finished_film": {
     "id": "wedding_review_finished_film",
     "name": "Bryllup — Analysér ferdig film",

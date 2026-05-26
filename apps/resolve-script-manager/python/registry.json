@@ -1432,6 +1432,63 @@
       "requiresTimeline": false
     },
     {
+      "id": "scan_and_recommend_music",
+      "name": "Scan & Recommend Music (Advisor)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/scan_and_recommend_music.py",
+      "description": "Skanner hele filmen → identifiserer alle sanger via Shazam (gratis, ingen API-key), beregner BPM + beat-times per sang, og gir 2 nivåer av anbefalinger: (1) hvor mange sanger en highlight skal ha basert på lengde (1 sang under 1 min, 2-3 for 4-6 min, etc.), (2) hvilken sang som passer hver pick basert på BPM-matching mot visuell pace. Eksporterer beat-times som Resolve-marker payload kompatibel med Find Music Beats.",
+      "requiredInputs": [
+        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
+        {"key": "picksPath", "label": "Picks JSON (optional, for beat-matching)", "type": "file", "required": false},
+        {"key": "highlightLengthSec", "label": "Target highlight length (sec, for length-based recommendation)", "type": "number", "required": false},
+        {"key": "fps", "label": "Timeline FPS (default 25)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "apply_beat_markers_to_resolve",
+      "name": "Apply Beat Markers to Resolve",
+      "category": "audio",
+      "scriptPath": "scripts/audio/apply_beat_markers_to_resolve.py",
+      "description": "Legger beat-markers fra music_advisor.json på aktiv Resolve-timeline. Output-format matcher Fairlight's Find Music Beats — bruker kan snap-til-marker i Edit page enten markers kommer fra vår scan eller fra Resolve's egen audio-analyse. Kjør etter scan_and_recommend_music + build_highlight_from_picks.",
+      "requiredInputs": [
+        {"key": "markerColor", "label": "Marker color (Blue, Red, Cyan, etc.)", "type": "text", "required": false},
+        {"key": "songTitle", "label": "Filter to one song (optional)", "type": "text", "required": false},
+        {"key": "fpsOverride", "label": "Timeline FPS override (auto-detected if blank)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": "edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "assemble_highlight_with_music",
+      "name": "Assemble Highlight With Music (End-to-End)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/assemble_highlight_with_music.py",
+      "description": "Ende-til-ende pipeline: leser cached picks + music advisor, velger hovedlåt (mest dominerende av source) + climax-låt (energi-kontrast med høyere BPM), laster ned begge fra YouTube, cross-correlate audio-sync mot source, smart-reorder picks (ascending score + climax sist), beat-snap pick-durations, og rendrer 1080p MP4 med crossfades (0.3s normal, 1.5s exp-curve inn til climax). Erstatter 6 manuelle iterasjoner med ett kommando-kall.",
+      "requiredInputs": [
+        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
+        {"key": "outputPath", "label": "Output MP4 path (default ~/Desktop)", "type": "text", "required": false},
+        {"key": "musicStrategy", "label": "Music strategy: main+climax | single | auto", "type": "text", "required": false},
+        {"key": "crossfadeSec", "label": "Normal crossfade duration (default 0.30)", "type": "number", "required": false},
+        {"key": "climaxCrossfadeSec", "label": "Climax crossfade duration (default 1.50)", "type": "number", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "build_highlight_from_picks",
       "name": "Build Highlight from Approved Picks",
       "category": "timeline",
