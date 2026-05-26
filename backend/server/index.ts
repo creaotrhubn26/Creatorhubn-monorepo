@@ -68022,7 +68022,7 @@ async function getPhotographerOvertimeRate(userId: string): Promise<number | nul
 // Price Administration — Quotes (DB: quotes)
 // ============================================
 
-const normalizeJsonArrayField = (value: unknown) => {
+function normalizeJsonArrayField(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
   if (typeof value === "string") {
     try {
@@ -68033,21 +68033,21 @@ const normalizeJsonArrayField = (value: unknown) => {
     }
   }
   return [];
-};
+}
 
 const readJsonObject = (value: unknown): Record<string, unknown> =>
   normalizeJsonObjectField(value) || {};
 
-const toNumericValue = (value: unknown, fallback = 0) => {
+function toNumericValue(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
     const parsed = Number(value.replace(",", "."));
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
-};
+}
 
-const normalizeLegacyQuoteStatus = (value: unknown) => {
+function normalizeLegacyQuoteStatus(value: unknown): string {
   const status = String(value || "draft");
   if (status === "sent" || status === "viewed") {
     return "pending";
@@ -68061,7 +68061,7 @@ const normalizeLegacyQuoteStatus = (value: unknown) => {
     return status;
   }
   return "draft";
-};
+}
 
 let ensureQuotesCompatibilitySchemaPromise: Promise<void> | null = null;
 
@@ -68178,7 +68178,7 @@ async function ensureQuotesCompatibilitySchema() {
   return ensureQuotesCompatibilitySchemaPromise;
 }
 
-const mapPriceAdministrationQuote = (r: any) => {
+function mapPriceAdministrationQuote(r: any) {
   const services = normalizeJsonArrayField(r.services);
   const additionalCosts = normalizeJsonArrayField(r.additional_costs);
   const discounts = normalizeJsonArrayField(r.discounts);
@@ -68250,7 +68250,7 @@ const mapPriceAdministrationQuote = (r: any) => {
     tripletexSyncedAt: r.tripletex_synced_at,
     isFinal: r.status === "accepted",
   };
-};
+}
 
 type QuoteCompatibilityRecord = Omit<
   ReturnType<typeof mapPriceAdministrationQuote>,
@@ -68271,7 +68271,7 @@ type QuoteCompatibilityRecord = Omit<
   projectCreationData: Record<string, unknown>;
 };
 
-const mapQuoteCompatibilityRecord = (r: any): QuoteCompatibilityRecord => {
+function mapQuoteCompatibilityRecord(r: any): QuoteCompatibilityRecord {
   const quote = mapPriceAdministrationQuote(r);
   const packageLine = Array.isArray(quote.services)
     ? quote.services.find((entry: any) => entry?.type === "package")
@@ -68304,7 +68304,7 @@ const mapQuoteCompatibilityRecord = (r: any): QuoteCompatibilityRecord => {
         : undefined,
     },
   };
-};
+}
 
 function serializeQuoteDocument(
   quoteLike: any,
@@ -72615,10 +72615,12 @@ const showcaseGoogleAlbumPhotosKey = (albumId: string) =>
   showcaseCompatKey("google-photos", "album", albumId, "photos");
 const showcaseBatchUndoKey = (userId: string) =>
   showcaseCompatKey("batch-undo", userId);
-const showcaseVideoCommentsKey = (videoId: string) =>
-  showcaseCompatKey("video", videoId, "comments");
-const showcaseVideoSequencesKey = (projectId: string) =>
-  showcaseCompatKey("video", projectId, "sequences");
+function showcaseVideoCommentsKey(videoId: string): string {
+  return showcaseCompatKey("video", videoId, "comments");
+}
+function showcaseVideoSequencesKey(projectId: string): string {
+  return showcaseCompatKey("video", projectId, "sequences");
+}
 
 const inferShowcaseFileType = (
   profession: string | null,
@@ -73236,25 +73238,28 @@ async function resolveShowcasePricing(
   return defaults;
 }
 
-const mapGooglePhotoRow = (row: Record<string, unknown>): ShowcaseGooglePhotoRecord => ({
-  id: readString(row.media_item_id) || String(row.id),
-  filename: readString(row.filename) || "Google Photo",
-  baseUrl: readString(row.base_url) || "",
-  mimeType: readString(row.mime_type) || "image/jpeg",
-  creationTime:
-    readOptionalIsoDate(row.creation_time) || new Date().toISOString(),
-  productUrl:
-    readString(row.base_url) || "https://photos.google.com",
-  width:
-    readNumber(row.width) !== null ? String(readNumber(row.width)) : undefined,
-  height:
-    readNumber(row.height) !== null
-      ? String(readNumber(row.height))
-      : undefined,
-});
+function mapGooglePhotoRow(row: Record<string, unknown>): ShowcaseGooglePhotoRecord {
+  return {
+    id: readString(row.media_item_id) || String(row.id),
+    filename: readString(row.filename) || "Google Photo",
+    baseUrl: readString(row.base_url) || "",
+    mimeType: readString(row.mime_type) || "image/jpeg",
+    creationTime:
+      readOptionalIsoDate(row.creation_time) || new Date().toISOString(),
+    productUrl:
+      readString(row.base_url) || "https://photos.google.com",
+    width:
+      readNumber(row.width) !== null ? String(readNumber(row.width)) : undefined,
+    height:
+      readNumber(row.height) !== null
+        ? String(readNumber(row.height))
+        : undefined,
+  };
+}
 
-const fileBufferToDataUrl = (file: Express.Multer.File) =>
-  `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+function fileBufferToDataUrl(file: Express.Multer.File): string {
+  return `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+}
 
 async function persistUploadedShowcaseAsset(params: {
   userId: string;
