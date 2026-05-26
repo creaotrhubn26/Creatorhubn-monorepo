@@ -67339,6 +67339,7 @@ setupSettingsRoutes({
 // jobs GET ved 31901 er ikke berørt (live route — Express first-registered).
 setupAudioEnhancementRoutes({
   app,
+  requireUserSession,
   audioUpload,
   compatAudioJobsStore,
   compatStoreSet,

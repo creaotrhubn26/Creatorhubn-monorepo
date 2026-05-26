@@ -5,6 +5,7 @@ import { readString } from "./_shared";
 
 export interface AudioEnhancementRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   audioUpload: Multer;
   compatAudioJobsStore: Map<string, any>;
   compatStoreSet: (key: string, value: any) => Promise<void>;
@@ -24,6 +25,7 @@ export function setupAudioEnhancementRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     audioUpload,
     compatAudioJobsStore,
     compatStoreSet,
@@ -36,6 +38,7 @@ export function setupAudioEnhancementRoutes(
     "/api/audio-enhancement/process",
     audioUpload.array("files"),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const files = (req.files || []) as Express.Multer.File[];
         if (!files.length) {
@@ -159,6 +162,7 @@ export function setupAudioEnhancementRoutes(
     "/api/audio-enhancement/auto-enhance",
     audioUpload.single("file"),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         if (!req.file)
           return res.status(400).json({ error: "Missing audio file" });
@@ -233,6 +237,7 @@ export function setupAudioEnhancementRoutes(
   });
 
   app.post("/api/audio-restoration/restore", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const audioUrl = readString(req.body?.audioUrl) || "";
       const options = req.body?.options || {};
