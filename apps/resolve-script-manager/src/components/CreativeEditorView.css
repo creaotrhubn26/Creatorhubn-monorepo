@@ -783,6 +783,97 @@
   font-variant-numeric: tabular-nums;
 }
 
+.ce-claude-flow-btn {
+  width: 100%;
+  background: rgba(110, 63, 199, 0.10);
+  border: 1px solid rgba(110, 63, 199, 0.30);
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: #cca0e8;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  margin-bottom: 6px;
+  transition: all 0.12s;
+}
+.ce-claude-flow-btn:hover:not(:disabled) {
+  background: rgba(110, 63, 199, 0.20);
+  border-color: rgba(110, 63, 199, 0.50);
+  color: #f0eaff;
+}
+.ce-claude-flow-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Flow markers on timeline clips */
+.ce-flow-marker {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  cursor: help;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  border: 2px solid #0a0518;
+  z-index: 4;
+}
+.ce-flow-strong { background: #4ad48a; }
+.ce-flow-drag   { background: #f0a500; }
+.ce-flow-weak   { background: #ef4f6f; }
+.ce-flow-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #120936;
+  border: 1px solid #2c1860;
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 220px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #f0eaff;
+  text-align: left;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  pointer-events: none;
+}
+.ce-flow-tooltip strong { display: block; margin-bottom: 3px; color: #c850e0; }
+.ce-flow-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%; left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #120936;
+}
+
+.ce-flow-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 14px;
+  font-size: 11px;
+  color: #b8a8d8;
+}
+.ce-flow-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.ce-flow-clear {
+  background: transparent;
+  border: none;
+  color: #8674a8;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: auto;
+  text-decoration: underline;
+}
+.ce-flow-clear:hover { color: #f0eaff; }
+
 .ce-claude-alt {
   position: relative;
   margin-bottom: 4px;

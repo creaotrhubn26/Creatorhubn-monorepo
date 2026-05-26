@@ -238,6 +238,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [activePickOrder, setActivePickOrder] = useState<number[] | null>(null);
   const [altRationale, setAltRationale] = useState<{ variant: AltVariant; text: string } | null>(null);
 
+  // AI Attention Tracking state — narrative-flow evaluation per pick
+  type FlowQuality = "strong" | "weak" | "drag";
+  type FlowEval = { pickIndex: number; flowQuality: FlowQuality; reason: string };
+  const [flowEvals, setFlowEvals] = useState<FlowEval[]>([]);
+  const [flowBusy, setFlowBusy] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
+  const [hoveredFlowPickIdx, setHoveredFlowPickIdx] = useState<number | null>(null);
+
   // ─── Load picks + advisor ───
   useEffect(() => {
     if (!picksPath) { setLoadError("No picks path provided"); return; }
@@ -420,6 +428,87 @@ Du MÅ kalle generate_alternate_edit-verktøyet med en re-ordned pickOrder + rat
       setAltBusy(null);
     }
   }, [altBusy, filteredPicks, projectTitle, activeSong]);
+
+  // ─── AI Attention Tracking: Claude evaluates narrative-flow per pick ───
+  const analyzeNarrativeFlow = useCallback(async () => {
+    if (flowBusy || filteredPicks.length === 0) return;
+    setFlowBusy(true);
+    setFlowError(null);
+    const pickSummary = filteredPicks.map((p, i) => ({
+      pos: i + 1,
+      index: p.index,
+      duration: p.durationSec,
+      score: p.score,
+      chapter: p.chapter ?? "?",
+      topSignals: p.signals
+        ? Object.entries(p.signals)
+            .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+            .slice(0, 3)
+            .map(([k, v]) => `${k}=${(v as number).toFixed(2)}`)
+            .join(",")
+        : "",
+    }));
+    const systemPrompt = `Du er en AI Creative Director som analyserer narrativ flyt i en wedding-highlight. Du skal evaluere hver pick i sekvensen og flagge hvor flyten er sterk vs problematisk.
+
+Sekvens (i playback-rekkefølge):
+${pickSummary.map(p => `  pos ${p.pos}: shot#${p.index} chapter=${p.chapter} ${p.duration.toFixed(2)}s, score=${p.score.toFixed(2)}, top-signals[${p.topSignals}]`).join("\n")}
+
+Project: "${projectTitle}"
+Total duration: ${formatTime(totalDuration)}
+Main song: ${activeSong ? `${activeSong.title} (${activeSong.bpm ?? "?"} BPM)` : "(ingen)"}
+
+Vurder hver pick ut fra:
+  STRONG (grønn) = sterk narrativ flyt, treffer rytmen, gir energi/emosjon
+  WEAK (rød) = svak narrativ energi, repetitivt, mister momentum, dårlig score
+  DRAG (gul) = treg pacing, for langt, eller bryter flyt mellom segmenter
+
+Vurder ALLE ${filteredPicks.length} picks og returner array med pickIndex (faktisk shot#), flowQuality, og kort norsk grunn (max 100 tegn).
+
+Du MÅ kalle analyze_narrative_flow-tool med evaluations-array som inkluderer ALLE ${filteredPicks.length} picks.`;
+    try {
+      const resp: any = await invoke("claude_chat", {
+        messages: [{ role: "user", content: `Analyser flyt i sekvensen. Kall analyze_narrative_flow-tool med alle ${filteredPicks.length} picks.` }],
+        system: systemPrompt,
+        model: "claude-opus-4-7",
+        maxTokens: 2000,
+        tools: [{
+          name: "analyze_narrative_flow",
+          description: "Evaluate narrative-flow quality for each pick in the sequence",
+          input_schema: {
+            type: "object",
+            properties: {
+              evaluations: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    pickIndex:   { type: "integer", description: "The shot#/index of this pick" },
+                    flowQuality: { type: "string", enum: ["strong", "weak", "drag"] },
+                    reason:      { type: "string", description: "Short Norwegian reason (<=100 chars)" },
+                  },
+                  required: ["pickIndex", "flowQuality", "reason"],
+                },
+              },
+            },
+            required: ["evaluations"],
+          },
+        }],
+      });
+      const blocks = resp?.content ?? [];
+      const toolBlock = blocks.find((b: any) => b.type === "tool_use" && b.name === "analyze_narrative_flow");
+      if (!toolBlock) {
+        const txt = blocks.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+        throw new Error(`Claude returnerte ikke tool-call. ${txt.slice(0, 150)}`);
+      }
+      const evals = (toolBlock.input?.evaluations ?? []) as FlowEval[];
+      if (!evals.length) throw new Error("Claude returnerte tom evaluation-array");
+      setFlowEvals(evals);
+    } catch (e: any) {
+      setFlowError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil"));
+    } finally {
+      setFlowBusy(false);
+    }
+  }, [flowBusy, filteredPicks, projectTitle, totalDuration, activeSong]);
 
   // ─── Claude chat: send message + receive reply ───
   const sendChat = useCallback(async (text: string) => {
@@ -690,6 +779,7 @@ ${ctxLines.join("\n")}`;
             <div className="ce-timeline-strip">
               {filteredPicks.slice(0, 12).map((p, i) => {
                 const segIdx = segments.findIndex(s => s.picks.some(x => x.index === p.index));
+                const flowEval = flowEvals.find(f => f.pickIndex === p.index);
                 return (
                   <div
                     key={p.index}
@@ -699,10 +789,32 @@ ${ctxLines.join("\n")}`;
                     <div className="ce-timeline-clip-num">{segIdx + 1}</div>
                     {p.thumbnailPath && <img src={convertFileSrc(p.thumbnailPath)} alt="" />}
                     <div className="ce-timeline-clip-dur">{p.durationSec.toFixed(2)}</div>
+                    {flowEval && (
+                      <div
+                        className={`ce-flow-marker ce-flow-${flowEval.flowQuality}`}
+                        onMouseEnter={() => setHoveredFlowPickIdx(p.index)}
+                        onMouseLeave={() => setHoveredFlowPickIdx(null)}
+                      >
+                        {hoveredFlowPickIdx === p.index && (
+                          <div className="ce-flow-tooltip">
+                            <strong>{flowEval.flowQuality === "strong" ? "Sterk flyt" : flowEval.flowQuality === "weak" ? "Svak energi" : "Treg pacing"}</strong>
+                            <div>{flowEval.reason}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
+            {flowEvals.length > 0 && (
+              <div className="ce-flow-summary">
+                <span className="ce-flow-dot ce-flow-strong" /> Sterk flyt ({flowEvals.filter(f=>f.flowQuality==="strong").length})
+                <span className="ce-flow-dot ce-flow-drag" /> Treg pacing ({flowEvals.filter(f=>f.flowQuality==="drag").length})
+                <span className="ce-flow-dot ce-flow-weak" /> Svak energi ({flowEvals.filter(f=>f.flowQuality==="weak").length})
+                <button className="ce-flow-clear" onClick={() => setFlowEvals([])}>Nullstill</button>
+              </div>
+            )}
           </div>
 
           {/* Audio waveform — Phase 4 will compute real waveform from song WAV */}
@@ -755,6 +867,15 @@ ${ctxLines.join("\n")}`;
             </div>
             <div className="ce-claude-progress-pct">82%</div>
           </div>
+
+          <button
+            className="ce-claude-flow-btn"
+            onClick={analyzeNarrativeFlow}
+            disabled={flowBusy || filteredPicks.length === 0}
+          >
+            {flowBusy ? <>🔍 Analyserer flyt …</> : <>🔍 Analyser narrativ flyt</>}
+          </button>
+          {flowError && <div className="ce-claude-alt-error">⚠ {flowError}</div>}
 
           <div className="ce-claude-alt">
             <button
