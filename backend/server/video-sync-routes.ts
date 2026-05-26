@@ -3,6 +3,7 @@ import crypto from "crypto";
 
 export interface VideoSyncRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   videoSyncJobs: Map<string, any>;
   videoSyncJobControllers: Map<string, AbortController>;
   persistVideoSyncJob: (job: any) => void;
@@ -14,6 +15,7 @@ export interface VideoSyncRoutesDeps {
 export function setupVideoSyncRoutes(deps: VideoSyncRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     videoSyncJobs,
     videoSyncJobControllers,
     persistVideoSyncJob,
@@ -23,6 +25,7 @@ export function setupVideoSyncRoutes(deps: VideoSyncRoutesDeps): void {
   } = deps;
 
   app.post("/api/video-sync/sync-clips", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const clipIds = Array.isArray(req.body?.clipIds)
       ? req.body.clipIds
           .map((clipId: unknown) =>
@@ -87,6 +90,7 @@ export function setupVideoSyncRoutes(deps: VideoSyncRoutesDeps): void {
   });
 
   app.post("/api/video-sync/submit-clips", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const jobIdRaw = req.body?.jobId;
     const jobId =
       typeof jobIdRaw === "string" && jobIdRaw.trim().length > 0
@@ -200,6 +204,7 @@ export function setupVideoSyncRoutes(deps: VideoSyncRoutesDeps): void {
   });
 
   app.post("/api/video-sync/jobs/:jobId/cancel", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const jobId = req.params.jobId;
     const job = await getVideoSyncJob(jobId);
     if (!job) {

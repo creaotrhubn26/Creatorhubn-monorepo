@@ -50,6 +50,7 @@ import {
 
 export interface ShowcaseCollectionsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   getTableColumns: (tableName: string) => Promise<Set<string>>;
   compatStoreDelete: (storeKey: string) => Promise<void>;
@@ -66,6 +67,7 @@ export function setupShowcaseCollectionsRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     pool,
     getTableColumns,
     compatStoreDelete,
@@ -76,6 +78,7 @@ export function setupShowcaseCollectionsRoutes(
 
   // POST /api/showcase/collections — Create showcase collection
   app.post("/api/showcase/collections", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const now = new Date().toISOString();
@@ -234,6 +237,7 @@ export function setupShowcaseCollectionsRoutes(
   });
 
   app.put("/api/showcase/collections/:collectionId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const settings = normalizeJsonObjectField(payload.settings) || {};
@@ -291,6 +295,7 @@ export function setupShowcaseCollectionsRoutes(
   });
 
   app.delete("/api/showcase/collections/:collectionId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         `DELETE FROM showcase_collections WHERE id = $1 RETURNING id`,
@@ -310,6 +315,7 @@ export function setupShowcaseCollectionsRoutes(
   });
 
   app.post("/api/showcase/collections/:collectionId/showcases", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const showcaseIds = readStringArray(req.body?.showcaseIds);
       const existing = await getShowcaseCollectionShowcaseIds(
@@ -331,6 +337,7 @@ export function setupShowcaseCollectionsRoutes(
   app.delete(
     "/api/showcase/collections/:collectionId/showcases/:showcaseId",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       try {
         const existing = await getShowcaseCollectionShowcaseIds(
           req.params.collectionId,

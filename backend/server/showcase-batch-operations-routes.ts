@@ -47,6 +47,7 @@ interface ShowcaseBatchUndoState {
 
 export interface ShowcaseBatchOperationsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, value: unknown) => Promise<void>;
@@ -66,6 +67,7 @@ export function setupShowcaseBatchOperationsRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     pool,
     compatStoreGet,
     compatStoreSet,
@@ -76,6 +78,7 @@ export function setupShowcaseBatchOperationsRoutes(
   } = deps;
 
   app.post("/api/showcase/batch-operations", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const operation = readString(payload.operation) || "";
@@ -168,6 +171,7 @@ export function setupShowcaseBatchOperationsRoutes(
   });
 
   app.post("/api/showcase/batch-operations/undo", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId =
         readString(req.body?.userId) ||

@@ -67321,6 +67321,7 @@ setupPaymentsRoutes({
 setupVideoRoutes({
   app,
   pool,
+  requireUserSession,
   compatStoreGet,
   compatStoreSet,
   showcaseVideoCommentsKey,
@@ -67372,6 +67373,7 @@ setupAudioEnhancementRoutes({
 // video-analysis-job-system med AbortController-Map for cancellable jobs.
 setupVideoAnalysisRoutes({
   app,
+  requireUserSession,
   videoSourceUpload,
   persistVideoAnalysisUpload,
   normalizeStoryArcV2LanguageHint,
@@ -67450,6 +67452,7 @@ setupTelemetryRoutes({
 // jobs.
 setupVideoSyncRoutes({
   app,
+  requireUserSession,
   videoSyncJobs,
   videoSyncJobControllers,
   persistVideoSyncJob,
@@ -73480,6 +73483,7 @@ async function persistUploadedShowcaseAsset(params: {
 setupShowcaseCategoriesRoutes({
   app,
   pool,
+  requireUserSession,
   getTableColumns,
   mapShowcaseItemRow,
 });
@@ -73517,6 +73521,7 @@ setupShowcaseMiscRoutes({
 setupShowcaseCollectionsRoutes({
   app,
   pool,
+  requireUserSession,
   getTableColumns,
   compatStoreDelete,
   getShowcaseCollectionShowcaseIds,
@@ -73596,7 +73601,7 @@ app.get("/api/proofing/sessions/:sessionId", async (req, res) => {
 
 // ── Showcase analytics — flyttet til ./showcase-analytics-routes.ts
 //   POST /analytics (track) + GET /analytics (aggregat).
-setupShowcaseAnalyticsRoutes({ app, pool });
+setupShowcaseAnalyticsRoutes({ app, pool, requireUserSession });
 
 // ============================================================
 // UNIVERSAL VENDOR SHOWCASE API → flyttet til
@@ -73663,6 +73668,7 @@ setupShowcaseSmartAlbumsRoutes({ app, pool, db, requireUserSession, mapShowcaseI
 setupShowcaseBatchOperationsRoutes({
   app,
   pool,
+  requireUserSession,
   compatStoreGet,
   compatStoreSet,
   compatStoreDelete,
@@ -73703,7 +73709,7 @@ app.get("/api/proofing/session-info/:sessionId", async (req, res) => {
 
 // ── Showcase comments — flyttet til ./showcase-comments-routes.ts
 //   GET/POST /:itemId/comments + POST /comments/:commentId/like.
-setupShowcaseCommentsRoutes({ app, db });
+setupShowcaseCommentsRoutes({ app, db, requireUserSession });
 
 
 
@@ -73721,6 +73727,7 @@ setupShowcaseCommentsRoutes({ app, db });
 //   POST /sync-google-photos + POST /import-google-photos.
 setupShowcaseGooglePhotosRoutes({
   app,
+  requireUserSession,
   getShowcaseGoogleAlbumPhotos,
   createShowcaseItemRecord,
   mapShowcaseItemRow,

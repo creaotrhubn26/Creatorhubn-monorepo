@@ -5,6 +5,7 @@ import { readNumber, readString, readStringArray } from "./_shared";
 
 export interface VideoRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   compatStoreGet: <T>(key: string) => Promise<T | null>;
   compatStoreSet: (key: string, value: unknown) => Promise<void>;
@@ -15,6 +16,7 @@ export interface VideoRoutesDeps {
 export function setupVideoRoutes(deps: VideoRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     pool,
     compatStoreGet,
     compatStoreSet,
@@ -23,6 +25,7 @@ export function setupVideoRoutes(deps: VideoRoutesDeps): void {
   } = deps;
 
   app.post("/api/video/export", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     res.json({
       success: true,
       jobId: crypto.randomUUID(),
@@ -54,6 +57,7 @@ export function setupVideoRoutes(deps: VideoRoutesDeps): void {
   });
 
   app.post("/api/video/timecoded-comments", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const videoId = readString(payload.videoId);
@@ -104,6 +108,7 @@ export function setupVideoRoutes(deps: VideoRoutesDeps): void {
   });
 
   app.post("/api/video/sequences", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const projectId = readString(payload.projectId);
@@ -132,6 +137,7 @@ export function setupVideoRoutes(deps: VideoRoutesDeps): void {
   });
 
   app.post("/api/video/generate-thumbnails", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const videoId = readString(req.body?.videoId);
       const count = readNumber(req.body?.count) ?? 5;

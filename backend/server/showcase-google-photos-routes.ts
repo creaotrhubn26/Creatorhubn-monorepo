@@ -47,6 +47,7 @@ interface ShowcaseGooglePhotoRecord {
 
 export interface ShowcaseGooglePhotosRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   getShowcaseGoogleAlbumPhotos: (
     albumId: string,
   ) => Promise<ShowcaseGooglePhotoRecord[]>;
@@ -61,12 +62,14 @@ export function setupShowcaseGooglePhotosRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     getShowcaseGoogleAlbumPhotos,
     createShowcaseItemRecord,
     mapShowcaseItemRow,
   } = deps;
 
   app.post("/api/showcase/sync-google-photos", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const userId =
@@ -103,6 +106,7 @@ export function setupShowcaseGooglePhotosRoutes(
   });
 
   app.post("/api/showcase/import-google-photos", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const photoIds = new Set(readStringArray(payload.photoIds));

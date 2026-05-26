@@ -37,13 +37,14 @@ type Db = NodePgDatabase<typeof schema>;
 
 export interface ShowcaseCommentsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   db: Db;
 }
 
 export function setupShowcaseCommentsRoutes(
   deps: ShowcaseCommentsRoutesDeps,
 ): void {
-  const { app, db } = deps;
+  const { app, db, requireUserSession } = deps;
 
   app.get("/api/showcase/:itemId/comments", async (req, res) => {
     try {
@@ -82,6 +83,7 @@ export function setupShowcaseCommentsRoutes(
   });
 
   app.post("/api/showcase/:itemId/comments", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const timestampSeconds =
@@ -119,6 +121,7 @@ export function setupShowcaseCommentsRoutes(
   });
 
   app.post("/api/showcase/comments/:commentId/like", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const rows = await db
         .select()

@@ -27,16 +27,18 @@ import { readString } from "./_shared";
 
 export interface ShowcaseAnalyticsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
 }
 
 export function setupShowcaseAnalyticsRoutes(
   deps: ShowcaseAnalyticsRoutesDeps,
 ): void {
-  const { app, pool } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   // POST /api/showcase/analytics — Track showcase view/interaction
   app.post("/api/showcase/analytics", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         showcaseItemId,

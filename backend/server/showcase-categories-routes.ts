@@ -37,6 +37,7 @@ import {
 
 export interface ShowcaseCategoriesRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   getTableColumns: (tableName: string) => Promise<Set<string>>;
   mapShowcaseItemRow: (row: Record<string, unknown>) => Record<string, unknown>;
@@ -45,7 +46,7 @@ export interface ShowcaseCategoriesRoutesDeps {
 export function setupShowcaseCategoriesRoutes(
   deps: ShowcaseCategoriesRoutesDeps,
 ): void {
-  const { app, pool, getTableColumns, mapShowcaseItemRow } = deps;
+  const { app, pool, requireUserSession, getTableColumns, mapShowcaseItemRow } = deps;
 
   // GET /api/showcase/categories — Get showcase categories (optionally by profession)
   app.get("/api/showcase/categories", async (req, res) => {
@@ -107,6 +108,7 @@ export function setupShowcaseCategoriesRoutes(
 
   // POST /api/showcase/categories — Create showcase category
   app.post("/api/showcase/categories", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { name, profession, description, color, icon } = req.body as Record<
         string,

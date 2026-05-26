@@ -4,6 +4,7 @@ import { readString } from "./_shared";
 
 export interface VideoAnalysisRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   videoSourceUpload: Multer;
   persistVideoAnalysisUpload: (
     file: Express.Multer.File,
@@ -27,6 +28,7 @@ export function setupVideoAnalysisRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     videoSourceUpload,
     persistVideoAnalysisUpload,
     normalizeStoryArcV2LanguageHint,
@@ -42,6 +44,7 @@ export function setupVideoAnalysisRoutes(
     "/api/video-analysis/upload-source",
     videoSourceUpload.single("video"),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         if (!req.file) {
           return res
@@ -69,6 +72,7 @@ export function setupVideoAnalysisRoutes(
     "/api/video-analysis/transcribe",
     videoSourceUpload.single("video"),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         let videoPath =
           readString(req.body?.video_path) || readString(req.body?.videoPath);
@@ -137,6 +141,7 @@ export function setupVideoAnalysisRoutes(
     "/api/video-analysis/scene-detection",
     videoSourceUpload.single("video"),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         let videoPath =
           readString(req.body?.video_path) || readString(req.body?.videoPath);
@@ -221,6 +226,7 @@ export function setupVideoAnalysisRoutes(
   app.post(
     "/api/video-analysis/scene-detection/:jobId/cancel",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       const jobId = req.params.jobId;
       const job = await getVideoAnalysisJob(jobId);
       if (!job || job.type !== "scene-detection") {
