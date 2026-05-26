@@ -343,6 +343,7 @@ import {
 } from "./nextrole-routes";
 import { setupNextRoleReferralRoutes } from "./nextrole-referrals";
 import { setupNextRoleDripRoutes } from "./nextrole-drip";
+import { setupRoleRoomAdsCron } from "./role-room-ads-cron";
 import { setupNextRoleSalaryRoutes } from "./nextrole-salary";
 import { setupNextRoleMilestonesRoutes } from "./nextrole-milestones";
 import { setupNextRoleVideoPresentationRoutes } from "./nextrole-video-presentations";
@@ -17538,6 +17539,7 @@ function createProjectAgreementRecord(
 app.put(
   "/api/role-room/project-agreements/:agreementId/status",
   async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     let location = findByIdInProjectMap(
       legacyProjectAgreementsByProject,
       req.params.agreementId,
@@ -17592,6 +17594,7 @@ app.put(
 app.patch(
   "/api/role-room/project-agreements/:agreementId",
   async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     let location = findByIdInProjectMap(
       legacyProjectAgreementsByProject,
       req.params.agreementId,
@@ -17862,6 +17865,7 @@ setupNextRoleReferralRoutes({
   getActiveSessionFromRequest,
 });
 setupNextRoleDripRoutes({ app, pool });
+setupRoleRoomAdsCron({ app, pool });
 setupNextRoleSalaryRoutes({ app, pool });
 setupNextRoleMilestonesRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleVideoPresentationRoutes({ app, pool, getActiveSessionFromRequest });

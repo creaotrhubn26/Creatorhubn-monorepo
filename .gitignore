@@ -1,6 +1,9 @@
 node_modules/
 dist/
 build/
+# Rust/Tauri build artifacts (Resolve Script Manager + Live Set Publisher)
+apps/*/src-tauri/target/
+tools/*/src-tauri/target/
 .env
 .env.whatsapp.demo.local
 .role-room-admin-state.json
