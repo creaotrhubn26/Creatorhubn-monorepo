@@ -131,6 +131,47 @@ def _resolve_pip_python(packages: list[str]) -> tuple[str, bool]:
     return venv_py, True
 
 
+def _augmented_env() -> dict:
+    """Tauri-spawned Python får minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
+    For brew-managed verktøy (cmake, python@3.12, ffmpeg) må vi explicitly
+    augment PATH før vi spawner subprocesser slik at bygg-scripts (e.g.
+    dlib's setup.py som CALLS cmake) finner verktøyene."""
+    env = os.environ.copy()
+    extra_paths = [
+        "/opt/homebrew/bin",        # Apple Silicon brew
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",           # Intel brew
+        "/usr/local/sbin",
+        "/opt/homebrew/opt/cmake/bin",
+        "/opt/local/bin",           # MacPorts (rare)
+    ]
+    current = env.get("PATH", "")
+    parts = current.split(":") if current else []
+    for p in extra_paths:
+        if os.path.isdir(p) and p not in parts:
+            parts.insert(0, p)
+    env["PATH"] = ":".join(parts)
+    return env
+
+
+def _find_binary(name: str) -> str | None:
+    """Robust binary-lookup som ikke stoler på PATH alene."""
+    direct = shutil.which(name)
+    if direct:
+        return direct
+    for prefix in (
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/sbin",
+        "/usr/bin",
+    ):
+        candidate = os.path.join(prefix, name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def stream_subprocess(cmd: list[str], label: str) -> tuple[int, list[str]]:
     """Run a subprocess and stream stdout/stderr line-by-line as bridge.log events."""
     bridge.log(f"$ {' '.join(cmd)}")
@@ -138,6 +179,7 @@ def stream_subprocess(cmd: list[str], label: str) -> tuple[int, list[str]]:
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            env=_augmented_env(),  # augment PATH so cmake/brew tools are findable
         )
     except FileNotFoundError as exc:
         bridge.error(f"Could not spawn {cmd[0]}: {exc}")
@@ -174,17 +216,19 @@ def run(params: dict, dry_run: bool) -> None:
 
     # Pre-flight: face_recognition needs to compile dlib from source, which
     # requires cmake + C++ compiler. Detect + install cmake via brew first.
+    # NB: bruk _find_binary i stedet for shutil.which siden Tauri-spawned
+    # Python har begrenset PATH og missing /opt/homebrew/bin.
     if manager == "pip" and any(
         (isinstance(p, str) and p.lower().split("==")[0].strip() == "face_recognition")
         for p in packages
     ):
-        brew = shutil.which("brew") or "/opt/homebrew/bin/brew"
-        cmake_ok = shutil.which("cmake") is not None
-        if not cmake_ok and os.path.isfile(brew):
+        brew = _find_binary("brew")
+        cmake_path = _find_binary("cmake")
+        if not cmake_path and brew:
             bridge.log("face_recognition krever dlib (compiled fra C++). Installerer cmake først…")
             stream_subprocess([brew, "install", "cmake"], "brew-cmake-prereq")
-            cmake_ok = shutil.which("cmake") is not None
-        if not cmake_ok:
+            cmake_path = _find_binary("cmake")
+        if not cmake_path:
             bridge.error(
                 "face_recognition krever cmake (for å bygge dlib fra source). "
                 "Installer manuelt: `brew install cmake`. Alternativt: skip "
@@ -192,6 +236,7 @@ def run(params: dict, dry_run: bool) -> None:
                 "fallback'er til OpenCV Haar cascade)."
             )
             sys.exit(1)
+        bridge.log(f"cmake found at {cmake_path} — proceeding med face_recognition build")
 
     if dry_run:
         bridge.result({
@@ -205,7 +250,7 @@ def run(params: dict, dry_run: bool) -> None:
         sys.exit(1)
 
     if manager == "brew":
-        brew = shutil.which("brew") or "/opt/homebrew/bin/brew"
+        brew = _find_binary("brew") or "/opt/homebrew/bin/brew"
         if not os.path.isfile(brew):
             bridge.error("Homebrew is not installed. Install it first via the Bootstrap button.")
             sys.exit(1)
