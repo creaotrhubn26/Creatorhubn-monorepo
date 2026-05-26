@@ -67126,6 +67126,7 @@ setupUniversalVendorShowcaseRoutes({ app, pool });
 setupBrandingRoutes({
   app,
   pool,
+  requireUserSession,
   brandingLogoUpload,
   getStoredBusinessBrandingInfo,
   persistBusinessBrandingInfo,

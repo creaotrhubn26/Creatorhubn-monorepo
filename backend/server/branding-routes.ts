@@ -6,6 +6,7 @@ import { readString } from "./_shared";
 export interface BrandingRoutesDeps {
   app: express.Application;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
   brandingLogoUpload: Multer;
   getStoredBusinessBrandingInfo: (userId: string) => Promise<any>;
   persistBusinessBrandingInfo: (
@@ -41,6 +42,7 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   const {
     app,
     pool,
+    requireUserSession,
     brandingLogoUpload,
     getStoredBusinessBrandingInfo,
     persistBusinessBrandingInfo,
@@ -99,6 +101,7 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   });
 
   app.put("/api/branding/business-info/:userId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = readString(req.params.userId);
     if (!userId) {
       res.status(400).json({ error: "userId is required" });
@@ -146,6 +149,7 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
     "/api/branding/upload-logo",
     brandingLogoUpload.single("logo"),
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       const userId =
         readString(req.body?.userId) ||
         readString(req.body?.user_id) ||
@@ -187,6 +191,7 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   );
 
   app.delete("/api/branding/logo/:userId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = readString(req.params.userId);
     if (!userId) {
       res.status(400).json({ error: "userId is required" });
@@ -242,6 +247,7 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   });
 
   app.put("/api/branding/settings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId =
         readString(req.body?.userId) ||
