@@ -47,6 +47,7 @@ import type {
 
 export interface AISuggestionRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   aiSuggestionService: AISuggestionService;
 }
 
@@ -153,7 +154,7 @@ function statusFromError(err: unknown): number {
 // ─────────────────────────────────────────────────────────────────────
 
 export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
-  const { app, aiSuggestionService } = deps;
+  const { app, aiSuggestionService, requireUserSession } = deps;
 
   // ── List pending suggestions for a project ─────────────────────────
   app.get(
@@ -182,6 +183,7 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
   app.post(
     "/api/role-room/projects/:projectId/ai-suggestions/generate",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       try {
         const userId = readUserId(req);
         if (!userId) {
@@ -241,6 +243,7 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
 
   // ── Accept a suggestion (triggers applier in same transaction) ─────
   app.post("/api/role-room/ai-suggestions/:id/accept", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = readUserId(req);
       if (!userId) {
@@ -273,6 +276,7 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
 
   // ── Reject a suggestion ────────────────────────────────────────────
   app.post("/api/role-room/ai-suggestions/:id/reject", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = readUserId(req);
       if (!userId) {

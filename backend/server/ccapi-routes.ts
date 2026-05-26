@@ -47,11 +47,12 @@ function ipAddressValid(ip: string): boolean {
 
 export interface CcapiRoutesDeps {
   app: Express;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
 }
 
 export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
-  const { app, pool } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   // ── Discover: returner kameraer registrert i DB ──────────────────
   //
@@ -158,6 +159,7 @@ export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
 
   // ── Eksplisitt scan-endpoint — alltid aktiv skannning ────────────
   app.post("/api/ccapi/scan", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = requireUser(req, res);
     if (!userId) return;
     const body = (req.body ?? {}) as { subnet?: string; probeTimeoutMs?: number };
@@ -205,6 +207,7 @@ export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
 
   // ── Connect: prøv /ccapi-inventory og lagre kameraets info ───────
   app.post("/api/ccapi/connect", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = requireUser(req, res);
     if (!userId) return;
     const body = (req.body ?? {}) as { ipAddress?: string; port?: number; cameraName?: string };
@@ -291,6 +294,7 @@ export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
 
   // ── Shutter ──────────────────────────────────────────────────────
   app.post("/api/ccapi/cameras/:ip/shutter", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const ip = req.params.ip;
     if (!ipAddressValid(ip)) {
@@ -341,6 +345,7 @@ export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
 
   // ── Disconnect / forget ──────────────────────────────────────────
   app.delete("/api/ccapi/cameras/:ip", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = requireUser(req, res);
     if (!userId) return;
     const ip = req.params.ip;

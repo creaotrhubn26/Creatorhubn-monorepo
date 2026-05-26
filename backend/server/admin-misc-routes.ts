@@ -4,6 +4,7 @@ import crypto from "crypto";
 
 export interface AdminMiscRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   isEvendiSmokeAuthorized: (req: any) => boolean;
   runEvendiSmoke: (...args: any[]) => Promise<any>;
@@ -16,6 +17,7 @@ export interface AdminMiscRoutesDeps {
 export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     pool,
     isEvendiSmokeAuthorized,
     runEvendiSmoke,
@@ -57,6 +59,7 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   });
 
   app.post("/api/admin/log-interaction", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const logEntry = {
       id: crypto.randomUUID(),

@@ -42,15 +42,17 @@ function ipAddressValid(ip: string): boolean {
 
 export interface MultiVendorCameraRoutesDeps {
   app: Express;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
 }
 
 export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps): void {
-  const { app } = deps;
+  const { app, requireUserSession } = deps;
 
   // ── Sony ──────────────────────────────────────────────────────────
 
   app.post("/api/sony/connect", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as { ipAddress?: string; port?: number };
     if (!body.ipAddress || !ipAddressValid(body.ipAddress)) {
@@ -92,6 +94,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/sony/cameras/:ip/record/start", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     try {
       await getSonyClient(req.params.ip).startMovieRecording();
@@ -102,6 +105,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/sony/cameras/:ip/record/stop", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     try {
       await getSonyClient(req.params.ip).stopMovieRecording();
@@ -112,6 +116,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/sony/cameras/:ip/settings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as {
       iso?: number;
@@ -132,6 +137,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.delete("/api/sony/cameras/:ip", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     clearSonyClient(req.params.ip);
     res.json({ success: true });
@@ -140,6 +146,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   // ── ARRI ──────────────────────────────────────────────────────────
 
   app.post("/api/arri/connect", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as { ipAddress?: string; port?: number; secure?: boolean };
     if (!body.ipAddress || !ipAddressValid(body.ipAddress)) {
@@ -173,6 +180,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/arri/cameras/:ip/record/start", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     try {
       await getArriClient(req.params.ip).startRecording();
@@ -183,6 +191,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/arri/cameras/:ip/record/stop", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     try {
       await getArriClient(req.params.ip).stopRecording();
@@ -193,6 +202,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/arri/cameras/:ip/settings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as {
       iso?: number;
@@ -224,6 +234,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   // ── Z CAM ─────────────────────────────────────────────────────────
 
   app.post("/api/zcam/connect", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as { ipAddress?: string; port?: number };
     if (!body.ipAddress || !ipAddressValid(body.ipAddress)) {
@@ -255,6 +266,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/zcam/cameras/:ip/record/start", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     try {
       await getZcamClient(req.params.ip).startRecording();
@@ -265,6 +277,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/zcam/cameras/:ip/record/stop", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     try {
       await getZcamClient(req.params.ip).stopRecording();
@@ -275,6 +288,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.post("/api/zcam/cameras/:ip/settings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as {
       iso?: number;
@@ -297,6 +311,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.delete("/api/zcam/cameras/:ip", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     clearZcamClient(req.params.ip);
     res.json({ success: true });

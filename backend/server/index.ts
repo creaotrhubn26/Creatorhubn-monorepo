@@ -15909,14 +15909,14 @@ aiSuggestionService.registerApplier(sfxSuggestionApplier);
 aiSuggestionService.registerApplier(sceneReadinessApplier);
 
 // Coverage take-routes (upload, list, etc.)
-setupCoverageTakeRoutes({ app, pool });
+setupCoverageTakeRoutes({ app, pool, requireUserSession });
 
 // Canon CCAPI-proxy — frontend snakker hit, vi snakker direkte mot kamera-AP
-setupCcapiRoutes({ app, pool });
+setupCcapiRoutes({ app, pool, requireUserSession });
 
 // Multi-vendor kamera-proxy — Sony Wi-Fi Remote + ARRI Web Remote
 // (Z CAM HTTP og GoPro BLE kommer senere; RED krever native SDK)
-setupMultiVendorCameraRoutes({ app, pool });
+setupMultiVendorCameraRoutes({ app, pool, requireUserSession });
 
 // Coverage job-worker — bakgrunns-prosessering av analyse-jobber.
 // Starter automatisk; stoppes ved server-shutdown via SIGTERM-håndtering
@@ -31523,6 +31523,7 @@ setupCastingManuscriptsRoutes({
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
 setupAISuggestionRoutes({
   app,
+  requireUserSession,
   aiSuggestionService,
 });
 
@@ -67840,6 +67841,7 @@ setupPlatformRoutes({
 });
 setupAdminMiscRoutes({
   app,
+  requireUserSession,
   pool,
   isEvendiSmokeAuthorized,
   runEvendiSmoke,

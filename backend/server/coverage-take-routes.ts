@@ -65,13 +65,15 @@ function parsePositiveInt(value: unknown): number | undefined {
 export interface CoverageTakeRoutesDeps {
   app: Express;
   pool: Pool;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
-  const { app, pool } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   // ── Upload URL ────────────────────────────────────────────────────
   app.post("/api/role-room/takes/upload-url", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = requireUser(req, res);
     if (!userId) return;
 
@@ -122,6 +124,7 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── Confirm upload ────────────────────────────────────────────────
   app.post("/api/role-room/takes/:id/confirm", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = requireUser(req, res);
     if (!userId) return;
 
@@ -206,6 +209,7 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── Patch (tagging, notater, circled) ─────────────────────────────
   app.patch("/api/role-room/takes/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as Partial<UpdateTakeInput>;
     const patch: UpdateTakeInput = {};
@@ -242,6 +246,7 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── Delete ────────────────────────────────────────────────────────
   app.delete("/api/role-room/takes/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     if (!requireUser(req, res)) return;
     try {
       const deleted = await deleteTake(pool, req.params.id);
