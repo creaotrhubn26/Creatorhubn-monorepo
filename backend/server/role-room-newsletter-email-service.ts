@@ -1,0 +1,208 @@
+/**
+ * role-room-newsletter-email-service.ts
+ *
+ * Norwegian Casting Brief — send-funksjoner for confirm-mail og issue-blast.
+ * Gjenbruker eksisterende Gmail SMTP-konfigurasjon (GMAIL_USER + GMAIL_APP_PASSWORD).
+ */
+
+import nodemailer, { type Transporter } from "nodemailer";
+
+let cachedTransporter: Transporter | null = null;
+
+function getTransporter(): Transporter | null {
+  if (cachedTransporter) return cachedTransporter;
+  const user =
+    process.env.GMAIL_USER ||
+    process.env.GOOGLE_WORKSPACE_EMAIL ||
+    process.env.GOOGLE_ADMIN_EMAIL;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) {
+    console.warn("[role-room-newsletter] Gmail SMTP ikke konfigurert");
+    return null;
+  }
+  cachedTransporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
+  return cachedTransporter;
+}
+
+function getFromAddress(): string {
+  const addr =
+    process.env.ROLE_ROOM_NEWSLETTER_FROM ||
+    process.env.GMAIL_USER ||
+    "noreply@theroleroom.com";
+  return `Norwegian Casting Brief <${addr}>`;
+}
+
+function publicOrigin(): string {
+  return (
+    process.env.ROLE_ROOM_PUBLIC_URL ||
+    process.env.PUBLIC_APP_URL ||
+    "https://theroleroom.com"
+  ).replace(/\/$/, "");
+}
+
+const BRIEF_BRAND_HEX = "#8b5cf6";
+const BRIEF_BG_HEX = "#0a0a0f";
+
+function wrapBrandedHtml(opts: { previewText: string; bodyHtml: string; unsubscribeUrl: string | null; footerNote?: string }): string {
+  const { previewText, bodyHtml, unsubscribeUrl, footerNote } = opts;
+  return `<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { margin: 0; padding: 0; background: ${BRIEF_BG_HEX}; color: #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .preview { display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent; height: 0; width: 0; font-size: 1px; line-height: 1px; }
+  .container { max-width: 600px; margin: 0 auto; padding: 24px; }
+  .header { padding: 24px 0 16px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 24px; }
+  .brand { color: ${BRIEF_BRAND_HEX}; font-family: "Courier New", Courier, monospace; font-size: 12px; letter-spacing: 0.25em; text-transform: uppercase; font-weight: 700; }
+  .content { color: #e5e7eb; font-size: 15px; line-height: 1.7; }
+  .content h1, .content h2, .content h3 { color: #fff; line-height: 1.3; }
+  .content h1 { font-size: 28px; margin: 0 0 16px; }
+  .content h2 { font-size: 20px; margin: 28px 0 12px; }
+  .content h3 { font-size: 16px; margin: 24px 0 8px; }
+  .content p { margin: 0 0 16px; }
+  .content a { color: #a78bfa; }
+  .content blockquote { border-left: 3px solid ${BRIEF_BRAND_HEX}; padding-left: 16px; color: rgba(229,231,235,0.78); margin: 16px 0; }
+  .content ul, .content ol { padding-left: 24px; margin: 12px 0; }
+  .content li { margin: 4px 0; }
+  .footer { margin-top: 40px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.08); color: rgba(229,231,235,0.5); font-size: 12px; line-height: 1.6; }
+  .footer a { color: rgba(167,139,250,0.85); }
+</style>
+</head>
+<body>
+<span class="preview">${previewText}</span>
+<div class="container">
+  <div class="header"><span class="brand">Norwegian Casting Brief</span></div>
+  <div class="content">${bodyHtml}</div>
+  <div class="footer">
+    ${footerNote ? `<p>${footerNote}</p>` : ""}
+    <p>Du mottar denne fordi du meldte deg på via theroleroom.com.${unsubscribeUrl ? ` <a href="${unsubscribeUrl}">Meld deg av</a>.` : ""}</p>
+    <p>The Role Room · Et produkt fra CreatorHub Norge AS · Oslo, Norge</p>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|h1|h2|h3|li)>/gi, "\n\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export async function sendNewsletterConfirmEmail(opts: { to: string; confirmToken: string; unsubscribeToken: string; source: string }): Promise<{ sent: boolean; error?: string }> {
+  const transporter = getTransporter();
+  if (!transporter) return { sent: false, error: "SMTP not configured" };
+
+  const origin = publicOrigin();
+  const confirmUrl = `${origin}/api/newsletter/role-room/confirm?token=${encodeURIComponent(opts.confirmToken)}`;
+  const unsubscribeUrl = `${origin}/api/newsletter/role-room/unsubscribe?token=${encodeURIComponent(opts.unsubscribeToken)}`;
+
+  const bodyHtml = `
+    <h1>Bekreft påmeldingen til Norwegian Casting Brief</h1>
+    <p>Hei,</p>
+    <p>Du meldte deg på Norwegian Casting Brief fra <strong>${opts.source}</strong>. For å starte å motta brevet hver fredag, må du bekrefte e-postadressen din.</p>
+    <p style="margin: 28px 0;">
+      <a href="${confirmUrl}" style="display: inline-block; background: ${BRIEF_BRAND_HEX}; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600;">Bekreft påmelding</a>
+    </p>
+    <p>Hvis knappen ikke virker, kopier denne lenken til nettleseren:<br><a href="${confirmUrl}">${confirmUrl}</a></p>
+    <p>Hvis du ikke meldte deg på, kan du se bort fra denne e-posten.</p>
+  `;
+
+  const html = wrapBrandedHtml({
+    previewText: "Bekreft påmeldingen til Norwegian Casting Brief",
+    bodyHtml,
+    unsubscribeUrl,
+    footerNote: "Denne bekreftelseslenken utløper aldri, men vi anbefaler å bekrefte innen 7 dager.",
+  });
+
+  try {
+    const info = await transporter.sendMail({
+      from: getFromAddress(),
+      to: opts.to,
+      subject: "Bekreft påmeldingen — Norwegian Casting Brief",
+      html,
+      text: htmlToText(html),
+    });
+    console.info(`[role-room-newsletter] confirm-mail sent to ${opts.to}`, { messageId: info.messageId });
+    return { sent: true };
+  } catch (err) {
+    console.error("[role-room-newsletter] confirm-mail failed", err);
+    return { sent: false, error: (err as Error).message };
+  }
+}
+
+export async function sendNewsletterIssueToRecipient(opts: {
+  to: string;
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  unsubscribeToken: string;
+}): Promise<{ sent: boolean; error?: string }> {
+  const transporter = getTransporter();
+  if (!transporter) return { sent: false, error: "SMTP not configured" };
+  const unsubscribeUrl = `${publicOrigin()}/api/newsletter/role-room/unsubscribe?token=${encodeURIComponent(opts.unsubscribeToken)}`;
+  const html = wrapBrandedHtml({ previewText: opts.preheader, bodyHtml: opts.bodyHtml, unsubscribeUrl });
+  try {
+    const info = await transporter.sendMail({
+      from: getFromAddress(),
+      to: opts.to,
+      subject: opts.subject,
+      html,
+      text: htmlToText(html),
+      headers: { "List-Unsubscribe": `<${unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, error: (err as Error).message };
+  }
+}
+
+export function markdownToHtml(md: string): string {
+  // Minimal markdown-renderer — bevisst enkel for å unngå tunge deps.
+  // Hvis du trenger full markdown-støtte, bytt til `marked` eller `remark`.
+  let html = md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    // Headers
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    // Bold + italic
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    // Blockquotes
+    .replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>")
+    // Lists
+    .replace(/(^|\n)((?:- .+(?:\n|$))+)/g, (_match, prefix, block) => {
+      const items = block.trim().split("\n").map((line: string) => `<li>${line.replace(/^- /, "")}</li>`).join("");
+      return `${prefix}<ul>${items}</ul>`;
+    })
+    .replace(/(^|\n)((?:\d+\. .+(?:\n|$))+)/g, (_match, prefix, block) => {
+      const items = block.trim().split("\n").map((line: string) => `<li>${line.replace(/^\d+\. /, "")}</li>`).join("");
+      return `${prefix}<ol>${items}</ol>`;
+    });
+  // Paragraphs — split på dobbel newline
+  html = html
+    .split(/\n{2,}/)
+    .map((para) => {
+      const trimmed = para.trim();
+      if (!trimmed) return "";
+      if (/^<(h[123]|ul|ol|blockquote)/i.test(trimmed)) return trimmed;
+      return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
+    })
+    .join("\n");
+  return html;
+}

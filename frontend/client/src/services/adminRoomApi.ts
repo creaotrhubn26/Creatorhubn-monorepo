@@ -1143,3 +1143,74 @@ export const migrationsApi = {
     return jsonFetch('/migrations/run', { method: 'POST' });
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// Newsletter — issues management
+// ─────────────────────────────────────────────────────────
+
+export type NewsletterIssueStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+
+export interface NewsletterIssue {
+  id: string;
+  user_id: string;
+  slug: string;
+  title: string;
+  subject: string;
+  preheader: string | null;
+  body_markdown: string;
+  body_html: string | null;
+  status: NewsletterIssueStatus;
+  scheduled_for: string | null;
+  sent_at: string | null;
+  sent_count: number;
+  failed_count: number;
+  created_at: string;
+  updated_at: string;
+  body_length?: number;
+}
+
+export type NewsletterIssueInput = {
+  title?: string;
+  slug?: string;
+  subject?: string;
+  preheader?: string | null;
+  bodyMarkdown?: string;
+  scheduledFor?: string | null;
+};
+
+export const newsletterIssuesApi = {
+  list: async (): Promise<NewsletterIssue[]> => {
+    const data = await jsonFetch<{ items: NewsletterIssue[] }>('/newsletter/role-room/issues');
+    return data.items;
+  },
+  get: async (id: string): Promise<NewsletterIssue> => {
+    const data = await jsonFetch<{ item: NewsletterIssue }>(`/newsletter/role-room/issues/${encodeURIComponent(id)}`);
+    return data.item;
+  },
+  create: async (input: NewsletterIssueInput): Promise<NewsletterIssue> => {
+    const data = await jsonFetch<{ item: NewsletterIssue }>('/newsletter/role-room/issues', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patch: async (id: string, input: NewsletterIssueInput): Promise<NewsletterIssue> => {
+    const data = await jsonFetch<{ item: NewsletterIssue }>(`/newsletter/role-room/issues/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  sendTest: async (id: string, email?: string): Promise<{ ok: boolean; sentTo: string }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/send-test`, {
+      method: 'POST',
+      body: JSON.stringify(email ? { email } : {}),
+    });
+  },
+  send: async (id: string): Promise<{ ok: boolean; recipientCount: number; message: string }> => {
+    return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/send`, { method: 'POST' });
+  },
+};
