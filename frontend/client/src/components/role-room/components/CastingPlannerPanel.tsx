@@ -233,6 +233,7 @@ const TutorialEditorPanel = lazy(() => import('./TutorialEditorPanel').then(m =>
 const ConsentManagementPanel = lazy(() => import('./ConsentManagementPanel').then(m => ({ default: m.ConsentManagementPanel })));
 const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(m => ({ default: m.ConsentContractDialog })));
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
+const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
@@ -12907,6 +12908,15 @@ type RoleRoomProjectWorkspaceState = {
               </Typography>
             </Box>
           ) : (
+            <>
+              {/* §5.3 ads-økonomi: faktisk annonsekostnad + 20 % påslag, budsjett-tak,
+                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til. */}
+              <Suspense fallback={null}>
+                <ClientEconomyPanel
+                  projectId={currentProject.id}
+                  userRole={isClientReviewerMode ? 'client_reviewer' : 'content_producer'}
+                />
+              </Suspense>
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
               projectId={currentProject.id}
@@ -12948,6 +12958,7 @@ type RoleRoomProjectWorkspaceState = {
               } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
+            </>
           )}
         </TabPanel>
 
