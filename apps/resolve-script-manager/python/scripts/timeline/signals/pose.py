@@ -48,20 +48,69 @@ def available() -> bool:
 
 
 _POSE = None
+_POSE_API: str | None = None  # 'legacy' (mp.solutions) | 'tasks' (mp.tasks.python.vision)
+
+
+POSE_LANDMARKER_URL = (
+    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+    "pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+)
+POSE_LANDMARKER_LOCAL = os.path.expanduser(
+    "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/"
+    "ai_models_cache/mediapipe/pose_landmarker_lite.task"
+)
+
+
+def _ensure_landmarker_model() -> str | None:
+    """Auto-download mediapipe pose model from Google CDN."""
+    if os.path.isfile(POSE_LANDMARKER_LOCAL) and os.path.getsize(POSE_LANDMARKER_LOCAL) > 1_000_000:
+        return POSE_LANDMARKER_LOCAL
+    os.makedirs(os.path.dirname(POSE_LANDMARKER_LOCAL), exist_ok=True)
+    try:
+        import urllib.request
+        urllib.request.urlretrieve(POSE_LANDMARKER_URL, POSE_LANDMARKER_LOCAL)
+        return POSE_LANDMARKER_LOCAL
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _load_pose():
-    global _POSE
+    """Load MediaPipe pose detector. Tries legacy mp.solutions.pose first
+    (works for mediapipe ≤ 0.10.30), falls back to new mp.tasks.python.vision
+    PoseLandmarker API (mediapipe 0.10.31+ removed solutions)."""
+    global _POSE, _POSE_API
     if _POSE is not None:
         return _POSE
+    # Strategy 1: legacy solutions API
     try:
         import mediapipe as mp  # type: ignore
-        _POSE = mp.solutions.pose.Pose(
-            static_image_mode=True,
-            model_complexity=1,
-            enable_segmentation=False,
-            min_detection_confidence=0.5,
+        if hasattr(mp, "solutions"):
+            _POSE = mp.solutions.pose.Pose(
+                static_image_mode=True,
+                model_complexity=1,
+                enable_segmentation=False,
+                min_detection_confidence=0.5,
+            )
+            _POSE_API = "legacy"
+            return _POSE
+    except Exception:  # noqa: BLE001
+        pass
+    # Strategy 2: new tasks API
+    try:
+        import mediapipe as mp  # type: ignore
+        from mediapipe.tasks.python import vision as mp_vision
+        from mediapipe.tasks.python import BaseOptions
+        model_path = _ensure_landmarker_model()
+        if not model_path:
+            return None
+        options = mp_vision.PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=model_path),
+            running_mode=mp_vision.RunningMode.IMAGE,
+            num_poses=1,
+            min_pose_detection_confidence=0.5,
         )
+        _POSE = mp_vision.PoseLandmarker.create_from_options(options)
+        _POSE_API = "tasks"
         return _POSE
     except Exception:  # noqa: BLE001
         return None
@@ -165,8 +214,24 @@ def compute(ffmpeg: str, ffprobe: str, video: str,
                 out[i] = 0.0
                 continue
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            result = pose.process(img_rgb)
-            gestures = _classify_pose(result.pose_landmarks)
+            # Run inference via whichever API we loaded
+            if _POSE_API == "legacy":
+                result = pose.process(img_rgb)
+                landmarks = result.pose_landmarks
+            else:  # tasks API
+                import mediapipe as mp  # type: ignore
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+                result = pose.detect(mp_image)
+                # New API returns NormalizedLandmarks list-of-list with .x/.y/.visibility
+                # Wrap into legacy-shape object so _classify_pose works unchanged
+                if not result.pose_landmarks or len(result.pose_landmarks) == 0:
+                    landmarks = None
+                else:
+                    class _LegacyShape:
+                        def __init__(self, lm_list):
+                            self.landmark = lm_list
+                    landmarks = _LegacyShape(result.pose_landmarks[0])
+            gestures = _classify_pose(landmarks)
             if not gestures:
                 out[i] = 0.0
                 continue

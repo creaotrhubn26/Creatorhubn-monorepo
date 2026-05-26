@@ -74,30 +74,58 @@ DEFAULT_SOUTH_ASIAN_WEDDING_PROMPTS: list[tuple[str, float]] = [
 
 
 def available() -> bool:
+    """Prefer HF transformers GroundingDINO (auto-downloads weights). Falls
+    back to the standalone groundingdino-py package if user has set up the
+    config + weights manually."""
     try:
-        import groundingdino  # noqa: F401
+        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection  # noqa: F401
         import torch  # noqa: F401
         return True
     except ImportError:
-        return False
+        try:
+            import groundingdino  # noqa: F401
+            import torch  # noqa: F401
+            return True
+        except ImportError:
+            return False
 
 
-_MODEL = None
+_MODEL_STATE: dict = {}
 
 
 def _load_model():
-    global _MODEL
-    if _MODEL is not None:
-        return _MODEL
+    """Returns (processor, model, device, api) tuple, or None on failure.
+    `api` is "hf" (transformers) or "legacy" (groundingdino-py)."""
+    if "ready" in _MODEL_STATE:
+        return _MODEL_STATE.get("payload")
+    # Strategy 1: HF transformers (auto-downloads ~700MB on first run)
+    try:
+        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection  # type: ignore
+        import torch  # type: ignore
+        model_id = "IDEA-Research/grounding-dino-tiny"  # smallest variant
+        processor = AutoProcessor.from_pretrained(model_id)
+        model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        model = model.to(device).eval()
+        payload = ("hf", processor, model, device)
+        _MODEL_STATE.update({"payload": payload, "ready": True})
+        return payload
+    except Exception:  # noqa: BLE001
+        pass
+    # Strategy 2: legacy groundingdino-py (requires manual config + weights)
     try:
         from groundingdino.util.inference import load_model  # type: ignore
-        # GroundingDINO_SwinT_OGC = lighter (smaller backbone)
-        # Auto-downloaded from HF on first call via the package
         config_path = "groundingdino/config/GroundingDINO_SwinT_OGC.py"
         weights_path = "groundingdino_swint_ogc.pth"
-        _MODEL = load_model(config_path, weights_path)
-        return _MODEL
+        if not (os.path.isfile(config_path) and os.path.isfile(weights_path)):
+            _MODEL_STATE["ready"] = False
+            return None
+        model = load_model(config_path, weights_path)
+        payload = ("legacy", None, model, None)
+        _MODEL_STATE.update({"payload": payload, "ready": True})
+        return payload
     except Exception:  # noqa: BLE001
+        _MODEL_STATE["ready"] = False
         return None
 
 
@@ -118,23 +146,68 @@ def _sample_frame(ffmpeg: str, video: str, ts: float) -> str | None:
         return None
 
 
-def _detect_prompts(model, image_path: str,
-                    prompts: list[tuple[str, float]]) -> dict[str, float]:
-    """For each (prompt, weight) test if GroundingDINO finds it.
-    Returns {prompt: peak_confidence} only for prompts that hit."""
+def _detect_prompts_hf(processor, model, device, image_path: str,
+                       prompts: list[tuple[str, float]]) -> dict[str, float]:
+    """HF GroundingDINO path. We batch all prompts as one period-separated
+    caption — transformers' implementation supports multi-phrase grounding.
+    Returns {prompt: peak_confidence}."""
+    try:
+        from PIL import Image
+        import torch  # type: ignore
+        image = Image.open(image_path).convert("RGB")
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, float] = {}
+    for prompt_text, _weight in prompts:
+        # GroundingDINO expects prompts ending with a period
+        caption = prompt_text.lower().strip()
+        if not caption.endswith("."):
+            caption += "."
+        try:
+            inputs = processor(images=image, text=caption, return_tensors="pt").to(device)
+            with torch.no_grad():
+                outputs = model(**inputs)
+            # HF transformers GroundingDINO API: `threshold` (was box_threshold
+            # in older versions). Lowered threshold from 0.30 → 0.25 to match
+            # text_threshold and improve recall on culturally-specific prompts
+            # (lehenga/sherwani/varmala less common in training data than
+            # generic "bride"/"groom" so confidence is often borderline).
+            results = processor.post_process_grounded_object_detection(
+                outputs,
+                inputs.input_ids,
+                threshold=0.25,
+                text_threshold=0.20,
+                target_sizes=[image.size[::-1]],
+            )
+            if results and len(results[0]["scores"]) > 0:
+                # Different transformers versions return either tensor or list
+                scores = results[0]["scores"]
+                if hasattr(scores, "max"):
+                    val = float(scores.max().item() if hasattr(scores.max(), "item") else scores.max())
+                else:
+                    val = float(max(scores))
+                out[prompt_text] = val
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def _detect_prompts_legacy(model, image_path: str,
+                           prompts: list[tuple[str, float]]) -> dict[str, float]:
+    """Original groundingdino-py path. Only used if HF unavailable + user
+    has placed config + weights at canonical locations."""
     try:
         from groundingdino.util.inference import load_image, predict  # type: ignore
     except ImportError:
         return {}
     try:
-        image_source, image = load_image(image_path)
+        _image_source, image = load_image(image_path)
     except Exception:  # noqa: BLE001
         return {}
-
     out: dict[str, float] = {}
     for prompt_text, _weight in prompts:
         try:
-            boxes, logits, phrases = predict(
+            _boxes, logits, _phrases = predict(
                 model=model, image=image,
                 caption=prompt_text,
                 box_threshold=0.30, text_threshold=0.25,
@@ -144,6 +217,17 @@ def _detect_prompts(model, image_path: str,
         except Exception:  # noqa: BLE001
             continue
     return out
+
+
+def _detect_prompts(payload, image_path: str,
+                    prompts: list[tuple[str, float]]) -> dict[str, float]:
+    """Dispatch to the loaded backend (hf | legacy)."""
+    if not payload:
+        return {}
+    api, processor, model, device = payload
+    if api == "hf":
+        return _detect_prompts_hf(processor, model, device, image_path, prompts)
+    return _detect_prompts_legacy(model, image_path, prompts)
 
 
 def get_prompts_for_genre(genre: str) -> list[tuple[str, float]]:
@@ -166,8 +250,8 @@ def compute(ffmpeg: str, ffprobe: str, video: str,
     ~1s on MPS). For shot-lists > 100, restrict to top-priority prompts
     or sample fewer frames.
     """
-    model = _load_model()
-    if model is None:
+    payload = _load_model()
+    if payload is None:
         return {}
     if prompts is None:
         prompts = DEFAULT_WEDDING_PROMPTS
@@ -179,7 +263,7 @@ def compute(ffmpeg: str, ffprobe: str, video: str,
             out[i] = 0.0
             continue
         try:
-            hits = _detect_prompts(model, tmp, prompts)
+            hits = _detect_prompts(payload, tmp, prompts)
             # Weighted max — strongest prompt-hit × its wedding-weight
             score = 0.0
             for prompt_text, weight in prompts:
