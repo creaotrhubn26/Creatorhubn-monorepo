@@ -20,7 +20,8 @@ export type MarketingPageKey =
   | 'sentimental-value-effekten'
   | 'crew-i-norge-2026'
   | 'innspillingsdag-koordinering'
-  | 'intimacy-coordinator-norge';
+  | 'intimacy-coordinator-norge'
+  | 'kamera-folk-verktoy-2026';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -334,6 +335,36 @@ En produksjon i 2026 som ikke har IC på en intimscene risikerer:
 Det er ikke en luksus-funksjon. Det er infrastruktur.
 
 Hele guiden: https://theroleroom.com/intimacy-coordinator-norge`,
+  },
+  {
+    key: 'kamera-folk-verktoy-2026',
+    path: '/kamera-folk-verktoy-2026',
+    title: 'Kamera-folk og verktøy i norsk produksjon 2026 — camera body, lens-pakker, cloud workflow | The Role Room',
+    description:
+      'Anslag av Arri Alexa 35 vs Sony Venice-fordeling i norsk drama. Cooke vs Zeiss vs Atlas Orion. Frame.io-adopsjon ~60%. Silverstack ~50% av DIT-arbeidsflyt. Fire koordinerings-smerter for kamera-avdelingen og vår tilnærming.',
+    pillar: 'data',
+    published: true,
+    linkedinDraft: `En DP velger ikke "Sony Venice" tilfeldig — det er en signatur.
+
+Norsk drama 2024-2026, kamera-body-fordeling:
+- Arri Alexa 35 / Mini LF: ~55%
+- Sony Venice / Venice 2: ~25%
+- RED V-Raptor / Komodo: ~12%
+- Annet: ~8%
+
+Lens-pakker som dominerer drama:
+- Cooke S4 / S7: ~35% (varm, "norsk" look)
+- Zeiss Supreme: ~25% (voksende — sci-fi/thriller)
+- Atlas Orion Anamorphic: ~15%
+- Leica Summilux: ~10% (prestige)
+
+Frame.io brukes på ~60% av norske produksjoner i 2026.
+
+Men line producer bestiller DP basert på reel + magefølelse — ikke verktøy-match. Resultat: første dag på sett brukes til å lære lens-egenskaper i stedet for å filme.
+
+Vi bygger søkbar verktøy-erfaring inn i Tier-1 CRM. Sony Venice + Cooke + Frame.io? Filtrér og se hvilke DPs har erfaring i alle tre.
+
+Hele datasettet + workflow-smerter: https://theroleroom.com/kamera-folk-verktoy-2026`,
   },
 ];
 

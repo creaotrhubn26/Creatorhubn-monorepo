@@ -743,6 +743,10 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
         unionMembership: initial.union_membership ?? '',
         crewSpecialty: initial.crew_specialty ?? '',
         reelUrl: initial.reel_url ?? '',
+        cameraSystems: initial.camera_systems ?? [],
+        lensSystems: initial.lens_systems ?? [],
+        ditSoftware: initial.dit_software ?? [],
+        cloudWorkflow: initial.cloud_workflow ?? [],
       });
       setProductionsText(serializeProductions(initial.recent_productions ?? []));
     } else {
@@ -917,6 +921,48 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
                 placeholder="https://vimeo.com/... eller https://nettside.no"
                 helperText="Kritisk for DP/regissør-outreach — de svarer ikke uten å kunne sjekke reel."
               />
+
+              {/* Kamera-spesifikke felter — vises kun for kamera-roller */}
+              {['dp', 'first_ac', 'second_ac', 'camera_operator', 'steadicam_operator', 'drone_operator', 'dit'].includes(form.segment ?? '') ? (
+                <Stack spacing={1.25} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(34,211,238,0.05)', border: '1px dashed rgba(34,211,238,0.3)' }}>
+                  <Typography sx={{ color: '#22d3ee', fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    Kamera-avdeling · verktøy-erfaring
+                  </Typography>
+                  <TextField
+                    label="Kamerasystemer"
+                    size="small"
+                    fullWidth
+                    value={(form.cameraSystems ?? []).join(', ')}
+                    onChange={(e) => setForm((p) => ({ ...p, cameraSystems: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                    placeholder="arri_alexa_35, sony_venice, red_v_raptor, red_komodo"
+                    helperText="Komma-separert. Bruk slugs så filtrering funker (lowercase + underscore)."
+                  />
+                  <TextField
+                    label="Lens-pakker"
+                    size="small"
+                    fullWidth
+                    value={(form.lensSystems ?? []).join(', ')}
+                    onChange={(e) => setForm((p) => ({ ...p, lensSystems: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                    placeholder="cooke_s4, zeiss_supreme, atlas_orion, sigma_cine"
+                  />
+                  <TextField
+                    label="DIT-software"
+                    size="small"
+                    fullWidth
+                    value={(form.ditSoftware ?? []).join(', ')}
+                    onChange={(e) => setForm((p) => ({ ...p, ditSoftware: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                    placeholder="silverstack, shotput_pro, pomfort_live_grade"
+                  />
+                  <TextField
+                    label="Cloud-workflow"
+                    size="small"
+                    fullWidth
+                    value={(form.cloudWorkflow ?? []).join(', ')}
+                    onChange={(e) => setForm((p) => ({ ...p, cloudWorkflow: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                    placeholder="frame_io, strada, wipster, pix"
+                  />
+                </Stack>
+              ) : null}
             </Stack>
           </Box>
         </Stack>

@@ -12,6 +12,7 @@ import SentimentalValueEffektenPage from './SentimentalValueEffektenPage';
 import CrewINorgePage from './CrewINorgePage';
 import InnspillingsdagKoordineringPage from './InnspillingsdagKoordineringPage';
 import IntimacyCoordinatorPage from './IntimacyCoordinatorPage';
+import KameraFolkVerktoyPage from './KameraFolkVerktoyPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -67,6 +68,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <InnspillingsdagKoordineringPage />;
     case 'intimacy-coordinator-norge':
       return <IntimacyCoordinatorPage />;
+    case 'kamera-folk-verktoy-2026':
+      return <KameraFolkVerktoyPage />;
     default:
       return null;
   }

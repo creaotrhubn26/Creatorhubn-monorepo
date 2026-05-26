@@ -50,6 +50,13 @@ const VALID_SEGMENTS = new Set([
   "location_manager",
   "bg_coordinator",
   "boom_operator",
+  // Kamera-avdeling (migrasjon 176)
+  "first_ac",
+  "second_ac",
+  "camera_operator",
+  "steadicam_operator",
+  "drone_operator",
+  "video_assist",
   "other",
 ]);
 const VALID_STATUSES = new Set([
@@ -286,6 +293,11 @@ export function setupAdminIndustryTargetsRoutes(deps: AdminRoomRoutesDeps): void
     if (body.unionMembership !== undefined) set("union_membership", asString(body.unionMembership));
     if (body.crewSpecialty !== undefined) set("crew_specialty", asString(body.crewSpecialty));
     if (body.reelUrl !== undefined) set("reel_url", asString(body.reelUrl));
+    // Kamera-felter (migrasjon 176)
+    if (body.cameraSystems !== undefined) set("camera_systems", asJsonbArray(body.cameraSystems), "jsonb");
+    if (body.lensSystems !== undefined) set("lens_systems", asJsonbArray(body.lensSystems), "jsonb");
+    if (body.ditSoftware !== undefined) set("dit_software", asJsonbArray(body.ditSoftware), "jsonb");
+    if (body.cloudWorkflow !== undefined) set("cloud_workflow", asJsonbArray(body.cloudWorkflow), "jsonb");
 
     if (updates.length === 0) {
       res.status(400).json({ error: "Ingen felter å oppdatere" });

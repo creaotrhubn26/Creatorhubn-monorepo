@@ -636,6 +636,13 @@ export type IndustrySegment =
   | 'location_manager'
   | 'bg_coordinator'
   | 'boom_operator'
+  // Kamera-avdeling (migrasjon 176)
+  | 'first_ac'
+  | 'second_ac'
+  | 'camera_operator'
+  | 'steadicam_operator'
+  | 'drone_operator'
+  | 'video_assist'
   | 'other';
 export type IndustryStatus = 'cold' | 'warm' | 'engaged' | 'advocate' | 'paused';
 export type IndustryEngagementKind =
@@ -692,6 +699,11 @@ export interface IndustryTarget {
   union_membership?: string | null;
   crew_specialty?: string | null;
   reel_url?: string | null;
+  // Kamera-felter (migrasjon 176)
+  camera_systems?: string[];
+  lens_systems?: string[];
+  dit_software?: string[];
+  cloud_workflow?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -727,6 +739,11 @@ export type IndustryTargetInput = {
   unionMembership?: string | null;
   crewSpecialty?: string | null;
   reelUrl?: string | null;
+  // Kamera-felter (migrasjon 176)
+  cameraSystems?: string[];
+  lensSystems?: string[];
+  ditSoftware?: string[];
+  cloudWorkflow?: string[];
 };
 
 export interface IndustryTargetStats {
@@ -802,6 +819,13 @@ export const INDUSTRY_SEGMENT_LABELS: Record<IndustrySegment, string> = {
   location_manager: 'Location manager',
   bg_coordinator: 'Background coordinator',
   boom_operator: 'Boom operator',
+  // Kamera-avdeling (migrasjon 176)
+  first_ac: '1st AC (focus puller)',
+  second_ac: '2nd AC (loader)',
+  camera_operator: 'Camera operator',
+  steadicam_operator: 'Steadicam operator',
+  drone_operator: 'Drone-operatør',
+  video_assist: 'Video assist',
   other: 'Annet',
 };
 
