@@ -51,6 +51,8 @@ const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> 
   { loc: "/arbeidstilsynet-guide-produksjon", priority: 0.9, changefreq: "monthly" },
   { loc: "/sentimental-value-effekten", priority: 0.85, changefreq: "monthly" },
   { loc: "/crew-i-norge-2026", priority: 0.9, changefreq: "monthly" },
+  { loc: "/innspillingsdag-koordinering", priority: 0.9, changefreq: "monthly" },
+  { loc: "/intimacy-coordinator-norge", priority: 0.95, changefreq: "monthly" },
   // Brief-arkiv-indeks
   { loc: "/brief", priority: 0.9, changefreq: "weekly" },
   // Juridisk

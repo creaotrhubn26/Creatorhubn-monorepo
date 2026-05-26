@@ -39,6 +39,17 @@ const VALID_SEGMENTS = new Set([
   "vfx",
   "filmforbund",
   "crew_other",
+  // Live-på-sett-segments (migrasjon 175)
+  "first_ad",
+  "second_ad",
+  "intimacy_coordinator",
+  "stunt_coordinator",
+  "set_medic",
+  "hmua",
+  "dit",
+  "location_manager",
+  "bg_coordinator",
+  "boom_operator",
   "other",
 ]);
 const VALID_STATUSES = new Set([

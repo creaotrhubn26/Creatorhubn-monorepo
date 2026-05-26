@@ -18,7 +18,9 @@ export type MarketingPageKey =
   | 'norsk-casting-ordliste'
   | 'arbeidstilsynet-guide-produksjon'
   | 'sentimental-value-effekten'
-  | 'crew-i-norge-2026';
+  | 'crew-i-norge-2026'
+  | 'innspillingsdag-koordinering'
+  | 'intimacy-coordinator-norge';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -282,6 +284,56 @@ Fem strukturelle smerter:
 Vi bygger The Role Room sammen med Norsk Filmforbund — ikke i konkurranse. Plattformen er mer verdifull jo sterkere forbundet er.
 
 Hele datasettet: https://theroleroom.com/crew-i-norge-2026`,
+  },
+  {
+    key: 'innspillingsdag-koordinering',
+    path: '/innspillingsdag-koordinering',
+    title: 'Innspillingsdag-koordinering — hvem er på sett og hva som koster når noe glipper | The Role Room',
+    description:
+      'En typisk norsk produksjons-dag har 20-40 mennesker på sett fordelt over 12+ roller (1st AD, intimacy coord, stunt, set medic, HMUA, DIT). Fem koordinerings-smerter med konkrete kostnads-anslag.',
+    pillar: 'data',
+    published: true,
+    linkedinDraft: `En typisk norsk produksjons-dag har 20-40 mennesker på sett.
+
+1st AD kjører dagen. 2nd AD koordinerer skuespillere. Background coordinator leder statister. Intimacy coordinator sikrer samtykke. Set medic har autoritet til å stoppe opptak.
+
+Når koordineringen glipper koster det 25-40.000 NOK per 90-minutters forsinkelse — pluss skjult regulatorisk eksponering.
+
+Fem konkrete smerter vi sporer:
+1. Call sheet-versjons-kaos via walkie
+2. Statist-tilstedeværelse sjekkes manuelt mot Excel
+3. Skuespiller-samtykke per scene-endring loggføres ikke
+4. Arbeidstid-rapportering rekonstrueres etter wrap
+5. Intimacy-koordinering avhenger av at noen "husket" å booke en
+
+The Role Room utvider seg fra casting til innspillingsdag-koordinering.
+
+Hele datasettet: https://theroleroom.com/innspillingsdag-koordinering`,
+  },
+  {
+    key: 'intimacy-coordinator-norge',
+    path: '/intimacy-coordinator-norge',
+    title: 'Intimacy coordinator i norsk film og TV — hva, hvorfor og når | The Role Room',
+    description:
+      'Intimacy coordinator-rollen er ikke lovpålagt i Norge, men kreves av Netflix, BBC, Apple TV+ og EU-samproduksjoner. ~5-10 aktive i Norge per 2026. Hva rollen gjør, når den må være på sett, og hvorfor produsenter må ta dette på alvor nå.',
+    pillar: 'trust',
+    published: true,
+    linkedinDraft: `Intimacy coordinator er ikke lovpålagt i Norge.
+
+Men Netflix, BBC, Apple TV+ og EU-samproduksjoner krever det dokumentert.
+
+Norske skuespillere under 30 har begynt å spørre om det før de aksepterer audition — trent på SAG-AFTRA-standard via filmskole-utveksling.
+
+~5-10 sertifiserte ICs er aktive i Norge per 2026. Mangel på norsktalende, sertifiserte koordinatorer er en flaskehals — produksjoner importerer ofte fra Sverige eller Danmark.
+
+En produksjon i 2026 som ikke har IC på en intimscene risikerer:
+- Publisitets-kostnad
+- At skuespilleren trekker seg dagen før opptak
+- Brudd på internasjonal samproduksjons-avtale
+
+Det er ikke en luksus-funksjon. Det er infrastruktur.
+
+Hele guiden: https://theroleroom.com/intimacy-coordinator-norge`,
   },
 ];
 

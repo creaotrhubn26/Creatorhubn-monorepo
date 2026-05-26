@@ -625,6 +625,17 @@ export type IndustrySegment =
   | 'vfx'
   | 'filmforbund'
   | 'crew_other'
+  // Live-på-sett-segments (migrasjon 175)
+  | 'first_ad'
+  | 'second_ad'
+  | 'intimacy_coordinator'
+  | 'stunt_coordinator'
+  | 'set_medic'
+  | 'hmua'
+  | 'dit'
+  | 'location_manager'
+  | 'bg_coordinator'
+  | 'boom_operator'
   | 'other';
 export type IndustryStatus = 'cold' | 'warm' | 'engaged' | 'advocate' | 'paused';
 export type IndustryEngagementKind =
@@ -780,6 +791,17 @@ export const INDUSTRY_SEGMENT_LABELS: Record<IndustrySegment, string> = {
   vfx: 'VFX / post-supervisor',
   filmforbund: 'Norsk Filmforbund',
   crew_other: 'Crew — annet',
+  // Live-på-sett-segments (migrasjon 175)
+  first_ad: '1st AD',
+  second_ad: '2nd AD',
+  intimacy_coordinator: 'Intimacy coordinator',
+  stunt_coordinator: 'Stunt coordinator',
+  set_medic: 'Set medic / sanitet',
+  hmua: 'Hair / make-up (HMUA)',
+  dit: 'DIT (Digital Imaging Tech)',
+  location_manager: 'Location manager',
+  bg_coordinator: 'Background coordinator',
+  boom_operator: 'Boom operator',
   other: 'Annet',
 };
 
