@@ -701,6 +701,25 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       return res.status(400).json({ success: false, error: "postIds[] kan ikke være tom" });
     }
 
+    // §5.1: moving material into a publishable (approved) state is gated by the
+    // client-controlled policy. By default only the client may approve.
+    if (isPublishable(newState as RoleRoomFeedApprovalState)) {
+      const policy = await getApprovalPolicy(pool, projectId);
+      if (
+        !canTransitionToPublishable({
+          requireClientApproval: policy.requireClientApproval,
+          actorRole: session.role,
+        })
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "Bare kunden kan godkjenne materiell for publisering (MedInnova-avtalen §5.1). " +
+            "Kunden kan endre dette under godkjenningsinnstillinger.",
+        });
+      }
+    }
+
     const plan = await loadFeedPlan(pool, projectId, platform);
     if (!plan) {
       return res.status(404).json({ success: false, error: "Feed-plan ikke funnet" });
@@ -782,6 +801,50 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       reviewDeadline: result.deadline,
       businessDays: reviewBusinessDays(),
     });
+  });
+
+  // ── Godkjenningspolicy — kunden bestemmer (§5.1) ─────────────────────────
+  // GET: alle med tilgang kan se gjeldende policy.
+  app.get("/api/role-room/agent/feed-plan/:projectId/approval-policy", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const { projectId } = req.params;
+    if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    const policy = await getApprovalPolicy(pool, projectId);
+    return res.json({ success: true, ...policy, canEdit: isClientActor(session.role) });
+  });
+
+  // PUT: KUN kunden (client_reviewer) kan endre policyen.
+  app.put("/api/role-room/agent/feed-plan/:projectId/approval-policy", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const { projectId } = req.params;
+    if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    if (!isClientActor(session.role)) {
+      return res.status(403).json({
+        success: false,
+        error: "Bare kunden kan endre godkjenningspolicyen.",
+      });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    if (typeof body.requireClientApproval !== "boolean") {
+      return res.status(400).json({ success: false, error: "requireClientApproval (boolean) er påkrevd." });
+    }
+    const policy = await setApprovalPolicy(
+      pool,
+      projectId,
+      body.requireClientApproval,
+      session.email ?? session.userId ?? "klient",
+    );
+    return res.json({ success: true, ...policy });
   });
 
 }
