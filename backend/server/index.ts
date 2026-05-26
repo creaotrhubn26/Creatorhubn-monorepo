@@ -67234,7 +67234,7 @@ setupDeliveriesRoutes({ app, pool, normalizeEventType });
 
 // /api/audio-settings/* — 7 endpoints (ducking-/eq-presets, mixer-settings).
 // In-memory stores er kun brukt av disse handlerne; flyttet inn i modulen.
-setupAudioSettingsRoutes({ app });
+setupAudioSettingsRoutes({ app, requireUserSession });
 
 // /api/sales/* — 4 unike endpoints (3 DB-baserte + 1 compat-fallback for
 // /api/sales/leads uten :status). 3 dead-code-dups slettet i samme commit
