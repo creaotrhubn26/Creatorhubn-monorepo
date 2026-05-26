@@ -41,6 +41,61 @@ async fn list_scripts(app: AppHandle) -> Result<Value, String> {
     read_json(python_root(&app)?.join("registry.json"))
 }
 
+/// Claude chat — proxies to api.anthropic.com using ANTHROPIC_API_KEY from
+/// AppSettings. Used by CreativeEditorView's Claude Co-Editor panel.
+/// Non-streaming; returns the assistant message as text + optional tool_use.
+#[tauri::command]
+async fn claude_chat(
+    app: AppHandle,
+    messages: Vec<Value>,
+    system: Option<String>,
+    model: Option<String>,
+    max_tokens: Option<u32>,
+    tools: Option<Vec<Value>>,
+) -> Result<Value, String> {
+    let api_key = if let Some(settings) = app.try_state::<AppSettings>() {
+        settings
+            .snapshot()
+            .get("ANTHROPIC_API_KEY")
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    if api_key.is_empty() {
+        return Err("ANTHROPIC_API_KEY not set — open Settings → Admin and paste your key".into());
+    }
+    let model = model.unwrap_or_else(|| "claude-opus-4-7".to_string());
+    let max_tokens = max_tokens.unwrap_or(1024);
+    let mut body = serde_json::json!({
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    });
+    if let Some(sys) = system { body["system"] = Value::String(sys); }
+    if let Some(t) = tools { body["tools"] = Value::Array(t); }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Anthropic request failed: {}", e))?;
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Read Anthropic response: {}", e))?;
+    if !status.is_success() {
+        return Err(format!("Anthropic API {}: {}", status, text));
+    }
+    serde_json::from_str(&text).map_err(|e| format!("Parse Anthropic response: {}", e))
+}
+
 #[tauri::command]
 async fn list_workflows(app: AppHandle) -> Result<Value, String> {
     read_json(python_root(&app)?.join("templates").join("workflows.json"))
@@ -526,6 +581,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_scripts,
             list_workflows,
+            claude_chat,
             read_wedding_template,
             read_look_pack,
             list_project_templates,

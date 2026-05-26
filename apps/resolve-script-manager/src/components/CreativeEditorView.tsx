@@ -30,7 +30,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   IconPlay,
   IconMusic,
@@ -174,6 +174,21 @@ function formatTime(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// Mirror of identify_and_download_source_songs.safe_query() in Python.
+// Used to derive the expected WAV filename from title + artist.
+function safeQuery(s: string): string {
+  // Match Python's re.sub(r"[^\w\s-]", "", query)[:80].strip()
+  // \w in JS matches [A-Za-z0-9_]; Python's \w is similar.
+  return s.replace(/[^\w\s-]/g, "").trim().slice(0, 80);
+}
+
+const SONGS_DIR = "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/source_songs";
+function songWavPath(title?: string, artist?: string): string | undefined {
+  if (!title) return undefined;
+  const q = safeQuery(`${title} ${artist ?? ""}`);
+  return `${SONGS_DIR}/${q}.wav`;
+}
+
 // ─────────────── Component ───────────────
 interface Props {
   picksPath?: string;       // path to last_highlight_picks.json
@@ -203,6 +218,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playRate, setPlayRate] = useState(1);
+
+  // Claude chat state
+  type ChatMsg = { role: "user" | "assistant"; content: string };
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   // ─── Load picks + advisor ───
   useEffect(() => {
@@ -291,6 +314,59 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       return next;
     });
   }, []);
+
+  // ─── Claude chat: send message + receive reply ───
+  const sendChat = useCallback(async (text: string) => {
+    if (!text.trim() || chatBusy) return;
+    const userMsg: ChatMsg = { role: "user", content: text.trim() };
+    const nextMessages = [...chatMessages, userMsg];
+    setChatMessages(nextMessages);
+    setChatInput("");
+    setChatBusy(true);
+    setChatError(null);
+    // Build context for Claude — picks summary + history balance + active song
+    const ctxLines: string[] = [];
+    ctxLines.push(`Project: "${projectTitle}"`);
+    if (activeSong) ctxLines.push(`Main song: "${activeSong.title}" by ${activeSong.artist}${activeSong.bpm ? ` (${activeSong.bpm} BPM)` : ""}`);
+    ctxLines.push(`Highlight length: ${formatTime(totalDuration)} (${filteredPicks.length} picks across ${segments.length} segments)`);
+    ctxLines.push(`Segments included: ${Array.from(includedChapters).join(", ")}`);
+    ctxLines.push(`Story balance: Romantikk ${balance.romantikk}%, Familie ${balance.familie}%, Detaljer ${balance.detaljer}%, Emosjon ${balance.emosjon}%, Energi ${balance.energi}%`);
+    if (focusedPick) {
+      ctxLines.push(`Currently focused: shot#${focusedPick.index} (${focusedPick.chapter || "?"}) — ${focusedPick.durationSec.toFixed(2)}s, score ${focusedPick.score.toFixed(3)}`);
+    }
+    const systemPrompt = `Du er Claude, en AI Creative Director som hjelper en wedding-film-redaktør lage emosjonelle highlights. Du følger redaktørens story-tankegang — IKKE bins/folders. Du gir korte, konkrete forslag (1-3 setninger) om pacing, emosjonell flyt, og narrativ struktur. Skriv på norsk. Du er kreativ partner, ikke chatbot.
+
+Project-kontekst:
+${ctxLines.join("\n")}`;
+    try {
+      const resp: any = await invoke("claude_chat", {
+        messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
+        system: systemPrompt,
+        model: "claude-opus-4-7",
+        maxTokens: 600,
+      });
+      // Anthropic response: { content: [{ type: "text", text: "..." }], ... }
+      const blocks = resp?.content ?? [];
+      const text = blocks
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("\n")
+        .trim();
+      if (text) {
+        setChatMessages([...nextMessages, { role: "assistant", content: text }]);
+      } else {
+        setChatError("Claude svarte tomt — prøv igjen.");
+      }
+    } catch (e: any) {
+      setChatError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil ved Claude-kall"));
+    } finally {
+      setChatBusy(false);
+      // Scroll chat to bottom after render
+      setTimeout(() => {
+        chatScrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" });
+      }, 50);
+    }
+  }, [chatBusy, chatMessages, projectTitle, activeSong, totalDuration, filteredPicks.length, segments.length, includedChapters, balance, focusedPick]);
 
   if (loadError) {
     return (
@@ -520,7 +596,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
               {activeSong ? `${activeSong.title} – ${activeSong.artist}` : "(Ingen sang valgt)"}
             </div>
             <div className="ce-audio-wave">
-              <FakeWaveform bars={120} active={isPlaying} />
+              <RealWaveform
+                wavPath={songWavPath(activeSong?.title, activeSong?.artist)}
+                bars={120}
+                active={isPlaying}
+              />
             </div>
           </div>
 
@@ -586,13 +666,47 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
 
           <div className="ce-claude-chat">
             <div className="ce-claude-chat-title">Chat med Claude</div>
-            <div className="ce-claude-msg ce-claude-msg-user">
-              Hva kan jeg gjøre for å få en sterkere avslutning?
+            <div className="ce-claude-msgs" ref={chatScrollRef}>
+              {chatMessages.length === 0 && (
+                <div className="ce-claude-empty">
+                  Spør Claude om historiens flyt, pacing, eller alternative cuts.
+                </div>
+              )}
+              {chatMessages.map((m, i) => (
+                <div key={i} className={`ce-claude-msg ce-claude-msg-${m.role}`}>
+                  {m.content}
+                </div>
+              ))}
+              {chatBusy && (
+                <div className="ce-claude-msg ce-claude-msg-assistant ce-claude-msg-typing">
+                  <span /><span /><span />
+                </div>
+              )}
+              {chatError && (
+                <div className="ce-claude-msg ce-claude-msg-error">
+                  ⚠ {chatError}
+                </div>
+              )}
             </div>
-            <div className="ce-claude-msg ce-claude-msg-assistant">
-              Jeg foreslår å avslutte med et detaljklipp eller en rolig wide shot av dere to. Det gir en fin, emosjonell avrunding.
-            </div>
-            <input className="ce-claude-input" placeholder="Skriv melding til Claude …" />
+            <form
+              className="ce-claude-input-row"
+              onSubmit={(e) => { e.preventDefault(); sendChat(chatInput); }}
+            >
+              <input
+                className="ce-claude-input"
+                placeholder={chatBusy ? "Claude tenker…" : "Skriv melding til Claude …"}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                disabled={chatBusy}
+              />
+              <button
+                type="submit"
+                className="ce-claude-send"
+                disabled={chatBusy || !chatInput.trim()}
+              >
+                ▸
+              </button>
+            </form>
             <div className="ce-claude-warning">
               Claude kan ta feil. Dobbeltsjekk viktige detaljer.
             </div>
@@ -681,11 +795,10 @@ function WizardStep({ n, label, active, done, onClick }: {
 }
 
 function FakeWaveform({ bars, active }: { bars: number; active: boolean }) {
-  // Phase 1 placeholder waveform — Phase 4 replaces with real Web-Audio FFT.
+  // Fallback waveform when no real song WAV is loaded (sine-modulated).
   const heights = useMemo(() => {
     const arr = [];
     for (let i = 0; i < bars; i++) {
-      // Pseudo-random but stable — based on i with sine modulation
       const v = Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.13) * 0.6) + 0.2;
       arr.push(v);
     }
@@ -694,11 +807,67 @@ function FakeWaveform({ bars, active }: { bars: number; active: boolean }) {
   return (
     <div className="ce-wave-bars">
       {heights.map((h, i) => (
-        <div
-          key={i}
-          className={`ce-wave-bar ${active ? "active" : ""}`}
-          style={{ height: `${h * 100}%` }}
-        />
+        <div key={i} className={`ce-wave-bar ${active ? "active" : ""}`}
+             style={{ height: `${h * 100}%` }} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * RealWaveform — loads the song WAV via fetch + WebAudio API, decodes it,
+ * and reduces to N peak-amplitude bars. Phase 2: real waveform render.
+ */
+function RealWaveform({ wavPath, bars, active }: {
+  wavPath?: string; bars: number; active: boolean;
+}) {
+  const [peaks, setPeaks] = useState<number[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!wavPath) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(convertFileSrc(wavPath));
+        const buf = await resp.arrayBuffer();
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audio = await ctx.decodeAudioData(buf);
+        // Reduce to N peak-amplitudes (max-abs per chunk)
+        const channel = audio.getChannelData(0);
+        const samplesPerBar = Math.floor(channel.length / bars);
+        const arr: number[] = [];
+        let maxPeak = 0;
+        for (let i = 0; i < bars; i++) {
+          let m = 0;
+          const start = i * samplesPerBar;
+          const end = Math.min(start + samplesPerBar, channel.length);
+          for (let j = start; j < end; j++) {
+            const v = Math.abs(channel[j]);
+            if (v > m) m = v;
+          }
+          arr.push(m);
+          if (m > maxPeak) maxPeak = m;
+        }
+        // Normalize to 0..1
+        const normalized = maxPeak > 0 ? arr.map(v => v / maxPeak) : arr;
+        if (!cancelled) setPeaks(normalized);
+        try { ctx.close(); } catch { /* noop */ }
+      } catch (e: any) {
+        if (!cancelled) setError(typeof e === "string" ? e : (e?.message ?? "Failed to decode WAV"));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wavPath, bars]);
+
+  if (error || !peaks) {
+    return <FakeWaveform bars={bars} active={active} />;
+  }
+  return (
+    <div className="ce-wave-bars">
+      {peaks.map((h, i) => (
+        <div key={i} className={`ce-wave-bar ${active ? "active" : ""}`}
+             style={{ height: `${Math.max(8, h * 100)}%` }} />
       ))}
     </div>
   );
