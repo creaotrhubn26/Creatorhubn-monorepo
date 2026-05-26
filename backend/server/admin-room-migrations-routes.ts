@@ -100,12 +100,32 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
     // Token-pathen lar GitHub Actions trigge migrate automatisk ved push
     // uten å være logget inn som produkteier.
     const triggerHeader = req.headers["x-migrate-trigger-token"];
-    const triggerToken = typeof triggerHeader === "string" ? triggerHeader : "";
-    const expectedToken = process.env.MIGRATE_TRIGGER_TOKEN ?? "";
+    // Trim both sides: a stray trailing newline in the GitHub secret or the
+    // Render env var would otherwise fail an exact string compare and surface
+    // as a misleading "Innlogging kreves".
+    const triggerToken = (typeof triggerHeader === "string" ? triggerHeader : "").trim();
+    const expectedToken = (process.env.MIGRATE_TRIGGER_TOKEN ?? "").trim();
 
     let actorEmail = "system";
     let actorUserId = "ci";
-    if (expectedToken && triggerToken && triggerToken === expectedToken) {
+    if (triggerToken) {
+      // CI path: a trigger token was presented. Validate explicitly so a
+      // mismatch gives a clear reason instead of falling through to the
+      // session check (which returns the confusing "Innlogging kreves").
+      if (!expectedToken) {
+        res.status(503).json({
+          error:
+            "MIGRATE_TRIGGER_TOKEN er ikke konfigurert på backend. Sett env-variabelen på Render til samme verdi som GitHub-secret-en.",
+        });
+        return;
+      }
+      if (triggerToken !== expectedToken) {
+        res.status(401).json({
+          error:
+            "Ugyldig migrate-trigger-token: GitHub-secret MIGRATE_TRIGGER_TOKEN matcher ikke backend-env-variabelen.",
+        });
+        return;
+      }
       actorEmail = (typeof req.headers["x-migrate-trigger-source"] === "string"
         ? req.headers["x-migrate-trigger-source"] as string
         : "github-actions");
