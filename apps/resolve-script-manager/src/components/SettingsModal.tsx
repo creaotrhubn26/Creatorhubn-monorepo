@@ -24,6 +24,7 @@ interface Settings {
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
   R2_MODELS_BUCKET: string;
+  POST_AGENT_DISABLED_SIGNALS: string;
   defaultDeliveryTarget: string;
   defaultOutputFolder: string;
   defaultWhisperModel: string;
@@ -51,6 +52,7 @@ const DEFAULT_SETTINGS: Settings = {
   R2_ACCESS_KEY_ID: "",
   R2_SECRET_ACCESS_KEY: "",
   R2_MODELS_BUCKET: "ml-models",
+  POST_AGENT_DISABLED_SIGNALS: "",
   defaultDeliveryTarget: "wedding",
   defaultOutputFolder: "",
   defaultWhisperModel: "base",
@@ -83,6 +85,7 @@ export function settingsToEnvVars(settings: Settings): Record<string, string> {
     R2_ACCESS_KEY_ID: settings.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: settings.R2_SECRET_ACCESS_KEY,
     R2_MODELS_BUCKET: settings.R2_MODELS_BUCKET,
+    POST_AGENT_DISABLED_SIGNALS: settings.POST_AGENT_DISABLED_SIGNALS,
   };
 }
 
@@ -240,6 +243,21 @@ export function SettingsModal({ onClose }: Props) {
               value={settings.defaultOutputFolder}
               onChange={(e) => update("defaultOutputFolder", e.target.value)}
             />
+          </div>
+          <div className="field">
+            <label>Skru av signaler (komma-separert)</label>
+            <input
+              type="text"
+              placeholder="e.g. florence,action,depth,open_vocab"
+              value={settings.POST_AGENT_DISABLED_SIGNALS}
+              onChange={(e) => update("POST_AGENT_DISABLED_SIGNALS", e.target.value)}
+            />
+            <div className="settings-help">
+              Skip enkelt-signaler i extract_highlight_from_film. Tunge signaler:
+              florence (~2s/shot), open_vocab (~3-5s/shot), action (~1-2s/shot),
+              depth (~1s/shot). Auto-skip ved genre-weight=0 — denne tvinger
+              skip uavhengig av genre.
+            </div>
           </div>
           <div className="field">
             <label>WhisperX-modell</label>

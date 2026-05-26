@@ -255,23 +255,58 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # ─── Signal pipeline (#15–#25) ─────────────────────────────────────────
     chapter_labels: dict[int, str] = {}
     signal_outputs: dict[str, dict[int, float]] = {}
+
+    # Opt-out controls — bruker kan skru av enkelt-signaler per kjøring eller
+    # via Settings. Vekt=0 i genre_weights betyr automatisk skip (signalet
+    # bidrar 0 til score, så det er bortkastet tid å kjøre det).
+    raw_disabled = params.get("disabledSignals") or os.environ.get("POST_AGENT_DISABLED_SIGNALS") or ""
+    if isinstance(raw_disabled, str):
+        disabled_signals: set[str] = {s.strip() for s in raw_disabled.split(",") if s.strip()}
+    elif isinstance(raw_disabled, list):
+        disabled_signals = {str(s).strip() for s in raw_disabled if str(s).strip()}
+    else:
+        disabled_signals = set()
+
     if use_signals:
         bridge.progress(55, 100, "Running advanced signals…")
         avail = _signals_pkg.available_signals(logger=lambda m: bridge.log(f"  {m}"))
+        weights = genre_cfg["weights"]
+
+        # Filter: respect (a) explicit opt-out via disabledSignals param,
+        # and (b) genre-weight == 0 (auto-skip — no contribution to score).
+        # 'chapters' is special: even if weight == 0 we run it because
+        # chapter-labels are needed for chapter-balanced picking later.
+        skipped_signals: list[tuple[str, str]] = []
+        active_signals: dict = {}
+        for sig_name, mod in avail.items():
+            if sig_name in disabled_signals:
+                skipped_signals.append((sig_name, "user-disabled"))
+                continue
+            if sig_name != "chapters" and weights.get(sig_name, 0.0) == 0.0:
+                skipped_signals.append((sig_name, f"weight=0 for genre={genre_name}"))
+                continue
+            active_signals[sig_name] = mod
+        if skipped_signals:
+            bridge.log(
+                f"Skipping {len(skipped_signals)} signals: "
+                + ", ".join(f"{n} ({r})" for n, r in skipped_signals)
+            )
+
         # Compute chapter labels FIRST (used for representation guarantee below)
-        if "chapters" in avail:
+        if "chapters" in active_signals:
             try:
-                chapters_mod = avail["chapters"]
+                chapters_mod = active_signals["chapters"]
                 chapter_labels = chapters_mod.compute_chapter_labels(
                     ffmpeg, video_path, shots, duration,
-                    n_chapters=3 if genre_name == "wedding" else 3,
+                    n_chapters=6 if genre_name in (
+                        "south_asian_wedding", "pakistani_wedding",
+                        "indian_wedding", "desi_wedding") else 3,
                 )
             except Exception as exc:  # noqa: BLE001
                 bridge.warn(f"chapters signal failed: {exc}")
         # Run remaining signals
         shot_tuples = [(s["startSec"], s["endSec"]) for s in shot_scores]
-        weights = genre_cfg["weights"]
-        for sig_name, mod in avail.items():
+        for sig_name, mod in active_signals.items():
             if sig_name == "chapters":
                 continue
             try:

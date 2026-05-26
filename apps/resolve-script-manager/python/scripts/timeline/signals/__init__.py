@@ -76,6 +76,9 @@ REGISTRY: tuple[SignalSpec, ...] = (
     {"name": "music_features", "module": "music_features",
      "description": "MERT music-encoder for global mood/genre context",
      "requires": ("transformers", "torch", "librosa",)},
+    {"name": "florence", "module": "florence",
+     "description": "Florence-2 multi-task vision: caption-derived scoring",
+     "requires": ("transformers", "torch", "Pillow",)},
 )
 
 

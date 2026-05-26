@@ -92,6 +92,7 @@ CORPORATE: GenreConfig = {
         "action":       0.05,
         "depth":        0.08,
         "music_features": 0.0,
+        "florence": 0.10,
     },
     "chapter_targets": None,
 }
@@ -128,6 +129,7 @@ SOUTH_ASIAN_WEDDING: GenreConfig = {
         "action": 0.14,       # bhangra/garba/dance-actions
         "depth": 0.08,
         "music_features": 0.0,
+        "florence": 0.10,
     },
     "chapter_targets": {
         # Multi-day-pakke. Hver event er en egen Resolve-timeline om
@@ -161,6 +163,7 @@ DOCUMENTARY: GenreConfig = {
         "action":       0.10,
         "depth":        0.05,
         "music_features": 0.0,
+        "florence": 0.10,
     },
     "chapter_targets": None,
 }

@@ -1151,8 +1151,9 @@
         {"key": "maxDurationSec", "label": "Maximum highlight duration (sec)", "type": "number", "required": false},
         {"key": "startOffsetSec", "label": "Start from second N (0 = beginning)", "type": "number", "required": false},
         {"key": "endOffsetSec", "label": "End at second N (0 = end of file)", "type": "number", "required": false},
-        {"key": "genre", "label": "Genre (wedding / music_video / corporate / documentary)", "type": "text", "required": false},
-        {"key": "useSignals", "label": "Use advanced ML signals (default: yes)", "type": "boolean", "required": false}
+        {"key": "genre", "label": "Genre (wedding / south_asian_wedding / music_video / corporate / documentary)", "type": "text", "required": false},
+        {"key": "useSignals", "label": "Use advanced ML signals (default: yes)", "type": "boolean", "required": false},
+        {"key": "disabledSignals", "label": "Disable specific signals (CSV: florence,depth,action,...)", "type": "text", "required": false}
       ],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",
@@ -1212,6 +1213,63 @@
       "resolvePageDependency": null,
       "riskLevel": "none",
       "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "denoise_audio_neural",
+      "name": "Denoise audio (FullSubNet+ neural, R2 weights)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/denoise_audio_neural.py",
+      "description": "Neural speech-enhancement via FullSubNet+ (full-band + sub-band fusion). Renere enn ffmpeg afftdn på outdoor-wind + crowd-bleed. Krever R2 + git clone reference repo. Auto-fallback til ffmpeg afftdn hvis ikke installert.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input audio/video", "type": "file", "required": true},
+        {"key": "targetLufs", "label": "Target LUFS (default -16)", "type": "number", "required": false},
+        {"key": "forceFfmpegFallback", "label": "Tving ffmpeg-fallback", "type": "boolean", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "generate_narrator_voiceover",
+      "name": "Generate narrator voiceover (XTTS-v2 multilingual)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/generate_narrator_voiceover.py",
+      "description": "Voice-cloned narrator-voiceover på 17 språk (NO/EN/UR-via-HI/AR/etc) via Coqui XTTS-v2. Cloner stemme fra 6-sek reference. Kan auto-muxe over background-video. Krever pip install TTS (~3GB).",
+      "requiredInputs": [
+        {"key": "text", "label": "Narrator-script (inline)", "type": "text", "required": false},
+        {"key": "scriptPath", "label": "ELLER path til script-fil", "type": "file", "required": false},
+        {"key": "referenceAudio", "label": "Reference WAV (6+ sek stemme å clone)", "type": "file", "required": true},
+        {"key": "language", "label": "Language (no/en/ar/hi/...)", "type": "text", "required": false},
+        {"key": "overlayVideo", "label": "Optional: background-video å muxe over", "type": "file", "required": false},
+        {"key": "outputPath", "label": "Output path (blank = auto)", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "experimental",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "remove_passersby",
+      "name": "Remove passersby (SAM2 + ProPainter inpaint)",
+      "category": "video",
+      "scriptPath": "scripts/video/remove_passersby.py",
+      "description": "Fjern distraktive folk fra wedding-background. SAM2 propagerer mask fra ett prompt-frame, ProPainter inpaint'er. ~14 min per 5-sek shot på Apple Silicon. Krever R2 + git clone ProPainter repo.",
+      "requiredInputs": [
+        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
+        {"key": "promptFrameSec", "label": "Frame-time å markere (default 0.5s)", "type": "number", "required": false},
+        {"key": "bbox", "label": "Bbox 'x1,y1,x2,y2' rundt subjekt", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "experimental",
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
