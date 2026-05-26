@@ -175,6 +175,66 @@ function formatTime(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// ─── Dynamic Mood Engine ───
+// Live Narrative Simulation fra UX-visjonen: video-preview justerer color/
+// blur/contrast LIVE basert på focused pick's signals + chapter. Returns
+// {filter, label, gradient} for current pick.
+type Mood = { filter: string; label: string; accent: string };
+
+function moodForPick(pick: Pick | undefined): Mood {
+  if (!pick || !pick.signals) {
+    return { filter: "none", label: "Natural", accent: "#8674a8" };
+  }
+  const s = pick.signals;
+  const emotional = s.emotional_peak ?? 0;
+  const action    = s.action ?? 0;
+  const slowmo    = s.slowmo ?? 0;
+  const faces     = s.faces ?? 0;
+  const bokeh     = s.bokeh ?? 0;
+  const score     = pick.score ?? 0;
+  const chapter   = (pick.chapter || "").toLowerCase();
+
+  // Chapter-driven base mood
+  let label = "Cinematic";
+  let accent = "#a030c0";
+  let satBoost = 100;   // %
+  let contrastBoost = 100;
+  let brightnessBoost = 100;
+  let blurPx = 0;
+  let hueShift = 0;     // deg
+
+  if (chapter === "mehndi") {
+    label = "Warm Setup"; accent = "#f0a500";
+    satBoost = 110; contrastBoost = 102; brightnessBoost = 105; hueShift = 10;
+  } else if (chapter === "haldi") {
+    label = "Golden Hour"; accent = "#fbbf24";
+    satBoost = 125; contrastBoost = 105; brightnessBoost = 110; hueShift = 20;
+  } else if (chapter === "sangeet" || chapter === "dance") {
+    label = "Vivid Dance"; accent = "#c850e0";
+    satBoost = 130; contrastBoost = 115; brightnessBoost = 100;
+  } else if (chapter === "nikkah" || chapter === "ceremony" || chapter === "vows") {
+    label = "Sacred"; accent = "#6e3fc7";
+    satBoost = 95; contrastBoost = 108; brightnessBoost = 100; hueShift = -5;
+  } else if (chapter === "reception" || chapter === "walima") {
+    label = "Reception Glow"; accent = "#ef4f6f";
+    satBoost = 120; contrastBoost = 112; brightnessBoost = 105;
+  } else if (chapter === "portraits") {
+    label = "Portrait"; accent = "#a030c0";
+    satBoost = 105; contrastBoost = 107; brightnessBoost = 102; blurPx = 0.3;
+  }
+
+  // Per-signal modulation (live narrative simulation responds to actual data)
+  if (emotional > 0.3) { satBoost += emotional * 10; contrastBoost += emotional * 8; }
+  if (action > 0.3)    { satBoost += action * 15; contrastBoost += action * 10; }
+  if (slowmo > 0.5)    { blurPx += slowmo * 0.6; satBoost -= slowmo * 5; }
+  if (bokeh > 0.5)     { blurPx += bokeh * 0.3; }
+  if (faces > 0.5)     { brightnessBoost += faces * 3; }
+  if (score < 0.3)     { satBoost -= 10; brightnessBoost -= 5; } // weak picks → dim
+
+  const filter = `saturate(${satBoost.toFixed(0)}%) contrast(${contrastBoost.toFixed(0)}%) brightness(${brightnessBoost.toFixed(0)}%) hue-rotate(${hueShift}deg) blur(${blurPx.toFixed(2)}px)`;
+  return { filter, label, accent };
+}
+
 // Mirror of identify_and_download_source_songs.safe_query() in Python.
 // Used to derive the expected WAV filename from title + artist.
 function safeQuery(s: string): string {
@@ -372,6 +432,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   // When hover is active, play that segment; else play focused
   const activePick = (hoveredPickIdx != null && filteredPicks[hoveredPickIdx]) || filteredPicks[focusedPickIdx];
   const focusedPick = activePick;
+  // Live Narrative Simulation — mood derived from focused pick + chapter
+  const mood = useMemo(() => moodForPick(focusedPick), [focusedPick]);
 
   // ─── Video playback: seek to focused pick + loop within range ───
   useEffect(() => {
@@ -953,6 +1015,10 @@ ${ctxLines.join("\n")}`;
               ref={videoRef}
               src={videoSrc}
               className="ce-preview-video"
+              style={{
+                filter: mood.filter,
+                transition: "filter 0.6s cubic-bezier(.4,0,.2,1)",
+              }}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               playsInline
@@ -961,6 +1027,17 @@ ${ctxLines.join("\n")}`;
             <div className="ce-preview-overlay">
               <div className="ce-preview-tag">
                 <span className="ce-live-dot" /> Live preview
+              </div>
+              <div
+                className="ce-mood-tag"
+                style={{
+                  background: `linear-gradient(135deg, ${mood.accent}40, ${mood.accent}20)`,
+                  borderColor: `${mood.accent}80`,
+                  color: mood.accent,
+                }}
+              >
+                <span className="ce-mood-dot" style={{ background: mood.accent }} />
+                {mood.label}
               </div>
             </div>
             <div className="ce-preview-controls">

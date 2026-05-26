@@ -415,7 +415,34 @@
 .ce-preview-overlay {
   position: absolute;
   top: 12px; left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   pointer-events: none;
+}
+
+.ce-mood-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background-clip: padding-box;
+  transition: all 0.6s cubic-bezier(.4,0,.2,1);
+}
+.ce-mood-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px currentColor;
 }
 .ce-preview-tag {
   display: inline-flex;
