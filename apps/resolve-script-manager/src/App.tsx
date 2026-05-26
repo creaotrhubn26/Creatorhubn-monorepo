@@ -336,13 +336,14 @@ export default function App() {
         setHealth(resultEvent.value as HealthStatus);
       }
     }
-    // Auto-open the highlight-review UI when extract_highlight_from_film
-    // returns reviewMode + picksPath
+    // Auto-open the Creative Editor (Phase 1-3 flagship UI) when
+    // extract_highlight_from_film returns reviewMode + picksPath.
+    // Legacy HighlightReviewView is still available via direct invocation.
     if (summary.script_id === "extract_highlight_from_film") {
       const resultEvent = summary.events.find((e) => e.type === "result");
       const r = resultEvent?.value as { reviewMode?: boolean; picksPath?: string } | undefined;
       if (r?.reviewMode && r.picksPath) {
-        setHighlightReviewPath(r.picksPath);
+        setCreativeEditorPath(r.picksPath);
       }
     }
   }, [scriptsById]);

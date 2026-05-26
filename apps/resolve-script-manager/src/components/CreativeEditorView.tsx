@@ -31,6 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { executeScript } from "../api";
 import {
   IconPlay,
   IconMusic,
@@ -246,6 +247,15 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [flowError, setFlowError] = useState<string | null>(null);
   const [hoveredFlowPickIdx, setHoveredFlowPickIdx] = useState<number | null>(null);
 
+  // Export state
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportResult, setExportResult] = useState<{ outputPath: string; durationSec: number } | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Trim state — adjusts focused pick's startSec/endSec via local override
+  const [pickOverrides, setPickOverrides] = useState<Record<number, { startSec?: number; endSec?: number }>>({});
+  const [trimMode, setTrimMode] = useState(false);
+
   // ─── Load picks + advisor ───
   useEffect(() => {
     if (!picksPath) { setLoadError("No picks path provided"); return; }
@@ -277,9 +287,16 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const segments = useMemo(() => payload ? groupBySegments(payload.picks) : [], [payload]);
   const filteredPicks = useMemo(() => {
     if (!payload) return [];
-    const base = payload.picks
+    // Apply local trim-overrides first, then filter + sort
+    const withOverrides = payload.picks.map(p => {
+      const o = pickOverrides[p.index];
+      if (!o) return p;
+      const startSec = o.startSec ?? p.startSec;
+      const endSec = o.endSec ?? p.endSec;
+      return { ...p, startSec, endSec, durationSec: Math.max(0.1, endSec - startSec) };
+    });
+    const base = withOverrides
       .filter((p) => includedChapters.has((p.chapter || "details").toLowerCase()));
-    // If an alternate edit order is active, sort by that order; else chronological.
     if (activePickOrder) {
       const orderMap = new Map(activePickOrder.map((idx, i) => [idx, i]));
       return base
@@ -287,7 +304,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
         .sort((a, b) => (orderMap.get(a.index) ?? 0) - (orderMap.get(b.index) ?? 0));
     }
     return base.sort((a, b) => a.startSec - b.startSec);
-  }, [payload, includedChapters, activePickOrder]);
+  }, [payload, includedChapters, activePickOrder, pickOverrides]);
   const balance = useMemo(() => computeHistorybalance(filteredPicks), [filteredPicks]);
   const totalDuration = useMemo(() => filteredPicks.reduce((s, p) => s + p.durationSec, 0), [filteredPicks]);
   const songs = advisor?.uniqueSongs ?? [];
@@ -428,6 +445,44 @@ Du MÅ kalle generate_alternate_edit-verktøyet med en re-ordned pickOrder + rat
       setAltBusy(null);
     }
   }, [altBusy, filteredPicks, projectTitle, activeSong]);
+
+  // ─── Eksport: kall assemble_highlight_with_music for å render MP4 ───
+  const handleExport = useCallback(async () => {
+    if (exportBusy || !payload) return;
+    setExportBusy(true);
+    setExportError(null);
+    setExportResult(null);
+    try {
+      const safeTitle = projectTitle.replace(/[^\w\s-]/g, "").trim() || "Highlight";
+      const outputPath = `~/Desktop/${safeTitle}.mp4`;
+      const summary = await executeScript("assemble_highlight_with_music", {
+        videoPath: payload.sourceVideo,
+        outputPath,
+        musicStrategy: "main+climax",
+      }, false);
+      const resultEvent = summary.events.find(e => e.type === "result");
+      const r = resultEvent?.value as { outputPath?: string; durationSec?: number } | undefined;
+      if (r?.outputPath) {
+        setExportResult({ outputPath: r.outputPath, durationSec: r.durationSec ?? 0 });
+      } else {
+        // Look for error in events
+        const errEvent = summary.events.find(e => e.type === "error");
+        throw new Error((errEvent?.value as any)?.message ?? "Export failed (no output path)");
+      }
+    } catch (e: any) {
+      setExportError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil"));
+    } finally {
+      setExportBusy(false);
+    }
+  }, [exportBusy, payload, projectTitle]);
+
+  // ─── Trim: update local override for focused pick ───
+  const applyTrim = useCallback((pickIndex: number, startSec?: number, endSec?: number) => {
+    setPickOverrides(prev => ({
+      ...prev,
+      [pickIndex]: { ...prev[pickIndex], startSec, endSec },
+    }));
+  }, []);
 
   // ─── AI Attention Tracking: Claude evaluates narrative-flow per pick ───
   const analyzeNarrativeFlow = useCallback(async () => {
@@ -630,7 +685,13 @@ ${ctxLines.join("\n")}`;
         </div>
         <div className="ce-actions">
           <button>↗ Del</button>
-          <button className="primary">+ Eksporter</button>
+          <button
+            className="primary"
+            onClick={handleExport}
+            disabled={exportBusy || !payload}
+          >
+            {exportBusy ? "⏳ Rendrer …" : "+ Eksporter"}
+          </button>
         </div>
       </header>
 
@@ -840,13 +901,42 @@ ${ctxLines.join("\n")}`;
 
           {/* Toolbar */}
           <div className="ce-toolbar">
-            <ToolButton icon="✂" label="Trim" />
+            <ToolButton icon="✂" label="Trim" active={trimMode} onClick={() => setTrimMode(v => !v)} />
             <ToolButton icon="⚙" label="Juster" />
             <ToolButton icon="◇" label="Overganger" />
             <ToolButton icon="🎨" label="Farge" />
             <ToolButton icon="📐" label="Stabilisering" />
             <ToolButton icon="…" label="Mer" />
           </div>
+
+          {/* Trim panel — appears below toolbar when Trim is active */}
+          {trimMode && focusedPick && (
+            <TrimPanel
+              pick={focusedPick}
+              originalPick={payload.picks.find(p => p.index === focusedPick.index)}
+              onChange={(s, e) => applyTrim(focusedPick.index, s, e)}
+              onReset={() => setPickOverrides(prev => {
+                const next = { ...prev };
+                delete next[focusedPick.index];
+                return next;
+              })}
+            />
+          )}
+
+          {/* Export result/error banner */}
+          {exportResult && (
+            <div className="ce-export-result">
+              ✅ Highlight rendret ({formatTime(exportResult.durationSec)}):
+              <code>{exportResult.outputPath}</code>
+              <button onClick={() => setExportResult(null)}>×</button>
+            </div>
+          )}
+          {exportError && (
+            <div className="ce-export-error">
+              ⚠ Eksport feilet: {exportError}
+              <button onClick={() => setExportError(null)}>×</button>
+            </div>
+          )}
         </main>
 
         {/* ─── Right: Claude assistant ─── */}
@@ -1028,12 +1118,72 @@ function BalanceRow({ color, icon, label, pct }: { color: string; icon: string; 
   );
 }
 
-function ToolButton({ icon, label }: { icon: string; label: string }) {
+function ToolButton({ icon, label, active = false, onClick }: {
+  icon: string; label: string; active?: boolean; onClick?: () => void;
+}) {
   return (
-    <button className="ce-tool">
+    <button className={`ce-tool ${active ? "active" : ""}`} onClick={onClick}>
       <span className="ce-tool-icon">{icon}</span>
       <span className="ce-tool-label">{label}</span>
     </button>
+  );
+}
+
+function TrimPanel({ pick, originalPick, onChange, onReset }: {
+  pick: Pick;
+  originalPick?: Pick;
+  onChange: (startSec?: number, endSec?: number) => void;
+  onReset: () => void;
+}) {
+  // Bounds: allow ±50% expansion from original pick range
+  const orig = originalPick ?? pick;
+  const minStart = Math.max(0, orig.startSec - orig.durationSec * 0.5);
+  const maxEnd = orig.endSec + orig.durationSec * 0.5;
+  const [start, setStart] = useState(pick.startSec);
+  const [end, setEnd] = useState(pick.endSec);
+
+  useEffect(() => { setStart(pick.startSec); setEnd(pick.endSec); }, [pick.index, pick.startSec, pick.endSec]);
+
+  const commit = () => onChange(start, end);
+
+  return (
+    <div className="ce-trim-panel">
+      <div className="ce-trim-header">
+        <strong>Trim shot#{pick.index}</strong>
+        <span className="ce-trim-dur">{(end - start).toFixed(2)}s</span>
+      </div>
+      <div className="ce-trim-row">
+        <label>Start</label>
+        <input
+          type="range"
+          min={minStart}
+          max={end - 0.1}
+          step={0.01}
+          value={start}
+          onChange={e => setStart(parseFloat(e.target.value))}
+          onMouseUp={commit}
+          onTouchEnd={commit}
+        />
+        <span className="ce-trim-val">{start.toFixed(2)}s</span>
+      </div>
+      <div className="ce-trim-row">
+        <label>Slutt</label>
+        <input
+          type="range"
+          min={start + 0.1}
+          max={maxEnd}
+          step={0.01}
+          value={end}
+          onChange={e => setEnd(parseFloat(e.target.value))}
+          onMouseUp={commit}
+          onTouchEnd={commit}
+        />
+        <span className="ce-trim-val">{end.toFixed(2)}s</span>
+      </div>
+      <div className="ce-trim-actions">
+        <button className="ce-trim-reset" onClick={onReset}>Tilbakestill original</button>
+      </div>
+    </div>
   );
 }
 

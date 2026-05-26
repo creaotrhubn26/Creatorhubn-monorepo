@@ -693,7 +693,119 @@
   border-color: #2c1860;
   color: white;
 }
+.ce-tool.active {
+  background: rgba(160, 48, 192, 0.20);
+  border-color: rgba(160, 48, 192, 0.50);
+  color: white;
+}
 .ce-tool-icon { font-size: 13px; }
+
+/* Trim panel */
+.ce-trim-panel {
+  background: rgba(26, 13, 69, 0.5);
+  border: 1px solid rgba(160, 48, 192, 0.30);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ce-trim-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.ce-trim-dur {
+  background: rgba(160, 48, 192, 0.15);
+  color: #c850e0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ce-trim-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 60px;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+}
+.ce-trim-row label { color: #b8a8d8; }
+.ce-trim-row input[type="range"] {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  background: rgba(26, 13, 69, 0.6);
+  border-radius: 2px;
+  outline: none;
+}
+.ce-trim-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #a030c0;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px #0a0518;
+}
+.ce-trim-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #cca0e8;
+  font-size: 11px;
+}
+.ce-trim-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.ce-trim-reset {
+  background: transparent;
+  border: 1px solid #2c1860;
+  color: #cca0e8;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ce-trim-reset:hover { background: rgba(160, 48, 192, 0.10); }
+
+/* Export result/error banners */
+.ce-export-result, .ce-export-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.ce-export-result {
+  background: rgba(74, 212, 138, 0.10);
+  border: 1px solid rgba(74, 212, 138, 0.30);
+  color: #cce5d4;
+}
+.ce-export-error {
+  background: rgba(239, 79, 111, 0.10);
+  border: 1px solid rgba(239, 79, 111, 0.30);
+  color: #ef9fb0;
+}
+.ce-export-result code {
+  background: rgba(74, 212, 138, 0.10);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  word-break: break-all;
+}
+.ce-export-result button, .ce-export-error button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  margin-left: auto;
+  font-size: 16px;
+  padding: 0 4px;
+}
 
 /* ─── Claude assistant ─── */
 .ce-claude {
