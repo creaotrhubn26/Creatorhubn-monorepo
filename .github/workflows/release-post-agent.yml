@@ -74,14 +74,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build -- --target ${{ matrix.target }}
 
-      # Apple Developer ID codesign + notarize. Only runs when APPLE_CERTIFICATE
-      # secret is set — without it the .app stays "unidentified developer".
-      # When you have a cert: add APPLE_CERTIFICATE (base64 .p12) +
-      # APPLE_CERTIFICATE_PASSWORD + APPLE_SIGNING_IDENTITY + APPLE_ID +
-      # APPLE_PASSWORD + APPLE_TEAM_ID as repo secrets, then replace this
-      # block's env-removal with a conditional re-run of `tauri build`.
-      - name: (skipped) Apple codesign — no APPLE_CERTIFICATE secret
-        if: ${{ secrets.APPLE_CERTIFICATE == '' }}
+      # Apple Developer ID codesign + notarize. Currently NO Apple cert is
+      # configured, so the .app stays "unidentified developer" (Gatekeeper
+      # shows a warning on first launch). To enable codesigning later, add
+      # APPLE_CERTIFICATE (base64 .p12) + APPLE_CERTIFICATE_PASSWORD +
+      # APPLE_SIGNING_IDENTITY + APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID
+      # as repo secrets, then add an env: block back to the Build step.
+      # See apps/resolve-script-manager/RELEASE.md.
+      - name: Note — unsigned build
         run: |
           echo "::notice::App built UNSIGNED. Users will see Gatekeeper warning on first launch."
           echo "::notice::To enable codesigning, add APPLE_CERTIFICATE + related secrets — see RELEASE.md."
