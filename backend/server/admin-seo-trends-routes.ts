@@ -6,15 +6,17 @@ import * as schema from "../migrations/schema.js";
 export interface AdminSeoTrendsRoutesDeps {
   app: express.Application;
   db: NodePgDatabase<typeof schema>;
+  requireAdminSession: (req: any, res: any) => any;
 }
 
 export function setupAdminSeoTrendsRoutes(
   deps: AdminSeoTrendsRoutesDeps,
 ): void {
-  const { app, db } = deps;
+  const { app, db, requireAdminSession } = deps;
 
   // Profession Trends API - Real SEO and keyword trend data
   app.post("/api/admin/profession-trends", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const { profession, region } = req.body;
 
@@ -43,6 +45,7 @@ export function setupAdminSeoTrendsRoutes(
 
   // Apply SEO Fixes API - Store and track SEO optimization changes
   app.post("/api/admin/apply-seo-fixes", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const { profession, region, fixes } = req.body;
 
@@ -92,6 +95,7 @@ export function setupAdminSeoTrendsRoutes(
   });
 
   app.post("/api/admin/seo-projects", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const { domain, userId, targetKeywords, profession } = req.body;
 

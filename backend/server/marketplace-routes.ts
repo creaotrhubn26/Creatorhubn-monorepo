@@ -6,11 +6,12 @@ import * as schema from "../migrations/schema.js";
 
 export interface MarketplaceRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   db: NodePgDatabase<typeof schema>;
 }
 
 export function setupMarketplaceRoutes(deps: MarketplaceRoutesDeps): void {
-  const { app, db } = deps;
+  const { app, requireUserSession, db } = deps;
 
   app.get("/api/marketplace/stats", async (_req, res) => {
     try {
@@ -102,6 +103,7 @@ export function setupMarketplaceRoutes(deps: MarketplaceRoutesDeps): void {
   });
 
   app.post("/api/marketplace/apps/:appId/reviews", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const { appId } = req.params;
     const { userId, userName, rating, title, comment } = req.body || {};
 

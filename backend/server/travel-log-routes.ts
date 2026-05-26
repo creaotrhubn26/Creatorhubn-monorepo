@@ -3,12 +3,13 @@ import type { Pool } from "pg";
 
 export interface TravelLogRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   getPricingUserId: (req: any) => string | null;
 }
 
 export function setupTravelLogRoutes(deps: TravelLogRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, requireUserSession, pool, getPricingUserId } = deps;
 
   app.get("/api/travel-log", async (req, res) => {
     try {
@@ -54,6 +55,7 @@ export function setupTravelLogRoutes(deps: TravelLogRoutesDeps): void {
   });
 
   app.post("/api/travel-log", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         userId,
@@ -106,6 +108,7 @@ export function setupTravelLogRoutes(deps: TravelLogRoutesDeps): void {
   });
 
   app.delete("/api/travel-log/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM travel_logs WHERE id = $1 RETURNING id",

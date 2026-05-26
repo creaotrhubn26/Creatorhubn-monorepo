@@ -4,13 +4,14 @@ import crypto from "crypto";
 
 export interface UniversalVendorShowcaseRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
 }
 
 export function setupUniversalVendorShowcaseRoutes(
   deps: UniversalVendorShowcaseRoutesDeps,
 ): void {
-  const { app, pool } = deps;
+  const { app, requireUserSession, pool } = deps;
 
   app.get(
     "/api/universal-vendor-showcase/:vendorType/:vendorName",
@@ -128,6 +129,7 @@ export function setupUniversalVendorShowcaseRoutes(
   );
 
   app.post("/api/universal-vendor-showcase/product", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const {
         vendorId,
@@ -195,6 +197,7 @@ export function setupUniversalVendorShowcaseRoutes(
   app.put(
     "/api/universal-vendor-showcase/product/:id",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       try {
         const { id } = req.params;
         const updates = req.body;
@@ -251,6 +254,7 @@ export function setupUniversalVendorShowcaseRoutes(
   app.delete(
     "/api/universal-vendor-showcase/product/:id",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       try {
         const { id } = req.params;
         await pool.query(
@@ -278,6 +282,7 @@ export function setupUniversalVendorShowcaseRoutes(
   app.patch(
     "/api/universal-vendor-showcase/product/:id/featured",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       try {
         const { id } = req.params;
         const result = await pool.query(
@@ -302,6 +307,7 @@ export function setupUniversalVendorShowcaseRoutes(
   app.post(
     "/api/universal-vendor-showcase/product/:id/download",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       try {
         const { id } = req.params;
         const { userId: downloadUserId, userAgent } = req.body;

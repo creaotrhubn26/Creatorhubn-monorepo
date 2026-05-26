@@ -4,6 +4,7 @@ import { readString } from "./_shared";
 
 export interface UserPreferencesRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   compatStoreGet: <T>(key: string) => Promise<T | null>;
   compatStoreSet: (key: string, value: unknown) => Promise<void>;
@@ -16,6 +17,7 @@ export function setupUserPreferencesRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     pool,
     compatStoreGet,
     compatStoreSet,
@@ -118,6 +120,7 @@ export function setupUserPreferencesRoutes(
   );
 
   app.post("/api/user-preferences", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const sessionId = readString(req.body?.sessionId);
     const profession =
       readString(req.body?.profession) || "photographer";

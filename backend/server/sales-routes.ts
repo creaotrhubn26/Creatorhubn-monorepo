@@ -4,6 +4,7 @@ import { readNumber, readString } from "./_shared";
 
 export interface SalesRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   resolveSalesLeadsStorageShape: () => Promise<"legacy" | "modern">;
   buildSalesLeadSelectQuery: (shape: "legacy" | "modern") => string;
@@ -18,6 +19,7 @@ export interface SalesRoutesDeps {
 export function setupSalesRoutes(deps: SalesRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     pool,
     resolveSalesLeadsStorageShape,
     buildSalesLeadSelectQuery,
@@ -207,6 +209,7 @@ export function setupSalesRoutes(deps: SalesRoutesDeps): void {
   });
 
   app.put("/api/sales/leads/:leadId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const leadId = readString(req.params.leadId);
       if (!leadId) {

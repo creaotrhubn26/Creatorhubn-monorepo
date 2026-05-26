@@ -9,6 +9,7 @@ export interface LegacySettingEntry {
 
 export interface SettingsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   readQueryString: (value: unknown, fallback: string) => string;
   legacySettingsStore: Map<string, LegacySettingEntry>;
   legacySettingKey: (
@@ -32,6 +33,7 @@ export interface SettingsRoutesDeps {
 export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     readQueryString,
     legacySettingsStore,
     legacySettingKey,
@@ -69,6 +71,7 @@ export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
   });
 
   app.put("/api/settings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = readQueryString(
       req.body?.userId ?? req.body?.user_id,
       "default-user",
@@ -102,6 +105,7 @@ export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
   });
 
   app.delete("/api/settings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = readQueryString(req.query.user_id, "default-user");
     const namespace = readQueryString(req.query.namespace, "");
     const projectId =

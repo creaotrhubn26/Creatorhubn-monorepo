@@ -64,6 +64,7 @@ import type { RoleRoomLiveSetService } from "./role-room-live-set-service";
 
 export interface RoleRoomProjectsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   legacyOffersByProject: Map<string, unknown[]>;
   legacyContractsByProject: Map<string, unknown[]>;
@@ -82,6 +83,7 @@ export function setupRoleRoomProjectsRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     compatStoreGet,
     legacyOffersByProject,
     legacyContractsByProject,
@@ -141,6 +143,7 @@ export function setupRoleRoomProjectsRoutes(
   app.post(
     "/api/role-room/projects/:projectId/live-set/sessions",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       const projectId = req.params.projectId;
       const payload = req.body || {};
       const current = await liveSetService.getLegacyLiveSetSessions(projectId);
@@ -184,6 +187,7 @@ export function setupRoleRoomProjectsRoutes(
   app.post(
     "/api/role-room/projects/:projectId/live-set/events/batch",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       const projectId = req.params.projectId;
       const payload = req.body || {};
       const incoming = Array.isArray(payload.events) ? payload.events : [];
@@ -283,6 +287,7 @@ export function setupRoleRoomProjectsRoutes(
   app.post(
     "/api/role-room/projects/:projectId/live-set/sync/ack",
     async (req, res) => {
+    if (!requireUserSession(req, res)) return;
       const projectId = req.params.projectId;
       const payload = req.body || {};
       const eventIds = Array.isArray(payload.eventIds)

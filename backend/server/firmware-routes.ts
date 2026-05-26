@@ -6,6 +6,7 @@ import * as schema from "../migrations/schema.js";
 
 export interface FirmwareRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   db: NodePgDatabase<typeof schema>;
   ensureFirmwareUpdatesCompatibilityColumns: () => Promise<void>;
@@ -21,6 +22,7 @@ export interface FirmwareRoutesDeps {
 export function setupFirmwareRoutes(deps: FirmwareRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     pool,
     db,
     ensureFirmwareUpdatesCompatibilityColumns,
@@ -79,6 +81,7 @@ export function setupFirmwareRoutes(deps: FirmwareRoutesDeps): void {
 
   // Check for firmware updates
   app.post("/api/firmware/check", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { userId, profession } = req.body || {};
       const updates = await loadFirmwareUpdates(userId, profession);
@@ -107,6 +110,7 @@ export function setupFirmwareRoutes(deps: FirmwareRoutesDeps): void {
 
   // Apply firmware update
   app.post("/api/firmware/update", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { updateId, userId, profession } = req.body || {};
       if (!updateId || !userId) {

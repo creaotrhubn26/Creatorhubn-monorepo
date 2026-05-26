@@ -3,6 +3,7 @@ import { readString } from "./_shared";
 
 export interface ProjectTypesRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   compatResolveUserId: (req: express.Request) => string;
   getCompatDefaultProjectTypes: () => any[];
   getCompatUserProjectTypes: (userId: string) => Promise<any[]>;
@@ -16,6 +17,7 @@ export function setupProjectTypesRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     compatResolveUserId,
     getCompatDefaultProjectTypes,
     getCompatUserProjectTypes,
@@ -36,6 +38,7 @@ export function setupProjectTypesRoutes(
   });
 
   app.post("/api/project-types", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const userTypes = await getCompatUserProjectTypes(userId);
     const now = new Date().toISOString();
@@ -63,6 +66,7 @@ export function setupProjectTypesRoutes(
   });
 
   app.put("/api/project-types/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const id = Number(req.params.id);
     const userTypes = await getCompatUserProjectTypes(userId);
@@ -82,6 +86,7 @@ export function setupProjectTypesRoutes(
   });
 
   app.delete("/api/project-types/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const id = Number(req.params.id);
     const userTypes = await getCompatUserProjectTypes(userId);
@@ -92,6 +97,7 @@ export function setupProjectTypesRoutes(
   });
 
   app.post("/api/project-types/:id/use", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const userId = compatResolveUserId(req);
     const id = Number(req.params.id);
     const userTypes = await getCompatUserProjectTypes(userId);

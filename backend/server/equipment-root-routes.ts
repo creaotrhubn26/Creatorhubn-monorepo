@@ -6,6 +6,7 @@ import * as schema from "../migrations/schema.js";
 
 export interface EquipmentRootRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   db: NodePgDatabase<typeof schema>;
   parseSettings: (settings: unknown) => Record<string, unknown>;
@@ -14,7 +15,7 @@ export interface EquipmentRootRoutesDeps {
 export function setupEquipmentRootRoutes(
   deps: EquipmentRootRoutesDeps,
 ): void {
-  const { app, pool, db, parseSettings } = deps;
+  const { app, requireUserSession, pool, db, parseSettings } = deps;
 
   app.get("/api/equipment", async (req, res) => {
     try {
@@ -58,6 +59,7 @@ export function setupEquipmentRootRoutes(
   });
 
   app.post("/api/equipment", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { userId, profession, brand, model, category, status } =
         req.body || {};

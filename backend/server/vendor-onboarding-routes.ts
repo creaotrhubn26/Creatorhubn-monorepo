@@ -8,6 +8,7 @@ import { readBoolean, readString, readStringArray } from "./_shared";
 
 export interface VendorOnboardingRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   db: NodePgDatabase<typeof schema>;
   isValidNorwegianOrgNumber: (value: string) => boolean;
@@ -23,6 +24,7 @@ export function setupVendorOnboardingRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     pool,
     db,
     isValidNorwegianOrgNumber,
@@ -31,6 +33,7 @@ export function setupVendorOnboardingRoutes(
   } = deps;
 
   app.post("/api/vendor-onboarding/validate-org", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const organizationNumber = readString(req.body?.organizationNumber);
       if (!organizationNumber) {
@@ -86,6 +89,7 @@ export function setupVendorOnboardingRoutes(
   });
 
   app.post("/api/vendor-onboarding/upload-logo", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const userId = readString(req.body?.userId);
       const vendorType = readString(req.body?.vendorType);
@@ -172,6 +176,7 @@ export function setupVendorOnboardingRoutes(
   });
 
   app.post("/api/vendor-onboarding/complete", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const vendorType = readString(req.body?.vendorType);
       const vendorName = readString(req.body?.vendorName);

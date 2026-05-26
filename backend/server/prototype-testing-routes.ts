@@ -4,6 +4,7 @@ import crypto from "crypto";
 
 export interface PrototypeTestingRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   isMissingRelationError: (error: unknown) => boolean;
 }
@@ -11,7 +12,7 @@ export interface PrototypeTestingRoutesDeps {
 export function setupPrototypeTestingRoutes(
   deps: PrototypeTestingRoutesDeps,
 ): void {
-  const { app, pool, isMissingRelationError } = deps;
+  const { app, requireUserSession, pool, isMissingRelationError } = deps;
 
   app.get("/api/prototype-testing/feedback", async (req, res) => {
     try {
@@ -119,6 +120,7 @@ export function setupPrototypeTestingRoutes(
   });
 
   app.post("/api/prototype-testing/feedback", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const body = (req.body || {}) as Record<string, unknown>;
       const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -282,6 +284,7 @@ export function setupPrototypeTestingRoutes(
   });
 
   app.put("/api/prototype-testing/feedback/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const feedbackId =
         typeof req.params.id === "string" ? req.params.id.trim() : "";

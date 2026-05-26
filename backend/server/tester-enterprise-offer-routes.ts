@@ -24,6 +24,7 @@ import nodemailer from "nodemailer";
 
 export interface TesterEnterpriseOfferDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: any;
   getPricingUserId: (req: any) => string;
   /** Resolver for å hente Stripe-klient + Enterprise-price-ID. */
@@ -187,7 +188,7 @@ export async function runOfferCreationSweep(pool: any): Promise<{ created: numbe
 }
 
 export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps): void {
-  const { app, pool, getPricingUserId, stripeClient, enterprisePriceIdMonthly } = deps;
+  const { app, requireUserSession, pool, getPricingUserId, stripeClient, enterprisePriceIdMonthly } = deps;
 
   // ─── GET /api/tester-enterprise-offer/me ────────────────────
   app.get("/api/tester-enterprise-offer/me", async (req, res) => {
@@ -230,6 +231,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
 
   // ─── POST /api/tester-enterprise-offer/:id/checkout ─────────
   app.post("/api/tester-enterprise-offer/:id/checkout", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
@@ -305,6 +307,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
 
   // ─── POST /api/tester-enterprise-offer/:id/decline ──────────
   app.post("/api/tester-enterprise-offer/:id/decline", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

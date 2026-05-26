@@ -20,6 +20,7 @@ export interface WeddingAssistantBriefNotesDeps {
   app: express.Application;
   pool: any;
   getPricingUserId: (req: any) => string;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 const SUMMARY_MODEL = process.env.WEDDING_BRIEF_SUMMARY_MODEL || "claude-haiku-4-5-20251001";
@@ -121,7 +122,7 @@ async function callClaudeForBriefSummary(args: {
 }
 
 export function setupWeddingAssistantBriefNotesRoutes(deps: WeddingAssistantBriefNotesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, getPricingUserId, requireUserSession } = deps;
 
   // ─── PUT brief-notes ───────────────────────────────────────────
   app.put("/api/wedding/:weddingId/assistants/:assistantId/brief-notes", async (req, res) => {

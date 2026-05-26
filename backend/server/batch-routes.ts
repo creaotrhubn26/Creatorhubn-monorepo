@@ -15,14 +15,16 @@ interface BatchJob {
 
 export interface BatchRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
 }
 
 export function setupBatchRoutes(deps: BatchRoutesDeps): void {
-  const { app } = deps;
+  const { app, requireUserSession } = deps;
 
   const batchJobs = new Map<string, BatchJob>();
 
   app.post("/api/batch/create", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { name, files, operation, settings } = req.body || {};
       if (!Array.isArray(files) || files.length === 0) {
@@ -87,6 +89,7 @@ export function setupBatchRoutes(deps: BatchRoutesDeps): void {
   });
 
   app.post("/api/batch/cancel/:id", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const job = batchJobs.get(req.params.id);
     if (!job)
       return res

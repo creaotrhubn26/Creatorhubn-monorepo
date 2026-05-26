@@ -6,6 +6,7 @@ import * as schema from "../migrations/schema.js";
 
 export interface ProjectsOutliersRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   db: NodePgDatabase<typeof schema>;
 }
@@ -13,7 +14,7 @@ export interface ProjectsOutliersRoutesDeps {
 export function setupProjectsOutliersRoutes(
   deps: ProjectsOutliersRoutesDeps,
 ): void {
-  const { app, pool, db } = deps;
+  const { app, requireUserSession, pool, db } = deps;
 
   app.get("/api/projects/:projectId/story-logic", async (req, res) => {
     console.warn("Deprecated unauthenticated Story Logic route blocked", {
@@ -27,6 +28,7 @@ export function setupProjectsOutliersRoutes(
   });
 
   app.post("/api/projects/:projectId/story-logic", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     console.warn("Deprecated unauthenticated Story Logic route blocked", {
       projectId: req.params.projectId,
       method: req.method,
@@ -38,6 +40,7 @@ export function setupProjectsOutliersRoutes(
   });
 
   app.delete("/api/projects/:projectId/story-logic", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     console.warn("Deprecated unauthenticated Story Logic route blocked", {
       projectId: req.params.projectId,
       method: req.method,
@@ -64,6 +67,7 @@ export function setupProjectsOutliersRoutes(
 
   // POST /api/projects/:projectId/milestones — Create a milestone/timeline event
   app.post("/api/projects/:projectId/milestones", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { projectId } = req.params;
       const userId =
@@ -117,6 +121,7 @@ export function setupProjectsOutliersRoutes(
 
   // PUT /api/projects/:projectId/timeline/:eventId — Update timeline event
   app.put("/api/projects/:projectId/timeline/:eventId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { projectId, eventId } = req.params;
       const {
@@ -193,6 +198,7 @@ export function setupProjectsOutliersRoutes(
 
   // DELETE /api/projects/:projectId/timeline/:eventId — Delete timeline event
   app.delete("/api/projects/:projectId/timeline/:eventId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { projectId, eventId } = req.params;
       await pool.query(
@@ -333,6 +339,7 @@ export function setupProjectsOutliersRoutes(
 
   // POST /api/projects/:projectId/worklog — Create worklog entry
   app.post("/api/projects/:projectId/worklog", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { projectId } = req.params;
       const userId =

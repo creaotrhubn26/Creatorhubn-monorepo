@@ -23,6 +23,7 @@ import webPush from "web-push";
 
 export interface WebPushRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: any;
   getPricingUserId: (req: any) => string;
 }
@@ -111,7 +112,7 @@ export async function sendPushToUser(
 }
 
 export function setupWebPushRoutes(deps: WebPushRoutesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, requireUserSession, pool, getPricingUserId } = deps;
 
   // ─── GET /api/push/public-key ──────────────────────────────────
   app.get("/api/push/public-key", (_req, res) => {
@@ -121,6 +122,7 @@ export function setupWebPushRoutes(deps: WebPushRoutesDeps): void {
 
   // ─── POST /api/push/subscribe ──────────────────────────────────
   app.post("/api/push/subscribe", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
@@ -151,6 +153,7 @@ export function setupWebPushRoutes(deps: WebPushRoutesDeps): void {
 
   // ─── POST /api/push/unsubscribe ────────────────────────────────
   app.post("/api/push/unsubscribe", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { endpoint } = req.body || {};
       if (!endpoint) return res.status(400).json({ error: "endpoint påkrevd" });
@@ -164,6 +167,7 @@ export function setupWebPushRoutes(deps: WebPushRoutesDeps): void {
 
   // ─── POST /api/push/test ───────────────────────────────────────
   app.post("/api/push/test", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

@@ -359,6 +359,7 @@ import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
+import { setupNewsletterAiRoutes } from "./role-room-newsletter-ai-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
 import { setupAdminPlatformCostSyncRoutes } from "./admin-room-platform-cost-sync-routes";
 import { setupAdminPlatformStatusRoutes } from "./admin-room-platform-status-routes";
@@ -17749,6 +17750,15 @@ setupRoleRoomNewsletterRoutes({
   requireAdminRoomAccess,
 });
 
+// ── Newsletter AI assist — Claude-drevet subject lines / draft / score
+setupNewsletterAiRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
 // ── Role Room economy — Stripe-subscribers, kostnads-margin, plattform-kostnader
 setupAdminRoleRoomEconomyRoutes({
   app,
@@ -31346,6 +31356,7 @@ setupRoleRoomEducationInquiriesRoutes({
 //   over slik at casting DELETE-handler kan rydde live-set state).
 setupRoleRoomProjectsRoutes({
   app,
+  requireUserSession,
   compatStoreGet,
   legacyOffersByProject,
   legacyContractsByProject,
@@ -67062,7 +67073,7 @@ setupWeddingInvoiceRoutes({ app, pool, requireUserSession, getPricingUserId });
 setupWeddingGalleryDeliveryRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.43 — Web Push (VAPID) for PWA-varsler.
-setupWebPushRoutes({ app, pool, getPricingUserId });
+setupWebPushRoutes({ app, pool, getPricingUserId, requireUserSession });
 
 // Slice 9X.44 — Assistent-fotografer + profit-split.
 setupWeddingAssistantsRoutes({ app, pool, requireUserSession, getPricingUserId });
@@ -67077,7 +67088,7 @@ setupWeddingAssistantSubcontractRoutes({ app, pool });
 setupWeddingAssistantCollabRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
-setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId });
+setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId, requireUserSession, requireAdminSession });
 
 // /api/invite-requests + /api/invites/admin/requests + /api/proff lookups —
 // 10 endpoints flyttet ut fra index.ts. Sikkerhetsstacken
@@ -67134,7 +67145,7 @@ setupGoogleWalletRoutes({
 
 // /api/universal-vendor-showcase/* — 7 endpoints (vendor-product CRUD +
 // stats + featured-toggle + download-tracking). Selvstendig — kun pool.
-setupUniversalVendorShowcaseRoutes({ app, pool });
+setupUniversalVendorShowcaseRoutes({ app, pool, requireUserSession });
 
 // /api/branding/* — 6 endpoints (business-info GET/PUT, logo upload/delete,
 // settings GET/PUT). Helpers dep-injiseres siden flere brukes utenfor
@@ -67260,6 +67271,7 @@ setupAudioSettingsRoutes({ app, requireUserSession });
 // (Express bruker first-registered, så de var allerede ute av drift).
 setupSalesRoutes({
   app,
+  requireUserSession,
   pool,
   resolveSalesLeadsStorageShape,
   buildSalesLeadSelectQuery,
@@ -67332,6 +67344,7 @@ setupVideoRoutes({
 // basert (in-memory + dbCompatProjectTypesKey for persisting).
 setupProjectTypesRoutes({
   app,
+  requireUserSession,
   compatResolveUserId,
   getCompatDefaultProjectTypes,
   getCompatUserProjectTypes,
@@ -67344,6 +67357,7 @@ setupProjectTypesRoutes({
 // Compat-store-basert (legacySettingsStore Map + compatStore-persistens).
 setupSettingsRoutes({
   app,
+  requireUserSession,
   readQueryString,
   legacySettingsStore,
   legacySettingKey,
@@ -67399,7 +67413,7 @@ setupGooglePeopleRoutes({
 
 // /api/admin/profession-trends + /api/admin/apply-seo-fixes +
 // /api/admin/seo-projects (4 endpoints) — admin SEO/trends-flate.
-setupAdminSeoTrendsRoutes({ app, db });
+setupAdminSeoTrendsRoutes({ app, db, requireAdminSession });
 
 // /api/2fa/* — 5 endpoints (status, setup, verify-and-enable, disable,
 // login-verify). Dynamisk import av totp-2fa-service for å holde
@@ -67427,6 +67441,7 @@ setupAdminProvisioningRoutes({ app, pool, requireAdminSession });
 // som email-meldinger: recent, stats, contacts, PATCH star, PATCH read).
 setupEmailsRoutes({
   app,
+  requireUserSession,
   pool,
   hasTable,
   getCreatorhubUserEmailById,
@@ -67466,6 +67481,7 @@ setupVideoSyncRoutes({
 // uns på grunn av Express first-registered).
 setupUserPreferencesRoutes({
   app,
+  requireUserSession,
   pool,
   compatStoreGet,
   compatStoreSet,
@@ -67483,15 +67499,15 @@ setupWorklogRoutes({ app, pool, getUserIdFromAuth });
 
 // /api/travel-log — 3 endpoints (GET liste, POST create, DELETE).
 // Kjørebok-data for photographers reise-utlegg.
-setupTravelLogRoutes({ app, pool, getPricingUserId });
+setupTravelLogRoutes({ app, pool, getPricingUserId, requireUserSession });
 
 // /api/batch/* — 3 endpoints (create, job GET, cancel). In-memory Map
 // for batch-jobs (kun brukt av disse handlerne; flyttet inn i modulen).
-setupBatchRoutes({ app });
+setupBatchRoutes({ app, requireUserSession });
 
 // /api/marketplace/* — 3 endpoints (stats, apps/:id/reviews GET/POST).
 // Drizzle ORM mot vendorProductDownloads + vendorProductReviews.
-setupMarketplaceRoutes({ app, db });
+setupMarketplaceRoutes({ app, db, requireUserSession });
 
 // /api/wedding-projects — 2 endpoints (GET liste, GET /:projectId).
 // Dup ved 58264 slettet i samme commit (Express first-registered).
@@ -67504,12 +67520,13 @@ setupWeddingProjectsRoutes({
 
 // /api/prototype-testing/feedback — 3 endpoints (GET liste, POST,
 // PUT admin-update). DB-backed feedback-flow for UniversalChatWidget.
-setupPrototypeTestingRoutes({ app, pool, isMissingRelationError });
+setupPrototypeTestingRoutes({ app, pool, isMissingRelationError, requireUserSession });
 
 // /api/vendor-onboarding/* — 3 endpoints (validate-org, upload-logo,
 // complete). Drizzle ORM mot vendorOnboardingProfiles + vendors.
 setupVendorOnboardingRoutes({
   app,
+  requireUserSession,
   pool,
   db,
   isValidNorwegianOrgNumber,
@@ -67769,7 +67786,7 @@ setupRoleRoomDealsRoutes({
   legacyProjectAgreementsByProject,
 });
 setupRoleRoomInvitesTicketsRoutes({ app, pool, requireUserSession, requireAdminSession });
-setupProjectsOutliersRoutes({ app, pool, db });
+setupProjectsOutliersRoutes({ app, pool, db, requireUserSession });
 setupPricingRoutes({ app, pool, requireUserSession, getPricingUserId });
 setupAccountingRoutes({
   app,
@@ -67854,6 +67871,7 @@ setupAuthRoutes({
 });
 setupFirmwareRoutes({
   app,
+  requireUserSession,
   pool,
   db,
   ensureFirmwareUpdatesCompatibilityColumns,
@@ -67866,7 +67884,7 @@ setupFirmwareRoutes({
   parseSettings,
 });
 setupClientPortalRoutes({ app, pool, activeSessions });
-setupEquipmentRootRoutes({ app, pool, db, parseSettings });
+setupEquipmentRootRoutes({ app, pool, db, parseSettings, requireUserSession });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
@@ -67878,6 +67896,7 @@ setupAdminNotificationsRoutes({ app, pool, getPricingUserId, requireAdminSession
 // 3 mnd gratis + 25 % rabatt i 12 mnd, trigger 14 dager før program slutter.
 setupTesterEnterpriseOfferRoutes({
   app,
+  requireUserSession,
   pool,
   getPricingUserId,
   stripeClient: getCreatorHubStripeClient(),

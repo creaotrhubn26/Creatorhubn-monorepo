@@ -25,6 +25,8 @@ export interface PrototypeTesterInvitesDeps {
   app: express.Application;
   pool: any;
   getPricingUserId: (req: any) => string;
+  requireUserSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => any;
 }
 
 const PROGRAM_DURATION_WEEKS = 12;
@@ -263,12 +265,13 @@ export async function createInviteFromApprovedRequest(
 }
 
 export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDeps): void {
-  const { app, pool, getPricingUserId } = deps;
+  const { app, pool, getPricingUserId, requireUserSession, requireAdminSession } = deps;
 
   // ─── POST /api/prototype-tester-invites ─────────────────────
   // Admin oppretter invitasjon manuelt (push-modell, i tillegg til
   // auto-bro fra approval).
   app.post("/api/prototype-tester-invites", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       await ensureSchema(pool);
       const body = req.body ?? {};
@@ -550,6 +553,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
   // Master inviterer team-medlem. Arver granted_plan, granted_features og
   // sharedProgramEndsAt automatisk. NDA-e-post sendes hvis mailer er satt.
   app.post("/api/prototype-tester-invites/me/team/invite", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
@@ -659,6 +663,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
   // ─── DELETE /api/prototype-tester-invites/me/team/:memberId ───
   // Master kan trekke tilbake en team-invitasjon FØR medlemmet har signert.
   app.delete("/api/prototype-tester-invites/me/team/:memberId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });

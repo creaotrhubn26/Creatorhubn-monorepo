@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 
 export interface EmailsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   hasTable: (tableName: string) => Promise<boolean>;
   getCreatorhubUserEmailById: (userId: string) => Promise<string | null>;
@@ -12,6 +13,7 @@ export interface EmailsRoutesDeps {
 export function setupEmailsRoutes(deps: EmailsRoutesDeps): void {
   const {
     app,
+    requireUserSession,
     pool,
     hasTable,
     getCreatorhubUserEmailById,
@@ -153,6 +155,7 @@ export function setupEmailsRoutes(deps: EmailsRoutesDeps): void {
   });
 
   app.patch("/api/emails/star", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { emailId, starred } = req.body;
       await pool.query(
@@ -167,6 +170,7 @@ export function setupEmailsRoutes(deps: EmailsRoutesDeps): void {
   });
 
   app.patch("/api/emails/read", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { emailId, isRead } = req.body;
       await pool.query(
