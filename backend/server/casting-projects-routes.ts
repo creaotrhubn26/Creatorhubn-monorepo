@@ -99,6 +99,7 @@ import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingProjectsRoutesDeps {
   app: express.Application;
+  requireUserSession: (req: any, res: any) => any;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
   compatStoreDelete: (storeKey: string) => Promise<void>;
@@ -137,6 +138,7 @@ export function setupCastingProjectsRoutes(
 ): void {
   const {
     app,
+    requireUserSession,
     compatStoreGet,
     compatStoreSet,
     compatStoreDelete,
@@ -395,6 +397,7 @@ export function setupCastingProjectsRoutes(
   });
 
   app.post("/api/casting/projects", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const payload = req.body && typeof req.body === "object" ? req.body : {};
     const id =
       typeof payload.id === "string" && payload.id.trim()
@@ -520,6 +523,7 @@ export function setupCastingProjectsRoutes(
   });
 
   app.put("/api/casting/projects/:projectId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const id = rejectInvalidProjectId(
       res,
       req.params.projectId,
@@ -626,6 +630,7 @@ export function setupCastingProjectsRoutes(
   });
 
   app.delete("/api/casting/projects/:projectId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const projectId = rejectInvalidProjectId(
         res,
@@ -728,6 +733,7 @@ export function setupCastingProjectsRoutes(
   app.post(
     "/api/casting/projects/:projectId/shot-lists",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -773,6 +779,7 @@ export function setupCastingProjectsRoutes(
   app.put(
     "/api/casting/projects/:projectId/shot-lists/:shotListId",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -815,6 +822,7 @@ export function setupCastingProjectsRoutes(
   app.post(
     "/api/casting/projects/:projectId/shot-lists/reorder",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -875,6 +883,7 @@ export function setupCastingProjectsRoutes(
   );
 
   app.post("/api/casting/calendar-events", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const projectId = rejectInvalidProjectId(
@@ -973,6 +982,7 @@ export function setupCastingProjectsRoutes(
   });
 
   app.put("/api/casting/calendar-events/:eventId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const eventId = req.params.eventId;
       let location = findByIdInProjectMap(
@@ -1031,6 +1041,7 @@ export function setupCastingProjectsRoutes(
   });
 
   app.delete("/api/casting/calendar-events/:eventId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const eventId = req.params.eventId;
       let location = findByIdInProjectMap(
@@ -1104,6 +1115,7 @@ export function setupCastingProjectsRoutes(
   app.post(
     "/api/casting/projects/:projectId/team-dashboard/snapshots",
     async (req, res) => {
+      if (!requireUserSession(req, res)) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
