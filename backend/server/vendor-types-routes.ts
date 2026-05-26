@@ -11,6 +11,7 @@ export interface VendorTypesRoutesDeps {
     value: Record<string, unknown>,
   ) => Promise<void>;
   dbCompatVendorOverrideKey: (typeId: string) => string;
+  requireAdminSession: (req: any, res: any) => any;
 }
 
 export function setupVendorTypesRoutes(deps: VendorTypesRoutesDeps): void {
@@ -22,6 +23,7 @@ export function setupVendorTypesRoutes(deps: VendorTypesRoutesDeps): void {
     evendiVendorOverrides,
     compatStoreSet,
     dbCompatVendorOverrideKey,
+    requireAdminSession,
   } = deps;
 
   app.get("/api/vendor-types", async (_req, res) => {
@@ -58,6 +60,7 @@ export function setupVendorTypesRoutes(deps: VendorTypesRoutesDeps): void {
   });
 
   app.post("/api/vendor-types/enable/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const categories = await fetchEvendiVendorCategories();
       const typeId = req.params.id;
@@ -75,6 +78,7 @@ export function setupVendorTypesRoutes(deps: VendorTypesRoutesDeps): void {
   });
 
   app.put("/api/vendor-types/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const typeId = req.params.id;
       const updates = req.body as any;
@@ -103,6 +107,7 @@ export function setupVendorTypesRoutes(deps: VendorTypesRoutesDeps): void {
   });
 
   app.post("/api/vendor-types/:id/categories", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     const typeId = req.params.id;
     const category = req.body as any;
     const overrides = evendiVendorOverrides.get(typeId) || {
@@ -118,6 +123,7 @@ export function setupVendorTypesRoutes(deps: VendorTypesRoutesDeps): void {
   app.put(
     "/api/vendor-types/:id/categories/:categoryId",
     async (req, res) => {
+      if (!requireAdminSession(req, res)) return;
       const typeId = req.params.id;
       const categoryId = req.params.categoryId;
       const updates = req.body as any;
@@ -140,6 +146,7 @@ export function setupVendorTypesRoutes(deps: VendorTypesRoutesDeps): void {
   app.delete(
     "/api/vendor-types/:id/categories/:categoryId",
     async (req, res) => {
+      if (!requireAdminSession(req, res)) return;
       const typeId = req.params.id;
       const categoryId = req.params.categoryId;
       const { replacementCategory } = req.body as {

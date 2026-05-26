@@ -67150,6 +67150,7 @@ setupVendorTypesRoutes({
   evendiVendorOverrides,
   compatStoreSet,
   dbCompatVendorOverrideKey,
+  requireAdminSession,
 });
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,
