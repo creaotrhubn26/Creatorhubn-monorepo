@@ -405,6 +405,23 @@ import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
 import { RoleRoomCommercialAccessError } from "./role-room-commercial-access-error";
 import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-access-routes";
+import {
+  ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX,
+  ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX,
+  normalizeRoleRoomCommercialPersona,
+  splitRoleRoomContactName,
+  getRoleRoomCommercialPlan,
+  roleRoomCommercialCheckoutSessionKey,
+  roleRoomCommercialSubscriptionKey,
+  type RoleRoomCommercialPersona,
+  type RoleRoomCommercialAccessPayloadMember,
+  type RoleRoomCommercialAccessResult,
+  type RoleRoomCommercialCheckoutSessionRecord,
+  type RoleRoomCommercialActivationStatus,
+  type RoleRoomCommercialBillingStatus,
+  type RoleRoomCommercialReminderDeliverySummary,
+  type RoleRoomCommercialReminderSweepSummary,
+} from "./role-room-billing-routes";
 import { setupRoleRoomEducationInquiriesRoutes } from "./role-room-education-inquiries-routes";
 import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
 import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
@@ -26180,100 +26197,13 @@ app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
 // Invite Request Routes (vendor/professional signup workflow)
 // ============================================================================
 
-type RoleRoomCommercialPersona = "production_team" | "content_producer";
-
-type RoleRoomCommercialAccessPayloadMember = {
-  name: string;
-  email: string;
-  roleId: string;
-  roleLabel: string | null;
-  isLeader: boolean;
-};
-
-function normalizeRoleRoomCommercialPersona(
-  value: unknown,
-): RoleRoomCommercialPersona | null {
-  const normalized = toAdminString(value);
-  return normalized === "production_team" || normalized === "content_producer"
-    ? normalized
-    : null;
-}
-
-function splitRoleRoomContactName(name: string) {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return { firstName: "", lastName: "" };
-  }
-
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) {
-    return { firstName: parts[0], lastName: "" };
-  }
-
-  return {
-    firstName: parts.slice(0, -1).join(" "),
-    lastName: parts.slice(-1).join(" "),
-  };
-}
-
-function getRoleRoomCommercialPlan(persona: RoleRoomCommercialPersona) {
-  if (persona === "production_team") {
-    return {
-      planId: "role-room-production-team",
-      planName: "Produksjonsteam",
-      personaLabel: "Produksjonsteam",
-      seatPriceExVat: 795,
-      minimumSeats: 3,
-    };
-  }
-
-  return {
-    planId: "role-room-content-producer",
-    planName: "Innholdsprodusent",
-    personaLabel: "Innholdsprodusent",
-    seatPriceExVat: 495,
-    minimumSeats: 1,
-  };
-}
-
+// Types + pure helpers flyttet til ./role-room-billing-routes.ts (chunk 1A av billing-ekstraksjon).
+// Importert øverst: RoleRoomCommercialPersona, RoleRoomCommercialAccessPayloadMember,
+// RoleRoomCommercialAccessResult, RoleRoomCommercialCheckoutSessionRecord,
+// normalizeRoleRoomCommercialPersona, splitRoleRoomContactName, getRoleRoomCommercialPlan.
+//
 // RoleRoomCommercialAccessError flyttet til ./role-room-commercial-access-error.ts
 // så både service-funksjonen i index.ts og route-modulen kan importere den.
-
-type RoleRoomCommercialAccessResult = {
-  persona: RoleRoomCommercialPersona;
-  organizationNumber: string;
-  companyName: string;
-  plan: ReturnType<typeof getRoleRoomCommercialPlan>;
-  teamLead: RoleRoomCommercialAccessPayloadMember;
-  members: RoleRoomCommercialAccessPayloadMember[];
-  monthlyTotalExVat: number;
-  paymentCompleted: boolean;
-  requestIds: string[];
-  requests: Record<string, unknown>[];
-};
-
-type RoleRoomCommercialCheckoutSessionRecord = {
-  sessionId: string;
-  requestIds: string[];
-  organizationNumber: string;
-  companyName: string;
-  persona: RoleRoomCommercialPersona;
-  planId: string;
-  planName: string;
-  teamLeadEmail: string;
-  memberEmails: string[];
-  monthlyTotalExVat: number;
-  seatPriceExVat: number;
-  billableSeatCount: number;
-  paymentCompleted: boolean;
-  checkoutStatus: "created" | "completed" | "payment_failed";
-  paymentTimestamp: string | null;
-  transactionId: string | null;
-  stripeSubscriptionId: string | null;
-  stripeCustomerId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
 
 type CreatorHubStripeCheckoutSessionRecord = {
   sessionId: string;
@@ -26301,10 +26231,8 @@ const CREATORHUB_STRIPE_CHECKOUT_RECORD_PREFIX =
   "creatorhub:billing:checkout-session:";
 const CREATORHUB_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
   "creatorhub:billing:subscription:";
-const ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX =
-  "role-room:billing:checkout-session:";
-const ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
-  "role-room:billing:subscription:";
+// ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX + ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX
+// flyttet til ./role-room-billing-routes.ts.
 
 let creatorHubStripeClient: Stripe | null | undefined;
 let roleRoomStripeClient: Stripe | null | undefined;
@@ -26344,33 +26272,9 @@ const ROLE_ROOM_REMINDER_INTERVAL_MS =
   1000;
 const ROLE_ROOM_REMINDER_STATUS_COMPAT_KEY = "role-room:billing:reminders:status";
 
-type RoleRoomCommercialActivationStatus = "pending_approval" | "approved";
-type RoleRoomCommercialBillingStatus =
-  | "pending_payment"
-  | "active"
-  | "payment_failed";
-
-type RoleRoomCommercialReminderDeliverySummary = {
-  sent: boolean;
-  reason: string | null;
-  accepted: string[];
-  provider: string | null;
-  messageId: string | null;
-};
-
-type RoleRoomCommercialReminderSweepSummary = {
-  reason: "startup" | "interval" | "manual";
-  startedAt: string;
-  finishedAt: string;
-  isRunning: boolean;
-  paymentCandidates: number;
-  paymentRemindersSent: number;
-  activationCandidates: number;
-  activationRemindersSent: number;
-  failures: number;
-  skipped: number;
-  notes: string[];
-};
+// RoleRoomCommercialActivationStatus, RoleRoomCommercialBillingStatus,
+// RoleRoomCommercialReminderDeliverySummary, RoleRoomCommercialReminderSweepSummary
+// flyttet til ./role-room-billing-routes.ts.
 
 function parseRoleRoomReminderHours(
   value: unknown,
@@ -26393,13 +26297,8 @@ function isRoleRoomReminderRunnerEnabled() {
   return !["0", "false", "off", "no"].includes(normalized);
 }
 
-function roleRoomCommercialCheckoutSessionKey(sessionId: string) {
-  return `${ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX}${sessionId}`;
-}
-
-function roleRoomCommercialSubscriptionKey(subscriptionId: string) {
-  return `${ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX}${subscriptionId}`;
-}
+// roleRoomCommercialCheckoutSessionKey + roleRoomCommercialSubscriptionKey
+// flyttet til ./role-room-billing-routes.ts.
 
 function getStripeCheckoutSessionCustomerId(session: Stripe.Checkout.Session) {
   const customer = session.customer;
