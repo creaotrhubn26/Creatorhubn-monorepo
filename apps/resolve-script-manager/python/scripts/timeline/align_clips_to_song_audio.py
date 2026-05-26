@@ -117,11 +117,16 @@ def gather_clips_from_resolve() -> list[str]:
     return paths
 
 
-def align_via_librosa(source_song_path: str, clip_audio_paths: list[tuple[str, str, float]], min_confidence: float) -> list[dict]:
+def align_via_librosa(source_song_path: str, clip_audio_paths: list[tuple[str, str, float]],
+                      min_confidence: float, search_start: float = 0.0,
+                      search_end: float = 0.0, verify_mfcc: bool = True) -> list[dict]:
     """Run chroma cross-correlation in a librosa subprocess. Returns one match
     per clip with offset in song + confidence.
 
     clip_audio_paths: [(clip_path, extracted_audio_path, clip_duration_sec), ...]
+    search_start / search_end: limit the search to a time-window in the source song
+        (#61 — for long sources, lets caller narrow down where to look)
+    verify_mfcc: after chroma match, verify with MFCC cosine similarity (#62)
     """
     venv_py = os.path.expanduser(
         "~/Library/Application Support/no.creatorhubn.roleroom-post-agent/venv-py312/bin/python"
@@ -132,6 +137,9 @@ def align_via_librosa(source_song_path: str, clip_audio_paths: list[tuple[str, s
         "sourceSong": source_song_path,
         "clips": [{"path": p, "audio": a, "duration": d} for p, a, d in clip_audio_paths],
         "minConfidence": min_confidence,
+        "searchStart": float(search_start),
+        "searchEnd": float(search_end),
+        "verifyMfcc": bool(verify_mfcc),
     }
 
     snippet = """
@@ -145,6 +153,9 @@ payload = json.loads(sys.stdin.read())
 src_path = payload['sourceSong']
 clips = payload['clips']
 min_conf = float(payload.get('minConfidence', 0.05))
+search_start = float(payload.get('searchStart', 0.0))
+search_end = float(payload.get('searchEnd', 0.0))
+verify_mfcc = bool(payload.get('verifyMfcc', True))
 hop = 512
 sr = 22050
 
@@ -153,9 +164,23 @@ y_src, _ = librosa.load(src_path, sr=sr)
 src_dur = len(y_src) / sr
 ch_src = librosa.feature.chroma_cqt(y=y_src, sr=sr, hop_length=hop)
 
+# (#62) Pre-compute source MFCC for verification — much cheaper than redoing
+# per-clip. We just slice into it at the offset.
+mfcc_src = librosa.feature.mfcc(y=y_src, sr=sr, n_mfcc=13, hop_length=hop) if verify_mfcc else None
+
 def _norm(c):
   n = np.linalg.norm(c, axis=0, keepdims=True); n[n==0] = 1; return c / n
 ch_src_n = _norm(ch_src)
+
+# (#61) Constrain the search window if the caller hinted at a region.
+# Default = whole song. End of 0 means open-ended.
+frames_per_sec = sr / hop
+start_frame = max(0, int(search_start * frames_per_sec))
+end_frame = (
+  int(search_end * frames_per_sec) if search_end > 0
+  else ch_src_n.shape[1]
+)
+end_frame = min(end_frame, ch_src_n.shape[1])
 
 results = []
 for clip in clips:
@@ -172,23 +197,67 @@ for clip in clips:
   if ch_src_n.shape[1] < win:
     results.append({'clipPath': clip['path'], 'error': 'song_shorter_than_window'})
     continue
-  best = (-1.0, 0); second = -1.0
-  for i in range(ch_src_n.shape[1] - win + 1):
+  max_i = end_frame - win + 1
+  if max_i <= start_frame:
+    results.append({'clipPath': clip['path'], 'error': 'search_window_too_narrow'})
+    continue
+
+  # (#61) Hierarchical search: coarse pass at stride 8, then fine-tune
+  # within ±8 frames around the top 3 peaks. ~10× speed-up vs full scan
+  # on 4-min songs, and similar accuracy.
+  coarse_step = 8
+  coarse = []
+  for i in range(start_frame, max_i, coarse_step):
     sim = float(np.sum(ch_clip[:, :win] * ch_src_n[:, i:i+win]) / win)
-    if sim > best[0]:
-      second = best[0]; best = (sim, i)
-    elif sim > second:
-      second = sim
+    coarse.append((sim, i))
+  coarse.sort(reverse=True)
+  candidates = coarse[:3] if coarse else []
+  best = (-1.0, start_frame); second = -1.0
+  for _, ci in candidates:
+    lo = max(start_frame, ci - coarse_step)
+    hi = min(max_i, ci + coarse_step + 1)
+    for i in range(lo, hi):
+      sim = float(np.sum(ch_clip[:, :win] * ch_src_n[:, i:i+win]) / win)
+      if sim > best[0]:
+        second = best[0]; best = (sim, i)
+      elif sim > second:
+        second = sim
   offset_sec = best[1] * hop / sr
-  confidence = max(0.0, (best[0] - max(second, 0)) / max(best[0], 0.001))
+  rel_confidence = max(0.0, (best[0] - max(second, 0)) / max(best[0], 0.001))
+
+  # (#62) MFCC-based verify: compute cosine similarity of source MFCC at
+  # offset vs clip MFCC. Strong second-opinion that the chroma peak isn't
+  # a false-positive on a repeating chord progression.
+  verify_score = 1.0
+  if verify_mfcc and mfcc_src is not None:
+    try:
+      mfcc_clip = librosa.feature.mfcc(y=y_clip, sr=sr, n_mfcc=13, hop_length=hop)
+      mc_norm = mfcc_clip / (np.linalg.norm(mfcc_clip, axis=0, keepdims=True) + 1e-9)
+      slice_end = min(best[1] + win, mfcc_src.shape[1])
+      ms_slice = mfcc_src[:, best[1]:slice_end]
+      if ms_slice.shape[1] >= win:
+        ms_norm = ms_slice[:, :win] / (np.linalg.norm(ms_slice[:, :win], axis=0, keepdims=True) + 1e-9)
+        verify_score = float(np.mean(np.sum(mc_norm[:, :win] * ms_norm, axis=0)))
+      else:
+        verify_score = 0.5  # can't verify near end of song; neutral
+    except Exception:
+      verify_score = 0.5
+
+  # Combined confidence: chroma-relative × MFCC-absolute. Both must be strong
+  # for a high final confidence. MFCC verify_score ranges -1..1; clamp to 0..1.
+  mfcc_norm = max(0.0, min(1.0, (verify_score + 1) / 2))
+  combined = rel_confidence * (0.6 + 0.4 * mfcc_norm)
+
   results.append({
     'clipPath': clip['path'],
     'startSec': offset_sec,
     'durationSec': clip['duration'],
     'endSec': min(src_dur, offset_sec + clip['duration']),
     'similarity': best[0],
-    'matchConfidence': confidence,
-    'skip': confidence < min_conf,
+    'matchConfidence': combined,
+    'chromaConfidence': rel_confidence,
+    'mfccVerify': mfcc_norm,
+    'skip': combined < min_conf,
   })
 
 print(json.dumps({'segments': results, 'sourceDuration': src_dur}))
@@ -237,6 +306,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     source_song = (params.get("sourceSongPath") or "").strip()
     clip_paths = params.get("clipPaths") or []
     min_confidence = float(params.get("minConfidence") or 0.05)
+    search_start = float(params.get("searchStartSec") or 0.0)
+    search_end = float(params.get("searchEndSec") or 0.0)
+    verify_mfcc = params.get("verifyWithMfcc")
+    verify_mfcc = True if verify_mfcc is None else bool(verify_mfcc)
 
     if not source_song or not os.path.isfile(source_song):
         bridge.error(f"sourceSongPath '{source_song}' is not a file")
@@ -285,8 +358,15 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         bridge.error("Could not extract audio from any clips")
         sys.exit(1)
 
-    bridge.progress(45, 100, "Matching audio fingerprints against source song…")
-    segments = align_via_librosa(source_song, clip_audio, min_confidence)
+    range_msg = ""
+    if search_start > 0 or search_end > 0:
+        range_msg = f" (search range {search_start:.1f}s → {search_end:.1f}s)"
+    bridge.progress(45, 100, f"Matching audio fingerprints against source song{range_msg}…")
+    segments = align_via_librosa(
+        source_song, clip_audio, min_confidence,
+        search_start=search_start, search_end=search_end,
+        verify_mfcc=verify_mfcc,
+    )
     if not segments:
         bridge.error(
             "Audio-fingerprint matching feilet — sjekk at librosa er installert "

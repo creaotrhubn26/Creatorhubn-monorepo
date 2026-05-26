@@ -13,7 +13,8 @@ mod role_room_api;
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager, State};
+use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 use card_watcher::{CardWatcherState, MountedCard};
@@ -350,17 +351,96 @@ async fn get_python_root(app: AppHandle) -> Result<String, String> {
     Ok(python_root(&app)?.display().to_string())
 }
 
+/// (#186 + #187) Build the native macOS menubar with the standard
+/// App / File / Edit / View / Window structure. Adds a custom
+/// "Re-run last workflow" item under File with cmd+R shortcut that
+/// emits a `menu://rerun-last` event to the frontend, which then
+/// invokes the actual workflow.
+fn build_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::Error> {
+    let app_submenu = SubmenuBuilder::new(app, "The Role Room Post Agent")
+        .item(&PredefinedMenuItem::about(app, Some("About"), Some(AboutMetadata::default()))?)
+        .separator()
+        .item(&PredefinedMenuItem::hide(app, None)?)
+        .item(&PredefinedMenuItem::hide_others(app, None)?)
+        .item(&PredefinedMenuItem::show_all(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::quit(app, None)?)
+        .build()?;
+
+    let rerun_item = MenuItemBuilder::with_id("menu_rerun_last", "Re-run last workflow")
+        .accelerator("CmdOrCtrl+R")
+        .build(app)?;
+    let new_workflow_item = MenuItemBuilder::with_id("menu_new_workflow", "New workflow…")
+        .accelerator("CmdOrCtrl+N")
+        .build(app)?;
+    let check_updates_item = MenuItemBuilder::with_id("menu_check_updates", "Check for updates…")
+        .build(app)?;
+    let file_submenu = SubmenuBuilder::new(app, "File")
+        .item(&new_workflow_item)
+        .item(&rerun_item)
+        .separator()
+        .item(&check_updates_item)
+        .separator()
+        .item(&PredefinedMenuItem::close_window(app, None)?)
+        .build()?;
+
+    let edit_submenu = SubmenuBuilder::new(app, "Edit")
+        .item(&PredefinedMenuItem::undo(app, None)?)
+        .item(&PredefinedMenuItem::redo(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::cut(app, None)?)
+        .item(&PredefinedMenuItem::copy(app, None)?)
+        .item(&PredefinedMenuItem::paste(app, None)?)
+        .item(&PredefinedMenuItem::select_all(app, None)?)
+        .build()?;
+
+    let view_submenu = SubmenuBuilder::new(app, "View")
+        .item(&PredefinedMenuItem::fullscreen(app, None)?)
+        .build()?;
+
+    let window_submenu = SubmenuBuilder::new(app, "Window")
+        .item(&PredefinedMenuItem::minimize(app, None)?)
+        .item(&PredefinedMenuItem::maximize(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::bring_all_to_front(app, None)?)
+        .build()?;
+
+    MenuBuilder::new(app)
+        .items(&[
+            &app_submenu, &file_submenu, &edit_submenu, &view_submenu, &window_submenu,
+        ])
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(CardWatcherState::default())
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
         .manage(FolderWatcherState::default())
         .setup(|app| {
+            // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
+            match build_menu(&handle) {
+                Ok(menu) => {
+                    if let Err(err) = app.set_menu(menu) {
+                        eprintln!("set_menu failed: {}", err);
+                    }
+                }
+                Err(err) => eprintln!("build_menu failed: {}", err),
+            }
+            // Forward menu events to frontend as "menu://<id>" events
+            app.on_menu_event(move |app_handle, event| {
+                let id = event.id().0.as_str();
+                let event_name = format!("menu://{}", id.trim_start_matches("menu_"));
+                if let Err(err) = app_handle.emit(&event_name, ()) {
+                    eprintln!("Failed to emit menu event {}: {}", event_name, err);
+                }
+            });
             if let Err(err) = card_watcher::spawn_watcher(handle) {
                 eprintln!("Failed to start card watcher: {}", err);
             }

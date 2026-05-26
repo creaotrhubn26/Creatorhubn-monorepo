@@ -133,6 +133,56 @@ export default function App() {
       .catch((e: unknown) => setLoadError(String(e)));
   }, []);
 
+  // Subscribe to native-menu events (#186 + #187 + #129)
+  useEffect(() => {
+    const unlisteners: Array<() => void> = [];
+    let cancelled = false;
+    void import("@tauri-apps/api/event").then(({ listen }) => {
+      if (cancelled) return;
+      listen("menu://rerun-last", async () => {
+        const all = Object.values(runs ?? {}).filter((r): r is RunRecord => !!r);
+        if (all.length === 0) {
+          setEvents((prev) => [
+            ...prev,
+            { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No previous run to re-execute" },
+          ]);
+          return;
+        }
+        const last = all.sort((a, b) => Number(b.startedAt ?? 0) - Number(a.startedAt ?? 0))[0];
+        const script = scriptsById[last.scriptId];
+        if (!script) return;
+        // Params aren't persisted on RunRecord — re-run with empty params,
+        // which makes the runner use defaults or prompt where required.
+        await runScript(script, {}, false);
+      }).then((u) => unlisteners.push(u));
+      listen("menu://new-workflow", () => setView("pipeline")).then((u) => unlisteners.push(u));
+      listen("menu://check-updates", async () => {
+        try {
+          const { check } = await import("@tauri-apps/plugin-updater");
+          const update = await check();
+          if (update) {
+            setEvents((prev) => [
+              ...prev,
+              { type: "log", ts: Date.now() / 1000, runId: "n/a",
+                message: `Update available: v${update.version} — ${update.body ?? ""}` },
+            ]);
+          } else {
+            setEvents((prev) => [
+              ...prev,
+              { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
+            ]);
+          }
+        } catch (e) {
+          // Updater not configured (no endpoint/pubkey) — silent in dev
+          console.warn("[updater] not available:", e);
+        }
+      }).then((u) => unlisteners.push(u));
+    });
+    return () => { cancelled = true; unlisteners.forEach((u) => u?.()); };
+  // runs + scriptsById intentionally NOT in deps — we always read latest via closure ref
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Subscribe to Tauri events
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -365,12 +415,25 @@ export default function App() {
           {selectedWorkflow ? (
             selectedWorkflow.steps.map((step) => {
               const script = scriptsById[step.scriptId];
+              // #235 — derive per-step status from runs[] + runningScripts
+              const lastRun = runs[step.scriptId];
+              const running = Object.values(runningScripts).find(
+                (r) => r.scriptId === step.scriptId,
+              );
+              const runStatus: "pending" | "running" | "success" | "failed" = running
+                ? "running"
+                : lastRun
+                  ? (lastRun.succeeded ? "success" : "failed")
+                  : "pending";
               return (
                 <PipelineStep
                   key={step.order}
                   step={step}
                   script={script}
                   busy={busy}
+                  runStatus={runStatus}
+                  runProgress={running?.percent}
+                  lastFinishedAt={lastRun?.finishedAt}
                   onDryRun={() => script && handleTrigger(script, true)}
                   onRun={() => script && handleTrigger(script, false)}
                 />

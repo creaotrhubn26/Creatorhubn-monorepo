@@ -48,6 +48,7 @@ if _TIMELINE_DIR not in sys.path:
 
 import signals as _signals_pkg  # noqa: E402
 import genre_weights  # noqa: E402
+import scene_detect  # noqa: E402
 
 
 SIDECAR_FFMPEG_PATHS = (
@@ -103,18 +104,9 @@ def probe_duration_fps(ffprobe: str, path: str) -> tuple[float, float]:
 
 
 def detect_cuts(ffmpeg: str, path: str, threshold: float) -> list[float]:
-    cmd = [
-        ffmpeg, "-hide_banner", "-nostats",
-        "-i", path,
-        "-vf", f"select='gt(scene,{threshold})',showinfo",
-        "-an", "-f", "null", "-",
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-        return sorted({float(m) for m in PTS_RE.findall(proc.stderr)})
-    except Exception as exc:  # noqa: BLE001
-        bridge.warn(f"detect_cuts failed: {exc}")
-        return []
+    """Detect scene boundaries — delegates to scene_detect.py which prefers
+    PySceneDetect when installed (more robust on fades/dissolves)."""
+    return scene_detect.detect_cuts(ffmpeg, path, threshold, logger=bridge.log)
 
 
 def shot_motion_score(ffmpeg: str, video: str, start: float, end: float) -> float:

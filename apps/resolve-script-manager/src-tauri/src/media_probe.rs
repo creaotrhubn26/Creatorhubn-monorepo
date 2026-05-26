@@ -10,8 +10,11 @@
 //!     imports into Resolve with the wrong project settings.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 
 const FFPROBE_FALLBACK_PATHS: &[&str] = &[
     "/opt/homebrew/bin/ffprobe",
@@ -36,6 +39,16 @@ pub struct MediaInfo {
     pub video_standard: String, // "PAL" | "NTSC" | "Cinema" | "Other"
     /// Detected log curve, if any. None = standard Rec.709/sRGB-style footage.
     pub log_curve: Option<LogCurveGuess>,
+    /// ProRes profile variant (#116) — e.g. "Proxy" / "LT" / "422" / "422 HQ"
+    /// / "4444" / "4444 XQ". None for non-ProRes codecs.
+    pub prores_variant: Option<String>,
+    /// HEVC profile + dynamic-range classification (#117) — e.g.
+    /// "Main", "Main 10", "Main 12". None for non-HEVC codecs.
+    pub hevc_profile: Option<String>,
+    /// "SDR" | "HDR10" | "HLG" | None when not detectable
+    pub dynamic_range: Option<String>,
+    /// Bit depth if known: 8 / 10 / 12.
+    pub bit_depth: Option<u32>,
     pub error: Option<String>,
 }
 
@@ -209,9 +222,53 @@ pub fn detect_log_curve(
     None
 }
 
+/// (#115) Cache key = (path, mtime nanos, size). Same path with new content
+/// (different mtime/size) invalidates automatically. SHA256 would be more
+/// correct but too expensive — mtime+size catches 99% of edits.
+#[derive(Eq, PartialEq, Hash, Clone)]
+struct CacheKey {
+    path: String,
+    mtime_ns: u128,
+    size: u64,
+}
+
+static PROBE_CACHE: OnceLock<Mutex<HashMap<CacheKey, MediaInfo>>> = OnceLock::new();
+
+fn probe_cache() -> &'static Mutex<HashMap<CacheKey, MediaInfo>> {
+    PROBE_CACHE.get_or_init(|| Mutex::new(HashMap::with_capacity(256)))
+}
+
+fn cache_key_for(path: &Path) -> Option<CacheKey> {
+    let meta = path.metadata().ok()?;
+    let mtime = meta.modified().ok()?;
+    let mtime_ns = mtime
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    Some(CacheKey {
+        path: path.display().to_string(),
+        mtime_ns,
+        size: meta.len(),
+    })
+}
+
 pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
     let path_str = path.display().to_string();
-    let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    // (#115) Cache hit? Returns immediately without spawning ffprobe.
+    let key = cache_key_for(path);
+    if let Some(k) = &key {
+        if let Ok(cache) = probe_cache().lock() {
+            if let Some(hit) = cache.get(k) {
+                return hit.clone();
+            }
+        }
+    }
+
     let mut info = MediaInfo {
         path: path_str.clone(),
         file_name: file_name.clone(),
@@ -225,6 +282,10 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
         color_primaries: None,
         video_standard: "Other".to_string(),
         log_curve: None,
+        prores_variant: None,
+        hevc_profile: None,
+        dynamic_range: None,
+        bit_depth: None,
         error: None,
     };
 
@@ -232,7 +293,8 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
         .args([
             "-v", "error",
             "-select_streams", "v:0",
-            "-show_entries", "stream=width,height,r_frame_rate,codec_name,color_space,color_transfer,color_primaries:format=duration",
+            // Add profile + codec_tag_string + pix_fmt for ProRes/HEVC classification
+            "-show_entries", "stream=width,height,r_frame_rate,codec_name,profile,codec_tag_string,pix_fmt,bits_per_raw_sample,color_space,color_transfer,color_primaries:format=duration",
             "-of", "json",
         ])
         .arg(path)
@@ -264,6 +326,10 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
     };
 
     let stream = parsed.get("streams").and_then(|s| s.as_array()).and_then(|a| a.first());
+    let mut profile_str: Option<String> = None;
+    let mut codec_tag: Option<String> = None;
+    let mut pix_fmt: Option<String> = None;
+    let mut bits_per_raw: Option<u32> = None;
     if let Some(s) = stream {
         info.width = s.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
         info.height = s.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
@@ -271,6 +337,13 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
         info.color_space = s.get("color_space").and_then(|v| v.as_str()).map(|s| s.to_string());
         info.color_transfer = s.get("color_transfer").and_then(|v| v.as_str()).map(|s| s.to_string());
         info.color_primaries = s.get("color_primaries").and_then(|v| v.as_str()).map(|s| s.to_string());
+        profile_str = s.get("profile").and_then(|v| v.as_str()).map(|s| s.to_string());
+        codec_tag = s.get("codec_tag_string").and_then(|v| v.as_str()).map(|s| s.to_string());
+        pix_fmt = s.get("pix_fmt").and_then(|v| v.as_str()).map(|s| s.to_string());
+        bits_per_raw = s
+            .get("bits_per_raw_sample")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok());
         if let Some(rate_str) = s.get("r_frame_rate").and_then(|v| v.as_str()) {
             info.frame_rate = parse_frame_rate(rate_str);
         }
@@ -283,6 +356,27 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
         info.codec.as_deref(),
     );
 
+    // #116 — ProRes profile classification via codec_tag_string (preferred)
+    // or profile field. Both are populated by ffprobe; codec_tag_string is
+    // the FourCC and unambiguous.
+    if info.codec.as_deref() == Some("prores") {
+        info.prores_variant = classify_prores(codec_tag.as_deref(), profile_str.as_deref());
+    }
+
+    // #117 — HEVC profile + dynamic-range classification
+    if matches!(info.codec.as_deref(), Some("hevc") | Some("h265")) {
+        info.hevc_profile = profile_str.clone();
+        info.bit_depth = bits_per_raw.or_else(|| infer_bit_depth_from_pix_fmt(pix_fmt.as_deref()));
+        info.dynamic_range = Some(classify_dynamic_range(info.color_transfer.as_deref()));
+    } else {
+        info.bit_depth = bits_per_raw.or_else(|| infer_bit_depth_from_pix_fmt(pix_fmt.as_deref()));
+        // SDR/HDR applies to non-HEVC too; set if transfer characteristic is unambiguous
+        let dr = classify_dynamic_range(info.color_transfer.as_deref());
+        if dr != "SDR" || info.color_transfer.is_some() {
+            info.dynamic_range = Some(dr);
+        }
+    }
+
     info.duration_seconds = parsed
         .get("format")
         .and_then(|f| f.get("duration"))
@@ -293,7 +387,62 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
         info.video_standard = classify(fps).to_string();
     }
 
+    // (#115) Cache the probed result
+    if let Some(k) = key {
+        if let Ok(mut cache) = probe_cache().lock() {
+            cache.insert(k, info.clone());
+        }
+    }
+
     info
+}
+
+/// (#116) Classify ProRes variant from codec_tag_string (preferred) or profile.
+/// ProRes FourCC mapping is standardized:
+///   apco = Proxy   apcs = LT   apcn = 422   apch = 422 HQ
+///   ap4h = 4444    ap4x = 4444 XQ
+fn classify_prores(codec_tag: Option<&str>, profile: Option<&str>) -> Option<String> {
+    if let Some(tag) = codec_tag {
+        let v = match tag {
+            "apco" => "Proxy",
+            "apcs" => "LT",
+            "apcn" => "422",
+            "apch" => "422 HQ",
+            "ap4h" => "4444",
+            "ap4x" => "4444 XQ",
+            _ => "",
+        };
+        if !v.is_empty() {
+            return Some(v.to_string());
+        }
+    }
+    // Fall back to ffprobe's profile string ("Standard", "HQ", "4444", etc.)
+    profile.map(|s| s.to_string())
+}
+
+/// (#117) Map ffprobe color_transfer to dynamic range bucket.
+fn classify_dynamic_range(color_transfer: Option<&str>) -> String {
+    match color_transfer.unwrap_or("").to_lowercase().as_str() {
+        "smpte2084" | "smpte-st-2084" => "HDR10".to_string(),
+        "arib-std-b67" => "HLG".to_string(),
+        _ => "SDR".to_string(),
+    }
+}
+
+/// Map pix_fmt to bit depth. yuv420p10le / yuv422p10le → 10; yuv420p → 8.
+fn infer_bit_depth_from_pix_fmt(pix_fmt: Option<&str>) -> Option<u32> {
+    let f = pix_fmt?.to_lowercase();
+    if f.contains("p16") {
+        Some(16)
+    } else if f.contains("p12") {
+        Some(12)
+    } else if f.contains("p10") {
+        Some(10)
+    } else if f.contains("p8") || f.starts_with("yuv420p") || f.starts_with("yuv422p") || f.starts_with("yuv444p") {
+        Some(8)
+    } else {
+        None
+    }
 }
 
 const PROBE_MAX_FILES: usize = 40; // cap to avoid blocking on hundreds-of-clips cards

@@ -36,6 +36,7 @@
     "shortDescription": "DaVinci Resolve pipeline automation for videographers",
     "longDescription": "Run the full post-production pipeline — import, organize, timeline-build, sync, rough cut, render queue, backup — as scripted DaVinci Resolve actions with dry-run safety and live logs.",
     "resources": ["../python/**/*"],
+    "createUpdaterArtifacts": "v1Compatible",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -43,5 +44,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://releases.creatorhubn.com/post-agent/{{target}}-{{arch}}/{{current_version}}"
+      ],
+      "pubkey": "",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

@@ -37,6 +37,12 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import bridge
 
+# Allow `scene_detect` to be imported as top-level from this script's folder
+_TIMELINE_DIR = os.path.dirname(os.path.abspath(__file__))
+if _TIMELINE_DIR not in sys.path:
+    sys.path.insert(0, _TIMELINE_DIR)
+import scene_detect  # noqa: E402
+
 
 SIDECAR_FFMPEG_PATHS = (
     "/opt/homebrew/bin/ffmpeg",
@@ -96,16 +102,9 @@ PTS_RE = re.compile(r"pts_time:([\d.]+)")
 
 
 def detect_cuts(ffmpeg: str, path: str, threshold: float) -> list[float]:
-    """Run ffmpeg scene-detect, return list of cut times in seconds (sorted)."""
-    cmd = [
-        ffmpeg, "-hide_banner", "-nostats",
-        "-i", path,
-        "-vf", f"select='gt(scene,{threshold})',showinfo",
-        "-an", "-f", "null", "-",
-    ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-    cuts = sorted({float(m) for m in PTS_RE.findall(proc.stderr)})
-    return cuts
+    """Detect scene boundaries — delegates to scene_detect.py which prefers
+    PySceneDetect when installed (more robust on fades/dissolves)."""
+    return scene_detect.detect_cuts(ffmpeg, path, threshold, logger=bridge.log)
 
 
 def extract_frame(ffmpeg: str, video: str, time_sec: float, dest: str) -> bool:

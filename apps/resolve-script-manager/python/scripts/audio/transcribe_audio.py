@@ -68,10 +68,22 @@ def find_python_with_whisperx() -> str | None:
 
 def run(params: dict, dry_run: bool) -> None:
     audio_path = params.get("audioPath")
-    model = params.get("model", "base")
+    # #78: default to large-v3 (best accuracy for Norwegian + emotional speech in
+    # wedding context). Users can override down to base/tiny for speed.
+    model = params.get("model", "large-v3")
     language = params.get("language", "auto")
-    diarize = bool(params.get("diarize", False))
     hf_token = params.get("hfToken") or os.environ.get("HF_TOKEN")
+    # #78: auto-enable diarization when HF token is present (and user didn't
+    # explicitly opt out). Diarization on a multi-speaker wedding speech is
+    # what makes the transcript actually useful for finding "Father of the
+    # bride speaks" vs "Best man speaks" segments.
+    if "diarize" in params:
+        diarize = bool(params.get("diarize"))
+    else:
+        diarize = bool(hf_token)  # auto-on when we have a token
+    if diarize and not hf_token:
+        bridge.warn("diarize requested but no HF_TOKEN — disabling diarization")
+        diarize = False
 
     if dry_run:
         whisperx = find_whisperx()
@@ -116,12 +128,21 @@ def run(params: dict, dry_run: bool) -> None:
 
         if language and language != "auto":
             cmd.extend(["--language", language])
+        # WhisperX large-v3 needs explicit compute type on Apple Silicon
+        # (default float16 isn't supported on MPS; use int8 for CPU-fallback).
+        if model in ("large-v3", "large-v2", "large"):
+            cmd.extend(["--compute_type", "int8"])
         if diarize:
             cmd.append("--diarize")
             if hf_token:
                 cmd.extend(["--hf_token", hf_token])
+            # Hint min/max speakers — wedding speeches usually 1-5 people
+            cmd.extend(["--min_speakers", "1", "--max_speakers", "8"])
 
-        bridge.log(f"Starting WhisperX: {' '.join(cmd[:3])} …")
+        bridge.log(
+            f"Starting WhisperX model={model} language={language} "
+            f"diarize={diarize}"
+        )
         bridge.progress(10, 100, "Transcribing…")
 
         try:

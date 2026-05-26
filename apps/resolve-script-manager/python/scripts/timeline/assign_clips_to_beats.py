@@ -479,6 +479,24 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             f"past edits ({len(user_profile['clipPreferences'])} clips with history)"
         )
 
+    # #50: filter out blacklisted clips entirely (3+ consecutive replacements)
+    blacklist = set(user_profile.get("blacklist") or [])
+    if blacklist:
+        before = len(kept)
+        kept = [c for c in kept if c.get("clipPath") not in blacklist]
+        filtered = before - len(kept)
+        if filtered > 0:
+            bridge.log(
+                f"Filtered {filtered} blacklisted clip(s) from pool "
+                f"({len(blacklist)} total in blacklist)"
+            )
+        if not kept:
+            bridge.error(
+                f"All clips are blacklisted ({len(blacklist)} blacklisted). "
+                "Reset profile.json to start over."
+            )
+            sys.exit(1)
+
     segments = _build_segments(beats, segment_beats, prefer_downbeats, downbeats)
     if not segments:
         bridge.error("Could not derive any cut-segments from the beat grid.")

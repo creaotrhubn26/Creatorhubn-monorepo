@@ -57,23 +57,26 @@ def _load_snapshot() -> dict:
 def _load_profile() -> dict:
     if not os.path.isfile(PROFILE_PATH):
         return {
-            "version": 1,
+            "version": 2,
             "totalLearningSessions": 0,
-            "clipPreferences": {},   # clipPath → { keeps: n, replacements: n, contexts: [...] }
+            "clipPreferences": {},   # clipPath → { keeps: n, replacements: n, contexts: [...], replacementStreak: n }
             "energyCurveDeltas": {}, # segmentBin → avg(user_demand − auto_demand)
             "durationDeltas": {},    # segmentBin → avg(user_duration − auto_duration) seconds
+            "blacklist": [],         # clipPaths the user keeps rejecting (3x consecutive replacement)
         }
     try:
         with open(PROFILE_PATH) as f:
             data = json.load(f)
-            # Backfill if older schema
             for key in ("clipPreferences", "energyCurveDeltas", "durationDeltas"):
                 data.setdefault(key, {})
             data.setdefault("totalLearningSessions", 0)
+            data.setdefault("blacklist", [])
+            data.setdefault("version", 2)
             return data
     except (OSError, json.JSONDecodeError):
-        return {"version": 1, "totalLearningSessions": 0,
-                "clipPreferences": {}, "energyCurveDeltas": {}, "durationDeltas": {}}
+        return {"version": 2, "totalLearningSessions": 0,
+                "clipPreferences": {}, "energyCurveDeltas": {},
+                "durationDeltas": {}, "blacklist": []}
 
 
 def _save_profile(profile: dict) -> None:
@@ -192,27 +195,43 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     moved = 0
     inserted_by_user = len(unmatched_current)
 
-    for m in matches:
+    # Structured per-decision log (#44) — same info as the verdict in
+    # session-record but in line-by-line log form for live progress reading.
+    bridge.log("─── DECISIONS (auto pick → user verdict) ───")
+    for idx, m in enumerate(matches):
         a = m["auto"]
         u = m["user"]
+        auto_clip = os.path.basename(a.get("clipPath") or "?")
+        bin_name = _bin_energy(a.get("energyDemand"))
         if not u:
+            verdict = "REMOVED"
+            details = ""
             removed += 1
-            continue
-        if a.get("clipPath") and u.get("path") and a["clipPath"] == u["path"]:
+        elif a.get("clipPath") and u.get("path") and a["clipPath"] == u["path"]:
+            verdict = "KEPT"
             kept += 1
             if abs((u["startSec"] - (a.get("startSec") or 0))) > 0.05:
+                verdict = "KEPT_MOVED"
                 moved += 1
+            details = f" dur {a.get('durationSec', 0):.1f}s → {u.get('durationSec', 0):.1f}s"
         else:
+            verdict = "REPLACED"
             replaced += 1
+            user_clip = os.path.basename(u.get("path") or "?")
+            details = f" → {user_clip}"
+        bridge.log(f"  [{idx:02d}] {bin_name:6s} {auto_clip:30s} {verdict}{details}")
 
     bridge.log(
-        f"Diff: {kept} kept, {replaced} replaced, {removed} removed, "
+        f"Summary: {kept} kept, {replaced} replaced, {removed} removed, "
         f"{moved} moved, {inserted_by_user} inserted by you"
     )
 
     # Update profile
     profile = _load_profile()
     profile["totalLearningSessions"] = profile.get("totalLearningSessions", 0) + 1
+
+    blacklist_set: set[str] = set(profile.get("blacklist", []))
+    newly_blacklisted: list[str] = []
 
     for m in matches:
         a = m["auto"]
@@ -223,14 +242,27 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             continue
 
         clip_pref = profile["clipPreferences"].setdefault(auto_path, {
-            "keeps": 0, "replacements": 0, "contexts": []
+            "keeps": 0, "replacements": 0, "contexts": [],
+            "replacementStreak": 0,
         })
+        clip_pref.setdefault("replacementStreak", 0)
         if u and u.get("path") == auto_path:
             clip_pref["keeps"] += 1
+            clip_pref["replacementStreak"] = 0  # reset on keep
         else:
             clip_pref["replacements"] += 1
+            clip_pref["replacementStreak"] += 1
+            # #50: auto-blacklist after 3 consecutive replacements
+            if (clip_pref["replacementStreak"] >= 3
+                    and auto_path not in blacklist_set):
+                blacklist_set.add(auto_path)
+                newly_blacklisted.append(auto_path)
+                bridge.log(
+                    f"  ⛔ BLACKLISTED {os.path.basename(auto_path)} "
+                    f"({clip_pref['replacementStreak']} consecutive replacements)"
+                )
         clip_pref["contexts"].append(bin_name)
-        clip_pref["contexts"] = clip_pref["contexts"][-30:]  # bounded
+        clip_pref["contexts"] = clip_pref["contexts"][-30:]
 
         # Duration delta per bin
         if u and a.get("durationSec"):
@@ -238,6 +270,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             bin_durations = profile["durationDeltas"].setdefault(bin_name, {"sum": 0, "count": 0})
             bin_durations["sum"] += delta
             bin_durations["count"] += 1
+
+    profile["blacklist"] = sorted(blacklist_set)
 
     # Save individual session record
     os.makedirs(PREFERENCES_DIR, exist_ok=True)
@@ -274,6 +308,13 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         reverse=True,
     )[:5]
 
+    # #49: write a human-readable markdown report next to the JSON session
+    md_path = _write_markdown_report(
+        session_path, snapshot, matches, kept, replaced, removed, moved,
+        inserted_by_user, unmatched_current, newly_blacklisted, profile,
+        most_replaced,
+    )
+
     bridge.result({
         "totalSessions": profile["totalLearningSessions"],
         "kept": kept,
@@ -282,12 +323,105 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         "moved": moved,
         "insertedByUser": inserted_by_user,
         "sessionRecord": session_path,
+        "markdownReport": md_path,
         "profilePath": PROFILE_PATH,
+        "newlyBlacklisted": newly_blacklisted,
+        "totalBlacklisted": len(profile["blacklist"]),
         "mostReplacedClips": [
             {"path": p, "replacements": v["replacements"], "keeps": v["keeps"]}
             for p, v in most_replaced if v["replacements"] > v["keeps"]
         ],
     })
+
+
+def _write_markdown_report(session_path: str, snapshot: dict, matches: list,
+                           kept: int, replaced: int, removed: int, moved: int,
+                           inserted_by_user: int, unmatched_current: list,
+                           newly_blacklisted: list[str], profile: dict,
+                           most_replaced: list) -> str:
+    """Generate a human-readable markdown summary of what the system learned.
+    Useful for spot-checking that the learning loop captured what the user
+    actually did, and for reviewing the profile evolution over time."""
+    md_path = session_path.replace(".json", ".md")
+    total = kept + replaced + removed
+    keep_pct = (kept / total * 100) if total else 0
+    replace_pct = (replaced / total * 100) if total else 0
+    lines: list[str] = []
+    lines.append(f"# Learning session — {snapshot.get('timelineName', 'unnamed')}")
+    lines.append("")
+    lines.append(f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"Session #: {profile['totalLearningSessions']}")
+    lines.append(f"Project: {snapshot.get('projectName', '?')}")
+    lines.append("")
+    lines.append("## Outcome")
+    lines.append("")
+    lines.append(f"- ✅ Kept: **{kept}** ({keep_pct:.0f}%)")
+    lines.append(f"- 🔁 Replaced: **{replaced}** ({replace_pct:.0f}%)")
+    lines.append(f"- 🗑 Removed: **{removed}**")
+    lines.append(f"- ↔ Moved (kept clip, different position): **{moved}**")
+    lines.append(f"- ➕ Inserted by you (not in auto-placement): **{inserted_by_user}**")
+    lines.append("")
+    if newly_blacklisted:
+        lines.append("## ⛔ Newly blacklisted clips (3x consecutive replacement)")
+        lines.append("")
+        for path in newly_blacklisted:
+            lines.append(f"- `{os.path.basename(path)}`")
+        lines.append("")
+        lines.append("_These clips will be filtered out of future auto-placements._")
+        lines.append("")
+    lines.append("## Per-segment decisions")
+    lines.append("")
+    lines.append("| # | Energy bin | Auto pick | Verdict |")
+    lines.append("|---|------------|-----------|---------|")
+    for idx, m in enumerate(matches):
+        a = m["auto"]
+        u = m["user"]
+        bin_name = _bin_energy(a.get("energyDemand"))
+        auto_clip = os.path.basename(a.get("clipPath") or "?")
+        if not u:
+            verdict = "🗑 removed"
+        elif a.get("clipPath") == (u.get("path") or ""):
+            if abs((u["startSec"] - (a.get("startSec") or 0))) > 0.05:
+                verdict = "↔ moved"
+            else:
+                verdict = "✅ kept"
+        else:
+            verdict = f"🔁 → `{os.path.basename(u.get('path') or '?')}`"
+        lines.append(f"| {idx} | {bin_name} | `{auto_clip}` | {verdict} |")
+    if unmatched_current:
+        lines.append("")
+        lines.append("## You inserted these (not in auto-placement)")
+        lines.append("")
+        for u in unmatched_current[:20]:
+            lines.append(
+                f"- `{u.get('name', '?')}` at {u.get('startSec', 0):.1f}s "
+                f"(dur {u.get('durationSec', 0):.1f}s)"
+            )
+    lines.append("")
+    lines.append("## Profile state after this session")
+    lines.append("")
+    lines.append(f"- Total learning sessions: **{profile['totalLearningSessions']}**")
+    lines.append(f"- Clips with history: **{len(profile['clipPreferences'])}**")
+    lines.append(f"- Total blacklist: **{len(profile['blacklist'])}**")
+    if most_replaced:
+        lines.append("")
+        lines.append("### Top 5 most-replaced clips (replacements − keeps)")
+        lines.append("")
+        for path, stats in most_replaced[:5]:
+            delta = stats["replacements"] - stats["keeps"]
+            lines.append(
+                f"- `{os.path.basename(path)}` — "
+                f"{stats['keeps']} keeps, {stats['replacements']} replacements (Δ {delta:+d})"
+            )
+    lines.append("")
+    try:
+        with open(md_path, "w") as f:
+            f.write("\n".join(lines))
+        bridge.log(f"Markdown report: {md_path}")
+    except OSError as exc:
+        bridge.warn(f"Could not write markdown report: {exc}")
+        return ""
+    return md_path
 
 
 if __name__ == "__main__":

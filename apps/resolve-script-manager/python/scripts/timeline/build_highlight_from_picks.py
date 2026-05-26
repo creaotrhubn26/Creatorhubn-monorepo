@@ -218,13 +218,33 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
                 if songs_placed:
                     bridge.log(f"Placed {len(songs_placed)} song instance(s) on A{song_track}")
-                    # Mute linked audio (A1..A_existing) so only clean songs play
-                    for t in range(1, existing_audio + 1):
-                        try:
-                            timeline.SetTrackEnable("audio", t, False)
-                        except Exception:  # noqa: BLE001
-                            pass
-                    bridge.log(f"Muted A1..A{existing_audio} — clean songs on A{song_track} play solo")
+                    # #53: verify song-placement-overlap before muting linked audio.
+                    # If songs only cover a fraction of the highlight, muting
+                    # everything leaves the uncovered sections silent — much
+                    # worse than keeping the original audio under those parts.
+                    covered_sec = sum(t_dur for (_p, _ts, t_dur) in song_placements)
+                    highlight_sec = total
+                    coverage = covered_sec / highlight_sec if highlight_sec > 0 else 0
+                    bridge.log(
+                        f"Song-coverage check: {covered_sec:.1f}s of "
+                        f"{highlight_sec:.1f}s highlight = {coverage:.0%}"
+                    )
+                    if coverage >= 0.6:
+                        for t in range(1, existing_audio + 1):
+                            try:
+                                timeline.SetTrackEnable("audio", t, False)
+                            except Exception:  # noqa: BLE001
+                                pass
+                        bridge.log(
+                            f"Muted A1..A{existing_audio} — clean songs cover "
+                            f"{coverage:.0%} of highlight, A{song_track} plays solo"
+                        )
+                    else:
+                        bridge.warn(
+                            f"Song coverage only {coverage:.0%} of highlight — "
+                            f"keeping A1..A{existing_audio} UN-muted so uncovered "
+                            "sections aren't silent. Mute manually if you want clean-only."
+                        )
 
     bridge.progress(100, 100, "Ferdig.")
     bridge.result({
