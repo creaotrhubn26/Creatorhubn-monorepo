@@ -136,6 +136,34 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         bridge.error("Picks cache has no approved picks")
         sys.exit(1)
 
+    # Apply Creative Editor state hvis sendt inline (trim/reorder/filter)
+    overrides_raw = params.get("pickOverrides") or {}
+    pick_order = params.get("pickOrder")
+    excluded = params.get("excludedChapters") or []
+    if overrides_raw or pick_order or excluded:
+        # Trim-overrides
+        if isinstance(overrides_raw, dict):
+            ov = {}
+            for k, v in overrides_raw.items():
+                try: ov[int(k)] = v if isinstance(v, dict) else {}
+                except (TypeError, ValueError): continue
+            for p in picks:
+                o = ov.get(p.get("index"))
+                if not o: continue
+                if "startSec" in o: p["startSec"] = float(o["startSec"])
+                if "endSec"   in o: p["endSec"]   = float(o["endSec"])
+                p["durationSec"] = max(0.1, p["endSec"] - p["startSec"])
+        # Reorder
+        if isinstance(pick_order, list) and pick_order:
+            order_map = {idx: i for i, idx in enumerate(pick_order)}
+            picks = [p for p in picks if p.get("index") in order_map]
+            picks.sort(key=lambda p: order_map[p["index"]])
+        # Exclude chapters
+        if isinstance(excluded, list) and excluded:
+            ex = {str(c).lower() for c in excluded}
+            picks = [p for p in picks if (p.get("chapter") or "details").lower() not in ex]
+        bridge.log(f"Applied editor-state to {len(picks)} picks for EDL export")
+
     base = os.path.splitext(os.path.basename(source_video or "Untitled"))[0]
     title = title_override or f"{base} — Post Agent picks"
     if not output_path:

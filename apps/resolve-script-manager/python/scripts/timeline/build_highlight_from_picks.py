@@ -36,6 +36,39 @@ def _load_cached_picks() -> dict:
         return {}
 
 
+def _apply_editor_state(picks: list[dict], params: dict) -> list[dict]:
+    """Apply Creative Editor state (overrides + reorder + filter) til picks.
+    Samme contract som assemble_highlight_with_music."""
+    # Apply pickOverrides (trim per pick.index)
+    overrides_raw = params.get("pickOverrides") or {}
+    if isinstance(overrides_raw, dict):
+        overrides: dict[int, dict] = {}
+        for k, v in overrides_raw.items():
+            try: overrides[int(k)] = v if isinstance(v, dict) else {}
+            except (TypeError, ValueError): continue
+        for p in picks:
+            o = overrides.get(p.get("index"))
+            if not o: continue
+            if "startSec" in o: p["startSec"] = float(o["startSec"])
+            if "endSec"   in o: p["endSec"]   = float(o["endSec"])
+            p["durationSec"] = max(0.1, p["endSec"] - p["startSec"])
+
+    # Apply pickOrder (reorder + filter til de i ordering)
+    pick_order = params.get("pickOrder")
+    if isinstance(pick_order, list) and pick_order:
+        order_map = {idx: i for i, idx in enumerate(pick_order)}
+        picks = [p for p in picks if p.get("index") in order_map]
+        picks.sort(key=lambda p: order_map[p["index"]])
+
+    # Filter ut ekskluderte chapters
+    excluded = params.get("excludedChapters") or []
+    if isinstance(excluded, list) and excluded:
+        ex = {str(c).lower() for c in excluded}
+        picks = [p for p in picks if (p.get("chapter") or "details").lower() not in ex]
+
+    return picks
+
+
 def run(params: dict[str, Any], dry_run: bool) -> None:
     picks = params.get("picks") or []
     source_video = (params.get("sourceVideo") or "").strip()
@@ -61,6 +94,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
     if not source_video or not os.path.isfile(source_video):
         bridge.error(f"sourceVideo '{source_video}' not found on disk")
+
+    # Apply Creative Editor state: trim-overrides + reorder + filter
+    picks_before = len(picks)
+    picks = _apply_editor_state(picks, params)
+    if len(picks) != picks_before:
+        bridge.log(f"Applied editor-state: {picks_before} → {len(picks)} picks (after filter+reorder)")
         sys.exit(1)
     if not timeline_name:
         timeline_name = f"{os.path.splitext(os.path.basename(source_video))[0]} — highlight reviewed"

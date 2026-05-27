@@ -1432,6 +1432,41 @@
       "requiresTimeline": false
     },
     {
+      "id": "export_fcpxml_from_picks",
+      "name": "Export FCPXML from Picks",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/export_fcpxml_from_picks.py",
+      "description": "Eksporterer picks som FCPXML v1.10 — rikere enn EDL. Inkluderer clip-segments, markers, comments, aspect-ratio. Importerbar i Resolve / Premiere / FCP / Avid. Tar samme editor-state-params som assemble (pickOverrides, pickOrder, excludedChapters).",
+      "requiredInputs": [
+        {"key": "cachePath", "label": "Picks JSON path (optional)", "type": "file", "required": false},
+        {"key": "outputPath", "label": "Output FCPXML path (optional)", "type": "text", "required": false},
+        {"key": "title", "label": "Project title (optional)", "type": "text", "required": false},
+        {"key": "aspectRatio", "label": "Aspect ratio (16:9 / 9:16 / 1:1)", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "detect_log_gamma",
+      "name": "Detect Log Gamma (auto-LUT)",
+      "category": "color",
+      "scriptPath": "scripts/color/detect_log_gamma.py",
+      "description": "Sjekker om source-video er shot i log (C-Log/S-Log/V-Log/BMD-Film/LogC/F-Log/N-Log/D-Log/Log3G10). Bruker filnavn-mønstre + ffprobe color-metadata. Returnerer suggestedLut hvis log detected. Onboarding-wizard kaller dette og auto-foreslår LUT KUN hvis log — rec.709/graded video skal IKKE få auto-LUT (oversaturerer).",
+      "requiredInputs": [
+        {"key": "videoPath", "label": "Source film", "type": "file", "required": true}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "analyze_music_for_flow",
       "name": "Analyze Music for Flow Map",
       "category": "audio",

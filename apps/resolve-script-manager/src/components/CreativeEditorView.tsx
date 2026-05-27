@@ -266,14 +266,19 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
 
-  // Export dropdown — 5 delivery variants powered by existing Post Agent scripts
-  type ExportVariant = "custom" | "teaser" | "instagram" | "couple" | "family" | "full";
+  // Export dropdown — leveranse-varianter + Resolve/EDL/FCPXML-eksport
+  type ExportVariant = "custom" | "teaser" | "instagram" | "couple" | "family" | "full"
+    | "send_to_resolve" | "export_edl" | "export_fcpxml";
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   // Color/Look pack — applies CSS filter LIVE + sends LUT-name to assemble-script
   type LookPack = "none" | "norwedfilm" | "warm" | "cinematic" | "documentary";
   const [lookPack, setLookPack] = useState<LookPack>("none");
   const [lookMenuOpen, setLookMenuOpen] = useState(false);
+
+  // Brightness / exposure adjustment (uavhengig av LUT) — for å justere
+  // lysere/mørkere uten å påvirke farger/saturation.
+  const [brightnessAdjust, setBrightnessAdjust] = useState<number>(0);  // -50 til +50
 
   // Audio Agent smart-actions — wire eksisterende audio-scripts
   type AudioAction = "isolate_vocals" | "duck_music" | "transcribe" | "normalize_loudness";
@@ -418,6 +423,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     quality: "pending" | "running" | "done" | "skip";
     flow: "pending" | "running" | "done" | "skip";
   }>({ music: "pending", quality: "pending", flow: "pending" });
+
+  // Log-gamma detection (auto-LUT-forslag)
+  const [logGammaInfo, setLogGammaInfo] = useState<{
+    isLog: boolean; profile: string; gamma: string; suggestedLut: string;
+  } | null>(null);
 
   // ─── Pro-editor: Overganger / Custom audio / Markers / Comments ───
   type TransitionType = "cut" | "fade" | "dissolve" | "wipeleft" | "fadeblack" | "fadewhite";
@@ -613,14 +623,21 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
 
   // LookPack-overlay-filter (kombineres med mood.filter)
   const lookFilter = useMemo(() => {
-    switch (lookPack) {
-      case "norwedfilm":  return " saturate(110%) contrast(108%) sepia(0.05)";
-      case "warm":        return " saturate(120%) brightness(105%) hue-rotate(8deg)";
-      case "cinematic":   return " contrast(115%) saturate(95%) brightness(98%)";
-      case "documentary": return " saturate(90%) contrast(102%)";
-      default: return "";
-    }
-  }, [lookPack]);
+    const lutPart = (() => {
+      switch (lookPack) {
+        case "norwedfilm":  return " saturate(110%) contrast(108%) sepia(0.05)";
+        case "warm":        return " saturate(120%) brightness(105%) hue-rotate(8deg)";
+        case "cinematic":   return " contrast(115%) saturate(95%) brightness(98%)";
+        case "documentary": return " saturate(90%) contrast(102%)";
+        default: return "";
+      }
+    })();
+    // Brightness-adjust uavhengig av LUT (1.0 + adjust/100)
+    const brightPart = brightnessAdjust !== 0
+      ? ` brightness(${(1 + brightnessAdjust / 100).toFixed(2)})`
+      : "";
+    return lutPart + brightPart;
+  }, [lookPack, brightnessAdjust]);
 
   // ─── Video playback: seek to focused pick (kun i pick-loop-mode) ───
   useEffect(() => {
@@ -1296,15 +1313,19 @@ Du MÅ kalle apply_couple_wishes-tool med:
   const VARIANT_PRESETS: Record<ExportVariant, {
     name: string;
     desc: string;
-    duration?: number; // target seconds (for trim)
+    duration?: number;
     aspect?: "16:9" | "9:16" | "1:1";
+    kind?: "render" | "resolve" | "edl" | "fcpxml";
   }> = {
-    custom:    { name: "Custom",          desc: "Bruk current editor-state",    aspect: aspectRatio },
-    teaser:    { name: "Teaser",          desc: "30s social-teaser",    duration: 30,  aspect: "9:16" },
-    instagram: { name: "Instagram",       desc: "60s 9:16 for Reels",    duration: 60,  aspect: "9:16" },
-    couple:    { name: "Couple-cut",      desc: "4 min 16:9 til paret",  duration: 240, aspect: "16:9" },
-    family:    { name: "Family",          desc: "10 min hele dagen",     duration: 600, aspect: "16:9" },
-    full:      { name: "Full highlight",  desc: "15 min directors-cut",  duration: 900, aspect: "16:9" },
+    custom:    { name: "Render MP4",      desc: "Current editor-state",  aspect: aspectRatio, kind: "render" },
+    teaser:    { name: "Teaser",          desc: "30s social-teaser",     duration: 30,  aspect: "9:16", kind: "render" },
+    instagram: { name: "Instagram",       desc: "60s 9:16 for Reels",    duration: 60,  aspect: "9:16", kind: "render" },
+    couple:    { name: "Couple-cut",      desc: "4 min 16:9 til paret",  duration: 240, aspect: "16:9", kind: "render" },
+    family:    { name: "Family",          desc: "10 min hele dagen",     duration: 600, aspect: "16:9", kind: "render" },
+    full:      { name: "Full highlight",  desc: "15 min directors-cut",  duration: 900, aspect: "16:9", kind: "render" },
+    send_to_resolve: { name: "→ Send til Resolve", desc: "Bygg Resolve-timeline med picks + audio",    kind: "resolve" },
+    export_edl:      { name: "→ Eksport EDL",      desc: "CMX 3600 — Premiere/Avid/FCP",                kind: "edl" },
+    export_fcpxml:   { name: "→ Eksport FCPXML",   desc: "FCPXML v1.10 m/ markers + comments",          kind: "fcpxml" },
   };
 
   const handleExport = useCallback(async (variant: ExportVariant = "custom") => {
@@ -1317,10 +1338,57 @@ Du MÅ kalle apply_couple_wishes-tool med:
       const preset = VARIANT_PRESETS[variant];
       const safeTitle = projectTitle.replace(/[^\w\s-]/g, "").trim() || "Highlight";
       const suffix = variant === "custom" ? "" : `_${variant}`;
-      const outputPath = `~/Desktop/${safeTitle}${suffix}.mp4`;
       const allChapters = new Set<string>();
       payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
       const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
+      const editorStateParams = {
+        pickOverrides,
+        pickOrder: activePickOrder ?? undefined,
+        excludedChapters: excluded,
+      };
+
+      // ─── Route per export-kind ───
+      if (preset.kind === "resolve") {
+        const summary = await executeScript("build_highlight_from_picks", {
+          sourceVideo: payload.sourceVideo,
+          timelineName: `${safeTitle} — Post Agent`,
+          ...editorStateParams,
+        }, false);
+        const errEvent = summary.events.find(e => e.type === "error");
+        if (errEvent) throw new Error((errEvent.value as any)?.message ?? "Resolve build failed");
+        setExportResult({ outputPath: "Resolve timeline opprettet — sjekk Resolve.app", durationSec: 0 });
+        return;
+      }
+      if (preset.kind === "edl") {
+        const outputPath = `~/Desktop/${safeTitle}_picks.edl`;
+        const summary = await executeScript("export_edl_from_picks", {
+          outputPath,
+          title: safeTitle,
+          ...editorStateParams,
+        }, false);
+        const r = summary.events.find(e => e.type === "result");
+        const errEvent = summary.events.find(e => e.type === "error");
+        if (errEvent) throw new Error((errEvent.value as any)?.message ?? "EDL export failed");
+        setExportResult({ outputPath: (r?.value as any)?.outputPath ?? outputPath, durationSec: 0 });
+        return;
+      }
+      if (preset.kind === "fcpxml") {
+        const outputPath = `~/Desktop/${safeTitle}_picks.fcpxml`;
+        const summary = await executeScript("export_fcpxml_from_picks", {
+          outputPath,
+          title: safeTitle,
+          aspectRatio,
+          ...editorStateParams,
+        }, false);
+        const r = summary.events.find(e => e.type === "result");
+        const errEvent = summary.events.find(e => e.type === "error");
+        if (errEvent) throw new Error((errEvent.value as any)?.message ?? "FCPXML export failed");
+        setExportResult({ outputPath: (r?.value as any)?.outputPath ?? outputPath, durationSec: 0 });
+        return;
+      }
+
+      // Default: render MP4 via assemble_highlight_with_music
+      const outputPath = `~/Desktop/${safeTitle}${suffix}.mp4`;
       const summary = await executeScript("assemble_highlight_with_music", {
         videoPath: payload.sourceVideo,
         outputPath,
@@ -1771,14 +1839,25 @@ ${ctxLines.join("\n")}`;
             </button>
             {exportMenuOpen && !exportBusy && (
               <div className="ce-export-menu">
+                <div style={{ fontSize: 10.5, color: "#8674a8", padding: "4px 10px 2px", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                  RENDER MP4
+                </div>
                 {(["custom", "teaser", "instagram", "couple", "family", "full"] as ExportVariant[]).map(v => {
                   const preset = VARIANT_PRESETS[v];
                   return (
-                    <button
-                      key={v}
-                      className="ce-export-item"
-                      onClick={() => handleExport(v)}
-                    >
+                    <button key={v} className="ce-export-item" onClick={() => handleExport(v)}>
+                      <div className="ce-export-item-name">{preset.name}</div>
+                      <div className="ce-export-item-desc">{preset.desc}</div>
+                    </button>
+                  );
+                })}
+                <div style={{ fontSize: 10.5, color: "#8674a8", padding: "8px 10px 2px", textTransform: "uppercase", letterSpacing: 0.3, borderTop: "1px solid #1a0d45", marginTop: 4 }}>
+                  SEND TIL NLE
+                </div>
+                {(["send_to_resolve", "export_edl", "export_fcpxml"] as ExportVariant[]).map(v => {
+                  const preset = VARIANT_PRESETS[v];
+                  return (
+                    <button key={v} className="ce-export-item" onClick={() => handleExport(v)}>
                       <div className="ce-export-item-name">{preset.name}</div>
                       <div className="ce-export-item-desc">{preset.desc}</div>
                     </button>
@@ -2764,12 +2843,11 @@ ${ctxLines.join("\n")}`;
                       className={`ce-onboarding-choice ${projectKind === opt.id ? "active" : ""}`}
                       onClick={() => {
                         setProjectKind(opt.id);
-                        // ACTION: apply default LUT pakke pr prosjekt-type
-                        if (opt.id === "wedding") setLookPack("norwedfilm");
-                        else if (opt.id === "documentary") setLookPack("documentary");
-                        else if (opt.id === "music_video") setLookPack("cinematic");
-                        // Switch Wedding Agent som default for bryllup
+                        // ACTION: switch agent — IKKE auto-apply LUT (allerede
+                        // graded footage skal ikke oversaturere). Bruker kan
+                        // velge LUT manuelt i header hvis ønskelig.
                         if (opt.id === "wedding") setAgentRole("wedding");
+                        else if (opt.id === "documentary") setAgentRole("audio");
                         setOnboardingStep(1);
                       }}
                     >
@@ -2868,8 +2946,22 @@ ${ctxLines.join("\n")}`;
                     className={`ce-onboarding-choice ${projectWantsScan === true ? "active" : ""}`}
                     onClick={() => {
                       setProjectWantsScan(true);
-                      // ACTION: trigger 3 parallel scan-tasks
+                      // ACTION: trigger 4 parallel scan-tasks
                       if (payload) {
+                        // 0. Log-gamma detection → suggest LUT KUN hvis log
+                        executeScript("detect_log_gamma", {
+                          videoPath: payload.sourceVideo,
+                        }, false).then(s => {
+                          const r = s.events.find(e => e.type === "result");
+                          if (r) {
+                            const info = r.value as any;
+                            setLogGammaInfo(info);
+                            // Auto-apply suggested LUT KUN hvis video er log
+                            if (info?.isLog && info?.suggestedLut && info.suggestedLut !== "none") {
+                              setLookPack(info.suggestedLut as LookPack);
+                            }
+                          }
+                        }).catch(() => {});
                         // 1. scan_and_recommend_music (full advisor scan)
                         setOnboardingScanStatus(prev => ({ ...prev, music: "running" }));
                         executeScript("scan_and_recommend_music", {
@@ -2942,7 +3034,14 @@ ${ctxLines.join("\n")}`;
                   • Auto-applied: aspect <strong>{aspectRatio}</strong>
                   {lookPack !== "none" && <>, LUT <strong>{lookPack}</strong></>}
                   {projectKind === "wedding" && <>, agent <strong>Wedding</strong></>}
-                  <br /><br />
+                  <br />
+                  {logGammaInfo && (
+                    <>• Color: <strong>{logGammaInfo.profile}</strong> ({logGammaInfo.gamma})
+                      {!logGammaInfo.isLog && <> — ingen auto-LUT, kun brightness-adjust tilgjengelig</>}
+                      <br />
+                    </>
+                  )}
+                  <br />
 
                   {/* Project data */}
                   <strong>I prosjektet:</strong><br />
