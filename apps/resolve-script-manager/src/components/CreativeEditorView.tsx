@@ -266,6 +266,25 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
 
+  // Export dropdown — 5 delivery variants powered by existing Post Agent scripts
+  type ExportVariant = "custom" | "teaser" | "instagram" | "couple" | "family" | "full";
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
+  // Color/Look pack — applies CSS filter LIVE + sends LUT-name to assemble-script
+  type LookPack = "none" | "norwedfilm" | "warm" | "cinematic" | "documentary";
+  const [lookPack, setLookPack] = useState<LookPack>("none");
+  const [lookMenuOpen, setLookMenuOpen] = useState(false);
+
+  // Audio Agent smart-actions — wire eksisterende audio-scripts
+  type AudioAction = "isolate_vocals" | "duck_music" | "transcribe" | "normalize_loudness";
+  const [audioActionBusy, setAudioActionBusy] = useState<AudioAction | null>(null);
+  const [audioActionResults, setAudioActionResults] = useState<Record<string, string>>({});
+
+  // Vision Agent quality flags — flag_underexposed + flag_clipping + face-id
+  type QualityFlag = { pickIndex: number; severity: "ok" | "warning" | "error"; issues: string[] };
+  const [qualityFlags, setQualityFlags] = useState<QualityFlag[]>([]);
+  const [qualityBusy, setQualityBusy] = useState(false);
+
   // Client Wishes — free-text input from couple → Claude tool-use applies edits
   const [clientWishes, setClientWishes] = useState("");
   const [wishesBusy, setWishesBusy] = useState(false);
@@ -449,6 +468,17 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const focusedPick = activePick;
   // Live Narrative Simulation — mood derived from focused pick + chapter
   const mood = useMemo(() => moodForPick(focusedPick), [focusedPick]);
+
+  // LookPack-overlay-filter (kombineres med mood.filter)
+  const lookFilter = useMemo(() => {
+    switch (lookPack) {
+      case "norwedfilm":  return " saturate(110%) contrast(108%) sepia(0.05)";
+      case "warm":        return " saturate(120%) brightness(105%) hue-rotate(8deg)";
+      case "cinematic":   return " contrast(115%) saturate(95%) brightness(98%)";
+      case "documentary": return " saturate(90%) contrast(102%)";
+      default: return "";
+    }
+  }, [lookPack]);
 
   // ─── Video playback: seek to focused pick + loop within range ───
   useEffect(() => {
@@ -801,16 +831,32 @@ Du MÅ kalle apply_couple_wishes-tool med:
     }
   }, [wishesBusy, clientWishes, filteredPicks, projectTitle, totalDuration, activeSong, pickOverrides]);
 
-  // ─── Eksport: kall assemble_highlight_with_music for å render MP4 ───
-  const handleExport = useCallback(async () => {
+  // ─── Eksport: 6 leveranse-varianter via eksisterende scripts ───
+  const VARIANT_PRESETS: Record<ExportVariant, {
+    name: string;
+    desc: string;
+    duration?: number; // target seconds (for trim)
+    aspect?: "16:9" | "9:16" | "1:1";
+  }> = {
+    custom:    { name: "Custom",          desc: "Bruk current editor-state",    aspect: aspectRatio },
+    teaser:    { name: "Teaser",          desc: "30s social-teaser",    duration: 30,  aspect: "9:16" },
+    instagram: { name: "Instagram",       desc: "60s 9:16 for Reels",    duration: 60,  aspect: "9:16" },
+    couple:    { name: "Couple-cut",      desc: "4 min 16:9 til paret",  duration: 240, aspect: "16:9" },
+    family:    { name: "Family",          desc: "10 min hele dagen",     duration: 600, aspect: "16:9" },
+    full:      { name: "Full highlight",  desc: "15 min directors-cut",  duration: 900, aspect: "16:9" },
+  };
+
+  const handleExport = useCallback(async (variant: ExportVariant = "custom") => {
     if (exportBusy || !payload) return;
     setExportBusy(true);
     setExportError(null);
     setExportResult(null);
+    setExportMenuOpen(false);
     try {
+      const preset = VARIANT_PRESETS[variant];
       const safeTitle = projectTitle.replace(/[^\w\s-]/g, "").trim() || "Highlight";
-      const outputPath = `~/Desktop/${safeTitle}.mp4`;
-      // Compute excluded chapters (those NOT in includedChapters set)
+      const suffix = variant === "custom" ? "" : `_${variant}`;
+      const outputPath = `~/Desktop/${safeTitle}${suffix}.mp4`;
       const allChapters = new Set<string>();
       payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
       const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
@@ -818,12 +864,13 @@ Du MÅ kalle apply_couple_wishes-tool med:
         videoPath: payload.sourceVideo,
         outputPath,
         musicStrategy: "main+climax",
-        // User's song selection from header dropdown (else falls back to advisor #1)
         mainSongTitle: activeSong?.title,
-        // Render aspect from header dropdown (16:9 / 9:16 / 1:1)
-        aspectRatio: aspectRatio,
-        // Pass current editor-state so trim/reorder/segment-toggle persists into render
-        pickOverrides: pickOverrides,
+        aspectRatio: preset.aspect ?? aspectRatio,
+        // Color LUT (passed to ffmpeg-side; assemble can apply 3DLUT-filter)
+        colorLook: lookPack !== "none" ? lookPack : undefined,
+        // Target duration (assemble will downsample picks to hit target if provided)
+        targetDurationSec: preset.duration,
+        pickOverrides,
         pickOrder: activePickOrder ?? undefined,
         excludedChapters: excluded,
       }, false);
@@ -832,7 +879,6 @@ Du MÅ kalle apply_couple_wishes-tool med:
       if (r?.outputPath) {
         setExportResult({ outputPath: r.outputPath, durationSec: r.durationSec ?? 0 });
       } else {
-        // Look for error in events
         const errEvent = summary.events.find(e => e.type === "error");
         throw new Error((errEvent?.value as any)?.message ?? "Export failed (no output path)");
       }
@@ -841,7 +887,77 @@ Du MÅ kalle apply_couple_wishes-tool med:
     } finally {
       setExportBusy(false);
     }
-  }, [exportBusy, payload, projectTitle, pickOverrides, activePickOrder, includedChapters]);
+  }, [exportBusy, payload, projectTitle, pickOverrides, activePickOrder, includedChapters, activeSong, aspectRatio, lookPack]);
+
+  // ─── Audio Agent smart-actions — wire eksisterende Post Agent scripts ───
+  const runAudioAction = useCallback(async (action: AudioAction) => {
+    if (audioActionBusy || !payload) return;
+    setAudioActionBusy(action);
+    setAudioActionResults(prev => ({ ...prev, [action]: "Kjører…" }));
+    const scriptMap: Record<AudioAction, { id: string; params: Record<string, unknown>; label: string }> = {
+      isolate_vocals: {
+        id: "isolate_vocals_with_demucs",
+        params: { videoPath: payload.sourceVideo },
+        label: "Demucs vocal-isolasjon",
+      },
+      duck_music: {
+        id: "generate_music_ducking_plan",
+        params: { videoPath: payload.sourceVideo },
+        label: "Music-ducking plan generert",
+      },
+      transcribe: {
+        id: "transcribe_audio",
+        params: { videoPath: payload.sourceVideo, model: "large-v3" },
+        label: "WhisperX transcription",
+      },
+      normalize_loudness: {
+        id: "analyze_loudness",
+        params: { videoPath: payload.sourceVideo, targetLufs: -16 },
+        label: "EBU R128 loudness check",
+      },
+    };
+    const s = scriptMap[action];
+    try {
+      const summary = await executeScript(s.id, s.params, false);
+      const result = summary.events.find(e => e.type === "result");
+      const errEvent = summary.events.find(e => e.type === "error");
+      if (errEvent) throw new Error((errEvent.value as any)?.message ?? "Script failed");
+      const msg = result ? `✓ ${s.label} ferdig` : `✓ ${s.label} kjørt`;
+      setAudioActionResults(prev => ({ ...prev, [action]: msg }));
+    } catch (e: any) {
+      const msg = `⚠ ${typeof e === "string" ? e : (e?.message ?? "Feil")}`;
+      setAudioActionResults(prev => ({ ...prev, [action]: msg }));
+    } finally {
+      setAudioActionBusy(null);
+    }
+  }, [audioActionBusy, payload]);
+
+  // ─── Vision Agent quality-check — flag underexposed + clipping per pick ───
+  const runQualityCheck = useCallback(async () => {
+    if (qualityBusy || !payload) return;
+    setQualityBusy(true);
+    try {
+      const summary = await executeScript("flag_underexposed_clips", {
+        videoPath: payload.sourceVideo,
+      }, false);
+      const result = summary.events.find(e => e.type === "result");
+      const flagged = (result?.value as any)?.flaggedClips ?? [];
+      // Convert script-output to QualityFlag[] per pick
+      const flags: QualityFlag[] = filteredPicks.map(p => {
+        const mid = (p.startSec + p.endSec) / 2;
+        const hit = flagged.find((f: any) => f.timeSec >= p.startSec && f.timeSec <= p.endSec);
+        if (hit) {
+          return { pickIndex: p.index, severity: "warning", issues: [hit.reason || "Underexposed"] };
+        }
+        return { pickIndex: p.index, severity: "ok", issues: [] };
+      });
+      setQualityFlags(flags);
+    } catch (e: any) {
+      console.warn("Quality check failed:", e);
+    } finally {
+      setQualityBusy(false);
+    }
+  }, [qualityBusy, payload, filteredPicks]);
 
   // ─── Trim: update local override for focused pick ───
   const applyTrim = useCallback((pickIndex: number, startSec?: number, endSec?: number) => {
@@ -1101,6 +1217,32 @@ ${ctxLines.join("\n")}`;
               ))}
             </div>
           )}
+          <div style={{ position: "relative" }}>
+            <button className="ce-aspect" onClick={() => setLookMenuOpen(v => !v)}>
+              <span>🎨</span> {lookPack === "none" ? "Look" : lookPack}
+              <span>▾</span>
+            </button>
+            {lookMenuOpen && (
+              <div className="ce-aspect-menu">
+                {([
+                  { v: "none" as const,        name: "Ingen LUT",        desc: "Native color" },
+                  { v: "norwedfilm" as const,  name: "Norwedfilm Look",  desc: "Cinematic warm" },
+                  { v: "warm" as const,        name: "Warm Glow",        desc: "Mehndi/haldi-stil" },
+                  { v: "cinematic" as const,   name: "Cinematic",        desc: "Film-emulering" },
+                  { v: "documentary" as const, name: "Documentary",      desc: "Naturlig flat" },
+                ]).map(opt => (
+                  <div
+                    key={opt.v}
+                    className={`ce-aspect-item ${lookPack === opt.v ? "active" : ""}`}
+                    onClick={() => { setLookPack(opt.v); setLookMenuOpen(false); }}
+                  >
+                    <div className="ce-aspect-item-name">{opt.name}</div>
+                    <div className="ce-aspect-item-desc">{opt.desc}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="ce-song" onClick={() => setSongMenuOpen((v) => !v)}>
             <IconMusic size={14} /> {activeSong ? `${activeSong.title} – ${activeSong.artist}` : "Velg sang"}
             <span>▾</span>
@@ -1124,13 +1266,32 @@ ${ctxLines.join("\n")}`;
         </div>
         <div className="ce-actions">
           <button>↗ Del</button>
-          <button
-            className="primary"
-            onClick={handleExport}
-            disabled={exportBusy || !payload}
-          >
-            {exportBusy ? "⏳ Rendrer …" : "+ Eksporter"}
-          </button>
+          <div className="ce-export-wrap">
+            <button
+              className="primary"
+              onClick={() => setExportMenuOpen(v => !v)}
+              disabled={exportBusy || !payload}
+            >
+              {exportBusy ? "⏳ Rendrer …" : "+ Eksporter ▾"}
+            </button>
+            {exportMenuOpen && !exportBusy && (
+              <div className="ce-export-menu">
+                {(["custom", "teaser", "instagram", "couple", "family", "full"] as ExportVariant[]).map(v => {
+                  const preset = VARIANT_PRESETS[v];
+                  return (
+                    <button
+                      key={v}
+                      className="ce-export-item"
+                      onClick={() => handleExport(v)}
+                    >
+                      <div className="ce-export-item-name">{preset.name}</div>
+                      <div className="ce-export-item-desc">{preset.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1235,7 +1396,7 @@ ${ctxLines.join("\n")}`;
               src={videoSrc}
               className="ce-preview-video"
               style={{
-                filter: mood.filter,
+                filter: mood.filter + lookFilter,
                 transition: "filter 0.6s cubic-bezier(.4,0,.2,1)",
               }}
               onPlay={() => setIsPlaying(true)}
@@ -1474,6 +1635,50 @@ ${ctxLines.join("\n")}`;
             </div>
             <div className="ce-claude-progress-pct">82%</div>
           </div>
+
+          {/* Agent-specific action panels */}
+          {agentRole === "audio" && (
+            <div className="ce-agent-actions">
+              <div className="ce-agent-actions-title">🎙 Audio-tools</div>
+              {([
+                { id: "isolate_vocals", icon: "🎤", label: "Isoler vocals (Demucs)" },
+                { id: "duck_music", icon: "🔉", label: "Auto-duck musikk" },
+                { id: "transcribe", icon: "📝", label: "Transcribe taler (WhisperX)" },
+                { id: "normalize_loudness", icon: "📊", label: "Loudness -16 LUFS" },
+              ] as { id: AudioAction; icon: string; label: string }[]).map(a => (
+                <div key={a.id} className="ce-agent-action-row">
+                  <button
+                    className="ce-agent-action-btn"
+                    disabled={audioActionBusy !== null}
+                    onClick={() => runAudioAction(a.id)}
+                  >
+                    <span>{audioActionBusy === a.id ? "⏳" : a.icon}</span>
+                    {a.label}
+                  </button>
+                  {audioActionResults[a.id] && (
+                    <div className="ce-agent-action-result">{audioActionResults[a.id]}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {agentRole === "vision" && (
+            <div className="ce-agent-actions">
+              <div className="ce-agent-actions-title">👁 Vision-tools</div>
+              <button
+                className="ce-agent-action-btn"
+                disabled={qualityBusy}
+                onClick={runQualityCheck}
+              >
+                {qualityBusy ? "⏳ Sjekker shots…" : "🔍 Sjekk teknisk kvalitet (eksponering + WB)"}
+              </button>
+              {qualityFlags.length > 0 && (
+                <div className="ce-agent-action-result">
+                  ✓ Sjekket {qualityFlags.length} picks · {qualityFlags.filter(f => f.severity !== "ok").length} med advarsler
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Client Wishes — bride/groom natural-language input */}
           <div className="ce-wishes">

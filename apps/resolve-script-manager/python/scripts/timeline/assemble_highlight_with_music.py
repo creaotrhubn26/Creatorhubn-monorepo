@@ -185,9 +185,29 @@ def cross_correlate_sync(ffmpeg: str, source_video: str, yt_path: str,
     }
 
 
+def color_look_filter(look: str) -> str:
+    """Map LUT-name → ffmpeg eq+colorbalance filter chain (CSS-equivalent).
+    Returns empty string for 'none' or unknown looks."""
+    look = (look or "").lower().strip()
+    if look in ("norwedfilm", "norwed"):
+        # Cinematic warm with subtle sepia tint
+        return "eq=saturation=1.10:contrast=1.08,colorbalance=rs=0.05:gs=0.02:bs=-0.03"
+    if look == "warm":
+        # Warm glow — mehndi/haldi-stil
+        return "eq=saturation=1.20:brightness=0.05,colorbalance=rs=0.08:gs=0.04:bs=-0.06"
+    if look == "cinematic":
+        # Film-emulering — moderat kontrast, lett desaturert
+        return "eq=contrast=1.15:saturation=0.95:brightness=-0.02"
+    if look == "documentary":
+        # Natural flat — minimal stylization
+        return "eq=saturation=0.90:contrast=1.02"
+    return ""
+
+
 def build_filter_complex(specs: list[dict], xfade_normal: float,
                           xfade_climax: float,
-                          aspect: str = "16:9") -> str:
+                          aspect: str = "16:9",
+                          color_look: str = "") -> str:
     # Aspect → output dimensions + scale-filter
     if aspect == "9:16":
         w, h = 1080, 1920
@@ -201,6 +221,10 @@ def build_filter_complex(specs: list[dict], xfade_normal: float,
             f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"
         )
+    # Color LUT — appended after scale (so crop/pad is unaffected)
+    color_chain = color_look_filter(color_look)
+    color_suffix = f",{color_chain}" if color_chain else ""
+
     parts = []
     for i, s in enumerate(specs):
         vs, ve = s["video_start"], s["video_end"]
@@ -209,7 +233,7 @@ def build_filter_complex(specs: list[dict], xfade_normal: float,
         fade = min(0.20, dur * 0.2)
         parts.append(
             f"[0:v]trim=start={vs:.3f}:end={ve:.3f},setpts=PTS-STARTPTS,"
-            f"{scale_filter},format=yuv420p,fps=25[v{i}]"
+            f"{scale_filter}{color_suffix},format=yuv420p,fps=25[v{i}]"
         )
         parts.append(
             f"[0:a]atrim=start={vs:.3f}:end={ve:.3f},asetpts=PTS-STARTPTS,"
@@ -501,8 +525,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     bridge.progress(80, 100, "Rendering MP4…")
     aspect = (params.get("aspectRatio") or "16:9").strip()
     if aspect not in ("16:9", "9:16", "1:1"): aspect = "16:9"
-    bridge.log(f"Render aspect: {aspect}")
-    filter_complex, total_dur = build_filter_complex(specs, xfade_normal, xfade_climax, aspect=aspect)
+    color_look = (params.get("colorLook") or "").strip().lower()
+    bridge.log(f"Render aspect: {aspect}" + (f", color look: {color_look}" if color_look else ""))
+    filter_complex, total_dur = build_filter_complex(specs, xfade_normal, xfade_climax,
+                                                       aspect=aspect, color_look=color_look)
     cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning",
            *inputs, "-filter_complex", filter_complex,
            "-map", "[outv]", "-map", "[outa]",
