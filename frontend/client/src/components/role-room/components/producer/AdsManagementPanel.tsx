@@ -22,6 +22,8 @@ import roleRoomAgentService, {
   type RoleRoomAdsCampaign,
   type RoleRoomAdsCampaignStatus,
   type RoleRoomMetaAdAccount,
+  type RoleRoomLinkedInAccount,
+  type RoleRoomLinkedInCampaignGroup,
 } from '../../services/roleRoomAgentService';
 
 /**
@@ -67,16 +69,34 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
   const [createOpen, setCreateOpen] = useState(false);
   const [adAccounts, setAdAccounts] = useState<RoleRoomMetaAdAccount[]>([]);
   const [googleCustomers, setGoogleCustomers] = useState<string[]>([]);
+  const [linkedinAccounts, setLinkedinAccounts] = useState<RoleRoomLinkedInAccount[]>([]);
+  const [linkedinGroups, setLinkedinGroups] = useState<RoleRoomLinkedInCampaignGroup[]>([]);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [form, setForm] = useState<{
-    platform: 'meta' | 'google';
+    platform: 'meta' | 'google' | 'linkedin';
     adAccountId: string;
     customerId: string;
+    linkedinAccountUrn: string;
+    linkedinGroupUrn: string;
     name: string;
     objective: string;
     dailyBudgetNok: string;
-  }>({ platform: 'meta', adAccountId: '', customerId: '', name: '', objective: 'OUTCOME_TRAFFIC', dailyBudgetNok: '' });
+  }>({ platform: 'meta', adAccountId: '', customerId: '', linkedinAccountUrn: '', linkedinGroupUrn: '', name: '', objective: 'OUTCOME_TRAFFIC', dailyBudgetNok: '' });
   const [creating, setCreating] = useState(false);
+
+  // Load LinkedIn campaign groups when the chosen LinkedIn account changes.
+  useEffect(() => {
+    if (form.platform !== 'linkedin' || !form.linkedinAccountUrn) return;
+    let cancelled = false;
+    (async () => {
+      const res = await roleRoomAgentService.listLinkedInCampaignGroups(form.linkedinAccountUrn);
+      if (cancelled) return;
+      const groups = 'error' in res ? [] : res.groups;
+      setLinkedinGroups(groups);
+      setForm((f) => ({ ...f, linkedinGroupUrn: groups[0]?.id ?? '' }));
+    })();
+    return () => { cancelled = true; };
+  }, [form.platform, form.linkedinAccountUrn]);
 
   const refresh = async () => {
     setLoading(true);
@@ -107,11 +127,12 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
   const openCreate = async () => {
     const next = !createOpen;
     setCreateOpen(next);
-    if (next && adAccounts.length === 0 && googleCustomers.length === 0) {
+    if (next && adAccounts.length === 0 && googleCustomers.length === 0 && linkedinAccounts.length === 0) {
       setAccountError(null);
-      const [meta, google] = await Promise.all([
+      const [meta, google, linkedin] = await Promise.all([
         roleRoomAgentService.listMetaAdAccounts(),
         roleRoomAgentService.listGoogleCustomers(),
+        roleRoomAgentService.listLinkedInAccounts(),
       ]);
       if (!('error' in meta)) {
         setAdAccounts(meta.accounts);
@@ -121,8 +142,12 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
         setGoogleCustomers(google.customers);
         if (google.customers[0]) setForm((f) => ({ ...f, customerId: google.customers[0] }));
       }
-      if ('error' in meta && 'error' in google) {
-        setAccountError('Ingen annonsekontoer tilgjengelig — koble Meta eller Google først.');
+      if (!('error' in linkedin)) {
+        setLinkedinAccounts(linkedin.accounts);
+        if (linkedin.accounts[0]) setForm((f) => ({ ...f, linkedinAccountUrn: linkedin.accounts[0].id }));
+      }
+      if ('error' in meta && 'error' in google && 'error' in linkedin) {
+        setAccountError('Ingen annonsekontoer tilgjengelig — koble Meta, Google eller LinkedIn først.');
       }
     }
   };
@@ -137,6 +162,16 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
       if (!form.customerId) { setError('Velg en Google-konto.'); setCreating(false); return; }
       res = await roleRoomAgentService.createGoogleAdsCampaign({
         projectId, customerId: form.customerId, name: form.name.trim(), dailyBudgetNok: budget ?? 0,
+      });
+    } else if (form.platform === 'linkedin') {
+      if (!form.linkedinAccountUrn) { setError('Velg en LinkedIn-annonsekonto.'); setCreating(false); return; }
+      if (!form.linkedinGroupUrn) { setError('Velg en LinkedIn-kampanjegruppe.'); setCreating(false); return; }
+      res = await roleRoomAgentService.createLinkedInAdsCampaign({
+        projectId,
+        accountUrn: form.linkedinAccountUrn,
+        campaignGroupUrn: form.linkedinGroupUrn,
+        name: form.name.trim(),
+        dailyBudgetNok: budget ?? 0,
       });
     } else {
       if (!form.adAccountId) { setError('Velg en Meta-annonsekonto.'); setCreating(false); return; }
@@ -191,12 +226,13 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
             <>
               {/* Plattform-velger */}
               <TextField select size="small" label="Plattform" value={form.platform}
-                onChange={(e) => setForm({ ...form, platform: e.target.value as 'meta' | 'google' })} sx={fieldSx}>
+                onChange={(e) => setForm({ ...form, platform: e.target.value as 'meta' | 'google' | 'linkedin' })} sx={fieldSx}>
                 <MenuItem value="meta">Meta (Facebook/Instagram)</MenuItem>
                 <MenuItem value="google">Google Ads</MenuItem>
+                <MenuItem value="linkedin">LinkedIn Ads</MenuItem>
               </TextField>
 
-              {form.platform === 'meta' ? (
+              {form.platform === 'meta' && (
                 <TextField select size="small" label="Annonsekonto (Meta)" value={form.adAccountId}
                   onChange={(e) => setForm({ ...form, adAccountId: e.target.value })} sx={fieldSx}>
                   {adAccounts.length === 0 && <MenuItem value="" disabled>Ingen Meta-kontoer — koble Meta</MenuItem>}
@@ -204,7 +240,8 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                     <MenuItem key={a.id} value={a.id}>{a.name} ({a.currency})</MenuItem>
                   ))}
                 </TextField>
-              ) : (
+              )}
+              {form.platform === 'google' && (
                 <TextField select size="small" label="Google Ads-konto (Customer ID)" value={form.customerId}
                   onChange={(e) => setForm({ ...form, customerId: e.target.value })} sx={fieldSx}>
                   {googleCustomers.length === 0 && <MenuItem value="" disabled>Ingen Google-kontoer — koble Google Ads</MenuItem>}
@@ -212,6 +249,25 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                     <MenuItem key={c} value={c}>{c}</MenuItem>
                   ))}
                 </TextField>
+              )}
+              {form.platform === 'linkedin' && (
+                <>
+                  <TextField select size="small" label="Annonsekonto (LinkedIn)" value={form.linkedinAccountUrn}
+                    onChange={(e) => setForm({ ...form, linkedinAccountUrn: e.target.value, linkedinGroupUrn: '' })} sx={fieldSx}>
+                    {linkedinAccounts.length === 0 && <MenuItem value="" disabled>Ingen LinkedIn-kontoer — koble LinkedIn</MenuItem>}
+                    {linkedinAccounts.map((a) => (
+                      <MenuItem key={a.id} value={a.id}>{a.name || a.id}</MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField select size="small" label="Kampanjegruppe (LinkedIn)" value={form.linkedinGroupUrn}
+                    onChange={(e) => setForm({ ...form, linkedinGroupUrn: e.target.value })} sx={fieldSx}
+                    disabled={!form.linkedinAccountUrn}>
+                    {linkedinGroups.length === 0 && <MenuItem value="" disabled>Ingen kampanjegrupper på kontoen</MenuItem>}
+                    {linkedinGroups.map((g) => (
+                      <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>
+                    ))}
+                  </TextField>
+                </>
               )}
 
               <TextField size="small" label="Kampanjenavn" value={form.name}
@@ -230,7 +286,12 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 Kampanjen opprettes som <strong>pauset/utkast</strong> — start den når den er klar. Tilgangen din til kontoen verifiseres automatisk.
               </Typography>
               <Button variant="contained" size="small"
-                disabled={creating || !form.name.trim() || (form.platform === 'meta' ? !form.adAccountId : !form.customerId)}
+                disabled={
+                  creating || !form.name.trim() ||
+                  (form.platform === 'meta' ? !form.adAccountId
+                    : form.platform === 'google' ? !form.customerId
+                    : (!form.linkedinAccountUrn || !form.linkedinGroupUrn))
+                }
                 onClick={submitCreate} sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}>
                 {creating ? 'Oppretter…' : 'Opprett kampanje'}
               </Button>

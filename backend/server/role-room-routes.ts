@@ -161,6 +161,8 @@ import {
   createLinkedInCampaign,
   setLinkedInCampaignStatus,
   hasLinkedInAdAccountAccess,
+  listManagedAdAccounts as listLinkedInManagedAdAccounts,
+  listLinkedInCampaignGroups,
   LinkedInAdsApiError,
   type LinkedInAdsAuth,
 } from './role-room-linkedin-ads.js';
@@ -22200,6 +22202,41 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!accessToken) return null;
     return { accessToken, apiVersion: process.env.LINKEDIN_API_VERSION || undefined };
   }
+
+  // LinkedIn-annonsekontoer produsenten har tilgang til (kontovelger i UI).
+  router.get(
+    '/ads/linkedin/accounts',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const auth = await resolveLinkedInAuth(getUserId(req));
+        if (!auth) return res.status(412).json({ error: 'linkedin_not_connected' });
+        const accounts = (await listLinkedInManagedAdAccounts(auth.accessToken, auth.apiVersion))
+          .filter((a) => a.assetType === 'ad_account');
+        res.json({ accounts });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list LinkedIn accounts', detail: String(error) });
+      }
+    },
+  );
+
+  // Campaign groups under a LinkedIn ad account (kampanjegruppe-velger i UI).
+  router.get(
+    '/ads/linkedin/campaign-groups',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const accountUrn = typeof req.query.accountUrn === 'string' ? req.query.accountUrn : '';
+        if (!accountUrn) return res.status(400).json({ error: 'accountUrn_required' });
+        const auth = await resolveLinkedInAuth(getUserId(req));
+        if (!auth) return res.status(412).json({ error: 'linkedin_not_connected' });
+        const groups = await listLinkedInCampaignGroups(auth.accessToken, accountUrn, auth.apiVersion);
+        res.json({ groups });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list LinkedIn campaign groups', detail: String(error) });
+      }
+    },
+  );
 
   router.post(
     '/ads/linkedin/campaigns',
