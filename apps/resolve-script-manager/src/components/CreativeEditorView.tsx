@@ -276,9 +276,10 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [lookPack, setLookPack] = useState<LookPack>("none");
   const [lookMenuOpen, setLookMenuOpen] = useState(false);
 
-  // Brightness / exposure adjustment (uavhengig av LUT) — for å justere
-  // lysere/mørkere uten å påvirke farger/saturation.
-  const [brightnessAdjust, setBrightnessAdjust] = useState<number>(0);  // -50 til +50
+  // Brightness / exposure adjustment (uavhengig av LUT)
+  const [brightnessAdjust, _setBrightnessAdjust] = useState<number>(0);  // -50 til +50
+  // setBrightnessAdjust er reservert for UI-slider som kommer i neste iterasjon
+  void _setBrightnessAdjust;
 
   // Audio Agent smart-actions — wire eksisterende audio-scripts
   type AudioAction = "isolate_vocals" | "duck_music" | "transcribe" | "normalize_loudness";
