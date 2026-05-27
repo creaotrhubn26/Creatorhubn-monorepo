@@ -66,8 +66,16 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
 
   const [createOpen, setCreateOpen] = useState(false);
   const [adAccounts, setAdAccounts] = useState<RoleRoomMetaAdAccount[]>([]);
+  const [googleCustomers, setGoogleCustomers] = useState<string[]>([]);
   const [accountError, setAccountError] = useState<string | null>(null);
-  const [form, setForm] = useState({ adAccountId: '', name: '', objective: 'OUTCOME_TRAFFIC', dailyBudgetNok: '' });
+  const [form, setForm] = useState<{
+    platform: 'meta' | 'google';
+    adAccountId: string;
+    customerId: string;
+    name: string;
+    objective: string;
+    dailyBudgetNok: string;
+  }>({ platform: 'meta', adAccountId: '', customerId: '', name: '', objective: 'OUTCOME_TRAFFIC', dailyBudgetNok: '' });
   const [creating, setCreating] = useState(false);
 
   const refresh = async () => {
@@ -97,32 +105,49 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
   };
 
   const openCreate = async () => {
-    setCreateOpen((v) => !v);
-    if (adAccounts.length === 0) {
-      const res = await roleRoomAgentService.listMetaAdAccounts();
-      if ('error' in res) setAccountError(res.error);
-      else {
-        setAdAccounts(res.accounts);
-        if (res.accounts[0]) setForm((f) => ({ ...f, adAccountId: res.accounts[0].id }));
+    const next = !createOpen;
+    setCreateOpen(next);
+    if (next && adAccounts.length === 0 && googleCustomers.length === 0) {
+      setAccountError(null);
+      const [meta, google] = await Promise.all([
+        roleRoomAgentService.listMetaAdAccounts(),
+        roleRoomAgentService.listGoogleCustomers(),
+      ]);
+      if (!('error' in meta)) {
+        setAdAccounts(meta.accounts);
+        if (meta.accounts[0]) setForm((f) => ({ ...f, adAccountId: meta.accounts[0].id }));
+      }
+      if (!('error' in google)) {
+        setGoogleCustomers(google.customers);
+        if (google.customers[0]) setForm((f) => ({ ...f, customerId: google.customers[0] }));
+      }
+      if ('error' in meta && 'error' in google) {
+        setAccountError('Ingen annonsekontoer tilgjengelig — koble Meta eller Google først.');
       }
     }
   };
 
   const submitCreate = async () => {
-    if (!form.adAccountId || !form.name.trim()) return;
+    if (!form.name.trim()) return;
+    const budget = form.dailyBudgetNok ? Number(form.dailyBudgetNok) : undefined;
     setCreating(true);
     setError(null);
-    const res = await roleRoomAgentService.createMetaCampaign({
-      projectId,
-      adAccountId: form.adAccountId,
-      name: form.name.trim(),
-      objective: form.objective,
-      dailyBudgetNok: form.dailyBudgetNok ? Number(form.dailyBudgetNok) : undefined,
-    });
+    let res: { campaign: unknown } | { error: string };
+    if (form.platform === 'google') {
+      if (!form.customerId) { setError('Velg en Google-konto.'); setCreating(false); return; }
+      res = await roleRoomAgentService.createGoogleAdsCampaign({
+        projectId, customerId: form.customerId, name: form.name.trim(), dailyBudgetNok: budget ?? 0,
+      });
+    } else {
+      if (!form.adAccountId) { setError('Velg en Meta-annonsekonto.'); setCreating(false); return; }
+      res = await roleRoomAgentService.createMetaCampaign({
+        projectId, adAccountId: form.adAccountId, name: form.name.trim(), objective: form.objective, dailyBudgetNok: budget,
+      });
+    }
     if ('error' in res) setError(res.error);
     else {
       setCreateOpen(false);
-      setForm({ adAccountId: form.adAccountId, name: '', objective: 'OUTCOME_TRAFFIC', dailyBudgetNok: '' });
+      setForm((f) => ({ ...f, name: '', dailyBudgetNok: '' }));
       await refresh();
     }
     setCreating(false);
@@ -160,33 +185,52 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
         <Stack spacing={1} sx={{ p: 1.2, borderRadius: 1.5, bgcolor: 'rgba(148,163,184,0.06)', border: '1px solid rgba(148,163,184,0.16)' }}>
           {accountError ? (
             <Alert severity="warning" sx={{ '& .MuiAlert-message': { fontSize: '0.78rem' } }}>
-              {accountError} — koble Meta først.
+              {accountError}
             </Alert>
           ) : (
             <>
-              <TextField
-                select size="small" label="Annonsekonto" value={form.adAccountId}
-                onChange={(e) => setForm({ ...form, adAccountId: e.target.value })}
-                sx={fieldSx}
-              >
-                {adAccounts.map((a) => (
-                  <MenuItem key={a.id} value={a.id}>{a.name} ({a.currency})</MenuItem>
-                ))}
+              {/* Plattform-velger */}
+              <TextField select size="small" label="Plattform" value={form.platform}
+                onChange={(e) => setForm({ ...form, platform: e.target.value as 'meta' | 'google' })} sx={fieldSx}>
+                <MenuItem value="meta">Meta (Facebook/Instagram)</MenuItem>
+                <MenuItem value="google">Google Ads</MenuItem>
               </TextField>
+
+              {form.platform === 'meta' ? (
+                <TextField select size="small" label="Annonsekonto (Meta)" value={form.adAccountId}
+                  onChange={(e) => setForm({ ...form, adAccountId: e.target.value })} sx={fieldSx}>
+                  {adAccounts.length === 0 && <MenuItem value="" disabled>Ingen Meta-kontoer — koble Meta</MenuItem>}
+                  {adAccounts.map((a) => (
+                    <MenuItem key={a.id} value={a.id}>{a.name} ({a.currency})</MenuItem>
+                  ))}
+                </TextField>
+              ) : (
+                <TextField select size="small" label="Google Ads-konto (Customer ID)" value={form.customerId}
+                  onChange={(e) => setForm({ ...form, customerId: e.target.value })} sx={fieldSx}>
+                  {googleCustomers.length === 0 && <MenuItem value="" disabled>Ingen Google-kontoer — koble Google Ads</MenuItem>}
+                  {googleCustomers.map((c) => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </TextField>
+              )}
+
               <TextField size="small" label="Kampanjenavn" value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })} sx={fieldSx} />
               <Stack direction="row" spacing={1}>
-                <TextField select size="small" label="Mål" value={form.objective}
-                  onChange={(e) => setForm({ ...form, objective: e.target.value })} sx={{ ...fieldSx, flex: 1 }}>
-                  {OBJECTIVES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
-                </TextField>
+                {form.platform === 'meta' && (
+                  <TextField select size="small" label="Mål" value={form.objective}
+                    onChange={(e) => setForm({ ...form, objective: e.target.value })} sx={{ ...fieldSx, flex: 1 }}>
+                    {OBJECTIVES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                  </TextField>
+                )}
                 <TextField size="small" type="number" label="Dagsbudsjett NOK" value={form.dailyBudgetNok}
                   onChange={(e) => setForm({ ...form, dailyBudgetNok: e.target.value })} sx={{ ...fieldSx, maxWidth: 150 }} />
               </Stack>
               <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
-                Kampanjen opprettes som <strong>pauset</strong> — start den når den er klar.
+                Kampanjen opprettes som <strong>pauset/utkast</strong> — start den når den er klar. Tilgangen din til kontoen verifiseres automatisk.
               </Typography>
-              <Button variant="contained" size="small" disabled={creating || !form.adAccountId || !form.name.trim()}
+              <Button variant="contained" size="small"
+                disabled={creating || !form.name.trim() || (form.platform === 'meta' ? !form.adAccountId : !form.customerId)}
                 onClick={submitCreate} sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}>
                 {creating ? 'Oppretter…' : 'Opprett kampanje'}
               </Button>
@@ -221,7 +265,13 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                       resume: () => roleRoomAgentService.resumeGoogleCampaign(c.id),
                       end: () => roleRoomAgentService.endGoogleCampaign(c.id),
                     }
-                  : null;
+                  : c.platform === 'linkedin'
+                    ? {
+                        pause: () => roleRoomAgentService.pauseLinkedInCampaign(c.id),
+                        resume: () => roleRoomAgentService.resumeLinkedInCampaign(c.id),
+                        end: () => roleRoomAgentService.endLinkedInCampaign(c.id),
+                      }
+                    : null;
             return (
               <Stack
                 key={c.id}

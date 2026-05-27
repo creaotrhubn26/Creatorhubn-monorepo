@@ -11,6 +11,9 @@ import {
   listGrantedLinkedInAssets,
   linkedInRoleLabel,
   extractLinkedInLogoUrl,
+  setLinkedInCampaignStatus,
+  createLinkedInCampaign,
+  hasLinkedInAdAccountAccess,
   LinkedInAdsApiError,
   __setLinkedInAdsFetch,
   __resetLinkedInAdsFetch,
@@ -301,5 +304,54 @@ describe("extractLinkedInLogoUrl", () => {
     expect(extractLinkedInLogoUrl({})).toBeNull();
     expect(extractLinkedInLogoUrl({ logoV2: {} })).toBeNull();
     expect(extractLinkedInLogoUrl(null)).toBeNull();
+  });
+});
+
+describe("LinkedIn Ads write paths + access", () => {
+  it("setLinkedInCampaignStatus sends a PARTIAL_UPDATE patch with status", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 204, json: async () => null, text: async () => "" }));
+    __setLinkedInAdsFetch(fetchMock as never);
+    await setLinkedInCampaignStatus({ accessToken: "t" }, "urn:li:sponsoredCampaign:456", "PAUSED");
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string>; body: string };
+    expect(fetchMock.mock.calls[0][0]).toContain("/adCampaigns/456");
+    expect(init.headers["X-RestLi-Method"]).toBe("PARTIAL_UPDATE");
+    expect(JSON.parse(init.body).patch.$set.status).toBe("PAUSED");
+  });
+
+  it("createLinkedInCampaign returns the new campaign urn from the x-restli-id header", async () => {
+    __setLinkedInAdsFetch(
+      vi.fn(async () => ({
+        ok: true, status: 201,
+        json: async () => ({}),
+        text: async () => "",
+        headers: { get: (n: string) => (n === "x-restli-id" ? "999" : null) },
+      })) as never,
+    );
+    const out = await createLinkedInCampaign({
+      accessToken: "t",
+      accountUrn: "urn:li:sponsoredAccount:1",
+      campaignGroupUrn: "urn:li:sponsoredCampaignGroup:2",
+      name: "PreVisit LI",
+      dailyBudgetNok: 300,
+    });
+    expect(out.campaignUrn).toBe("urn:li:sponsoredCampaign:999");
+  });
+
+  it("hasLinkedInAdAccountAccess is true only for a managing role on the account", async () => {
+    __setLinkedInAdsFetch(
+      fakeFetch({
+        elements: [
+          { account: "urn:li:sponsoredAccount:111", role: "ACCOUNT_MANAGER", "account~": { id: 111, name: "A" } },
+          { account: "urn:li:sponsoredAccount:222", role: "VIEWER", "account~": { id: 222, name: "B" } },
+        ],
+      }),
+    );
+    expect(await hasLinkedInAdAccountAccess("t", "urn:li:sponsoredAccount:111")).toBe(true);
+    __setLinkedInAdsFetch(
+      fakeFetch({
+        elements: [{ account: "urn:li:sponsoredAccount:222", role: "VIEWER", "account~": { id: 222, name: "B" } }],
+      }),
+    );
+    expect(await hasLinkedInAdAccountAccess("t", "urn:li:sponsoredAccount:222")).toBe(false);
   });
 });

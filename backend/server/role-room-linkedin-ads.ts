@@ -58,6 +58,7 @@ interface FetchLike {
     status: number;
     json: () => Promise<unknown>;
     text: () => Promise<string>;
+    headers?: { get(name: string): string | null };
   }>;
 }
 
@@ -362,6 +363,112 @@ export async function listGrantedLinkedInAssets(
     listManagedOrganizations(accessToken, apiVersion).catch(() => []),
   ]);
   return [...accounts, ...orgs];
+}
+
+/** True if the producer has campaign-management access to the ad account. */
+export async function hasLinkedInAdAccountAccess(
+  accessToken: string,
+  accountUrn: string,
+  apiVersion?: string,
+): Promise<boolean> {
+  try {
+    const accounts = await listManagedAdAccounts(accessToken, apiVersion);
+    // Any non-viewer role on the account = may run campaigns.
+    return accounts.some(
+      (a) => a.id === accountUrn && (a.isAdmin || a.role === "CAMPAIGN_MANAGER" || a.role === "CREATIVE_MANAGER"),
+    );
+  } catch {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Write paths — campaign lifecycle (Campaign Management API).
+// API-side ready; needs live verification once LinkedIn Marketing Developer
+// Platform access + OAuth land.
+// ─────────────────────────────────────────────────────────
+
+export interface LinkedInAdsAuth {
+  accessToken: string;
+  apiVersion?: string;
+}
+
+function linkedInWriteHeaders(auth: LinkedInAdsAuth, partialUpdate = false): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${auth.accessToken}`,
+    "LinkedIn-Version": auth.apiVersion ?? DEFAULT_LINKEDIN_VERSION,
+    "X-Restli-Protocol-Version": "2.0.0",
+    "content-type": "application/json",
+  };
+  if (partialUpdate) headers["X-RestLi-Method"] = "PARTIAL_UPDATE";
+  return headers;
+}
+
+/** LinkedIn campaign status mapped from our pause/resume/end semantics. */
+export type LinkedInCampaignStatus = "ACTIVE" | "PAUSED" | "ARCHIVED" | "CANCELED" | "DRAFT";
+
+/** Pause (PAUSED), resume (ACTIVE) or end (CANCELED) a LinkedIn campaign. */
+export async function setLinkedInCampaignStatus(
+  auth: LinkedInAdsAuth,
+  campaignRef: string,
+  status: LinkedInCampaignStatus,
+): Promise<void> {
+  const parsed = parseCampaignUrn(campaignRef);
+  if (!parsed) throw new LinkedInAdsApiError(400, `Invalid campaign ref: ${campaignRef}`);
+  const res = await fetchImpl(`${LINKEDIN_BASE}/adCampaigns/${parsed.campaignId}`, {
+    method: "POST",
+    headers: linkedInWriteHeaders(auth, true),
+    body: JSON.stringify({ patch: { $set: { status } } }),
+  });
+  if (!res.ok) {
+    const raw = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new LinkedInAdsApiError(res.status, raw?.message || `adCampaigns partial update failed (HTTP ${res.status})`, raw);
+  }
+}
+
+export interface CreateLinkedInCampaignInput extends LinkedInAdsAuth {
+  accountUrn: string; // urn:li:sponsoredAccount:123
+  campaignGroupUrn: string; // urn:li:sponsoredCampaignGroup:456
+  name: string;
+  dailyBudgetNok: number;
+  objectiveType?: string; // e.g. WEBSITE_VISITS, LEAD_GENERATION
+  type?: string; // e.g. SPONSORED_UPDATES
+  locale?: { country: string; language: string };
+}
+
+/**
+ * Create a LinkedIn sponsored campaign (status DRAFT). Minimal valid shape with
+ * sensible defaults; the campaign group must already exist.
+ */
+export async function createLinkedInCampaign(
+  input: CreateLinkedInCampaignInput,
+): Promise<{ campaignUrn: string }> {
+  const body = {
+    account: input.accountUrn,
+    campaignGroup: input.campaignGroupUrn,
+    name: input.name,
+    type: input.type ?? "SPONSORED_UPDATES",
+    objectiveType: input.objectiveType ?? "WEBSITE_VISITS",
+    costType: "CPC",
+    dailyBudget: { amount: String(Math.max(0, input.dailyBudgetNok)), currencyCode: "NOK" },
+    locale: input.locale ?? { country: "NO", language: "nb" },
+    status: "DRAFT",
+  };
+  const res = await fetchImpl(`${LINKEDIN_BASE}/adCampaigns`, {
+    method: "POST",
+    headers: linkedInWriteHeaders(input),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const raw = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new LinkedInAdsApiError(res.status, raw?.message || `adCampaigns create failed (HTTP ${res.status})`, raw);
+  }
+  // LinkedIn returns the new id in the x-restli-id / x-linkedin-id header.
+  const id =
+    res.headers?.get?.("x-restli-id") ||
+    res.headers?.get?.("x-linkedin-id") ||
+    (((await res.json().catch(() => null)) as { id?: string | number } | null)?.id ?? "");
+  return { campaignUrn: id ? `urn:li:sponsoredCampaign:${id}` : "" };
 }
 
 export interface LinkedInAdsConnectorConfig {
