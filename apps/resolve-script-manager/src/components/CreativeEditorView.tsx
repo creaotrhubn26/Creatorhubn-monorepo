@@ -701,9 +701,21 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   }, [segments]);
 
   // ─── Add custom segment ───
+  // Parse "M:SS" / "MM:SS" / "H:MM:SS" / "SS" → sekunder
+  const parseTimeInput = (s: string): number => {
+    const trimmed = s.trim();
+    if (!trimmed) return NaN;
+    const parts = trimmed.split(":").map(p => p.trim());
+    if (parts.some(p => !p || !/^\d+(\.\d+)?$/.test(p))) return NaN;
+    if (parts.length === 1) return parseFloat(parts[0]);  // bare sekunder
+    if (parts.length === 2) return parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
+    if (parts.length === 3) return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseFloat(parts[2]);
+    return NaN;
+  };
+
   const addCustomSegment = useCallback(() => {
-    const startSec = parseFloat(newSegmentStart);
-    const endSec = parseFloat(newSegmentEnd);
+    const startSec = parseTimeInput(newSegmentStart);
+    const endSec = parseTimeInput(newSegmentEnd);
     const label = newSegmentLabel.trim().toLowerCase();
     if (!isFinite(startSec) || !isFinite(endSec) || endSec <= startSec || !label) return;
     const newIdx = Math.max(0, ...allPicks.map(p => p.index)) + 1;
@@ -2694,34 +2706,44 @@ ${ctxLines.join("\n")}`;
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "block", fontSize: 11, color: "#cca0e8", marginBottom: 4 }}>
-                    Start (sec)
+                    Start (MM:SS eller M:SS)
                   </label>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
                     value={newSegmentStart}
                     onChange={(e) => setNewSegmentStart(e.target.value)}
                     className="ce-claude-input"
-                    placeholder="2400.0"
+                    placeholder="f.eks. 40:30"
+                    style={{ fontVariantNumeric: "tabular-nums", textAlign: "center", fontSize: 14, fontWeight: 600 }}
                   />
+                  {newSegmentStart && isFinite(parseTimeInput(newSegmentStart)) && (
+                    <div style={{ fontSize: 10, color: "#8674a8", textAlign: "center", marginTop: 2 }}>
+                      = {parseTimeInput(newSegmentStart).toFixed(1)} sek
+                    </div>
+                  )}
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "block", fontSize: 11, color: "#cca0e8", marginBottom: 4 }}>
-                    Slutt (sec)
+                    Slutt (MM:SS eller M:SS)
                   </label>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
                     value={newSegmentEnd}
                     onChange={(e) => setNewSegmentEnd(e.target.value)}
                     className="ce-claude-input"
-                    placeholder="2403.5"
+                    placeholder="f.eks. 40:35"
+                    style={{ fontVariantNumeric: "tabular-nums", textAlign: "center", fontSize: 14, fontWeight: 600 }}
                   />
+                  {newSegmentEnd && isFinite(parseTimeInput(newSegmentEnd)) && (
+                    <div style={{ fontSize: 10, color: "#8674a8", textAlign: "center", marginTop: 2 }}>
+                      = {parseTimeInput(newSegmentEnd).toFixed(1)} sek
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ fontSize: 11, color: "#8674a8", lineHeight: 1.5 }}>
-                Tips: Klikk på source-video-timeline for å se tider. Eller bruk
-                M-tasten på playhead for å sette markører som du senere kan referere.
+                Format: <code style={{ color: "#cca0e8" }}>M:SS</code> eller <code style={{ color: "#cca0e8" }}>MM:SS</code> (f.eks. <code style={{ color: "#cca0e8" }}>40:30</code> = 40 minutter 30 sek).
+                Også H:MM:SS for lange filmer.
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
