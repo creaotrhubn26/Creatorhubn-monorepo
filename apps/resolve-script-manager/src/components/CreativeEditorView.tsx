@@ -323,6 +323,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
 
   // Hover-preview state — when mouse-over segment, play that pick
   const [hoveredPickIdx, setHoveredPickIdx] = useState<number | null>(null);
+  const hoverStartedPlaybackRef = useRef(false);
 
   // Generate Alternate Edit state
   type AltVariant = "cinematic" | "emotional" | "social" | "luxury" | "documentary";
@@ -741,36 +742,6 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       };
     });
   }, [filteredPicks]);
-
-  // ─── Flow Map: 5 layered metric-curves over timeline ───
-  const flowMapData = useMemo(() => {
-    if (filteredPicks.length === 0) return null;
-    let cumTime = 0;
-    const layers = filteredPicks.map(p => {
-      const s = p.signals ?? {};
-      const startSec = cumTime;
-      cumTime += p.durationSec;
-      const midSec = startSec + p.durationSec / 2;
-      // 5 layered metrics:
-      const energy = Math.min(1.0, (
-        (s.emotional_peak ?? 0) * 1.0 +
-        (s.pose ?? 0) * 0.7 +
-        (s.action ?? 0) * 0.6 +
-        (s.slowmo ?? 0) * 0.3
-      ) / 2.0);
-      // Music intensity proxy — use audio_events + activeSong BPM as constant base
-      const musicBase = activeSong?.bpm ? Math.min(1.0, activeSong.bpm / 180) : 0.5;
-      const musicIntensity = Math.min(1.0, musicBase * 0.6 + (s.audio_events ?? 0) * 0.4);
-      const emotionalDensity = Math.min(1.0, (s.emotional_peak ?? 0) * 0.7 + (s.faces ?? 0) * 0.3);
-      // Visual variation — high color_grade/bokeh = more variation
-      const visualVariation = Math.min(1.0, (s.color_grade ?? 0.5) * 0.5 + (s.bokeh ?? 0) * 0.3 + (s.aesthetic ?? 0) * 0.2);
-      // Dialogue density — from speech signal
-      const dialogueDensity = s.speech ?? 0;
-      return { midSec, startSec, endSec: cumTime, energy, musicIntensity, emotionalDensity, visualVariation, dialogueDensity };
-    });
-    const totalDur = cumTime;
-    return { layers, totalDur };
-  }, [filteredPicks, activeSong]);
 
   const [flowMapOpen, setFlowMapOpen] = useState(false);
 
@@ -1694,11 +1665,18 @@ ${ctxLines.join("\n")}`;
                     const idx = filteredPicks.findIndex(p => p.index === firstPick.index);
                     if (idx >= 0) {
                       setHoveredPickIdx(idx);
+                      hoverStartedPlaybackRef.current = !!videoRef.current?.paused;
                       videoRef.current?.play().catch(() => {});
                     }
                   }}
                   onMouseLeave={() => {
                     setHoveredPickIdx(null);
+                    // Bare pause hvis hover startet playback — ikke pause hvis bruker
+                    // klikket play intensjonelt før hover.
+                    if (hoverStartedPlaybackRef.current && videoRef.current) {
+                      videoRef.current.pause();
+                    }
+                    hoverStartedPlaybackRef.current = false;
                   }}
                 >
                   <div className="ce-segment-num">{i + 1}</div>
