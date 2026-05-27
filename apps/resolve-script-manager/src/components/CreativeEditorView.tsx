@@ -1247,17 +1247,17 @@ ${ctxLines.join("\n")}`;
               <div className="ce-preview-tag">
                 <span className="ce-live-dot" /> Live preview
               </div>
-              <div
-                className="ce-mood-tag"
-                style={{
-                  background: `linear-gradient(135deg, ${mood.accent}40, ${mood.accent}20)`,
-                  borderColor: `${mood.accent}80`,
-                  color: mood.accent,
-                }}
-              >
-                <span className="ce-mood-dot" style={{ background: mood.accent }} />
-                {mood.label}
-              </div>
+            </div>
+            <div
+              className="ce-mood-tag"
+              style={{
+                background: `linear-gradient(135deg, ${mood.accent}40, ${mood.accent}20)`,
+                borderColor: `${mood.accent}80`,
+                color: mood.accent,
+              }}
+            >
+              <span className="ce-mood-dot" style={{ background: mood.accent }} />
+              {mood.label}
             </div>
             <div className="ce-preview-controls">
               <div className="ce-preview-scrubber" />
