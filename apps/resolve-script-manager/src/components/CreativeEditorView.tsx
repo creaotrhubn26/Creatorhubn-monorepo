@@ -29,7 +29,7 @@
  *   clearly marked so they fail-loud rather than silently fake behavior.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { executeScript } from "../api";
 import {
@@ -719,6 +719,38 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     });
   }, [filteredPicks]);
 
+  // ─── Flow Map: 5 layered metric-curves over timeline ───
+  const flowMapData = useMemo(() => {
+    if (filteredPicks.length === 0) return null;
+    let cumTime = 0;
+    const layers = filteredPicks.map(p => {
+      const s = p.signals ?? {};
+      const startSec = cumTime;
+      cumTime += p.durationSec;
+      const midSec = startSec + p.durationSec / 2;
+      // 5 layered metrics:
+      const energy = Math.min(1.0, (
+        (s.emotional_peak ?? 0) * 1.0 +
+        (s.pose ?? 0) * 0.7 +
+        (s.action ?? 0) * 0.6 +
+        (s.slowmo ?? 0) * 0.3
+      ) / 2.0);
+      // Music intensity proxy — use audio_events + activeSong BPM as constant base
+      const musicBase = activeSong?.bpm ? Math.min(1.0, activeSong.bpm / 180) : 0.5;
+      const musicIntensity = Math.min(1.0, musicBase * 0.6 + (s.audio_events ?? 0) * 0.4);
+      const emotionalDensity = Math.min(1.0, (s.emotional_peak ?? 0) * 0.7 + (s.faces ?? 0) * 0.3);
+      // Visual variation — high color_grade/bokeh = more variation
+      const visualVariation = Math.min(1.0, (s.color_grade ?? 0.5) * 0.5 + (s.bokeh ?? 0) * 0.3 + (s.aesthetic ?? 0) * 0.2);
+      // Dialogue density — from speech signal
+      const dialogueDensity = s.speech ?? 0;
+      return { midSec, startSec, endSec: cumTime, energy, musicIntensity, emotionalDensity, visualVariation, dialogueDensity };
+    });
+    const totalDur = cumTime;
+    return { layers, totalDur };
+  }, [filteredPicks, activeSong]);
+
+  const [flowMapOpen, setFlowMapOpen] = useState(false);
+
   // Story Arc phase analysis — find intro/build/peak/outro
   const storyArcPhases = useMemo(() => {
     if (storyArcPoints.length === 0) return null;
@@ -773,6 +805,12 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
         case "t": case "T":
           setTrimMode(v => !v);
           break;
+        case "m": case "M":
+          addMarkerAtPlayhead();
+          break;
+        case "c": case "C":
+          if (focusedPick) setEditingCommentPick(focusedPick.index);
+          break;
         case "?":
           e.preventDefault();
           setShortcutsOpen(true);
@@ -784,12 +822,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
           else if (lookMenuOpen) setLookMenuOpen(false);
           else if (altMenuOpen) setAltMenuOpen(false);
           else if (exportMenuOpen) setExportMenuOpen(false);
+          else if (editingMarkerId) setEditingMarkerId(null);
+          else if (editingCommentPick !== null) setEditingCommentPick(null);
           break;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [focusedPickIdx, filteredPicks.length, togglePlay, focusedPick, toggleChapter, includedChapters, undo, redo, filteredPicks, shortcutsOpen, aspectMenuOpen, songMenuOpen, lookMenuOpen, altMenuOpen, exportMenuOpen]);
+  }, [focusedPickIdx, filteredPicks.length, togglePlay, focusedPick, toggleChapter, includedChapters, undo, redo, filteredPicks, shortcutsOpen, aspectMenuOpen, songMenuOpen, lookMenuOpen, altMenuOpen, exportMenuOpen, editingMarkerId, editingCommentPick, addMarkerAtPlayhead]);
 
   // ─── Generate Alternate Edit: Claude tool-use to reorder picks ───
   const generateAlternate = useCallback(async (variant: AltVariant) => {
@@ -1132,13 +1172,17 @@ Du MÅ kalle apply_couple_wishes-tool med:
         musicStrategy: "main+climax",
         mainSongTitle: activeSong?.title,
         aspectRatio: preset.aspect ?? aspectRatio,
-        // Color LUT (passed to ffmpeg-side; assemble can apply 3DLUT-filter)
         colorLook: lookPack !== "none" ? lookPack : undefined,
-        // Target duration (assemble will downsample picks to hit target if provided)
         targetDurationSec: preset.duration,
         pickOverrides,
         pickOrder: activePickOrder ?? undefined,
         excludedChapters: excluded,
+        // Pro-editor: per-boundary transitions
+        pickTransitions: Object.keys(pickTransitions).length > 0 ? pickTransitions : undefined,
+        // Custom audio tracks
+        customAudios: customAudios.length > 0 ? customAudios.map(a => ({
+          path: a.path, startSec: a.startSec, volume: a.volume
+        })) : undefined,
       }, false);
       const resultEvent = summary.events.find(e => e.type === "result");
       const r = resultEvent?.value as { outputPath?: string; durationSec?: number } | undefined;
@@ -1763,53 +1807,251 @@ ${ctxLines.join("\n")}`;
 
           {/* Timeline strip */}
           <div className="ce-timeline">
+            {/* Flow Map — toggle expandable layered graphs */}
+            <div className="ce-flowmap-header">
+              <button
+                className="ce-flowmap-toggle"
+                onClick={() => setFlowMapOpen(v => !v)}
+              >
+                {flowMapOpen ? "▼" : "▶"} Flow Map (energi · musikk · emosjon · visuell · dialog)
+              </button>
+            </div>
+            {flowMapOpen && flowMapData && flowMapData.layers.length > 1 && (
+              <div className="ce-flowmap">
+                {([
+                  { key: "energy", label: "Energi", color: "#c850e0" },
+                  { key: "musicIntensity", label: "Musikk", color: "#a030c0" },
+                  { key: "emotionalDensity", label: "Emosjon", color: "#ef4f6f" },
+                  { key: "visualVariation", label: "Visuell variasjon", color: "#f0a500" },
+                  { key: "dialogueDensity", label: "Dialog", color: "#4ad48a" },
+                ] as { key: keyof typeof flowMapData.layers[0]; label: string; color: string }[]).map(layer => {
+                  const path = (() => {
+                    const w = 1000, h = 38;
+                    const points = flowMapData.layers.map(pt => {
+                      const x = (pt.midSec / flowMapData.totalDur) * w;
+                      const v = pt[layer.key] as number;
+                      const y = h - (v * h * 0.85);
+                      return `${x},${y}`;
+                    });
+                    return `M ${points.join(" L ")}`;
+                  })();
+                  const fillPath = (() => {
+                    const w = 1000, h = 38;
+                    const points = flowMapData.layers.map(pt => {
+                      const x = (pt.midSec / flowMapData.totalDur) * w;
+                      const v = pt[layer.key] as number;
+                      const y = h - (v * h * 0.85);
+                      return `${x},${y}`;
+                    });
+                    const first = flowMapData.layers[0].midSec / flowMapData.totalDur * w;
+                    const last = flowMapData.layers[flowMapData.layers.length-1].midSec / flowMapData.totalDur * w;
+                    return `M ${first},${h} L ${points.join(" L ")} L ${last},${h} Z`;
+                  })();
+                  return (
+                    <div key={layer.key} className="ce-flowmap-layer">
+                      <div className="ce-flowmap-label" style={{ color: layer.color }}>
+                        <span style={{ background: layer.color }} className="ce-flowmap-dot" />
+                        {layer.label}
+                      </div>
+                      <svg className="ce-flowmap-svg" viewBox="0 0 1000 38" preserveAspectRatio="none">
+                        <path d={fillPath} fill={layer.color} fillOpacity="0.15" />
+                        <path d={path} fill="none" stroke={layer.color} strokeWidth="1.8"
+                              strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Story Arc overlay — emotional curve fra signals */}
+            {storyArcPoints.length > 1 && storyArcPhases && (
+              <div className="ce-story-arc">
+                <svg className="ce-story-arc-svg" viewBox={`0 0 1000 60`} preserveAspectRatio="none">
+                  {/* Phase backgrounds */}
+                  <rect x="0" y="0" width={(storyArcPhases.introEnd / storyArcPhases.totalDur) * 1000} height="60"
+                        fill="rgba(110, 63, 199, 0.05)" />
+                  <rect x={(storyArcPhases.introEnd / storyArcPhases.totalDur) * 1000} y="0"
+                        width={((storyArcPhases.buildEnd - storyArcPhases.introEnd) / storyArcPhases.totalDur) * 1000} height="60"
+                        fill="rgba(240, 165, 0, 0.06)" />
+                  <rect x={(storyArcPhases.buildEnd / storyArcPhases.totalDur) * 1000} y="0"
+                        width={((storyArcPhases.outroStart - storyArcPhases.buildEnd) / storyArcPhases.totalDur) * 1000} height="60"
+                        fill="rgba(239, 79, 111, 0.08)" />
+                  <rect x={(storyArcPhases.outroStart / storyArcPhases.totalDur) * 1000} y="0"
+                        width={((storyArcPhases.totalDur - storyArcPhases.outroStart) / storyArcPhases.totalDur) * 1000} height="60"
+                        fill="rgba(74, 212, 138, 0.04)" />
+                  {/* Energy curve */}
+                  <path
+                    d={(() => {
+                      const w = 1000, h = 60;
+                      const points = storyArcPoints.map(pt => {
+                        const x = (pt.midSec / storyArcPhases.totalDur) * w;
+                        const y = h - (pt.energy * h * 0.85);
+                        return `${x},${y}`;
+                      });
+                      return `M ${points.join(" L ")}`;
+                    })()}
+                    fill="none"
+                    stroke="rgba(200, 80, 224, 0.85)"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  {/* Filled area under curve */}
+                  <path
+                    d={(() => {
+                      const w = 1000, h = 60;
+                      const points = storyArcPoints.map(pt => {
+                        const x = (pt.midSec / storyArcPhases.totalDur) * w;
+                        const y = h - (pt.energy * h * 0.85);
+                        return `${x},${y}`;
+                      });
+                      const first = storyArcPoints[0].midSec / storyArcPhases.totalDur * w;
+                      const last = storyArcPoints[storyArcPoints.length-1].midSec / storyArcPhases.totalDur * w;
+                      return `M ${first},${h} L ${points.join(" L ")} L ${last},${h} Z`;
+                    })()}
+                    fill="url(#arcGradient)"
+                  />
+                  <defs>
+                    <linearGradient id="arcGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="rgba(200, 80, 224, 0.40)" />
+                      <stop offset="100%" stopColor="rgba(200, 80, 224, 0.00)" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div className="ce-story-arc-labels">
+                  <span style={{ left: "5%" }}>↑ Intro</span>
+                  <span style={{ left: "35%" }}>↑ Build</span>
+                  <span style={{ left: `${(storyArcPhases.peakTime / storyArcPhases.totalDur) * 100}%`,
+                                  color: "#ef4f6f" }}>⚡ Peak</span>
+                  <span style={{ left: "85%" }}>↓ Outro</span>
+                </div>
+              </div>
+            )}
+
             <div className="ce-timeline-ruler">
               {[0, 30, 60, 90, 120, 150, 180].map((t) => (
                 <div key={t} className="ce-timeline-tick" style={{ left: `${(t / totalDuration) * 100}%` }}>
                   {formatTime(t)}
                 </div>
               ))}
+              {/* Timeline markers */}
+              {markers.map(m => {
+                const arcPt = storyArcPoints.find(p => p.startSec <= m.timeSec && p.endSec >= m.timeSec) ?? storyArcPoints[0];
+                const relTime = arcPt ? (arcPt.midSec / (storyArcPhases?.totalDur || 1)) * 100 : 0;
+                return (
+                  <div
+                    key={m.id}
+                    className="ce-timeline-marker"
+                    style={{ left: `${relTime}%`, borderColor: m.color }}
+                    onClick={() => setEditingMarkerId(m.id)}
+                    title={`${m.label}${m.comment ? ' — ' + m.comment : ''}`}
+                  >
+                    <div className="ce-timeline-marker-flag" style={{ background: m.color }}>{m.label}</div>
+                  </div>
+                );
+              })}
             </div>
             <div className="ce-timeline-strip">
               {filteredPicks.slice(0, 12).map((p, i) => {
                 const segIdx = segments.findIndex(s => s.picks.some(x => x.index === p.index));
                 const flowEval = flowEvals.find(f => f.pickIndex === p.index);
+                const transKey = i > 0 ? `${i-1}-${i}` : null;
+                const transType = transKey ? (pickTransitions[transKey] ?? "fade") : null;
+                const sigs = p.signals ?? {};
+                const hasComment = !!pickComments[p.index];
                 return (
-                  <div
-                    key={p.index}
-                    className={`ce-timeline-clip ${i === focusedPickIdx ? "active" : ""} ${draggedPickIdx === i ? "dragging" : ""}`}
-                    draggable
-                    onClick={() => setFocusedPickIdx(i)}
-                    onDragStart={(e) => {
-                      setDraggedPickIdx(i);
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (draggedPickIdx !== null) reorderPicks(draggedPickIdx, i);
-                      setDraggedPickIdx(null);
-                    }}
-                    onDragEnd={() => setDraggedPickIdx(null)}
-                  >
-                    <div className="ce-timeline-clip-num">{segIdx + 1}</div>
-                    {p.thumbnailPath && <img src={convertFileSrc(p.thumbnailPath)} alt="" />}
-                    <div className="ce-timeline-clip-dur">{p.durationSec.toFixed(2)}</div>
-                    {flowEval && (
-                      <div
-                        className={`ce-flow-marker ce-flow-${flowEval.flowQuality}`}
-                        onMouseEnter={() => setHoveredFlowPickIdx(p.index)}
-                        onMouseLeave={() => setHoveredFlowPickIdx(null)}
-                      >
-                        {hoveredFlowPickIdx === p.index && (
-                          <div className="ce-flow-tooltip">
-                            <strong>{flowEval.flowQuality === "strong" ? "Sterk flyt" : flowEval.flowQuality === "weak" ? "Svak energi" : "Treg pacing"}</strong>
-                            <div>{flowEval.reason}</div>
+                  <Fragment key={p.index}>
+                    {/* Transition picker between clips */}
+                    {i > 0 && transKey && (
+                      <div className="ce-trans-slot">
+                        <button
+                          className="ce-trans-btn"
+                          title={`Overgang: ${transType}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTransitionMenuFor(transitionMenuFor === transKey ? null : transKey);
+                          }}
+                        >
+                          {transType === "cut" ? "│" :
+                           transType === "fade" ? "▶" :
+                           transType === "dissolve" ? "◈" :
+                           transType === "wipeleft" ? "◀" :
+                           transType === "fadeblack" ? "●" :
+                           transType === "fadewhite" ? "○" : "▶"}
+                        </button>
+                        {transitionMenuFor === transKey && (
+                          <div className="ce-trans-menu">
+                            {(["cut","fade","dissolve","wipeleft","fadeblack","fadewhite"] as TransitionType[]).map(t => (
+                              <button
+                                key={t}
+                                className={`ce-trans-item ${transType === t ? "active" : ""}`}
+                                onClick={() => setTransition(i-1, i, t)}
+                              >
+                                {t === "cut" ? "│ Cut" :
+                                 t === "fade" ? "▶ Fade" :
+                                 t === "dissolve" ? "◈ Dissolve" :
+                                 t === "wipeleft" ? "◀ Wipe-left" :
+                                 t === "fadeblack" ? "● Fade-to-black" :
+                                 "○ Fade-to-white"}
+                              </button>
+                            ))}
                           </div>
                         )}
                       </div>
                     )}
-                  </div>
+                    <div
+                      className={`ce-timeline-clip ${i === focusedPickIdx ? "active" : ""} ${draggedPickIdx === i ? "dragging" : ""}`}
+                      draggable
+                      onClick={() => setFocusedPickIdx(i)}
+                      onDragStart={(e) => {
+                        setDraggedPickIdx(i);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (draggedPickIdx !== null) reorderPicks(draggedPickIdx, i);
+                        setDraggedPickIdx(null);
+                      }}
+                      onDragEnd={() => setDraggedPickIdx(null)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setEditingCommentPick(p.index);
+                      }}
+                    >
+                      <div className="ce-timeline-clip-num">{segIdx + 1}</div>
+                      {p.thumbnailPath && <img src={convertFileSrc(p.thumbnailPath)} alt="" />}
+                      <div className="ce-timeline-clip-dur">{p.durationSec.toFixed(2)}</div>
+                      {/* Shot Intelligence — small indicator icons */}
+                      <div className="ce-clip-intel">
+                        {(sigs.bokeh ?? 0) > 0.5 && <span title="Shallow DOF / bokeh">◯</span>}
+                        {(sigs.slowmo ?? 0) > 0.5 && <span title="Slow-motion">⏱</span>}
+                        {(sigs.faces ?? 0) > 0.5 && <span title="Faces detected">😊</span>}
+                        {(sigs.pose ?? 0) > 0.5 && <span title="Pose: embrace/dance/raise">🤝</span>}
+                        {(sigs.action ?? 0) > 0.5 && <span title="High action">⚡</span>}
+                        {(sigs.emotional_peak ?? 0) > 0.4 && <span title="Emotional peak">💗</span>}
+                        {(sigs.audio_events ?? 0) > 0.5 && <span title="Audio event (applaus/latter)">🔊</span>}
+                      </div>
+                      {hasComment && (
+                        <div className="ce-clip-comment-badge" title={pickComments[p.index]}>💬</div>
+                      )}
+                      {flowEval && (
+                        <div
+                          className={`ce-flow-marker ce-flow-${flowEval.flowQuality}`}
+                          onMouseEnter={() => setHoveredFlowPickIdx(p.index)}
+                          onMouseLeave={() => setHoveredFlowPickIdx(null)}
+                        >
+                          {hoveredFlowPickIdx === p.index && (
+                            <div className="ce-flow-tooltip">
+                              <strong>{flowEval.flowQuality === "strong" ? "Sterk flyt" : flowEval.flowQuality === "weak" ? "Svak energi" : "Treg pacing"}</strong>
+                              <div>{flowEval.reason}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Fragment>
                 );
               })}
             </div>
@@ -1836,7 +2078,40 @@ ${ctxLines.join("\n")}`;
                 active={isPlaying}
               />
             </div>
+            <button
+              className="ce-audio-add-btn"
+              onClick={addCustomAudio}
+              title="Legg til egen lyd"
+            >+ Lyd</button>
+            <button
+              className="ce-audio-add-btn"
+              onClick={() => addMarkerAtPlayhead()}
+              title="Sett markør (M)"
+            >+ Markør</button>
           </div>
+
+          {/* Custom audio tracks */}
+          {customAudios.map((audio) => (
+            <div key={audio.id} className="ce-audio ce-audio-custom">
+              <div className="ce-audio-icon">🎙</div>
+              <div className="ce-audio-title">{audio.name}</div>
+              <div className="ce-audio-wave">
+                <RealWaveform wavPath={audio.path} bars={120} active={isPlaying} />
+              </div>
+              <input
+                type="range" min="0" max="1" step="0.05"
+                value={audio.volume}
+                onChange={(e) => updateCustomAudio(audio.id, { volume: parseFloat(e.target.value) })}
+                title={`Volum ${Math.round(audio.volume * 100)}%`}
+                style={{ width: 60 }}
+              />
+              <button
+                className="ce-audio-add-btn"
+                onClick={() => removeCustomAudio(audio.id)}
+                title="Fjern audio-spor"
+              >✕</button>
+            </div>
+          ))}
 
           <div className="ce-duration">
             <span>Varighet valgt: <strong>{formatTime(totalDuration)}</strong></span>
@@ -2171,6 +2446,82 @@ ${ctxLines.join("\n")}`;
         </aside>
       </div>
 
+      {/* Marker edit modal */}
+      {editingMarkerId && (() => {
+        const m = markers.find(x => x.id === editingMarkerId);
+        if (!m) return null;
+        return (
+          <div className="ce-shortcuts-backdrop" onClick={() => setEditingMarkerId(null)}>
+            <div className="ce-shortcuts-modal" onClick={(e) => e.stopPropagation()} style={{ width: 360 }}>
+              <div className="ce-shortcuts-title">📍 Markør @ {formatTime(m.timeSec)}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <input
+                  type="text"
+                  value={m.label}
+                  placeholder="Marker-tittel"
+                  onChange={(e) => updateMarker(m.id, { label: e.target.value })}
+                  className="ce-claude-input"
+                  autoFocus
+                />
+                <textarea
+                  value={m.comment}
+                  placeholder="Kommentar (valgfri)…"
+                  onChange={(e) => updateMarker(m.id, { comment: e.target.value })}
+                  className="ce-wishes-input"
+                  rows={3}
+                />
+                <div style={{ display: "flex", gap: 6 }}>
+                  {["#a030c0", "#4ad48a", "#f0a500", "#ef4f6f", "#6e3fc7"].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => updateMarker(m.id, { color: c })}
+                      style={{
+                        width: 28, height: 28, borderRadius: 14,
+                        background: c, border: m.color === c ? "2px solid white" : "none",
+                        cursor: "pointer",
+                      }}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <button onClick={() => { deleteMarker(m.id); setEditingMarkerId(null); }}
+                          style={{ background: "rgba(239, 79, 111, 0.20)", color: "#ef9fb0",
+                                   border: "1px solid rgba(239, 79, 111, 0.40)",
+                                   borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
+                    🗑 Slett
+                  </button>
+                  <button className="ce-shortcuts-close" style={{ flex: 1 }}
+                          onClick={() => setEditingMarkerId(null)}>Lukk</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Comment edit modal */}
+      {editingCommentPick !== null && (() => {
+        const p = filteredPicks.find(pp => pp.index === editingCommentPick);
+        if (!p) return null;
+        return (
+          <div className="ce-shortcuts-backdrop" onClick={() => setEditingCommentPick(null)}>
+            <div className="ce-shortcuts-modal" onClick={(e) => e.stopPropagation()} style={{ width: 380 }}>
+              <div className="ce-shortcuts-title">💬 Kommentar — shot#{p.index} ({p.chapter})</div>
+              <textarea
+                value={pickComments[p.index] || ""}
+                placeholder="Editor notes, edit-spørsmål, eller bryllupspar-feedback…"
+                onChange={(e) => setPickComments(prev => ({ ...prev, [p.index]: e.target.value }))}
+                className="ce-wishes-input"
+                rows={5}
+                autoFocus
+              />
+              <button className="ce-shortcuts-close" style={{ marginTop: 12 }}
+                      onClick={() => setEditingCommentPick(null)}>Lagre + lukk</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Shortcuts help-overlay */}
       {shortcutsOpen && (
         <div className="ce-shortcuts-backdrop" onClick={() => setShortcutsOpen(false)}>
@@ -2184,6 +2535,8 @@ ${ctxLines.join("\n")}`;
                 { keys: ["X"], desc: "Skip focused pick" },
                 { keys: ["V"], desc: "Keep / re-include" },
                 { keys: ["T"], desc: "Toggle Trim panel" },
+                { keys: ["M"], desc: "Sett markør ved playhead" },
+                { keys: ["C"], desc: "Kommenter focused pick" },
                 { keys: ["⌘Z"], desc: "Undo" },
                 { keys: ["⇧⌘Z"], desc: "Redo" },
                 { keys: ["?"], desc: "Vis denne hjelpen" },
