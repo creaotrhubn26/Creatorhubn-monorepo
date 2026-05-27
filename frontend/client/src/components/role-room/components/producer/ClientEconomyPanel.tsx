@@ -15,11 +15,17 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Paid as PaidIcon, AdminPanelSettings as AdminIcon, Savings as SavingsIcon } from '@mui/icons-material';
+import {
+  Paid as PaidIcon,
+  AdminPanelSettings as AdminIcon,
+  Savings as SavingsIcon,
+  Insights as InsightsIcon,
+} from '@mui/icons-material';
 import roleRoomAgentService, {
   type RoleRoomAdsSpendSummary,
   type RoleRoomApprovalPolicy,
   type RoleRoomBudgetResult,
+  type RoleRoomChannelResults,
 } from '../../services/roleRoomAgentService';
 import GrantedAssetsCard from './GrantedAssetsCard';
 
@@ -76,6 +82,7 @@ export default function ClientEconomyPanel({
   const [budget, setBudget] = useState<RoleRoomBudgetResult | null>(null);
   const [budgetInput, setBudgetInput] = useState('');
   const [savingBudget, setSavingBudget] = useState(false);
+  const [results, setResults] = useState<RoleRoomChannelResults | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refreshBudget = async () => {
@@ -90,8 +97,14 @@ export default function ClientEconomyPanel({
       setLoading(true);
       setError(null);
       try {
-        const data = await roleRoomAgentService.fetchAdsSpendSummary(period);
-        if (!cancelled) setSummary(data);
+        const [data, res] = await Promise.all([
+          roleRoomAgentService.fetchAdsSpendSummary(period),
+          roleRoomAgentService.fetchAdsResults(projectId, period),
+        ]);
+        if (!cancelled) {
+          setSummary(data);
+          setResults(res);
+        }
       } catch {
         if (!cancelled) setError('Klarte ikke å hente forbruket.');
       } finally {
@@ -101,7 +114,7 @@ export default function ClientEconomyPanel({
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [period, projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,6 +228,60 @@ export default function ClientEconomyPanel({
           </Stack>
         ) : null}
       </Stack>
+
+      {/* ── Resultater per kanal (rapportering, §5.3) ── */}
+      {results && results.perChannel.length > 0 && (
+        <Stack spacing={1.1} sx={CARD_SX}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <InsightsIcon sx={{ fontSize: 20, color: '#a5b4fc' }} />
+            <Typography sx={LABEL}>Resultater per kanal</Typography>
+          </Stack>
+          <Typography sx={SUBTLE}>
+            Forbruk, klikk, konverteringer og avkastning (ROAS) per annonsekanal. Rapportering — ikke en garantert ytelse.
+          </Typography>
+
+          {results.perChannel.map((ch) => (
+            <Box
+              key={ch.platform}
+              sx={{
+                p: 1,
+                borderRadius: 1.5,
+                bgcolor: 'rgba(148,163,184,0.06)',
+                border: '1px solid rgba(148,163,184,0.16)',
+              }}
+            >
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.85rem' }}>
+                  {PLATFORM_LABEL[ch.platform] ?? ch.platform}
+                </Typography>
+                <Typography sx={{ color: '#a5b4fc', fontWeight: 800, fontSize: '0.85rem' }}>
+                  {ch.roas != null ? `ROAS ${ch.roas}×` : 'ROAS —'}
+                </Typography>
+              </Stack>
+              <Stack direction="row" flexWrap="wrap" gap={1.5}>
+                <Metric label="Forbruk" value={nok(ch.spendNok)} />
+                <Metric label="Klikk" value={ch.clicks.toLocaleString('nb-NO')} />
+                <Metric label="Konv." value={ch.conversions.toLocaleString('nb-NO')} />
+                <Metric label="Konv.verdi" value={nok(ch.conversionValueNok)} />
+                <Metric label="Kost/konv." value={ch.costPerConversionNok != null ? nok(ch.costPerConversionNok) : '—'} />
+              </Stack>
+            </Box>
+          ))}
+
+          <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)', my: 0.3 }} />
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.85rem' }}>Totalt</Typography>
+            <Typography sx={{ color: '#a5b4fc', fontWeight: 800, fontSize: '0.85rem' }}>
+              {results.totals.roas != null ? `ROAS ${results.totals.roas}×` : 'ROAS —'}
+            </Typography>
+          </Stack>
+          <Stack direction="row" flexWrap="wrap" gap={1.5}>
+            <Metric label="Forbruk" value={nok(results.totals.spendNok)} />
+            <Metric label="Konv." value={results.totals.conversions.toLocaleString('nb-NO')} />
+            <Metric label="Konv.verdi" value={nok(results.totals.conversionValueNok)} />
+          </Stack>
+        </Stack>
+      )}
 
       {/* ── Budsjett-tak (kunden setter, §3) ── */}
       <Stack spacing={1.2} sx={CARD_SX}>
@@ -346,6 +413,15 @@ export default function ClientEconomyPanel({
         </Typography>
       )}
     </Stack>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <Box sx={{ minWidth: 64 }}>
+      <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.68rem' }}>{label}</Typography>
+      <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>{value}</Typography>
+    </Box>
   );
 }
 

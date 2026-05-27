@@ -3,6 +3,7 @@ import {
   recommendAdsBudget,
   computeManagementFee,
   billingPeriodForDate,
+  buildChannelResults,
   INDUSTRY_FACTORS,
   ADS_METER_EVENT_NAMES,
   MANAGEMENT_FEE_RATE,
@@ -193,5 +194,44 @@ describe("static configuration", () => {
     expect(ADS_METER_EVENT_NAMES.google).toBe("roleroom_ads_google_spend_nok");
     expect(ADS_METER_EVENT_NAMES.tiktok).toBe("roleroom_ads_tiktok_spend_nok");
     expect(ADS_METER_EVENT_NAMES.linkedin).toBe("roleroom_ads_linkedin_spend_nok");
+  });
+});
+
+describe("buildChannelResults", () => {
+  it("computes ctr/cpc/roas/cost-per-conv per channel + totals", () => {
+    const { perChannel, totals } = buildChannelResults([
+      { platform: "meta", spendNok: 1000, impressions: 10000, clicks: 200, conversions: 10, conversionValueNok: 5000 },
+      { platform: "google", spendNok: 500, impressions: 4000, clicks: 100, conversions: 5, conversionValueNok: 2500 },
+    ]);
+    // sorted by spend desc → meta first
+    expect(perChannel[0].platform).toBe("meta");
+    expect(perChannel[0].ctr).toBeCloseTo(2, 4); // 200/10000*100
+    expect(perChannel[0].cpc).toBeCloseTo(5, 4); // 1000/200
+    expect(perChannel[0].roas).toBeCloseTo(5, 4); // 5000/1000
+    expect(perChannel[0].costPerConversionNok).toBeCloseTo(100, 4); // 1000/10
+
+    expect(totals.platform).toBe("total");
+    expect(totals.spendNok).toBe(1500);
+    expect(totals.conversions).toBe(15);
+    expect(totals.conversionValueNok).toBe(7500);
+    expect(totals.roas).toBeCloseTo(5, 4); // 7500/1500
+  });
+
+  it("handles zero-spend/zero-impression channels without NaN", () => {
+    const { perChannel, totals } = buildChannelResults([
+      { platform: "linkedin", spendNok: 0, impressions: 0, clicks: 0, conversions: 0, conversionValueNok: 0 },
+    ]);
+    expect(perChannel[0].ctr).toBeNull();
+    expect(perChannel[0].cpc).toBeNull();
+    expect(perChannel[0].roas).toBeNull();
+    expect(perChannel[0].costPerConversionNok).toBeNull();
+    expect(totals.roas).toBeNull();
+  });
+
+  it("returns empty channels + zero totals for no data", () => {
+    const { perChannel, totals } = buildChannelResults([]);
+    expect(perChannel).toEqual([]);
+    expect(totals.spendNok).toBe(0);
+    expect(totals.roas).toBeNull();
   });
 });
