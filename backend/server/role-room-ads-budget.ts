@@ -69,6 +69,95 @@ export function computeBudgetStatus(input: {
   };
 }
 
+// ── Pacing (Lag 3: aktiv budsjett-vakt) ──────────────────────────────────
+// Taket (computeBudgetStatus) sier om vi HAR brukt opp budsjettet. Pacing sier
+// om vi er PÅ VEI til å gjøre det: forbrukstempo vs. dager igjen, projisert
+// månedsslutt, og hvilket dagsbudsjett som lander akkurat på taket. Ren matte
+// — testet — slik at både UI og en evt. auto-pause leser samme tall.
+
+export type BudgetPace = 'no_budget' | 'on_track' | 'at_risk' | 'over_pace' | 'exhausted';
+
+export interface BudgetPacing {
+  daysInPeriod: number;
+  daysElapsed: number;   // inkl. i dag (1-basert i inneværende periode)
+  daysRemaining: number; // ekskl. i dag
+  dailyRunRateNok: number;          // faktisk forbruk / dager gått
+  projectedPeriodSpendNok: number;  // run-rate × dager i perioden
+  projectedOverspendNok: number;    // max(0, projisert − tak)
+  /** Dagsbudsjett som lander akkurat på taket med dagene som gjenstår. */
+  recommendedDailyBudgetNok: number;
+  /** YYYY-MM-DD når run-rate når taket, ellers null (intet budsjett / for sakte). */
+  projectedExhaustionDate: string | null;
+  pace: BudgetPace;
+}
+
+function daysInMonthUtc(year: number, month1: number): number {
+  return new Date(Date.UTC(year, month1, 0)).getUTCDate();
+}
+
+/**
+ * Pacing for en periode (YYYY-MM) gitt budsjett-status + dato. For inneværende
+ * måned brukes dagens dato; for forbi måneder regnes hele måneden som gått; for
+ * framtidige måneder er 0 dager gått (run-rate udefinert → on_track).
+ */
+export function computeBudgetPacing(input: {
+  status: BudgetStatus;
+  period: string; // YYYY-MM
+  today?: Date;
+}): BudgetPacing {
+  const { status } = input;
+  const today = input.today ?? new Date();
+  const [yStr, mStr] = input.period.split('-');
+  const year = Number(yStr);
+  const month1 = Number(mStr); // 1-basert
+  const daysInPeriod = daysInMonthUtc(year, month1);
+
+  // Dager gått i perioden (klippet til [0, daysInPeriod]).
+  const tY = today.getUTCFullYear();
+  const tM = today.getUTCMonth() + 1;
+  let daysElapsed: number;
+  if (tY === year && tM === month1) daysElapsed = today.getUTCDate();
+  else if (tY > year || (tY === year && tM > month1)) daysElapsed = daysInPeriod; // perioden er over
+  else daysElapsed = 0; // perioden har ikke startet
+  const daysRemaining = Math.max(0, daysInPeriod - daysElapsed);
+
+  const cap = status.effectiveCapNok;
+  const actual = status.actualSpendNok;
+  const dailyRunRateNok = daysElapsed > 0 ? actual / daysElapsed : 0;
+  const projectedPeriodSpendNok = dailyRunRateNok * daysInPeriod;
+  const projectedOverspendNok = Math.max(0, projectedPeriodSpendNok - cap);
+  const remaining = Math.max(0, cap - actual);
+  const recommendedDailyBudgetNok = daysRemaining > 0 ? remaining / daysRemaining : 0;
+
+  let projectedExhaustionDate: string | null = null;
+  if (cap > 0 && dailyRunRateNok > 0) {
+    const dayHit = Math.ceil(cap / dailyRunRateNok);
+    if (dayHit <= daysInPeriod) {
+      projectedExhaustionDate = `${input.period}-${String(dayHit).padStart(2, '0')}`;
+    }
+  }
+
+  let pace: BudgetPace;
+  if (!status.hasBudget || cap <= 0) pace = 'no_budget';
+  else if (status.isOverBudget) pace = 'exhausted';
+  else if (projectedPeriodSpendNok > cap) pace = 'over_pace';
+  else if (status.isNearBudget) pace = 'at_risk';
+  else pace = 'on_track';
+
+  const round = (n: number) => Math.round(n);
+  return {
+    daysInPeriod,
+    daysElapsed,
+    daysRemaining,
+    dailyRunRateNok: round(dailyRunRateNok),
+    projectedPeriodSpendNok: round(projectedPeriodSpendNok),
+    projectedOverspendNok: round(projectedOverspendNok),
+    recommendedDailyBudgetNok: round(recommendedDailyBudgetNok),
+    projectedExhaustionDate,
+    pace,
+  };
+}
+
 export class BudgetExceededError extends Error {
   readonly status: BudgetStatus;
   constructor(status: BudgetStatus) {
