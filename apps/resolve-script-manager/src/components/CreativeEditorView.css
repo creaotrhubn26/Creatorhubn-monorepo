@@ -225,12 +225,13 @@
 /* ─── Body grid ─── */
 .ce-body {
   display: grid;
-  grid-template-columns: 280px 1fr 380px;
+  grid-template-columns: 280px minmax(0, 1fr) 380px;
   gap: 16px;
   padding: 16px 24px;
   overflow: hidden;
   min-height: 0;
 }
+.ce-claude { max-width: 380px; }
 
 /* ─── Segments sidebar ─── */
 .ce-segments {
@@ -238,6 +239,13 @@
   grid-template-rows: auto 1fr auto auto;
   min-height: 0;
   gap: 12px;
+  background: linear-gradient(180deg, rgba(18, 9, 54, 0.85), rgba(10, 5, 24, 0.90));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid #1a0d45;
+  border-radius: 12px;
+  padding: 14px;
+  z-index: 5;
 }
 .ce-segments-header {
   display: flex;
@@ -993,16 +1001,25 @@
 
 /* ─── Claude assistant ─── */
 .ce-claude {
-  display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  background: rgba(26, 13, 69, 0.30);
+  background: linear-gradient(180deg, rgba(18, 9, 54, 0.92), rgba(10, 5, 24, 0.95));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid #1a0d45;
   border-radius: 12px;
   padding: 14px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   transition: border-color 0.4s;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  z-index: 5;
+}
+.ce-claude > .ce-claude-suggestions {
+  flex: 1;
+  min-height: 0;
 }
 .ce-agent-tabs {
   display: grid;
