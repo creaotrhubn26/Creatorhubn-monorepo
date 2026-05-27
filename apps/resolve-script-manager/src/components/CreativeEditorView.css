@@ -971,7 +971,7 @@
 /* ─── Claude assistant ─── */
 .ce-claude {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
   gap: 12px;
   background: rgba(26, 13, 69, 0.30);
   border: 1px solid #1a0d45;
@@ -979,6 +979,53 @@
   padding: 14px;
   overflow: hidden;
   min-height: 0;
+  transition: border-color 0.4s;
+}
+.ce-agent-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.ce-agent-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px 5px;
+  background: rgba(26, 13, 69, 0.40);
+  border: 1px solid #1a0d45;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #b8a8d8;
+  font-size: 9.5px;
+  transition: all 0.18s;
+  position: relative;
+}
+.ce-agent-tab:hover { background: rgba(38, 21, 86, 0.6); color: #f0eaff; }
+.ce-agent-tab.active {
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.30);
+}
+.ce-agent-tab-icon { font-size: 14px; line-height: 1; }
+.ce-agent-tab-name {
+  font-size: 9.5px;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.ce-agent-tab-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(74, 212, 138, 0.30);
+  color: #4ad48a;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 999px;
+  line-height: 1;
 }
 .ce-claude-header {
   display: flex;

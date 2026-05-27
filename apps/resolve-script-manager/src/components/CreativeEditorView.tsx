@@ -280,9 +280,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [currentTime, setCurrentTime] = useState(0);
   const [playRate, setPlayRate] = useState(1);
 
-  // Claude chat state
+  // Claude chat state — separate history per agent
   type ChatMsg = { role: "user" | "assistant"; content: string };
-  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+  type AgentRole = "claude" | "vision" | "audio" | "wedding";
+  const [agentRole, setAgentRole] = useState<AgentRole>("claude");
+  const [chatHistory, setChatHistory] = useState<Record<AgentRole, ChatMsg[]>>({
+    claude: [], vision: [], audio: [], wedding: [],
+  });
+  const chatMessages = chatHistory[agentRole];
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -821,16 +826,43 @@ Du MÅ kalle analyze_narrative_flow-tool med evaluations-array som inkluderer AL
     }
   }, [flowBusy, filteredPicks, projectTitle, totalDuration, activeSong]);
 
-  // ─── Claude chat: send message + receive reply ───
+  // ─── Multi-agent: agent-personas med egne system-prompts ───
+  const AGENT_PROFILES: Record<AgentRole, { name: string; icon: string; accent: string; systemPrompt: string }> = {
+    claude: {
+      name: "Claude",
+      icon: "🌸",
+      accent: "#c850e0",
+      systemPrompt: `Du er Claude, en AI Creative Director som hjelper en wedding-film-redaktør lage emosjonelle highlights. Du følger redaktørens story-tankegang — IKKE bins/folders. Du gir korte, konkrete forslag (1-3 setninger) om pacing, emosjonell flyt, og narrativ struktur. Skriv på norsk. Du er kreativ partner, ikke chatbot.`,
+    },
+    vision: {
+      name: "Vision Agent",
+      icon: "👁",
+      accent: "#4ad48a",
+      systemPrompt: `Du er Vision Agent, en spesialisert AI for SHOT QUALITY-vurdering. Du analyserer framing, fokus, lyssetting, komposisjon, og teknisk kvalitet. Du gir konkrete tekniske observasjoner om hvilke shots holder cinematic standard og hvilke som er svake teknisk. Du foreslår color/exposure-justeringer, reframing, eller å erstatte tekniske svake shots. Skriv på norsk, vær teknisk men ikke nerd.`,
+    },
+    audio: {
+      name: "Audio Agent",
+      icon: "🎙",
+      accent: "#f0a500",
+      systemPrompt: `Du er Audio Agent, en spesialisert AI for LYD-spørsmål. Du analyserer talenes klarhet, behovet for vocal isolation, music sync, applaus-detektering, og emosjonelle audio-peaks (gråt/latter/jubel). Du foreslår hvilke speech-rich shots trenger cleanup, hvor musikk bygger best emosjonell drift, og hvor du mangler reaksjonsapplaus. Skriv på norsk, fokus på lyd-narrativ.`,
+    },
+    wedding: {
+      name: "Wedding Agent",
+      icon: "💍",
+      accent: "#ef4f6f",
+      systemPrompt: `Du er Wedding Agent, en spesialisert AI med dyp kunnskap om bryllups-tradisjoner. Du kjenner pakistansk/indisk bryllup (mehndi, sangeet, haldi, nikkah, walima, varmala, saat phere), kristne bryllup (vows, ring exchange, first kiss, cake-cutting), og norske bryllup (toastmaster, brudevals, bryllupsdrakter). Du flagger MANGLENDE viktige ritualer i sekvensen, og foreslår hvilke kulturelt viktige momenter som bør prioriteres. Skriv på norsk.`,
+    },
+  };
+
+  // ─── Multi-agent chat: send message + receive reply ───
   const sendChat = useCallback(async (text: string) => {
     if (!text.trim() || chatBusy) return;
     const userMsg: ChatMsg = { role: "user", content: text.trim() };
-    const nextMessages = [...chatMessages, userMsg];
-    setChatMessages(nextMessages);
+    const nextMessages = [...chatHistory[agentRole], userMsg];
+    setChatHistory(prev => ({ ...prev, [agentRole]: nextMessages }));
     setChatInput("");
     setChatBusy(true);
     setChatError(null);
-    // Build context for Claude — picks summary + history balance + active song
     const ctxLines: string[] = [];
     ctxLines.push(`Project: "${projectTitle}"`);
     if (activeSong) ctxLines.push(`Main song: "${activeSong.title}" by ${activeSong.artist}${activeSong.bpm ? ` (${activeSong.bpm} BPM)` : ""}`);
@@ -840,7 +872,7 @@ Du MÅ kalle analyze_narrative_flow-tool med evaluations-array som inkluderer AL
     if (focusedPick) {
       ctxLines.push(`Currently focused: shot#${focusedPick.index} (${focusedPick.chapter || "?"}) — ${focusedPick.durationSec.toFixed(2)}s, score ${focusedPick.score.toFixed(3)}`);
     }
-    const systemPrompt = `Du er Claude, en AI Creative Director som hjelper en wedding-film-redaktør lage emosjonelle highlights. Du følger redaktørens story-tankegang — IKKE bins/folders. Du gir korte, konkrete forslag (1-3 setninger) om pacing, emosjonell flyt, og narrativ struktur. Skriv på norsk. Du er kreativ partner, ikke chatbot.
+    const systemPrompt = `${AGENT_PROFILES[agentRole].systemPrompt}
 
 Project-kontekst:
 ${ctxLines.join("\n")}`;
@@ -851,7 +883,6 @@ ${ctxLines.join("\n")}`;
         model: "claude-opus-4-7",
         maxTokens: 600,
       });
-      // Anthropic response: { content: [{ type: "text", text: "..." }], ... }
       const blocks = resp?.content ?? [];
       const text = blocks
         .filter((b: any) => b.type === "text")
@@ -859,7 +890,10 @@ ${ctxLines.join("\n")}`;
         .join("\n")
         .trim();
       if (text) {
-        setChatMessages([...nextMessages, { role: "assistant", content: text }]);
+        setChatHistory(prev => ({
+          ...prev,
+          [agentRole]: [...nextMessages, { role: "assistant", content: text }],
+        }));
       } else {
         setChatError("Claude svarte tomt — prøv igjen.");
       }
@@ -867,12 +901,11 @@ ${ctxLines.join("\n")}`;
       setChatError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil ved Claude-kall"));
     } finally {
       setChatBusy(false);
-      // Scroll chat to bottom after render
       setTimeout(() => {
         chatScrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" });
       }, 50);
     }
-  }, [chatBusy, chatMessages, projectTitle, activeSong, totalDuration, filteredPicks.length, segments.length, includedChapters, balance, focusedPick]);
+  }, [chatBusy, agentRole, chatHistory, projectTitle, activeSong, totalDuration, filteredPicks.length, segments.length, includedChapters, balance, focusedPick]);
 
   if (loadError) {
     return (
@@ -1229,13 +1262,47 @@ ${ctxLines.join("\n")}`;
           )}
         </main>
 
-        {/* ─── Right: Claude assistant ─── */}
-        <aside className="ce-claude">
+        {/* ─── Right: Claude assistant + agent-tabs ─── */}
+        <aside
+          className="ce-claude"
+          style={{ borderColor: AGENT_PROFILES[agentRole].accent + "60" }}
+        >
           <div className="ce-claude-header">
-            <span className="ce-claude-icon">🌸</span>
-            <span className="ce-claude-name">Claude</span>
+            <span className="ce-claude-icon">{AGENT_PROFILES[agentRole].icon}</span>
+            <span className="ce-claude-name" style={{ color: AGENT_PROFILES[agentRole].accent }}>
+              {AGENT_PROFILES[agentRole].name}
+            </span>
             <span className="ce-claude-beta">BETA</span>
             <button className="ce-claude-close">✕</button>
+          </div>
+
+          {/* Agent tabs */}
+          <div className="ce-agent-tabs">
+            {(["claude", "vision", "audio", "wedding"] as AgentRole[]).map(role => {
+              const profile = AGENT_PROFILES[role];
+              const isActive = agentRole === role;
+              return (
+                <button
+                  key={role}
+                  className={`ce-agent-tab ${isActive ? "active" : ""}`}
+                  style={{
+                    ...(isActive && {
+                      background: `linear-gradient(135deg, ${profile.accent}30, ${profile.accent}15)`,
+                      borderColor: profile.accent + "80",
+                      color: profile.accent,
+                    }),
+                  }}
+                  title={profile.systemPrompt.split(".")[0]}
+                  onClick={() => setAgentRole(role)}
+                >
+                  <span className="ce-agent-tab-icon">{profile.icon}</span>
+                  <span className="ce-agent-tab-name">{profile.name}</span>
+                  {chatHistory[role].length > 0 && (
+                    <span className="ce-agent-tab-badge">{chatHistory[role].filter(m => m.role === "assistant").length}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           <div className="ce-claude-banner">
             <div className="ce-claude-banner-title">Claude analyserer klippene dine</div>
