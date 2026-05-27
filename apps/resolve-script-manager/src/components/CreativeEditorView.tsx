@@ -383,6 +383,19 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   // Drag-and-drop for timeline reorder
   const [draggedPickIdx, setDraggedPickIdx] = useState<number | null>(null);
 
+  // Drag-and-drop for segments-sidebar reorder
+  const [draggedSegIdx, setDraggedSegIdx] = useState<number | null>(null);
+  // Override chapter-order when user drags segments around
+  const [segmentOrder, setSegmentOrder] = useState<string[] | null>(null);
+
+  // Add-segment modal (for "+ Legg til flere")
+  const [addSegmentOpen, setAddSegmentOpen] = useState(false);
+  const [newSegmentLabel, setNewSegmentLabel] = useState("");
+  const [newSegmentStart, setNewSegmentStart] = useState("");
+  const [newSegmentEnd, setNewSegmentEnd] = useState("");
+  // Extra picks added via the add-segment modal (additional, not in cache)
+  const [extraPicks, setExtraPicks] = useState<Pick[]>([]);
+
   // Shortcuts help-overlay
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
@@ -431,6 +444,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
             if (Array.isArray(s.customAudios)) setCustomAudios(s.customAudios);
             if (Array.isArray(s.markers)) setMarkers(s.markers);
             if (s.pickComments) setPickComments(s.pickComments);
+            if (Array.isArray(s.segmentOrder)) setSegmentOrder(s.segmentOrder);
+            if (Array.isArray(s.extraPicks)) setExtraPicks(s.extraPicks);
             restored = true;
           }
         } catch (e) {
@@ -467,6 +482,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
           customAudios,
           markers,
           pickComments,
+          segmentOrder,
+          extraPicks,
           savedAt: Date.now(),
         }));
       } catch (e) {
@@ -474,7 +491,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       }
     }, 500);
     return () => clearTimeout(handle);
-  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments]);
+  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks]);
 
   useEffect(() => {
     if (!advisorPath) return;
@@ -485,11 +502,23 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   }, [advisorPath]);
 
   // ─── Derived state ───
-  const segments = useMemo(() => payload ? groupBySegments(payload.picks) : [], [payload]);
+  const allPicks = useMemo(() => payload ? [...payload.picks, ...extraPicks] : [], [payload, extraPicks]);
+  const segments = useMemo(() => {
+    const segs = groupBySegments(allPicks);
+    // Apply user-defined segment-order if set
+    if (segmentOrder && segs.length > 0) {
+      const sorted = [...segs].sort((a, b) => {
+        const ai = segmentOrder.indexOf(a.chapter);
+        const bi = segmentOrder.indexOf(b.chapter);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+      return sorted;
+    }
+    return segs;
+  }, [allPicks, segmentOrder]);
   const filteredPicks = useMemo(() => {
-    if (!payload) return [];
-    // Apply local trim-overrides first, then filter + sort
-    const withOverrides = payload.picks.map(p => {
+    if (!payload && extraPicks.length === 0) return [];
+    const withOverrides = allPicks.map(p => {
       const o = pickOverrides[p.index];
       if (!o) return p;
       const startSec = o.startSec ?? p.startSec;
@@ -504,8 +533,19 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
         .filter(p => orderMap.has(p.index))
         .sort((a, b) => (orderMap.get(a.index) ?? 0) - (orderMap.get(b.index) ?? 0));
     }
+    // Hvis segmentOrder er satt: sorter primary by segment, secondary by startSec
+    if (segmentOrder) {
+      return base.sort((a, b) => {
+        const aCh = (a.chapter || "details").toLowerCase();
+        const bCh = (b.chapter || "details").toLowerCase();
+        const ai = segmentOrder.indexOf(aCh);
+        const bi = segmentOrder.indexOf(bCh);
+        if (ai !== bi) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        return a.startSec - b.startSec;
+      });
+    }
     return base.sort((a, b) => a.startSec - b.startSec);
-  }, [payload, includedChapters, activePickOrder, pickOverrides]);
+  }, [payload, includedChapters, activePickOrder, pickOverrides, allPicks, extraPicks.length, segmentOrder]);
   const balance = useMemo(() => computeHistorybalance(filteredPicks), [filteredPicks]);
   const totalDuration = useMemo(() => filteredPicks.reduce((s, p) => s + p.durationSec, 0), [filteredPicks]);
   const songs = advisor?.uniqueSongs ?? [];
@@ -645,6 +685,42 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     setUndoAvailable(h.idx > 0);
     setRedoAvailable(h.idx < h.snapshots.length - 1);
   }, [restoreSnapshot]);
+
+  // ─── Reorder segments (drag-and-drop på sidebar) ───
+  const reorderSegments = useCallback((fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const currentOrder = segments.map(s => s.chapter);
+    const [moved] = currentOrder.splice(fromIdx, 1);
+    currentOrder.splice(toIdx, 0, moved);
+    setSegmentOrder(currentOrder);
+    // Clear any active pick-level order — segment reorder takes precedence
+    setActivePickOrder(null);
+  }, [segments]);
+
+  // ─── Add custom segment ───
+  const addCustomSegment = useCallback(() => {
+    const startSec = parseFloat(newSegmentStart);
+    const endSec = parseFloat(newSegmentEnd);
+    const label = newSegmentLabel.trim().toLowerCase();
+    if (!isFinite(startSec) || !isFinite(endSec) || endSec <= startSec || !label) return;
+    const newIdx = Math.max(0, ...allPicks.map(p => p.index)) + 1;
+    const newPick: Pick = {
+      index: newIdx,
+      startSec,
+      endSec,
+      durationSec: endSec - startSec,
+      score: 0.5,
+      chapter: label,
+      thumbnailPath: undefined,
+      signals: {},
+    };
+    setExtraPicks(prev => [...prev, newPick]);
+    setIncludedChapters(prev => new Set([...prev, label]));
+    setNewSegmentLabel("");
+    setNewSegmentStart("");
+    setNewSegmentEnd("");
+    setAddSegmentOpen(false);
+  }, [newSegmentStart, newSegmentEnd, newSegmentLabel, allPicks]);
 
   // ─── Reorder picks (drag-and-drop) ───
   const reorderPicks = useCallback((fromIdx: number, toIdx: number) => {
@@ -1652,7 +1728,7 @@ ${ctxLines.join("\n")}`;
         <aside className="ce-segments">
           <div className="ce-segments-header">
             <span>Segmenter <span className="ce-info">ⓘ</span></span>
-            <button className="ce-segments-add">+ Legg til flere</button>
+            <button className="ce-segments-add" onClick={() => setAddSegmentOpen(true)}>+ Legg til flere</button>
           </div>
           <div className="ce-segments-list">
             {segments.map((seg, i) => {
@@ -1661,7 +1737,19 @@ ${ctxLines.join("\n")}`;
               return (
                 <div
                   key={`${seg.chapter}-${i}`}
-                  className={`ce-segment-card ${included ? "included" : ""} ${focusedPick && seg.picks.some(p => p.index === focusedPick.index) ? "focused" : ""}`}
+                  className={`ce-segment-card ${included ? "included" : ""} ${focusedPick && seg.picks.some(p => p.index === focusedPick.index) ? "focused" : ""} ${draggedSegIdx === i ? "dragging" : ""}`}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedSegIdx(i);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedSegIdx !== null) reorderSegments(draggedSegIdx, i);
+                    setDraggedSegIdx(null);
+                  }}
+                  onDragEnd={() => setDraggedSegIdx(null)}
                   onClick={() => {
                     const idx = filteredPicks.findIndex(p => p.index === firstPick.index);
                     if (idx >= 0) setFocusedPickIdx(idx);
@@ -1676,8 +1764,6 @@ ${ctxLines.join("\n")}`;
                   }}
                   onMouseLeave={() => {
                     setHoveredPickIdx(null);
-                    // Bare pause hvis hover startet playback — ikke pause hvis bruker
-                    // klikket play intensjonelt før hover.
                     if (hoverStartedPlaybackRef.current && videoRef.current) {
                       videoRef.current.pause();
                     }
@@ -2558,6 +2644,76 @@ ${ctxLines.join("\n")}`;
           </div>
         </aside>
       </div>
+
+      {/* Add-segment modal */}
+      {addSegmentOpen && (
+        <div className="ce-shortcuts-backdrop" onClick={() => setAddSegmentOpen(false)}>
+          <div className="ce-shortcuts-modal" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
+            <div className="ce-shortcuts-title">+ Legg til segment</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "#cca0e8", marginBottom: 4 }}>
+                  Chapter-navn (mehndi, nikkah, dance, etc.)
+                </label>
+                <input
+                  type="text"
+                  value={newSegmentLabel}
+                  onChange={(e) => setNewSegmentLabel(e.target.value)}
+                  className="ce-claude-input"
+                  placeholder="f.eks. 'first_dance'"
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontSize: 11, color: "#cca0e8", marginBottom: 4 }}>
+                    Start (sec)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={newSegmentStart}
+                    onChange={(e) => setNewSegmentStart(e.target.value)}
+                    className="ce-claude-input"
+                    placeholder="2400.0"
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontSize: 11, color: "#cca0e8", marginBottom: 4 }}>
+                    Slutt (sec)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={newSegmentEnd}
+                    onChange={(e) => setNewSegmentEnd(e.target.value)}
+                    className="ce-claude-input"
+                    placeholder="2403.5"
+                  />
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: "#8674a8", lineHeight: 1.5 }}>
+                Tips: Klikk på source-video-timeline for å se tider. Eller bruk
+                M-tasten på playhead for å sette markører som du senere kan referere.
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => setAddSegmentOpen(false)}
+                  style={{ flex: 1, background: "rgba(38, 21, 86, 0.6)",
+                           border: "1px solid #2c1860", color: "#cca0e8",
+                           borderRadius: 8, padding: "8px", cursor: "pointer" }}
+                >Avbryt</button>
+                <button
+                  className="ce-shortcuts-close"
+                  style={{ flex: 1 }}
+                  onClick={addCustomSegment}
+                  disabled={!newSegmentLabel.trim() || !newSegmentStart || !newSegmentEnd}
+                >Legg til</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Marker edit modal */}
       {editingMarkerId && (() => {
