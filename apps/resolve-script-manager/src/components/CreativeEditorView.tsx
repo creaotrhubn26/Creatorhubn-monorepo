@@ -944,7 +944,6 @@ Du MÅ kalle apply_couple_wishes-tool med:
       const flagged = (result?.value as any)?.flaggedClips ?? [];
       // Convert script-output to QualityFlag[] per pick
       const flags: QualityFlag[] = filteredPicks.map(p => {
-        const mid = (p.startSec + p.endSec) / 2;
         const hit = flagged.find((f: any) => f.timeSec >= p.startSec && f.timeSec <= p.endSec);
         if (hit) {
           return { pickIndex: p.index, severity: "warning", issues: [hit.reason || "Underexposed"] };
