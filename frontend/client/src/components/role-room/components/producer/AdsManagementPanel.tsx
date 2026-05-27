@@ -17,6 +17,7 @@ import {
   PlayCircle as PlayIcon,
   StopCircle as StopIcon,
   Add as AddIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   type RoleRoomAdsCampaign,
@@ -24,6 +25,7 @@ import roleRoomAgentService, {
   type RoleRoomMetaAdAccount,
   type RoleRoomLinkedInAccount,
   type RoleRoomLinkedInCampaignGroup,
+  type RoleRoomGeneratedAdCreative,
 } from '../../services/roleRoomAgentService';
 
 /**
@@ -60,6 +62,15 @@ const OBJECTIVES = [
   { value: 'OUTCOME_AWARENESS', label: 'Kjennskap' },
 ];
 
+// AI-generatorens mål (AdsGoal) — egen vokab fra Meta-objectives.
+const AD_GOALS = [
+  { value: 'lead_generation', label: 'Lead-generering' },
+  { value: 'ecommerce_conversion', label: 'Salg / konvertering' },
+  { value: 'engagement', label: 'Engasjement' },
+  { value: 'brand_awareness', label: 'Merkekjennskap' },
+  { value: 'retargeting', label: 'Retargeting' },
+];
+
 export default function AdsManagementPanel({ projectId }: { projectId: string }) {
   const [campaigns, setCampaigns] = useState<RoleRoomAdsCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +94,57 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
     dailyBudgetNok: string;
   }>({ platform: 'meta', adAccountId: '', customerId: '', linkedinAccountUrn: '', linkedinGroupUrn: '', name: '', objective: 'OUTCOME_TRAFFIC', dailyBudgetNok: '' });
   const [creating, setCreating] = useState(false);
+
+  // AI-annonsetekst (Lag 1)
+  const [aiGoal, setAiGoal] = useState('lead_generation');
+  const [aiInputs, setAiInputs] = useState({ businessName: '', productOrService: '', landingUrl: '', offer: '', complianceNotes: '' });
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [generated, setGenerated] = useState<RoleRoomGeneratedAdCreative | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState(0);
+
+  const runGenerate = async () => {
+    setGenerating(true);
+    setGenError(null);
+    const res = await roleRoomAgentService.generateAdCreatives({
+      projectId,
+      platform: form.platform,
+      goal: aiGoal,
+      businessName: aiInputs.businessName.trim() || undefined,
+      productOrService: aiInputs.productOrService.trim() || undefined,
+      landingUrl: aiInputs.landingUrl.trim() || undefined,
+      offer: aiInputs.offer.trim() || undefined,
+      complianceNotes: aiInputs.complianceNotes.trim() || undefined,
+    });
+    if ('error' in res) {
+      const missing = res.missingFields?.length ? ` (mangler: ${res.missingFields.join(', ')})` : '';
+      setGenError(res.error + missing);
+      setGenerated(null);
+    } else {
+      setGenerated(res.creative);
+      setSelectedVariant(0);
+      // Foreslå kampanjenavn fra valgt variant hvis tomt.
+      if (!form.name.trim() && res.creative.variants[0]?.headline) {
+        setForm((f) => ({ ...f, name: res.creative.variants[0].headline.slice(0, 60) }));
+      }
+    }
+    setGenerating(false);
+  };
+
+  // Pakk valgt variant + hele settet som creative_config på kampanjen.
+  const buildCreativeConfig = (): Record<string, unknown> | null => {
+    if (!generated) return null;
+    return {
+      source: 'ai',
+      generatedWithModel: generated.generatedWithModel,
+      goal: generated.goal,
+      landingUrl: generated.landingUrl ?? null,
+      selectedVariantIndex: selectedVariant,
+      selectedVariant: generated.variants[selectedVariant] ?? null,
+      variants: generated.variants,
+      complianceChecklist: generated.complianceChecklist ?? [],
+    };
+  };
 
   // Load LinkedIn campaign groups when the chosen LinkedIn account changes.
   useEffect(() => {
@@ -158,10 +220,11 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
     setCreating(true);
     setError(null);
     let res: { campaign: unknown } | { error: string };
+    const creativeConfig = buildCreativeConfig();
     if (form.platform === 'google') {
       if (!form.customerId) { setError('Velg en Google-konto.'); setCreating(false); return; }
       res = await roleRoomAgentService.createGoogleAdsCampaign({
-        projectId, customerId: form.customerId, name: form.name.trim(), dailyBudgetNok: budget ?? 0,
+        projectId, customerId: form.customerId, name: form.name.trim(), dailyBudgetNok: budget ?? 0, creativeConfig,
       });
     } else if (form.platform === 'linkedin') {
       if (!form.linkedinAccountUrn) { setError('Velg en LinkedIn-annonsekonto.'); setCreating(false); return; }
@@ -172,17 +235,20 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
         campaignGroupUrn: form.linkedinGroupUrn,
         name: form.name.trim(),
         dailyBudgetNok: budget ?? 0,
+        creativeConfig,
       });
     } else {
       if (!form.adAccountId) { setError('Velg en Meta-annonsekonto.'); setCreating(false); return; }
       res = await roleRoomAgentService.createMetaCampaign({
-        projectId, adAccountId: form.adAccountId, name: form.name.trim(), objective: form.objective, dailyBudgetNok: budget,
+        projectId, adAccountId: form.adAccountId, name: form.name.trim(), objective: form.objective, dailyBudgetNok: budget, creativeConfig,
       });
     }
     if ('error' in res) setError(res.error);
     else {
       setCreateOpen(false);
       setForm((f) => ({ ...f, name: '', dailyBudgetNok: '' }));
+      setGenerated(null);
+      setGenError(null);
       await refresh();
     }
     setCreating(false);
@@ -282,6 +348,95 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 <TextField size="small" type="number" label="Dagsbudsjett NOK" value={form.dailyBudgetNok}
                   onChange={(e) => setForm({ ...form, dailyBudgetNok: e.target.value })} sx={{ ...fieldSx, maxWidth: 150 }} />
               </Stack>
+
+              {/* ── AI-annonsetekst (Lag 1): agenten lager riktig copy fra bedriften ── */}
+              <Stack spacing={0.9} sx={{ mt: 0.5, p: 1, borderRadius: 1.5, bgcolor: 'rgba(240,171,252,0.06)', border: '1px solid rgba(240,171,252,0.22)' }}>
+                <Stack direction="row" alignItems="center" spacing={0.8}>
+                  <AutoAwesomeIcon sx={{ fontSize: 17, color: '#f0abfc' }} />
+                  <Typography sx={{ color: '#f0abfc', fontWeight: 700, fontSize: '0.82rem' }}>AI-annonsetekst</Typography>
+                </Stack>
+                <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
+                  Claude lager plattform-tilpasset tekst fra bedriftens marketing-plan + det du fyller inn under. Du velger variant og redigerer før kampanjen opprettes.
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <TextField select size="small" label="Mål for annonsen" value={aiGoal}
+                    onChange={(e) => setAiGoal(e.target.value)} sx={{ ...fieldSx, flex: 1 }}>
+                    {AD_GOALS.map((g) => <MenuItem key={g.value} value={g.value}>{g.label}</MenuItem>)}
+                  </TextField>
+                  <TextField size="small" label="Bedriftsnavn" value={aiInputs.businessName}
+                    onChange={(e) => setAiInputs({ ...aiInputs, businessName: e.target.value })} sx={{ ...fieldSx, flex: 1 }} />
+                </Stack>
+                <TextField size="small" label="Hva annonseres (produkt/tjeneste)" value={aiInputs.productOrService}
+                  onChange={(e) => setAiInputs({ ...aiInputs, productOrService: e.target.value })} sx={fieldSx} />
+                <Stack direction="row" spacing={1}>
+                  <TextField size="small" label="Landingsside-URL" value={aiInputs.landingUrl}
+                    onChange={(e) => setAiInputs({ ...aiInputs, landingUrl: e.target.value })} sx={{ ...fieldSx, flex: 1 }} />
+                  <TextField size="small" label="Tilbud / hook (valgfritt)" value={aiInputs.offer}
+                    onChange={(e) => setAiInputs({ ...aiInputs, offer: e.target.value })} sx={{ ...fieldSx, flex: 1 }} />
+                </Stack>
+                <TextField size="small" label="Compliance-forbud (f.eks. ingen helsepåstander)" value={aiInputs.complianceNotes}
+                  onChange={(e) => setAiInputs({ ...aiInputs, complianceNotes: e.target.value })} sx={fieldSx}
+                  multiline minRows={1} />
+                <Button size="small" variant="outlined" startIcon={generating ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
+                  disabled={generating}
+                  onClick={runGenerate}
+                  sx={{ textTransform: 'none', fontWeight: 700, color: '#f0abfc', borderColor: 'rgba(240,171,252,0.4)', alignSelf: 'flex-start' }}>
+                  {generating ? 'Genererer…' : generated ? 'Generer på nytt' : 'Generer annonsetekst'}
+                </Button>
+
+                {genError && (
+                  <Alert severity="warning" sx={{ '& .MuiAlert-message': { fontSize: '0.74rem' } }}>{genError}</Alert>
+                )}
+
+                {generated && (
+                  <Stack spacing={0.8}>
+                    <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
+                      {generated.variants.length} varianter · velg én (lagres med kampanjen)
+                      {generated.usage?.costNok != null ? ` · ~${nok(generated.usage.costNok)} AI-kost` : ''}
+                    </Typography>
+                    {generated.variants.map((v, i) => {
+                      const selected = i === selectedVariant;
+                      return (
+                        <Box key={i} onClick={() => setSelectedVariant(i)}
+                          sx={{
+                            p: 1, borderRadius: 1.2, cursor: 'pointer',
+                            bgcolor: selected ? 'rgba(240,171,252,0.12)' : 'rgba(148,163,184,0.06)',
+                            border: `1px solid ${selected ? 'rgba(240,171,252,0.6)' : 'rgba(148,163,184,0.18)'}`,
+                          }}>
+                          <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
+                            {selected ? '● ' : '○ '}{v.headline}
+                          </Typography>
+                          {v.headlines && v.headlines.length > 0 && (
+                            <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>{v.headlines.join(' · ')}</Typography>
+                          )}
+                          {v.primaryText && (
+                            <Typography sx={{ color: 'rgba(226,232,240,0.85)', fontSize: '0.76rem', mt: 0.3 }}>{v.primaryText}</Typography>
+                          )}
+                          {v.descriptions && v.descriptions.length > 0 && (
+                            <Typography sx={{ color: 'rgba(226,232,240,0.85)', fontSize: '0.76rem', mt: 0.3 }}>{v.descriptions.join(' • ')}</Typography>
+                          )}
+                          <Stack direction="row" spacing={0.6} sx={{ mt: 0.4, flexWrap: 'wrap', gap: 0.4 }}>
+                            {v.callToAction && <Chip size="small" label={v.callToAction} sx={{ height: 18, fontSize: '0.66rem', color: '#f0abfc', bgcolor: 'rgba(240,171,252,0.1)' }} />}
+                            {v.rationale && <Typography sx={{ ...SUBTLE, fontSize: '0.68rem', fontStyle: 'italic' }}>{v.rationale}</Typography>}
+                          </Stack>
+                          {v.imageBrief && (
+                            <Typography sx={{ ...SUBTLE, fontSize: '0.68rem', mt: 0.3 }}>🎨 {v.imageBrief}</Typography>
+                          )}
+                        </Box>
+                      );
+                    })}
+                    {generated.complianceChecklist && generated.complianceChecklist.length > 0 && (
+                      <Alert severity="info" sx={{ '& .MuiAlert-message': { fontSize: '0.72rem' } }}>
+                        <strong>Verifiser før publisering:</strong>
+                        <ul style={{ margin: '4px 0 0 0', paddingLeft: 16 }}>
+                          {generated.complianceChecklist.map((c, i) => <li key={i}>{c}</li>)}
+                        </ul>
+                      </Alert>
+                    )}
+                  </Stack>
+                )}
+              </Stack>
+
               <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
                 Kampanjen opprettes som <strong>pauset/utkast</strong> — start den når den er klar. Tilgangen din til kontoen verifiseres automatisk.
               </Typography>

@@ -751,6 +751,164 @@
   cursor: grab;
 }
 
+/* ─── Pro-editor: Story Arc, transitions, markers, custom audio, intel ─── */
+
+/* Story Arc overlay */
+.ce-story-arc {
+  position: relative;
+  height: 60px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(10, 5, 24, 0.5);
+}
+.ce-story-arc-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+}
+.ce-story-arc-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ce-story-arc-labels span {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #cca0e8;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* Timeline markers (vertical lines + flags) */
+.ce-timeline-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -120px;
+  width: 0;
+  border-left: 2px dashed;
+  cursor: pointer;
+  pointer-events: none;
+  z-index: 3;
+}
+.ce-timeline-marker-flag {
+  position: absolute;
+  top: -16px;
+  left: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #0a0518;
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Transition picker between clips */
+.ce-trans-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  align-self: stretch;
+}
+.ce-trans-btn {
+  background: rgba(160, 48, 192, 0.20);
+  border: 1px solid rgba(160, 48, 192, 0.40);
+  border-radius: 6px;
+  color: #c850e0;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 3px 4px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ce-trans-btn:hover { background: rgba(160, 48, 192, 0.40); color: white; }
+.ce-trans-menu {
+  position: absolute;
+  top: 100%;
+  left: -50px;
+  background: #120936;
+  border: 1px solid #2c1860;
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: 160px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+.ce-trans-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: #f0eaff;
+  font-size: 11.5px;
+}
+.ce-trans-item:hover { background: rgba(160, 48, 192, 0.20); }
+.ce-trans-item.active { background: rgba(160, 48, 192, 0.30); font-weight: 600; }
+
+/* Shot intelligence icons per timeline clip */
+.ce-clip-intel {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 3px;
+  font-size: 10px;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8));
+}
+.ce-clip-intel span { cursor: help; }
+
+/* Pick-comment badge */
+.ce-clip-comment-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: rgba(239, 79, 111, 0.30);
+  border: 1px solid rgba(239, 79, 111, 0.60);
+  border-radius: 50%;
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+  cursor: help;
+}
+
+/* Custom audio tracks (visually distinct from main music) */
+.ce-audio-custom {
+  background: rgba(74, 212, 138, 0.05);
+  border-color: rgba(74, 212, 138, 0.25);
+}
+.ce-audio-add-btn {
+  background: rgba(160, 48, 192, 0.20);
+  border: 1px solid rgba(160, 48, 192, 0.40);
+  color: #c850e0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.ce-audio-add-btn:hover {
+  background: rgba(160, 48, 192, 0.35);
+  color: white;
+}
+
 /* Shortcuts modal */
 .ce-shortcuts-backdrop {
   position: fixed;
