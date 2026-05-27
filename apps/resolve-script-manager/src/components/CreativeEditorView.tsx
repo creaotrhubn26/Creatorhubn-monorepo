@@ -363,6 +363,26 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [trimMode, setTrimMode] = useState(false);
   const [snapToBeat, setSnapToBeat] = useState(true);
 
+  // Undo/redo history — snapshots of editor state on each change
+  type EditorSnapshot = {
+    includedChapters: string[];
+    pickOverrides: Record<number, { startSec?: number; endSec?: number }>;
+    activePickOrder: number[] | null;
+  };
+  const historyRef = useRef<{ snapshots: EditorSnapshot[]; idx: number; restoringFromHistory: boolean }>({
+    snapshots: [],
+    idx: -1,
+    restoringFromHistory: false,
+  });
+  const [undoAvailable, setUndoAvailable] = useState(false);
+  const [redoAvailable, setRedoAvailable] = useState(false);
+
+  // Drag-and-drop for timeline reorder
+  const [draggedPickIdx, setDraggedPickIdx] = useState<number | null>(null);
+
+  // Shortcuts help-overlay
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
   // ─── Persist edit state per-project to localStorage ───
   // Key = source-video path. State: title, included chapters, pickOverrides,
   // activePickOrder, activeSongIdx. Restored next time editor opens same video.
@@ -516,6 +536,88 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     if (videoRef.current) videoRef.current.playbackRate = next;
   }, [playRate]);
 
+  // ─── Keyboard shortcuts (NLE-standard JKL/XV/M + Cmd+Z) ───
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Skip if user is typing in input/textarea
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+
+      const isMeta = e.metaKey || e.ctrlKey;
+
+      // Cmd+Z / Cmd+Shift+Z → undo/redo
+      if (isMeta && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (isMeta && e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (isMeta) return;  // Other Cmd-combos: don't handle
+
+      // Single-key shortcuts
+      switch (e.key) {
+        case "j":
+        case "J":
+        case "ArrowLeft":
+          e.preventDefault();
+          if (focusedPickIdx > 0) setFocusedPickIdx(focusedPickIdx - 1);
+          break;
+        case "l":
+        case "L":
+        case "ArrowRight":
+          e.preventDefault();
+          if (focusedPickIdx < filteredPicks.length - 1) setFocusedPickIdx(focusedPickIdx + 1);
+          break;
+        case "k":
+        case "K":
+        case " ":
+          e.preventDefault();
+          togglePlay();
+          break;
+        case "x":
+        case "X":
+          // Skip focused pick — exclude its chapter if only pick in chapter
+          if (focusedPick?.chapter) {
+            const ch = focusedPick.chapter.toLowerCase();
+            const sameChapter = filteredPicks.filter(p => (p.chapter || "details").toLowerCase() === ch);
+            if (sameChapter.length === 1) toggleChapter(ch);
+          }
+          break;
+        case "v":
+        case "V":
+          // Keep focused pick (re-include chapter if excluded)
+          if (focusedPick?.chapter) {
+            const ch = focusedPick.chapter.toLowerCase();
+            if (!includedChapters.has(ch)) toggleChapter(ch);
+          }
+          break;
+        case "t":
+        case "T":
+          // Toggle Trim panel
+          setTrimMode(v => !v);
+          break;
+        case "?":
+          e.preventDefault();
+          setShortcutsOpen(true);
+          break;
+        case "Escape":
+          if (shortcutsOpen) setShortcutsOpen(false);
+          else if (aspectMenuOpen) setAspectMenuOpen(false);
+          else if (songMenuOpen) setSongMenuOpen(false);
+          else if (lookMenuOpen) setLookMenuOpen(false);
+          else if (altMenuOpen) setAltMenuOpen(false);
+          else if (exportMenuOpen) setExportMenuOpen(false);
+          break;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [focusedPickIdx, filteredPicks.length, togglePlay, focusedPick, toggleChapter, includedChapters, undo, redo, filteredPicks, shortcutsOpen, aspectMenuOpen, songMenuOpen, lookMenuOpen, altMenuOpen, exportMenuOpen]);
+
   const toggleChapter = useCallback((ch: string) => {
     setIncludedChapters((prev) => {
       const next = new Set(prev);
@@ -524,6 +626,61 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       return next;
     });
   }, []);
+
+  // ─── Undo/redo: snapshot editor state on changes ───
+  // Push current state as a new history snapshot. Skipped when restoring
+  // (otherwise undo/redo would itself create new snapshots).
+  useEffect(() => {
+    if (historyRef.current.restoringFromHistory) {
+      historyRef.current.restoringFromHistory = false;
+      return;
+    }
+    const snap: EditorSnapshot = {
+      includedChapters: Array.from(includedChapters),
+      pickOverrides: { ...pickOverrides },
+      activePickOrder: activePickOrder ? [...activePickOrder] : null,
+    };
+    const h = historyRef.current;
+    // Truncate any forward-history when new change is made
+    h.snapshots = [...h.snapshots.slice(0, h.idx + 1), snap].slice(-50); // cap at 50
+    h.idx = h.snapshots.length - 1;
+    setUndoAvailable(h.idx > 0);
+    setRedoAvailable(false);
+  }, [includedChapters, pickOverrides, activePickOrder]);
+
+  const restoreSnapshot = useCallback((snap: EditorSnapshot) => {
+    historyRef.current.restoringFromHistory = true;
+    setIncludedChapters(new Set(snap.includedChapters));
+    setPickOverrides(snap.pickOverrides);
+    setActivePickOrder(snap.activePickOrder);
+  }, []);
+
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    if (h.idx <= 0) return;
+    h.idx -= 1;
+    restoreSnapshot(h.snapshots[h.idx]);
+    setUndoAvailable(h.idx > 0);
+    setRedoAvailable(h.idx < h.snapshots.length - 1);
+  }, [restoreSnapshot]);
+
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    if (h.idx >= h.snapshots.length - 1) return;
+    h.idx += 1;
+    restoreSnapshot(h.snapshots[h.idx]);
+    setUndoAvailable(h.idx > 0);
+    setRedoAvailable(h.idx < h.snapshots.length - 1);
+  }, [restoreSnapshot]);
+
+  // ─── Reorder picks (drag-and-drop) ───
+  const reorderPicks = useCallback((fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const newOrder = filteredPicks.map(p => p.index);
+    const [moved] = newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, moved);
+    setActivePickOrder(newOrder);
+  }, [filteredPicks]);
 
   // ─── Generate Alternate Edit: Claude tool-use to reorder picks ───
   const generateAlternate = useCallback(async (variant: AltVariant) => {
@@ -1264,6 +1421,23 @@ ${ctxLines.join("\n")}`;
           )}
         </div>
         <div className="ce-actions">
+          <button
+            className="ce-icon-mini"
+            onClick={undo}
+            disabled={!undoAvailable}
+            title="Undo (⌘Z)"
+          >↶</button>
+          <button
+            className="ce-icon-mini"
+            onClick={redo}
+            disabled={!redoAvailable}
+            title="Redo (⇧⌘Z)"
+          >↷</button>
+          <button
+            className="ce-icon-mini"
+            onClick={() => setShortcutsOpen(true)}
+            title="Hurtigtaster (?)"
+          >⌨</button>
           <button>↗ Del</button>
           <div className="ce-export-wrap">
             <button
@@ -1483,8 +1657,20 @@ ${ctxLines.join("\n")}`;
                 return (
                   <div
                     key={p.index}
-                    className={`ce-timeline-clip ${i === focusedPickIdx ? "active" : ""}`}
+                    className={`ce-timeline-clip ${i === focusedPickIdx ? "active" : ""} ${draggedPickIdx === i ? "dragging" : ""}`}
+                    draggable
                     onClick={() => setFocusedPickIdx(i)}
+                    onDragStart={(e) => {
+                      setDraggedPickIdx(i);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedPickIdx !== null) reorderPicks(draggedPickIdx, i);
+                      setDraggedPickIdx(null);
+                    }}
+                    onDragEnd={() => setDraggedPickIdx(null)}
                   >
                     <div className="ce-timeline-clip-num">{segIdx + 1}</div>
                     {p.thumbnailPath && <img src={convertFileSrc(p.thumbnailPath)} alt="" />}
@@ -1864,6 +2050,37 @@ ${ctxLines.join("\n")}`;
           </div>
         </aside>
       </div>
+
+      {/* Shortcuts help-overlay */}
+      {shortcutsOpen && (
+        <div className="ce-shortcuts-backdrop" onClick={() => setShortcutsOpen(false)}>
+          <div className="ce-shortcuts-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ce-shortcuts-title">⌨ Hurtigtaster</div>
+            <div className="ce-shortcuts-list">
+              {[
+                { keys: ["J", "←"], desc: "Forrige pick" },
+                { keys: ["L", "→"], desc: "Neste pick" },
+                { keys: ["K", "Space"], desc: "Play/pause" },
+                { keys: ["X"], desc: "Skip focused pick" },
+                { keys: ["V"], desc: "Keep / re-include" },
+                { keys: ["T"], desc: "Toggle Trim panel" },
+                { keys: ["⌘Z"], desc: "Undo" },
+                { keys: ["⇧⌘Z"], desc: "Redo" },
+                { keys: ["?"], desc: "Vis denne hjelpen" },
+                { keys: ["Esc"], desc: "Lukk dialog" },
+              ].map((s, i) => (
+                <div key={i} className="ce-shortcut-row">
+                  <div className="ce-shortcut-keys">
+                    {s.keys.map((k, j) => <kbd key={j}>{k}</kbd>)}
+                  </div>
+                  <div className="ce-shortcut-desc">{s.desc}</div>
+                </div>
+              ))}
+            </div>
+            <button className="ce-shortcuts-close" onClick={() => setShortcutsOpen(false)}>Lukk</button>
+          </div>
+        </div>
+      )}
 
       {/* ─── Bottom: wizard nav + Start CTA ─── */}
       <footer className="ce-footer">

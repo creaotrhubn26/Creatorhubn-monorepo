@@ -179,7 +179,26 @@
 .ce-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
+.ce-icon-mini {
+  width: 32px; height: 32px;
+  background: rgba(26, 13, 69, 0.6);
+  border: 1px solid #2c1860;
+  border-radius: 6px;
+  color: #cca0e8;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  transition: all 0.12s;
+}
+.ce-icon-mini:hover:not(:disabled) {
+  background: rgba(38, 21, 86, 0.8);
+  color: white;
+  border-color: #341d6c;
+}
+.ce-icon-mini:disabled { opacity: 0.35; cursor: not-allowed; }
 .ce-actions button {
   padding: 8px 16px;
   border-radius: 8px;
@@ -723,6 +742,86 @@
   transform: translateY(-2px);
 }
 .ce-timeline-clip.active::after { opacity: 1; }
+.ce-timeline-clip.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+  cursor: grabbing;
+}
+.ce-timeline-clip:hover:not(.dragging) {
+  cursor: grab;
+}
+
+/* Shortcuts modal */
+.ce-shortcuts-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: ce-fade-in 0.18s ease-out;
+}
+.ce-shortcuts-modal {
+  background: linear-gradient(180deg, rgba(18, 9, 54, 0.98), rgba(10, 5, 24, 0.99));
+  border: 1px solid #2c1860;
+  border-radius: 14px;
+  padding: 24px 28px;
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.ce-shortcuts-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f0eaff;
+  margin-bottom: 16px;
+  letter-spacing: 0.3px;
+}
+.ce-shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ce-shortcut-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+.ce-shortcut-keys {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ce-shortcut-keys kbd {
+  background: rgba(160, 48, 192, 0.15);
+  border: 1px solid rgba(160, 48, 192, 0.35);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-family: -apple-system, "SF Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f0eaff;
+  min-width: 22px;
+  text-align: center;
+}
+.ce-shortcut-desc { font-size: 12.5px; color: #cca0e8; }
+.ce-shortcuts-close {
+  width: 100%;
+  background: linear-gradient(135deg, #a030c0, #6e3fc7);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ce-shortcuts-close:hover { background: linear-gradient(135deg, #b550d0, #7c4cd6); }
 .ce-timeline-clip img {
   width: 100%; height: 100%; object-fit: cover;
 }
