@@ -412,6 +412,12 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [projectPurpose, setProjectPurpose] = useState<ProjectPurpose | "">("");
   const [projectTargetMin, setProjectTargetMin] = useState<number>(0);
   const [projectWantsScan, setProjectWantsScan] = useState<boolean | null>(null);
+  // Onboarding-driven background-tasks (when wantsScan=true)
+  const [onboardingScanStatus, setOnboardingScanStatus] = useState<{
+    music: "pending" | "running" | "done" | "skip";
+    quality: "pending" | "running" | "done" | "skip";
+    flow: "pending" | "running" | "done" | "skip";
+  }>({ music: "pending", quality: "pending", flow: "pending" });
 
   // ─── Pro-editor: Overganger / Custom audio / Markers / Comments ───
   type TransitionType = "cut" | "fade" | "dissolve" | "wipeleft" | "fadeblack" | "fadewhite";
@@ -1570,6 +1576,9 @@ Du MÅ kalle analyze_narrative_flow-tool med evaluations-array som inkluderer AL
     setChatError(null);
     const ctxLines: string[] = [];
     ctxLines.push(`Project: "${projectTitle}"`);
+    if (projectKind) ctxLines.push(`Type: ${projectKind}`);
+    if (projectPurpose) ctxLines.push(`Purpose: ${projectPurpose.replace(/_/g, " ")}`);
+    if (projectTargetMin > 0) ctxLines.push(`Target length: ${projectTargetMin} min`);
     if (activeSong) ctxLines.push(`Main song: "${activeSong.title}" by ${activeSong.artist}${activeSong.bpm ? ` (${activeSong.bpm} BPM)` : ""}`);
     ctxLines.push(`Highlight length: ${formatTime(totalDuration)} (${filteredPicks.length} picks across ${segments.length} segments)`);
     ctxLines.push(`Segments included: ${Array.from(includedChapters).join(", ")}`);
@@ -2753,7 +2762,16 @@ ${ctxLines.join("\n")}`;
                     <button
                       key={opt.id}
                       className={`ce-onboarding-choice ${projectKind === opt.id ? "active" : ""}`}
-                      onClick={() => { setProjectKind(opt.id); setOnboardingStep(1); }}
+                      onClick={() => {
+                        setProjectKind(opt.id);
+                        // ACTION: apply default LUT pakke pr prosjekt-type
+                        if (opt.id === "wedding") setLookPack("norwedfilm");
+                        else if (opt.id === "documentary") setLookPack("documentary");
+                        else if (opt.id === "music_video") setLookPack("cinematic");
+                        // Switch Wedding Agent som default for bryllup
+                        if (opt.id === "wedding") setAgentRole("wedding");
+                        setOnboardingStep(1);
+                      }}
                     >
                       <span className="ce-onboarding-icon">{opt.icon}</span>
                       <span className="ce-onboarding-choice-label">{opt.label}</span>
@@ -2784,11 +2802,13 @@ ${ctxLines.join("\n")}`;
                       className={`ce-onboarding-choice ${projectPurpose === opt.id ? "active" : ""}`}
                       onClick={() => {
                         setProjectPurpose(opt.id);
-                        // Set sensible default target-min
+                        // ACTION: set target-min + aspect-ratio per purpose
                         const targets: Record<ProjectPurpose, number> = {
                           highlight: 5, teaser_social: 1, couple_cut: 4, family_cut: 12, full_film: 25,
                         };
                         setProjectTargetMin(targets[opt.id]);
+                        // teaser_social → vertical 9:16, ellers landscape 16:9
+                        setAspectRatio(opt.id === "teaser_social" ? "9:16" : "16:9");
                         setOnboardingStep(2);
                       }}
                     >
@@ -2846,7 +2866,45 @@ ${ctxLines.join("\n")}`;
                 <div className="ce-onboarding-choices ce-onboarding-choices-h">
                   <button
                     className={`ce-onboarding-choice ${projectWantsScan === true ? "active" : ""}`}
-                    onClick={() => { setProjectWantsScan(true); setOnboardingStep(4); }}
+                    onClick={() => {
+                      setProjectWantsScan(true);
+                      // ACTION: trigger 3 parallel scan-tasks
+                      if (payload) {
+                        // 1. scan_and_recommend_music (full advisor scan)
+                        setOnboardingScanStatus(prev => ({ ...prev, music: "running" }));
+                        executeScript("scan_and_recommend_music", {
+                          videoPath: payload.sourceVideo,
+                          highlightLengthSec: projectTargetMin * 60,
+                        }, false).then(() => {
+                          setOnboardingScanStatus(prev => ({ ...prev, music: "done" }));
+                        }).catch(() => {
+                          setOnboardingScanStatus(prev => ({ ...prev, music: "done" }));
+                        });
+                        // 2. flag_underexposed_clips for shot-quality
+                        setOnboardingScanStatus(prev => ({ ...prev, quality: "running" }));
+                        executeScript("flag_underexposed_clips", {
+                          videoPath: payload.sourceVideo,
+                        }, false).then(s => {
+                          const result = s.events.find(e => e.type === "result");
+                          if (result) {
+                            const flagged = (result.value as any)?.flaggedClips ?? [];
+                            const flags = filteredPicks.map(p => {
+                              const hit = flagged.find((f: any) => f.timeSec >= p.startSec && f.timeSec <= p.endSec);
+                              return hit
+                                ? { pickIndex: p.index, severity: "warning" as const, issues: [hit.reason || "Underexposed"] }
+                                : { pickIndex: p.index, severity: "ok" as const, issues: [] };
+                            });
+                            setQualityFlags(flags);
+                          }
+                          setOnboardingScanStatus(prev => ({ ...prev, quality: "done" }));
+                        }).catch(() => {
+                          setOnboardingScanStatus(prev => ({ ...prev, quality: "done" }));
+                        });
+                        // 3. Music flow analysis kjøres allerede automatisk når song endrer seg
+                        setOnboardingScanStatus(prev => ({ ...prev, flow: musicFlow ? "done" : "running" }));
+                      }
+                      setOnboardingStep(4);
+                    }}
                   >
                     <span className="ce-onboarding-icon">🔍</span>
                     <span className="ce-onboarding-choice-label">Ja, gå gjennom alt</span>
@@ -2854,7 +2912,12 @@ ${ctxLines.join("\n")}`;
                   </button>
                   <button
                     className={`ce-onboarding-choice ${projectWantsScan === false ? "active" : ""}`}
-                    onClick={() => { setProjectWantsScan(false); setOnboardingStep(4); }}
+                    onClick={() => {
+                      setProjectWantsScan(false);
+                      // ACTION: skip scans, mark all as skipped
+                      setOnboardingScanStatus({ music: "skip", quality: "skip", flow: "skip" });
+                      setOnboardingStep(4);
+                    }}
                   >
                     <span className="ce-onboarding-icon">⚡</span>
                     <span className="ce-onboarding-choice-label">Nei, bruk det jeg har</span>
@@ -2869,10 +2932,42 @@ ${ctxLines.join("\n")}`;
             {onboardingStep === 4 && (
               <div className="ce-onboarding-step">
                 <div className="ce-onboarding-msg">
-                  Klart! Her er hva jeg fant 📋<br /><br />
+                  Klart! Her er det jeg har gjort 📋<br /><br />
+
+                  {/* Applied settings recap */}
+                  <strong>Konfigurasjon:</strong><br />
+                  • Genre: <strong style={{ color: "#c850e0" }}>{projectKind}</strong>
+                  &nbsp;· Formål: <strong style={{ color: "#c850e0" }}>{projectPurpose.replace(/_/g, " ")}</strong>
+                  &nbsp;· Mål: <strong style={{ color: "#c850e0" }}>{projectTargetMin} min</strong><br />
+                  • Auto-applied: aspect <strong>{aspectRatio}</strong>
+                  {lookPack !== "none" && <>, LUT <strong>{lookPack}</strong></>}
+                  {projectKind === "wedding" && <>, agent <strong>Wedding</strong></>}
+                  <br /><br />
+
+                  {/* Project data */}
+                  <strong>I prosjektet:</strong><br />
                   • <strong>{filteredPicks.length} picks</strong> klar i timeline ({formatTime(totalDuration)})<br />
                   • <strong>{segments.length} segmenter</strong> ({segments.map(s => s.display.label).slice(0, 3).join(", ")}{segments.length > 3 ? "…" : ""})<br />
-                  • <strong>Story Balance</strong> auto-beregnet fra signaler<br /><br />
+                  {musicFlow && <>• <strong>{musicFlow.tempo} BPM</strong>, {musicFlow.sections.length} sang-seksjoner, {musicFlow.drops.length} drops<br /></>}
+                  <br />
+
+                  {/* Background-scan status */}
+                  {projectWantsScan && (
+                    <>
+                      <strong>Bakgrunns-analyse:</strong><br />
+                      <span style={{ color: onboardingScanStatus.music === "done" ? "#4ad48a" : "#cca0e8" }}>
+                        {onboardingScanStatus.music === "done" ? "✓" : "⏳"} Music advisor — {onboardingScanStatus.music === "done" ? "ferdig" : "scanner…"}
+                      </span><br />
+                      <span style={{ color: onboardingScanStatus.quality === "done" ? "#4ad48a" : "#cca0e8" }}>
+                        {onboardingScanStatus.quality === "done" ? "✓" : "⏳"} Shot-kvalitet (eksp/WB) — {onboardingScanStatus.quality === "done" ? `${qualityFlags.filter(f=>f.severity!=="ok").length} flagget` : "scanner…"}
+                      </span><br />
+                      <span style={{ color: onboardingScanStatus.flow === "done" ? "#4ad48a" : "#cca0e8" }}>
+                        {onboardingScanStatus.flow === "done" ? "✓" : "⏳"} Music Flow Map — {musicFlow ? "ferdig" : "venter…"}
+                      </span>
+                      <br /><br />
+                    </>
+                  )}
+
                   Tips for å komme i gang:<br />
                   • <kbd>Drag</kbd> segmenter for å endre rekkefølge<br />
                   • <kbd>M</kbd>-tast setter markører ved playhead<br />
