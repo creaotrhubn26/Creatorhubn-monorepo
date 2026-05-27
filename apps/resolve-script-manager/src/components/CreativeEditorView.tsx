@@ -383,6 +383,22 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   // Shortcuts help-overlay
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
+  // ─── Pro-editor: Overganger / Custom audio / Markers / Comments ───
+  type TransitionType = "cut" | "fade" | "dissolve" | "wipeleft" | "fadeblack" | "fadewhite";
+  const [pickTransitions, setPickTransitions] = useState<Record<string, TransitionType>>({});
+  const [transitionMenuFor, setTransitionMenuFor] = useState<string | null>(null);
+
+  type CustomAudio = { id: string; path: string; name: string; startSec: number; volume: number };
+  const [customAudios, setCustomAudios] = useState<CustomAudio[]>([]);
+
+  type TimelineMarker = { id: string; timeSec: number; label: string; color: string; comment: string };
+  const [markers, setMarkers] = useState<TimelineMarker[]>([]);
+  const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
+
+  // Comments per pick (separate from markers — these are pick-level notes)
+  const [pickComments, setPickComments] = useState<Record<number, string>>({});
+  const [editingCommentPick, setEditingCommentPick] = useState<number | null>(null);
+
   // ─── Persist edit state per-project to localStorage ───
   // Key = source-video path. State: title, included chapters, pickOverrides,
   // activePickOrder, activeSongIdx. Restored next time editor opens same video.
@@ -407,6 +423,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
             if (s.pickOverrides)     setPickOverrides(s.pickOverrides);
             if (Array.isArray(s.activePickOrder)) setActivePickOrder(s.activePickOrder);
             if (typeof s.activeSongIdx === "number") setActiveSongIdx(s.activeSongIdx);
+            if (typeof s.clientWishes === "string") setClientWishes(s.clientWishes);
+            if (s.pickTransitions) setPickTransitions(s.pickTransitions);
+            if (Array.isArray(s.customAudios)) setCustomAudios(s.customAudios);
+            if (Array.isArray(s.markers)) setMarkers(s.markers);
+            if (s.pickComments) setPickComments(s.pickComments);
             restored = true;
           }
         } catch (e) {
@@ -438,6 +459,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
           pickOverrides,
           activePickOrder,
           activeSongIdx,
+          clientWishes,
+          pickTransitions,
+          customAudios,
+          markers,
+          pickComments,
           savedAt: Date.now(),
         }));
       } catch (e) {
@@ -445,7 +471,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       }
     }, 500);
     return () => clearTimeout(handle);
-  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes]);
+  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments]);
 
   useEffect(() => {
     if (!advisorPath) return;
@@ -599,6 +625,115 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     newOrder.splice(toIdx, 0, moved);
     setActivePickOrder(newOrder);
   }, [filteredPicks]);
+
+  // ─── Transitions per boundary ───
+  const setTransition = useCallback((fromIdx: number, toIdx: number, type: TransitionType) => {
+    const key = `${fromIdx}-${toIdx}`;
+    setPickTransitions(prev => ({ ...prev, [key]: type }));
+    setTransitionMenuFor(null);
+  }, []);
+
+  // ─── Markers ───
+  const addMarkerAtPlayhead = useCallback((label?: string) => {
+    if (!focusedPick || !videoRef.current) return;
+    const absTime = videoRef.current.currentTime;
+    const colors = ["#a030c0", "#4ad48a", "#f0a500", "#ef4f6f", "#6e3fc7"];
+    const m: TimelineMarker = {
+      id: `m-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      timeSec: absTime,
+      label: label ?? `Marker ${markers.length + 1}`,
+      color: colors[markers.length % colors.length],
+      comment: "",
+    };
+    setMarkers(prev => [...prev, m]);
+    setEditingMarkerId(m.id);
+  }, [focusedPick, markers.length]);
+
+  const updateMarker = useCallback((id: string, patch: Partial<TimelineMarker>) => {
+    setMarkers(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m));
+  }, []);
+
+  const deleteMarker = useCallback((id: string) => {
+    setMarkers(prev => prev.filter(m => m.id !== id));
+  }, []);
+
+  // ─── Custom Audio: file picker + state ───
+  const addCustomAudio = useCallback(async () => {
+    try {
+      const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+      const selected = await openDialog({
+        multiple: false,
+        filters: [{ name: "Audio", extensions: ["wav", "mp3", "m4a", "flac", "aac", "ogg"] }],
+      });
+      if (typeof selected !== "string") return;
+      const name = selected.split("/").pop() ?? "Audio";
+      const newAudio: CustomAudio = {
+        id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        path: selected,
+        name,
+        startSec: 0,
+        volume: 0.8,
+      };
+      setCustomAudios(prev => [...prev, newAudio]);
+    } catch (e: any) {
+      console.warn("Custom audio picker failed:", e);
+    }
+  }, []);
+
+  const updateCustomAudio = useCallback((id: string, patch: Partial<CustomAudio>) => {
+    setCustomAudios(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
+  }, []);
+
+  const removeCustomAudio = useCallback((id: string) => {
+    setCustomAudios(prev => prev.filter(a => a.id !== id));
+  }, []);
+
+  // ─── Story Arc: emotional curve fra signals per pick ───
+  const storyArcPoints = useMemo(() => {
+    if (filteredPicks.length === 0) return [];
+    let cumTime = 0;
+    return filteredPicks.map(p => {
+      const s = p.signals ?? {};
+      // Emotional energy: weighted sum of energy-related signals
+      const energy = (
+        (s.emotional_peak ?? 0) * 1.0 +
+        (s.pose ?? 0) * 0.7 +
+        (s.faces ?? 0) * 0.4 +
+        (s.action ?? 0) * 0.6 +
+        (s.audio_events ?? 0) * 0.5 +
+        (s.slowmo ?? 0) * 0.3
+      );
+      // Normalize to 0-1 range (signals are 0-1 each, sum max ~3.5)
+      const normalizedEnergy = Math.min(1.0, energy / 2.0);
+      const startSec = cumTime;
+      cumTime += p.durationSec;
+      return {
+        pickIndex: p.index,
+        startSec,
+        midSec: startSec + p.durationSec / 2,
+        endSec: cumTime,
+        energy: normalizedEnergy,
+        score: p.score,
+        chapter: p.chapter ?? "?",
+      };
+    });
+  }, [filteredPicks]);
+
+  // Story Arc phase analysis — find intro/build/peak/outro
+  const storyArcPhases = useMemo(() => {
+    if (storyArcPoints.length === 0) return null;
+    const totalDur = storyArcPoints[storyArcPoints.length - 1].endSec;
+    const peak = storyArcPoints.reduce((a, b) => a.energy > b.energy ? a : b);
+    return {
+      totalDur,
+      peakTime: peak.midSec,
+      peakEnergy: peak.energy,
+      // Intro = first 15%, Build = next 35%, Peak = around peak, Outro = last 20%
+      introEnd: totalDur * 0.15,
+      buildEnd: totalDur * 0.55,
+      outroStart: totalDur * 0.80,
+    };
+  }, [storyArcPoints]);
 
   // ─── Keyboard shortcuts (NLE-standard JKL/XV/M + Cmd+Z) ───
   useEffect(() => {
