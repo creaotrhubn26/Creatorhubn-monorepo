@@ -536,88 +536,6 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     if (videoRef.current) videoRef.current.playbackRate = next;
   }, [playRate]);
 
-  // ─── Keyboard shortcuts (NLE-standard JKL/XV/M + Cmd+Z) ───
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Skip if user is typing in input/textarea
-      const t = e.target as HTMLElement;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-
-      const isMeta = e.metaKey || e.ctrlKey;
-
-      // Cmd+Z / Cmd+Shift+Z → undo/redo
-      if (isMeta && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-        return;
-      }
-      if (isMeta && e.shiftKey && (e.key === "z" || e.key === "Z")) {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      if (isMeta) return;  // Other Cmd-combos: don't handle
-
-      // Single-key shortcuts
-      switch (e.key) {
-        case "j":
-        case "J":
-        case "ArrowLeft":
-          e.preventDefault();
-          if (focusedPickIdx > 0) setFocusedPickIdx(focusedPickIdx - 1);
-          break;
-        case "l":
-        case "L":
-        case "ArrowRight":
-          e.preventDefault();
-          if (focusedPickIdx < filteredPicks.length - 1) setFocusedPickIdx(focusedPickIdx + 1);
-          break;
-        case "k":
-        case "K":
-        case " ":
-          e.preventDefault();
-          togglePlay();
-          break;
-        case "x":
-        case "X":
-          // Skip focused pick — exclude its chapter if only pick in chapter
-          if (focusedPick?.chapter) {
-            const ch = focusedPick.chapter.toLowerCase();
-            const sameChapter = filteredPicks.filter(p => (p.chapter || "details").toLowerCase() === ch);
-            if (sameChapter.length === 1) toggleChapter(ch);
-          }
-          break;
-        case "v":
-        case "V":
-          // Keep focused pick (re-include chapter if excluded)
-          if (focusedPick?.chapter) {
-            const ch = focusedPick.chapter.toLowerCase();
-            if (!includedChapters.has(ch)) toggleChapter(ch);
-          }
-          break;
-        case "t":
-        case "T":
-          // Toggle Trim panel
-          setTrimMode(v => !v);
-          break;
-        case "?":
-          e.preventDefault();
-          setShortcutsOpen(true);
-          break;
-        case "Escape":
-          if (shortcutsOpen) setShortcutsOpen(false);
-          else if (aspectMenuOpen) setAspectMenuOpen(false);
-          else if (songMenuOpen) setSongMenuOpen(false);
-          else if (lookMenuOpen) setLookMenuOpen(false);
-          else if (altMenuOpen) setAltMenuOpen(false);
-          else if (exportMenuOpen) setExportMenuOpen(false);
-          break;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [focusedPickIdx, filteredPicks.length, togglePlay, focusedPick, toggleChapter, includedChapters, undo, redo, filteredPicks, shortcutsOpen, aspectMenuOpen, songMenuOpen, lookMenuOpen, altMenuOpen, exportMenuOpen]);
-
   const toggleChapter = useCallback((ch: string) => {
     setIncludedChapters((prev) => {
       const next = new Set(prev);
@@ -681,6 +599,62 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     newOrder.splice(toIdx, 0, moved);
     setActivePickOrder(newOrder);
   }, [filteredPicks]);
+
+  // ─── Keyboard shortcuts (NLE-standard JKL/XV/M + Cmd+Z) ───
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (isMeta && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if (isMeta && e.shiftKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); redo(); return; }
+      if (isMeta) return;
+      switch (e.key) {
+        case "j": case "J": case "ArrowLeft":
+          e.preventDefault();
+          if (focusedPickIdx > 0) setFocusedPickIdx(focusedPickIdx - 1);
+          break;
+        case "l": case "L": case "ArrowRight":
+          e.preventDefault();
+          if (focusedPickIdx < filteredPicks.length - 1) setFocusedPickIdx(focusedPickIdx + 1);
+          break;
+        case "k": case "K": case " ":
+          e.preventDefault();
+          togglePlay();
+          break;
+        case "x": case "X":
+          if (focusedPick?.chapter) {
+            const ch = focusedPick.chapter.toLowerCase();
+            const sameChapter = filteredPicks.filter(p => (p.chapter || "details").toLowerCase() === ch);
+            if (sameChapter.length === 1) toggleChapter(ch);
+          }
+          break;
+        case "v": case "V":
+          if (focusedPick?.chapter) {
+            const ch = focusedPick.chapter.toLowerCase();
+            if (!includedChapters.has(ch)) toggleChapter(ch);
+          }
+          break;
+        case "t": case "T":
+          setTrimMode(v => !v);
+          break;
+        case "?":
+          e.preventDefault();
+          setShortcutsOpen(true);
+          break;
+        case "Escape":
+          if (shortcutsOpen) setShortcutsOpen(false);
+          else if (aspectMenuOpen) setAspectMenuOpen(false);
+          else if (songMenuOpen) setSongMenuOpen(false);
+          else if (lookMenuOpen) setLookMenuOpen(false);
+          else if (altMenuOpen) setAltMenuOpen(false);
+          else if (exportMenuOpen) setExportMenuOpen(false);
+          break;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [focusedPickIdx, filteredPicks.length, togglePlay, focusedPick, toggleChapter, includedChapters, undo, redo, filteredPicks, shortcutsOpen, aspectMenuOpen, songMenuOpen, lookMenuOpen, altMenuOpen, exportMenuOpen]);
 
   // ─── Generate Alternate Edit: Claude tool-use to reorder picks ───
   const generateAlternate = useCallback(async (variant: AltVariant) => {
