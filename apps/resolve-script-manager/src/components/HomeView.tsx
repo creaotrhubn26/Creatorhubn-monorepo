@@ -28,6 +28,7 @@ import {
   IconPlay,
 } from "./Icons";
 import { RoleRoomProjectSync } from "./RoleRoomProjectSync";
+import { executeScript } from "../api";
 
 type IconCmp = (p: { size?: number }) => JSX.Element;
 
@@ -44,9 +45,28 @@ interface Props {
   templates: ProjectTemplateSummary[];
   onPickTemplate: (templateId: string) => void;
   onOpenAdvanced: () => void;
+  onNewProjectFromFile: () => void;
+  onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
   onSignIn: () => void;
   resolveConnected: boolean;
+}
+
+interface SavedProject {
+  picksPath: string;
+  sourceVideo: string;
+  title: string;
+  savedAt: number;
+  audioCount?: number;
+}
+
+function loadSavedProjects(): SavedProject[] {
+  try {
+    const raw = localStorage.getItem("trrpa.savedProjects");
+    return raw ? (JSON.parse(raw) as SavedProject[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 const TEMPLATE_DECORATIONS: Record<string, { Icon: IconCmp; tagline: string }> = {
@@ -84,17 +104,51 @@ export function HomeView({
   templates,
   onPickTemplate,
   onOpenAdvanced,
+  onNewProjectFromFile,
+  onOpenSavedProject,
   signedIn,
   onSignIn,
   resolveConnected,
 }: Props) {
   const [recent, setRecent] = useState<RecentProject[]>(() => loadRecentProjects());
+  const [saved, setSaved] = useState<SavedProject[]>(() => loadSavedProjects());
 
-  // Re-load on focus so coming back from Resolve refreshes
   useEffect(() => {
-    const handler = () => setRecent(loadRecentProjects());
+    const handler = () => {
+      setRecent(loadRecentProjects());
+      setSaved(loadSavedProjects());
+    };
     window.addEventListener("focus", handler);
     return () => window.removeEventListener("focus", handler);
+  }, []);
+
+  // Sync localStorage savedProjects with on-disk archive on mount.
+  // Hopper over picks-paths brukeren eksplisitt har slettet fra listen.
+  useEffect(() => {
+    let cancelled = false;
+    executeScript("list_archived_projects", {}, false).then((sum) => {
+      const r = sum.events.find((e) => e.type === "result");
+      const val = r?.value as { projects?: SavedProject[] } | undefined;
+      const disk = val?.projects || [];
+      if (cancelled || disk.length === 0) return;
+      try {
+        const deleted = new Set<string>(
+          JSON.parse(localStorage.getItem("trrpa.deletedPicksPaths") || "[]") as string[]
+        );
+        const existing = loadSavedProjects();
+        const existingPaths = new Set(existing.map((p) => p.picksPath));
+        const merged = [...existing];
+        for (const p of disk) {
+          if (!existingPaths.has(p.picksPath) && !deleted.has(p.picksPath)) merged.push(p);
+        }
+        merged.sort((a, b) => b.savedAt - a.savedAt);
+        localStorage.setItem("trrpa.savedProjects", JSON.stringify(merged.slice(0, 30)));
+        setSaved(merged);
+      } catch (e) {
+        console.warn("Sync savedProjects failed:", e);
+      }
+    }).catch(() => { /* non-critical */ });
+    return () => { cancelled = true; };
   }, []);
 
   const orderedTemplates = useMemo(() => {
@@ -134,6 +188,24 @@ export function HomeView({
         )}
       </div>
 
+      <button
+        className="home-new-project-card"
+        onClick={onNewProjectFromFile}
+        disabled={!signedIn}
+        title={signedIn ? "Velg én ferdig redigert/eksportert video → AI lager picks + identifiserer musikk" : "Logg inn først"}
+      >
+        <div className="home-new-project-icon">
+          <IconSparkle size={24} />
+        </div>
+        <div className="home-new-project-body">
+          <div className="home-new-project-title">+ Nytt prosjekt fra fil</div>
+          <div className="home-new-project-desc">
+            Velg en video → AI scanner picks, identifiserer musikk, du velger rolle per sang → editor åpner
+          </div>
+        </div>
+        <IconArrowRight />
+      </button>
+
       <div className="home-templates">
         {orderedTemplates.map((t) => {
           const deco = TEMPLATE_DECORATIONS[t.id] ?? { Icon: IconFilmReel, tagline: t.description };
@@ -156,9 +228,58 @@ export function HomeView({
         })}
       </div>
 
+      {saved.length > 0 && (
+        <div className="home-recent" style={{ marginTop: 24 }}>
+          <div className="home-section-title">Mine prosjekter</div>
+          {saved.slice(0, 8).map((p) => (
+            <div key={p.picksPath} className="home-recent-item-wrap"
+                 style={{ display: "flex", alignItems: "stretch", gap: 4 }}>
+              <button
+                className="home-recent-item"
+                onClick={() => onOpenSavedProject(p.picksPath)}
+                title={p.sourceVideo}
+                style={{ flex: 1 }}
+              >
+                <div className="home-recent-status">
+                  <IconFilmReel size={14} />
+                </div>
+                <div className="home-recent-meta">
+                  <strong>{p.title}</strong>
+                  <span className="card-chip-meta">
+                    {p.audioCount ? `${p.audioCount} sang${p.audioCount > 1 ? "er" : ""} · ` : ""}
+                    {formatRelativeTime(p.savedAt * 1000)}
+                  </span>
+                </div>
+                <IconArrowRight />
+              </button>
+              <button
+                onClick={() => {
+                  if (!confirm(`Slett "${p.title}" fra listen? (Arkivfilen forblir på disk.)`)) return;
+                  const next = saved.filter((x) => x.picksPath !== p.picksPath);
+                  setSaved(next);
+                  localStorage.setItem("trrpa.savedProjects", JSON.stringify(next));
+                  localStorage.setItem("trrpa.deletedPicksPaths",
+                    JSON.stringify([
+                      ...(JSON.parse(localStorage.getItem("trrpa.deletedPicksPaths") || "[]") as string[]),
+                      p.picksPath,
+                    ])
+                  );
+                }}
+                title="Fjern fra listen"
+                style={{ padding: "0 12px", color: "var(--text-dim)", fontSize: 16,
+                         background: "transparent", border: "1px solid var(--border)",
+                         borderRadius: 8, cursor: "pointer" }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {recent.length > 0 && (
         <div className="home-recent">
-          <div className="home-section-title">Nylig</div>
+          <div className="home-section-title">Maler brukt nylig</div>
           {recent.slice(0, 5).map((r, i) => (
             <button
               key={i}

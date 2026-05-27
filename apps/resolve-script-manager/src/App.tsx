@@ -36,6 +36,7 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
+import { NewProjectModal } from "./components/NewProjectModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
@@ -70,6 +71,7 @@ export default function App() {
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
+  const [showNewProject, setShowNewProject] = useState(false);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
   useEffect(() => {
@@ -468,6 +470,8 @@ export default function App() {
             setAdvancedMode(true);
             localStorage.setItem("trrpa.advancedMode", "true");
           }}
+          onNewProjectFromFile={() => setShowNewProject(true)}
+          onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={Boolean(loadSettings().RR_BEARER_TOKEN)}
           onSignIn={() => setShowSignIn(true)}
           resolveConnected={Boolean(health?.resolveRunning && health?.projectOpen)}
@@ -679,6 +683,20 @@ export default function App() {
           picksPath={creativeEditorPath}
           advisorPath={creativeEditorPath.replace(/last_highlight_picks\.json$/, "music_advisor.json")}
           onClose={() => setCreativeEditorPath(null)}
+          onStartNewProject={() => {
+            setCreativeEditorPath(null);
+            setShowNewProject(true);
+          }}
+        />
+      )}
+
+      {showNewProject && (
+        <NewProjectModal
+          onClose={() => setShowNewProject(false)}
+          onComplete={(picksPath) => {
+            setShowNewProject(false);
+            setCreativeEditorPath(picksPath);
+          }}
         />
       )}
 

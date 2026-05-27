@@ -1217,6 +1217,42 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   color: var(--warning);
 }
 
+.home-new-project-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  margin-bottom: 20px;
+  background: linear-gradient(120deg, rgba(160, 48, 192, 0.20) 0%, rgba(110, 63, 199, 0.10) 100%);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  cursor: pointer;
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.home-new-project-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(160, 48, 192, 0.18);
+}
+.home-new-project-card:disabled { opacity: 0.5; cursor: not-allowed; }
+.home-new-project-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(160, 48, 192, 0.32), rgba(110, 63, 199, 0.18));
+  border-radius: 10px;
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+.home-new-project-body { flex: 1; }
+.home-new-project-title { font-size: 16px; font-weight: 600; }
+.home-new-project-desc { font-size: 12px; opacity: 0.75; margin-top: 2px; line-height: 1.4; }
+
 .home-templates {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

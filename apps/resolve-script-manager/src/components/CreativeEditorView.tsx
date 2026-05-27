@@ -255,9 +255,10 @@ interface Props {
   picksPath?: string;       // path to last_highlight_picks.json
   advisorPath?: string;     // path to music_advisor.json
   onClose?: () => void;
+  onStartNewProject?: () => void;
 }
 
-export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
+export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNewProject }: Props) {
   const [payload, setPayload] = useState<PicksPayload | null>(null);
   const [advisor, setAdvisor] = useState<MusicAdvisor | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1710,8 +1711,29 @@ ${ctxLines.join("\n")}`;
       {/* ─── Top header: logo + title + aspect + song + actions ─── */}
       <header className="ce-header">
         <div className="ce-logo">
+          {onClose && (
+            <button
+              onClick={onClose}
+              title="Tilbake til Hjem"
+              style={{ background: "transparent", border: "none", color: "inherit",
+                       cursor: "pointer", padding: "4px 8px", fontSize: 14, marginRight: 6 }}
+            >
+              ←
+            </button>
+          )}
           <div className="ce-logo-icon">K</div>
           <div className="ce-logo-text">CreatorHub</div>
+          {onStartNewProject && (
+            <button
+              onClick={onStartNewProject}
+              title="Lagre nåværende + start nytt prosjekt"
+              style={{ marginLeft: 14, padding: "4px 10px", fontSize: 12,
+                       background: "var(--accent-dim)", border: "1px solid var(--accent)",
+                       borderRadius: 4, cursor: "pointer", color: "inherit" }}
+            >
+              + Nytt prosjekt
+            </button>
+          )}
         </div>
         <div className="ce-title-area">
           {editingTitle ? (

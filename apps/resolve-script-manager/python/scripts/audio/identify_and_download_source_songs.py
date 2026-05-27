@@ -41,6 +41,7 @@ CACHE_DIR = os.path.expanduser(
     "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
 )
 SONGS_DIR = os.path.join(CACHE_DIR, "source_songs")
+THUMBS_DIR = os.path.join(CACHE_DIR, "song_thumbs")
 DEFAULT_ACOUSTID_KEY = "8XaBELgH"  # AcoustID public Web Plugins key; rate-limited but free
 
 
@@ -177,14 +178,60 @@ def acoustid_lookup(api_key: str, fingerprint: str, duration: int) -> list[dict]
             title = rec.get("title", "")
             artists = [a.get("name", "") for a in rec.get("artists", []) or []]
             artist = ", ".join(filter(None, artists))
+            # Hent release-group ID for cover-art-archive
+            rg_id = None
+            for rg in rec.get("releasegroups", []) or []:
+                if rg.get("id"):
+                    rg_id = rg["id"]
+                    break
             if title:
                 matches.append({
                     "score": score,
                     "title": title,
                     "artist": artist,
                     "mbid": rec.get("id"),
+                    "releaseGroupId": rg_id,
                 })
     return matches
+
+
+def fetch_cover_art(release_group_id: str, dest_dir: str, key: str) -> str | None:
+    """Cover Art Archive → 250px front cover. None hvis ingen finnes."""
+    if not release_group_id: return None
+    safe = re.sub(r"[^\w-]", "_", key)[:60]
+    out_path = os.path.join(dest_dir, f"cover_{safe}.jpg")
+    if os.path.isfile(out_path): return out_path
+    url = f"https://coverartarchive.org/release-group/{release_group_id}/front-250"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "RoleRoomPostAgent/0.1"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = resp.read()
+            if len(data) < 100: return None
+            with open(out_path, "wb") as f: f.write(data)
+            return out_path
+    except Exception:
+        return None
+
+
+def extract_video_frame(ffmpeg: str, video: str, time_sec: float,
+                         dest_dir: str, key: str) -> str | None:
+    """Trekk ut ett bilde fra videoen ved time_sec. Returnerer path eller None."""
+    safe = re.sub(r"[^\w-]", "_", key)[:60]
+    out_path = os.path.join(dest_dir, f"frame_{safe}.jpg")
+    if os.path.isfile(out_path): return out_path
+    cmd = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-ss", f"{time_sec:.2f}", "-i", video,
+        "-frames:v", "1", "-vf", "scale=200:-1",
+        "-q:v", "3", out_path,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=20)
+        if r.returncode == 0 and os.path.isfile(out_path) and os.path.getsize(out_path) > 500:
+            return out_path
+    except Exception:
+        pass
+    return None
 
 
 def yt_dlp_search_download(yt_dlp: str, ffmpeg: str, query: str, dest_dir: str) -> str | None:
@@ -231,16 +278,23 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
 
     api_key = (params.get("acoustidApiKey") or "").strip() or DEFAULT_ACOUSTID_KEY
+    # 2-phase mode: identifyOnly skipper yt-dlp, selectedKeys begrenser download
+    identify_only = bool(params.get("identifyOnly", False))
+    selected_keys_raw = params.get("selectedKeys") or []
+    selected_keys: set[str] = (
+        {str(k).strip() for k in selected_keys_raw if isinstance(k, str)}
+        if isinstance(selected_keys_raw, list) else set()
+    )
 
     ffmpeg = find_tool("ffmpeg")
     ffprobe = find_tool("ffprobe")
     fpcalc = find_tool("fpcalc")
-    yt_dlp = find_tool("yt-dlp")
+    yt_dlp = find_tool("yt-dlp") if not identify_only else None
     missing = []
     if not ffmpeg: missing.append("ffmpeg")
     if not ffprobe: missing.append("ffprobe")
     if not fpcalc: missing.append("chromaprint (fpcalc)")
-    if not yt_dlp: missing.append("yt-dlp")
+    if not identify_only and not yt_dlp: missing.append("yt-dlp")
     if missing:
         bridge.error(f"Mangler verktøy: {', '.join(missing)}. Install via Dependencies modal.")
         sys.exit(1)
@@ -269,6 +323,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     tmp_dir = os.path.join(CACHE_DIR, "tmp_fp")
     os.makedirs(tmp_dir, exist_ok=True)
     os.makedirs(SONGS_DIR, exist_ok=True)
+    os.makedirs(THUMBS_DIR, exist_ok=True)
     seen_titles: set[str] = set()
 
     for i, (start, end) in enumerate(sections):
@@ -312,14 +367,33 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
         bridge.log(f"  Match: '{top['title']}' by {top['artist']} (score {top['score']:.2f})")
         query = f"{top['title']} {top['artist']}".strip()
-        downloaded = yt_dlp_search_download(yt_dlp, ffmpeg, query, SONGS_DIR)
+        # Bestem om vi skal laste ned denne sangen
+        should_download = (not identify_only) and (
+            not selected_keys or key in selected_keys
+        )
+        downloaded = (
+            yt_dlp_search_download(yt_dlp, ffmpeg, query, SONGS_DIR)
+            if should_download and yt_dlp else None
+        )
+        # Thumbnails: album-art + scene-frame (kun under identify-fasen)
+        cover_path = None
+        frame_path = None
+        if identify_only:
+            cover_path = fetch_cover_art(top.get("releaseGroupId"), THUMBS_DIR, key)
+            frame_path = extract_video_frame(ffmpeg, video_path, start, THUMBS_DIR, key)
         results.append({
             "startSec": start, "endSec": end,
             "title": top["title"], "artist": top["artist"],
             "score": top["score"],
             "query": query,
             "downloadedPath": downloaded,
-            "downloadError": None if downloaded else "yt_dlp_search_failed",
+            "downloadError": (
+                None if downloaded or not should_download
+                else "yt_dlp_search_failed"
+            ),
+            "key": key,
+            "coverArtPath": cover_path,
+            "frameThumbPath": frame_path,
         })
 
     # Cleanup temp fingerprint audio

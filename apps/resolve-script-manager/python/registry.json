@@ -58,7 +58,7 @@
       "name": "Connect to Resolve",
       "category": "project",
       "scriptPath": "scripts/project/connect_to_resolve.py",
-      "description": "Verifiserer at Resolve kjører og at scripting-modulen er nåbar. Returnerer prosjekt-navn + nåværende side.",
+      "description": "Verifiserer at Resolve kj\u00f8rer og at scripting-modulen er n\u00e5bar. Returnerer prosjekt-navn + n\u00e5v\u00e6rende side.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -86,7 +86,7 @@
       "name": "Create Project Structure",
       "category": "project",
       "scriptPath": "scripts/project/create_project_structure.py",
-      "description": "Oppretter et nytt prosjekt med standard bin-struktur fra en mal (wedding_film, podcast, …).",
+      "description": "Oppretter et nytt prosjekt med standard bin-struktur fra en mal (wedding_film, podcast, \u2026).",
       "requiredInputs": [
         "projectName",
         "template"
@@ -103,7 +103,7 @@
       "name": "Create Bins from Scenes",
       "category": "project",
       "scriptPath": "scripts/project/create_bins_from_scenes.py",
-      "description": "Lager Media Pool-bins som matcher Role Room-prosjektets scene-liste ('01 Scene title INT DAG'). Idempotent — hopper over bins som allerede finnes.",
+      "description": "Lager Media Pool-bins som matcher Role Room-prosjektets scene-liste ('01 Scene title INT DAG'). Idempotent \u2014 hopper over bins som allerede finnes.",
       "requiredInputs": [
         "scenes"
       ],
@@ -119,7 +119,7 @@
       "name": "Apply Project Settings",
       "category": "project",
       "scriptPath": "scripts/project/apply_project_settings.py",
-      "description": "Setter Resolve project-resolusjon, framerate og Color Space Transform (CST) basert på equipment + detektert log-kurve fra Role Room. Idempotent.",
+      "description": "Setter Resolve project-resolusjon, framerate og Color Space Transform (CST) basert p\u00e5 equipment + detektert log-kurve fra Role Room. Idempotent.",
       "requiredInputs": [
         "resolution",
         "frameRate"
@@ -150,7 +150,7 @@
       "name": "Inspect Source Drive",
       "category": "project",
       "scriptPath": "scripts/project/inspect_source_drive.py",
-      "description": "Detekterer om en mappe ligger på SD/CF-kort vs ekstern SSD vs intern disk. Anbefaler backup hvis source er kamera-kort.",
+      "description": "Detekterer om en mappe ligger p\u00e5 SD/CF-kort vs ekstern SSD vs intern disk. Anbefaler backup hvis source er kamera-kort.",
       "requiredInputs": [
         "path"
       ],
@@ -198,7 +198,7 @@
       "name": "Benchmark Drive Speed",
       "category": "project",
       "scriptPath": "scripts/project/benchmark_drive.py",
-      "description": "Måler sustained write + read MB/s på en SSD med 1 GB test-fil. Sammenligner mot kamera-codec-kravet (Canon C80, R5C, Sony FX, …) og gir verdict.",
+      "description": "M\u00e5ler sustained write + read MB/s p\u00e5 en SSD med 1 GB test-fil. Sammenligner mot kamera-codec-kravet (Canon C80, R5C, Sony FX, \u2026) og gir verdict.",
       "requiredInputs": [
         "path"
       ],
@@ -214,7 +214,7 @@
       "name": "Analyze Clip Folder",
       "category": "project",
       "scriptPath": "scripts/project/analyze_clip_folder.py",
-      "description": "Skanner en mappe og foreslår prosjekt-template + kamera-distribusjon + scene-hint analyse. Brukes av Onboarding Wizard.",
+      "description": "Skanner en mappe og foresl\u00e5r prosjekt-template + kamera-distribusjon + scene-hint analyse. Brukes av Onboarding Wizard.",
       "requiredInputs": [
         "folderPath"
       ],
@@ -246,7 +246,7 @@
       "name": "Fetch Source Song from YouTube",
       "category": "audio",
       "scriptPath": "scripts/audio/fetch_source_song.py",
-      "description": "Laster ned audio fra YouTube via yt-dlp + detekterer beats. KUN aktivert for bryllups-prosjekter (privat-bruk). Gir pristine source-audio for nøyaktig beat-alignment ved analyze_exported_video.",
+      "description": "Laster ned audio fra YouTube via yt-dlp + detekterer beats. KUN aktivert for bryllups-prosjekter (privat-bruk). Gir pristine source-audio for n\u00f8yaktig beat-alignment ved analyze_exported_video.",
       "requiredInputs": [
         "youtubeUrl",
         "projectType"
@@ -280,7 +280,7 @@
       "name": "Analyze Exported Video",
       "category": "timeline",
       "scriptPath": "scripts/timeline/analyze_exported_video.py",
-      "description": "Tar en ferdig-eksportert video, detekterer shot-cuts via ffmpeg, narrater hvert shot med Claude Vision (3 bilder per shot + bevegelses-score for nøyaktighet), og importerer til Resolve som ny timeline med gule markører per cut.",
+      "description": "Tar en ferdig-eksportert video, detekterer shot-cuts via ffmpeg, narrater hvert shot med Claude Vision (3 bilder per shot + bevegelses-score for n\u00f8yaktighet), og importerer til Resolve som ny timeline med gule mark\u00f8rer per cut.",
       "requiredInputs": [
         "videoPath"
       ],
@@ -328,7 +328,7 @@
       "name": "Organize by Camera",
       "category": "media",
       "scriptPath": "scripts/media/organize_by_camera.py",
-      "description": "Flytter klipp i Media Pool til bins basert på kameramodell, dato og codec.",
+      "description": "Flytter klipp i Media Pool til bins basert p\u00e5 kameramodell, dato og codec.",
       "requiredInputs": [],
       "resolvePageDependency": "Media",
       "riskLevel": "medium",
@@ -342,7 +342,7 @@
       "name": "Check Missing Media",
       "category": "qc",
       "scriptPath": "scripts/qc/check_missing_media.py",
-      "description": "Skanner alle klipp for offline-status, manglende lyd, feil frame rate og blandede oppløsninger.",
+      "description": "Skanner alle klipp for offline-status, manglende lyd, feil frame rate og blandede oppl\u00f8sninger.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -373,7 +373,7 @@
       "name": "Create Wedding Master Timeline",
       "category": "timeline",
       "scriptPath": "scripts/timeline/create_wedding_master_timeline.py",
-      "description": "Lager en master timeline med segmenter for hver del av dagen (Bride Prep → Party).",
+      "description": "Lager en master timeline med segmenter for hver del av dagen (Bride Prep \u2192 Party).",
       "requiredInputs": [
         "timelineName",
         "frameRate"
@@ -390,7 +390,7 @@
       "name": "Create Highlight Rough Cut",
       "category": "timeline",
       "scriptPath": "scripts/timeline/create_highlight_rough_cut.py",
-      "description": "Strukturert rough assembly basert på tags (emotional, kiss, drone …) → Highlight_Edit_Draft_V01. Kan ta input fra Vision-scoring.",
+      "description": "Strukturert rough assembly basert p\u00e5 tags (emotional, kiss, drone \u2026) \u2192 Highlight_Edit_Draft_V01. Kan ta input fra Vision-scoring.",
       "requiredInputs": [
         "tags",
         "maxDurationSeconds"
@@ -407,7 +407,7 @@
       "name": "Place Music + Beat Markers",
       "category": "timeline",
       "scriptPath": "scripts/timeline/place_music_and_markers.py",
-      "description": "Plasserer musikk på A6 og legger markers (Intro/Build/Drop/Soft moment/Finale) på beats.",
+      "description": "Plasserer musikk p\u00e5 A6 og legger markers (Intro/Build/Drop/Soft moment/Finale) p\u00e5 beats.",
       "requiredInputs": [
         "musicFile",
         "beatTimestamps"
@@ -424,7 +424,7 @@
       "name": "Add Standard Markers",
       "category": "markers",
       "scriptPath": "scripts/markers/add_standard_markers.py",
-      "description": "Legger standard markers (Intro, Body, Outro) basert på timeline-prosenter.",
+      "description": "Legger standard markers (Intro, Body, Outro) basert p\u00e5 timeline-prosenter.",
       "requiredInputs": [],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",
@@ -471,7 +471,7 @@
       "name": "Add Transcription Markers",
       "category": "markers",
       "scriptPath": "scripts/markers/add_transcription_markers.py",
-      "description": "Tar transkripsjons-segmenter og legger markers på current timeline. Hvis speaker er angitt fargekodes per taler. Marker-navn er første 6 ord, marker-note holder hele segmentet.",
+      "description": "Tar transkripsjons-segmenter og legger markers p\u00e5 current timeline. Hvis speaker er angitt fargekodes per taler. Marker-navn er f\u00f8rste 6 ord, marker-note holder hele segmentet.",
       "requiredInputs": [
         "segments"
       ],
@@ -487,7 +487,7 @@
       "name": "Tag Best Moments",
       "category": "markers",
       "scriptPath": "scripts/markers/tag_best_moments.py",
-      "description": "Markerer øyeblikk: Best reaction, Good audio, Use in trailer, Use in full film, Possible reel.",
+      "description": "Markerer \u00f8yeblikk: Best reaction, Good audio, Use in trailer, Use in full film, Possible reel.",
       "requiredInputs": [
         "taggedClips"
       ],
@@ -503,7 +503,7 @@
       "name": "Sync Audio by Timecode",
       "category": "audio",
       "scriptPath": "scripts/audio/sync_audio_by_timecode.py",
-      "description": "Synker eksterne lydopptak med kamera-klipp basert på matchende timecode.",
+      "description": "Synker eksterne lydopptak med kamera-klipp basert p\u00e5 matchende timecode.",
       "requiredInputs": [],
       "resolvePageDependency": "Edit",
       "riskLevel": "medium",
@@ -517,7 +517,7 @@
       "name": "Sync Audio by Filename Pattern",
       "category": "audio",
       "scriptPath": "scripts/audio/sync_audio_by_filename_pattern.py",
-      "description": "Fallback: matcher C80_A001 ↔ Zoom_A001 når timecode mangler.",
+      "description": "Fallback: matcher C80_A001 \u2194 Zoom_A001 n\u00e5r timecode mangler.",
       "requiredInputs": [
         "pattern"
       ],
@@ -533,7 +533,7 @@
       "name": "Detect Audio Sources",
       "category": "audio",
       "scriptPath": "scripts/audio/detect_audio_sources.py",
-      "description": "Skanner Media Pool og kategoriserer alle audio/video-klipp i camera_scratch / lav_mic / recorder / music / sfx / unknown basert på filnavn + metadata.",
+      "description": "Skanner Media Pool og kategoriserer alle audio/video-klipp i camera_scratch / lav_mic / recorder / music / sfx / unknown basert p\u00e5 filnavn + metadata.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -547,7 +547,7 @@
       "name": "Analyze Loudness (LUFS)",
       "category": "audio",
       "scriptPath": "scripts/audio/analyze_loudness.py",
-      "description": "Ekte ffmpeg loudnorm-måling per klipp: integrated LUFS, true peak, LRA. Sammenligner mot delivery-target (wedding/youtube/podcast/broadcast).",
+      "description": "Ekte ffmpeg loudnorm-m\u00e5ling per klipp: integrated LUFS, true peak, LRA. Sammenligner mot delivery-target (wedding/youtube/podcast/broadcast).",
       "requiredInputs": [
         "deliveryTarget"
       ],
@@ -560,10 +560,10 @@
     },
     {
       "id": "flag_clipping",
-      "name": "Flag Clipping (Peak ≥ -0.1 dBFS)",
+      "name": "Flag Clipping (Peak \u2265 -0.1 dBFS)",
       "category": "audio",
       "scriptPath": "scripts/audio/flag_clipping.py",
-      "description": "ffmpeg astats peak-level måling per klipp. Returnerer liste over digitalt klippede klipp som trenger reparasjon eller decline.",
+      "description": "ffmpeg astats peak-level m\u00e5ling per klipp. Returnerer liste over digitalt klippede klipp som trenger reparasjon eller decline.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -577,7 +577,7 @@
       "name": "Flag Low Dialogue (< -28 LUFS)",
       "category": "audio",
       "scriptPath": "scripts/audio/flag_low_dialogue.py",
-      "description": "Identifiserer klipp med integrert LUFS under terskelen — typisk lav-mic-opptak som trenger boost eller AI-cleanup.",
+      "description": "Identifiserer klipp med integrert LUFS under terskelen \u2014 typisk lav-mic-opptak som trenger boost eller AI-cleanup.",
       "requiredInputs": [
         "thresholdLufs"
       ],
@@ -593,7 +593,7 @@
       "name": "Generate Audio QC Report",
       "category": "audio",
       "scriptPath": "scripts/audio/generate_audio_qc_report.py",
-      "description": "Slår sammen detect-sources + loudness + clipping + low-dialogue til én Markdown + JSON-rapport, mot valgt delivery-target.",
+      "description": "Sl\u00e5r sammen detect-sources + loudness + clipping + low-dialogue til \u00e9n Markdown + JSON-rapport, mot valgt delivery-target.",
       "requiredInputs": [
         "outputFolder",
         "deliveryTarget"
@@ -642,7 +642,7 @@
       "name": "Find Quotes",
       "category": "audio",
       "scriptPath": "scripts/audio/find_quotes.py",
-      "description": "Søk gjennom en transkripsjon etter ord/fraser. Returnerer matching segmenter med tidspunkter for klipping i Resolve.",
+      "description": "S\u00f8k gjennom en transkripsjon etter ord/fraser. Returnerer matching segmenter med tidspunkter for klipping i Resolve.",
       "requiredInputs": [
         "transcription",
         "searchTerms"
@@ -675,7 +675,7 @@
       "name": "Extract Waveform PNG",
       "category": "audio",
       "scriptPath": "scripts/audio/extract_waveform.py",
-      "description": "ffmpeg showwavespic → PNG per segment. Valgfri (v1 bruker audio playback, ikke visuell waveform).",
+      "description": "ffmpeg showwavespic \u2192 PNG per segment. Valgfri (v1 bruker audio playback, ikke visuell waveform).",
       "requiredInputs": [
         "audioPath",
         "segments"
@@ -706,7 +706,7 @@
       "name": "Detect Camera Profiles",
       "category": "color",
       "scriptPath": "scripts/color/detect_camera_profiles.py",
-      "description": "Color Prep: leser metadata + filnavn → grupperer klipp i Canon C-Log2 / Canon C-Log3 / Sony S-Log3 / DJI D-Log / iPhone. Flagger ukjente profiler.",
+      "description": "Color Prep: leser metadata + filnavn \u2192 grupperer klipp i Canon C-Log2 / Canon C-Log3 / Sony S-Log3 / DJI D-Log / iPhone. Flagger ukjente profiler.",
       "requiredInputs": [],
       "resolvePageDependency": "Media",
       "riskLevel": "none",
@@ -717,10 +717,10 @@
     },
     {
       "id": "match_bcam_to_acam",
-      "name": "Camera Match Assistant (B-cam → A-cam)",
+      "name": "Camera Match Assistant (B-cam \u2192 A-cam)",
       "category": "color",
       "scriptPath": "scripts/color/match_bcam_to_acam.py",
-      "description": "Setter A-cam som referanse (Canon C80), foreslår CDL/LUT-match for R5 og drone. Eksporterer stills for manuell kontroll.",
+      "description": "Setter A-cam som referanse (Canon C80), foresl\u00e5r CDL/LUT-match for R5 og drone. Eksporterer stills for manuell kontroll.",
       "requiredInputs": [
         "referenceCamera",
         "matchCameras"
@@ -737,7 +737,7 @@
       "name": "Apply Camera LUT",
       "category": "color",
       "scriptPath": "scripts/color/apply_camera_lut.py",
-      "description": "Bruker riktig LUT pr. kamera (Canon C-Log2, Sony S-Log3, DJI D-Log …) på første node.",
+      "description": "Bruker riktig LUT pr. kamera (Canon C-Log2, Sony S-Log3, DJI D-Log \u2026) p\u00e5 f\u00f8rste node.",
       "requiredInputs": [
         "lutMapping"
       ],
@@ -767,7 +767,7 @@
       "name": "Apply Norwedfilm Look Pack",
       "category": "color",
       "scriptPath": "scripts/color/apply_wedding_look_pack.py",
-      "description": "Bruker valgt look per scene fra Norwedfilm-pakken: Soft Luxury, Warm Wedding, Sikh Wedding Gold, Nordic Natural, Evening Reception …",
+      "description": "Bruker valgt look per scene fra Norwedfilm-pakken: Soft Luxury, Warm Wedding, Sikh Wedding Gold, Nordic Natural, Evening Reception \u2026",
       "requiredInputs": [
         "lookId",
         "sceneMarkers"
@@ -881,7 +881,7 @@
       "name": "Export Social Versions",
       "category": "export",
       "scriptPath": "scripts/export/export_social_versions.py",
-      "description": "16:9 YouTube + 9:16 Reels + 1:1 Square + 4:5 Instagram Feed på samme klikk.",
+      "description": "16:9 YouTube + 9:16 Reels + 1:1 Square + 4:5 Instagram Feed p\u00e5 samme klikk.",
       "requiredInputs": [
         "outputFolder",
         "aspectRatios"
@@ -898,7 +898,7 @@
       "name": "Batch Render All Timelines",
       "category": "export",
       "scriptPath": "scripts/export/batch_render_all_timelines.py",
-      "description": "Rendrer alle godkjente timelines (Trailer/Highlight/Full Film/Speeches/Ceremony) i kø.",
+      "description": "Rendrer alle godkjente timelines (Trailer/Highlight/Full Film/Speeches/Ceremony) i k\u00f8.",
       "requiredInputs": [
         "outputFolder",
         "approvedTimelineNames"
@@ -934,7 +934,7 @@
       "name": "Identify Key Faces (Vision)",
       "category": "vision",
       "scriptPath": "scripts/vision/identify_key_faces.py",
-      "description": "Lar Bjarne peke ut bilde av brud/brudgom/VIPs. Embedder ansiktene, deretter matcher mot alle thumbnails — gir hver klipp keyFacesPresent + coverage. Boost highlightScore for klipp med nøkkelpersoner.",
+      "description": "Lar Bjarne peke ut bilde av brud/brudgom/VIPs. Embedder ansiktene, deretter matcher mot alle thumbnails \u2014 gir hver klipp keyFacesPresent + coverage. Boost highlightScore for klipp med n\u00f8kkelpersoner.",
       "requiredInputs": [
         "referencePhotos"
       ],
@@ -969,7 +969,7 @@
       "name": "Cull Folder (AI)",
       "category": "cull",
       "scriptPath": "scripts/cull/cull_folder.py",
-      "description": "Skanner en mappe/kort, trekker ut thumbnails (ffmpeg), kjører lokal pre-filter + Claude Vision-scoring, returnerer CullSession med per-klipp decision og scene-tag.",
+      "description": "Skanner en mappe/kort, trekker ut thumbnails (ffmpeg), kj\u00f8rer lokal pre-filter + Claude Vision-scoring, returnerer CullSession med per-klipp decision og scene-tag.",
       "requiredInputs": [
         "sourcePath"
       ],
@@ -1004,7 +1004,7 @@
       "name": "Place Clips on Timeline (from Cull)",
       "category": "timeline",
       "scriptPath": "scripts/timeline/place_clips_on_timeline.py",
-      "description": "Tar en CullSession, importerer kept-klipp i scene-bins, bygger timeline med scenes i canonical rekkefølge (bride_prep → ceremony → portrait → … → party) og scene-markers per segment.",
+      "description": "Tar en CullSession, importerer kept-klipp i scene-bins, bygger timeline med scenes i canonical rekkef\u00f8lge (bride_prep \u2192 ceremony \u2192 portrait \u2192 \u2026 \u2192 party) og scene-markers per segment.",
       "requiredInputs": [
         "session"
       ],
@@ -1020,7 +1020,7 @@
       "name": "Generate Delivery Report",
       "category": "qc",
       "scriptPath": "scripts/qc/generate_delivery_report.py",
-      "description": "Rapport: prosjekt, timelines, varighet, eksporterte filer, codec, oppløsning, dato, kunde, manglende elementer.",
+      "description": "Rapport: prosjekt, timelines, varighet, eksporterte filer, codec, oppl\u00f8sning, dato, kunde, manglende elementer.",
       "requiredInputs": [
         "outputFolder",
         "clientName"
@@ -1037,7 +1037,7 @@
       "name": "Check Dependencies",
       "category": "project",
       "scriptPath": "scripts/project/check_dependencies.py",
-      "description": "Detekterer hvilke verktøy som er installert (Homebrew, ffmpeg, fpcalc, Python-moduler, DaVinci Resolve). Returnerer status per verktøy.",
+      "description": "Detekterer hvilke verkt\u00f8y som er installert (Homebrew, ffmpeg, fpcalc, Python-moduler, DaVinci Resolve). Returnerer status per verkt\u00f8y.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1051,7 +1051,7 @@
       "name": "Install Dependency",
       "category": "project",
       "scriptPath": "scripts/project/install_dependency.py",
-      "description": "Installerer pakker via Homebrew eller pip3 med live progress. Brukes av Dependencies-modalen og førstegangs-wizard.",
+      "description": "Installerer pakker via Homebrew eller pip3 med live progress. Brukes av Dependencies-modalen og f\u00f8rstegangs-wizard.",
       "requiredInputs": [
         {
           "key": "manager",
@@ -1061,7 +1061,7 @@
         },
         {
           "key": "packages",
-          "label": "Pakker å installere",
+          "label": "Pakker \u00e5 installere",
           "type": "string",
           "required": true
         }
@@ -1078,7 +1078,7 @@
       "name": "Auto Rough Cut",
       "category": "project",
       "scriptPath": "scripts/project/auto_rough_cut.py",
-      "description": "Magic Cut — kjører template-spesifikk pipeline (import → cull → highlights → timeline).",
+      "description": "Magic Cut \u2014 kj\u00f8rer template-spesifikk pipeline (import \u2192 cull \u2192 highlights \u2192 timeline).",
       "requiredInputs": [
         {
           "key": "templateId",
@@ -1146,14 +1146,54 @@
       "scriptPath": "scripts/timeline/extract_highlight_from_film.py",
       "description": "Tar en lang ferdig film, scorer hver shot med 8 signaler (faces/wedding-events/bokeh/slow-mo/exposure/color-grade/emotional-peak/speech-penalty), grupperer i kapitler (ceremony/reception/dance), og bygger highlight som balanserer alle kapitlene. Genre-spesifikke vekter via 'genre' param.",
       "requiredInputs": [
-        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
-        {"key": "minDurationSec", "label": "Minimum highlight duration (sec)", "type": "number", "required": false},
-        {"key": "maxDurationSec", "label": "Maximum highlight duration (sec)", "type": "number", "required": false},
-        {"key": "startOffsetSec", "label": "Start from second N (0 = beginning)", "type": "number", "required": false},
-        {"key": "endOffsetSec", "label": "End at second N (0 = end of file)", "type": "number", "required": false},
-        {"key": "genre", "label": "Genre (wedding / south_asian_wedding / music_video / corporate / documentary)", "type": "text", "required": false},
-        {"key": "useSignals", "label": "Use advanced ML signals (default: yes)", "type": "boolean", "required": false},
-        {"key": "disabledSignals", "label": "Disable specific signals (CSV: florence,depth,action,...)", "type": "text", "required": false}
+        {
+          "key": "videoPath",
+          "label": "Source film",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "minDurationSec",
+          "label": "Minimum highlight duration (sec)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maxDurationSec",
+          "label": "Maximum highlight duration (sec)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "startOffsetSec",
+          "label": "Start from second N (0 = beginning)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "endOffsetSec",
+          "label": "End at second N (0 = end of file)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "genre",
+          "label": "Genre (wedding / south_asian_wedding / music_video / corporate / documentary)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "useSignals",
+          "label": "Use advanced ML signals (default: yes)",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "disabledSignals",
+          "label": "Disable specific signals (CSV: florence,depth,action,...)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",
@@ -1167,11 +1207,26 @@
       "name": "Export EDL from approved picks",
       "category": "timeline",
       "scriptPath": "scripts/timeline/export_edl_from_picks.py",
-      "description": "Skriver CMX 3600 EDL fra approved picks-cache for utveksling med Premiere/Avid/FCP. Drop-frame støttet for 29.97/59.94. Output ved siden av source-fil.",
+      "description": "Skriver CMX 3600 EDL fra approved picks-cache for utveksling med Premiere/Avid/FCP. Drop-frame st\u00f8ttet for 29.97/59.94. Output ved siden av source-fil.",
       "requiredInputs": [
-        {"key": "outputPath", "label": "Output .edl path (blank = ved siden av source)", "type": "text", "required": false},
-        {"key": "dropFrame", "label": "Drop-frame timecode (for NTSC)", "type": "boolean", "required": false},
-        {"key": "title", "label": "EDL title (blank = source-basename)", "type": "text", "required": false}
+        {
+          "key": "outputPath",
+          "label": "Output .edl path (blank = ved siden av source)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "dropFrame",
+          "label": "Drop-frame timecode (for NTSC)",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "title",
+          "label": "EDL title (blank = source-basename)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1185,11 +1240,26 @@
       "name": "Render Quick Preview (ffmpeg, ingen Resolve)",
       "category": "timeline",
       "scriptPath": "scripts/timeline/render_quick_preview.py",
-      "description": "Rask 720p H.264 preview av approved picks via ffmpeg-concat. Ingen Resolve-render trengs — bruk for å bekrefte rough-cut før commit til full timeline-render.",
+      "description": "Rask 720p H.264 preview av approved picks via ffmpeg-concat. Ingen Resolve-render trengs \u2014 bruk for \u00e5 bekrefte rough-cut f\u00f8r commit til full timeline-render.",
       "requiredInputs": [
-        {"key": "preset", "label": "Preset (fast / balanced / hq)", "type": "text", "required": false},
-        {"key": "height", "label": "Output height (default 720)", "type": "number", "required": false},
-        {"key": "onlyApproved", "label": "Bare approved picks (default yes)", "type": "boolean", "required": false}
+        {
+          "key": "preset",
+          "label": "Preset (fast / balanced / hq)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "height",
+          "label": "Output height (default 720)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "onlyApproved",
+          "label": "Bare approved picks (default yes)",
+          "type": "boolean",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1205,10 +1275,30 @@
       "scriptPath": "scripts/audio/denoise_audio.py",
       "description": "Cleaner camera-audio for outdoor weddings: highpass + adaptive noise-reduction + LUFS-normalize. V1 = ffmpeg only (instant). V2 vil bytte til FullSubNet+/FlowSE fra R2 for spektral-aware denoise.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input audio/video", "type": "file", "required": true},
-        {"key": "profile", "label": "Profile (wedding/podcast/music_video/broadcast/gentle)", "type": "text", "required": false},
-        {"key": "noiseReductionDb", "label": "Noise-reduction dB (default per profile)", "type": "number", "required": false},
-        {"key": "targetLufs", "label": "Target LUFS (default per profile)", "type": "number", "required": false}
+        {
+          "key": "inputPath",
+          "label": "Input audio/video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "profile",
+          "label": "Profile (wedding/podcast/music_video/broadcast/gentle)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "noiseReductionDb",
+          "label": "Noise-reduction dB (default per profile)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "targetLufs",
+          "label": "Target LUFS (default per profile)",
+          "type": "number",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1222,11 +1312,26 @@
       "name": "Denoise audio (FullSubNet+ neural, R2 weights)",
       "category": "audio",
       "scriptPath": "scripts/audio/denoise_audio_neural.py",
-      "description": "Neural speech-enhancement via FullSubNet+ (full-band + sub-band fusion). Renere enn ffmpeg afftdn på outdoor-wind + crowd-bleed. Krever R2 + git clone reference repo. Auto-fallback til ffmpeg afftdn hvis ikke installert.",
+      "description": "Neural speech-enhancement via FullSubNet+ (full-band + sub-band fusion). Renere enn ffmpeg afftdn p\u00e5 outdoor-wind + crowd-bleed. Krever R2 + git clone reference repo. Auto-fallback til ffmpeg afftdn hvis ikke installert.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input audio/video", "type": "file", "required": true},
-        {"key": "targetLufs", "label": "Target LUFS (default -16)", "type": "number", "required": false},
-        {"key": "forceFfmpegFallback", "label": "Tving ffmpeg-fallback", "type": "boolean", "required": false}
+        {
+          "key": "inputPath",
+          "label": "Input audio/video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "targetLufs",
+          "label": "Target LUFS (default -16)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "forceFfmpegFallback",
+          "label": "Tving ffmpeg-fallback",
+          "type": "boolean",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1240,14 +1345,44 @@
       "name": "Generate narrator voiceover (XTTS-v2 multilingual)",
       "category": "audio",
       "scriptPath": "scripts/audio/generate_narrator_voiceover.py",
-      "description": "Voice-cloned narrator-voiceover på 17 språk (NO/EN/UR-via-HI/AR/etc) via Coqui XTTS-v2. Cloner stemme fra 6-sek reference. Kan auto-muxe over background-video. Krever pip install TTS (~3GB).",
+      "description": "Voice-cloned narrator-voiceover p\u00e5 17 spr\u00e5k (NO/EN/UR-via-HI/AR/etc) via Coqui XTTS-v2. Cloner stemme fra 6-sek reference. Kan auto-muxe over background-video. Krever pip install TTS (~3GB).",
       "requiredInputs": [
-        {"key": "text", "label": "Narrator-script (inline)", "type": "text", "required": false},
-        {"key": "scriptPath", "label": "ELLER path til script-fil", "type": "file", "required": false},
-        {"key": "referenceAudio", "label": "Reference WAV (6+ sek stemme å clone)", "type": "file", "required": true},
-        {"key": "language", "label": "Language (no/en/ar/hi/...)", "type": "text", "required": false},
-        {"key": "overlayVideo", "label": "Optional: background-video å muxe over", "type": "file", "required": false},
-        {"key": "outputPath", "label": "Output path (blank = auto)", "type": "text", "required": false}
+        {
+          "key": "text",
+          "label": "Narrator-script (inline)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "scriptPath",
+          "label": "ELLER path til script-fil",
+          "type": "file",
+          "required": false
+        },
+        {
+          "key": "referenceAudio",
+          "label": "Reference WAV (6+ sek stemme \u00e5 clone)",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "language",
+          "label": "Language (no/en/ar/hi/...)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "overlayVideo",
+          "label": "Optional: background-video \u00e5 muxe over",
+          "type": "file",
+          "required": false
+        },
+        {
+          "key": "outputPath",
+          "label": "Output path (blank = auto)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "low",
@@ -1261,11 +1396,26 @@
       "name": "Remove passersby (SAM2 + ProPainter inpaint)",
       "category": "video",
       "scriptPath": "scripts/video/remove_passersby.py",
-      "description": "Fjern distraktive folk fra wedding-background. SAM2 propagerer mask fra ett prompt-frame, ProPainter inpaint'er. ~14 min per 5-sek shot på Apple Silicon. Krever R2 + git clone ProPainter repo.",
+      "description": "Fjern distraktive folk fra wedding-background. SAM2 propagerer mask fra ett prompt-frame, ProPainter inpaint'er. ~14 min per 5-sek shot p\u00e5 Apple Silicon. Krever R2 + git clone ProPainter repo.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
-        {"key": "promptFrameSec", "label": "Frame-time å markere (default 0.5s)", "type": "number", "required": false},
-        {"key": "bbox", "label": "Bbox 'x1,y1,x2,y2' rundt subjekt", "type": "text", "required": false}
+        {
+          "key": "inputPath",
+          "label": "Input video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "promptFrameSec",
+          "label": "Frame-time \u00e5 markere (default 0.5s)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "bbox",
+          "label": "Bbox 'x1,y1,x2,y2' rundt subjekt",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "low",
@@ -1279,9 +1429,14 @@
       "name": "Denoise video grain (Restormer + R2 weights)",
       "category": "video",
       "scriptPath": "scripts/video/denoise_video.py",
-      "description": "Transformer-basert grain-removal for low-light ceremony / ISO 6400+ footage. Krever R2-credentials + basicsr pip. ~2 fps på Apple Silicon M2 → 4-min input ≈ 50 min processing.",
+      "description": "Transformer-basert grain-removal for low-light ceremony / ISO 6400+ footage. Krever R2-credentials + basicsr pip. ~2 fps p\u00e5 Apple Silicon M2 \u2192 4-min input \u2248 50 min processing.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input video", "type": "file", "required": true}
+        {
+          "key": "inputPath",
+          "label": "Input video",
+          "type": "file",
+          "required": true
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "low",
@@ -1295,9 +1450,14 @@
       "name": "Verify audio-visual sync (SyncNet QC)",
       "category": "audio",
       "scriptPath": "scripts/audio/verify_audio_sync.py",
-      "description": "Sjekk at lip-sync er korrekt på ferdig render før levering. Returnerer offset i frames + confidence. Catcher drift fra ffmpeg-splice eller variable-fps source. Krever R2-credentials + syncnet_python.",
+      "description": "Sjekk at lip-sync er korrekt p\u00e5 ferdig render f\u00f8r levering. Returnerer offset i frames + confidence. Catcher drift fra ffmpeg-splice eller variable-fps source. Krever R2-credentials + syncnet_python.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Rendered video", "type": "file", "required": true}
+        {
+          "key": "inputPath",
+          "label": "Rendered video",
+          "type": "file",
+          "required": true
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1311,10 +1471,20 @@
       "name": "Upscale to 4K (Real-ESRGAN + R2 weights)",
       "category": "video",
       "scriptPath": "scripts/video/upscale_to_4k.py",
-      "description": "Per-frame 4× upscale via Real-ESRGAN x4plus. 1080p → 4K master for premium delivery. Krever R2-credentials + realesrgan pip. ~0.8 fps på Apple Silicon M2 → 4 min highlight = ~2 timer.",
+      "description": "Per-frame 4\u00d7 upscale via Real-ESRGAN x4plus. 1080p \u2192 4K master for premium delivery. Krever R2-credentials + realesrgan pip. ~0.8 fps p\u00e5 Apple Silicon M2 \u2192 4 min highlight = ~2 timer.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
-        {"key": "scale", "label": "Scale factor (2/3/4, default 4)", "type": "number", "required": false}
+        {
+          "key": "inputPath",
+          "label": "Input video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "scale",
+          "label": "Scale factor (2/3/4, default 4)",
+          "type": "number",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "low",
@@ -1328,10 +1498,20 @@
       "name": "Interpolate slow-motion (RIFE + R2 weights)",
       "category": "video",
       "scriptPath": "scripts/video/interpolate_slow_motion.py",
-      "description": "Frame-interp via RIFE v4.6 for buttery slow-mo (24fps → 60fps eller annet target). Real camera-slow-mo-look vs ffmpeg minterpolate mush. Fall-back til ffmpeg minterpolate hvis RIFE-weights eller python-pakke mangler.",
+      "description": "Frame-interp via RIFE v4.6 for buttery slow-mo (24fps \u2192 60fps eller annet target). Real camera-slow-mo-look vs ffmpeg minterpolate mush. Fall-back til ffmpeg minterpolate hvis RIFE-weights eller python-pakke mangler.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
-        {"key": "targetFps", "label": "Target fps (default 60)", "type": "number", "required": false}
+        {
+          "key": "inputPath",
+          "label": "Input video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "targetFps",
+          "label": "Target fps (default 60)",
+          "type": "number",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "low",
@@ -1345,11 +1525,26 @@
       "name": "Isolate vocals + stems (Demucs)",
       "category": "audio",
       "scriptPath": "scripts/audio/isolate_vocals_with_demucs.py",
-      "description": "Demucs 4-stem separation (vocals/drums/bass/other) for renere transkripsjon eller music-video stem-cuts. Modeller fra HuggingFace (ikke R2). MPS-accelerated på Apple Silicon.",
+      "description": "Demucs 4-stem separation (vocals/drums/bass/other) for renere transkripsjon eller music-video stem-cuts. Modeller fra HuggingFace (ikke R2). MPS-accelerated p\u00e5 Apple Silicon.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input audio/video", "type": "file", "required": true},
-        {"key": "model", "label": "Model (htdemucs/htdemucs_ft/mdx_extra/mdx_q, default htdemucs)", "type": "text", "required": false},
-        {"key": "twoStems", "label": "Two-stems mode (vocals/drums/bass/other, blank = all 4)", "type": "text", "required": false}
+        {
+          "key": "inputPath",
+          "label": "Input audio/video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "model",
+          "label": "Model (htdemucs/htdemucs_ft/mdx_extra/mdx_q, default htdemucs)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "twoStems",
+          "label": "Two-stems mode (vocals/drums/bass/other, blank = all 4)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1363,11 +1558,26 @@
       "name": "Enhance faces (GFPGAN + R2 weights)",
       "category": "video",
       "scriptPath": "scripts/video/enhance_with_gfpgan.py",
-      "description": "Restore grainy/low-light faces i highlight via GFPGAN v1.4. Krever R2-credentials + gfpgan pip-pakke. Tar ~1-2 fps på Apple Silicon; bekreft duration før commit. Output: <input>_face_restored.mp4.",
+      "description": "Restore grainy/low-light faces i highlight via GFPGAN v1.4. Krever R2-credentials + gfpgan pip-pakke. Tar ~1-2 fps p\u00e5 Apple Silicon; bekreft duration f\u00f8r commit. Output: <input>_face_restored.mp4.",
       "requiredInputs": [
-        {"key": "inputPath", "label": "Input video", "type": "file", "required": true},
-        {"key": "weight", "label": "Restore strength 0..1 (default 0.5)", "type": "number", "required": false},
-        {"key": "upscale", "label": "Upscale factor 1/2/4 (default 1)", "type": "number", "required": false}
+        {
+          "key": "inputPath",
+          "label": "Input video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "weight",
+          "label": "Restore strength 0..1 (default 0.5)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "upscale",
+          "label": "Upscale factor 1/2/4 (default 1)",
+          "type": "number",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "low",
@@ -1381,10 +1591,20 @@
       "name": "Detect Song Sections (intro/verse/chorus/bridge/drop)",
       "category": "audio",
       "scriptPath": "scripts/audio/detect_song_sections.py",
-      "description": "Strukturell segmentering via librosa recurrence-matrix + spectral-clustering på MFCC. Labels: intro/verse/pre_chorus/chorus/bridge/drop/build_up/outro. Cache → last_song_sections.json som assign_clips_to_beats leser for variable cut-density per seksjon (chorus = 2-beat cuts, verse = 4-beat, bridge = 8-beat).",
+      "description": "Strukturell segmentering via librosa recurrence-matrix + spectral-clustering p\u00e5 MFCC. Labels: intro/verse/pre_chorus/chorus/bridge/drop/build_up/outro. Cache \u2192 last_song_sections.json som assign_clips_to_beats leser for variable cut-density per seksjon (chorus = 2-beat cuts, verse = 4-beat, bridge = 8-beat).",
       "requiredInputs": [
-        {"key": "musicPath", "label": "Music file (blank = bruk cached fra detect_music_beats)", "type": "file", "required": false},
-        {"key": "forceRecompute", "label": "Force recompute (ignorer cache)", "type": "boolean", "required": false}
+        {
+          "key": "musicPath",
+          "label": "Music file (blank = bruk cached fra detect_music_beats)",
+          "type": "file",
+          "required": false
+        },
+        {
+          "key": "forceRecompute",
+          "label": "Force recompute (ignorer cache)",
+          "type": "boolean",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1398,14 +1618,44 @@
       "name": "Extract Speech Quotes (best moments from speeches)",
       "category": "audio",
       "scriptPath": "scripts/audio/extract_speech_quotes.py",
-      "description": "Kjører WhisperX på en lang ceremony/speech-fil, scorer hvert segment på length-fit + emotional vocabulary + audio-reaction-spike etter + speaker-diversity, returnerer topp N quote-segmenter med timecode. Cache for downstream Resolve-markers eller standalone-clip-builder.",
+      "description": "Kj\u00f8rer WhisperX p\u00e5 en lang ceremony/speech-fil, scorer hvert segment p\u00e5 length-fit + emotional vocabulary + audio-reaction-spike etter + speaker-diversity, returnerer topp N quote-segmenter med timecode. Cache for downstream Resolve-markers eller standalone-clip-builder.",
       "requiredInputs": [
-        {"key": "audioPath", "label": "Audio/video file (ceremony eller speech)", "type": "file", "required": true},
-        {"key": "whisperModel", "label": "WhisperX model (default large-v3)", "type": "text", "required": false},
-        {"key": "language", "label": "Language hint (auto/no/nb/en, default auto)", "type": "text", "required": false},
-        {"key": "perSpeaker", "label": "Quotes per speaker (default 2)", "type": "number", "required": false},
-        {"key": "maxQuotes", "label": "Max quotes overall (default 8)", "type": "number", "required": false},
-        {"key": "useR2Models", "label": "Prefer R2 over HuggingFace (default no)", "type": "boolean", "required": false}
+        {
+          "key": "audioPath",
+          "label": "Audio/video file (ceremony eller speech)",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "whisperModel",
+          "label": "WhisperX model (default large-v3)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "language",
+          "label": "Language hint (auto/no/nb/en, default auto)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "perSpeaker",
+          "label": "Quotes per speaker (default 2)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maxQuotes",
+          "label": "Max quotes overall (default 8)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "useR2Models",
+          "label": "Prefer R2 over HuggingFace (default no)",
+          "type": "boolean",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1419,10 +1669,20 @@
       "name": "Identify & Download Source Songs",
       "category": "audio",
       "scriptPath": "scripts/audio/identify_and_download_source_songs.py",
-      "description": "Detekterer musikk-seksjoner i en eksportert film, audio-fingerprinter dem via Chromaprint, slår opp i AcoustID, laster ned matchede sanger fra YouTube via yt-dlp. Lagrer cache som build_highlight_from_picks plasserer på eget audio-track.",
+      "description": "Detekterer musikk-seksjoner i en eksportert film, audio-fingerprinter dem via Chromaprint, sl\u00e5r opp i AcoustID, laster ned matchede sanger fra YouTube via yt-dlp. Lagrer cache som build_highlight_from_picks plasserer p\u00e5 eget audio-track.",
       "requiredInputs": [
-        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
-        {"key": "acoustidApiKey", "label": "AcoustID API key (optional)", "type": "text", "required": false}
+        {
+          "key": "videoPath",
+          "label": "Source film",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "acoustidApiKey",
+          "label": "AcoustID API key (optional)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1436,12 +1696,32 @@
       "name": "Export FCPXML from Picks",
       "category": "timeline",
       "scriptPath": "scripts/timeline/export_fcpxml_from_picks.py",
-      "description": "Eksporterer picks som FCPXML v1.10 — rikere enn EDL. Inkluderer clip-segments, markers, comments, aspect-ratio. Importerbar i Resolve / Premiere / FCP / Avid. Tar samme editor-state-params som assemble (pickOverrides, pickOrder, excludedChapters).",
+      "description": "Eksporterer picks som FCPXML v1.10 \u2014 rikere enn EDL. Inkluderer clip-segments, markers, comments, aspect-ratio. Importerbar i Resolve / Premiere / FCP / Avid. Tar samme editor-state-params som assemble (pickOverrides, pickOrder, excludedChapters).",
       "requiredInputs": [
-        {"key": "cachePath", "label": "Picks JSON path (optional)", "type": "file", "required": false},
-        {"key": "outputPath", "label": "Output FCPXML path (optional)", "type": "text", "required": false},
-        {"key": "title", "label": "Project title (optional)", "type": "text", "required": false},
-        {"key": "aspectRatio", "label": "Aspect ratio (16:9 / 9:16 / 1:1)", "type": "text", "required": false}
+        {
+          "key": "cachePath",
+          "label": "Picks JSON path (optional)",
+          "type": "file",
+          "required": false
+        },
+        {
+          "key": "outputPath",
+          "label": "Output FCPXML path (optional)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "title",
+          "label": "Project title (optional)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "aspectRatio",
+          "label": "Aspect ratio (16:9 / 9:16 / 1:1)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1455,9 +1735,14 @@
       "name": "Detect Log Gamma (auto-LUT)",
       "category": "color",
       "scriptPath": "scripts/color/detect_log_gamma.py",
-      "description": "Sjekker om source-video er shot i log (C-Log/S-Log/V-Log/BMD-Film/LogC/F-Log/N-Log/D-Log/Log3G10). Bruker filnavn-mønstre + ffprobe color-metadata. Returnerer suggestedLut hvis log detected. Onboarding-wizard kaller dette og auto-foreslår LUT KUN hvis log — rec.709/graded video skal IKKE få auto-LUT (oversaturerer).",
+      "description": "Sjekker om source-video er shot i log (C-Log/S-Log/V-Log/BMD-Film/LogC/F-Log/N-Log/D-Log/Log3G10). Bruker filnavn-m\u00f8nstre + ffprobe color-metadata. Returnerer suggestedLut hvis log detected. Onboarding-wizard kaller dette og auto-foresl\u00e5r LUT KUN hvis log \u2014 rec.709/graded video skal IKKE f\u00e5 auto-LUT (oversaturerer).",
       "requiredInputs": [
-        {"key": "videoPath", "label": "Source film", "type": "file", "required": true}
+        {
+          "key": "videoPath",
+          "label": "Source film",
+          "type": "file",
+          "required": true
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1471,10 +1756,20 @@
       "name": "Analyze Music for Flow Map",
       "category": "audio",
       "scriptPath": "scripts/audio/analyze_music_for_flow.py",
-      "description": "Analyserer en lyd-fil for å produsere Music-Driven Flow Map data: tempo + beats + downbeats, sections (intro/verse/chorus/drop/bridge/outro), RMS-energi-kurve, silence-regioner, spectral centroid (brightness), og auto-detekterte drops. Cache i music_flow/<navn>.json med 30-dagers TTL.",
+      "description": "Analyserer en lyd-fil for \u00e5 produsere Music-Driven Flow Map data: tempo + beats + downbeats, sections (intro/verse/chorus/drop/bridge/outro), RMS-energi-kurve, silence-regioner, spectral centroid (brightness), og auto-detekterte drops. Cache i music_flow/<navn>.json med 30-dagers TTL.",
       "requiredInputs": [
-        {"key": "audioPath", "label": "Audio file (.wav)", "type": "file", "required": true},
-        {"key": "outputPath", "label": "Output JSON path (optional)", "type": "text", "required": false}
+        {
+          "key": "audioPath",
+          "label": "Audio file (.wav)",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "outputPath",
+          "label": "Output JSON path (optional)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1488,12 +1783,32 @@
       "name": "Scan & Recommend Music (Advisor)",
       "category": "audio",
       "scriptPath": "scripts/audio/scan_and_recommend_music.py",
-      "description": "Skanner hele filmen → identifiserer alle sanger via Shazam (gratis, ingen API-key), beregner BPM + beat-times per sang, og gir 2 nivåer av anbefalinger: (1) hvor mange sanger en highlight skal ha basert på lengde (1 sang under 1 min, 2-3 for 4-6 min, etc.), (2) hvilken sang som passer hver pick basert på BPM-matching mot visuell pace. Eksporterer beat-times som Resolve-marker payload kompatibel med Find Music Beats.",
+      "description": "Skanner hele filmen \u2192 identifiserer alle sanger via Shazam (gratis, ingen API-key), beregner BPM + beat-times per sang, og gir 2 niv\u00e5er av anbefalinger: (1) hvor mange sanger en highlight skal ha basert p\u00e5 lengde (1 sang under 1 min, 2-3 for 4-6 min, etc.), (2) hvilken sang som passer hver pick basert p\u00e5 BPM-matching mot visuell pace. Eksporterer beat-times som Resolve-marker payload kompatibel med Find Music Beats.",
       "requiredInputs": [
-        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
-        {"key": "picksPath", "label": "Picks JSON (optional, for beat-matching)", "type": "file", "required": false},
-        {"key": "highlightLengthSec", "label": "Target highlight length (sec, for length-based recommendation)", "type": "number", "required": false},
-        {"key": "fps", "label": "Timeline FPS (default 25)", "type": "number", "required": false}
+        {
+          "key": "videoPath",
+          "label": "Source film",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "picksPath",
+          "label": "Picks JSON (optional, for beat-matching)",
+          "type": "file",
+          "required": false
+        },
+        {
+          "key": "highlightLengthSec",
+          "label": "Target highlight length (sec, for length-based recommendation)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "fps",
+          "label": "Timeline FPS (default 25)",
+          "type": "number",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1507,11 +1822,26 @@
       "name": "Apply Beat Markers to Resolve",
       "category": "audio",
       "scriptPath": "scripts/audio/apply_beat_markers_to_resolve.py",
-      "description": "Legger beat-markers fra music_advisor.json på aktiv Resolve-timeline. Output-format matcher Fairlight's Find Music Beats — bruker kan snap-til-marker i Edit page enten markers kommer fra vår scan eller fra Resolve's egen audio-analyse. Kjør etter scan_and_recommend_music + build_highlight_from_picks.",
+      "description": "Legger beat-markers fra music_advisor.json p\u00e5 aktiv Resolve-timeline. Output-format matcher Fairlight's Find Music Beats \u2014 bruker kan snap-til-marker i Edit page enten markers kommer fra v\u00e5r scan eller fra Resolve's egen audio-analyse. Kj\u00f8r etter scan_and_recommend_music + build_highlight_from_picks.",
       "requiredInputs": [
-        {"key": "markerColor", "label": "Marker color (Blue, Red, Cyan, etc.)", "type": "text", "required": false},
-        {"key": "songTitle", "label": "Filter to one song (optional)", "type": "text", "required": false},
-        {"key": "fpsOverride", "label": "Timeline FPS override (auto-detected if blank)", "type": "number", "required": false}
+        {
+          "key": "markerColor",
+          "label": "Marker color (Blue, Red, Cyan, etc.)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "songTitle",
+          "label": "Filter to one song (optional)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "fpsOverride",
+          "label": "Timeline FPS override (auto-detected if blank)",
+          "type": "number",
+          "required": false
+        }
       ],
       "resolvePageDependency": "edit",
       "riskLevel": "low",
@@ -1525,13 +1855,38 @@
       "name": "Assemble Highlight With Music (End-to-End)",
       "category": "timeline",
       "scriptPath": "scripts/timeline/assemble_highlight_with_music.py",
-      "description": "Ende-til-ende pipeline: leser cached picks + music advisor, velger hovedlåt (mest dominerende av source) + climax-låt (energi-kontrast med høyere BPM), laster ned begge fra YouTube, cross-correlate audio-sync mot source, smart-reorder picks (ascending score + climax sist), beat-snap pick-durations, og rendrer 1080p MP4 med crossfades (0.3s normal, 1.5s exp-curve inn til climax). Erstatter 6 manuelle iterasjoner med ett kommando-kall.",
+      "description": "Ende-til-ende pipeline: leser cached picks + music advisor, velger hovedl\u00e5t (mest dominerende av source) + climax-l\u00e5t (energi-kontrast med h\u00f8yere BPM), laster ned begge fra YouTube, cross-correlate audio-sync mot source, smart-reorder picks (ascending score + climax sist), beat-snap pick-durations, og rendrer 1080p MP4 med crossfades (0.3s normal, 1.5s exp-curve inn til climax). Erstatter 6 manuelle iterasjoner med ett kommando-kall.",
       "requiredInputs": [
-        {"key": "videoPath", "label": "Source film", "type": "file", "required": true},
-        {"key": "outputPath", "label": "Output mappe ELLER full .mp4-path (default ~/Desktop/<filmnavn>_highlight.mp4)", "type": "text", "required": false},
-        {"key": "musicStrategy", "label": "Music strategy: main+climax | single | auto", "type": "text", "required": false},
-        {"key": "crossfadeSec", "label": "Normal crossfade duration (default 0.30)", "type": "number", "required": false},
-        {"key": "climaxCrossfadeSec", "label": "Climax crossfade duration (default 1.50)", "type": "number", "required": false}
+        {
+          "key": "videoPath",
+          "label": "Source film",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "outputPath",
+          "label": "Output mappe ELLER full .mp4-path (default ~/Desktop/<filmnavn>_highlight.mp4)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "musicStrategy",
+          "label": "Music strategy: main+climax | single | auto",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "crossfadeSec",
+          "label": "Normal crossfade duration (default 0.30)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "climaxCrossfadeSec",
+          "label": "Climax crossfade duration (default 1.50)",
+          "type": "number",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1545,9 +1900,14 @@
       "name": "Build Highlight from Approved Picks",
       "category": "timeline",
       "scriptPath": "scripts/timeline/build_highlight_from_picks.py",
-      "description": "Tar approved picks fra interactive review og bygger den endelige Resolve-timeline. Kjøres etter extract_highlight_from_film i review-mode.",
+      "description": "Tar approved picks fra interactive review og bygger den endelige Resolve-timeline. Kj\u00f8res etter extract_highlight_from_film i review-mode.",
       "requiredInputs": [
-        {"key": "audioMix", "label": "Audio-mix (music_only / dialog_preserve)", "type": "text", "required": false}
+        {
+          "key": "audioMix",
+          "label": "Audio-mix (music_only / dialog_preserve)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",
@@ -1561,15 +1921,50 @@
       "name": "Render Instagram Vertical (9:16 + auto-captions)",
       "category": "timeline",
       "scriptPath": "scripts/timeline/render_instagram_vertical.py",
-      "description": "Tar approved picks fra cache, splicer + center-crop til 9:16 vertikal, transkriberer via WhisperX, brenner captions inn med ASS-styling. Produserer ferdig MP4 ved siden av source — klar til upload på Instagram/TikTok/Reels. Ingen Resolve-API touch.",
+      "description": "Tar approved picks fra cache, splicer + center-crop til 9:16 vertikal, transkriberer via WhisperX, brenner captions inn med ASS-styling. Produserer ferdig MP4 ved siden av source \u2014 klar til upload p\u00e5 Instagram/TikTok/Reels. Ingen Resolve-API touch.",
       "requiredInputs": [
-        {"key": "targetDurationSec", "label": "Target duration (sec, default 60)", "type": "number", "required": false},
-        {"key": "maxDurationSec", "label": "Max duration (sec, default 75)", "type": "number", "required": false},
-        {"key": "scoreFloor", "label": "Score floor (0..1, default 0.50)", "type": "number", "required": false},
-        {"key": "whisperModel", "label": "WhisperX model (default large-v3)", "type": "text", "required": false},
-        {"key": "language", "label": "Language hint (auto/no/nb/en, default auto)", "type": "text", "required": false},
-        {"key": "burnCaptions", "label": "Burn captions (default yes)", "type": "boolean", "required": false},
-        {"key": "backgroundStyle", "label": "Background style (black/blurred, default black)", "type": "text", "required": false}
+        {
+          "key": "targetDurationSec",
+          "label": "Target duration (sec, default 60)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maxDurationSec",
+          "label": "Max duration (sec, default 75)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "scoreFloor",
+          "label": "Score floor (0..1, default 0.50)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "whisperModel",
+          "label": "WhisperX model (default large-v3)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "language",
+          "label": "Language hint (auto/no/nb/en, default auto)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "burnCaptions",
+          "label": "Burn captions (default yes)",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "backgroundStyle",
+          "label": "Background style (black/blurred, default black)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1583,10 +1978,20 @@
       "name": "Build Delivery Variants (teaser/IG/gjestebok/couple/family/ceremony)",
       "category": "timeline",
       "scriptPath": "scripts/timeline/build_delivery_variants.py",
-      "description": "Produser flere Resolve-timelines fra samme approved picks — én per leveringsformat (teaser 30s, instagram 60s, gjestebok 3-4 min, couple 8-10 min, family 12-15 min, ceremony-only). Hver har sin egen duration + chapter-mix.",
+      "description": "Produser flere Resolve-timelines fra samme approved picks \u2014 \u00e9n per leveringsformat (teaser 30s, instagram 60s, gjestebok 3-4 min, couple 8-10 min, family 12-15 min, ceremony-only). Hver har sin egen duration + chapter-mix.",
       "requiredInputs": [
-        {"key": "variants", "label": "Variants (comma-sep, blank = alle 6)", "type": "text", "required": false},
-        {"key": "timelinePrefix", "label": "Timeline-navn prefix (blank = source-basename)", "type": "text", "required": false}
+        {
+          "key": "variants",
+          "label": "Variants (comma-sep, blank = alle 6)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "timelinePrefix",
+          "label": "Timeline-navn prefix (blank = source-basename)",
+          "type": "text",
+          "required": false
+        }
       ],
       "resolvePageDependency": "Edit",
       "riskLevel": "low",
@@ -1600,7 +2005,7 @@
       "name": "Learn From My Edit",
       "category": "timeline",
       "scriptPath": "scripts/timeline/learn_from_user_edit.py",
-      "description": "Diff'er nåværende Resolve-timeline mot siste auto-placement og lærer av brukerens manuelle endringer. Bygger en profil som biaserer fremtidige klipp-valg.",
+      "description": "Diff'er n\u00e5v\u00e6rende Resolve-timeline mot siste auto-placement og l\u00e6rer av brukerens manuelle endringer. Bygger en profil som biaserer fremtidige klipp-valg.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1614,7 +2019,7 @@
       "name": "Align Clips to Song Audio",
       "category": "timeline",
       "scriptPath": "scripts/timeline/align_clips_to_song_audio.py",
-      "description": "For hver video-klipp, lytt på audio-en og finn hvor i source-sangen den matcher (chroma cross-correlation). Klippene plasseres ved nøyaktig tidspunkt der audio-en matcher sangen.",
+      "description": "For hver video-klipp, lytt p\u00e5 audio-en og finn hvor i source-sangen den matcher (chroma cross-correlation). Klippene plasseres ved n\u00f8yaktig tidspunkt der audio-en matcher sangen.",
       "requiredInputs": [
         {
           "key": "sourceSongPath",
@@ -1635,7 +2040,7 @@
       "name": "Assign Clips to Beats",
       "category": "timeline",
       "scriptPath": "scripts/timeline/assign_clips_to_beats.py",
-      "description": "Plasserer culled klipp på beat-segmenter med energi-matching. Output er segment-plan brukt av place_clips_on_beat_grid.",
+      "description": "Plasserer culled klipp p\u00e5 beat-segmenter med energi-matching. Output er segment-plan brukt av place_clips_on_beat_grid.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "none",
@@ -1663,6 +2068,34 @@
       "status": "ready",
       "dryRunSupported": true,
       "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "archive_project",
+      "name": "Archive Project Picks",
+      "category": "project",
+      "scriptPath": "scripts/project/archive_project.py",
+      "description": "Kopierer last_highlight_picks.json til picks/<safe-name>_<ts>.json slik at flere prosjekter kan eksistere parallelt.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "list_archived_projects",
+      "name": "List Archived Projects",
+      "category": "project",
+      "scriptPath": "scripts/project/list_archived_projects.py",
+      "description": "Lister alle arkiverte picks-prosjekter i picks/-mappen.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
       "requiresTimeline": false
     }
   ]
