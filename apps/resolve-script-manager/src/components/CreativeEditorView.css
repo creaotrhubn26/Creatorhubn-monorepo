@@ -222,17 +222,25 @@
   background: linear-gradient(135deg, #6b3aa8, #5934a8);
 }
 
-/* ─── Body flex (replaces grid — was overflowing) ─── */
+/* ─── Body grid med hard overflow-constraints ─── */
 .ce-body {
-  display: flex;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 380px;
   gap: 16px;
   padding: 16px 24px;
   overflow: hidden;
   min-height: 0;
+  align-items: start;
 }
-.ce-segments { flex: 0 0 280px; width: 280px; min-width: 0; }
-.ce-main     { flex: 1 1 0; min-width: 0; }
-.ce-claude   { flex: 0 0 380px; width: 380px; min-width: 0; }
+.ce-segments { width: 280px; max-width: 280px; min-width: 0; overflow: hidden; }
+.ce-main {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.ce-claude   { width: 380px; max-width: 380px; min-width: 0; overflow: hidden; }
 
 /* ─── Segments sidebar ─── */
 .ce-segments {
