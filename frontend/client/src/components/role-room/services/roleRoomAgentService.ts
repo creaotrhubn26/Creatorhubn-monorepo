@@ -1031,6 +1031,19 @@ export interface RoleRoomMetaAdAccount {
   business_name?: string;
 }
 
+export interface RoleRoomLinkedInAccount {
+  id: string; // urn:li:sponsoredAccount:{id}
+  name: string | null;
+  role: string;
+  isAdmin: boolean;
+}
+
+export interface RoleRoomLinkedInCampaignGroup {
+  id: string; // urn:li:sponsoredCampaignGroup:{id}
+  name: string;
+  status: string | null;
+}
+
 // ── Granted ad-asset overview (which Pages/accounts the client gave admin to) ──
 
 export interface RoleRoomGrantedMetaPage {
@@ -1496,6 +1509,41 @@ export const roleRoomAgentService = {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke opprette Google-kampanje' };
+    return { campaign: payload.campaign };
+  },
+
+  async listLinkedInAccounts(): Promise<{ accounts: RoleRoomLinkedInAccount[] } | { error: string }> {
+    const response = await fetch('/api/role-room/ads/linkedin/accounts', { headers: readRoleRoomAgentHeaders() });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke hente LinkedIn-kontoer' };
+    return { accounts: Array.isArray(payload?.accounts) ? payload.accounts : [] };
+  },
+
+  async listLinkedInCampaignGroups(accountUrn: string): Promise<{ groups: RoleRoomLinkedInCampaignGroup[] } | { error: string }> {
+    const response = await fetch(
+      `/api/role-room/ads/linkedin/campaign-groups?accountUrn=${encodeURIComponent(accountUrn)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke hente kampanjegrupper' };
+    return { groups: Array.isArray(payload?.groups) ? payload.groups : [] };
+  },
+
+  async createLinkedInAdsCampaign(input: {
+    projectId: string;
+    accountUrn: string;
+    campaignGroupUrn: string;
+    name: string;
+    dailyBudgetNok: number;
+    objectiveType?: string;
+  }): Promise<{ campaign: RoleRoomAdsCampaign } | { error: string }> {
+    const response = await fetch('/api/role-room/ads/linkedin/campaigns', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke opprette LinkedIn-kampanje' };
     return { campaign: payload.campaign };
   },
 

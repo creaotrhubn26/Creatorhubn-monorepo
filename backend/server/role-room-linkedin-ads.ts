@@ -281,6 +281,39 @@ async function linkedInGet(
   return { ok: res.ok, status: res.status, raw };
 }
 
+export interface LinkedInCampaignGroup {
+  id: string; // urn:li:sponsoredCampaignGroup:{id}
+  name: string;
+  status: string | null;
+}
+
+/**
+ * Campaign groups under an ad account — a campaign must belong to one. Used to
+ * populate the campaign-group picker in the create-campaign UI.
+ */
+export async function listLinkedInCampaignGroups(
+  accessToken: string,
+  accountUrn: string,
+  apiVersion?: string,
+): Promise<LinkedInCampaignGroup[]> {
+  const params = new URLSearchParams({
+    q: "search",
+    search: `(account:(values:List(${accountUrn})))`,
+    projection: "(elements*(id,name,status))",
+  });
+  const { ok, raw } = await linkedInGet("/adCampaignGroups", params, accessToken, apiVersion);
+  if (!ok) return [];
+  const elements = (raw as { elements?: unknown[] })?.elements ?? [];
+  return elements.map((el) => {
+    const o = el as { id?: string | number; name?: string; status?: string };
+    return {
+      id: o.id != null ? `urn:li:sponsoredCampaignGroup:${o.id}` : "",
+      name: o.name ?? String(o.id ?? ""),
+      status: o.status ?? null,
+    };
+  });
+}
+
 /**
  * Ad accounts the authenticated producer has a role on (adAccountUsers finder).
  * Uses projection decoration to inline the account name. Needs scope r_ads.
