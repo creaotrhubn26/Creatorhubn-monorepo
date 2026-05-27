@@ -234,6 +234,7 @@ const ConsentManagementPanel = lazy(() => import('./ConsentManagementPanel').the
 const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(m => ({ default: m.ConsentContractDialog })));
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
+const AdsManagementPanel = lazy(() => retryDynamicImport(() => import('./producer/AdsManagementPanel'), 'AdsManagementPanel'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
@@ -12917,6 +12918,14 @@ type RoleRoomProjectWorkspaceState = {
                   userRole={isClientReviewerMode ? 'client_reviewer' : 'content_producer'}
                 />
               </Suspense>
+              {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
+              {!isClientReviewerMode && (
+                <Box sx={{ mb: 2 }}>
+                  <Suspense fallback={null}>
+                    <AdsManagementPanel projectId={currentProject.id} />
+                  </Suspense>
+                </Box>
+              )}
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
               projectId={currentProject.id}

@@ -1008,6 +1008,29 @@ export interface RoleRoomChannelResults {
   totals: RoleRoomChannelResult;
 }
 
+export type RoleRoomAdsCampaignStatus = 'draft' | 'active' | 'paused' | 'ended' | 'failed';
+
+export interface RoleRoomAdsCampaign {
+  id: string;
+  projectId: string;
+  platform: string;
+  externalCampaignId: string | null;
+  status: RoleRoomAdsCampaignStatus;
+  goal: string | null;
+  dailyBudgetNok: number | null;
+  totalBudgetNok: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoleRoomMetaAdAccount {
+  id: string;
+  account_id: string;
+  name: string;
+  currency: string;
+  business_name?: string;
+}
+
 // ── Granted ad-asset overview (which Pages/accounts the client gave admin to) ──
 
 export interface RoleRoomGrantedMetaPage {
@@ -1407,6 +1430,74 @@ export const roleRoomAgentService = {
     });
     if (!response.ok) return null;
     return (await response.json().catch(() => null)) as RoleRoomChannelResults | null;
+  },
+
+  // ── Kampanje-styring (se/opprett/pause/gjenoppta/avslutt) ──
+  async listAdsCampaigns(opts?: { projectId?: string; platform?: string; status?: string }): Promise<RoleRoomAdsCampaign[]> {
+    const qs = new URLSearchParams();
+    if (opts?.projectId) qs.set('projectId', opts.projectId);
+    if (opts?.platform) qs.set('platform', opts.platform);
+    if (opts?.status) qs.set('status', opts.status);
+    const response = await fetch(`/api/role-room/ads/campaigns?${qs.toString()}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return [];
+    const payload = await response.json().catch(() => null);
+    return Array.isArray(payload?.campaigns) ? payload.campaigns : [];
+  },
+
+  async listMetaAdAccounts(): Promise<{ accounts: RoleRoomMetaAdAccount[] } | { error: string }> {
+    const response = await fetch('/api/role-room/ads/meta/ad-accounts', {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { error: payload?.error || 'Kunne ikke hente annonsekontoer' };
+    return { accounts: Array.isArray(payload?.accounts) ? payload.accounts : [] };
+  },
+
+  async createMetaCampaign(input: {
+    projectId: string;
+    adAccountId: string;
+    name: string;
+    objective: string;
+    dailyBudgetNok?: number;
+    goal?: string;
+  }): Promise<{ campaign: RoleRoomAdsCampaign } | { error: string }> {
+    const response = await fetch('/api/role-room/ads/meta/campaigns', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke opprette kampanje' };
+    return { campaign: payload.campaign };
+  },
+
+  async pauseAdsCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/meta/campaigns/${encodeURIComponent(campaignId)}/pause`, {
+      method: 'POST', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
+  async resumeAdsCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/meta/campaigns/${encodeURIComponent(campaignId)}/resume`, {
+      method: 'POST', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
+  async endAdsCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/meta/campaigns/${encodeURIComponent(campaignId)}`, {
+      method: 'DELETE', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
   },
 
   async setAdsBudget(projectId: string, maxSpendNok: number, period?: string): Promise<boolean> {

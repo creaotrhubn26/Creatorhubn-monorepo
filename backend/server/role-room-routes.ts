@@ -146,10 +146,13 @@ import {
   pauseCampaign as pauseMetaCampaign,
   resumeCampaign as resumeMetaCampaign,
   endCampaign as endMetaCampaign,
+  createAdSet as createMetaAdSet,
+  createAd as createMetaAd,
   listManagedPages as listMetaManagedPages,
   metaTaskLabel,
   MetaAdsApiError,
   type MetaCampaignObjective,
+  type MetaTargeting,
 } from './role-room-meta-ads.js';
 import {
   listGrantedLinkedInAssets,
@@ -21841,6 +21844,85 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
         }
         res.status(500).json({ error: 'Failed to create Meta campaign', detail: String(error) });
+      }
+    },
+  );
+
+  // Ad set (målgruppe + budsjett + plasseringer) under en kampanje. Opprettes
+  // PAUSED. Krever ads_management (Meta App Review).
+  router.post(
+    '/ads/meta/campaigns/:campaignId/adsets',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) {
+          return res.status(404).json({ error: 'campaign_not_found' });
+        }
+        if (campaign.platform !== 'meta' || !campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'not_a_meta_campaign' });
+        }
+        const { adAccountId, name, dailyBudgetNok, optimizationGoal, billingEvent, targeting, startTime, endTime } =
+          req.body ?? {};
+        if (!adAccountId || !name || typeof dailyBudgetNok !== 'number' || !targeting) {
+          return res.status(400).json({
+            error: 'invalid_input',
+            detail: 'adAccountId, name, dailyBudgetNok, targeting required',
+          });
+        }
+        const token = await resolveMetaToken(userId);
+        if (!token) return res.status(412).json({ error: 'meta_not_connected' });
+
+        const result = await createMetaAdSet(token, {
+          adAccountId,
+          campaignId: campaign.externalCampaignId,
+          name,
+          dailyBudgetCents: Math.round(dailyBudgetNok * 100),
+          optimizationGoal,
+          billingEvent,
+          targeting: targeting as MetaTargeting,
+          startTime,
+          endTime,
+          status: 'PAUSED',
+        });
+        res.status(201).json({ adSet: result });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to create ad set', detail: String(error) });
+      }
+    },
+  );
+
+  // Annonse (kreativ + adset-kobling) under et ad set. Opprettes PAUSED.
+  router.post(
+    '/ads/meta/adsets/:adSetId/ads',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { adAccountId, name, creativeId } = req.body ?? {};
+        if (!adAccountId || !name || !creativeId) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'adAccountId, name, creativeId required' });
+        }
+        const token = await resolveMetaToken(userId);
+        if (!token) return res.status(412).json({ error: 'meta_not_connected' });
+
+        const result = await createMetaAd(token, {
+          adAccountId,
+          adSetId: req.params.adSetId,
+          name,
+          creativeId,
+          status: 'PAUSED',
+        });
+        res.status(201).json({ ad: result });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to create ad', detail: String(error) });
       }
     },
   );
