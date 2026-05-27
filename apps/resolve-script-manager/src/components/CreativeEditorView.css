@@ -265,14 +265,14 @@
 /* ─── Body grid med hard overflow-constraints ─── */
 .ce-body {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 380px;
-  gap: 16px;
-  padding: 16px 24px;
+  grid-template-columns: 290px minmax(0, 1fr) 390px;
+  gap: 22px;
+  padding: 22px 32px;
   overflow: hidden;
   min-height: 0;
   align-items: start;
 }
-.ce-segments { width: 280px; max-width: 280px; min-width: 0; overflow: hidden; }
+.ce-segments { width: 290px; max-width: 290px; min-width: 0; overflow: hidden; }
 .ce-main {
   width: 100%;
   max-width: 100%;
@@ -280,20 +280,20 @@
   overflow-x: hidden;
   overflow-y: auto;
 }
-.ce-claude   { width: 380px; max-width: 380px; min-width: 0; overflow: hidden; }
+.ce-claude   { width: 390px; max-width: 390px; min-width: 0; overflow: hidden; }
 
 /* ─── Segments sidebar ─── */
 .ce-segments {
   display: grid;
   grid-template-rows: auto 1fr auto auto;
   min-height: 0;
-  gap: 12px;
+  gap: 16px;
   background: linear-gradient(180deg, rgba(18, 9, 54, 0.85), rgba(10, 5, 24, 0.90));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid #1a0d45;
   border-radius: 12px;
-  padding: 14px;
+  padding: 18px;
   z-index: 5;
 }
 .ce-segments-header {
@@ -321,7 +321,7 @@
 .ce-segments-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -329,9 +329,9 @@
 .ce-segment-card {
   display: grid;
   grid-template-columns: 22px 56px 1fr 22px;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  padding: 8px 10px;
+  padding: 12px 14px;
   background: rgba(26, 13, 69, 0.5);
   border: 1px solid #1a0d45;
   border-radius: 10px;
@@ -1552,13 +1552,13 @@
 .ce-claude {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   background: linear-gradient(180deg, rgba(18, 9, 54, 0.92), rgba(10, 5, 24, 0.95));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid #1a0d45;
   border-radius: 12px;
-  padding: 14px;
+  padding: 18px;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
