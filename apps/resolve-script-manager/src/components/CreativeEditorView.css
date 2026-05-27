@@ -90,7 +90,7 @@
   letter-spacing: -0.2px;
 }
 .ce-title-area {
-  min-width: 0;
+  min-width: 140px;
   overflow: hidden;
 }
 .ce-title {

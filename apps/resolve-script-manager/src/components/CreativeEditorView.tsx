@@ -1802,8 +1802,14 @@ ${ctxLines.join("\n")}`;
               </div>
             )}
           </div>
-          <button className="ce-song" onClick={() => setSongMenuOpen((v) => !v)}>
-            <IconMusic size={14} /> {activeSong ? `${activeSong.title} – ${activeSong.artist}` : "Velg sang"}
+          <button className="ce-song" onClick={() => setSongMenuOpen((v) => !v)}
+                  title={activeSong ? `${activeSong.title} — ${activeSong.artist}` : "Velg sang"}>
+            <IconMusic size={14} />
+            <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                            whiteSpace: "nowrap", display: "inline-block",
+                            verticalAlign: "middle" }}>
+              {activeSong ? `${activeSong.title} – ${activeSong.artist}` : "Velg sang"}
+            </span>
             <span>▾</span>
           </button>
           {songMenuOpen && songs.length > 0 && (
