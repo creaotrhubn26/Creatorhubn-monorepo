@@ -398,7 +398,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
       }
     }, 500);
     return () => clearTimeout(handle);
-  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx]);
+  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes]);
 
   useEffect(() => {
     if (!advisorPath) return;
@@ -672,6 +672,126 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
     }
     // For "focus" action — just focus, already done above
   }, [filteredPicks, toggleChapter]);
+
+  // ─── Apply Wishes from couple: Claude oversetter wishes til edit-handlinger ───
+  const applyWishes = useCallback(async () => {
+    if (wishesBusy || !clientWishes.trim() || filteredPicks.length === 0) return;
+    setWishesBusy(true);
+    setWishesError(null);
+    setWishesResult(null);
+    const pickSummary = filteredPicks.map((p, i) => ({
+      pos: i + 1, index: p.index, duration: p.durationSec,
+      score: p.score, chapter: p.chapter ?? "?",
+      topSignals: p.signals
+        ? Object.entries(p.signals)
+            .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+            .slice(0, 3)
+            .map(([k, v]) => `${k}=${(v as number).toFixed(2)}`)
+            .join(",")
+        : "",
+    }));
+    const systemPrompt = `Du er en AI Creative Director som oversetter naturlig-språk-ønsker fra bryllupsparet til konkrete edit-handlinger. Du må forstå hva paret mener selv om de ikke bruker tekniske termer.
+
+Eksempler på vanlige wishes:
+  "mer av pappa sin tale"     → finn picks med høy speech + faces=family-pose, prioriter dem
+  "kortere reception"         → trim reception-picks med 30-50%
+  "fjern familie-shots"       → skip alle picks med høy faces-signal og chapter=family
+  "fokuser på følelser"       → prioriter høy emotional_peak, lengre holds, slow-mo
+  "ikke for langsomt"         → fjern lange holds, prioriter kortere picks
+
+Sekvens (${filteredPicks.length} picks):
+${pickSummary.map(p => `  pos ${p.pos}: shot#${p.index} chapter=${p.chapter} ${p.duration.toFixed(2)}s score=${p.score.toFixed(2)} signals[${p.topSignals}]`).join("\n")}
+
+Project: "${projectTitle}" — total ${formatTime(totalDuration)}
+Main song: ${activeSong ? `${activeSong.title} (${activeSong.bpm ?? "?"} BPM)` : "(ingen)"}
+
+Bryllupsparets wishes:
+"${clientWishes.trim()}"
+
+Du MÅ kalle apply_couple_wishes-tool med:
+  interpretation: 1-2 setninger som forteller hva du forsto fra wishes
+  pickOrder: re-ordnet liste av pickIndex-er (subset eller full)
+  skipped: array av pickIndex-er som skal helt fjernes (kan være tom)
+  trims: object {pickIndex: newDurationFactor (0.5-1.5)} for picks som bør forkortes/forlenges (kan være tom)
+  rationale: 2-3 setninger som forklarer endringer på norsk`;
+    try {
+      const resp: any = await invoke("claude_chat", {
+        messages: [{ role: "user", content: "Oversett bryllupsparets wishes til edit-handlinger." }],
+        system: systemPrompt,
+        model: "claude-opus-4-7",
+        maxTokens: 1500,
+        tools: [{
+          name: "apply_couple_wishes",
+          description: "Translate couple's wishes into edit actions",
+          input_schema: {
+            type: "object",
+            properties: {
+              interpretation: { type: "string" },
+              pickOrder:      { type: "array", items: { type: "integer" } },
+              skipped:        { type: "array", items: { type: "integer" } },
+              trims:          { type: "object", additionalProperties: { type: "number" } },
+              rationale:      { type: "string" },
+            },
+            required: ["interpretation", "pickOrder", "rationale"],
+          },
+        }],
+      });
+      const blocks = resp?.content ?? [];
+      const toolBlock = blocks.find((b: any) => b.type === "tool_use" && b.name === "apply_couple_wishes");
+      if (!toolBlock) throw new Error("Claude returnerte ikke tool-call.");
+      const input = toolBlock.input ?? {};
+      const validIdx = new Set(filteredPicks.map(p => p.index));
+      const pickOrder: number[] = (input.pickOrder ?? []).filter((i: number) => validIdx.has(i));
+      const skipped: number[] = (input.skipped ?? []).filter((i: number) => validIdx.has(i));
+      const trims: Record<string, number> = input.trims ?? {};
+
+      // Apply re-order
+      if (pickOrder.length > 0) {
+        const finalOrder = pickOrder.filter(i => !skipped.includes(i));
+        setActivePickOrder(finalOrder);
+      } else if (skipped.length > 0) {
+        // Skip-only — keep current order minus skipped
+        setActivePickOrder(filteredPicks.filter(p => !skipped.includes(p.index)).map(p => p.index));
+      }
+
+      // Apply trims
+      if (Object.keys(trims).length > 0) {
+        const newOverrides: typeof pickOverrides = { ...pickOverrides };
+        for (const [idxStr, factor] of Object.entries(trims)) {
+          const idx = parseInt(idxStr, 10);
+          if (!validIdx.has(idx)) continue;
+          const pick = filteredPicks.find(p => p.index === idx)!;
+          const mid = (pick.startSec + pick.endSec) / 2;
+          const f = Math.max(0.3, Math.min(1.8, factor));
+          const newDur = pick.durationSec * f;
+          newOverrides[idx] = {
+            startSec: mid - newDur / 2,
+            endSec: mid + newDur / 2,
+          };
+        }
+        setPickOverrides(newOverrides);
+      }
+
+      // Build summary for UI
+      const changes: string[] = [];
+      if (pickOrder.length > 0 && pickOrder.length !== filteredPicks.length) {
+        changes.push(`Re-ordnet ${pickOrder.length} picks`);
+      } else if (pickOrder.length > 0) {
+        changes.push(`Re-ordnet sekvens`);
+      }
+      if (skipped.length > 0) changes.push(`Fjernet ${skipped.length} picks`);
+      if (Object.keys(trims).length > 0) changes.push(`Trimmet ${Object.keys(trims).length} picks`);
+      setWishesResult({
+        interpretation: input.interpretation ?? "(ingen interpretasjon)",
+        rationale: input.rationale ?? "(ingen begrunnelse)",
+        changesSummary: changes.length > 0 ? changes.join(", ") : "Ingen endringer foreslått",
+      });
+    } catch (e: any) {
+      setWishesError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil"));
+    } finally {
+      setWishesBusy(false);
+    }
+  }, [wishesBusy, clientWishes, filteredPicks, projectTitle, totalDuration, activeSong, pickOverrides]);
 
   // ─── Eksport: kall assemble_highlight_with_music for å render MP4 ───
   const handleExport = useCallback(async () => {
@@ -1345,6 +1465,47 @@ ${ctxLines.join("\n")}`;
               <div className="ce-claude-progress-fill" style={{ width: "82%" }} />
             </div>
             <div className="ce-claude-progress-pct">82%</div>
+          </div>
+
+          {/* Client Wishes — bride/groom natural-language input */}
+          <div className="ce-wishes">
+            <div className="ce-wishes-header">
+              <span>💬 Wishes fra paret</span>
+              {wishesResult && (
+                <button className="ce-wishes-clear" onClick={() => {
+                  setActivePickOrder(null);
+                  setPickOverrides({});
+                  setWishesResult(null);
+                }}>Angre</button>
+              )}
+            </div>
+            <textarea
+              className="ce-wishes-input"
+              placeholder='F.eks. "mer av pappa sin tale", "kortere reception", "fokuser på følelser"'
+              rows={2}
+              value={clientWishes}
+              onChange={e => setClientWishes(e.target.value)}
+              disabled={wishesBusy}
+            />
+            <button
+              className="ce-wishes-apply"
+              onClick={applyWishes}
+              disabled={wishesBusy || !clientWishes.trim() || filteredPicks.length === 0}
+            >
+              {wishesBusy ? "🎬 Anvender ønsker…" : "🎬 Anvend ønsker"}
+            </button>
+            {wishesResult && (
+              <div className="ce-wishes-result">
+                <div className="ce-wishes-interpretation">
+                  <strong>Forsto:</strong> {wishesResult.interpretation}
+                </div>
+                <div className="ce-wishes-changes">
+                  ✓ {wishesResult.changesSummary}
+                </div>
+                <div className="ce-wishes-rationale">{wishesResult.rationale}</div>
+              </div>
+            )}
+            {wishesError && <div className="ce-claude-alt-error">⚠ {wishesError}</div>}
           </div>
 
           <button

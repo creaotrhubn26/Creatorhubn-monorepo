@@ -1139,6 +1139,85 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Client wishes — bride/groom natural-language input */
+.ce-wishes {
+  background: linear-gradient(135deg, rgba(239, 79, 111, 0.10), rgba(160, 48, 192, 0.05));
+  border: 1px solid rgba(239, 79, 111, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.ce-wishes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f0eaff;
+}
+.ce-wishes-clear {
+  background: transparent;
+  border: none;
+  color: #cca0e8;
+  font-size: 10.5px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.ce-wishes-clear:hover { color: #f0eaff; }
+.ce-wishes-input {
+  width: 100%;
+  background: rgba(10, 5, 24, 0.5);
+  border: 1px solid rgba(239, 79, 111, 0.25);
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: #f0eaff;
+  font-size: 11.5px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ce-wishes-input::placeholder { color: #7a6098; font-style: italic; }
+.ce-wishes-input:focus { border-color: rgba(239, 79, 111, 0.50); }
+.ce-wishes-input:disabled { opacity: 0.6; }
+
+.ce-wishes-apply {
+  background: linear-gradient(135deg, #ef4f6f, #a030c0);
+  border: none;
+  border-radius: 7px;
+  padding: 7px 12px;
+  color: white;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ce-wishes-apply:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 79, 111, 0.30);
+}
+.ce-wishes-apply:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.ce-wishes-result {
+  background: rgba(74, 212, 138, 0.08);
+  border: 1px solid rgba(74, 212, 138, 0.20);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #cce5d4;
+}
+.ce-wishes-interpretation strong { color: #4ad48a; }
+.ce-wishes-changes {
+  color: #4ad48a;
+  font-weight: 600;
+  margin: 4px 0;
+}
+.ce-wishes-rationale { color: #b8a8d8; font-style: italic; }
+
 .ce-claude-flow-btn {
   width: 100%;
   background: rgba(110, 63, 199, 0.10);
