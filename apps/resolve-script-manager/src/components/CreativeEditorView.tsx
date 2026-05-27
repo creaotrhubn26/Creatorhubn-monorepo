@@ -1373,10 +1373,31 @@ ${ctxLines.join("\n")}`;
         </div>
         <button
           className="ce-start"
-          onClick={() => setWizardStep((s) => Math.min(4, (s + 1)) as 1 | 2 | 3 | 4)}
+          onClick={() => {
+            const next = Math.min(4, wizardStep + 1) as 1 | 2 | 3 | 4;
+            setWizardStep(next);
+            // Step-specific actions: step 4 triggers export
+            if (next === 4 && !exportBusy) {
+              handleExport();
+            }
+            // Step 3: auto-fetch suggestions if not loaded yet
+            if (next === 3 && suggestions.length === 0 && !suggBusy) {
+              fetchSuggestions();
+            }
+          }}
+          disabled={exportBusy}
         >
-          <IconSparkle size={14} /> Start redigering
-          <div className="ce-start-sub">Claude vil hjelpe underveis</div>
+          <IconSparkle size={14} />
+          {wizardStep === 4 ? (exportBusy ? "Rendrer…" : "Eksporter MP4") :
+           wizardStep === 3 ? "Klar for eksport" :
+           wizardStep === 2 ? "Gå til redigering" :
+           "Start redigering"}
+          <div className="ce-start-sub">
+            {wizardStep === 4 ? "assemble_highlight_with_music"
+              : wizardStep === 3 ? "Claude foreslår underveis"
+              : wizardStep === 2 ? "Se story-flyt + balansering"
+              : "Claude vil hjelpe underveis"}
+          </div>
         </button>
       </footer>
     </div>
