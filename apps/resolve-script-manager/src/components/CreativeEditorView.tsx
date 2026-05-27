@@ -500,6 +500,23 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
           // First-time-load: trigger onboarding wizard
           setOnboardingOpen(true);
           setOnboardingStep(0);
+        } else {
+          // Backfill missing fields fra partial saved state (f.eks. seedet av NewProjectModal
+          // som kun setter customAudios). Hvis includedChapters mangler → inkluder alle.
+          try {
+            const raw = localStorage.getItem(key);
+            const s = raw ? JSON.parse(raw) : {};
+            if (!Array.isArray(s.includedChapters)) {
+              const chapters = new Set<string>();
+              for (const p of data.picks) chapters.add((p.chapter || "details").toLowerCase());
+              setIncludedChapters(chapters);
+            }
+            if (!s.projectTitle) {
+              const base = data.sourceVideo.split("/").pop() ?? "Highlight";
+              const clean = base.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+              setProjectTitle(clean);
+            }
+          } catch { /* non-critical */ }
         }
       })
       .catch((e) => setLoadError(`Failed to load picks: ${e}`));
