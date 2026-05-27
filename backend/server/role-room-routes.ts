@@ -117,6 +117,7 @@ import {
   buildChannelResults,
   type IndustryCategory,
   type AdsGoal,
+  type AdsPlatform,
   type GrowthPhase,
 } from './role-room-ads-shared.js';
 import {
@@ -185,6 +186,12 @@ import {
   BudgetExceededError,
 } from './role-room-ads-budget.js';
 import { syncMetaCampaignSpend, syncCampaignSpend } from './role-room-ads-sync.js';
+import {
+  generateAdCreatives,
+  checkAdGenerationReadiness,
+  type AdGenerationContext,
+} from './role-room-ad-creatives.js';
+import { fetchActiveMarketingPlan } from './role-room-marketing-plan.js';
 import {
   buildAdsConnectorRegistry,
   buildPlatformTokenResolver,
@@ -22093,7 +22100,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { projectId, customerId, name, dailyBudgetNok, channelType, businessProfileId } = req.body ?? {};
+        const { projectId, customerId, name, dailyBudgetNok, channelType, businessProfileId, creativeConfig } = req.body ?? {};
         if (!projectId || !customerId || !name || typeof dailyBudgetNok !== 'number') {
           return res.status(400).json({ error: 'invalid_input', detail: 'projectId, customerId, name, dailyBudgetNok required' });
         }
@@ -22118,6 +22125,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           status: 'paused',
           goal: name,
           dailyBudgetNok,
+          creativeConfig: creativeConfig ?? null,
         });
         res.status(201).json({ campaign: row, budgetResourceName: created.budgetResourceName });
       } catch (error) {
@@ -22244,7 +22252,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { projectId, accountUrn, campaignGroupUrn, name, dailyBudgetNok, objectiveType, businessProfileId } =
+        const { projectId, accountUrn, campaignGroupUrn, name, dailyBudgetNok, objectiveType, businessProfileId, creativeConfig } =
           req.body ?? {};
         if (!projectId || !accountUrn || !campaignGroupUrn || !name || typeof dailyBudgetNok !== 'number') {
           return res.status(400).json({
@@ -22270,6 +22278,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           status: 'draft',
           goal: name,
           dailyBudgetNok,
+          creativeConfig: creativeConfig ?? null,
         });
         res.status(201).json({ campaign: row });
       } catch (error) {
@@ -22487,6 +22496,98 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ period, ...results });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Ad-creative-generering (Lag 1: agenten lager riktige ads) ─────────
+  // Tar bedriftskontekst (auto-beriket fra aktiv marketing-plan) + ad-input
+  // (mål, plattform, landingsside, tilbud, compliance) og lar Claude lage
+  // plattform-tilpasset annonsetekst som produsenten redigerer/godkjenner.
+  // Selve creative lagres på kampanjen (creative_config) ved opprettelse.
+  const VALID_AD_PLATFORMS = new Set<AdsPlatform>(['meta', 'google', 'linkedin', 'tiktok']);
+  const VALID_AD_GOALS = new Set<AdsGoal>([
+    'brand_awareness',
+    'engagement',
+    'lead_generation',
+    'ecommerce_conversion',
+    'retargeting',
+  ]);
+
+  router.post(
+    '/ads/creatives/generate',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const {
+          projectId,
+          platform,
+          goal,
+          businessName,
+          productOrService,
+          industry,
+          targetAudience,
+          keyMessage,
+          landingUrl,
+          offer,
+          complianceNotes,
+          language,
+        } = req.body ?? {};
+
+        if (!projectId || typeof projectId !== 'string') {
+          return res.status(400).json({ error: 'projectId_required' });
+        }
+        if (!VALID_AD_PLATFORMS.has(platform)) {
+          return res.status(400).json({ error: 'invalid_platform', detail: 'platform må være meta/google/linkedin/tiktok' });
+        }
+        if (!VALID_AD_GOALS.has(goal)) {
+          return res.status(400).json({ error: 'invalid_goal' });
+        }
+
+        // AI-generering teller mot agent-kvoten (samme som marketing-plan).
+        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        if (!entitlement.allowed) {
+          return res.status(402).json({ error: 'entitlement_required', entitlement });
+        }
+
+        // Auto-berik med den sterkeste merkevare-konteksten vi har: den
+        // aktive marketing-planen (posisjonering, tone, pilarer).
+        const plan = await fetchActiveMarketingPlan(pool, projectId).catch(() => null);
+        const context: AdGenerationContext = {
+          businessName: typeof businessName === 'string' && businessName.trim() ? businessName.trim() : 'Bedriften',
+          productOrService: productOrService ?? null,
+          industry: industry ?? null,
+          valueProp: plan?.strategy?.positioning?.valueProp ?? null,
+          differentiator: plan?.strategy?.positioning?.differentiator ?? null,
+          toneVoice: plan?.strategy?.toneOfVoice?.voice ?? null,
+          toneDos: plan?.strategy?.toneOfVoice?.dos ?? undefined,
+          toneDonts: plan?.strategy?.toneOfVoice?.donts ?? undefined,
+          pillars: plan?.pillars?.map((p) => ({ name: p.name, description: p.description })) ?? undefined,
+          targetAudience: targetAudience ?? null,
+          keyMessage: keyMessage ?? null,
+          landingUrl: landingUrl ?? null,
+          offer: offer ?? null,
+          complianceNotes: complianceNotes ?? null,
+          language: language === 'en' ? 'en' : 'no',
+        };
+
+        const readiness = checkAdGenerationReadiness(context);
+        if (!readiness.ready) {
+          return res.status(422).json({ error: 'insufficient_context', missingFields: readiness.missingFields });
+        }
+
+        const creative = await generateAdCreatives({
+          context,
+          platform: platform as AdsPlatform,
+          goal: goal as AdsGoal,
+        });
+        if (!creative) {
+          return res.status(503).json({ error: 'generator_unavailable', detail: 'AI-generatoren er utilgjengelig. Prøv igjen.' });
+        }
+        res.json({ creative });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to generate ad creatives', detail: String(error) });
       }
     },
   );

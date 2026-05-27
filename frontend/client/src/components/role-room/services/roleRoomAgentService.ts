@@ -1044,6 +1044,29 @@ export interface RoleRoomLinkedInCampaignGroup {
   status: string | null;
 }
 
+// ── AI-genererte annonser (Lag 1) ──────────────────────────────────────
+export interface RoleRoomAdVariant {
+  headline: string;
+  headlines?: string[];
+  primaryText?: string | null;
+  description?: string | null;
+  descriptions?: string[];
+  callToAction?: string | null;
+  imageBrief?: string | null;
+  imagePrompt?: string | null;
+  rationale?: string | null;
+}
+
+export interface RoleRoomGeneratedAdCreative {
+  platform: 'meta' | 'google' | 'linkedin' | 'tiktok';
+  goal: string;
+  variants: RoleRoomAdVariant[];
+  landingUrl?: string | null;
+  complianceChecklist?: string[];
+  generatedWithModel: string;
+  usage?: { inputTokens: number; outputTokens: number; costNok: number | null };
+}
+
 // ── Granted ad-asset overview (which Pages/accounts the client gave admin to) ──
 
 export interface RoleRoomGrantedMetaPage {
@@ -1475,6 +1498,7 @@ export const roleRoomAgentService = {
     objective: string;
     dailyBudgetNok?: number;
     goal?: string;
+    creativeConfig?: Record<string, unknown> | null;
   }): Promise<{ campaign: RoleRoomAdsCampaign } | { error: string }> {
     const response = await fetch('/api/role-room/ads/meta/campaigns', {
       method: 'POST',
@@ -1501,6 +1525,7 @@ export const roleRoomAgentService = {
     name: string;
     dailyBudgetNok: number;
     channelType?: string;
+    creativeConfig?: Record<string, unknown> | null;
   }): Promise<{ campaign: RoleRoomAdsCampaign } | { error: string }> {
     const response = await fetch('/api/role-room/ads/google/campaigns', {
       method: 'POST',
@@ -1536,6 +1561,7 @@ export const roleRoomAgentService = {
     name: string;
     dailyBudgetNok: number;
     objectiveType?: string;
+    creativeConfig?: Record<string, unknown> | null;
   }): Promise<{ campaign: RoleRoomAdsCampaign } | { error: string }> {
     const response = await fetch('/api/role-room/ads/linkedin/campaigns', {
       method: 'POST',
@@ -1545,6 +1571,36 @@ export const roleRoomAgentService = {
     const payload = await response.json().catch(() => null);
     if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke opprette LinkedIn-kampanje' };
     return { campaign: payload.campaign };
+  },
+
+  /** Lag 1 — AI lager plattform-tilpasset annonsetekst fra bedriftskonteksten. */
+  async generateAdCreatives(input: {
+    projectId: string;
+    platform: 'meta' | 'google' | 'linkedin' | 'tiktok';
+    goal: string;
+    businessName?: string;
+    productOrService?: string;
+    industry?: string;
+    targetAudience?: string;
+    keyMessage?: string;
+    landingUrl?: string;
+    offer?: string;
+    complianceNotes?: string;
+    language?: 'no' | 'en';
+  }): Promise<{ creative: RoleRoomGeneratedAdCreative } | { error: string; missingFields?: string[] }> {
+    const response = await fetch('/api/role-room/ads/creatives/generate', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        error: payload?.detail || payload?.error || 'Kunne ikke generere annonsetekst',
+        missingFields: Array.isArray(payload?.missingFields) ? payload.missingFields : undefined,
+      };
+    }
+    return { creative: payload.creative };
   },
 
   async pauseAdsCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {

@@ -204,10 +204,24 @@ def color_look_filter(look: str) -> str:
     return ""
 
 
+def transition_to_xfade(t: str) -> tuple[str, str]:
+    """Map UI transition-name → (ffmpeg xfade transition, acrossfade curve)."""
+    t = (t or "fade").lower()
+    if t == "cut":         return ("fade", "tri")  # use fade w/ 0.05s, basically a cut
+    if t == "fade":        return ("fade", "tri")
+    if t == "dissolve":    return ("dissolve", "tri")
+    if t == "wipeleft":    return ("wipeleft", "tri")
+    if t == "fadeblack":   return ("fadeblack", "exp")
+    if t == "fadewhite":   return ("fadewhite", "exp")
+    return ("fade", "tri")
+
+
 def build_filter_complex(specs: list[dict], xfade_normal: float,
                           xfade_climax: float,
                           aspect: str = "16:9",
-                          color_look: str = "") -> str:
+                          color_look: str = "",
+                          pick_transitions: dict[str, str] | None = None) -> str:
+    pick_transitions = pick_transitions or {}
     # Aspect → output dimensions + scale-filter
     if aspect == "9:16":
         w, h = 1080, 1920
@@ -252,15 +266,23 @@ def build_filter_complex(specs: list[dict], xfade_normal: float,
     prev_v, prev_a = "[v0]", "[a0]"
     for i in range(1, len(specs)):
         xfade = xfade_climax if specs[i].get("is_climax") else xfade_normal
-        safe = min(xfade, durs[i-1] * 0.8, durs[i] * 0.8)
+        # Per-boundary transition-override from UI
+        boundary_key = f"{i-1}-{i}"
+        ui_trans = pick_transitions.get(boundary_key, "")
+        xfade_type, acrossfade_curve = transition_to_xfade(ui_trans) if ui_trans else \
+            ("fade", "exp" if specs[i].get("is_climax") else "tri")
+        # "cut" → 50ms ultra-short fade (effectively a hard cut)
+        if ui_trans == "cut":
+            safe = min(0.05, durs[i-1] * 0.8, durs[i] * 0.8)
+        else:
+            safe = min(xfade, durs[i-1] * 0.8, durs[i] * 0.8)
         out_v, out_a = f"[vx{i}]", f"[ax{i}]"
-        curve = "exp" if specs[i].get("is_climax") else "tri"
         parts.append(
-            f"{prev_v}[v{i}]xfade=transition=fade:duration={safe:.2f}:"
+            f"{prev_v}[v{i}]xfade=transition={xfade_type}:duration={safe:.2f}:"
             f"offset={cum-safe:.3f}{out_v}"
         )
         parts.append(
-            f"{prev_a}[a{i}]acrossfade=d={safe:.2f}:c1={curve}:c2={curve}{out_a}"
+            f"{prev_a}[a{i}]acrossfade=d={safe:.2f}:c1={acrossfade_curve}:c2={acrossfade_curve}{out_a}"
         )
         cum += durs[i] - safe
         prev_v, prev_a = out_v, out_a
@@ -526,9 +548,58 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     aspect = (params.get("aspectRatio") or "16:9").strip()
     if aspect not in ("16:9", "9:16", "1:1"): aspect = "16:9"
     color_look = (params.get("colorLook") or "").strip().lower()
+
+    # Per-boundary transitions from CreativeEditor's transition-picker
+    pick_transitions_raw = params.get("pickTransitions") or {}
+    pick_transitions: dict[str, str] = {}
+    if isinstance(pick_transitions_raw, dict):
+        for k, v in pick_transitions_raw.items():
+            if isinstance(v, str): pick_transitions[str(k)] = v
+
+    # Custom audio tracks (user-added files)
+    custom_audios = params.get("customAudios") or []
+    if not isinstance(custom_audios, list): custom_audios = []
+    valid_custom_audios = [
+        a for a in custom_audios
+        if isinstance(a, dict) and "path" in a and os.path.isfile(a["path"])
+    ]
+    if valid_custom_audios:
+        bridge.log(f"Adding {len(valid_custom_audios)} custom audio track(s)")
+
     bridge.log(f"Render aspect: {aspect}" + (f", color look: {color_look}" if color_look else ""))
     filter_complex, total_dur = build_filter_complex(specs, xfade_normal, xfade_climax,
-                                                       aspect=aspect, color_look=color_look)
+                                                       aspect=aspect, color_look=color_look,
+                                                       pick_transitions=pick_transitions)
+
+    # If custom audio tracks supplied, append them as additional inputs +
+    # extend filter_complex to mix them with main outa
+    if valid_custom_audios:
+        # Strip the final "[outa]" rename — we'll re-mix
+        base_audio_label = "[mainAudio]"
+        filter_complex = filter_complex.replace("anull[outa]", f"anull{base_audio_label}")
+        # Each custom audio becomes a delayed + volumed track
+        audio_inputs_filter = []
+        labels_to_mix = [base_audio_label]
+        for i, a in enumerate(valid_custom_audios):
+            inputs += ["-i", a["path"]]
+            input_idx = len(inputs) // 2 - 1  # 0-indexed input position
+            start_ms = int(float(a.get("startSec", 0)) * 1000)
+            volume = float(a.get("volume", 0.8))
+            label = f"[ca{i}]"
+            # adelay can take a single value applied to all channels via "all=1"
+            audio_inputs_filter.append(
+                f"[{input_idx}:a]aresample=48000,adelay={start_ms}|{start_ms},"
+                f"volume={volume:.2f}{label}"
+            )
+            labels_to_mix.append(label)
+        # amix all together → outa
+        mix_label = "".join(labels_to_mix)
+        audio_inputs_filter.append(
+            f"{mix_label}amix=inputs={len(labels_to_mix)}:duration=longest:"
+            f"dropout_transition=0:normalize=0[outa]"
+        )
+        filter_complex = filter_complex + ";" + ";".join(audio_inputs_filter)
+
     cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning",
            *inputs, "-filter_complex", filter_complex,
            "-map", "[outv]", "-map", "[outa]",
