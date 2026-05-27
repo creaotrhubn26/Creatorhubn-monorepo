@@ -508,6 +508,29 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const songs = advisor?.uniqueSongs ?? [];
   const activeSong = songs[activeSongIdx];
 
+  // Trigger music-analysis on song-change
+  useEffect(() => {
+    if (!activeSong) { setMusicFlow(null); return; }
+    const wavPath = songWavPath(activeSong.title, activeSong.artist);
+    if (!wavPath) { setMusicFlow(null); return; }
+    let cancelled = false;
+    setMusicFlowBusy(true);
+    (async () => {
+      try {
+        const summary = await executeScript("analyze_music_for_flow", { audioPath: wavPath }, false);
+        const result = summary.events.find(e => e.type === "result");
+        if (!cancelled && result) {
+          setMusicFlow(result.value as MusicFlowData);
+        }
+      } catch (e) {
+        console.warn("Music flow analysis failed:", e);
+      } finally {
+        if (!cancelled) setMusicFlowBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeSong?.title, activeSong?.artist]);
+
   const videoSrc = useMemo(() => payload ? convertFileSrc(payload.sourceVideo) : "", [payload]);
   // When hover is active, play that segment; else play focused
   const activePick = (hoveredPickIdx != null && filteredPicks[hoveredPickIdx]) || filteredPicks[focusedPickIdx];
@@ -750,6 +773,21 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   }, [filteredPicks, activeSong]);
 
   const [flowMapOpen, setFlowMapOpen] = useState(false);
+
+  // ─── Music-Driven Flow Map data (from analyze_music_for_flow.py) ───
+  type MusicFlowData = {
+    duration: number;
+    tempo: number;
+    beats: number[];
+    downbeats: number[];
+    sections: { startSec: number; endSec: number; label: string; rms: number }[];
+    rms: { t: number; value: number }[];
+    silence: { startSec: number; endSec: number }[];
+    spectralCentroid: { t: number; value: number }[];
+    drops: { t: number; intensity: number }[];
+  };
+  const [musicFlow, setMusicFlow] = useState<MusicFlowData | null>(null);
+  const [musicFlowBusy, setMusicFlowBusy] = useState(false);
 
   // Story Arc phase analysis — find intro/build/peak/outro
   const storyArcPhases = useMemo(() => {
@@ -1807,60 +1845,137 @@ ${ctxLines.join("\n")}`;
 
           {/* Timeline strip */}
           <div className="ce-timeline">
-            {/* Flow Map — toggle expandable layered graphs */}
+            {/* Music-Driven Flow Map — beat structure, sections, RMS, drops, silence, spectral */}
             <div className="ce-flowmap-header">
               <button
                 className="ce-flowmap-toggle"
                 onClick={() => setFlowMapOpen(v => !v)}
               >
-                {flowMapOpen ? "▼" : "▶"} Flow Map (energi · musikk · emosjon · visuell · dialog)
+                {flowMapOpen ? "▼" : "▶"} Music Flow Map ({musicFlow ? `${musicFlow.tempo} BPM · ${musicFlow.sections.length} seksjoner · ${musicFlow.drops.length} drops` : musicFlowBusy ? "analyserer…" : "ingen sang"})
               </button>
             </div>
-            {flowMapOpen && flowMapData && flowMapData.layers.length > 1 && (
+            {flowMapOpen && musicFlow && (
               <div className="ce-flowmap">
-                {([
-                  { key: "energy", label: "Energi", color: "#c850e0" },
-                  { key: "musicIntensity", label: "Musikk", color: "#a030c0" },
-                  { key: "emotionalDensity", label: "Emosjon", color: "#ef4f6f" },
-                  { key: "visualVariation", label: "Visuell variasjon", color: "#f0a500" },
-                  { key: "dialogueDensity", label: "Dialog", color: "#4ad48a" },
-                ] as { key: keyof typeof flowMapData.layers[0]; label: string; color: string }[]).map(layer => {
-                  const path = (() => {
-                    const w = 1000, h = 38;
-                    const points = flowMapData.layers.map(pt => {
-                      const x = (pt.midSec / flowMapData.totalDur) * w;
-                      const v = pt[layer.key] as number;
-                      const y = h - (v * h * 0.85);
-                      return `${x},${y}`;
-                    });
-                    return `M ${points.join(" L ")}`;
-                  })();
-                  const fillPath = (() => {
-                    const w = 1000, h = 38;
-                    const points = flowMapData.layers.map(pt => {
-                      const x = (pt.midSec / flowMapData.totalDur) * w;
-                      const v = pt[layer.key] as number;
-                      const y = h - (v * h * 0.85);
-                      return `${x},${y}`;
-                    });
-                    const first = flowMapData.layers[0].midSec / flowMapData.totalDur * w;
-                    const last = flowMapData.layers[flowMapData.layers.length-1].midSec / flowMapData.totalDur * w;
-                    return `M ${first},${h} L ${points.join(" L ")} L ${last},${h} Z`;
-                  })();
-                  return (
-                    <div key={layer.key} className="ce-flowmap-layer">
-                      <div className="ce-flowmap-label" style={{ color: layer.color }}>
-                        <span style={{ background: layer.color }} className="ce-flowmap-dot" />
-                        {layer.label}
-                      </div>
-                      <svg className="ce-flowmap-svg" viewBox="0 0 1000 38" preserveAspectRatio="none">
-                        <path d={fillPath} fill={layer.color} fillOpacity="0.15" />
-                        <path d={path} fill="none" stroke={layer.color} strokeWidth="1.8"
-                              strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  );
-                })}
+                {/* Section bands (chorus/verse/drop/etc.) */}
+                <div className="ce-flowmap-layer">
+                  <div className="ce-flowmap-label" style={{ color: "#c850e0" }}>
+                    <span style={{ background: "#c850e0" }} className="ce-flowmap-dot" />
+                    Sections
+                  </div>
+                  <div className="ce-flowmap-sections">
+                    {musicFlow.sections.map((sec, i) => {
+                      const colors: Record<string, string> = {
+                        intro: "#4ad48a", verse: "#6e3fc7", chorus: "#c850e0",
+                        drop: "#ef4f6f", bridge: "#f0a500", outro: "#8674a8", song: "#a030c0",
+                      };
+                      const color = colors[sec.label] ?? "#a030c0";
+                      return (
+                        <div
+                          key={i}
+                          className="ce-flowmap-section"
+                          style={{
+                            left: `${(sec.startSec / musicFlow.duration) * 100}%`,
+                            width: `${((sec.endSec - sec.startSec) / musicFlow.duration) * 100}%`,
+                            background: color + "40", borderColor: color,
+                            color: color,
+                          }}
+                          title={`${sec.label} (${sec.startSec.toFixed(1)}-${sec.endSec.toFixed(1)}s, RMS ${sec.rms.toFixed(2)})`}
+                        >
+                          {sec.label}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* RMS energy curve */}
+                <div className="ce-flowmap-layer">
+                  <div className="ce-flowmap-label" style={{ color: "#a030c0" }}>
+                    <span style={{ background: "#a030c0" }} className="ce-flowmap-dot" />
+                    RMS-energi
+                  </div>
+                  <svg className="ce-flowmap-svg" viewBox="0 0 1000 38" preserveAspectRatio="none">
+                    {(() => {
+                      const w = 1000, h = 38;
+                      const points = musicFlow.rms.map(pt =>
+                        `${(pt.t / musicFlow.duration) * w},${h - (pt.value * h * 0.85)}`
+                      );
+                      if (points.length === 0) return null;
+                      const fillPath = `M 0,${h} L ${points.join(" L ")} L ${w},${h} Z`;
+                      return (
+                        <>
+                          <path d={fillPath} fill="#a030c0" fillOpacity="0.20" />
+                          <path d={`M ${points.join(" L ")}`} fill="none" stroke="#a030c0"
+                                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        </>
+                      );
+                    })()}
+                    {/* Drops marked with red dots */}
+                    {musicFlow.drops.map((d, i) => {
+                      const x = (d.t / musicFlow.duration) * 1000;
+                      const y = 38 - (d.intensity * 38 * 0.85);
+                      return <circle key={i} cx={x} cy={y} r="3" fill="#ef4f6f"
+                                     stroke="white" strokeWidth="0.5" />;
+                    })}
+                  </svg>
+                </div>
+
+                {/* Spectral centroid (brightness) */}
+                <div className="ce-flowmap-layer">
+                  <div className="ce-flowmap-label" style={{ color: "#f0a500" }}>
+                    <span style={{ background: "#f0a500" }} className="ce-flowmap-dot" />
+                    Brightness
+                  </div>
+                  <svg className="ce-flowmap-svg" viewBox="0 0 1000 38" preserveAspectRatio="none">
+                    {(() => {
+                      const w = 1000, h = 38;
+                      const points = musicFlow.spectralCentroid.map(pt =>
+                        `${(pt.t / musicFlow.duration) * w},${h - (pt.value * h * 0.85)}`
+                      );
+                      if (points.length === 0) return null;
+                      const fillPath = `M 0,${h} L ${points.join(" L ")} L ${w},${h} Z`;
+                      return (
+                        <>
+                          <path d={fillPath} fill="#f0a500" fillOpacity="0.15" />
+                          <path d={`M ${points.join(" L ")}`} fill="none" stroke="#f0a500"
+                                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </>
+                      );
+                    })()}
+                  </svg>
+                </div>
+
+                {/* Beat grid + silence */}
+                <div className="ce-flowmap-layer">
+                  <div className="ce-flowmap-label" style={{ color: "#4ad48a" }}>
+                    <span style={{ background: "#4ad48a" }} className="ce-flowmap-dot" />
+                    Beats ({musicFlow.tempo} BPM)
+                  </div>
+                  <svg className="ce-flowmap-svg" viewBox="0 0 1000 38" preserveAspectRatio="none">
+                    {/* Silence regions (gray boxes) */}
+                    {musicFlow.silence.map((s, i) => {
+                      const x = (s.startSec / musicFlow.duration) * 1000;
+                      const w = ((s.endSec - s.startSec) / musicFlow.duration) * 1000;
+                      return <rect key={i} x={x} y={0} width={w} height={38}
+                                   fill="rgba(134, 116, 168, 0.30)" />;
+                    })}
+                    {/* Beats */}
+                    {musicFlow.beats.map((b, i) => {
+                      const x = (b / musicFlow.duration) * 1000;
+                      const isDownbeat = i % 4 === 0;
+                      return (
+                        <line key={i} x1={x} y1={isDownbeat ? 4 : 12} x2={x} y2={34}
+                              stroke={isDownbeat ? "#4ad48a" : "rgba(74, 212, 138, 0.4)"}
+                              strokeWidth={isDownbeat ? "1.2" : "0.6"} />
+                      );
+                    })}
+                  </svg>
+                </div>
+              </div>
+            )}
+            {flowMapOpen && !musicFlow && !musicFlowBusy && (
+              <div className="ce-flowmap" style={{ padding: 24, textAlign: "center", color: "#8674a8", fontSize: 11.5 }}>
+                Velg en sang i header (Music-meny) for å analysere musikk-flow.
               </div>
             )}
 

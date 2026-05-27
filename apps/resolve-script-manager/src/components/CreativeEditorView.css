@@ -810,6 +810,28 @@
   height: 100%;
 }
 
+/* Music section bands */
+.ce-flowmap-sections {
+  flex: 1;
+  position: relative;
+  height: 100%;
+}
+.ce-flowmap-section {
+  position: absolute;
+  top: 4px; bottom: 4px;
+  border: 1px solid;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  overflow: hidden;
+  cursor: help;
+}
+
 /* Story Arc overlay */
 .ce-story-arc {
   position: relative;

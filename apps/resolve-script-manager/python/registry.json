@@ -1432,6 +1432,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "analyze_music_for_flow",
+      "name": "Analyze Music for Flow Map",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_music_for_flow.py",
+      "description": "Analyserer en lyd-fil for å produsere Music-Driven Flow Map data: tempo + beats + downbeats, sections (intro/verse/chorus/drop/bridge/outro), RMS-energi-kurve, silence-regioner, spectral centroid (brightness), og auto-detekterte drops. Cache i music_flow/<navn>.json med 30-dagers TTL.",
+      "requiredInputs": [
+        {"key": "audioPath", "label": "Audio file (.wav)", "type": "file", "required": true},
+        {"key": "outputPath", "label": "Output JSON path (optional)", "type": "text", "required": false}
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "scan_and_recommend_music",
       "name": "Scan & Recommend Music (Advisor)",
       "category": "audio",
