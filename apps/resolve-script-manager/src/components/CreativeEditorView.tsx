@@ -307,6 +307,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playRate, setPlayRate] = useState(1);
+  // Loop within focused pick (default) vs play full source continuously
+  const [loopMode, setLoopMode] = useState<"pick" | "full">("pick");
 
   // Claude chat state — separate history per agent
   type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -550,28 +552,31 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
     }
   }, [lookPack]);
 
-  // ─── Video playback: seek to focused pick + loop within range ───
+  // ─── Video playback: seek to focused pick (kun i pick-loop-mode) ───
   useEffect(() => {
     if (!videoRef.current || !focusedPick) return;
+    // I full-mode: ikke seek tilbake til pick-start når focus endrer seg
+    if (loopMode === "full") return;
     const v = videoRef.current;
     if (Math.abs(v.currentTime - focusedPick.startSec) > 0.5) {
       v.currentTime = focusedPick.startSec;
     }
-  }, [focusedPickIdx, focusedPick]);
+  }, [focusedPickIdx, focusedPick, loopMode]);
 
-  // Loop within current pick range
+  // Loop within current pick range (pick-mode) eller spill fritt (full-mode)
   useEffect(() => {
     if (!videoRef.current || !focusedPick) return;
     const v = videoRef.current;
     const onTime = () => {
       setCurrentTime(v.currentTime - focusedPick.startSec);
-      if (v.currentTime >= focusedPick.endSec) {
+      // Bare loop hvis vi er i pick-mode
+      if (loopMode === "pick" && v.currentTime >= focusedPick.endSec) {
         v.currentTime = focusedPick.startSec;
       }
     };
     v.addEventListener("timeupdate", onTime);
     return () => v.removeEventListener("timeupdate", onTime);
-  }, [focusedPick]);
+  }, [focusedPick, loopMode]);
 
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
@@ -1790,6 +1795,21 @@ ${ctxLines.join("\n")}`;
                   {formatTime(currentTime)} / {focusedPick ? formatTime(focusedPick.durationSec) : "00:00"}
                 </div>
                 <div className="ce-spacer" />
+                <button
+                  className="ce-icon-btn"
+                  onClick={() => setLoopMode(m => m === "pick" ? "full" : "pick")}
+                  title={loopMode === "pick" ? "Loop kun focused pick (klikk → spill hele filmen)" : "Spiller hele filmen (klikk → loop pick)"}
+                  style={{
+                    background: loopMode === "full" ? "rgba(74, 212, 138, 0.20)" : undefined,
+                    color: loopMode === "full" ? "#4ad48a" : undefined,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: "0 8px",
+                    minWidth: 56,
+                  }}
+                >
+                  {loopMode === "pick" ? "🔁 Loop" : "▶ Hele"}
+                </button>
                 <button className="ce-icon-btn" onClick={cyclePlayRate}>{playRate}x</button>
                 <button className="ce-icon-btn">⛶</button>
               </div>
