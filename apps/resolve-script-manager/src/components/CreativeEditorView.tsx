@@ -328,6 +328,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   // Trim state — adjusts focused pick's startSec/endSec via local override
   const [pickOverrides, setPickOverrides] = useState<Record<number, { startSec?: number; endSec?: number }>>({});
   const [trimMode, setTrimMode] = useState(false);
+  const [snapToBeat, setSnapToBeat] = useState(true);
 
   // ─── Persist edit state per-project to localStorage ───
   // Key = source-video path. State: title, included chapters, pickOverrides,
@@ -713,6 +714,31 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
       [pickIndex]: { ...prev[pickIndex], startSec, endSec },
     }));
   }, []);
+
+  // ─── Smart snap-all: align every pick's duration to whole-beat multiples ───
+  const snapAllToBeats = useCallback(() => {
+    if (!activeSong?.bpm) return;
+    const beatInterval = 60 / activeSong.bpm;
+    const newOverrides: typeof pickOverrides = { ...pickOverrides };
+    let snappedCount = 0;
+    for (const p of filteredPicks) {
+      const original = payload?.picks.find(x => x.index === p.index);
+      if (!original) continue;
+      const currentDur = p.endSec - p.startSec;
+      const nBeats = Math.max(1, Math.round(currentDur / beatInterval));
+      const newDur = nBeats * beatInterval;
+      // Center the new duration around the original midpoint
+      const mid = (p.startSec + p.endSec) / 2;
+      const newStart = mid - newDur / 2;
+      const newEnd = mid + newDur / 2;
+      if (Math.abs(newDur - currentDur) > 0.05) {
+        newOverrides[p.index] = { startSec: newStart, endSec: newEnd };
+        snappedCount++;
+      }
+    }
+    setPickOverrides(newOverrides);
+    return snappedCount;
+  }, [activeSong, filteredPicks, payload, pickOverrides]);
 
   // ─── AI Attention Tracking: Claude evaluates narrative-flow per pick ───
   const analyzeNarrativeFlow = useCallback(async () => {
@@ -1174,12 +1200,16 @@ ${ctxLines.join("\n")}`;
             <TrimPanel
               pick={focusedPick}
               originalPick={payload.picks.find(p => p.index === focusedPick.index)}
+              bpm={activeSong?.bpm}
+              snapToBeat={snapToBeat}
+              onSnapToggle={() => setSnapToBeat(v => !v)}
               onChange={(s, e) => applyTrim(focusedPick.index, s, e)}
               onReset={() => setPickOverrides(prev => {
                 const next = { ...prev };
                 delete next[focusedPick.index];
                 return next;
               })}
+              onSnapAll={snapAllToBeats}
             />
           )}
 
@@ -1429,42 +1459,83 @@ function ToolButton({ icon, label, active = false, onClick }: {
   );
 }
 
-function TrimPanel({ pick, originalPick, onChange, onReset }: {
+function TrimPanel({ pick, originalPick, bpm, snapToBeat, onSnapToggle, onChange, onReset, onSnapAll }: {
   pick: Pick;
   originalPick?: Pick;
+  bpm?: number;
+  snapToBeat: boolean;
+  onSnapToggle: () => void;
   onChange: (startSec?: number, endSec?: number) => void;
   onReset: () => void;
+  onSnapAll: () => void;
 }) {
   // Bounds: allow ±50% expansion from original pick range
   const orig = originalPick ?? pick;
   const minStart = Math.max(0, orig.startSec - orig.durationSec * 0.5);
   const maxEnd = orig.endSec + orig.durationSec * 0.5;
+  const beatInterval = bpm ? 60 / bpm : 0;
   const [start, setStart] = useState(pick.startSec);
   const [end, setEnd] = useState(pick.endSec);
 
   useEffect(() => { setStart(pick.startSec); setEnd(pick.endSec); }, [pick.index, pick.startSec, pick.endSec]);
 
-  const commit = () => onChange(start, end);
+  // Snap helper — round delta from minStart to nearest beat-interval
+  const snap = (v: number) => {
+    if (!snapToBeat || !beatInterval) return v;
+    const offset = v - minStart;
+    const snapped = Math.round(offset / beatInterval) * beatInterval;
+    return Math.max(minStart, Math.min(maxEnd, minStart + snapped));
+  };
+  const commit = () => onChange(snap(start), snap(end));
+
+  // Beat-grid positions for visual ruler (relative 0..1)
+  const range = maxEnd - minStart;
+  const beatTicks = beatInterval ? Math.floor(range / beatInterval) : 0;
 
   return (
     <div className="ce-trim-panel">
       <div className="ce-trim-header">
         <strong>Trim shot#{pick.index}</strong>
         <span className="ce-trim-dur">{(end - start).toFixed(2)}s</span>
+        {bpm && (
+          <label className="ce-trim-snap-toggle">
+            <input type="checkbox" checked={snapToBeat} onChange={onSnapToggle} />
+            <span>♪ Snap til beat ({bpm} BPM)</span>
+          </label>
+        )}
       </div>
+      {/* Beat-grid overlay */}
+      {beatTicks > 0 && (
+        <div className="ce-trim-beatgrid">
+          {Array.from({ length: beatTicks + 1 }).map((_, i) => (
+            <div
+              key={i}
+              className={`ce-trim-beat ${i % 4 === 0 ? "downbeat" : ""}`}
+              style={{ left: `${(i * beatInterval / range) * 100}%` }}
+            />
+          ))}
+          <div
+            className="ce-trim-region"
+            style={{
+              left:  `${((start - minStart) / range) * 100}%`,
+              width: `${((end - start) / range) * 100}%`,
+            }}
+          />
+        </div>
+      )}
       <div className="ce-trim-row">
         <label>Start</label>
         <input
           type="range"
           min={minStart}
           max={end - 0.1}
-          step={0.01}
+          step={snapToBeat && beatInterval ? beatInterval : 0.01}
           value={start}
           onChange={e => setStart(parseFloat(e.target.value))}
           onMouseUp={commit}
           onTouchEnd={commit}
         />
-        <span className="ce-trim-val">{start.toFixed(2)}s</span>
+        <span className="ce-trim-val">{snap(start).toFixed(2)}s</span>
       </div>
       <div className="ce-trim-row">
         <label>Slutt</label>
@@ -1472,15 +1543,20 @@ function TrimPanel({ pick, originalPick, onChange, onReset }: {
           type="range"
           min={start + 0.1}
           max={maxEnd}
-          step={0.01}
+          step={snapToBeat && beatInterval ? beatInterval : 0.01}
           value={end}
           onChange={e => setEnd(parseFloat(e.target.value))}
           onMouseUp={commit}
           onTouchEnd={commit}
         />
-        <span className="ce-trim-val">{end.toFixed(2)}s</span>
+        <span className="ce-trim-val">{snap(end).toFixed(2)}s</span>
       </div>
       <div className="ce-trim-actions">
+        {bpm && (
+          <button className="ce-trim-snap-all" onClick={onSnapAll}>
+            ♪ Snap alle picks til {bpm} BPM
+          </button>
+        )}
         <button className="ce-trim-reset" onClick={onReset}>Tilbakestill original</button>
       </div>
     </div>
