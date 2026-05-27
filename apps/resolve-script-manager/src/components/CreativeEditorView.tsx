@@ -263,7 +263,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [projectTitle, setProjectTitle] = useState<string>("");
   const [editingTitle, setEditingTitle] = useState(false);
-  const [aspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
   const [activeSongIdx, setActiveSongIdx] = useState(0);
   const [songMenuOpen, setSongMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"rediger" | "story">("rediger");
@@ -691,6 +692,8 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
         musicStrategy: "main+climax",
         // User's song selection from header dropdown (else falls back to advisor #1)
         mainSongTitle: activeSong?.title,
+        // Render aspect from header dropdown (16:9 / 9:16 / 1:1)
+        aspectRatio: aspectRatio,
         // Pass current editor-state so trim/reorder/segment-toggle persists into render
         pickOverrides: pickOverrides,
         pickOrder: activePickOrder ?? undefined,
@@ -948,9 +951,28 @@ ${ctxLines.join("\n")}`;
           )}
         </div>
         <div className="ce-meta">
-          <button className="ce-aspect">
+          <button className="ce-aspect" onClick={() => setAspectMenuOpen(v => !v)}>
             <span>📐</span> {aspectRatio}
+            <span>▾</span>
           </button>
+          {aspectMenuOpen && (
+            <div className="ce-aspect-menu">
+              {([
+                { v: "16:9" as const, name: "Landscape", desc: "1920×1080 — TV/YouTube" },
+                { v: "9:16" as const, name: "Reels / TikTok", desc: "1080×1920 — Instagram" },
+                { v: "1:1"  as const, name: "Square", desc: "1080×1080 — feed-post" },
+              ]).map(opt => (
+                <div
+                  key={opt.v}
+                  className={`ce-aspect-item ${aspectRatio === opt.v ? "active" : ""}`}
+                  onClick={() => { setAspectRatio(opt.v); setAspectMenuOpen(false); }}
+                >
+                  <div className="ce-aspect-item-name">{opt.v} — {opt.name}</div>
+                  <div className="ce-aspect-item-desc">{opt.desc}</div>
+                </div>
+              ))}
+            </div>
+          )}
           <button className="ce-song" onClick={() => setSongMenuOpen((v) => !v)}>
             <IconMusic size={14} /> {activeSong ? `${activeSong.title} – ${activeSong.artist}` : "Velg sang"}
             <span>▾</span>
@@ -1069,7 +1091,17 @@ ${ctxLines.join("\n")}`;
           </div>
 
           {/* Live preview */}
-          <div className="ce-preview-wrap">
+          <div
+            className="ce-preview-wrap"
+            style={{
+              aspectRatio: aspectRatio === "16:9" ? "16 / 9"
+                : aspectRatio === "9:16" ? "9 / 16"
+                : "1 / 1",
+              maxHeight: aspectRatio === "9:16" ? "70vh" : "none",
+              maxWidth: aspectRatio === "9:16" ? "40vh" : aspectRatio === "1:1" ? "60vh" : "none",
+              margin: aspectRatio !== "16:9" ? "0 auto" : "0",
+            }}
+          >
             <video
               ref={videoRef}
               src={videoSrc}

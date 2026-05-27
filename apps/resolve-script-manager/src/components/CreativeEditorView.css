@@ -128,6 +128,29 @@
   transition: background 0.12s, border-color 0.12s;
 }
 .ce-aspect:hover, .ce-song:hover { background: rgba(38, 21, 86, 0.8); border-color: #341d6c; }
+.ce-aspect-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 240px;
+  background: #120936;
+  border: 1px solid #2c1860;
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  z-index: 100;
+}
+.ce-aspect-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ce-aspect-item:hover { background: rgba(160, 48, 192, 0.12); }
+.ce-aspect-item.active { background: rgba(160, 48, 192, 0.20); }
+.ce-aspect-item-name { font-weight: 600; font-size: 12.5px; }
+.ce-aspect-item-desc { font-size: 11px; color: #8674a8; margin-top: 2px; }
+
 .ce-song-menu {
   position: absolute;
   top: calc(100% + 6px);

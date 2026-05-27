@@ -186,7 +186,21 @@ def cross_correlate_sync(ffmpeg: str, source_video: str, yt_path: str,
 
 
 def build_filter_complex(specs: list[dict], xfade_normal: float,
-                          xfade_climax: float) -> str:
+                          xfade_climax: float,
+                          aspect: str = "16:9") -> str:
+    # Aspect → output dimensions + scale-filter
+    if aspect == "9:16":
+        w, h = 1080, 1920
+        scale_filter = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+    elif aspect == "1:1":
+        w, h = 1080, 1080
+        scale_filter = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+    else:  # 16:9 default — letterbox if source is different aspect
+        w, h = 1920, 1080
+        scale_filter = (
+            f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"
+        )
     parts = []
     for i, s in enumerate(specs):
         vs, ve = s["video_start"], s["video_end"]
@@ -195,8 +209,7 @@ def build_filter_complex(specs: list[dict], xfade_normal: float,
         fade = min(0.20, dur * 0.2)
         parts.append(
             f"[0:v]trim=start={vs:.3f}:end={ve:.3f},setpts=PTS-STARTPTS,"
-            f"scale=1920:1080:force_original_aspect_ratio=decrease,"
-            f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p,fps=25[v{i}]"
+            f"{scale_filter},format=yuv420p,fps=25[v{i}]"
         )
         parts.append(
             f"[0:a]atrim=start={vs:.3f}:end={ve:.3f},asetpts=PTS-STARTPTS,"
@@ -486,7 +499,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         return
 
     bridge.progress(80, 100, "Rendering MP4…")
-    filter_complex, total_dur = build_filter_complex(specs, xfade_normal, xfade_climax)
+    aspect = (params.get("aspectRatio") or "16:9").strip()
+    if aspect not in ("16:9", "9:16", "1:1"): aspect = "16:9"
+    bridge.log(f"Render aspect: {aspect}")
+    filter_complex, total_dur = build_filter_complex(specs, xfade_normal, xfade_climax, aspect=aspect)
     cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning",
            *inputs, "-filter_complex", filter_complex,
            "-map", "[outv]", "-map", "[outa]",
