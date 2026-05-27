@@ -2440,6 +2440,12 @@ ${ctxLines.join("\n")}`;
               {AGENT_PROFILES[agentRole].name}
             </span>
             <span className="ce-claude-beta">BETA</span>
+            <button
+              className="ce-claude-close"
+              onClick={() => { setOnboardingStep(0); setOnboardingOpen(true); }}
+              title="Åpne onboarding-wizard"
+              style={{ marginLeft: "auto", marginRight: 4, fontSize: 14 }}
+            >🧙</button>
             <button className="ce-claude-close">✕</button>
           </div>
 
