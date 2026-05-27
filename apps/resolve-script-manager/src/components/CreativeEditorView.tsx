@@ -350,12 +350,15 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
 
   // Real suggestion cards from Claude
   type SuggestionAction = "focus" | "trim" | "skip" | "promote";
+  type ReasoningCategory = "pacing" | "emotion" | "music_sync" | "narrative" | "audience" | "technical";
+  type ReasoningTag = { category: ReasoningCategory; text: string };
   type Suggestion = {
     title: string;
     description: string;
     targetPickIndex: number;
     action: SuggestionAction;
     primaryLabel?: string;
+    reasoning?: ReasoningTag[];
   };
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggBusy, setSuggBusy] = useState(false);
@@ -1036,6 +1039,16 @@ For hvert forslag oppgi:
   description (norsk, 1 setning som forklarer hvorfor)
   targetPickIndex (faktisk shot#-index fra sekvensen)
   action: "focus" (vis klippet) | "trim" (juster lengde) | "skip" (fjern) | "promote" (flytt til høyere posisjon)
+  reasoning: array av 2-4 strukturerte tags som forklarer impact:
+    Hver tag har {category, text}:
+      category: "pacing" | "emotion" | "music_sync" | "narrative" | "audience" | "technical"
+      text: kort norsk frase, gjerne med tall (max 50 tegn)
+    Eksempler:
+      {category: "pacing", text: "-8% energi-drop"}
+      {category: "emotion", text: "bedre kontinuitet"}
+      {category: "music_sync", text: "møter chorus-drop"}
+      {category: "narrative", text: "stronger payoff"}
+      {category: "audience", text: "+12% retention"}
 
 Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
     try {
@@ -1059,8 +1072,21 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
                     description:     { type: "string" },
                     targetPickIndex: { type: "integer" },
                     action:          { type: "string", enum: ["focus", "trim", "skip", "promote"] },
+                    reasoning: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          category: { type: "string", enum: ["pacing", "emotion", "music_sync", "narrative", "audience", "technical"] },
+                          text:     { type: "string" },
+                        },
+                        required: ["category", "text"],
+                      },
+                      minItems: 2,
+                      maxItems: 4,
+                    },
                   },
-                  required: ["title", "description", "targetPickIndex", "action"],
+                  required: ["title", "description", "targetPickIndex", "action", "reasoning"],
                 },
                 minItems: 3,
                 maxItems: 3,
@@ -2583,6 +2609,7 @@ ${ctxLines.join("\n")}`;
                   thumb={targetPick?.thumbnailPath}
                   title={s.title}
                   desc={s.description}
+                  reasoning={s.reasoning}
                   primaryLabel={actionLabel}
                   secondaryLabel="Se klipp"
                   onPrimary={() => applySuggestion(s)}
@@ -2994,7 +3021,7 @@ function TrimPanel({ pick, originalPick, bpm, snapToBeat, onSnapToggle, onChange
   );
 }
 
-function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", secondaryLabel = "Se klipp", onPrimary, onSecondary }: {
+function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", secondaryLabel = "Se klipp", onPrimary, onSecondary, reasoning }: {
   thumb?: string;
   title: string;
   desc: string;
@@ -3002,7 +3029,16 @@ function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", sec
   secondaryLabel?: string;
   onPrimary?: () => void;
   onSecondary?: () => void;
+  reasoning?: { category: string; text: string }[];
 }) {
+  const categoryStyle: Record<string, { icon: string; color: string }> = {
+    pacing:     { icon: "⏱", color: "#a030c0" },
+    emotion:    { icon: "💗", color: "#ef4f6f" },
+    music_sync: { icon: "🎵", color: "#6e3fc7" },
+    narrative:  { icon: "📖", color: "#f0a500" },
+    audience:   { icon: "👥", color: "#4ad48a" },
+    technical:  { icon: "⚙",  color: "#8674a8" },
+  };
   return (
     <div className="ce-suggest-card">
       {thumb && (
@@ -3013,6 +3049,19 @@ function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", sec
       <div className="ce-suggest-body">
         <div className="ce-suggest-title">{title}</div>
         <div className="ce-suggest-desc">{desc}</div>
+        {reasoning && reasoning.length > 0 && (
+          <div className="ce-reasoning">
+            {reasoning.map((r, i) => {
+              const s = categoryStyle[r.category] ?? { icon: "•", color: "#8674a8" };
+              return (
+                <div key={i} className="ce-reasoning-tag" style={{ borderColor: s.color + "60", color: s.color }}>
+                  <span className="ce-reasoning-icon">{s.icon}</span>
+                  <span className="ce-reasoning-text">{r.text}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="ce-suggest-actions">
           <button className="ce-suggest-primary" onClick={onPrimary}>{primaryLabel}</button>
           <button className="ce-suggest-secondary" onClick={onSecondary}>{secondaryLabel}</button>
