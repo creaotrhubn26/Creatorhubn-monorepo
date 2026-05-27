@@ -167,6 +167,154 @@ export async function getCampaignInsights(
   return rows;
 }
 
+// ─────────────────────────────────────────────────────────
+// Write paths — campaign lifecycle (create / pause / resume / end).
+// Uses the Google Ads REST mutate endpoints. Requires developer-token +
+// ads_management-scoped OAuth. API-side ready; needs live verification once the
+// Google OAuth connection + developer token are configured.
+// ─────────────────────────────────────────────────────────
+
+export interface GoogleAdsAuth {
+  accessToken: string;
+  developerToken: string;
+  customerId: string;
+  loginCustomerId?: string;
+}
+
+async function googleAdsMutate(
+  auth: GoogleAdsAuth,
+  service: string,
+  operations: unknown[],
+): Promise<{ resourceName: string }[]> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${auth.accessToken}`,
+    "developer-token": auth.developerToken,
+    "content-type": "application/json",
+  };
+  if (auth.loginCustomerId) headers["login-customer-id"] = auth.loginCustomerId;
+
+  const res = await fetchImpl(
+    `${GOOGLE_ADS_BASE}/customers/${auth.customerId}/${service}:mutate`,
+    { method: "POST", headers, body: JSON.stringify({ operations }) },
+  );
+  const raw = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg =
+      (raw as { error?: { message?: string } })?.error?.message ||
+      `Google Ads ${service}:mutate failed (HTTP ${res.status})`;
+    throw new GoogleAdsApiError(res.status, msg, raw);
+  }
+  return ((raw as { results?: { resourceName: string }[] })?.results ?? []);
+}
+
+export type GoogleCampaignStatus = "ENABLED" | "PAUSED" | "REMOVED";
+
+/** Pause (PAUSED), resume (ENABLED) or end (REMOVED) a Google campaign. */
+export async function setGoogleCampaignStatus(
+  auth: GoogleAdsAuth,
+  campaignResourceName: string,
+  status: GoogleCampaignStatus,
+): Promise<{ resourceName: string }> {
+  const results = await googleAdsMutate(auth, "campaigns", [
+    { update: { resourceName: campaignResourceName, status }, updateMask: "status" },
+  ]);
+  return { resourceName: results[0]?.resourceName ?? campaignResourceName };
+}
+
+export interface CreateGoogleCampaignInput extends GoogleAdsAuth {
+  name: string;
+  dailyBudgetNok: number;
+  /** Defaults to SEARCH. */
+  channelType?: "SEARCH" | "DISPLAY" | "PERFORMANCE_MAX" | "VIDEO";
+}
+
+/**
+ * Create a Google campaign (budget + campaign, status PAUSED). Minimal valid
+ * SEARCH campaign with manual CPC + standard daily budget. amountMicros assumes
+ * the account currency matches NOK; the metrics poll reconciles otherwise.
+ */
+export async function createGoogleCampaign(
+  input: CreateGoogleCampaignInput,
+): Promise<{ campaignResourceName: string; budgetResourceName: string }> {
+  const amountMicros = String(Math.round(Math.max(0, input.dailyBudgetNok) * 1_000_000));
+  const budgetResults = await googleAdsMutate(input, "campaignBudgets", [
+    {
+      create: {
+        name: `${input.name} – budsjett ${Date.now()}`,
+        amountMicros,
+        deliveryMethod: "STANDARD",
+        explicitlyShared: false,
+      },
+    },
+  ]);
+  const budgetResourceName = budgetResults[0]?.resourceName;
+  if (!budgetResourceName) {
+    throw new GoogleAdsApiError(500, "campaignBudgets:mutate returned no resourceName");
+  }
+
+  const campaignResults = await googleAdsMutate(input, "campaigns", [
+    {
+      create: {
+        name: input.name,
+        status: "PAUSED",
+        advertisingChannelType: input.channelType ?? "SEARCH",
+        campaignBudget: budgetResourceName,
+        manualCpc: {},
+        networkSettings: {
+          targetGoogleSearch: true,
+          targetSearchNetwork: true,
+          targetContentNetwork: false,
+          targetPartnerSearchNetwork: false,
+        },
+      },
+    },
+  ]);
+  const campaignResourceName = campaignResults[0]?.resourceName;
+  if (!campaignResourceName) {
+    throw new GoogleAdsApiError(500, "campaigns:mutate returned no resourceName");
+  }
+  return { campaignResourceName, budgetResourceName };
+}
+
+/**
+ * Customer ids the producer's token can access — i.e. the Google Ads accounts
+ * the client has granted. Used to verify access before running campaigns.
+ */
+export async function listAccessibleCustomers(auth: {
+  accessToken: string;
+  developerToken: string;
+}): Promise<string[]> {
+  const res = await fetchImpl(`${GOOGLE_ADS_BASE}/customers:listAccessibleCustomers`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      "developer-token": auth.developerToken,
+    },
+  });
+  const raw = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg =
+      (raw as { error?: { message?: string } })?.error?.message ||
+      `listAccessibleCustomers failed (HTTP ${res.status})`;
+    throw new GoogleAdsApiError(res.status, msg, raw);
+  }
+  return ((raw as { resourceNames?: string[] })?.resourceNames ?? []).map((rn) =>
+    rn.replace(/^customers\//, ""),
+  );
+}
+
+/** True if the producer has access to the given Google Ads customer id. */
+export async function hasGoogleCustomerAccess(
+  auth: { accessToken: string; developerToken: string },
+  customerId: string,
+): Promise<boolean> {
+  try {
+    return (await listAccessibleCustomers(auth)).includes(customerId);
+  } catch {
+    return false;
+  }
+}
+
 /** Normalize a Google Ads row to the shared NOK metrics shape. */
 export function normalizeGoogleAdsRow(
   row: GoogleAdsInsightsRow,

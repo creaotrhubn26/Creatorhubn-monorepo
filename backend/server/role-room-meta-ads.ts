@@ -284,6 +284,35 @@ export async function listAdAccounts(accessToken: string): Promise<MetaAdAccount
   return data.data ?? [];
 }
 
+/** Meta ad-account tasks that allow running ads. */
+export const META_AD_ADVERTISE_TASKS = ["MANAGE", "ADVERTISE"] as const;
+
+/**
+ * The tasks the authenticated user holds on a specific ad account — i.e. what
+ * the client has granted. Empty array means no access. Used to verify the
+ * producer may run ads on the client's account before creating campaigns.
+ */
+export async function getAdAccountTasks(accessToken: string, adAccountId: string): Promise<string[]> {
+  const data = await metaRequest<{ user_tasks?: string[]; tasks?: string[] }>(
+    "GET",
+    `/${adAccountId}`,
+    accessToken,
+    undefined,
+    { fields: "id,name,user_tasks" },
+  );
+  return Array.isArray(data.user_tasks) ? data.user_tasks : Array.isArray(data.tasks) ? data.tasks : [];
+}
+
+/** True if the producer has advertise/manage access to the ad account. */
+export async function hasMetaAdAccountAccess(accessToken: string, adAccountId: string): Promise<boolean> {
+  try {
+    const tasks = await getAdAccountTasks(accessToken, adAccountId);
+    return tasks.some((t) => (META_AD_ADVERTISE_TASKS as readonly string[]).includes(t));
+  } catch {
+    return false; // permission error → no access
+  }
+}
+
 export async function createCampaign(
   accessToken: string,
   input: MetaCampaignCreateInput,

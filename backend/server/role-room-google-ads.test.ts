@@ -6,6 +6,10 @@ import {
   getCampaignInsights,
   makeGoogleAdsConnector,
   getGoogleAdsConnectorFromEnv,
+  setGoogleCampaignStatus,
+  createGoogleCampaign,
+  listAccessibleCustomers,
+  hasGoogleCustomerAccess,
   GoogleAdsApiError,
   __setGoogleAdsFetch,
   __resetGoogleAdsFetch,
@@ -204,5 +208,63 @@ describe("Google Ads through the sync backbone", () => {
     expect(res.totalFeeNok).toBeCloseTo(160, 1); // 20 % of 800
     const feeInsert = queries.find((q) => /ads_management_fee_usage/i.test(q.sql));
     expect(feeInsert?.params?.[2]).toBe("google"); // platform persisted
+  });
+});
+
+describe("Google Ads write paths", () => {
+  it("setGoogleCampaignStatus sends an update mutate with status + updateMask", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({ results: [{ resourceName: "customers/123/campaigns/456" }] }),
+      text: async () => "",
+    }));
+    __setGoogleAdsFetch(fetchMock as never);
+    const out = await setGoogleCampaignStatus(
+      { accessToken: "t", developerToken: "d", customerId: "123" },
+      "customers/123/campaigns/456",
+      "PAUSED",
+    );
+    expect(out.resourceName).toBe("customers/123/campaigns/456");
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body.operations[0].update.status).toBe("PAUSED");
+    expect(body.operations[0].updateMask).toBe("status");
+    expect(fetchMock.mock.calls[0][0]).toContain("/customers/123/campaigns:mutate");
+  });
+
+  it("createGoogleCampaign creates a budget then a campaign", async () => {
+    let call = 0;
+    __setGoogleAdsFetch(
+      vi.fn(async () => {
+        call += 1;
+        return {
+          ok: true, status: 200,
+          json: async () =>
+            call === 1
+              ? { results: [{ resourceName: "customers/123/campaignBudgets/9" }] }
+              : { results: [{ resourceName: "customers/123/campaigns/77" }] },
+          text: async () => "",
+        };
+      }) as never,
+    );
+    const out = await createGoogleCampaign({
+      accessToken: "t", developerToken: "d", customerId: "123",
+      name: "PreVisit Search", dailyBudgetNok: 500,
+    });
+    expect(out.budgetResourceName).toBe("customers/123/campaignBudgets/9");
+    expect(out.campaignResourceName).toBe("customers/123/campaigns/77");
+  });
+
+  it("listAccessibleCustomers strips the customers/ prefix; hasGoogleCustomerAccess checks membership", async () => {
+    __setGoogleAdsFetch(
+      vi.fn(async () => ({
+        ok: true, status: 200,
+        json: async () => ({ resourceNames: ["customers/123", "customers/456"] }),
+        text: async () => "",
+      })) as never,
+    );
+    const ids = await listAccessibleCustomers({ accessToken: "t", developerToken: "d" });
+    expect(ids).toEqual(["123", "456"]);
+    expect(await hasGoogleCustomerAccess({ accessToken: "t", developerToken: "d" }, "123")).toBe(true);
+    expect(await hasGoogleCustomerAccess({ accessToken: "t", developerToken: "d" }, "999")).toBe(false);
   });
 });

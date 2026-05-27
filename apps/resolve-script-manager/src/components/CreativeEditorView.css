@@ -528,6 +528,8 @@
   font-weight: 600;
   letter-spacing: 0.3px;
   text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   background-clip: padding-box;

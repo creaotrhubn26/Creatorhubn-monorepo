@@ -1500,6 +1500,34 @@ export const roleRoomAgentService = {
     return { ok: false, error: p?.detail || p?.error };
   },
 
+  // Google Ads lifecycle (full kontroll). Mirrors the Meta endpoints.
+  async pauseGoogleCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/google/campaigns/${encodeURIComponent(campaignId)}/pause`, {
+      method: 'POST', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
+  async resumeGoogleCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/google/campaigns/${encodeURIComponent(campaignId)}/resume`, {
+      method: 'POST', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
+  async endGoogleCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/google/campaigns/${encodeURIComponent(campaignId)}`, {
+      method: 'DELETE', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
   async setAdsBudget(projectId: string, maxSpendNok: number, period?: string): Promise<boolean> {
     const response = await fetch('/api/role-room/ads/budget', {
       method: 'PUT',

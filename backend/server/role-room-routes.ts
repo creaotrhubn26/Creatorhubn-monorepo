@@ -148,6 +148,7 @@ import {
   endCampaign as endMetaCampaign,
   createAdSet as createMetaAdSet,
   createAd as createMetaAd,
+  hasMetaAdAccountAccess,
   listManagedPages as listMetaManagedPages,
   metaTaskLabel,
   MetaAdsApiError,
@@ -187,8 +188,17 @@ import {
   adsOauthClientCreds,
   upsertAdsOauthConnection,
   listAdsOauthConnections,
+  resolveAdsAccessToken,
   ADS_OAUTH_SCOPES,
 } from './role-room-ads-oauth.js';
+import {
+  createGoogleCampaign,
+  setGoogleCampaignStatus,
+  hasGoogleCustomerAccess,
+  parseCampaignResourceName as parseGoogleCampaignResourceName,
+  GoogleAdsApiError,
+  type GoogleAdsAuth,
+} from './role-room-google-ads.js';
 import {
   listInstagramConnections,
   ensureFreshConnection,
@@ -21806,6 +21816,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(412).json({ error: 'meta_not_connected' });
         }
 
+        // Verify the producer actually has advertise/manage access to the client's
+        // ad account before running anything on it (granted-access check).
+        if (!(await hasMetaAdAccountAccess(token, adAccountId))) {
+          return res.status(403).json({
+            error: 'no_ad_account_access',
+            detail: 'Du har ikke annonserings-tilgang til denne annonsekontoen. Be kunden gi deg tilgang i Business Manager.',
+          });
+        }
+
         // Convert NOK daily budget → currency-cents (assume NOK ad-account; the
         // metrics poll will reconcile if account is in another currency).
         const dailyBudgetCents =
@@ -22019,6 +22038,129 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
         }
         res.status(500).json({ error: 'Failed to end campaign', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Google Ads — kampanje-livssyklus (full kontroll) ────
+  // Krever Google ads-OAuth-connection + GOOGLE_ADS_DEVELOPER_TOKEN.
+  async function resolveGoogleAdsAuth(userId: string, customerId: string): Promise<GoogleAdsAuth | null> {
+    const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+    const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+    if (!accessToken || !developerToken) return null;
+    return {
+      accessToken,
+      developerToken,
+      customerId,
+      loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || undefined,
+    };
+  }
+
+  router.post(
+    '/ads/google/campaigns',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { projectId, customerId, name, dailyBudgetNok, channelType, businessProfileId } = req.body ?? {};
+        if (!projectId || !customerId || !name || typeof dailyBudgetNok !== 'number') {
+          return res.status(400).json({ error: 'invalid_input', detail: 'projectId, customerId, name, dailyBudgetNok required' });
+        }
+        const auth = await resolveGoogleAdsAuth(userId, String(customerId));
+        if (!auth) return res.status(412).json({ error: 'google_not_connected', detail: 'Koble Google Ads + sett GOOGLE_ADS_DEVELOPER_TOKEN' });
+
+        // Verify granted access to the client's Google Ads customer first.
+        if (!(await hasGoogleCustomerAccess(auth, String(customerId)))) {
+          return res.status(403).json({
+            error: 'no_ad_account_access',
+            detail: 'Du har ikke tilgang til denne Google Ads-kontoen. Be kunden gi tilgang.',
+          });
+        }
+
+        const created = await createGoogleCampaign({ ...auth, name, dailyBudgetNok, channelType });
+        const row = await insertCampaign(pool, {
+          projectId,
+          userId,
+          businessProfileId: businessProfileId ?? null,
+          platform: 'google',
+          externalCampaignId: created.campaignResourceName,
+          status: 'paused',
+          goal: name,
+          dailyBudgetNok,
+        });
+        res.status(201).json({ campaign: row, budgetResourceName: created.budgetResourceName });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to create Google campaign', detail: String(error) });
+      }
+    },
+  );
+
+  // Pause / resume / end a Google campaign. resume is budget-gated (§2.3).
+  for (const action of ['pause', 'resume'] as const) {
+    router.post(
+      `/ads/google/campaigns/:campaignId/${action}`,
+      apiKeyAuth(pool, activeSessions),
+      async (req: Request, res: Response) => {
+        try {
+          const userId = getUserId(req);
+          const campaign = await getCampaignById(pool, req.params.campaignId);
+          if (!campaign || campaign.userId !== userId) return res.status(404).json({ error: 'campaign_not_found' });
+          if (campaign.platform !== 'google' || !campaign.externalCampaignId) {
+            return res.status(400).json({ error: 'not_a_google_campaign' });
+          }
+          const parsed = parseGoogleCampaignResourceName(campaign.externalCampaignId);
+          if (!parsed) return res.status(400).json({ error: 'invalid_google_resource_name' });
+          const auth = await resolveGoogleAdsAuth(userId, parsed.customerId);
+          if (!auth) return res.status(412).json({ error: 'google_not_connected' });
+
+          if (action === 'resume') {
+            const period = new Date().toISOString().slice(0, 7);
+            const spent = await sumSpendForProjectPeriod(pool, campaign.projectId, period);
+            await assertWithinBudget(pool, campaign.projectId, period, spent);
+          }
+          await setGoogleCampaignStatus(auth, campaign.externalCampaignId, action === 'pause' ? 'PAUSED' : 'ENABLED');
+          const updated = await updateCampaignStatus(pool, campaign.id, action === 'pause' ? 'paused' : 'active');
+          res.json({ campaign: updated });
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+          }
+          if (error instanceof GoogleAdsApiError) {
+            return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          }
+          res.status(500).json({ error: `Failed to ${action} Google campaign`, detail: String(error) });
+        }
+      },
+    );
+  }
+
+  router.delete(
+    '/ads/google/campaigns/:campaignId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) return res.status(404).json({ error: 'campaign_not_found' });
+        if (campaign.platform !== 'google' || !campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'not_a_google_campaign' });
+        }
+        const parsed = parseGoogleCampaignResourceName(campaign.externalCampaignId);
+        if (!parsed) return res.status(400).json({ error: 'invalid_google_resource_name' });
+        const auth = await resolveGoogleAdsAuth(userId, parsed.customerId);
+        if (!auth) return res.status(412).json({ error: 'google_not_connected' });
+
+        await setGoogleCampaignStatus(auth, campaign.externalCampaignId, 'REMOVED');
+        const updated = await updateCampaignStatus(pool, campaign.id, 'ended');
+        res.json({ campaign: updated });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to end Google campaign', detail: String(error) });
       }
     },
   );

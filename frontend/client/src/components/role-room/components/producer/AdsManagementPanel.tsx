@@ -207,6 +207,21 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
           {campaigns.map((c) => {
             const sm = STATUS_META[c.status];
             const busy = busyId === c.id;
+            // Platform-aware lifecycle controls (Meta + Google). LinkedIn = reporting only.
+            const ctl =
+              c.platform === 'meta'
+                ? {
+                    pause: () => roleRoomAgentService.pauseAdsCampaign(c.id),
+                    resume: () => roleRoomAgentService.resumeAdsCampaign(c.id),
+                    end: () => roleRoomAgentService.endAdsCampaign(c.id),
+                  }
+                : c.platform === 'google'
+                  ? {
+                      pause: () => roleRoomAgentService.pauseGoogleCampaign(c.id),
+                      resume: () => roleRoomAgentService.resumeGoogleCampaign(c.id),
+                      end: () => roleRoomAgentService.endGoogleCampaign(c.id),
+                    }
+                  : null;
             return (
               <Stack
                 key={c.id}
@@ -226,8 +241,8 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 <Chip size="small" label={sm.label} sx={{ fontWeight: 700, color: sm.color, bgcolor: sm.bg, border: `1px solid ${sm.color}55` }} />
                 {busy ? (
                   <CircularProgress size={16} sx={{ color: 'rgba(226,232,240,0.6)' }} />
-                ) : c.platform !== 'meta' ? (
-                  // Google/LinkedIn er foreløpig kun rapportering — ingen styring ennå.
+                ) : !ctl ? (
+                  // LinkedIn (m.fl.) er foreløpig kun rapportering — ingen styring ennå.
                   <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem' }}>
                     Kun rapportering
                   </Typography>
@@ -235,17 +250,17 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                   <Stack direction="row" spacing={0.5}>
                     {c.status === 'active' && (
                       <Button size="small" startIcon={<PauseIcon sx={{ fontSize: 16 }} />}
-                        onClick={() => act(c.id, () => roleRoomAgentService.pauseAdsCampaign(c.id))}
+                        onClick={() => act(c.id, ctl.pause)}
                         sx={{ textTransform: 'none', color: '#fcd34d', minWidth: 0 }}>Pause</Button>
                     )}
                     {(c.status === 'paused' || c.status === 'draft') && (
                       <Button size="small" startIcon={<PlayIcon sx={{ fontSize: 16 }} />}
-                        onClick={() => act(c.id, () => roleRoomAgentService.resumeAdsCampaign(c.id))}
+                        onClick={() => act(c.id, ctl.resume)}
                         sx={{ textTransform: 'none', color: '#86efac', minWidth: 0 }}>Start</Button>
                     )}
                     {c.status !== 'ended' && (
                       <Button size="small" startIcon={<StopIcon sx={{ fontSize: 16 }} />}
-                        onClick={() => { if (window.confirm('Avslutte kampanjen permanent?')) void act(c.id, () => roleRoomAgentService.endAdsCampaign(c.id)); }}
+                        onClick={() => { if (window.confirm('Avslutte kampanjen permanent?')) void act(c.id, ctl.end); }}
                         sx={{ textTransform: 'none', color: '#fca5a5', minWidth: 0 }}>Avslutt</Button>
                     )}
                   </Stack>
