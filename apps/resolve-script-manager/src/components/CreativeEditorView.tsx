@@ -1400,18 +1400,29 @@ ${ctxLines.join("\n")}`;
             onClick={undo}
             disabled={!undoAvailable}
             title="Undo (⌘Z)"
-          >↶</button>
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 7v6h6" />
+              <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6.7 3L3 13" />
+            </svg>
+          </button>
           <button
             className="ce-icon-mini"
             onClick={redo}
             disabled={!redoAvailable}
             title="Redo (⇧⌘Z)"
-          >↷</button>
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 7v6h-6" />
+              <path d="M3 17a9 9 0 019-9 9 9 0 016.7 3L21 13" />
+            </svg>
+          </button>
           <button
             className="ce-icon-mini"
             onClick={() => setShortcutsOpen(true)}
             title="Hurtigtaster (?)"
-          >⌨</button>
+            style={{ fontWeight: 700, fontSize: 13 }}
+          >?</button>
           <button>↗ Del</button>
           <div className="ce-export-wrap">
             <button
