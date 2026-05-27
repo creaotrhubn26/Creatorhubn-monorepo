@@ -1473,6 +1473,32 @@ export const roleRoomAgentService = {
     return { campaign: payload.campaign };
   },
 
+  async listGoogleCustomers(): Promise<{ customers: string[] } | { error: string }> {
+    const response = await fetch('/api/role-room/ads/google/customers', {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke hente Google-kontoer' };
+    return { customers: Array.isArray(payload?.customers) ? payload.customers : [] };
+  },
+
+  async createGoogleAdsCampaign(input: {
+    projectId: string;
+    customerId: string;
+    name: string;
+    dailyBudgetNok: number;
+    channelType?: string;
+  }): Promise<{ campaign: RoleRoomAdsCampaign } | { error: string }> {
+    const response = await fetch('/api/role-room/ads/google/campaigns', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { error: payload?.detail || payload?.error || 'Kunne ikke opprette Google-kampanje' };
+    return { campaign: payload.campaign };
+  },
+
   async pauseAdsCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
     const r = await fetch(`/api/role-room/ads/meta/campaigns/${encodeURIComponent(campaignId)}/pause`, {
       method: 'POST', headers: readRoleRoomAgentHeaders(),
@@ -1521,6 +1547,34 @@ export const roleRoomAgentService = {
 
   async endGoogleCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
     const r = await fetch(`/api/role-room/ads/google/campaigns/${encodeURIComponent(campaignId)}`, {
+      method: 'DELETE', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
+  // LinkedIn Ads lifecycle (full kontroll).
+  async pauseLinkedInCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/linkedin/campaigns/${encodeURIComponent(campaignId)}/pause`, {
+      method: 'POST', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
+  async resumeLinkedInCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/linkedin/campaigns/${encodeURIComponent(campaignId)}/resume`, {
+      method: 'POST', headers: readRoleRoomAgentHeaders(),
+    });
+    if (r.ok) return { ok: true };
+    const p = await r.json().catch(() => null);
+    return { ok: false, error: p?.detail || p?.error };
+  },
+
+  async endLinkedInCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`/api/role-room/ads/linkedin/campaigns/${encodeURIComponent(campaignId)}`, {
       method: 'DELETE', headers: readRoleRoomAgentHeaders(),
     });
     if (r.ok) return { ok: true };

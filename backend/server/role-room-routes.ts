@@ -158,6 +158,11 @@ import {
 import {
   listGrantedLinkedInAssets,
   linkedInRoleLabel,
+  createLinkedInCampaign,
+  setLinkedInCampaignStatus,
+  hasLinkedInAdAccountAccess,
+  LinkedInAdsApiError,
+  type LinkedInAdsAuth,
 } from './role-room-linkedin-ads.js';
 import {
   insertCampaign,
@@ -195,6 +200,7 @@ import {
   createGoogleCampaign,
   setGoogleCampaignStatus,
   hasGoogleCustomerAccess,
+  listAccessibleCustomers as listGoogleAccessibleCustomers,
   parseCampaignResourceName as parseGoogleCampaignResourceName,
   GoogleAdsApiError,
   type GoogleAdsAuth,
@@ -22056,6 +22062,29 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     };
   }
 
+  // Tilgjengelige Google Ads-kontoer (kunde-id-velger i UI).
+  router.get(
+    '/ads/google/customers',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+        const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        if (!accessToken || !developerToken) {
+          return res.status(412).json({ error: 'google_not_connected', detail: 'Koble Google Ads + sett GOOGLE_ADS_DEVELOPER_TOKEN' });
+        }
+        const customers = await listGoogleAccessibleCustomers({ accessToken, developerToken });
+        res.json({ customers });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to list Google customers', detail: String(error) });
+      }
+    },
+  );
+
   router.post(
     '/ads/google/campaigns',
     apiKeyAuth(pool, activeSessions),
@@ -22161,6 +22190,117 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
         }
         res.status(500).json({ error: 'Failed to end Google campaign', detail: String(error) });
+      }
+    },
+  );
+
+  // ── LinkedIn Ads — kampanje-livssyklus (full kontroll) ──
+  async function resolveLinkedInAuth(userId: string): Promise<LinkedInAdsAuth | null> {
+    const accessToken = await resolveAdsAccessToken(pool, 'linkedin', userId);
+    if (!accessToken) return null;
+    return { accessToken, apiVersion: process.env.LINKEDIN_API_VERSION || undefined };
+  }
+
+  router.post(
+    '/ads/linkedin/campaigns',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { projectId, accountUrn, campaignGroupUrn, name, dailyBudgetNok, objectiveType, businessProfileId } =
+          req.body ?? {};
+        if (!projectId || !accountUrn || !campaignGroupUrn || !name || typeof dailyBudgetNok !== 'number') {
+          return res.status(400).json({
+            error: 'invalid_input',
+            detail: 'projectId, accountUrn, campaignGroupUrn, name, dailyBudgetNok required',
+          });
+        }
+        const auth = await resolveLinkedInAuth(userId);
+        if (!auth) return res.status(412).json({ error: 'linkedin_not_connected' });
+        if (!(await hasLinkedInAdAccountAccess(auth.accessToken, accountUrn, auth.apiVersion))) {
+          return res.status(403).json({
+            error: 'no_ad_account_access',
+            detail: 'Du har ikke tilgang til denne LinkedIn-annonsekontoen. Be kunden gi tilgang.',
+          });
+        }
+        const created = await createLinkedInCampaign({ ...auth, accountUrn, campaignGroupUrn, name, dailyBudgetNok, objectiveType });
+        const row = await insertCampaign(pool, {
+          projectId,
+          userId,
+          businessProfileId: businessProfileId ?? null,
+          platform: 'linkedin',
+          externalCampaignId: created.campaignUrn,
+          status: 'draft',
+          goal: name,
+          dailyBudgetNok,
+        });
+        res.status(201).json({ campaign: row });
+      } catch (error) {
+        if (error instanceof LinkedInAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to create LinkedIn campaign', detail: String(error) });
+      }
+    },
+  );
+
+  for (const action of ['pause', 'resume'] as const) {
+    router.post(
+      `/ads/linkedin/campaigns/:campaignId/${action}`,
+      apiKeyAuth(pool, activeSessions),
+      async (req: Request, res: Response) => {
+        try {
+          const userId = getUserId(req);
+          const campaign = await getCampaignById(pool, req.params.campaignId);
+          if (!campaign || campaign.userId !== userId) return res.status(404).json({ error: 'campaign_not_found' });
+          if (campaign.platform !== 'linkedin' || !campaign.externalCampaignId) {
+            return res.status(400).json({ error: 'not_a_linkedin_campaign' });
+          }
+          const auth = await resolveLinkedInAuth(userId);
+          if (!auth) return res.status(412).json({ error: 'linkedin_not_connected' });
+
+          if (action === 'resume') {
+            const period = new Date().toISOString().slice(0, 7);
+            const spent = await sumSpendForProjectPeriod(pool, campaign.projectId, period);
+            await assertWithinBudget(pool, campaign.projectId, period, spent);
+          }
+          await setLinkedInCampaignStatus(auth, campaign.externalCampaignId, action === 'pause' ? 'PAUSED' : 'ACTIVE');
+          const updated = await updateCampaignStatus(pool, campaign.id, action === 'pause' ? 'paused' : 'active');
+          res.json({ campaign: updated });
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+          }
+          if (error instanceof LinkedInAdsApiError) {
+            return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+          }
+          res.status(500).json({ error: `Failed to ${action} LinkedIn campaign`, detail: String(error) });
+        }
+      },
+    );
+  }
+
+  router.delete(
+    '/ads/linkedin/campaigns/:campaignId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) return res.status(404).json({ error: 'campaign_not_found' });
+        if (campaign.platform !== 'linkedin' || !campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'not_a_linkedin_campaign' });
+        }
+        const auth = await resolveLinkedInAuth(userId);
+        if (!auth) return res.status(412).json({ error: 'linkedin_not_connected' });
+        await setLinkedInCampaignStatus(auth, campaign.externalCampaignId, 'CANCELED');
+        const updated = await updateCampaignStatus(pool, campaign.id, 'ended');
+        res.json({ campaign: updated });
+      } catch (error) {
+        if (error instanceof LinkedInAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to end LinkedIn campaign', detail: String(error) });
       }
     },
   );
