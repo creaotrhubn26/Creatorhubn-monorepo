@@ -183,6 +183,7 @@ import {
   approveOverage,
   assertWithinBudget,
   computeBudgetStatus,
+  computeBudgetPacing,
   BudgetExceededError,
 } from './role-room-ads-budget.js';
 import { syncMetaCampaignSpend, syncCampaignSpend } from './role-room-ads-sync.js';
@@ -22623,7 +22624,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           actualSpendNok,
           overageRequestedNok: budget?.overageRequestedNok ?? null,
         });
-        res.json({ period, status, canEdit: await isClientForProject(req, projectId) });
+        const pacing = computeBudgetPacing({ status, period });
+        res.json({ period, status, pacing, canEdit: await isClientForProject(req, projectId) });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load budget', detail: String(error) });
       }

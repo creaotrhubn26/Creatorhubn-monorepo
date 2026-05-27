@@ -66,6 +66,20 @@ const PLATFORM_LABEL: Record<string, string> = {
   tiktok: 'TikTok',
 };
 
+// Pacing-status → Alert-severity + tekst (Lag 3: aktiv budsjett-vakt).
+const PACE_META: Record<string, { severity: 'success' | 'info' | 'warning' | 'error'; label: string }> = {
+  on_track: { severity: 'success', label: 'I rute' },
+  at_risk: { severity: 'warning', label: 'Nærmer seg taket' },
+  over_pace: { severity: 'warning', label: 'På vei til å sprenge budsjettet' },
+  exhausted: { severity: 'error', label: 'Budsjettet er brukt opp' },
+};
+
+const dayMonth = (iso: string | null) => {
+  if (!iso) return null;
+  const d = new Date(`${iso}T00:00:00Z`);
+  return new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(d);
+};
+
 export default function ClientEconomyPanel({
   projectId,
   userRole,
@@ -323,6 +337,38 @@ export default function ClientEconomyPanel({
               {budget.status.isOverBudget && ' — taket er nådd'}
               {!budget.status.isOverBudget && budget.status.isNearBudget && ' — nærmer seg taket'}
             </Typography>
+
+            {/* ── Pacing: er vi PÅ VEI til å sprenge budsjettet? (Lag 3) ── */}
+            {budget.pacing && budget.pacing.pace !== 'no_budget' && (
+              <Alert
+                severity={PACE_META[budget.pacing.pace]?.severity ?? 'info'}
+                icon={<InsightsIcon fontSize="inherit" />}
+                sx={{ mt: 0.5, '& .MuiAlert-message': { fontSize: '0.78rem', width: '100%' } }}
+              >
+                <Typography sx={{ fontWeight: 700, fontSize: '0.8rem' }}>
+                  {PACE_META[budget.pacing.pace]?.label}
+                </Typography>
+                <Stack spacing={0.2} sx={{ mt: 0.3 }}>
+                  {budget.pacing.dailyRunRateNok > 0 && (
+                    <Typography sx={{ fontSize: '0.74rem' }}>
+                      Tempo: {nok(budget.pacing.dailyRunRateNok)}/dag · projisert månedsslutt{' '}
+                      <strong>{nok(budget.pacing.projectedPeriodSpendNok)}</strong>
+                      {budget.pacing.projectedOverspendNok > 0 && ` (${nok(budget.pacing.projectedOverspendNok)} over taket)`}
+                    </Typography>
+                  )}
+                  {budget.pacing.projectedExhaustionDate && (
+                    <Typography sx={{ fontSize: '0.74rem' }}>
+                      Ved dagens tempo er budsjettet brukt opp <strong>{dayMonth(budget.pacing.projectedExhaustionDate)}</strong>.
+                    </Typography>
+                  )}
+                  {budget.pacing.daysRemaining > 0 && budget.pacing.recommendedDailyBudgetNok > 0 && (
+                    <Typography sx={{ fontSize: '0.74rem' }}>
+                      For å lande på taket: maks <strong>{nok(budget.pacing.recommendedDailyBudgetNok)}/dag</strong> de neste {budget.pacing.daysRemaining} dagene.
+                    </Typography>
+                  )}
+                </Stack>
+              </Alert>
+            )}
 
             {budget.status.overageRequestedNok != null && (
               <Alert

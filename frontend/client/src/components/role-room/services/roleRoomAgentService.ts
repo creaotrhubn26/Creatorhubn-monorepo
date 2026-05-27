@@ -983,9 +983,24 @@ export interface RoleRoomBudgetStatus {
   overageRequestedNok: number | null;
 }
 
+export type RoleRoomBudgetPace = 'no_budget' | 'on_track' | 'at_risk' | 'over_pace' | 'exhausted';
+
+export interface RoleRoomBudgetPacing {
+  daysInPeriod: number;
+  daysElapsed: number;
+  daysRemaining: number;
+  dailyRunRateNok: number;
+  projectedPeriodSpendNok: number;
+  projectedOverspendNok: number;
+  recommendedDailyBudgetNok: number;
+  projectedExhaustionDate: string | null;
+  pace: RoleRoomBudgetPace;
+}
+
 export interface RoleRoomBudgetResult {
   period: string;
   status: RoleRoomBudgetStatus;
+  pacing?: RoleRoomBudgetPacing;
   canEdit: boolean;
 }
 
