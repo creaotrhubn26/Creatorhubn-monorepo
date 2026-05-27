@@ -388,6 +388,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
 
   // Drag-and-drop for segments-sidebar reorder
   const [draggedSegIdx, setDraggedSegIdx] = useState<number | null>(null);
+  const [dropTargetSegIdx, setDropTargetSegIdx] = useState<number | null>(null);
   // Override chapter-order when user drags segments around
   const [segmentOrder, setSegmentOrder] = useState<string[] | null>(null);
 
@@ -1775,19 +1776,27 @@ ${ctxLines.join("\n")}`;
               return (
                 <div
                   key={`${seg.chapter}-${i}`}
-                  className={`ce-segment-card ${included ? "included" : ""} ${focusedPick && seg.picks.some(p => p.index === focusedPick.index) ? "focused" : ""} ${draggedSegIdx === i ? "dragging" : ""}`}
+                  className={`ce-segment-card ${included ? "included" : ""} ${focusedPick && seg.picks.some(p => p.index === focusedPick.index) ? "focused" : ""} ${draggedSegIdx === i ? "dragging" : ""} ${dropTargetSegIdx === i && draggedSegIdx !== null && draggedSegIdx !== i ? "drop-target" : ""}`}
                   draggable
                   onDragStart={(e) => {
                     setDraggedSegIdx(i);
                     e.dataTransfer.effectAllowed = "move";
                   }}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (draggedSegIdx !== null && draggedSegIdx !== i) setDropTargetSegIdx(i);
+                  }}
+                  onDragLeave={() => {
+                    if (dropTargetSegIdx === i) setDropTargetSegIdx(null);
+                  }}
                   onDrop={(e) => {
                     e.preventDefault();
-                    if (draggedSegIdx !== null) reorderSegments(draggedSegIdx, i);
+                    if (draggedSegIdx !== null && draggedSegIdx !== i) reorderSegments(draggedSegIdx, i);
                     setDraggedSegIdx(null);
+                    setDropTargetSegIdx(null);
                   }}
-                  onDragEnd={() => setDraggedSegIdx(null)}
+                  onDragEnd={() => { setDraggedSegIdx(null); setDropTargetSegIdx(null); }}
                   onClick={() => {
                     const idx = filteredPicks.findIndex(p => p.index === firstPick.index);
                     if (idx >= 0) setFocusedPickIdx(idx);
@@ -2157,11 +2166,11 @@ ${ctxLines.join("\n")}`;
                   </defs>
                 </svg>
                 <div className="ce-story-arc-labels">
-                  <span style={{ left: "5%" }}>↑ Intro</span>
+                  {/* Labels centered in each phase-band — chronological order */}
+                  <span style={{ left: "7%" }}>↑ Intro</span>
                   <span style={{ left: "35%" }}>↑ Build</span>
-                  <span style={{ left: `${(storyArcPhases.peakTime / storyArcPhases.totalDur) * 100}%`,
-                                  color: "#ef4f6f" }}>⚡ Peak</span>
-                  <span style={{ left: "85%" }}>↓ Outro</span>
+                  <span style={{ left: "67%", color: "#ef4f6f" }}>⚡ Peak</span>
+                  <span style={{ left: "90%" }}>↓ Outro</span>
                 </div>
               </div>
             )}
@@ -2685,10 +2694,40 @@ ${ctxLines.join("\n")}`;
       </div>
 
       {/* Add-segment modal */}
-      {addSegmentOpen && (
+      {addSegmentOpen && (() => {
+        const playheadTime = videoRef.current?.currentTime ?? 0;
+        const formatMMSS = (sec: number) => {
+          const m = Math.floor(sec / 60);
+          const s = Math.floor(sec % 60);
+          return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        };
+        return (
         <div className="ce-shortcuts-backdrop" onClick={() => setAddSegmentOpen(false)}>
-          <div className="ce-shortcuts-modal" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
+          <div className="ce-shortcuts-modal" onClick={(e) => e.stopPropagation()} style={{ width: 420 }}>
             <div className="ce-shortcuts-title">+ Legg til segment</div>
+            <div style={{
+              background: "rgba(160, 48, 192, 0.10)",
+              border: "1px solid rgba(160, 48, 192, 0.30)",
+              borderRadius: 8,
+              padding: "8px 10px",
+              fontSize: 11.5,
+              color: "#cca0e8",
+              marginBottom: 12,
+            }}>
+              <span>Current playhead: <strong style={{ color: "#f0eaff", fontVariantNumeric: "tabular-nums" }}>{formatMMSS(playheadTime)}</strong></span>
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button
+                  onClick={() => setNewSegmentStart(formatMMSS(playheadTime))}
+                  style={{ flex: 1, background: "rgba(160, 48, 192, 0.20)", border: "1px solid rgba(160, 48, 192, 0.40)",
+                           color: "#cca0e8", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: 11 }}
+                >Bruk som START</button>
+                <button
+                  onClick={() => setNewSegmentEnd(formatMMSS(playheadTime))}
+                  style={{ flex: 1, background: "rgba(160, 48, 192, 0.20)", border: "1px solid rgba(160, 48, 192, 0.40)",
+                           color: "#cca0e8", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: 11 }}
+                >Bruk som SLUTT</button>
+              </div>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div>
                 <label style={{ display: "block", fontSize: 11, color: "#cca0e8", marginBottom: 4 }}>
@@ -2762,7 +2801,8 @@ ${ctxLines.join("\n")}`;
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Marker edit modal */}
       {editingMarkerId && (() => {
