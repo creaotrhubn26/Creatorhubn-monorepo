@@ -59,17 +59,20 @@
 /* ─── Top header ─── */
 .ce-header {
   display: grid;
-  grid-template-columns: 220px 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 16px;
-  padding: 0 24px;
+  padding: 0 20px;
   border-bottom: 1px solid #1a0d45;
   background: rgba(10, 5, 24, 0.95);
+  min-height: 56px;
 }
 .ce-logo {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .ce-logo-icon {
   width: 30px; height: 30px;
@@ -88,6 +91,7 @@
 }
 .ce-title-area {
   min-width: 0;
+  overflow: hidden;
 }
 .ce-title {
   font-weight: 600;
@@ -100,6 +104,10 @@
   margin: 0 -10px;
   border-radius: 6px;
   transition: background 0.12s;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ce-title:hover { background: rgba(160, 48, 192, 0.08); }
 .ce-title-edit {

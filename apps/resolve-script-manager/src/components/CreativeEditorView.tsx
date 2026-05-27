@@ -1727,11 +1727,12 @@ ${ctxLines.join("\n")}`;
             <button
               onClick={onStartNewProject}
               title="Lagre nåværende + start nytt prosjekt"
-              style={{ marginLeft: 14, padding: "4px 10px", fontSize: 12,
+              style={{ marginLeft: 10, padding: "3px 9px", fontSize: 11,
                        background: "var(--accent-dim)", border: "1px solid var(--accent)",
-                       borderRadius: 4, cursor: "pointer", color: "inherit" }}
+                       borderRadius: 4, cursor: "pointer", color: "inherit",
+                       whiteSpace: "nowrap", lineHeight: 1.4 }}
             >
-              + Nytt prosjekt
+              + Nytt
             </button>
           )}
         </div>
