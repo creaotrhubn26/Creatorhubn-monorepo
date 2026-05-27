@@ -265,6 +265,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
+
+  // Client Wishes — free-text input from couple → Claude tool-use applies edits
+  const [clientWishes, setClientWishes] = useState("");
+  const [wishesBusy, setWishesBusy] = useState(false);
+  const [wishesError, setWishesError] = useState<string | null>(null);
+  const [wishesResult, setWishesResult] = useState<{
+    interpretation: string; rationale: string; changesSummary: string
+  } | null>(null);
   const [activeSongIdx, setActiveSongIdx] = useState(0);
   const [songMenuOpen, setSongMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"rediger" | "story">("rediger");
