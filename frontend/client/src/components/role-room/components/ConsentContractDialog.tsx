@@ -597,7 +597,7 @@ export function ConsentContractDialog({
       }
 
       // Generate access code
-      const accessCode = await consentService.generateAccessCode(consent.id, {
+      const accessCode = await consentService.generateAccessCode(consent, {
         pin: includePin ? pin : undefined,
         expiresDays,
       });

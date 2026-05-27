@@ -265,7 +265,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
     
     setGeneratingCode(true);
     try {
-      const accessCode = await consentService.generateAccessCode(invitingConsent.id, {
+      const accessCode = await consentService.generateAccessCode(invitingConsent, {
         pin: invitePin || undefined,
         password: invitePassword || undefined,
         expiresDays: inviteExpiresDays,

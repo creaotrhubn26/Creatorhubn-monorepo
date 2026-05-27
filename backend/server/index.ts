@@ -111,6 +111,8 @@ import {
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
+import { createConsentPortalRouter } from "./consent-portal-routes.js";
+import { createCastingProductionRouter } from "./casting-production-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -1759,6 +1761,14 @@ app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
 app.use(
   "/api/integrations/v1/role-room",
   createRoleRoomIntegrationsV1Router(pool),
+);
+app.use(
+  "/api/consent",
+  createConsentPortalRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createCastingProductionRouter(pool, { activeSessions }),
 );
 
 const forwardGoogleCallback = (

@@ -1,19 +1,28 @@
 import React, { useState } from 'react';
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   Button,
   TextField,
   Typography,
   Box,
-  Alert,
+  Stack,
+  IconButton,
   Checkbox,
   FormControlLabel,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
-import { CheckCircle as CheckCircleIcon, Close as CloseIcon } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
+import {
+  Close as CloseIcon,
+  VerifiedUserOutlined as VerifiedIcon,
+  DrawOutlined as DrawIcon,
+  KeyboardOutlined as TypeIcon,
+} from '@mui/icons-material';
 import type { Consent, ConsentSignatureData, ConsentType } from '../../models/casting';
+import SignaturePad from './SignaturePad';
 
 interface ConsentSignatureDialogProps {
   open: boolean;
@@ -23,6 +32,15 @@ interface ConsentSignatureDialogProps {
   onSign: (signatureData: ConsentSignatureData) => void;
   onClose: () => void;
 }
+
+// ── Merkevare (matcher logoen / ConsentPortalView) ──
+const BRAND = '#9d38c6';
+const BRAND_DARK = '#7a2a9c';
+const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND} 0%, ${BRAND_DARK} 100%)`;
+
+const lightFieldSx = {
+  '& .MuiOutlinedInput-root': { borderRadius: 2.5, bgcolor: alpha(BRAND, 0.03) },
+} as const;
 
 const getConsentTypeLabel = (type: ConsentType): string => {
   const labels: Record<ConsentType, string> = {
@@ -48,6 +66,20 @@ const getConsentDescription = (type: ConsentType): string => {
   return descriptions[type] || '';
 };
 
+function InfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <Box sx={{ flex: 1, minWidth: 120 }}>
+      <Typography
+        variant="overline"
+        sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1.6 }}
+      >
+        {label}
+      </Typography>
+      <Typography sx={{ fontWeight: 600 }}>{value}</Typography>
+    </Box>
+  );
+}
+
 export default function ConsentSignatureDialog({
   open,
   consent,
@@ -59,6 +91,7 @@ export default function ConsentSignatureDialog({
   const [signature, setSignature] = useState('');
   const [signedByName, setSignedByName] = useState(candidateName || '');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [mode, setMode] = useState<'draw' | 'type'>('draw');
 
   const handleSign = () => {
     if (!signature.trim() || !signedByName.trim() || !acceptedTerms) {
@@ -70,6 +103,7 @@ export default function ConsentSignatureDialog({
       signed_by: signedByName.trim(),
       signed_at: new Date().toISOString(),
       user_agent: navigator.userAgent,
+      method: mode === 'draw' ? 'drawn' : 'typed',
     };
 
     onSign(signatureData);
@@ -80,51 +114,91 @@ export default function ConsentSignatureDialog({
 
   if (!consent) return null;
 
+  const canSign = Boolean(signature.trim() && signedByName.trim() && acceptedTerms);
+
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="sm" 
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#1c2128',
-          color: '#fff',
-          border: '1px solid rgba(156, 39, 176, 0.3)',
+          borderRadius: 4,
+          overflow: 'hidden',
+          boxShadow: '0 24px 60px rgba(31, 17, 51, 0.25)',
         },
       }}
     >
-      <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        Signer {consent.title || getConsentTypeLabel(consent.type)}
-      </DialogTitle>
-      <DialogContent sx={{ pt: 3 }}>
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Prosjekt:
-          </Typography>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#ce93d8' }}>
-            {projectName}
-          </Typography>
-          
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Samtykketype:
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            {getConsentTypeLabel(consent.type)}
-          </Typography>
-        </Box>
-
-        <Alert 
-          severity="info" 
-          sx={{ 
-            mb: 3, 
-            bgcolor: 'rgba(156, 39, 176, 0.1)', 
-            color: '#ce93d8',
-            '& .MuiAlert-icon': { color: '#ce93d8' },
+      {/* Branded header */}
+      <Box
+        sx={{
+          px: { xs: 2.5, sm: 3 },
+          py: 2.25,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          background: BRAND_GRADIENT,
+          color: '#fff',
+        }}
+      >
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            borderRadius: 2.5,
+            display: 'grid',
+            placeItems: 'center',
+            bgcolor: 'rgba(255,255,255,0.18)',
           }}
         >
-          {consent.description || getConsentDescription(consent.type)}
-        </Alert>
+          <VerifiedIcon />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+            Signer samtykke
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.92 }} noWrap>
+            {consent.title || getConsentTypeLabel(consent.type)}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: '#fff' }}>
+          <CloseIcon />
+        </IconButton>
+      </Box>
+
+      <DialogContent sx={{ p: { xs: 2.5, sm: 3 } }}>
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{ p: 2, mb: 2.5, borderRadius: 3, bgcolor: alpha(BRAND, 0.05) }}
+        >
+          <InfoCell label="Prosjekt" value={projectName} />
+          <InfoCell label="Type" value={getConsentTypeLabel(consent.type)} />
+        </Stack>
+
+        <Box sx={{ mb: 3 }}>
+          <Typography
+            variant="overline"
+            sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.08em' }}
+          >
+            Samtykketekst
+          </Typography>
+          <Box
+            sx={{
+              mt: 0.5,
+              p: 2.5,
+              borderRadius: 3,
+              bgcolor: '#fafafa',
+              borderLeft: '4px solid',
+              borderColor: BRAND,
+            }}
+          >
+            <Typography variant="body2" sx={{ lineHeight: 1.7 }}>
+              {consent.description || getConsentDescription(consent.type)}
+            </Typography>
+          </Box>
+        </Box>
 
         <TextField
           label="Fullt navn"
@@ -132,79 +206,102 @@ export default function ConsentSignatureDialog({
           onChange={(e) => setSignedByName(e.target.value)}
           fullWidth
           required
-          sx={{ 
-            mb: 2,
-            '& .MuiOutlinedInput-root': {
-              color: '#fff',
-              '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-              '&:hover fieldset': { borderColor: '#ce93d8' },
-              '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
-            },
-            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-          }}
+          sx={{ mb: 2.5, ...lightFieldSx }}
         />
 
-        <TextField
-          label="Signatur (skriv ditt navn eller initialer)"
-          value={signature}
-          onChange={(e) => setSignature(e.target.value)}
-          fullWidth
-          required
-          multiline
-          rows={3}
-          placeholder="Skriv din signatur her..."
-          helperText="Dette vil bli lagret som din digitale signatur"
-          sx={{ 
-            mb: 2,
-            '& .MuiOutlinedInput-root': {
-              color: '#fff',
-              fontFamily: '"Brush Script MT", cursive',
-              fontSize: '1.5rem',
-              '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-              '&:hover fieldset': { borderColor: '#ce93d8' },
-              '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
-            },
-            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-            '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.87)' },
-          }}
-        />
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+          <Typography
+            variant="overline"
+            sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.08em' }}
+          >
+            Signatur
+          </Typography>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={mode}
+            onChange={(_, v) => { if (v) { setMode(v); setSignature(''); } }}
+            sx={{
+              '& .MuiToggleButton-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 1.5,
+                py: 0.4,
+                borderColor: alpha(BRAND, 0.3),
+              },
+              '& .Mui-selected': {
+                bgcolor: `${alpha(BRAND, 0.12)} !important`,
+                color: `${BRAND_DARK} !important`,
+              },
+            }}
+          >
+            <ToggleButton value="draw"><DrawIcon sx={{ fontSize: 16, mr: 0.5 }} />Tegn</ToggleButton>
+            <ToggleButton value="type"><TypeIcon sx={{ fontSize: 16, mr: 0.5 }} />Skriv</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+
+        {mode === 'draw' ? (
+          <SignaturePad brand={BRAND} onChange={(d) => setSignature(d || '')} />
+        ) : (
+          <TextField
+            value={signature}
+            onChange={(e) => setSignature(e.target.value)}
+            fullWidth
+            required
+            multiline
+            rows={3}
+            placeholder="Skriv din signatur her…"
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2.5,
+                bgcolor: alpha(BRAND, 0.03),
+                fontFamily: '"Brush Script MT", "Segoe Script", cursive',
+                fontSize: '1.6rem',
+                color: BRAND_DARK,
+              },
+            }}
+          />
+        )}
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.75, mb: 2.5, color: 'text.secondary' }}>
+          Signaturen lagres med tidspunkt og enhet for sporbarhet.
+        </Typography>
 
         <FormControlLabel
           control={
-            <Checkbox 
-              checked={acceptedTerms} 
+            <Checkbox
+              checked={acceptedTerms}
               onChange={(e) => setAcceptedTerms(e.target.checked)}
-              sx={{ 
-                color: '#ce93d8',
-                '&.Mui-checked': { color: '#9c27b0' },
-              }}
+              sx={{ color: alpha(BRAND, 0.6), '&.Mui-checked': { color: BRAND } }}
             />
           }
           label={
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               Jeg har lest og forstått vilkårene, og samtykker til bruken som beskrevet ovenfor.
             </Typography>
           }
-          sx={{ mb: 2 }}
+          sx={{ alignItems: 'flex-start', mr: 0 }}
         />
       </DialogContent>
-      <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
-        <Button 
-          onClick={onClose} 
-          startIcon={<CloseIcon />}
-          sx={{ color: 'rgba(255,255,255,0.87)' }}
-        >
+
+      <DialogActions sx={{ px: { xs: 2.5, sm: 3 }, pb: 3, pt: 0, gap: 1 }}>
+        <Button onClick={onClose} sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2.5, color: 'text.secondary' }}>
           Avbryt
         </Button>
         <Button
           variant="contained"
           onClick={handleSign}
-          disabled={!signature.trim() || !signedByName.trim() || !acceptedTerms}
-          startIcon={<CheckCircleIcon />}
-          sx={{ 
-            bgcolor: '#9c27b0',
-            '&:hover': { bgcolor: '#7b1fa2' },
-            '&.Mui-disabled': { bgcolor: 'rgba(156, 39, 176, 0.3)' },
+          disabled={!canSign}
+          startIcon={<VerifiedIcon />}
+          sx={{
+            py: 1.25,
+            px: 3,
+            borderRadius: 2.5,
+            fontWeight: 700,
+            textTransform: 'none',
+            boxShadow: `0 10px 24px ${alpha(BRAND, 0.35)}`,
+            background: BRAND_GRADIENT,
+            '&:hover': { background: `linear-gradient(135deg, ${BRAND_DARK} 0%, #5f2079 100%)` },
+            '&.Mui-disabled': { background: alpha(BRAND, 0.35), color: 'rgba(255,255,255,0.85)' },
           }}
         >
           Signer samtykke

@@ -1,14 +1,6 @@
 import type { Consent, ConsentType, ConsentSignatureData } from '../models/casting';
 import { castingService } from './castingService';
-
-function randomSegment(length = 4): string {
-  return Math.random().toString(36).slice(2, 2 + length).toUpperCase();
-}
-
-function buildLocalAccessCode(consentId: string): string {
-  const compactConsentId = consentId.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();
-  return `CONS-${compactConsentId || randomSegment(6)}-${randomSegment(4)}`;
-}
+import { authSessionService } from './authSessionService';
 
 function normalizeConsent(consent: Consent, projectId: string, candidateId: string): Consent {
   const now = new Date().toISOString();
@@ -93,9 +85,42 @@ export const consentService = {
     }
   },
 
-  async generateAccessCode(consentId: string, options?: { pin?: string; password?: string; expiresDays?: number }): Promise<string | null> {
-    void options;
-    return buildLocalAccessCode(consentId);
+  async generateAccessCode(
+    consent: Consent,
+    options?: { pin?: string; password?: string; expiresDays?: number; candidateName?: string; projectName?: string },
+  ): Promise<string | null> {
+    try {
+      const response = await fetch('/api/consent/issue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authSessionService.getAuthHeadersSync(),
+        },
+        body: JSON.stringify({
+          consentId: consent.id,
+          projectId: consent.projectId || consent.project_id,
+          candidateId: consent.candidateId || consent.candidate_id,
+          type: consent.type,
+          title: consent.title,
+          description: consent.description,
+          document: consent.document,
+          candidateName: options?.candidateName,
+          projectName: options?.projectName,
+          pin: options?.pin || undefined,
+          password: options?.password || undefined,
+          expiresDays: options?.expiresDays,
+        }),
+      });
+      if (!response.ok) {
+        console.error('Failed to issue consent access code:', response.status);
+        return null;
+      }
+      const data = await response.json();
+      return typeof data?.accessCode === 'string' ? data.accessCode : null;
+    } catch (error) {
+      console.error('Error issuing consent access code:', error);
+      return null;
+    }
   },
 
   async hasAllRequiredConsents(projectId: string, candidateId: string, requiredTypes: ConsentType[]): Promise<boolean> {

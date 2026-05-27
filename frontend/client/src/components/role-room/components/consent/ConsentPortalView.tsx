@@ -6,20 +6,19 @@ import {
   Typography,
   Button,
   Chip,
-  Divider,
-  Paper,
   Alert,
   CircularProgress,
   TextField,
   Stack,
-  useTheme,
   IconButton,
   InputAdornment,
+  Fade,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
-  CheckCircle,
+  CheckCircleRounded,
   Schedule,
-  Lock as LockIcon,
+  LockOutlined as LockIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Download as DownloadIcon,
@@ -29,6 +28,10 @@ import {
   PhotoCamera as PhotoIcon,
   MicNone as AudioIcon,
   ChildCare as ChildIcon,
+  ArrowForwardRounded as ArrowIcon,
+  GppGoodOutlined as ShieldIcon,
+  EventOutlined as CalendarIcon,
+  VerifiedUserOutlined as VerifiedIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from '../icons/CastingIcons';
 import ConsentSignatureDialog from './ConsentSignatureDialog';
@@ -38,6 +41,37 @@ interface ConsentPortalViewProps {
   accessCode?: string;
   onSigned?: () => void;
 }
+
+// ── Merkevare ──
+const BRAND = '#9d38c6';
+const BRAND_DARK = '#7a2a9c';
+const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND} 0%, ${BRAND_DARK} 100%)`;
+
+const cardSx = {
+  width: '100%',
+  maxWidth: 540,
+  mx: 'auto',
+  borderRadius: 4,
+  border: '1px solid',
+  borderColor: alpha(BRAND, 0.1),
+  boxShadow: '0 18px 50px rgba(31, 17, 51, 0.10)',
+  bgcolor: '#fff',
+} as const;
+
+const ctaSx = {
+  py: 1.5,
+  borderRadius: 2.5,
+  fontWeight: 700,
+  fontSize: '1rem',
+  textTransform: 'none',
+  boxShadow: `0 10px 24px ${alpha(BRAND, 0.35)}`,
+  background: BRAND_GRADIENT,
+  '&:hover': { background: `linear-gradient(135deg, ${BRAND_DARK} 0%, #5f2079 100%)` },
+} as const;
+
+const lightFieldSx = {
+  '& .MuiOutlinedInput-root': { borderRadius: 2.5, bgcolor: alpha(BRAND, 0.03) },
+} as const;
 
 const getConsentTypeIcon = (type: ConsentType) => {
   const icons: Record<ConsentType, React.ReactNode> = {
@@ -63,20 +97,31 @@ const getConsentTypeLabel = (type: ConsentType): string => {
   return labels[type] || type;
 };
 
+function InfoCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Box sx={{ flex: 1, minWidth: 130 }}>
+      <Typography
+        variant="overline"
+        sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1.6 }}
+      >
+        {label}
+      </Typography>
+      <Box sx={{ mt: 0.25 }}>{children}</Box>
+    </Box>
+  );
+}
+
 export default function ConsentPortalView({
   accessCode: propAccessCode,
   onSigned,
 }: ConsentPortalViewProps) {
-  const theme = useTheme();
   const [accessCode, setAccessCode] = useState(propAccessCode || '');
   const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [requiresPin, setRequiresPin] = useState(false);
   const [requiresPassword, setRequiresPassword] = useState(false);
-  const [step, setStep] = useState<'accessCode' | 'credentials' | 'authenticated'>(
-    propAccessCode ? 'accessCode' : 'accessCode'
-  );
+  const [step, setStep] = useState<'accessCode' | 'credentials' | 'authenticated'>('accessCode');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consentData, setConsentData] = useState<{
@@ -100,10 +145,10 @@ export default function ConsentPortalView({
       params.append('access_code', accessCode.trim().toUpperCase());
       if (pin) params.append('pin', pin);
       if (password) params.append('password', password);
-      
+
       const response = await fetch(`/api/consent/portal/access?${params.toString()}`);
       const data = await response.json();
-      
+
       if (response.ok && data.success) {
         setConsentData({
           consent: data.consent,
@@ -155,7 +200,7 @@ export default function ConsentPortalView({
       });
 
       const data = await response.json();
-      
+
       if (response.ok && data.success) {
         setConsentData({
           ...consentData,
@@ -175,324 +220,410 @@ export default function ConsentPortalView({
   };
 
   const renderAccessCodeStep = () => (
-    <Card sx={{ maxWidth: 500, mx: 'auto', bgcolor: '#1c2128', color: '#fff' }}>
-      <CardContent sx={{ p: 4 }}>
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <LockIcon sx={{ fontSize: 48, color: '#9c27b0', mb: 2 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
-            Samtykke Portal
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Skriv inn tilgangskoden du mottok for å se og signere samtykket
-          </Typography>
-        </Box>
+    <Fade in timeout={400}>
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: { xs: 3, sm: 5 } }}>
+          <Stack alignItems="center" spacing={1} sx={{ mb: 4 }}>
+            <Box
+              sx={{
+                width: 64,
+                height: 64,
+                borderRadius: '20px',
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: alpha(BRAND, 0.1),
+                color: BRAND,
+                mb: 1,
+              }}
+            >
+              <LockIcon sx={{ fontSize: 30 }} />
+            </Box>
+            <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
+              Samtykke-portal
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'center', maxWidth: 360 }}>
+              Skriv inn tilgangskoden fra invitasjonen for å se og signere samtykket.
+            </Typography>
+          </Stack>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
+          {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
 
-        <TextField
-          label="Tilgangskode"
-          value={accessCode}
-          onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
-          fullWidth
-          placeholder="F.eks. ABC123"
-          sx={{ 
-            mb: 3,
-            '& .MuiOutlinedInput-root': {
-              color: '#fff',
-              '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-              '&:hover fieldset': { borderColor: '#ce93d8' },
-              '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
-            },
-            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-          }}
-          InputProps={{
-            style: { letterSpacing: '0.2em', textTransform: 'uppercase' },
-          }}
-        />
+          <TextField
+            label="Tilgangskode"
+            value={accessCode}
+            onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => { if (e.key === 'Enter') validateAccess(); }}
+            fullWidth
+            placeholder="CONS-XXXX-XXXX-XXXX"
+            helperText="Koden står i invitasjonen du mottok på e-post eller SMS."
+            sx={{ mb: 3, ...lightFieldSx }}
+            inputProps={{
+              style: {
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                fontWeight: 700,
+                textAlign: 'center',
+              },
+            }}
+          />
 
-        <Button
-          variant="contained"
-          fullWidth
-          onClick={validateAccess}
-          disabled={loading || !accessCode.trim()}
-          sx={{ 
-            py: 1.5, 
-            bgcolor: '#9c27b0',
-            '&:hover': { bgcolor: '#7b1fa2' },
-          }}
-        >
-          {loading ? <CircularProgress size={24} /> : 'Fortsett'}
-        </Button>
-      </CardContent>
-    </Card>
+          <Button
+            variant="contained"
+            fullWidth
+            onClick={validateAccess}
+            disabled={loading || !accessCode.trim()}
+            endIcon={loading ? undefined : <ArrowIcon />}
+            sx={ctaSx}
+          >
+            {loading ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : 'Fortsett'}
+          </Button>
+
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ mt: 3 }}>
+            <LockIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Lenken er personlig — ikke del den med andre.
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Fade>
   );
 
   const renderCredentialsStep = () => (
-    <Card sx={{ maxWidth: 500, mx: 'auto', bgcolor: '#1c2128', color: '#fff' }}>
-      <CardContent sx={{ p: 4 }}>
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <LockIcon sx={{ fontSize: 48, color: '#9c27b0', mb: 2 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
-            Ekstra sikkerhet
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {requiresPin && requiresPassword 
-              ? 'Skriv inn PIN og passord for å fortsette'
-              : requiresPin 
-                ? 'Skriv inn PIN-koden for å fortsette'
-                : 'Skriv inn passordet for å fortsette'}
-          </Typography>
-        </Box>
+    <Fade in timeout={400}>
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: { xs: 3, sm: 5 } }}>
+          <Stack alignItems="center" spacing={1} sx={{ mb: 4 }}>
+            <Box
+              sx={{
+                width: 64,
+                height: 64,
+                borderRadius: '20px',
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: alpha(BRAND, 0.1),
+                color: BRAND,
+                mb: 1,
+              }}
+            >
+              <ShieldIcon sx={{ fontSize: 30 }} />
+            </Box>
+            <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
+              Ekstra sikkerhet
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'center', maxWidth: 360 }}>
+              {requiresPin && requiresPassword
+                ? 'Skriv inn PIN og passord for å fortsette.'
+                : requiresPin
+                  ? 'Skriv inn PIN-koden for å fortsette.'
+                  : 'Skriv inn passordet for å fortsette.'}
+            </Typography>
+          </Stack>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
+          {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
 
-        {requiresPin && (
-          <TextField
-            label="PIN-kode"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            fullWidth
-            type="password"
-            sx={{ 
-              mb: 2,
-              '& .MuiOutlinedInput-root': {
-                color: '#fff',
-                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-              },
-              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-            }}
-          />
-        )}
+          {requiresPin && (
+            <TextField
+              label="PIN-kode"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              fullWidth
+              type="password"
+              sx={{ mb: 2, ...lightFieldSx }}
+            />
+          )}
 
-        {requiresPassword && (
-          <TextField
-            label="Passord"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            fullWidth
-            type={showPassword ? 'text' : 'password'}
-            sx={{ 
-              mb: 3,
-              '& .MuiOutlinedInput-root': {
-                color: '#fff',
-                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-              },
-              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-            }}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? 'Skjul passord' : 'Vis passord'}
-                    sx={{ color: 'rgba(255,255,255,0.87)' }}
-                  >
-                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        )}
+          {requiresPassword && (
+            <TextField
+              label="Passord"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+              type={showPassword ? 'text' : 'password'}
+              sx={{ mb: 3, ...lightFieldSx }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Skjul passord' : 'Vis passord'}
+                      edge="end"
+                    >
+                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
 
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            onClick={() => setStep('accessCode')}
-            sx={{ 
-              flex: 1, 
-              color: '#fff', 
-              borderColor: 'rgba(255,255,255,0.3)',
+          <Stack direction="row" spacing={2}>
+            <Button
+              variant="outlined"
+              onClick={() => setStep('accessCode')}
+              sx={{ flex: 1, py: 1.5, borderRadius: 2.5, textTransform: 'none', fontWeight: 600 }}
+            >
+              Tilbake
+            </Button>
+            <Button
+              variant="contained"
+              onClick={validateAccess}
+              disabled={loading || (requiresPin && !pin) || (requiresPassword && !password)}
+              sx={{ flex: 1, ...ctaSx }}
+            >
+              {loading ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : 'Bekreft'}
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Fade>
+  );
+
+  const renderSignedSuccess = (consent: Consent, candidateName: string, projectName: string) => (
+    <Fade in timeout={400}>
+      <Card sx={{ ...cardSx, maxWidth: 560 }}>
+        <CardContent sx={{ p: { xs: 3, sm: 5 }, textAlign: 'center' }}>
+          <Box
+            sx={{
+              width: 76,
+              height: 76,
+              mx: 'auto',
+              mb: 2.5,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: alpha('#16a34a', 0.12),
+              color: '#16a34a',
             }}
           >
-            Tilbake
-          </Button>
-          <Button
-            variant="contained"
-            onClick={validateAccess}
-            disabled={loading || (requiresPin && !pin) || (requiresPassword && !password)}
-            sx={{ 
-              flex: 1, 
-              bgcolor: '#9c27b0',
-              '&:hover': { bgcolor: '#7b1fa2' },
-            }}
-          >
-            {loading ? <CircularProgress size={24} /> : 'Bekreft'}
-          </Button>
-        </Stack>
-      </CardContent>
-    </Card>
+            <CheckCircleRounded sx={{ fontSize: 44 }} />
+          </Box>
+          <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 1 }}>
+            Takk! Samtykket er signert
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
+            {consent.title || getConsentTypeLabel(consent.type)} · {projectName}
+          </Typography>
+
+          {consent.signatureData && (
+            <Box
+              sx={{
+                textAlign: 'left',
+                bgcolor: alpha('#16a34a', 0.06),
+                border: '1px solid',
+                borderColor: alpha('#16a34a', 0.2),
+                borderRadius: 3,
+                p: 2.5,
+                mb: 3,
+              }}
+            >
+              <Stack direction="row" spacing={1} alignItems="center">
+                <VerifiedIcon sx={{ fontSize: 18, color: '#16a34a' }} />
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Signert av {consent.signatureData.signed_by}
+                </Typography>
+              </Stack>
+              {consent.signatureData.signed_at && (
+                <Typography variant="caption" sx={{ color: 'text.secondary', pl: 3.25 }}>
+                  {new Date(consent.signatureData.signed_at).toLocaleDateString('nb-NO', {
+                    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                  })}
+                </Typography>
+              )}
+            </Box>
+          )}
+
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            En bekreftelse er registrert. Du kan trygt lukke dette vinduet.
+          </Typography>
+        </CardContent>
+      </Card>
+    </Fade>
   );
 
   const renderAuthenticatedView = () => {
     if (!consentData) return null;
-
     const { consent, candidateName, projectName } = consentData;
 
+    if (consent.signed) return renderSignedSuccess(consent, candidateName, projectName);
+
     return (
-      <Box sx={{ maxWidth: 700, mx: 'auto' }}>
-        <Card sx={{ bgcolor: '#1c2128', color: '#fff', mb: 3 }}>
-          <CardContent sx={{ p: 4 }}>
-            <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-              <Box sx={{ 
-                p: 2, 
-                borderRadius: 2, 
-                bgcolor: 'rgba(156, 39, 176, 0.2)',
-                color: '#ce93d8',
-              }}>
+      <Fade in timeout={400}>
+        <Card sx={{ ...cardSx, maxWidth: 640 }}>
+          <CardContent sx={{ p: { xs: 3, sm: 4.5 } }}>
+            <Stack direction="row" alignItems="flex-start" spacing={2} sx={{ mb: 3 }}>
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 3,
+                  display: 'grid',
+                  placeItems: 'center',
+                  bgcolor: alpha(BRAND, 0.1),
+                  color: BRAND,
+                }}
+              >
                 {getConsentTypeIcon(consent.type)}
               </Box>
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="h5" sx={{ fontWeight: 600 }}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.01em', lineHeight: 1.25 }}>
                   {consent.title || getConsentTypeLabel(consent.type)}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                   {projectName}
                 </Typography>
               </Box>
               <Chip
-                icon={consent.signed ? <CheckCircle /> : <Schedule />}
-                label={consent.signed ? 'Signert' : 'Venter på signatur'}
-                color={consent.signed ? 'success' : 'warning'}
-                sx={{ fontWeight: 500 }}
+                size="small"
+                icon={<Schedule sx={{ fontSize: 16 }} />}
+                label="Venter på signatur"
+                sx={{
+                  fontWeight: 600,
+                  bgcolor: alpha('#d97706', 0.12),
+                  color: '#b45309',
+                  '& .MuiChip-icon': { color: '#b45309' },
+                }}
               />
             </Stack>
 
-            <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 3 }} />
-
-            <Stack direction="row" spacing={4} sx={{ mb: 3 }}>
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Kandidat
-                </Typography>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <PersonIcon sx={{ fontSize: 18, color: '#ce93d8' }} />
-                  <Typography>{candidateName}</Typography>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={{ xs: 1.5, sm: 2 }}
+              sx={{ p: 2, mb: 3, borderRadius: 3, bgcolor: alpha(BRAND, 0.04) }}
+            >
+              <InfoCell label="Kandidat">
+                <Stack direction="row" alignItems="center" spacing={0.75}>
+                  <PersonIcon sx={{ fontSize: 18, color: BRAND }} />
+                  <Typography sx={{ fontWeight: 600 }}>{candidateName}</Typography>
                 </Stack>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Type
-                </Typography>
-                <Typography>{getConsentTypeLabel(consent.type)}</Typography>
-              </Box>
+              </InfoCell>
+              <InfoCell label="Type">
+                <Typography sx={{ fontWeight: 600 }}>{getConsentTypeLabel(consent.type)}</Typography>
+              </InfoCell>
               {consent.expiresAt && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Utløper
-                  </Typography>
-                  <Typography>
-                    {new Date(consent.expiresAt).toLocaleDateString('nb-NO')}
-                  </Typography>
-                </Box>
+                <InfoCell label="Utløper">
+                  <Stack direction="row" alignItems="center" spacing={0.75}>
+                    <CalendarIcon sx={{ fontSize: 18, color: BRAND }} />
+                    <Typography sx={{ fontWeight: 600 }}>
+                      {new Date(consent.expiresAt).toLocaleDateString('nb-NO')}
+                    </Typography>
+                  </Stack>
+                </InfoCell>
               )}
             </Stack>
 
             {consent.description && (
-              <Paper 
-                sx={{ 
-                  p: 3, 
-                  bgcolor: 'rgba(156, 39, 176, 0.1)', 
-                  border: '1px solid rgba(156, 39, 176, 0.2)',
-                  mb: 3,
-                }}
-              >
-                <Typography variant="body1" sx={{ lineHeight: 1.7 }}>
-                  {consent.description}
+              <Box sx={{ mb: 3 }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.08em' }}
+                >
+                  Samtykketekst
                 </Typography>
-              </Paper>
-            )}
-
-            {consent.signed && consent.signatureData && (
-              <Alert 
-                severity="success" 
-                icon={<CheckCircle />}
-                sx={{ mb: 3 }}
-              >
-                Signert av {consent.signatureData.signed_by} den{' '}
-                {new Date(consent.signatureData.signed_at).toLocaleDateString('nb-NO', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </Alert>
-            )}
-
-            <Stack direction="row" spacing={2}>
-              {!consent.signed && (
-                <Button
-                  variant="contained"
-                  onClick={() => setShowSignDialog(true)}
-                  sx={{ 
-                    flex: 1, 
-                    py: 1.5,
-                    bgcolor: '#9c27b0',
-                    '&:hover': { bgcolor: '#7b1fa2' },
+                <Box
+                  sx={{
+                    mt: 0.5,
+                    p: 2.5,
+                    borderRadius: 3,
+                    bgcolor: '#fafafa',
+                    borderLeft: '4px solid',
+                    borderColor: BRAND,
                   }}
                 >
-                  Signer samtykke
-                </Button>
-              )}
+                  <Typography variant="body1" sx={{ lineHeight: 1.7, color: 'text.primary' }}>
+                    {consent.description}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <Button
+                variant="contained"
+                onClick={() => setShowSignDialog(true)}
+                startIcon={<VerifiedIcon />}
+                sx={{ flex: 1, ...ctaSx }}
+              >
+                Signer samtykke
+              </Button>
               {consent.document && (
                 <Button
                   variant="outlined"
                   startIcon={<DownloadIcon />}
                   href={consent.document}
                   target="_blank"
-                  sx={{ 
-                    color: '#ce93d8', 
-                    borderColor: '#ce93d8',
-                    '&:hover': { borderColor: '#9c27b0', bgcolor: 'rgba(156, 39, 176, 0.1)' },
-                  }}
+                  sx={{ py: 1.5, borderRadius: 2.5, textTransform: 'none', fontWeight: 600 }}
                 >
                   Last ned dokument
                 </Button>
               )}
             </Stack>
           </CardContent>
-        </Card>
 
-        <ConsentSignatureDialog
-          open={showSignDialog}
-          consent={consent}
-          candidateName={candidateName}
-          projectName={projectName}
-          onSign={handleSign}
-          onClose={() => setShowSignDialog(false)}
-        />
-      </Box>
+          <ConsentSignatureDialog
+            open={showSignDialog}
+            consent={consent}
+            candidateName={candidateName}
+            projectName={projectName}
+            onSign={handleSign}
+            onClose={() => setShowSignDialog(false)}
+          />
+        </Card>
+      </Fade>
     );
   };
 
+  const trustBadges: Array<{ icon: React.ReactNode; label: string }> = [
+    { icon: <LockIcon sx={{ fontSize: 16 }} />, label: 'Kryptert forbindelse' },
+    { icon: <ShieldIcon sx={{ fontSize: 16 }} />, label: 'GDPR-trygg' },
+    { icon: <VerifiedIcon sx={{ fontSize: 16 }} />, label: 'Juridisk bindende' },
+  ];
+
   return (
-    <Box sx={{ 
-      minHeight: '100vh', 
-      bgcolor: '#0d1117', 
-      py: 4, 
-      px: 2,
-    }}>
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <Typography variant="h4" sx={{ color: '#ce93d8', fontWeight: 700 }}>
-          The Role Room
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #faf5ff 0%, #f3e9fb 100%)',
+        py: { xs: 4, md: 7 },
+        px: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+      }}
+    >
+      <Stack alignItems="center" spacing={1.5} sx={{ mb: 4 }}>
+        <Box
+          component="img"
+          src="/role-room-assets/TheRoleRoom_App_Logo.webp"
+          alt="The Role Room"
+          sx={{
+            height: { xs: 68, sm: 80 },
+            width: 'auto',
+            filter: `drop-shadow(0 12px 28px ${alpha(BRAND, 0.3)})`,
+          }}
+        />
+        <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+          Sikker samtykke-portal
         </Typography>
-        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-          Samtykke-portal
-        </Typography>
-      </Box>
+      </Stack>
 
       {step === 'accessCode' && renderAccessCodeStep()}
       {step === 'credentials' && renderCredentialsStep()}
       {step === 'authenticated' && renderAuthenticatedView()}
+
+      <Stack
+        direction="row"
+        spacing={3}
+        justifyContent="center"
+        sx={{ mt: 4, flexWrap: 'wrap', rowGap: 1 }}
+      >
+        {trustBadges.map((b) => (
+          <Stack key={b.label} direction="row" spacing={0.75} alignItems="center" sx={{ color: 'text.secondary' }}>
+            <Box sx={{ color: BRAND, display: 'flex' }}>{b.icon}</Box>
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>{b.label}</Typography>
+          </Stack>
+        ))}
+      </Stack>
     </Box>
   );
 }

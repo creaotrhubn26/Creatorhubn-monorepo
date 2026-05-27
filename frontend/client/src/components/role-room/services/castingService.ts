@@ -2561,8 +2561,14 @@ export const castingService = {
    */
   async getProps(projectId: string): Promise<Prop[]> {
     projectId = normalizeRequiredProjectId(projectId, 'getProps');
-    const project = await this.getProject(projectId);
-    return project?.props || [];
+    const response = await fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/props`, {
+      headers: { ...getRoleRoomAuthHeaders() },
+    });
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente props (${response.status})`);
+    }
+    const data = await response.json();
+    return Array.isArray(data?.props) ? (data.props as Prop[]) : [];
   },
 
   /**
@@ -2572,23 +2578,14 @@ export const castingService = {
     projectId = normalizeRequiredProjectId(projectId, 'saveProp');
     assertDemoProjectCanMutate(projectId, 'save');
     assertPayloadProjectScope(projectId, prop, 'saveProp');
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
+    const response = await fetch('/api/role-room/props', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
+      body: JSON.stringify({ ...prop, projectId, project_id: projectId }),
+    });
+    if (!response.ok) {
+      throw new Error(`Kunne ikke lagre prop (${response.status})`);
     }
-    
-    if (!project.props) {
-      project.props = [];
-    }
-    
-    const index = project.props.findIndex(p => p.id === prop.id);
-    if (index >= 0) {
-      project.props[index] = { ...prop, updatedAt: new Date().toISOString() };
-    } else {
-      project.props.push(prop);
-    }
-    
-    await this.saveProject(project);
   },
 
   /**
@@ -2597,13 +2594,13 @@ export const castingService = {
   async deleteProp(projectId: string, propId: string): Promise<void> {
     projectId = normalizeRequiredProjectId(projectId, 'deleteProp');
     assertDemoProjectCanMutate(projectId, 'save');
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
+    const response = await fetch(`/api/role-room/props/${encodeURIComponent(propId)}`, {
+      method: 'DELETE',
+      headers: { ...getRoleRoomAuthHeaders() },
+    });
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`Kunne ikke slette prop (${response.status})`);
     }
-    
-    project.props = (project.props || []).filter(p => p.id !== propId);
-    await this.saveProject(project);
   },
 
   // ============================================================================
@@ -2615,8 +2612,14 @@ export const castingService = {
    */
   async getProductionDays(projectId: string): Promise<ProductionDay[]> {
     projectId = normalizeRequiredProjectId(projectId, 'getProductionDays');
-    const project = await this.getProject(projectId);
-    return project?.productionDays || [];
+    const response = await fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/production-days`, {
+      headers: { ...getRoleRoomAuthHeaders() },
+    });
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente produksjonsdager (${response.status})`);
+    }
+    const data = await response.json();
+    return Array.isArray(data?.productionDays) ? (data.productionDays as ProductionDay[]) : [];
   },
 
   /**
@@ -2626,23 +2629,14 @@ export const castingService = {
     projectId = normalizeRequiredProjectId(projectId, 'saveProductionDay');
     assertDemoProjectCanMutate(projectId, 'save');
     assertPayloadProjectScope(projectId, productionDay, 'saveProductionDay');
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
+    const response = await fetch('/api/role-room/production-days', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
+      body: JSON.stringify({ ...productionDay, projectId, project_id: projectId }),
+    });
+    if (!response.ok) {
+      throw new Error(`Kunne ikke lagre produksjonsdag (${response.status})`);
     }
-    
-    if (!project.productionDays) {
-      project.productionDays = [];
-    }
-    
-    const index = project.productionDays.findIndex(pd => pd.id === productionDay.id);
-    if (index >= 0) {
-      project.productionDays[index] = { ...productionDay, updatedAt: new Date().toISOString() };
-    } else {
-      project.productionDays.push(productionDay);
-    }
-    
-    await this.saveProject(project);
   },
 
   /**
@@ -2651,13 +2645,13 @@ export const castingService = {
   async deleteProductionDay(projectId: string, productionDayId: string): Promise<void> {
     projectId = normalizeRequiredProjectId(projectId, 'deleteProductionDay');
     assertDemoProjectCanMutate(projectId, 'save');
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
+    const response = await fetch(`/api/role-room/production-days/${encodeURIComponent(productionDayId)}`, {
+      method: 'DELETE',
+      headers: { ...getRoleRoomAuthHeaders() },
+    });
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`Kunne ikke slette produksjonsdag (${response.status})`);
     }
-    
-    project.productionDays = (project.productionDays || []).filter(pd => pd.id !== productionDayId);
-    await this.saveProject(project);
   },
 
   // ============================================================================
