@@ -403,6 +403,16 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
   // Shortcuts help-overlay
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
+  // Onboarding wizard (Claude-chat-style first-time-flow)
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  type ProjectKind = "wedding" | "music_video" | "documentary" | "corporate" | "other";
+  type ProjectPurpose = "highlight" | "teaser_social" | "full_film" | "couple_cut" | "family_cut";
+  const [projectKind, setProjectKind] = useState<ProjectKind | "">("");
+  const [projectPurpose, setProjectPurpose] = useState<ProjectPurpose | "">("");
+  const [projectTargetMin, setProjectTargetMin] = useState<number>(0);
+  const [projectWantsScan, setProjectWantsScan] = useState<boolean | null>(null);
+
   // ─── Pro-editor: Overganger / Custom audio / Markers / Comments ───
   type TransitionType = "cut" | "fade" | "dissolve" | "wipeleft" | "fadeblack" | "fadewhite";
   const [pickTransitions, setPickTransitions] = useState<Record<string, TransitionType>>({});
@@ -450,6 +460,10 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
             if (s.pickComments) setPickComments(s.pickComments);
             if (Array.isArray(s.segmentOrder)) setSegmentOrder(s.segmentOrder);
             if (Array.isArray(s.extraPicks)) setExtraPicks(s.extraPicks);
+            if (s.projectKind) setProjectKind(s.projectKind);
+            if (s.projectPurpose) setProjectPurpose(s.projectPurpose);
+            if (typeof s.projectTargetMin === "number") setProjectTargetMin(s.projectTargetMin);
+            // Don't show onboarding for restored projects (user already configured)
             restored = true;
           }
         } catch (e) {
@@ -465,6 +479,9 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
           const chapters = new Set<string>();
           for (const p of data.picks) chapters.add((p.chapter || "details").toLowerCase());
           setIncludedChapters(chapters);
+          // First-time-load: trigger onboarding wizard
+          setOnboardingOpen(true);
+          setOnboardingStep(0);
         }
       })
       .catch((e) => setLoadError(`Failed to load picks: ${e}`));
@@ -488,6 +505,9 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose }: Props) {
           pickComments,
           segmentOrder,
           extraPicks,
+          projectKind,
+          projectPurpose,
+          projectTargetMin,
           savedAt: Date.now(),
         }));
       } catch (e) {
@@ -2692,6 +2712,187 @@ ${ctxLines.join("\n")}`;
           </div>
         </aside>
       </div>
+
+      {/* Claude onboarding-wizard (vises ved første åpning av prosjekt) */}
+      {onboardingOpen && (
+        <div className="ce-shortcuts-backdrop">
+          <div className="ce-onboarding-modal">
+            <div className="ce-onboarding-header">
+              <span style={{ fontSize: 22 }}>🌸</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "#c850e0" }}>Claude</div>
+                <div style={{ fontSize: 10, color: "#8674a8", letterSpacing: 0.3 }}>AI CREATIVE DIRECTOR</div>
+              </div>
+              <button
+                className="ce-claude-close"
+                onClick={() => setOnboardingOpen(false)}
+                style={{ marginLeft: "auto", fontSize: 18 }}
+              >✕</button>
+            </div>
+
+            {/* STEP 0: Welcome + project-type */}
+            {onboardingStep === 0 && (
+              <div className="ce-onboarding-step">
+                <div className="ce-onboarding-msg">
+                  Hei! 👋 Jeg ser at du har et videoprosjekt klart.<br /><br />
+                  Hva slags prosjekt er dette?
+                </div>
+                <div className="ce-onboarding-choices">
+                  {([
+                    { id: "wedding", icon: "💍", label: "Bryllup", desc: "Mehndi/nikkah/reception, multi-day eller én dag" },
+                    { id: "music_video", icon: "🎵", label: "Music video", desc: "Beat-synket, performance, narrativt" },
+                    { id: "documentary", icon: "🎬", label: "Dokumentar", desc: "Intervjuer, B-roll, historie-fortelling" },
+                    { id: "corporate", icon: "💼", label: "Bedrift", desc: "Promo, intervju, produkt-demo" },
+                  ] as { id: ProjectKind; icon: string; label: string; desc: string }[]).map(opt => (
+                    <button
+                      key={opt.id}
+                      className={`ce-onboarding-choice ${projectKind === opt.id ? "active" : ""}`}
+                      onClick={() => { setProjectKind(opt.id); setOnboardingStep(1); }}
+                    >
+                      <span className="ce-onboarding-icon">{opt.icon}</span>
+                      <span className="ce-onboarding-choice-label">{opt.label}</span>
+                      <span className="ce-onboarding-choice-desc">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* STEP 1: Purpose */}
+            {onboardingStep === 1 && (
+              <div className="ce-onboarding-step">
+                <div className="ce-onboarding-msg">
+                  Perfekt 🎯<br /><br />
+                  Hva er formålet med redigeringen?
+                </div>
+                <div className="ce-onboarding-choices">
+                  {([
+                    { id: "highlight",     icon: "⭐", label: "Highlight",            desc: "4-6 min, hele dagen i kortform" },
+                    { id: "teaser_social", icon: "📱", label: "Teaser / Social",      desc: "30-60s, Instagram/TikTok-stil" },
+                    { id: "couple_cut",    icon: "💑", label: "Couple-cut",           desc: "Intim 3-4 min, fokus på paret" },
+                    { id: "family_cut",    icon: "👨‍👩‍👧", label: "Family / Long-form", desc: "10+ min, hele bryllupet" },
+                    { id: "full_film",     icon: "🎞", label: "Full ferdig film",     desc: "Director's-cut, alle viktige moments" },
+                  ] as { id: ProjectPurpose; icon: string; label: string; desc: string }[]).map(opt => (
+                    <button
+                      key={opt.id}
+                      className={`ce-onboarding-choice ${projectPurpose === opt.id ? "active" : ""}`}
+                      onClick={() => {
+                        setProjectPurpose(opt.id);
+                        // Set sensible default target-min
+                        const targets: Record<ProjectPurpose, number> = {
+                          highlight: 5, teaser_social: 1, couple_cut: 4, family_cut: 12, full_film: 25,
+                        };
+                        setProjectTargetMin(targets[opt.id]);
+                        setOnboardingStep(2);
+                      }}
+                    >
+                      <span className="ce-onboarding-icon">{opt.icon}</span>
+                      <span className="ce-onboarding-choice-label">{opt.label}</span>
+                      <span className="ce-onboarding-choice-desc">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+                <button className="ce-onboarding-back" onClick={() => setOnboardingStep(0)}>← Tilbake</button>
+              </div>
+            )}
+
+            {/* STEP 2: Target length */}
+            {onboardingStep === 2 && (
+              <div className="ce-onboarding-step">
+                <div className="ce-onboarding-msg">
+                  Bra valg ✨<br /><br />
+                  Hvor lang skal final-versjon være?
+                </div>
+                <div className="ce-onboarding-length">
+                  <input
+                    type="range"
+                    min="0.5" max="20" step="0.5"
+                    value={projectTargetMin}
+                    onChange={(e) => setProjectTargetMin(parseFloat(e.target.value))}
+                    style={{ width: "100%" }}
+                  />
+                  <div className="ce-onboarding-length-display">
+                    <strong>{projectTargetMin} min</strong>
+                    <span style={{ color: "#8674a8", fontSize: 11 }}>
+                      {projectTargetMin < 1 ? "Ultra-short teaser" :
+                       projectTargetMin < 3 ? "Social-cut" :
+                       projectTargetMin < 7 ? "Highlight" :
+                       projectTargetMin < 15 ? "Full-length" : "Director's-cut"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  className="ce-onboarding-next"
+                  onClick={() => setOnboardingStep(3)}
+                >Neste →</button>
+                <button className="ce-onboarding-back" onClick={() => setOnboardingStep(1)}>← Tilbake</button>
+              </div>
+            )}
+
+            {/* STEP 3: Scan-offer */}
+            {onboardingStep === 3 && (
+              <div className="ce-onboarding-step">
+                <div className="ce-onboarding-msg">
+                  Vil du jeg skal gå gjennom hele videoen og foreslå segmenter?<br /><br />
+                  Jeg analyserer audio + bilde + emosjon for å finne beste shots,
+                  identifiserer sanger via Shazam, og foreslår en {projectTargetMin}-min sekvens.
+                </div>
+                <div className="ce-onboarding-choices ce-onboarding-choices-h">
+                  <button
+                    className={`ce-onboarding-choice ${projectWantsScan === true ? "active" : ""}`}
+                    onClick={() => { setProjectWantsScan(true); setOnboardingStep(4); }}
+                  >
+                    <span className="ce-onboarding-icon">🔍</span>
+                    <span className="ce-onboarding-choice-label">Ja, gå gjennom alt</span>
+                    <span className="ce-onboarding-choice-desc">~10-20 min analyse</span>
+                  </button>
+                  <button
+                    className={`ce-onboarding-choice ${projectWantsScan === false ? "active" : ""}`}
+                    onClick={() => { setProjectWantsScan(false); setOnboardingStep(4); }}
+                  >
+                    <span className="ce-onboarding-icon">⚡</span>
+                    <span className="ce-onboarding-choice-label">Nei, bruk det jeg har</span>
+                    <span className="ce-onboarding-choice-desc">Eksisterende picks-cache</span>
+                  </button>
+                </div>
+                <button className="ce-onboarding-back" onClick={() => setOnboardingStep(2)}>← Tilbake</button>
+              </div>
+            )}
+
+            {/* STEP 4: Summary + start */}
+            {onboardingStep === 4 && (
+              <div className="ce-onboarding-step">
+                <div className="ce-onboarding-msg">
+                  Klart! Her er hva jeg fant 📋<br /><br />
+                  • <strong>{filteredPicks.length} picks</strong> klar i timeline ({formatTime(totalDuration)})<br />
+                  • <strong>{segments.length} segmenter</strong> ({segments.map(s => s.display.label).slice(0, 3).join(", ")}{segments.length > 3 ? "…" : ""})<br />
+                  • <strong>Story Balance</strong> auto-beregnet fra signaler<br /><br />
+                  Tips for å komme i gang:<br />
+                  • <kbd>Drag</kbd> segmenter for å endre rekkefølge<br />
+                  • <kbd>M</kbd>-tast setter markører ved playhead<br />
+                  • Klikk <strong>Generate Alternate Edit</strong> for AI-drevet sekvenser<br />
+                  • <strong>Wishes fra paret</strong> oversetter naturlig-språk-ønsker
+                </div>
+                <button
+                  className="ce-onboarding-next"
+                  onClick={() => setOnboardingOpen(false)}
+                  style={{ background: "linear-gradient(135deg, #a030c0, #6e3fc7)" }}
+                >Start redigering →</button>
+              </div>
+            )}
+
+            {/* Progress dots */}
+            <div className="ce-onboarding-progress">
+              {[0, 1, 2, 3, 4].map(i => (
+                <div
+                  key={i}
+                  className={`ce-onboarding-dot ${i === onboardingStep ? "active" : ""} ${i < onboardingStep ? "done" : ""}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add-segment modal */}
       {addSegmentOpen && (() => {
