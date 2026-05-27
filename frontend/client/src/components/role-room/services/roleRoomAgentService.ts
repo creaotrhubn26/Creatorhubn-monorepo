@@ -989,6 +989,25 @@ export interface RoleRoomBudgetResult {
   canEdit: boolean;
 }
 
+export interface RoleRoomChannelResult {
+  platform: string;
+  spendNok: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  conversionValueNok: number;
+  ctr: number | null;
+  cpc: number | null;
+  roas: number | null;
+  costPerConversionNok: number | null;
+}
+
+export interface RoleRoomChannelResults {
+  period: string;
+  perChannel: RoleRoomChannelResult[];
+  totals: RoleRoomChannelResult;
+}
+
 // ── Granted ad-asset overview (which Pages/accounts the client gave admin to) ──
 
 export interface RoleRoomGrantedMetaPage {
@@ -1379,6 +1398,15 @@ export const roleRoomAgentService = {
     });
     if (!response.ok) return null;
     return (await response.json().catch(() => null)) as RoleRoomBudgetResult | null;
+  },
+
+  async fetchAdsResults(projectId: string, period?: string): Promise<RoleRoomChannelResults | null> {
+    const qs = new URLSearchParams({ projectId, ...(period ? { period } : {}) });
+    const response = await fetch(`/api/role-room/ads/results/summary?${qs.toString()}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return null;
+    return (await response.json().catch(() => null)) as RoleRoomChannelResults | null;
   },
 
   async setAdsBudget(projectId: string, maxSpendNok: number, period?: string): Promise<boolean> {

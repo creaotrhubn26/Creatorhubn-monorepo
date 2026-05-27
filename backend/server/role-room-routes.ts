@@ -114,6 +114,7 @@ import {
 import {
   recommendAdsBudget,
   INDUSTRY_FACTORS,
+  buildChannelResults,
   type IndustryCategory,
   type AdsGoal,
   type GrowthPhase,
@@ -161,6 +162,7 @@ import {
   listCampaignsForUser,
   sumManagementFeeForPeriod,
   sumSpendForProjectPeriod,
+  getChannelResultRows,
 } from './role-room-ads-db.js';
 import {
   getBudget,
@@ -22062,6 +22064,28 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load spend summary', detail: String(error) });
+      }
+    },
+  );
+
+  // Per-channel results (reporting, §5.3): forbruk, visninger, klikk,
+  // konverteringer, konverteringsverdi og ROAS per plattform for en periode.
+  router.get(
+    '/ads/results/summary',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        const period =
+          typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
+            ? req.query.period
+            : new Date().toISOString().slice(0, 7);
+        const rows = await getChannelResultRows(pool, projectId, period);
+        const results = buildChannelResults(rows);
+        res.json({ period, ...results });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
       }
     },
   );

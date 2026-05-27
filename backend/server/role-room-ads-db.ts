@@ -14,6 +14,7 @@ import {
   ADS_METER_EVENT_NAMES,
   type AdsPlatform,
   type AdsGoal,
+  type ChannelResultInput,
 } from "./role-room-ads-shared.js";
 
 export interface AdsCampaignRow {
@@ -396,6 +397,45 @@ export async function sumSpendForProjectPeriod(
     [projectId, period],
   );
   return Number(result.rows[0]?.spend ?? 0);
+}
+
+/**
+ * Per-channel performance rows for a project + period (YYYY-MM), aggregated from
+ * ads_attribution_daily. Feeds buildChannelResults() for the client results view.
+ */
+export async function getChannelResultRows(
+  pool: Pool,
+  projectId: string,
+  period: string,
+): Promise<ChannelResultInput[]> {
+  const result = await pool.query<{
+    platform: string;
+    spend: string;
+    impressions: string;
+    clicks: string;
+    conversions: string;
+    conversion_value: string;
+  }>(
+    `SELECT c.platform AS platform,
+            COALESCE(SUM(d.spend_nok), 0)::text AS spend,
+            COALESCE(SUM(d.impressions), 0)::text AS impressions,
+            COALESCE(SUM(d.clicks), 0)::text AS clicks,
+            COALESCE(SUM(d.conversions), 0)::text AS conversions,
+            COALESCE(SUM(d.conversion_value_nok), 0)::text AS conversion_value
+       FROM ads_attribution_daily d
+       JOIN ads_campaigns c ON c.id = d.campaign_id
+      WHERE c.project_id = $1 AND to_char(d.date, 'YYYY-MM') = $2
+   GROUP BY c.platform`,
+    [projectId, period],
+  );
+  return result.rows.map((r) => ({
+    platform: r.platform,
+    spendNok: Number(r.spend),
+    impressions: Number(r.impressions),
+    clicks: Number(r.clicks),
+    conversions: Number(r.conversions),
+    conversionValueNok: Number(r.conversion_value),
+  }));
 }
 
 // Re-export so consumers don't have to pull from two modules.

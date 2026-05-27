@@ -310,3 +310,58 @@ export function billingPeriodForDate(date: Date): string {
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
 }
+
+// ─────────────────────────────────────────────────────────
+// Per-channel results — client-facing performance overview.
+// Reporting only (§5.3 innsyn); not a performance guarantee (§9.1).
+// ─────────────────────────────────────────────────────────
+
+export interface ChannelResultInput {
+  platform: string;
+  spendNok: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  conversionValueNok: number;
+}
+
+export interface ChannelResult extends ChannelResultInput {
+  ctr: number | null; // click-through rate, %
+  cpc: number | null; // cost per click, NOK
+  roas: number | null; // return on ad spend (conv.value / spend)
+  costPerConversionNok: number | null;
+}
+
+export interface ChannelResultsSummary {
+  perChannel: ChannelResult[];
+  totals: ChannelResult; // platform = "total"
+}
+
+function enrichChannelResult(r: ChannelResultInput): ChannelResult {
+  return {
+    ...r,
+    ctr: r.impressions > 0 ? round2((r.clicks / r.impressions) * 100) : null,
+    cpc: r.clicks > 0 ? round2(r.spendNok / r.clicks) : null,
+    roas: r.spendNok > 0 ? round2(r.conversionValueNok / r.spendNok) : null,
+    costPerConversionNok: r.conversions > 0 ? round2(r.spendNok / r.conversions) : null,
+  };
+}
+
+/** Build the per-channel results + totals from aggregated rows. Pure. */
+export function buildChannelResults(rows: ChannelResultInput[]): ChannelResultsSummary {
+  const perChannel = rows
+    .map(enrichChannelResult)
+    .sort((a, b) => b.spendNok - a.spendNok);
+  const sum = rows.reduce<ChannelResultInput>(
+    (acc, r) => ({
+      platform: "total",
+      spendNok: acc.spendNok + r.spendNok,
+      impressions: acc.impressions + r.impressions,
+      clicks: acc.clicks + r.clicks,
+      conversions: acc.conversions + r.conversions,
+      conversionValueNok: acc.conversionValueNok + r.conversionValueNok,
+    }),
+    { platform: "total", spendNok: 0, impressions: 0, clicks: 0, conversions: 0, conversionValueNok: 0 },
+  );
+  return { perChannel, totals: enrichChannelResult(sum) };
+}
