@@ -687,7 +687,15 @@ export default function App() {
       {creativeEditorPath && (
         <CreativeEditorView
           picksPath={creativeEditorPath}
-          advisorPath={creativeEditorPath.replace(/last_highlight_picks\.json$/, "music_advisor.json")}
+          /* music_advisor.json er en singleton i app-data-dir — ikke per-projekt.
+             Bruk app-data + filnavn istedet for å derive fra picks-path
+             (som ikke matcher arkiverte filer). */
+          advisorPath={
+            creativeEditorPath.replace(
+              /(?:picks\/[^/]+\.json|last_highlight_picks\.json)$/,
+              "music_advisor.json",
+            )
+          }
           onClose={() => setCreativeEditorPath(null)}
           onStartNewProject={() => {
             setCreativeEditorPath(null);
