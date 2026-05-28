@@ -1004,8 +1004,14 @@ const SEGMENT_TO_OUTREACH_SEGMENTS: Partial<Record<IndustrySegment, Array<Outrea
   press: ['press'],
   nsf: ['union'],
   nfi: ['institution'],
-  skuda: ['institution'],
+  skuda: ['dance'],
   agency: ['agency'],
+  // Outreach Plan v2-mappings
+  noda: ['dance'],
+  dance_studio: ['dance'],
+  content_producer: ['content', 'agency'],
+  affiliate_partner: ['affiliate'],
+  education_institution: ['education', 'institution'],
 };
 
 function OutreachDialog({ target, onClose, onError }: { target: IndustryTarget | null; onClose: () => void; onError: (msg: string) => void }) {

@@ -66,6 +66,12 @@ const VALID_SEGMENTS = new Set([
   "title_designer",
   "music_supervisor",
   "mastering_engineer",
+  // Outreach Plan v2-segments
+  "noda",
+  "content_producer",
+  "dance_studio",
+  "affiliate_partner",
+  "education_institution",
   "other",
 ]);
 const VALID_STATUSES = new Set([

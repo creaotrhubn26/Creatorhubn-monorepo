@@ -652,6 +652,12 @@ export type IndustrySegment =
   | 'title_designer'
   | 'music_supervisor'
   | 'mastering_engineer'
+  // Outreach Plan v2-segments
+  | 'noda'
+  | 'content_producer'
+  | 'dance_studio'
+  | 'affiliate_partner'
+  | 'education_institution'
   | 'other';
 export type IndustryStatus = 'cold' | 'warm' | 'engaged' | 'advocate' | 'paused';
 export type IndustryEngagementKind =
@@ -848,6 +854,12 @@ export const INDUSTRY_SEGMENT_LABELS: Record<IndustrySegment, string> = {
   title_designer: 'Title designer',
   music_supervisor: 'Music supervisor',
   mastering_engineer: 'Mastering engineer',
+  // Outreach Plan v2-segments
+  noda: 'NoDa (norske dansekunstnere)',
+  content_producer: 'Innholdsprodusent (frilans)',
+  dance_studio: 'Dansestudio',
+  affiliate_partner: 'Affiliate-partner (foto.no, DaVinci, Adobe)',
+  education_institution: 'Utdanningsinstitusjon (filmskole, BI, NTNU)',
   other: 'Annet',
 };
 
@@ -1030,6 +1042,11 @@ export type OutreachTemplateSegment =
   | 'institution'
   | 'press'
   | 'agency'
+  // Outreach Plan v2-segments
+  | 'dance'
+  | 'affiliate'
+  | 'content'
+  | 'education'
   | 'other';
 
 export type OutreachTemplateChannel = 'dm' | 'email' | 'phone' | 'in_person' | 'loom';
