@@ -373,13 +373,29 @@ export function setupCastingProjectsRoutes(
 
   // ── Projects: CRUD ────────────────────────────────────────────────
 
-  app.get("/api/casting/projects", async (_req, res) => {
+  app.get("/api/casting/projects", async (req, res) => {
+    // Krev auth + filtrer på created_by = innloggende user, slik at:
+    // (a) brukere kun ser sine egne prosjekter (var en gjennomgripende
+    //     user-isolation-bug — alle så alle prosjekter inkl. demo-rester),
+    // (b) TROLL-demo-prosjekter (seedet med 'demo-user' før fix 7f656d58)
+    //     vises ikke til ekte brukere,
+    // (c) andre moduser (innholdsprodusent, dansestudio, utdanning)
+    //     får ikke produksjons-team-prosjekter slengt i fanget.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const ownerId = session.userId;
     try {
       const dbRows = await compatStoreListByPrefix<any>("casting:project:");
       if (dbRows.length > 0) {
         const projects = dbRows
           .map((row) => row.value)
-          .filter((project) => project && typeof project === "object");
+          .filter((project) => project && typeof project === "object")
+          .filter((project) => {
+            const createdBy = typeof project.created_by === "string" ? project.created_by : null;
+            // Ekskluder demo-rester (created_by null eller hardkodet 'demo-user')
+            if (!createdBy || createdBy === "demo-user") return false;
+            return createdBy === ownerId;
+          });
         legacyCastingProjects.clear();
         for (const project of projects) {
           const id = typeof project.id === "string" ? project.id : "";
@@ -389,7 +405,12 @@ export function setupCastingProjectsRoutes(
         res.json({ projects });
         return;
       }
-      res.json({ projects: Array.from(legacyCastingProjects.values()) });
+      const inMemoryFiltered = Array.from(legacyCastingProjects.values()).filter((project: any) => {
+        const createdBy = typeof project?.created_by === "string" ? project.created_by : null;
+        if (!createdBy || createdBy === "demo-user") return false;
+        return createdBy === ownerId;
+      });
+      res.json({ projects: inMemoryFiltered });
     } catch (error) {
       console.error("Error listing casting projects:", error);
       res.status(500).json({ error: "Could not list projects" });
@@ -503,6 +524,11 @@ export function setupCastingProjectsRoutes(
   });
 
   app.get("/api/casting/projects/:projectId", async (req, res) => {
+    // Auth + owner-sjekk for å hindre kryss-bruker-leak. Demo-prosjekter
+    // (created_by = 'demo-user') blokkeres også — de finnes som rester fra
+    // før fix 7f656d58, og bør ikke serveres til noen ekte bruker.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const projectId = rejectInvalidProjectId(
         res,
@@ -510,8 +536,13 @@ export function setupCastingProjectsRoutes(
         "getProject",
       );
       if (!projectId) return;
-      const project = await getLegacyCastingProject(projectId);
+      const project: any = await getLegacyCastingProject(projectId);
       if (!project) {
+        res.json(null);
+        return;
+      }
+      const createdBy = typeof project.created_by === "string" ? project.created_by : null;
+      if (!createdBy || createdBy === "demo-user" || createdBy !== session.userId) {
         res.json(null);
         return;
       }
