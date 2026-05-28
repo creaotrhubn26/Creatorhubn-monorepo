@@ -2223,6 +2223,20 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": true
+    },
+    {
+      "id": "qc_source_video",
+      "name": "QC Source Video",
+      "category": "qc",
+      "scriptPath": "scripts/qc/qc_source_video.py",
+      "description": "ffmpeg-basert QC: finn svarte intervaller + stille perioder i en video. Krever ikke Resolve.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }

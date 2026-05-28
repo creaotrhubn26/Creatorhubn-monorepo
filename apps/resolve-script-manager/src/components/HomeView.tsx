@@ -47,6 +47,7 @@ interface Props {
   onOpenAdvanced: () => void;
   onNewProjectFromFile: () => void;
   onOpenWeddingWizard: () => void;
+  onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
   onSignIn: () => void;
@@ -107,6 +108,7 @@ export function HomeView({
   onOpenAdvanced,
   onNewProjectFromFile,
   onOpenWeddingWizard,
+  onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
   onSignIn,
@@ -328,7 +330,10 @@ export function HomeView({
         <RoleRoomProjectSync />
       </div>
 
-      <div className="home-footer-hints">
+      <div className="home-footer-hints" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <button className="home-link-button" onClick={onOpenQcVideo}>
+          🔍 QC sjekk av video (gaps + stille) →
+        </button>
         <button className="home-link-button" onClick={onOpenAdvanced}>
           Avansert: kjør enkelt-script eller se pipeline-detaljer →
         </button>

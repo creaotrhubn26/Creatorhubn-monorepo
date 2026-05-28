@@ -38,6 +38,7 @@ import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
+import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
@@ -74,6 +75,7 @@ export default function App() {
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showWeddingWizard, setShowWeddingWizard] = useState(false);
+  const [showQcVideo, setShowQcVideo] = useState(false);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
   useEffect(() => {
@@ -474,6 +476,7 @@ export default function App() {
           }}
           onNewProjectFromFile={() => setShowNewProject(true)}
           onOpenWeddingWizard={() => setShowWeddingWizard(true)}
+          onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={Boolean(loadSettings().RR_BEARER_TOKEN)}
           onSignIn={() => setShowSignIn(true)}
@@ -712,6 +715,8 @@ export default function App() {
           }}
         />
       )}
+
+      {showQcVideo && <QcSourceVideoModal onClose={() => setShowQcVideo(false)} />}
 
       {showFirstRun && <FirstRunSetupWizard onClose={() => setShowFirstRun(false)} />}
 
