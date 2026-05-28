@@ -94,8 +94,8 @@ export function QcSourceVideoModal({ onClose }: Props) {
   const fileName = videoPath ? videoPath.split("/").pop() || videoPath : "";
 
   return (
-    <div className="modal-backdrop" onClick={!busy ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}
+    <div className="modal-backdrop anim-fade-in" onClick={!busy ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 720, width: "min(96vw, 720px)", maxHeight: "90vh", overflowY: "auto" }}>
         <h2 style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <SearchIcon sx={{ fontSize: 22 }} /> QC av video

@@ -305,8 +305,8 @@ export function NewProjectModal({ onClose, onComplete }: Props) {
   }, [extractPct, identifyPct, autoIdentify]);
 
   return (
-    <div className="modal-backdrop" onClick={stage === "form" || stage === "review" ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}
+    <div className="modal-backdrop anim-fade-in" onClick={stage === "form" || stage === "review" ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()}
            style={{ maxWidth: 720, width: "min(96vw, 720px)", maxHeight: "90vh", overflowY: "auto" }}>
         <h2>Nytt prosjekt fra fil</h2>
 

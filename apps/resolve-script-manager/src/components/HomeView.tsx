@@ -16,7 +16,6 @@ import {
   IconSparkle,
   IconArrowRight,
   IconCheck,
-  IconWarning,
   IconClapper,
   IconCamera,
   IconFilmReel,
@@ -234,79 +233,129 @@ export function HomeView({
   return (
     <div className="home-view">
       <div className="home-hero">
-        <h1 className="home-title">Hva vil du lage?</h1>
-        <p className="home-subtitle">
-          Velg en mal, pek på footage-mappa, og la AI sammenstille en rough cut i Resolve.
-        </p>
-
-        {!signedIn && (
-          <div className="home-cta-banner" onClick={onSignIn}>
-            <IconSparkle />
-            <div>
-              <strong>Logg inn med Role Room</strong>
-              <span> — krever for AI-funksjoner</span>
-            </div>
-            <IconArrowRight />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                       gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <h1 className="home-title">Hva vil du lage?</h1>
+            <p className="home-subtitle">
+              Velg en mal, pek på footage-mappa, og la AI sammenstille en rough cut i Resolve.
+            </p>
           </div>
-        )}
 
-        {!resolveConnected && (
-          <div className="home-status-banner warning">
-            <IconWarning />
-            <div>
-              DaVinci Resolve er ikke koblet til. Åpne Resolve med et prosjekt før du starter.
+          {/* Live status-rad: Resolve + Role Room + stats */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6,
+                            padding: "6px 12px", borderRadius: 999,
+                            background: resolveConnected ? "rgba(74, 212, 138, 0.10)" : "rgba(240, 165, 0, 0.10)",
+                            border: `1px solid ${resolveConnected ? "#4ad48a" : "#f0a500"}`,
+                            fontSize: 11 }}>
+              <span className={`anim-pulse-dot`}
+                     style={{ width: 8, height: 8, borderRadius: "50%",
+                               background: resolveConnected ? "#4ad48a" : "#f0a500" }} />
+              <span>Resolve {resolveConnected ? "tilkoblet" : "ikke åpen"}</span>
             </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6,
+                            padding: "6px 12px", borderRadius: 999,
+                            background: signedIn ? "rgba(160, 48, 192, 0.10)" : "var(--bg-3)",
+                            border: `1px solid ${signedIn ? "var(--accent)" : "var(--border)"}`,
+                            fontSize: 11, cursor: signedIn ? "default" : "pointer" }}
+                  onClick={() => !signedIn && onSignIn()}>
+              <IconSparkle size={11} />
+              <span>{signedIn ? "Role Room pålogget" : "Logg inn"}</span>
+            </div>
+            {saved.length > 0 && (
+              <div style={{ padding: "6px 12px", borderRadius: 999,
+                              background: "var(--bg-3)", border: "1px solid var(--border)",
+                              fontSize: 11 }}>
+                {saved.length} prosjekt{saved.length > 1 ? "er" : ""}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      <button
-        className="home-new-project-card"
-        onClick={onOpenWeddingWizard}
-        disabled={!signedIn}
-        title={signedIn ? "Bryllups-veiviser: material-scan, multicam, sanger, personer, stil — Claude lærer av valgene dine" : "Logg inn først"}
-      >
-        <div className="home-new-project-icon">
-          <IconHeart size={24} />
-        </div>
-        <div className="home-new-project-body">
-          <div className="home-new-project-title" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <ChurchIcon sx={{ fontSize: 18 }} /> Bryllups-veiviser
+      {/* Hovedhandlinger: 2-kolonner med tydelig hierarki */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                      gap: 14, marginTop: 18 }}>
+        <button
+          className="home-action-card primary-action anim-lift anim-press"
+          onClick={onOpenWeddingWizard}
+          disabled={!signedIn}
+          title={signedIn ? "Material-scan, multicam, sanger, personer, stil — Claude lærer av valgene dine" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef4f6f, #a030c0)" }}>
+            <ChurchIcon sx={{ fontSize: 28, color: "white" }} />
           </div>
-          <div className="home-new-project-desc">
-            Steg-for-steg: mappa → multicam → ekstern lyd → sanger → personer → stil → live-arbeid → LUT. Claude lærer.
+          <div className="home-action-body">
+            <div className="home-action-title">Bryllups-veiviser</div>
+            <div className="home-action-desc">
+              8 steg: kilder → multicam → lyd → sanger → personer → stil → live → LUT
+            </div>
+            <div className="home-action-tag">Anbefalt for nytt prosjekt</div>
           </div>
-        </div>
-        <IconArrowRight />
-      </button>
+          <IconArrowRight />
+        </button>
 
-      <button
-        className="home-new-project-card"
-        onClick={onNewProjectFromFile}
-        disabled={!signedIn}
-        style={{ marginTop: 12 }}
-        title={signedIn ? "Velg én ferdig redigert/eksportert video → AI lager picks + identifiserer musikk" : "Logg inn først"}
-      >
-        <div className="home-new-project-icon">
-          <IconSparkle size={24} />
-        </div>
-        <div className="home-new-project-body">
-          <div className="home-new-project-title">+ Nytt prosjekt fra én fil</div>
-          <div className="home-new-project-desc">
-            Rask flyt: én ferdig redigert video → AI scanner picks → editor åpner
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onNewProjectFromFile}
+          disabled={!signedIn}
+          title={signedIn ? "Velg én ferdig redigert/eksportert video → AI lager picks + identifiserer musikk" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #6e3fc7, #4a90e2)" }}>
+            <IconSparkle size={26} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Nytt fra én fil</div>
+            <div className="home-action-desc">
+              Rask flyt: ferdig video → AI scanner picks → editor åpner
+            </div>
+            <div className="home-action-tag">~30 min</div>
+          </div>
+          <IconArrowRight />
+        </button>
+      </div>
+
+      {saved.length > 0 && (
+        <div className="home-recent" style={{ marginTop: 22 }}>
+          <div className="home-section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <VideoLibraryIcon sx={{ fontSize: 16, opacity: 0.7 }} />
+            Mine prosjekter
+            <span style={{ fontSize: 11, opacity: 0.5, fontWeight: 400 }}>
+              ({saved.length})
+            </span>
+          </div>
+          <div className="anim-stagger">
+            {saved.slice(0, 8).map((p) => <SavedProjectRow key={p.picksPath}
+                                                              project={p}
+                                                              onOpen={onOpenSavedProject}
+                                                              onRemove={(path) => {
+              const next = saved.filter((x) => x.picksPath !== path);
+              setSaved(next);
+              localStorage.setItem("trrpa.savedProjects", JSON.stringify(next));
+              localStorage.setItem("trrpa.deletedPicksPaths",
+                JSON.stringify([
+                  ...(JSON.parse(localStorage.getItem("trrpa.deletedPicksPaths") || "[]") as string[]),
+                  path,
+                ])
+              );
+            }} />)}
           </div>
         </div>
-        <IconArrowRight />
-      </button>
+      )}
 
-      <div className="home-templates">
+      <div className="home-section-title" style={{ marginTop: 22, display: "flex", alignItems: "center", gap: 8 }}>
+        <AutoAwesomeIcon sx={{ fontSize: 16, opacity: 0.7 }} />
+        Eller velg en mal
+      </div>
+      <div className="home-templates anim-stagger">
         {orderedTemplates.map((t) => {
           const deco = TEMPLATE_DECORATIONS[t.id] ?? { Icon: IconFilmReel, tagline: t.description };
           const Icon = deco.Icon;
           return (
             <button
               key={t.id}
-              className="home-template-card"
+              className="home-template-card anim-lift anim-press"
               onClick={() => onPickTemplate(t.id)}
               disabled={!signedIn || !resolveConnected}
               title={signedIn ? t.name : "Logg inn først"}
@@ -320,26 +369,6 @@ export function HomeView({
           );
         })}
       </div>
-
-      {saved.length > 0 && (
-        <div className="home-recent" style={{ marginTop: 24 }}>
-          <div className="home-section-title">Mine prosjekter</div>
-          {saved.slice(0, 8).map((p) => <SavedProjectRow key={p.picksPath}
-                                                            project={p}
-                                                            onOpen={onOpenSavedProject}
-                                                            onRemove={(path) => {
-            const next = saved.filter((x) => x.picksPath !== path);
-            setSaved(next);
-            localStorage.setItem("trrpa.savedProjects", JSON.stringify(next));
-            localStorage.setItem("trrpa.deletedPicksPaths",
-              JSON.stringify([
-                ...(JSON.parse(localStorage.getItem("trrpa.deletedPicksPaths") || "[]") as string[]),
-                path,
-              ])
-            );
-          }} />)}
-        </div>
-      )}
 
       {recent.length > 0 && (
         <div className="home-recent">

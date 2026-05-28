@@ -160,8 +160,8 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect }: Props) {
   }, [downloadingId, onClose]);
 
   return (
-    <div className="modal-backdrop" onClick={!downloadingId ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}
+    <div className="modal-backdrop anim-fade-in" onClick={!downloadingId ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 800, width: "min(96vw, 800px)", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={{ margin: 0 }}>🎵 Søk musikk fra leverandør</h2>
@@ -263,7 +263,7 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect }: Props) {
         )}
 
         {/* Resultater */}
-        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6,
+        <div className="anim-stagger" style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6,
                        maxHeight: "50vh", overflowY: "auto" }}>
           {filteredResults.map((r) => {
             const dlId = `${r.provider}-${r.trackId}`;

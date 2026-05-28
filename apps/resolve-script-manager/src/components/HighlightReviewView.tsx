@@ -351,8 +351,8 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
 
   if (!payload) {
     return (
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal" style={{ width: 400 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-backdrop anim-fade-in" onClick={onClose}>
+        <div className="modal anim-slide-up" style={{ width: 400 }} onClick={(e) => e.stopPropagation()}>
           {error ? <div style={{ color: "#ef4f6f" }}>{error}</div> : <div>Laster picks…</div>}
         </div>
       </div>

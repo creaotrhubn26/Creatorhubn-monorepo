@@ -251,8 +251,8 @@ export function MusicProvidersSettings({ onClose }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={!busy ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}
+    <div className="modal-backdrop anim-fade-in" onClick={!busy ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 720, width: "min(96vw, 720px)", maxHeight: "92vh", overflowY: "auto" }}>
         <h2>⚙ Musikk-leverandører</h2>
         <p style={{ fontSize: 12, opacity: 0.75, marginTop: -4 }}>

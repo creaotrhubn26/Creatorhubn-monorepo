@@ -290,8 +290,8 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
   }, [runId]);
 
   return (
-    <div className="modal-backdrop" onClick={!running ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 600, maxHeight: "88vh" }}>
+    <div className="modal-backdrop anim-fade-in" onClick={!running ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()} style={{ width: 600, maxHeight: "88vh" }}>
         <h2>
           <IconMagicCut size={20} /> Magic Cut · {templateName}
         </h2>

@@ -288,8 +288,8 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   const currentStepN = STEPS.find((s) => s.id === step)?.n ?? 1;
 
   return (
-    <div className="modal-backdrop" onClick={!scanning ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}
+    <div className="modal-backdrop anim-fade-in" onClick={!scanning ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()}
            style={{ maxWidth: 860, width: "min(96vw, 860px)", maxHeight: "92vh",
                      overflowY: "auto" }}>
         <h2>Nytt bryllup — {STEPS[currentStepN - 1].label}</h2>

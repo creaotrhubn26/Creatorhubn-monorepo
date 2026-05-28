@@ -1233,6 +1233,73 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font: inherit;
   transition: transform 0.15s, box-shadow 0.15s;
 }
+
+/* ─── Nytt: home-action-card for primary actions ─── */
+.home-action-card {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  position: relative;
+  overflow: hidden;
+}
+.home-action-card:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--bg-3) 0%, var(--bg-2) 100%);
+}
+.home-action-card.primary-action {
+  background: linear-gradient(120deg, rgba(239, 79, 111, 0.10) 0%, rgba(160, 48, 192, 0.16) 100%);
+  border-color: rgba(160, 48, 192, 0.45);
+}
+.home-action-card:disabled { opacity: 0.5; cursor: not-allowed; }
+.home-action-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 40%, rgba(160, 48, 192, 0.08));
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.home-action-card:hover::before { opacity: 1; }
+.home-action-icon {
+  width: 56px; height: 56px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, rgba(160, 48, 192, 0.30), rgba(110, 63, 199, 0.20));
+  color: white;
+  flex-shrink: 0;
+}
+.home-action-body { min-width: 0; }
+.home-action-title {
+  font-size: 16px; font-weight: 600; line-height: 1.3;
+  margin-bottom: 2px;
+}
+.home-action-desc {
+  font-size: 12px; opacity: 0.7; line-height: 1.4;
+  margin-bottom: 6px;
+}
+.home-action-tag {
+  display: inline-block;
+  font-size: 10px; font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(160, 48, 192, 0.15);
+  color: var(--accent);
+  letter-spacing: 0.3px;
+}
+.primary-action .home-action-tag {
+  background: rgba(239, 79, 111, 0.20);
+  color: #ef9aa8;
+}
 .home-new-project-card:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 14px 32px rgba(160, 48, 192, 0.18);

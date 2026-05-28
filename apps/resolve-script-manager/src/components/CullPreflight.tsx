@@ -44,8 +44,8 @@ export function CullPreflight({
     : (clipCount * 3 * 0.003).toFixed(2);
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 560 }}>
+    <div className="modal-backdrop anim-fade-in" onClick={onCancel}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()} style={{ width: 560 }}>
         <h2>Pre-flight — {sourceLabel}</h2>
         <div className="desc">
           {clipCount} klipp · {FORMAT_GB(totalBytes)}. Svarene former pipeline-en.

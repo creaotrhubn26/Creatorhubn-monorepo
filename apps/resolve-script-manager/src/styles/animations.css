@@ -1,0 +1,186 @@
+/**
+ * Global UI-animasjoner — bruk via className.
+ * Bruker cubic-bezier-easing for smoothness; alle varigheter < 400ms
+ * for å holde UI-en responsive (Doherty Threshold).
+ */
+
+/* ─── Fade-in (modal mount, etc.) ─── */
+@keyframes anim-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.anim-fade-in {
+  animation: anim-fade-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ─── Slide-up + fade (modal-content, etc.) ─── */
+@keyframes anim-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-slide-up {
+  animation: anim-slide-up 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ─── Pop-in (badge / chip / toast) ─── */
+@keyframes anim-pop-in {
+  from { opacity: 0; transform: scale(0.85); }
+  60%  { transform: scale(1.05); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.anim-pop-in {
+  animation: anim-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ─── Stagger fade (list-results) ─── */
+@keyframes anim-stagger-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-stagger > * {
+  animation: anim-stagger-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.anim-stagger > *:nth-child(1)  { animation-delay: 0.00s; }
+.anim-stagger > *:nth-child(2)  { animation-delay: 0.04s; }
+.anim-stagger > *:nth-child(3)  { animation-delay: 0.08s; }
+.anim-stagger > *:nth-child(4)  { animation-delay: 0.12s; }
+.anim-stagger > *:nth-child(5)  { animation-delay: 0.16s; }
+.anim-stagger > *:nth-child(6)  { animation-delay: 0.20s; }
+.anim-stagger > *:nth-child(7)  { animation-delay: 0.24s; }
+.anim-stagger > *:nth-child(8)  { animation-delay: 0.28s; }
+.anim-stagger > *:nth-child(9)  { animation-delay: 0.32s; }
+.anim-stagger > *:nth-child(10) { animation-delay: 0.36s; }
+.anim-stagger > *:nth-child(n+11) { animation-delay: 0.40s; }
+
+/* ─── Skeleton-shimmer (loading placeholders) ─── */
+@keyframes anim-skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.anim-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(160, 48, 192, 0.08) 0%,
+    rgba(160, 48, 192, 0.18) 50%,
+    rgba(160, 48, 192, 0.08) 100%
+  );
+  background-size: 200% 100%;
+  animation: anim-skeleton-shimmer 1.4s linear infinite;
+  border-radius: 4px;
+}
+
+/* ─── Progress-shimmer (live progress bars) ─── */
+@keyframes anim-progress-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.anim-progress-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.anim-progress-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  animation: anim-progress-shimmer 1.6s linear infinite;
+}
+
+/* ─── Spinner-rotate (loading/refresh) ─── */
+@keyframes anim-spin {
+  to { transform: rotate(360deg); }
+}
+.anim-spin {
+  animation: anim-spin 0.9s linear infinite;
+}
+
+/* ─── Pulse (call-to-action / waiting indicator) ─── */
+@keyframes anim-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(0.96); }
+}
+.anim-pulse {
+  animation: anim-pulse 1.6s ease-in-out infinite;
+}
+
+/* ─── Pulse-dot (live status, recording) ─── */
+@keyframes anim-pulse-dot {
+  0%   { box-shadow: 0 0 0 0 rgba(160, 48, 192, 0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(160, 48, 192, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(160, 48, 192, 0); }
+}
+.anim-pulse-dot {
+  animation: anim-pulse-dot 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ─── Bounce-arrow (next-step CTA) ─── */
+@keyframes anim-bounce-x {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(4px); }
+}
+.anim-bounce-x {
+  animation: anim-bounce-x 0.7s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ─── Lift-on-hover (interactive cards) ─── */
+.anim-lift {
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.anim-lift:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(160, 48, 192, 0.15);
+}
+.anim-lift:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* ─── Press-scale (buttons) ─── */
+.anim-press {
+  transition: transform 0.08s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.anim-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ─── Smooth-transition (generic for color/bg-changes) ─── */
+.anim-smooth {
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Slide-down-fade (notifications, error-banners) ─── */
+@keyframes anim-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-slide-down {
+  animation: anim-slide-down 0.24s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ─── Success-check-pop (confirmation) ─── */
+@keyframes anim-check-pop {
+  0%   { opacity: 0; transform: scale(0.4) rotate(-45deg); }
+  60%  { opacity: 1; transform: scale(1.15) rotate(0deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+.anim-check-pop {
+  animation: anim-check-pop 0.36s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ─── Reduced-motion accessibility ─── */
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade-in, .anim-slide-up, .anim-pop-in, .anim-slide-down,
+  .anim-check-pop, .anim-stagger > * {
+    animation: none !important;
+  }
+  .anim-skeleton, .anim-progress-shimmer::after,
+  .anim-spin, .anim-pulse, .anim-pulse-dot, .anim-bounce-x {
+    animation: none !important;
+  }
+  .anim-lift:hover { transform: none !important; }
+}

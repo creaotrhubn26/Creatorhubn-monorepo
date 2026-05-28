@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import "./styles/animations.css";
 import {
   executeScript,
   getRunHistory,
