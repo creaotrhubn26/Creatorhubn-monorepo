@@ -366,6 +366,68 @@ export function DansestudioNorgePage() {
           </Typography>
         </Box>
 
+        <Box
+          sx={{
+            p: { xs: 2.5, md: 3.5 },
+            borderRadius: 3,
+            bgcolor: 'rgba(15,23,42,0.6)',
+            border: '1px solid rgba(148,163,184,0.18)',
+            mb: 6,
+          }}
+        >
+          <Typography component="h2" sx={{ color: '#fff', fontWeight: 800, fontSize: { xs: '1.3rem', md: '1.5rem' }, mb: 2 }}>
+            Del av et større system
+          </Typography>
+          <Typography sx={{ color: 'rgba(229,231,235,0.78)', fontSize: { xs: '0.94rem', md: '1rem' }, lineHeight: 1.65, mb: 2.5 }}>
+            Dansestudio-vertikalen er én av tre. Samme kjerne-OS driver også
+            film- og innholdsproduksjon og frilans-innholdsprodusenter:
+          </Typography>
+          <Stack spacing={1.5}>
+            <Box
+              component="a"
+              href="/produksjons-os"
+              sx={{
+                display: 'block',
+                p: 2,
+                borderRadius: 2,
+                bgcolor: 'rgba(34,211,238,0.08)',
+                border: '1px solid rgba(34,211,238,0.3)',
+                textDecoration: 'none',
+                transition: 'background-color 120ms ease',
+                '&:hover': { bgcolor: 'rgba(34,211,238,0.14)' },
+              }}
+            >
+              <Typography sx={{ color: '#67e8f9', fontWeight: 800, fontSize: '1.05rem', mb: 0.5 }}>
+                Produksjons-OS (kjerneposisjonering) → /produksjons-os
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.82)', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                Operativsystemet for film- og innholdsproduksjon. Casting, planlegging, crew, kommunikasjon, faktura. 795 kr/sete.
+              </Typography>
+            </Box>
+            <Box
+              component="a"
+              href="/innholdsprodusent-norge"
+              sx={{
+                display: 'block',
+                p: 2,
+                borderRadius: 2,
+                bgcolor: 'rgba(167,139,250,0.08)',
+                border: '1px solid rgba(167,139,250,0.3)',
+                textDecoration: 'none',
+                transition: 'background-color 120ms ease',
+                '&:hover': { bgcolor: 'rgba(167,139,250,0.14)' },
+              }}
+            >
+              <Typography sx={{ color: '#c4b5fd', fontWeight: 800, fontSize: '1.05rem', mb: 0.5 }}>
+                Innholdsprodusent-løsningen → /innholdsprodusent-norge
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.82)', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                Ads + content + klient-samarbeid for frilans-innholdsprodusenter. 495 kr per sete per måned.
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+
         <NewsletterSignupBlock
           heading="Få bransje-data + workflow-research i innboksen"
           body="Norwegian Casting Brief — én bransje-observasjon, ett konkret datapunkt, én ting verdt å vite. 4 minutter."
