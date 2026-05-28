@@ -33,6 +33,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { executeScript, onScriptEvent } from "../api";
 import type { ScriptEvent } from "../types";
+import { MusicSearchModal } from "./MusicSearchModal";
 import {
   IconPlay,
   IconMusic,
@@ -928,6 +929,20 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     } catch (e: any) {
       console.warn("Custom audio picker failed:", e);
     }
+  }, []);
+
+  // Music-search-modal (Jamendo/Pixabay/Soundstripe/Artlist + Vault-profiler)
+  const [musicSearchOpen, setMusicSearchOpen] = useState(false);
+  const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
+    const newAudio: CustomAudio = {
+      id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      path: track.wavPath,
+      name: `${track.title} — ${track.artist}`,
+      startSec: 0,
+      volume: 0.8,
+    };
+    setCustomAudios(prev => [...prev, newAudio]);
+    setMusicSearchOpen(false);
   }, []);
 
   const updateCustomAudio = useCallback((id: string, patch: Partial<CustomAudio>) => {
@@ -2875,8 +2890,13 @@ ${ctxLines.join("\n")}`;
             <button
               className="ce-audio-add-btn"
               onClick={addCustomAudio}
-              title="Legg til egen lyd"
+              title="Legg til egen lyd (fil)"
             >+ Lyd</button>
+            <button
+              className="ce-audio-add-btn"
+              onClick={() => setMusicSearchOpen(true)}
+              title="Søk fra leverandør (Jamendo/Soundstripe/Artlist)"
+            >🎵 Søk</button>
             <button
               className="ce-audio-add-btn"
               onClick={() => addMarkerAtPlayhead()}
@@ -3668,6 +3688,15 @@ ${ctxLines.join("\n")}`;
         </div>
         );
       })()}
+
+      {/* Music search modal — Jamendo/Pixabay/Soundstripe/Artlist */}
+      {musicSearchOpen && (
+        <MusicSearchModal
+          sourceVideo={payload?.sourceVideo}
+          onClose={() => setMusicSearchOpen(false)}
+          onSelect={onMusicSelected}
+        />
+      )}
 
       {/* Marker edit modal */}
       {editingMarkerId && (() => {

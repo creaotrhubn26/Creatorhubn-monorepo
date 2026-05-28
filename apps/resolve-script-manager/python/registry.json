@@ -2307,6 +2307,48 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "read_credential_profiles",
+      "name": "Read Credential Profiles",
+      "category": "audio",
+      "scriptPath": "scripts/audio/read_credential_profiles.py",
+      "description": "Returnerer profil-liste m/ maskede credentials + aktiv profil + per-prosjekt-mapping.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "save_credential_profiles",
+      "name": "Save Credential Profiles",
+      "category": "audio",
+      "scriptPath": "scripts/audio/save_credential_profiles.py",
+      "description": "CRUD: upsert_profile / delete_profile / set_active / set_project_profile.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "fetch_vault_music_secrets",
+      "name": "Fetch Vault Music Secrets",
+      "category": "audio",
+      "scriptPath": "scripts/audio/fetch_vault_music_secrets.py",
+      "description": "List musikk-relevante vault-secrets fra Role Room for et prosjekt.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }
