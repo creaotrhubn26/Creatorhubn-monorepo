@@ -844,6 +844,7 @@ async function saveProjectToRemote(project: CastingProject, options?: ProjectMut
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getRoleRoomAuthHeaders(),
     },
     body: JSON.stringify(project),
   });
@@ -871,6 +872,7 @@ async function fetchProjectFromRemote(projectId: string): Promise<CastingProject
   projectId = normalizeRequiredProjectId(projectId, 'fetchProjectFromRemote');
   const response = await fetch(`/api/casting/projects/${projectId}?fresh=${Date.now()}`, {
     cache: 'no-store',
+    headers: getRoleRoomAuthHeaders(),
   });
   if (!response.ok) {
     if (response.status === 404) {
@@ -1735,6 +1737,7 @@ async function deleteProjectFromDb(id: string, options?: ProjectMutationOptions)
   try {
     const response = await fetch(`/api/casting/projects/${id}`, {
       method: 'DELETE',
+      headers: getRoleRoomAuthHeaders(),
     });
     
     if (!response.ok) {
@@ -2672,7 +2675,9 @@ export const castingService = {
 
     try {
       // Try to fetch from database API first
-      const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`);
+      const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`, {
+        headers: getRoleRoomAuthHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.shotLists) {
@@ -2718,7 +2723,7 @@ export const castingService = {
       // Save to database API
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
         body: JSON.stringify(shotList)
       });
       if (response.ok) {
@@ -2760,7 +2765,8 @@ export const castingService = {
     try {
       // Delete from database API
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists/${shotListId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getRoleRoomAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -2810,7 +2816,7 @@ export const castingService = {
     try {
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists/reorder`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
         body: JSON.stringify({ order: orderedIds }),
       });
       if (response.ok) return;
@@ -3052,7 +3058,9 @@ export const castingService = {
     const userId = getCurrentUserId();
 
     try {
-      const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`);
+      const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`, {
+        headers: getRoleRoomAuthHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         const snapshots = Array.isArray(data?.snapshots) ? data.snapshots : [];
@@ -3093,7 +3101,7 @@ export const castingService = {
     try {
       const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
         body: JSON.stringify(payload),
       });
       if (response.ok) {

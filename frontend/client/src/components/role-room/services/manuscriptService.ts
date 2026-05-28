@@ -17,6 +17,10 @@ import {
   isRoleRoomDemoSeedAllowed,
 } from '../constants/producerDemo';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import authSessionService from './authSessionService';
+
+const getAuthHeaders = (): Record<string, string> =>
+  authSessionService.getAuthHeadersSync() as Record<string, string>;
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -2935,7 +2939,9 @@ class ManuscriptService {
     
     try {
       // Fetch all roles for the project
-      const response = await fetch(`/api/casting/projects/${projectId}`);
+      const response = await fetch(`/api/casting/projects/${projectId}`, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch project data');
       }
@@ -3015,7 +3021,9 @@ class ManuscriptService {
     
     try {
       // Fetch all locations for the project
-      const response = await fetch(`/api/casting/projects/${projectId}`);
+      const response = await fetch(`/api/casting/projects/${projectId}`, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch project data');
       }
