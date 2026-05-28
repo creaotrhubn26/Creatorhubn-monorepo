@@ -29,6 +29,7 @@ import {
 import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
+import ProjectTabAccessDialog from './components/ProjectTabAccessDialog';
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
 import RoleRoomOnboardingDialog from './components/RoleRoomOnboardingDialog';
 import { roleRoomMemberProfileService } from './services/roleRoomMemberProfileService';
@@ -90,6 +91,7 @@ import {
   Sync as SyncIcon,
   Person as PersonIcon,
   Group as GroupIcon,
+  Tune as TuneIcon,
   Movie as MovieIcon,
   CalendarMonth as CalendarIcon,
   TheaterComedy as TheaterIcon,
@@ -452,7 +454,36 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   // Effektiv tab-rekkefølge for innlogget bruker (server-konfig + fallback til defaults).
   // Påvirker top-Tabs, iPad side-rail og telefon-bottom-nav likt.
   const userPrimaryRole = currentUserProjectRoles[0]?.role ?? null;
-  const effectiveTabs = useEffectiveTabsForRole(userPrimaryRole);
+  const platformEffectiveTabs = useEffectiveTabsForRole(userPrimaryRole);
+
+  // Project-spesifikk overstyring: team-leder kan styre hvilke tabs viewer
+  // ser på dette prosjektet. Hvis tabValues=null → bruk platform-defaults.
+  const [projectTabOverride, setProjectTabOverride] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!selectedProjectId) { setProjectTabOverride(null); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/role-room/projects/${encodeURIComponent(selectedProjectId)}/my-tabs`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) return;
+        const data = await res.json() as { tabValues: string[] | null };
+        if (!cancelled) setProjectTabOverride(data.tabValues ?? null);
+      } catch { /* fallback til defaults */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedProjectId]);
+
+  const effectiveTabs = useMemo(() => {
+    if (projectTabOverride && projectTabOverride.length > 0) {
+      return projectTabOverride.filter((t): t is SubTabValue =>
+        platformEffectiveTabs.includes(t as SubTabValue) || true,
+      ) as SubTabValue[];
+    }
+    return platformEffectiveTabs;
+  }, [projectTabOverride, platformEffectiveTabs]);
 
   const canUsePublishing = useMemo(() => {
     const publishingRoles: UserRole['role'][] = [
@@ -1144,6 +1175,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     crew={crew ?? []}
                     loading={crewLoading}
                     onAdd={addCrewMut}
+                    isProjectLeader={!!selectedProject?.createdBy && selectedProject.createdBy === auth.user?.id}
                   />
                 )}
                 {subTab === 'schedule' && (
@@ -1670,15 +1702,18 @@ function CrewSubPanel({
   crew,
   loading,
   onAdd,
+  isProjectLeader,
 }: {
   projectId: string;
   crew: CrewMember[];
   loading: boolean;
   onAdd: ReturnType<typeof useAddCrewMember>;
+  isProjectLeader?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
+  const [tabAccessOpen, setTabAccessOpen] = useState(false);
   const qc = useQueryClient();
 
   // Seats granted on this project, keyed by user email (for matching crew rows by email)
@@ -1781,14 +1816,29 @@ function CrewSubPanel({
 
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="subtitle2" fontWeight={600}>
           Crew ({crew.length})
         </Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
-          Legg til
-        </Button>
+        <Stack direction="row" spacing={1}>
+          {isProjectLeader && (
+            <Button size="small" startIcon={<TuneIcon />} onClick={() => setTabAccessOpen(true)}
+                    sx={{ color: '#6d28d9' }}>
+              Tab-tilganger
+            </Button>
+          )}
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
+            Legg til
+          </Button>
+        </Stack>
       </Box>
+      {isProjectLeader && tabAccessOpen && (
+        <ProjectTabAccessDialog
+          open={tabAccessOpen}
+          onClose={() => setTabAccessOpen(false)}
+          projectId={projectId}
+        />
+      )}
 
       {/* Post Agent must be activated for the project first (via marketplace
           — that's where pricing is shown + accepted). Once 1+ seats exist,
