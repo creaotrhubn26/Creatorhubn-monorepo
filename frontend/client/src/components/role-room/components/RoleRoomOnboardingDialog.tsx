@@ -29,7 +29,7 @@ import {
   ArrowBack, ArrowForward, Check, Close, CloudUpload, Person,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
-import type { RoleRoomMemberProfile, ProfileVisibility } from '../services/roleRoomMemberProfileService';
+import type { RoleRoomMemberProfile, ProfileVisibility, OnboardingConfig } from '../services/roleRoomMemberProfileService';
 
 export interface RoleRoomOnboardingDialogProps {
   open: boolean;
@@ -53,35 +53,41 @@ interface FormState {
   visibility: ProfileVisibility;
 }
 
-const PROFESSIONS_OPTIONS = [
-  'Fotograf', 'Videograf', 'Editor', 'Colorist', 'Sound Designer',
-  'Producer', 'Director', 'DOP', 'Skuespiller', 'Modell',
-  'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
-  'Makeup-artist', 'Stylist', 'Annet',
-];
+const DEFAULT_CONFIG: OnboardingConfig = {
+  welcomeMessage: 'Velkommen til The Role Room. La oss bygge profilen din slik at andre medlemmer kan finne deg og du kan vise hva du gjør.',
+  professionsOptions: [
+    'Fotograf', 'Videograf', 'Editor', 'Colorist', 'Sound Designer',
+    'Producer', 'Director', 'DOP', 'Skuespiller', 'Modell',
+    'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
+    'Makeup-artist', 'Stylist', 'Annet',
+  ],
+  skillsOptions: [
+    'Color Grading', 'Multi-cam editing', 'Live event', 'Wedding cinematography',
+    'Documentary', 'Music video', 'Corporate film', 'Audio mixing',
+    'Drone (DJI)', 'Lighting', 'Motion graphics', 'VFX',
+    'DaVinci Resolve', 'Premiere Pro', 'Final Cut Pro', 'After Effects',
+  ],
+  languageOptions: [
+    { code: 'no', name: 'Norsk' },
+    { code: 'sv', name: 'Svenska' },
+    { code: 'da', name: 'Dansk' },
+    { code: 'en', name: 'English' },
+  ],
+  stepsEnabled: { welcome: true, image: true, profession: true, about: true, links: true, privacy: true },
+  requiredFields: { displayName: true, professions: true, bio: false, profileImage: false },
+};
 
-const SKILLS_SUGGESTIONS = [
-  'Color Grading', 'Multi-cam editing', 'Live event', 'Wedding cinematography',
-  'Documentary', 'Music video', 'Corporate film', 'Audio mixing',
-  'Drone (DJI)', 'Lighting', 'Motion graphics', 'VFX',
-  'DaVinci Resolve', 'Premiere Pro', 'Final Cut Pro', 'After Effects',
-];
+const STEP_KEYS = ['welcome', 'image', 'profession', 'about', 'links', 'privacy'] as const;
+type StepKey = typeof STEP_KEYS[number];
 
-const LANGUAGES_OPTIONS = [
-  { code: 'no', name: 'Norsk' },
-  { code: 'sv', name: 'Svenska' },
-  { code: 'da', name: 'Dansk' },
-  { code: 'en', name: 'English' },
-];
-
-const STEPS = [
-  'Velkommen',
-  'Profilbilde',
-  'Profesjon',
-  'Om meg',
-  'Lenker',
-  'Personvern',
-] as const;
+const STEP_LABELS: Record<StepKey, string> = {
+  welcome: 'Velkommen',
+  image: 'Profilbilde',
+  profession: 'Profesjon',
+  about: 'Om meg',
+  links: 'Lenker',
+  privacy: 'Personvern',
+};
 
 const EMPTY_FORM: FormState = {
   displayName: '',
@@ -125,21 +131,37 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [config, setConfig] = useState<OnboardingConfig>(DEFAULT_CONFIG);
 
-  // Last eksisterende profil ved mount (slik at bruker kan fortsette)
+  // Aktive steg (filtrert av admin-config)
+  const activeSteps: StepKey[] = STEP_KEYS.filter(
+    (k) => config.stepsEnabled?.[k] !== false,
+  );
+  const totalSteps = activeSteps.length || 1;
+  const currentKey: StepKey = activeSteps[step] ?? 'welcome';
+
+  // Last eksisterende profil + onboarding-config ved mount
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
       try {
-        const profile = await roleRoomMemberProfileService.getMyProfile();
+        const [profile, loadedConfig] = await Promise.all([
+          roleRoomMemberProfileService.getMyProfile(),
+          roleRoomMemberProfileService
+            .getOnboardingConfig()
+            .catch(() => DEFAULT_CONFIG),
+        ]);
         if (cancelled) return;
+        setConfig({ ...DEFAULT_CONFIG, ...loadedConfig });
         setForm(profileToForm(profile));
         setProfileImage(profile.profileImageUrl);
-        // Hvis bruker allerede har fullført noen steg, hopp til neste utstående
         const progress = (profile.onboardingProgress || {}) as { currentStep?: number };
         if (typeof progress.currentStep === 'number') {
-          setStep(Math.min(progress.currentStep, STEPS.length - 1));
+          const enabledCount = STEP_KEYS.filter(
+            (k) => loadedConfig.stepsEnabled?.[k] !== false,
+          ).length || 1;
+          setStep(Math.min(progress.currentStep, enabledCount - 1));
         }
       } catch (err) {
         setError(String(err));
@@ -223,10 +245,22 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
     });
   };
 
-  const isLastStep = step === STEPS.length - 1;
+  const isLastStep = step === totalSteps - 1;
   const canProgressFromCurrent = (): boolean => {
-    if (step === 0) return form.displayName.trim().length >= 2;
-    if (step === 2) return form.professions.length > 0;
+    if (currentKey === 'welcome') {
+      return config.requiredFields?.displayName === false
+        || form.displayName.trim().length >= 2;
+    }
+    if (currentKey === 'image') {
+      return config.requiredFields?.profileImage !== true || !!profileImage;
+    }
+    if (currentKey === 'profession') {
+      return config.requiredFields?.professions === false
+        || form.professions.length > 0;
+    }
+    if (currentKey === 'about') {
+      return config.requiredFields?.bio !== true || form.bio.trim().length > 0;
+    }
     return true;
   };
 
@@ -245,14 +279,14 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
         <Box sx={{ p: 3, pb: 1, background: 'linear-gradient(135deg, #1e1a2e, #2d1b4e)' }}>
           <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>
-            Steg {step + 1} av {STEPS.length}
+            Steg {step + 1} av {totalSteps}
           </Typography>
           <Typography variant="h5" sx={{ color: 'white', mt: 0.5, fontWeight: 600 }}>
-            {STEPS[step]}
+            {STEP_LABELS[currentKey]}
           </Typography>
           <LinearProgress
             variant="determinate"
-            value={((step + 1) / STEPS.length) * 100}
+            value={((step + 1) / totalSteps) * 100}
             sx={{ mt: 2, height: 4, borderRadius: 2,
                    '& .MuiLinearProgress-bar': { backgroundColor: '#a030c0' } }}
           />
@@ -265,13 +299,12 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             </Box>
           )}
 
-          {!loading && step === 0 && (
+          {!loading && currentKey === 'welcome' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Velkommen til The Role Room. La oss bygge profilen din slik at andre
-                medlemmer kan finne deg og du kan vise hva du gjør.
+                {config.welcomeMessage}
               </Typography>
-              <TextField label="Visningsnavn" required autoFocus
+              <TextField label="Visningsnavn" required={config.requiredFields?.displayName !== false} autoFocus
                           value={form.displayName}
                           onChange={(e) => updateField('displayName', e.target.value)}
                           helperText="Slik vises navnet ditt for andre" />
@@ -281,7 +314,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             </Stack>
           )}
 
-          {!loading && step === 1 && (
+          {!loading && currentKey === 'image' && (
             <Stack spacing={2} alignItems="center" sx={{ py: 2 }}>
               <Avatar src={profileImage ?? undefined}
                        sx={{ width: 120, height: 120, fontSize: 48,
@@ -309,13 +342,13 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             </Stack>
           )}
 
-          {!loading && step === 2 && (
+          {!loading && currentKey === 'profession' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
                 Hvilken rolle har du? Velg én eller flere.
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {PROFESSIONS_OPTIONS.map((p) => (
+                {config.professionsOptions.map((p) => (
                   <Chip key={p} label={p} clickable
                          color={form.professions.includes(p) ? 'primary' : 'default'}
                          variant={form.professions.includes(p) ? 'filled' : 'outlined'}
@@ -326,7 +359,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 Ferdigheter (valgfri)
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {SKILLS_SUGGESTIONS.map((s) => (
+                {config.skillsOptions.map((s) => (
                   <Chip key={s} label={s} clickable size="small"
                          color={form.skills.includes(s) ? 'secondary' : 'default'}
                          variant={form.skills.includes(s) ? 'filled' : 'outlined'}
@@ -336,7 +369,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             </Stack>
           )}
 
-          {!loading && step === 3 && (
+          {!loading && currentKey === 'about' && (
             <Stack spacing={2}>
               <TextField label="Om meg" multiline rows={4}
                           value={form.bio}
@@ -356,7 +389,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                   Språk
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                  {LANGUAGES_OPTIONS.map((lang) => (
+                  {config.languageOptions.map((lang) => (
                     <Chip key={lang.code} label={lang.name} clickable size="small"
                            color={form.languages.includes(lang.code) ? 'primary' : 'default'}
                            variant={form.languages.includes(lang.code) ? 'filled' : 'outlined'}
@@ -367,7 +400,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             </Stack>
           )}
 
-          {!loading && step === 4 && (
+          {!loading && currentKey === 'links' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
                 Legg til lenker til portefølje og sosiale medier (alt valgfritt).
@@ -393,7 +426,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             </Stack>
           )}
 
-          {!loading && step === 5 && (
+          {!loading && currentKey === 'privacy' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
                 Hvem skal kunne se profilen din?

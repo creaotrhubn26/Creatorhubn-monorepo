@@ -1711,7 +1711,7 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
       return publicBase ? `${publicBase}/${key}` : `${r2cfg.endpoint}/${bucket}/${key}`;
     };
   }
-  registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage });
+  registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
 }
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));

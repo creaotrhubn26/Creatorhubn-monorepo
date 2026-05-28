@@ -33,7 +33,47 @@ interface RoleRoomProfileDeps {
   activeSessions: Map<string, SessionData>;
   /** Optional: Cloudflare R2 / S3 uploader. Hvis undefined, returnerer 503 ved image-upload. */
   uploadImage?: (buffer: Buffer, mimeType: string, key: string) => Promise<string>;
+  /** Sjekker om bruker er admin. Hvis null returneres, ble respons sendt fra middleware. */
+  requireAdminSession?: (req: Request, res: Response) => { userId: string } | null;
 }
+
+// ─── Default onboarding-config ───────────────────────────────────────────
+
+const DEFAULT_ONBOARDING_CONFIG = {
+  welcomeMessage: 'Velkommen til The Role Room. La oss bygge profilen din slik at andre medlemmer kan finne deg og du kan vise hva du gjør.',
+  professionsOptions: [
+    'Fotograf', 'Videograf', 'Editor', 'Colorist', 'Sound Designer',
+    'Producer', 'Director', 'DOP', 'Skuespiller', 'Modell',
+    'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
+    'Makeup-artist', 'Stylist', 'Annet',
+  ],
+  skillsOptions: [
+    'Color Grading', 'Multi-cam editing', 'Live event', 'Wedding cinematography',
+    'Documentary', 'Music video', 'Corporate film', 'Audio mixing',
+    'Drone (DJI)', 'Lighting', 'Motion graphics', 'VFX',
+    'DaVinci Resolve', 'Premiere Pro', 'Final Cut Pro', 'After Effects',
+  ],
+  languageOptions: [
+    { code: 'no', name: 'Norsk' },
+    { code: 'sv', name: 'Svenska' },
+    { code: 'da', name: 'Dansk' },
+    { code: 'en', name: 'English' },
+  ],
+  stepsEnabled: {
+    welcome: true,
+    image: true,
+    profession: true,
+    about: true,
+    links: true,
+    privacy: true,
+  },
+  requiredFields: {
+    displayName: true,
+    professions: true,
+    bio: false,
+    profileImage: false,
+  },
+};
 
 // Multer config: max 4 MB per profilbilde (banner kan være større — egen route senere)
 const imageUpload = multer({
@@ -50,6 +90,33 @@ const imageUpload = multer({
 });
 
 let tableEnsured = false;
+let configTableEnsured = false;
+
+async function ensureConfigTable(pool: Pool): Promise<boolean> {
+  if (configTableEnsured) return true;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS role_room_onboarding_config (
+        id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        config JSONB NOT NULL,
+        updated_by_user_id VARCHAR(255),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Seed default config hvis tom
+    await pool.query(
+      `INSERT INTO role_room_onboarding_config (id, config)
+            VALUES (1, $1::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [JSON.stringify(DEFAULT_ONBOARDING_CONFIG)],
+    );
+    configTableEnsured = true;
+    return true;
+  } catch (err) {
+    console.error('[rr-profile] ensure config table failed:', err);
+    return false;
+  }
+}
 
 async function ensureProfileTable(pool: Pool): Promise<boolean> {
   if (tableEnsured) return true;
@@ -444,4 +511,150 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       res.status(500).json({ error: "intern_feil" });
     }
   });
+
+  // ─── Onboarding-config ───────────────────────────────────────────────
+
+  app.get(
+    "/api/role-room/onboarding-config",
+    async (_req: Request, res: Response) => {
+      if (!(await ensureConfigTable(pool))) {
+        res.json({ config: DEFAULT_ONBOARDING_CONFIG });
+        return;
+      }
+      try {
+        const { rows } = await pool.query(
+          `SELECT config FROM role_room_onboarding_config WHERE id = 1`,
+        );
+        const config = rows[0]?.config ?? DEFAULT_ONBOARDING_CONFIG;
+        res.json({ config });
+      } catch (err) {
+        console.error("[rr-profile] GET onboarding-config failed:", err);
+        res.json({ config: DEFAULT_ONBOARDING_CONFIG });
+      }
+    },
+  );
+
+  app.get(
+    "/api/role-room/admin/onboarding-config",
+    async (req: Request, res: Response) => {
+      if (!deps.requireAdminSession) {
+        res.status(503).json({ error: "admin_ikke_konfigurert" });
+        return;
+      }
+      const admin = deps.requireAdminSession(req, res);
+      if (!admin) return;
+
+      if (!(await ensureConfigTable(pool))) {
+        res.status(503).json({ error: "tabell_ikke_klar" });
+        return;
+      }
+      try {
+        const { rows } = await pool.query(
+          `SELECT config, updated_by_user_id, updated_at
+             FROM role_room_onboarding_config WHERE id = 1`,
+        );
+        const row = rows[0];
+        res.json({
+          config: row?.config ?? DEFAULT_ONBOARDING_CONFIG,
+          defaults: DEFAULT_ONBOARDING_CONFIG,
+          updatedByUserId: row?.updated_by_user_id ?? null,
+          updatedAt: row?.updated_at ?? null,
+        });
+      } catch (err) {
+        console.error("[rr-profile] GET admin onboarding-config failed:", err);
+        res.status(500).json({ error: "intern_feil" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/role-room/admin/onboarding-config",
+    async (req: Request, res: Response) => {
+      if (!deps.requireAdminSession) {
+        res.status(503).json({ error: "admin_ikke_konfigurert" });
+        return;
+      }
+      const admin = deps.requireAdminSession(req, res);
+      if (!admin) return;
+
+      if (!(await ensureConfigTable(pool))) {
+        res.status(503).json({ error: "tabell_ikke_klar" });
+        return;
+      }
+
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const next = body.config && typeof body.config === "object"
+        ? (body.config as Record<string, unknown>)
+        : body;
+
+      // Validér strukturen mykt — krev at de viktige feltene er av riktig type
+      const validators: Array<[string, (v: unknown) => boolean]> = [
+        ["welcomeMessage", (v) => v === undefined || typeof v === "string"],
+        ["professionsOptions", (v) => v === undefined || (Array.isArray(v) && v.every((s) => typeof s === "string"))],
+        ["skillsOptions", (v) => v === undefined || (Array.isArray(v) && v.every((s) => typeof s === "string"))],
+        ["languageOptions", (v) => v === undefined || (Array.isArray(v) && v.every((o) =>
+          o && typeof o === "object" && typeof (o as Record<string, unknown>).code === "string" && typeof (o as Record<string, unknown>).name === "string",
+        ))],
+        ["stepsEnabled", (v) => v === undefined || (typeof v === "object" && v !== null && !Array.isArray(v))],
+        ["requiredFields", (v) => v === undefined || (typeof v === "object" && v !== null && !Array.isArray(v))],
+      ];
+      for (const [key, ok] of validators) {
+        if (!ok(next[key])) {
+          res.status(400).json({ error: `ugyldig_${key}` });
+          return;
+        }
+      }
+
+      try {
+        const { rows } = await pool.query(
+          `SELECT config FROM role_room_onboarding_config WHERE id = 1`,
+        );
+        const current = (rows[0]?.config as Record<string, unknown> | undefined) ?? DEFAULT_ONBOARDING_CONFIG;
+        const merged = { ...current, ...next };
+
+        await pool.query(
+          `UPDATE role_room_onboarding_config
+              SET config = $1::jsonb,
+                  updated_by_user_id = $2,
+                  updated_at = NOW()
+            WHERE id = 1`,
+          [JSON.stringify(merged), admin.userId],
+        );
+        res.json({ ok: true, config: merged });
+      } catch (err) {
+        console.error("[rr-profile] PATCH admin onboarding-config failed:", err);
+        res.status(500).json({ error: "intern_feil" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/role-room/admin/onboarding-config/reset",
+    async (req: Request, res: Response) => {
+      if (!deps.requireAdminSession) {
+        res.status(503).json({ error: "admin_ikke_konfigurert" });
+        return;
+      }
+      const admin = deps.requireAdminSession(req, res);
+      if (!admin) return;
+      if (!(await ensureConfigTable(pool))) {
+        res.status(503).json({ error: "tabell_ikke_klar" });
+        return;
+      }
+      try {
+        await pool.query(
+          `UPDATE role_room_onboarding_config
+              SET config = $1::jsonb,
+                  updated_by_user_id = $2,
+                  updated_at = NOW()
+            WHERE id = 1`,
+          [JSON.stringify(DEFAULT_ONBOARDING_CONFIG), admin.userId],
+        );
+        res.json({ ok: true, config: DEFAULT_ONBOARDING_CONFIG });
+      } catch (err) {
+        console.error("[rr-profile] reset onboarding-config failed:", err);
+        res.status(500).json({ error: "intern_feil" });
+      }
+    },
+  );
 }

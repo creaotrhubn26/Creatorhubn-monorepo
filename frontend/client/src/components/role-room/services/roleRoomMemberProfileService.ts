@@ -34,6 +34,34 @@ export interface OnboardingStatus {
   requiresOnboarding: boolean;
 }
 
+export interface OnboardingConfig {
+  welcomeMessage: string;
+  professionsOptions: string[];
+  skillsOptions: string[];
+  languageOptions: Array<{ code: string; name: string }>;
+  stepsEnabled: {
+    welcome?: boolean;
+    image?: boolean;
+    profession?: boolean;
+    about?: boolean;
+    links?: boolean;
+    privacy?: boolean;
+  };
+  requiredFields: {
+    displayName?: boolean;
+    professions?: boolean;
+    bio?: boolean;
+    profileImage?: boolean;
+  };
+}
+
+export interface AdminOnboardingConfigResponse {
+  config: OnboardingConfig;
+  defaults: OnboardingConfig;
+  updatedByUserId: string | null;
+  updatedAt: string | null;
+}
+
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -104,5 +132,36 @@ export const roleRoomMemberProfileService = {
       { method: 'GET' },
     );
     return data.profile;
+  },
+
+  async getOnboardingConfig(): Promise<OnboardingConfig> {
+    const data = await jsonRequest<{ config: OnboardingConfig }>(
+      '/api/role-room/onboarding-config',
+      { method: 'GET' },
+    );
+    return data.config;
+  },
+
+  async adminGetOnboardingConfig(): Promise<AdminOnboardingConfigResponse> {
+    return jsonRequest<AdminOnboardingConfigResponse>(
+      '/api/role-room/admin/onboarding-config',
+      { method: 'GET' },
+    );
+  },
+
+  async adminUpdateOnboardingConfig(
+    patch: Partial<OnboardingConfig>,
+  ): Promise<{ ok: boolean; config: OnboardingConfig }> {
+    return jsonRequest<{ ok: boolean; config: OnboardingConfig }>(
+      '/api/role-room/admin/onboarding-config',
+      { method: 'PATCH', body: JSON.stringify(patch) },
+    );
+  },
+
+  async adminResetOnboardingConfig(): Promise<{ ok: boolean; config: OnboardingConfig }> {
+    return jsonRequest<{ ok: boolean; config: OnboardingConfig }>(
+      '/api/role-room/admin/onboarding-config/reset',
+      { method: 'POST' },
+    );
   },
 };
