@@ -1546,9 +1546,10 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                 }
 
                 // 3. Bygg 3 timelines i ett kall basert på Steg 1-valgene
+                let timelineNames: Record<string, string> = {};
                 if (livePicksPath && (makeLongFilm || makeHighlight || makeTeaser)) {
                   try {
-                    await executeScript("build_three_timelines", {
+                    const sum = await executeScript("build_three_timelines", {
                       picksPath: livePicksPath,
                       projectName: projectName || "Untitled",
                       wanted: {
@@ -1557,9 +1558,69 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                         teaser: makeTeaser,
                       },
                     }, false);
+                    const r = sum.events.find((e) => e.type === "result");
+                    const val = r?.value as { timelineNames?: Record<string, string> } | undefined;
+                    if (val?.timelineNames) timelineNames = val.timelineNames;
                   } catch (e) {
                     console.warn("Three-timelines-build failed:", e);
                   }
+                }
+
+                // 4. QC: gaps + silent-sections i hver bygget timeline
+                const qcWarnings: string[] = [];
+                // Spor ubrukte sanger til silent-suggestion
+                const unusedSongs = wishedSongs.map((s) => ({
+                  title: s.title, artist: s.artist, role: s.role,
+                }));
+                for (const [key, tlName] of Object.entries(timelineNames)) {
+                  if (!tlName) continue;
+                  // 4a. Svarte mellomrom
+                  try {
+                    const sum = await executeScript("detect_timeline_gaps", {
+                      timelineName: tlName,
+                    }, false);
+                    const r = sum.events.find((e) => e.type === "result");
+                    const val = r?.value as { verdict?: string; gapCount?: number; totalGapSec?: number } | undefined;
+                    if (val && val.verdict !== "clean" && (val.gapCount ?? 0) > 0) {
+                      qcWarnings.push(`⬛ ${key}: ${val.gapCount} svarte mellomrom (${val.totalGapSec?.toFixed(1)}s)`);
+                    }
+                  } catch (e) {
+                    console.warn(`Gap-check failed for ${tlName}:`, e);
+                  }
+                  // 4b. Stille intervaller med musikk-forslag
+                  try {
+                    const sum = await executeScript("detect_silent_sections_in_timeline", {
+                      timelineName: tlName,
+                      unusedSongs,
+                      minSilenceSec: 3.0,
+                    }, false);
+                    const r = sum.events.find((e) => e.type === "result");
+                    const val = r?.value as {
+                      silentSections?: Array<{ startSec: number; endSec: number; durationSec: number;
+                                                 chapterAtTime?: string;
+                                                 suggestedSongs?: Array<{ title: string; artist: string; role: string }> }>;
+                      totalSilentSec?: number;
+                      silentPercent?: number;
+                    } | undefined;
+                    if (val && (val.silentSections?.length ?? 0) > 0) {
+                      const lines = val.silentSections!.slice(0, 3).map((s) => {
+                        const fmt = (x: number) => {
+                          const m = Math.floor(x / 60); const ss = Math.floor(x % 60);
+                          return `${m}:${String(ss).padStart(2, "0")}`;
+                        };
+                        const sugg = s.suggestedSongs?.[0];
+                        return `   ${fmt(s.startSec)}–${fmt(s.endSec)} (${s.durationSec.toFixed(1)}s)${
+                          sugg ? ` → forslag: "${sugg.title}" — ${sugg.artist}` : ""}`;
+                      }).join("\n");
+                      qcWarnings.push(`🎵 ${key}: ${val.silentSections!.length} stille intervaller (${val.totalSilentSec}s, ${val.silentPercent}%):\n${lines}`);
+                    }
+                  } catch (e) {
+                    console.warn(`Silent-check failed for ${tlName}:`, e);
+                  }
+                }
+                if (qcWarnings.length > 0) {
+                  alert(`⚠️ QC-rapport før delivery:\n\n${qcWarnings.join("\n\n")}\n\nÅpne timeline i Resolve for å fikse.`);
+                  recordLearning(`QC: ${qcWarnings.length} advarsler`);
                 }
 
                 if (livePicksPath) onComplete(livePicksPath);

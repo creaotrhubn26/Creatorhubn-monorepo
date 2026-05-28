@@ -2195,6 +2195,34 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": false
+    },
+    {
+      "id": "detect_timeline_gaps",
+      "name": "Detect Timeline Gaps",
+      "category": "qc",
+      "scriptPath": "scripts/qc/detect_timeline_gaps.py",
+      "description": "Sjekk for svarte mellomrom mellom klipp f\u00f8r delivery.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "detect_silent_sections_in_timeline",
+      "name": "Detect Silent Sections in Timeline",
+      "category": "qc",
+      "scriptPath": "scripts/qc/detect_silent_sections_in_timeline.py",
+      "description": "Finn stille intervaller i timeline (ingen audio p\u00e5 noen track). Foresl\u00e5r ubrukte sanger.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
     }
   ]
 }

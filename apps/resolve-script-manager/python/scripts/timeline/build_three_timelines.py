@@ -115,6 +115,11 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     bridge.result({
         "timelines": results,
         "projectName": project_name,
+        "timelineNames": {
+            "highlight": f"{project_name} — Highlight" if project_name else "Highlight",
+            "longFilm":  f"{project_name} — Long Film" if project_name else "Long Film",
+            "teaser":    f"{project_name} — Teaser" if project_name else "Teaser",
+        },
     })
 
 
