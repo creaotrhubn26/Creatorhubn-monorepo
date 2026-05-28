@@ -466,18 +466,25 @@ def narrate_with_claude(shot_meta: list[dict]) -> list[str]:
 
     shot_meta: [{ index, duration, motion, frames: [path_start, path_mid, path_end] }]
     """
+    # Bruk The Role Room-proxyen når bruker er innlogget, fallback til
+    # direkte Anthropic SDK kun hvis ANTHROPIC_API_KEY er satt (dev/admin).
+    # Begge stier returnerer en kompatibel client med .messages.create().
+    bearer = os.environ.get("RR_BEARER_TOKEN", "").strip()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        bridge.warn("ANTHROPIC_API_KEY not set — skipping narration, using generic labels")
+    if not bearer and not api_key:
+        bridge.warn("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY — hopper over narration")
         return [f"Shot {s['index']+1}" for s in shot_meta]
 
     try:
-        import anthropic  # type: ignore
+        if bearer:
+            from anthropic_proxy import Anthropic  # type: ignore[import-not-found]
+            client = Anthropic(bearer_token=bearer)
+        else:
+            import anthropic  # type: ignore[import-not-found]
+            client = anthropic.Anthropic(api_key=api_key)
     except ImportError:
-        bridge.warn("anthropic python package not installed — skipping narration")
+        bridge.warn("anthropic-pakka mangler — hopper over narration")
         return [f"Shot {s['index']+1}" for s in shot_meta]
-
-    client = anthropic.Anthropic(api_key=api_key)
     out: list[str] = []
     for s in shot_meta:
         frames: list[str] = s.get("frames") or []

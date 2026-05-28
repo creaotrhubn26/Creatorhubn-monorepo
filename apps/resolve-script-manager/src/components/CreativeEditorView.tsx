@@ -34,6 +34,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { executeScript, onScriptEvent } from "../api";
 import type { ScriptEvent } from "../types";
 import { MusicSearchModal } from "./MusicSearchModal";
+import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
 import {
   IconPlay,
   IconMusic,
@@ -934,6 +935,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
 
   // Music-search-modal (Jamendo/Pixabay/Soundstripe/Artlist + Vault-profiler)
   const [musicSearchOpen, setMusicSearchOpen] = useState(false);
+  const [musicSearchInitialQuery, setMusicSearchInitialQuery] = useState<string>("");
+  const [musicSearchInitialProvider, setMusicSearchInitialProvider] = useState<string>("");
+
+  // Claude AI-forslag-modal — gir scene-spesifikke musikk-stiler basert
+  // på chapter (vows, first_dance, nikkah, ...). Bruker samme proxy som
+  // Post Agent (anthropic_proxy via /api/post-agent/anthropic/messages) så
+  // token-bruk telles per innlogget bruker.
+  const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
   const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
     const newAudio: CustomAudio = {
       id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -2900,6 +2909,14 @@ ${ctxLines.join("\n")}`;
             >🎵 Søk</button>
             <button
               className="ce-audio-add-btn"
+              onClick={() => setAiSuggestionsOpen(true)}
+              disabled={!focusedPick}
+              title={focusedPick
+                ? `Claude foreslår musikk for ${focusedPick.chapter ?? "denne scenen"}`
+                : "Velg en pick først"}
+            >✨ AI-forslag</button>
+            <button
+              className="ce-audio-add-btn"
               onClick={() => addMarkerAtPlayhead()}
               title="Sett markør (M)"
             >+ Markør</button>
@@ -3702,10 +3719,40 @@ ${ctxLines.join("\n")}`;
       {musicSearchOpen && (
         <MusicSearchModal
           sourceVideo={payload?.sourceVideo}
-          onClose={() => setMusicSearchOpen(false)}
+          onClose={() => {
+            setMusicSearchOpen(false);
+            setMusicSearchInitialQuery("");
+            setMusicSearchInitialProvider("");
+          }}
           onSelect={onMusicSelected}
+          initialQuery={musicSearchInitialQuery}
+          initialProvider={musicSearchInitialProvider}
         />
       )}
+
+      {/* Claude AI-musikk-forslag modal — scene-spesifikke forslag pr. chapter */}
+      {aiSuggestionsOpen && focusedPick && (() => {
+        const chapter = (focusedPick.chapter || "details").toLowerCase();
+        const seg = segments.find(s => s.chapter === chapter);
+        const durationSec = seg?.duration ?? focusedPick.durationSec ?? 30;
+        // Beregn kutt-pace = picks per sek i segment, som proxy for visuell pace
+        const cutPaceHz = seg && seg.duration > 0 ? seg.picks.length / seg.duration : undefined;
+        return (
+          <ClaudeMusicSuggestionsModal
+            open={aiSuggestionsOpen}
+            chapter={chapter}
+            durationSec={durationSec}
+            cutPaceHz={cutPaceHz}
+            onClose={() => setAiSuggestionsOpen(false)}
+            onUseSuggestion={(query, preferredProviders) => {
+              setMusicSearchInitialQuery(query);
+              setMusicSearchInitialProvider(preferredProviders[0] ?? "");
+              setAiSuggestionsOpen(false);
+              setMusicSearchOpen(true);
+            }}
+          />
+        );
+      })()}
 
       {/* Marker edit modal */}
       {editingMarkerId && (() => {

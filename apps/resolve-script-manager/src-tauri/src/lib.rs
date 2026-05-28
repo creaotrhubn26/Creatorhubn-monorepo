@@ -41,9 +41,14 @@ async fn list_scripts(app: AppHandle) -> Result<Value, String> {
     read_json(python_root(&app)?.join("registry.json"))
 }
 
-/// Claude chat — proxies to api.anthropic.com using ANTHROPIC_API_KEY from
-/// AppSettings. Used by CreativeEditorView's Claude Co-Editor panel.
-/// Non-streaming; returns the assistant message as text + optional tool_use.
+/// Claude chat — proxies via The Role Room backend (/api/post-agent/anthropic/messages).
+/// Backend håndterer entitlement-check, rate-limiting og usage-tracking per
+/// bruker. Brukes av CreativeEditorView's Claude Co-Editor panel.
+///
+/// Auth-prioritet:
+///   1. RR_BEARER_TOKEN → proxy via Role Room (tracked usage, foretrukket)
+///   2. ANTHROPIC_API_KEY → direkte til api.anthropic.com (dev/admin fallback,
+///      hopper over usage-tracking — bør kun brukes lokalt)
 #[tauri::command]
 async fn claude_chat(
     app: AppHandle,
@@ -53,18 +58,24 @@ async fn claude_chat(
     max_tokens: Option<u32>,
     tools: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let api_key = if let Some(settings) = app.try_state::<AppSettings>() {
-        settings
-            .snapshot()
-            .get("ANTHROPIC_API_KEY")
-            .cloned()
-            .unwrap_or_default()
+    let (bearer, base_url, api_key) = if let Some(settings) = app.try_state::<AppSettings>() {
+        let snap = settings.snapshot();
+        (
+            snap.get("RR_BEARER_TOKEN").cloned().unwrap_or_default(),
+            snap.get("RR_POST_AGENT_BASE_URL")
+                .cloned()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
+            snap.get("ANTHROPIC_API_KEY").cloned().unwrap_or_default(),
+        )
     } else {
-        String::new()
+        (String::new(), "https://creatorhubn.com/api/post-agent".to_string(), String::new())
     };
-    if api_key.is_empty() {
-        return Err("ANTHROPIC_API_KEY not set — open Settings → Admin and paste your key".into());
+
+    if bearer.is_empty() && api_key.is_empty() {
+        return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY. Logg inn fra Settings.".into());
     }
+
     let model = model.unwrap_or_else(|| "claude-opus-4-7".to_string());
     let max_tokens = max_tokens.unwrap_or(1024);
     let mut body = serde_json::json!({
@@ -76,15 +87,30 @@ async fn claude_chat(
     if let Some(t) = tools { body["tools"] = Value::Array(t); }
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Anthropic request failed: {}", e))?;
+    let resp = if !bearer.is_empty() {
+        // Proxy via Role Room — usage tracking + entitlement-check skjer på backend
+        let trimmed_base = base_url.trim_end_matches('/');
+        client
+            .post(format!("{}/anthropic/messages", trimmed_base))
+            .header("Authorization", format!("Bearer {}", bearer))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Role Room proxy request failed: {}", e))?
+    } else {
+        // Fallback: direkte til Anthropic (dev/admin) — NB: hopper over usage-tracking
+        client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Anthropic request failed: {}", e))?
+    };
+
     let status = resp.status();
     let text = resp
         .text()

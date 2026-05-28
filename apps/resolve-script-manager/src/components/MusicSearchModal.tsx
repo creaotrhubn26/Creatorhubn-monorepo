@@ -42,10 +42,14 @@ interface Props {
   sourceVideo?: string;
   onClose: () => void;
   onSelect: (track: { wavPath: string; title: string; artist: string; provider: string }) => void;
+  /** Forhåndsutfylt søke-query (typisk fra Claude-forslag). */
+  initialQuery?: string;
+  /** Forhåndsvalgt provider-filter (matcher MusicSearchModal sin filter-state). */
+  initialProvider?: string;
 }
 
-export function MusicSearchModal({ sourceVideo, onClose, onSelect }: Props) {
-  const [query, setQuery] = useState("");
+export function MusicSearchModal({ sourceVideo, onClose, onSelect, initialQuery, initialProvider }: Props) {
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string>("");
   const [results, setResults] = useState<TrackResult[]>([]);
@@ -53,7 +57,7 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect }: Props) {
   const [providersAvailable, setProvidersAvailable] = useState<Array<{ id: string; name: string; configured: boolean; requiresKey: boolean }>>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [providerFilter, setProviderFilter] = useState<string>("");
+  const [providerFilter, setProviderFilter] = useState<string>(initialProvider ?? "");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
