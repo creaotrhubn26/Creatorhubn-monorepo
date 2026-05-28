@@ -1946,9 +1946,9 @@ class ManuscriptService {
    */
   async updateManuscript(manuscript: Manuscript, signal?: AbortSignal): Promise<Manuscript> {
     manuscript.updatedAt = new Date().toISOString();
-    
+
     const isDbAvailable = await checkDatabaseAvailability();
-    
+
     if (isDbAvailable) {
       try {
         const response = await fetch(`/api/casting/manuscripts/${manuscript.id}`, {
@@ -1957,10 +1957,20 @@ class ManuscriptService {
           body: JSON.stringify(manuscript),
           signal,
         });
-        
+
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('PUT /api/casting/manuscripts/:id');
+          } else if (response.status === 409) {
+            // Låst av en annen bruker — IKKE fall tilbake til localStorage
+            // (det ville gi inntrykk av lagring uten at det er lagret).
+            const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+            throw Object.assign(new Error('Manuscript is locked by another user'), {
+              code: 'manuscript_locked' as const,
+              lockedBy: typeof body.lockedBy === 'string' ? body.lockedBy : null,
+              lockedAt: typeof body.lockedAt === 'string' ? body.lockedAt : null,
+              expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : null,
+            });
           } else {
             throw new Error(`Failed to update manuscript: ${response.statusText}`);
           }
@@ -1968,13 +1978,87 @@ class ManuscriptService {
           return await response.json();
         }
       } catch (error) {
+        // Lock-feil propageres opp — vi vil at UI skal vise melding,
+        // ikke at vi stille lagrer lokalt og lyver om suksess.
+        if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'manuscript_locked') {
+          throw error;
+        }
         console.error('Error updating manuscript in database:', error);
       }
     }
-    
+
     // Fallback to settings cache
     await saveManuscriptToStorage(manuscript);
     return manuscript;
+  }
+
+  /**
+   * Lock management for manuscripts.
+   *
+   * Server-utlasting (409) kastes som tagget Error med
+   *   code: 'manuscript_locked', lockedBy, lockedAt, expiresAt
+   * UI bør sjekke (error as any).code === 'manuscript_locked' og vise en
+   * "X redigerer dette"-melding i stedet for generisk lagrings-feil.
+   */
+  async acquireManuscriptLock(
+    manuscriptId: string,
+    options?: { force?: boolean },
+  ): Promise<{ lockedBy: string | null; lockedAt: string | null; expiresAt: string | null; held: boolean; isExpired: boolean }> {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/lock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: options?.force === true }),
+    });
+    if (response.status === 409) {
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      throw Object.assign(new Error('Manuscript is locked by another user'), {
+        code: 'manuscript_locked' as const,
+        lockedBy: typeof body.lockedBy === 'string' ? body.lockedBy : null,
+        lockedAt: typeof body.lockedAt === 'string' ? body.lockedAt : null,
+        expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : null,
+      });
+    }
+    if (!response.ok) throw new Error(`Failed to acquire lock: ${response.status}`);
+    const data = (await response.json()) as { lock?: { lockedBy: string | null; lockedAt: string | null; expiresAt: string | null; held: boolean; isExpired: boolean } };
+    return data.lock ?? { lockedBy: null, lockedAt: null, expiresAt: null, held: false, isExpired: false };
+  }
+
+  async releaseManuscriptLock(manuscriptId: string): Promise<{ released: boolean }> {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/lock`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`Failed to release lock: ${response.status}`);
+    const data = (await response.json()) as { released?: boolean };
+    return { released: Boolean(data.released) };
+  }
+
+  async heartbeatManuscriptLock(
+    manuscriptId: string,
+  ): Promise<{ lockedBy: string | null; lockedAt: string | null; expiresAt: string | null; held: boolean; isExpired: boolean }> {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/lock/heartbeat`, {
+      method: 'POST',
+    });
+    if (response.status === 409) {
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      throw Object.assign(new Error('Manuscript lock lost'), {
+        code: 'manuscript_locked' as const,
+        lockedBy: typeof body.lockedBy === 'string' ? body.lockedBy : null,
+        lockedAt: typeof body.lockedAt === 'string' ? body.lockedAt : null,
+        expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : null,
+      });
+    }
+    if (!response.ok) throw new Error(`Failed to heartbeat lock: ${response.status}`);
+    const data = (await response.json()) as { lock?: { lockedBy: string | null; lockedAt: string | null; expiresAt: string | null; held: boolean; isExpired: boolean } };
+    return data.lock ?? { lockedBy: null, lockedAt: null, expiresAt: null, held: false, isExpired: false };
+  }
+
+  async getManuscriptLock(
+    manuscriptId: string,
+  ): Promise<{ lockedBy: string | null; lockedAt: string | null; expiresAt: string | null; held: boolean; isExpired: boolean }> {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/lock`);
+    if (!response.ok) throw new Error(`Failed to read lock: ${response.status}`);
+    const data = (await response.json()) as { lock?: { lockedBy: string | null; lockedAt: string | null; expiresAt: string | null; held: boolean; isExpired: boolean } };
+    return data.lock ?? { lockedBy: null, lockedAt: null, expiresAt: null, held: false, isExpired: false };
   }
 
   /**

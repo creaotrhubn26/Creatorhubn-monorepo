@@ -83,6 +83,7 @@ import {
 } from "./_shared-concurrency.js";
 import type { CastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
+import { computeManuscriptLockState } from "./casting-manuscripts-service.js";
 import {
   exportFdx,
   exportFountain,
@@ -204,11 +205,23 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.put("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const manuscriptId = req.params.manuscriptId;
       const existing =
         (await manuscriptsService.getManuscript(manuscriptId)) || {};
+      // Lock enforcement: hvis en ANNEN bruker holder en gyldig lås → 409.
+      // Utløpt lås blokkerer ikke; neste acquire overskriver den.
+      const lockState = computeManuscriptLockState(existing);
+      if (lockState.held && lockState.lockedBy !== session.userId) {
+        return res.status(409).json({
+          error: "locked_by_other",
+          lockedBy: lockState.lockedBy,
+          lockedAt: lockState.lockedAt,
+          expiresAt: lockState.expiresAt,
+        });
+      }
       // F1 enforcement: hvis klient sender If-Match med stale version → 412.
       // Klienter som IKKE sender header passerer uendret (backwards-compat).
       const currentVersion =
@@ -245,11 +258,22 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.delete("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const manuscriptId = req.params.manuscriptId;
-      // F1 enforcement: hvis klient sender If-Match med stale version → 412.
       const existing = await manuscriptsService.getManuscript(manuscriptId);
+      // Lock enforcement: identisk med PUT.
+      const lockState = computeManuscriptLockState(existing);
+      if (lockState.held && lockState.lockedBy !== session.userId) {
+        return res.status(409).json({
+          error: "locked_by_other",
+          lockedBy: lockState.lockedBy,
+          lockedAt: lockState.lockedAt,
+          expiresAt: lockState.expiresAt,
+        });
+      }
+      // F1 enforcement: hvis klient sender If-Match med stale version → 412.
       const currentVersion =
         existing && typeof existing.version === "number"
           ? existing.version
@@ -263,6 +287,84 @@ export function setupCastingManuscriptsRoutes(
     } catch (error) {
       console.error("Error deleting manuscript:", error);
       res.status(500).json({ error: "Could not delete manuscript" });
+    }
+  });
+
+  // ── Lock management ────────────────────────────────────────────────
+
+  app.post("/api/casting/manuscripts/:manuscriptId/lock", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+      const force = body.force === true;
+      const result = await manuscriptsService.acquireLock(
+        req.params.manuscriptId,
+        session.userId,
+        { force },
+      );
+      if (!result.ok) {
+        return res.status(409).json({
+          error: "locked_by_other",
+          lockedBy: result.conflict.lockedBy,
+          lockedAt: result.conflict.lockedAt,
+          expiresAt: result.conflict.expiresAt,
+        });
+      }
+      res.json({ lock: result.lock });
+    } catch (error) {
+      console.error("Error acquiring manuscript lock:", error);
+      res.status(500).json({ error: "Could not acquire lock" });
+    }
+  });
+
+  app.post("/api/casting/manuscripts/:manuscriptId/lock/heartbeat", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const result = await manuscriptsService.heartbeatLock(
+        req.params.manuscriptId,
+        session.userId,
+      );
+      if (!result.ok) {
+        return res.status(409).json({
+          error: "locked_by_other",
+          lockedBy: result.conflict.lockedBy,
+          lockedAt: result.conflict.lockedAt,
+          expiresAt: result.conflict.expiresAt,
+        });
+      }
+      res.json({ lock: result.lock });
+    } catch (error) {
+      console.error("Error heartbeat manuscript lock:", error);
+      res.status(500).json({ error: "Could not heartbeat lock" });
+    }
+  });
+
+  app.delete("/api/casting/manuscripts/:manuscriptId/lock", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const result = await manuscriptsService.releaseLock(
+        req.params.manuscriptId,
+        session.userId,
+      );
+      res.json({ released: result.released, lock: result.lock });
+    } catch (error) {
+      console.error("Error releasing manuscript lock:", error);
+      res.status(500).json({ error: "Could not release lock" });
+    }
+  });
+
+  app.get("/api/casting/manuscripts/:manuscriptId/lock", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const lock = await manuscriptsService.getLock(req.params.manuscriptId);
+      res.json({ lock });
+    } catch (error) {
+      console.error("Error reading manuscript lock:", error);
+      res.status(500).json({ error: "Could not read lock" });
     }
   });
 

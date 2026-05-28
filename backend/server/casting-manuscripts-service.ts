@@ -69,6 +69,50 @@ export interface CastingManuscriptsServiceDeps {
   pool?: Pool;
 }
 
+// ── Lock state ──────────────────────────────────────────────────────
+// Eksplisitt lås for manuskript-redigering. Lagres på manuskript-blobben
+// (lockedBy + lockedAt) slik at vi unngår dobbeltkilde med SQL-kolonnene.
+// Låsen utløper etter MANUSCRIPT_LOCK_TTL_MS uten heartbeat; en utløpt
+// lås blokkerer ikke en ny acquire.
+
+export const MANUSCRIPT_LOCK_TTL_MS = 120_000; // 2 minutter
+
+export interface ManuscriptLockState {
+  held: boolean;             // true iff lockedBy satt OG ikke utløpt
+  lockedBy: string | null;
+  lockedAt: string | null;
+  expiresAt: string | null;
+  isExpired: boolean;
+}
+
+export function computeManuscriptLockState(
+  blob: unknown,
+  ttlMs: number = MANUSCRIPT_LOCK_TTL_MS,
+): ManuscriptLockState {
+  if (!blob || typeof blob !== "object") {
+    return { held: false, lockedBy: null, lockedAt: null, expiresAt: null, isExpired: false };
+  }
+  const b = blob as Record<string, unknown>;
+  const lockedBy = typeof b.lockedBy === "string" && b.lockedBy ? b.lockedBy : null;
+  const lockedAt = typeof b.lockedAt === "string" && b.lockedAt ? b.lockedAt : null;
+  if (!lockedBy || !lockedAt) {
+    return { held: false, lockedBy: null, lockedAt: null, expiresAt: null, isExpired: false };
+  }
+  const lockedAtMs = new Date(lockedAt).getTime();
+  if (Number.isNaN(lockedAtMs)) {
+    return { held: false, lockedBy, lockedAt: null, expiresAt: null, isExpired: true };
+  }
+  const expiresMs = lockedAtMs + ttlMs;
+  const isExpired = Date.now() >= expiresMs;
+  return {
+    held: !isExpired,
+    lockedBy,
+    lockedAt,
+    expiresAt: new Date(expiresMs).toISOString(),
+    isExpired,
+  };
+}
+
 export interface CastingManuscriptsService {
   // ── Reads ────────────────────────────────────────────────────────
   listManuscripts(projectId?: string): Promise<JsonBlob[]>;
@@ -112,6 +156,30 @@ export interface CastingManuscriptsService {
     manuscriptId: string,
     options?: { tx?: CompatStoreTransactionContext },
   ): Promise<void>;
+
+  // ── Lock management ──────────────────────────────────────────────
+  // Lås-writes bumper IKKE manuskript-versjonen (replaceManuscript
+  // brukes ikke), så heartbeat ugyldiggjør ikke klient-ETags.
+  acquireLock(
+    manuscriptId: string,
+    userId: string,
+    options?: { force?: boolean },
+  ): Promise<
+    | { ok: true; lock: ManuscriptLockState }
+    | { ok: false; conflict: ManuscriptLockState }
+  >;
+  releaseLock(
+    manuscriptId: string,
+    userId: string,
+  ): Promise<{ released: boolean; lock: ManuscriptLockState }>;
+  heartbeatLock(
+    manuscriptId: string,
+    userId: string,
+  ): Promise<
+    | { ok: true; lock: ManuscriptLockState }
+    | { ok: false; conflict: ManuscriptLockState }
+  >;
+  getLock(manuscriptId: string): Promise<ManuscriptLockState>;
 }
 
 /**
@@ -436,6 +504,70 @@ export function createCastingManuscriptsService(
     }
   }
 
+  // ── Lock management ────────────────────────────────────────────────
+  // Skriver direkte til compat-store (omgår replaceManuscript) slik at
+  // version-feltet ikke bumpes ved hver heartbeat — ellers ville klient-
+  // ETags blitt ugyldiggjort kontinuerlig.
+
+  async function acquireLock(
+    manuscriptId: string,
+    userId: string,
+    options?: { force?: boolean },
+  ): Promise<
+    | { ok: true; lock: ManuscriptLockState }
+    | { ok: false; conflict: ManuscriptLockState }
+  > {
+    const existing = await getManuscript(manuscriptId);
+    if (!existing) {
+      return { ok: false, conflict: computeManuscriptLockState(null) };
+    }
+    const current = computeManuscriptLockState(existing);
+    if (current.held && current.lockedBy !== userId && options?.force !== true) {
+      return { ok: false, conflict: current };
+    }
+    const now = new Date().toISOString();
+    const updated = { ...existing, lockedBy: userId, lockedAt: now };
+    legacyManuscripts.set(manuscriptId, updated);
+    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), updated);
+    return { ok: true, lock: computeManuscriptLockState(updated) };
+  }
+
+  async function releaseLock(
+    manuscriptId: string,
+    userId: string,
+  ): Promise<{ released: boolean; lock: ManuscriptLockState }> {
+    const existing = await getManuscript(manuscriptId);
+    if (!existing) {
+      return { released: false, lock: computeManuscriptLockState(null) };
+    }
+    const current = computeManuscriptLockState(existing);
+    if (!current.lockedBy) {
+      return { released: false, lock: current };
+    }
+    if (current.lockedBy !== userId && !current.isExpired) {
+      return { released: false, lock: current };
+    }
+    const updated = { ...existing, lockedBy: null, lockedAt: null };
+    legacyManuscripts.set(manuscriptId, updated);
+    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), updated);
+    return { released: true, lock: computeManuscriptLockState(updated) };
+  }
+
+  async function heartbeatLock(
+    manuscriptId: string,
+    userId: string,
+  ): Promise<
+    | { ok: true; lock: ManuscriptLockState }
+    | { ok: false; conflict: ManuscriptLockState }
+  > {
+    return acquireLock(manuscriptId, userId);
+  }
+
+  async function getLock(manuscriptId: string): Promise<ManuscriptLockState> {
+    const existing = await getManuscript(manuscriptId);
+    return computeManuscriptLockState(existing);
+  }
+
   return {
     listManuscripts,
     getManuscript,
@@ -451,5 +583,9 @@ export function createCastingManuscriptsService(
     findDialogueLocation,
     findActLocation,
     clearManuscriptState,
+    acquireLock,
+    releaseLock,
+    heartbeatLock,
+    getLock,
   };
 }
