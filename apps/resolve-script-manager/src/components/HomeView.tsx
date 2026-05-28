@@ -29,6 +29,7 @@ import {
 } from "./Icons";
 import { RoleRoomProjectSync } from "./RoleRoomProjectSync";
 import { executeScript } from "../api";
+import { loadProjectActivity, ACTIVITY_ICONS } from "../lib/projectActivity";
 
 type IconCmp = (p: { size?: number }) => JSX.Element;
 
@@ -254,49 +255,20 @@ export function HomeView({
       {saved.length > 0 && (
         <div className="home-recent" style={{ marginTop: 24 }}>
           <div className="home-section-title">Mine prosjekter</div>
-          {saved.slice(0, 8).map((p) => (
-            <div key={p.picksPath} className="home-recent-item-wrap"
-                 style={{ display: "flex", alignItems: "stretch", gap: 4 }}>
-              <button
-                className="home-recent-item"
-                onClick={() => onOpenSavedProject(p.picksPath)}
-                title={p.sourceVideo}
-                style={{ flex: 1 }}
-              >
-                <div className="home-recent-status">
-                  <IconFilmReel size={14} />
-                </div>
-                <div className="home-recent-meta">
-                  <strong>{p.title}</strong>
-                  <span className="card-chip-meta">
-                    {p.audioCount ? `${p.audioCount} sang${p.audioCount > 1 ? "er" : ""} · ` : ""}
-                    {formatRelativeTime(p.savedAt * 1000)}
-                  </span>
-                </div>
-                <IconArrowRight />
-              </button>
-              <button
-                onClick={() => {
-                  if (!confirm(`Slett "${p.title}" fra listen? (Arkivfilen forblir på disk.)`)) return;
-                  const next = saved.filter((x) => x.picksPath !== p.picksPath);
-                  setSaved(next);
-                  localStorage.setItem("trrpa.savedProjects", JSON.stringify(next));
-                  localStorage.setItem("trrpa.deletedPicksPaths",
-                    JSON.stringify([
-                      ...(JSON.parse(localStorage.getItem("trrpa.deletedPicksPaths") || "[]") as string[]),
-                      p.picksPath,
-                    ])
-                  );
-                }}
-                title="Fjern fra listen"
-                style={{ padding: "0 12px", color: "var(--text-dim)", fontSize: 16,
-                         background: "transparent", border: "1px solid var(--border)",
-                         borderRadius: 8, cursor: "pointer" }}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {saved.slice(0, 8).map((p) => <SavedProjectRow key={p.picksPath}
+                                                            project={p}
+                                                            onOpen={onOpenSavedProject}
+                                                            onRemove={(path) => {
+            const next = saved.filter((x) => x.picksPath !== path);
+            setSaved(next);
+            localStorage.setItem("trrpa.savedProjects", JSON.stringify(next));
+            localStorage.setItem("trrpa.deletedPicksPaths",
+              JSON.stringify([
+                ...(JSON.parse(localStorage.getItem("trrpa.deletedPicksPaths") || "[]") as string[]),
+                path,
+              ])
+            );
+          }} />)}
         </div>
       )}
 
@@ -338,6 +310,81 @@ export function HomeView({
           Avansert: kjør enkelt-script eller se pipeline-detaljer →
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Single project-row with expandable activity-log. */
+function SavedProjectRow({ project, onOpen, onRemove }:
+                          { project: SavedProject; onOpen: (path: string) => void;
+                            onRemove: (path: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const activity = useMemo(() => loadProjectActivity(project.sourceVideo), [project.sourceVideo, expanded]);
+
+  return (
+    <div className="home-recent-item-wrap" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 4 }}>
+        <button className="home-recent-item" onClick={() => onOpen(project.picksPath)}
+                 title={project.sourceVideo} style={{ flex: 1 }}>
+          <div className="home-recent-status">
+            <IconFilmReel size={14} />
+          </div>
+          <div className="home-recent-meta">
+            <strong>{project.title}</strong>
+            <span className="card-chip-meta">
+              {project.audioCount ? `${project.audioCount} sang${project.audioCount > 1 ? "er" : ""} · ` : ""}
+              {activity.length > 0 ? `${activity.length} jobb${activity.length > 1 ? "er" : ""} utført · ` : ""}
+              {formatRelativeTime(project.savedAt * 1000)}
+            </span>
+          </div>
+          <IconArrowRight />
+        </button>
+        {activity.length > 0 && (
+          <button onClick={() => setExpanded((v) => !v)}
+                  title={expanded ? "Skjul aktivitet" : "Vis aktivitet"}
+                  style={{ padding: "0 12px", fontSize: 12,
+                            background: expanded ? "var(--accent-dim)" : "transparent",
+                            border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer" }}>
+            {expanded ? "▾" : "▸"}
+          </button>
+        )}
+        <button onClick={() => {
+          if (!confirm(`Slett "${project.title}" fra listen? (Arkivfilen forblir på disk.)`)) return;
+          onRemove(project.picksPath);
+        }} title="Fjern fra listen"
+                style={{ padding: "0 12px", color: "var(--text-dim)", fontSize: 16,
+                          background: "transparent", border: "1px solid var(--border)",
+                          borderRadius: 8, cursor: "pointer" }}>
+          ✕
+        </button>
+      </div>
+      {expanded && activity.length > 0 && (
+        <div style={{ marginTop: 6, marginLeft: 36, marginBottom: 4, padding: 8,
+                       background: "var(--bg-3)", borderRadius: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.7, marginBottom: 6 }}>
+            Utført på prosjektet:
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {activity.slice(0, 15).map((a, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, fontSize: 11 }}>
+                <span style={{ fontSize: 14, minWidth: 18 }}>{ACTIVITY_ICONS[a.kind] || "•"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>{a.label}</div>
+                  {a.summary && (
+                    <div style={{ fontSize: 10, opacity: 0.6, overflow: "hidden",
+                                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {a.summary}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: 10, opacity: 0.5, whiteSpace: "nowrap" }}>
+                  {formatRelativeTime(a.ts)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

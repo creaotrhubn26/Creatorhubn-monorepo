@@ -19,6 +19,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { executeScript, onScriptEvent, listMountedCards, runHealthCheck, launchResolve, convertFileSrc } from "../api";
 import type { ScriptEvent, MountedCard, HealthStatus } from "../types";
+import { logActivity } from "../lib/projectActivity";
 
 interface Props {
   onClose: () => void;
@@ -429,6 +430,11 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                         const assign: Record<string, number> = {};
                         val.cameras.forEach((c) => { assign[c.id] = c.suggestedAngle; });
                         setAngleAssignment(assign);
+                        logActivity(sources[0]?.path || null, {
+                          kind: "multicam_scan",
+                          label: `${val.cameras.length} kamera${val.cameras.length > 1 ? "er" : ""} identifisert`,
+                          summary: val.cameras.map((c) => `${c.model || "?"} (${c.clipCount} klipp)`).join(", "),
+                        });
                       }
                       if (val?.audioFiles) setAudioFilesDetected(val.audioFiles);
                     } catch (err) {
@@ -640,6 +646,11 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                     if (val) {
                       setBackupResult(val);
                       recordLearning(`Backup: ${val.filesCount} filer → ${val.projectRoot}`);
+                      logActivity(sources[0]?.path || null, {
+                        kind: "backup",
+                        label: `Backup til SSD (${val.filesCount} filer)`,
+                        summary: val.projectRoot,
+                      });
                     }
                   } catch (err) {
                     setBackupError(String(err));
@@ -854,8 +865,15 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                         clips: scanResult ? (scanResult as unknown as { clips?: Array<{ path: string }> }).clips || [] : [],
                       }, false);
                       const r = sum.events.find((e) => e.type === "result");
-                      const val = r?.value as typeof matchResult;
-                      if (val) setMatchResult(val);
+                      const val = r?.value as { matches: Array<{ externalAudio: string; clipPath: string; offsetSec: number; confidence: number }>; matchCount: number } | undefined;
+                      if (val) {
+                        setMatchResult(val);
+                        logActivity(sources[0]?.path || null, {
+                          kind: "audio_match",
+                          label: `Audio-sync: ${val.matchCount} matches`,
+                          summary: val.matches.length > 0 ? `Topp conf: ${(val.matches[0].confidence * 100).toFixed(0)}%` : "Ingen matches",
+                        });
+                      }
                     } catch (err) {
                       setMatchError(String(err));
                     } finally {
@@ -1171,7 +1189,13 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                     }, false);
                     const r = sum.events.find((e) => e.type === "result");
                     const val = r?.value as { clusters?: FaceCluster[] } | undefined;
-                    if (val?.clusters) setFaceClusters(val.clusters);
+                    if (val?.clusters) {
+                      setFaceClusters(val.clusters);
+                      logActivity(sources[0]?.path || null, {
+                        kind: "face_cluster",
+                        label: `${val.clusters.length} unike personer funnet`,
+                      });
+                    }
                   } catch (err) {
                     setFacesError(String(err));
                   } finally {
@@ -1389,7 +1413,14 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                   }, false);
                   const r = sum.events.find((e) => e.type === "result");
                   const val = r?.value as { picksPath?: string; picks?: Array<{ index: number; chapter: string }> } | undefined;
-                  if (val?.picksPath) setLivePicksPath(val.picksPath);
+                  if (val?.picksPath) {
+                    setLivePicksPath(val.picksPath);
+                    logActivity(firstClip, {
+                      kind: "extract",
+                      label: `Extract ferdig: ${val.picks?.length ?? 0} picks`,
+                      summary: `Kjørt på ${firstClip.split("/").pop()}`,
+                    });
+                  }
                   if (val?.picks) setLivePicks(val.picks.map(p => ({ index: p.index, chapter: p.chapter })));
                 } catch (err) {
                   setLiveError(String(err));
@@ -1638,7 +1669,14 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                     }, false);
                     const r = sum.events.find((e) => e.type === "result");
                     const val = r?.value as { timelineNames?: Record<string, string> } | undefined;
-                    if (val?.timelineNames) timelineNames = val.timelineNames;
+                    if (val?.timelineNames) {
+                      timelineNames = val.timelineNames;
+                      logActivity(livePicksPath, {
+                        kind: "timelines_built",
+                        label: `${Object.keys(timelineNames).length} timelines bygget`,
+                        summary: Object.values(timelineNames).join(" · "),
+                      });
+                    }
                   } catch (e) {
                     console.warn("Three-timelines-build failed:", e);
                   }
@@ -1697,6 +1735,11 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                   }
                 }
                 if (qcWarnings.length > 0) {
+                  logActivity(livePicksPath, {
+                    kind: "qc_run",
+                    label: `QC: ${qcWarnings.length} advarsler funnet`,
+                    summary: qcWarnings.slice(0, 2).join("; "),
+                  });
                   const wantMarkers = confirm(
                     `⚠️ QC-rapport før delivery:\n\n${qcWarnings.join("\n\n")}\n\n` +
                     `Vil du at jeg legger til markers på timeline i Resolve så du kan navigere direkte til hvert problem?`
