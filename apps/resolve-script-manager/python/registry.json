@@ -2125,6 +2125,20 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "cluster_faces_from_clips",
+      "name": "Cluster Faces From Clips",
+      "category": "vision",
+      "scriptPath": "scripts/vision/cluster_faces_from_clips.py",
+      "description": "Finn unike ansikter i klipp via insightface + DBSCAN-clustering. Returnerer klynger med representative thumbnails.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }

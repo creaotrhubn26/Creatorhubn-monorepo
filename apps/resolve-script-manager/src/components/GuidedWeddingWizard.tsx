@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { executeScript, onScriptEvent } from "../api";
 import type { ScriptEvent } from "../types";
 
@@ -80,6 +81,49 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   const [matchError, setMatchError] = useState<string | null>(null);
   // Bruker-overrides: matchIndex → "correct" | "wrong" (læring)
   const [matchOverrides, setMatchOverrides] = useState<Record<number, "correct" | "wrong">>({});
+
+  // Steg 3: Sanger + kultur
+  type SongRole = "main" | "entry" | "first_dance" | "dance" | "exit";
+  type WishedSong = { id: string; title: string; artist: string; role: SongRole };
+  const [culture, setCulture] = useState<string>("");
+  const [cultureOther, setCultureOther] = useState<string>("");
+  const [wishedSongs, setWishedSongs] = useState<WishedSong[]>([]);
+  const [newSongTitle, setNewSongTitle] = useState("");
+  const [newSongArtist, setNewSongArtist] = useState("");
+  const [musicSuggestBusy, setMusicSuggestBusy] = useState(false);
+  const [musicSuggestError, setMusicSuggestError] = useState<string | null>(null);
+
+  // Steg 4: Personer — face-clustering
+  type FaceCluster = { id: string; thumbnail: string; occurrences: number; clips: Array<{ clip: string; timeSec: number }> };
+  const [facesScanning, setFacesScanning] = useState(false);
+  const [facesPct, setFacesPct] = useState(0);
+  const [facesMsg, setFacesMsg] = useState("");
+  const [faceClusters, setFaceClusters] = useState<FaceCluster[]>([]);
+  const [facesError, setFacesError] = useState<string | null>(null);
+  const [faceLabels, setFaceLabels] = useState<Record<string, string>>({});  // clusterId → label
+
+  const PERSON_SUGGESTIONS = [
+    "Brud", "Brudgom", "Brudens mor", "Brudens far", "Brudgom mor", "Brudgom far",
+    "Brudens søster", "Brudgom søster", "Brudens bror", "Brudgom bror",
+    "Forlover", "Brudepike", "Prest", "Annet",
+  ];
+
+  // Steg 5: Stil
+  type Style = "storytelling" | "cinematic" | "energetic" | "balanced";
+  const [chosenStyle, setChosenStyle] = useState<Style>("balanced");
+
+  // Steg 6: Live-arbeid
+  const [liveRunning, setLiveRunning] = useState(false);
+  const [livePct, setLivePct] = useState(0);
+  const [liveMsg, setLiveMsg] = useState("");
+  const [livePicks, setLivePicks] = useState<Array<{ index: number; chapter: string; thumbPath?: string }>>([]);
+  const [livePicksPath, setLivePicksPath] = useState<string | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  // Steg 7: Color / LUT
+  const [logGamma, setLogGamma] = useState<{ isLog: boolean; profile: string; suggestedLut?: string } | null>(null);
+  const [applyLut, setApplyLut] = useState(false);
+  const [logCheckBusy, setLogCheckBusy] = useState(false);
 
   // Læring: record decisions
   const recordLearning = (note: string) => {
@@ -475,8 +519,563 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
           </div>
         )}
 
-        {/* ────── Step 3-7: TODO placeholders ────── */}
-        {step !== "material" && step !== "audio" && (
+        {/* ────── Step 3: Sanger + kultur ────── */}
+        {step === "music" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              Hvilken kultur er bryllupet? Jeg foreslår sanger basert på det.
+            </div>
+
+            <div className="field">
+              <label>Kultur</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {["Pakistansk", "Indisk", "Norsk", "Tyrkisk", "Arabisk", "Afghansk"].map((c) => (
+                  <button key={c}
+                          className={culture === c ? "primary" : ""}
+                          onClick={() => setCulture(c)}
+                          style={{ padding: "8px 10px", fontSize: 12 }}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+                <button onClick={() => setCulture("annet")}
+                        className={culture === "annet" ? "primary" : ""}
+                        style={{ padding: "8px 10px", fontSize: 12 }}>
+                  Annet
+                </button>
+                {culture === "annet" && (
+                  <input type="text" placeholder="F.eks. afghansk, somalisk, etc."
+                         value={cultureOther}
+                         onChange={(e) => setCultureOther(e.target.value)}
+                         style={{ flex: 1 }} />
+                )}
+              </div>
+            </div>
+
+            <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                Brudeparets ønsker (specifikke sanger)
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <input type="text" placeholder="Sang-tittel"
+                       value={newSongTitle}
+                       onChange={(e) => setNewSongTitle(e.target.value)}
+                       style={{ flex: 2 }} />
+                <input type="text" placeholder="Artist"
+                       value={newSongArtist}
+                       onChange={(e) => setNewSongArtist(e.target.value)}
+                       style={{ flex: 2 }} />
+                <button onClick={() => {
+                  if (!newSongTitle.trim()) return;
+                  setWishedSongs((prev) => [...prev, {
+                    id: `s-${Date.now()}`,
+                    title: newSongTitle.trim(),
+                    artist: newSongArtist.trim(),
+                    role: "main",
+                  }]);
+                  setNewSongTitle(""); setNewSongArtist("");
+                }}>+ Legg til</button>
+              </div>
+
+              {wishedSongs.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                  {wishedSongs.map((s) => (
+                    <div key={s.id} style={{ display: "flex", alignItems: "center",
+                                              gap: 8, padding: 8, borderRadius: 4,
+                                              background: "rgba(160, 48, 192, 0.08)" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden",
+                                       textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {s.title}
+                        </div>
+                        {s.artist && (
+                          <div style={{ fontSize: 11, opacity: 0.7 }}>{s.artist}</div>
+                        )}
+                      </div>
+                      <select value={s.role}
+                              onChange={(e) => setWishedSongs((prev) => prev.map(x =>
+                                x.id === s.id ? { ...x, role: e.target.value as SongRole } : x))}
+                              style={{ fontSize: 11, padding: "4px 6px" }}>
+                        <option value="main">Hoved-musikk</option>
+                        <option value="entry">Inntog</option>
+                        <option value="first_dance">Første dans</option>
+                        <option value="dance">Dans-sekvens</option>
+                        <option value="exit">Avslutning</option>
+                      </select>
+                      <button onClick={() => setWishedSongs((prev) => prev.filter(x => x.id !== s.id))}
+                              title="Fjern" style={{ padding: "4px 8px", fontSize: 12 }}>
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              disabled={musicSuggestBusy || !culture}
+              onClick={async () => {
+                if (!culture) return;
+                setMusicSuggestBusy(true);
+                setMusicSuggestError(null);
+                try {
+                  const cultureLabel = culture === "annet" ? cultureOther.trim() : culture;
+                  const resp = await invoke<{
+                    content?: Array<{ type: string; input?: { suggestions?: Array<{ title: string; artist: string; role: SongRole; reason?: string }> } }>;
+                  }>("claude_chat", {
+                    messages: [{ role: "user", content: `Foreslå 5 sanger til en ${cultureLabel} bryllups-highlight. Variér roller.` }],
+                    system: `Du er en musikk-kurator for bryllupsvideo. Du kjenner kulturelle sanger som er ikoniske og hyppig brukt i ${cultureLabel} bryllup. Foreslå 5 sanger med:
+- title (originaltittel)
+- artist
+- role (main / entry / first_dance / dance / exit)
+- reason (1 setning på norsk hvorfor)
+
+KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
+                    model: "claude-opus-4-7",
+                    maxTokens: 800,
+                    tools: [{
+                      name: "suggest_songs",
+                      description: "Return 5 song suggestions",
+                      input_schema: {
+                        type: "object",
+                        properties: {
+                          suggestions: {
+                            type: "array", minItems: 5, maxItems: 5,
+                            items: {
+                              type: "object",
+                              properties: {
+                                title: { type: "string" },
+                                artist: { type: "string" },
+                                role: { type: "string", enum: ["main", "entry", "first_dance", "dance", "exit"] },
+                                reason: { type: "string" },
+                              },
+                              required: ["title", "artist", "role"],
+                            },
+                          },
+                        },
+                        required: ["suggestions"],
+                      },
+                    }],
+                  });
+                  const toolUse = resp?.content?.find((c) => c.type === "tool_use");
+                  const sugg = toolUse?.input?.suggestions;
+                  if (Array.isArray(sugg)) {
+                    setWishedSongs((prev) => [
+                      ...prev,
+                      ...sugg.map((s, i) => ({
+                        id: `ai-${Date.now()}-${i}`,
+                        title: s.title, artist: s.artist, role: s.role || "main",
+                      })),
+                    ]);
+                    recordLearning(`Steg 3: AI foreslo ${sugg.length} ${cultureLabel}-sanger`);
+                  }
+                } catch (err) {
+                  setMusicSuggestError(String(err));
+                } finally {
+                  setMusicSuggestBusy(false);
+                }
+              }}
+              style={{ padding: "10px 14px" }}
+            >
+              {musicSuggestBusy ? "✨ Henter forslag…"
+                : !culture ? "Velg kultur først"
+                : `✨ Få anbefalinger for ${culture === "annet" ? cultureOther || "kultur" : culture}`}
+            </button>
+
+            {musicSuggestError && (
+              <div style={{ background: "var(--bg-3)", borderLeft: "3px solid var(--danger)",
+                             padding: 10, borderRadius: 4 }}>
+                <strong>Feil:</strong> {musicSuggestError}
+              </div>
+            )}
+
+            <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
+                           background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
+              💡 AI-forslag kan være feil. Fjern de som ikke passer — jeg lærer hva du foretrekker.
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={() => setStep("audio")}>← Tilbake</button>
+              <button className="primary" onClick={() => {
+                recordLearning(`Steg 3: culture=${culture === "annet" ? cultureOther : culture} songs=${wishedSongs.length}`);
+                setStep("persons");
+              }}>
+                Neste: Personer →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ────── Step 4: Personer ────── */}
+        {step === "persons" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              Hvilke personer er viktige å ha fokus på? Jeg skanner gjennom klippene
+              og finner unike ansikter — du labeler hvem som er hvem.
+            </div>
+
+            {faceClusters.length === 0 && !facesScanning && (
+              <button
+                className="primary"
+                disabled={!scanResult}
+                onClick={async () => {
+                  if (!scanResult) return;
+                  setFacesScanning(true);
+                  setFacesError(null);
+                  setFacesPct(0);
+                  const unsubProm = onScriptEvent((ev: ScriptEvent) => {
+                    if (ev.type === "progress") {
+                      const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
+                      setFacesPct(pct); setFacesMsg(ev.message || "");
+                    }
+                  });
+                  try {
+                    const sum = await executeScript("cluster_faces_from_clips", {
+                      clips: scanResult ? (scanResult as unknown as { clips?: Array<{ path: string }> }).clips || [] : [],
+                      sampleIntervalSec: 10,
+                      maxFramesPerClip: 8,
+                    }, false);
+                    const r = sum.events.find((e) => e.type === "result");
+                    const val = r?.value as { clusters?: FaceCluster[] } | undefined;
+                    if (val?.clusters) setFaceClusters(val.clusters);
+                  } catch (err) {
+                    setFacesError(String(err));
+                  } finally {
+                    unsubProm.then((u) => u());
+                    setFacesScanning(false);
+                  }
+                }}
+              >
+                👥 Skanne ansikter
+              </button>
+            )}
+
+            {facesScanning && (
+              <div>
+                <div style={{ height: 6, background: "var(--bg-3)", borderRadius: 3,
+                               overflow: "hidden", marginBottom: 6 }}>
+                  <div style={{ width: `${facesPct}%`, height: "100%",
+                                 background: "var(--accent)", transition: "width 0.3s" }} />
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{facesMsg} — {facesPct}%</div>
+              </div>
+            )}
+
+            {facesError && (
+              <div style={{ background: "var(--bg-3)", borderLeft: "3px solid var(--danger)",
+                             padding: 10, borderRadius: 4 }}>
+                <strong>Feil:</strong> {facesError}
+              </div>
+            )}
+
+            {faceClusters.length > 0 && (
+              <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+                  Fant {faceClusters.length} unike personer. Hvem er hvem?
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                                gap: 12 }}>
+                  {faceClusters.slice(0, 18).map((c) => {
+                    const thumbUrl = c.thumbnail.startsWith("/")
+                      ? `http://asset.localhost${c.thumbnail}` : c.thumbnail;
+                    return (
+                      <div key={c.id} style={{ background: "rgba(0,0,0,0.3)",
+                                                 padding: 8, borderRadius: 6 }}>
+                        <div style={{ width: "100%", aspectRatio: "1 / 1",
+                                       borderRadius: 4, overflow: "hidden",
+                                       background: "rgba(26, 13, 69, 0.4)",
+                                       display: "flex", alignItems: "center",
+                                       justifyContent: "center", marginBottom: 6 }}>
+                          <img src={thumbUrl} alt={c.id}
+                               style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        </div>
+                        <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 4 }}>
+                          {c.occurrences} obs
+                        </div>
+                        <input
+                          type="text"
+                          list={`person-suggestions-${c.id}`}
+                          placeholder="Hvem er dette?"
+                          value={faceLabels[c.id] || ""}
+                          onChange={(e) => setFaceLabels(prev => ({ ...prev, [c.id]: e.target.value }))}
+                          style={{ width: "100%", fontSize: 11, padding: "4px 6px" }}
+                        />
+                        <datalist id={`person-suggestions-${c.id}`}>
+                          {PERSON_SUGGESTIONS.map((s) => <option key={s} value={s} />)}
+                        </datalist>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
+                           background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
+              💡 Du kan hoppe over personer du ikke kjenner. Claude bruker label-ene
+              til å prioritere klipp i highlight (f.eks. flere shot av brudens mor).
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={() => setStep("music")} disabled={facesScanning}>← Tilbake</button>
+              <button className="primary" onClick={() => {
+                const labeledCount = Object.values(faceLabels).filter(v => v.trim()).length;
+                recordLearning(`Steg 4: labeled ${labeledCount}/${faceClusters.length} personer`);
+                setStep("style");
+              }} disabled={facesScanning}>
+                Neste: Stil →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ────── Step 5: Stil ────── */}
+        {step === "style" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              Hvilken fremtoning ønsker du i highlighten? Stil-valget styrer hvordan
+              Claude prioriterer klipp + rytme i flowmap.
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+              {([
+                { id: "storytelling", icon: "📖", name: "Storytelling",
+                  desc: "Rolig tempo, mer dialog/tale, kronologisk. Familie-vekt." },
+                { id: "cinematic", icon: "🎬", name: "Cinematic",
+                  desc: "Slow-mo, bokeh, color-grade. Visuell vekt over hastighet." },
+                { id: "energetic", icon: "⚡", name: "Energisk",
+                  desc: "Kort cuts, beat-sync, dans-fokus. Høyere BPM, mer action." },
+                { id: "balanced", icon: "⚖", name: "Balansert",
+                  desc: "Storytelling + energi mix. Default for de fleste bryllup." },
+              ] as Array<{ id: Style; icon: string; name: string; desc: string }>).map((opt) => (
+                <button key={opt.id}
+                        onClick={() => setChosenStyle(opt.id)}
+                        className={chosenStyle === opt.id ? "primary" : ""}
+                        style={{ display: "flex", flexDirection: "column",
+                                  alignItems: "flex-start", gap: 4, padding: 14,
+                                  textAlign: "left" }}>
+                  <div style={{ fontSize: 18 }}>{opt.icon}</div>
+                  <div style={{ fontWeight: 600 }}>{opt.name}</div>
+                  <div style={{ fontSize: 11, opacity: 0.8, lineHeight: 1.4 }}>{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+
+            <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                Forhåndsvisning av rytme (FlowMap)
+              </div>
+              {/* Mini FlowMap preview — visualiserer fremtidig rytme basert på stil */}
+              <div style={{ display: "flex", height: 60, alignItems: "flex-end",
+                              gap: 2, marginBottom: 8 }}>
+                {Array.from({ length: 40 }).map((_, i) => {
+                  // Generate styling-aware preview heights
+                  let h = 0.5;
+                  if (chosenStyle === "energetic") h = 0.3 + Math.abs(Math.sin(i * 0.6)) * 0.7;
+                  else if (chosenStyle === "cinematic") h = 0.4 + Math.sin(i * 0.2 + 1) * 0.3 + 0.1;
+                  else if (chosenStyle === "storytelling") h = 0.4 + Math.sin(i * 0.15) * 0.25;
+                  else h = 0.3 + Math.abs(Math.sin(i * 0.35)) * 0.5;
+                  return (
+                    <div key={i}
+                          style={{ flex: 1, background: "var(--accent)",
+                                    height: `${h * 100}%`, borderRadius: 1,
+                                    opacity: 0.7 + h * 0.3 }} />
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between",
+                              fontSize: 10, opacity: 0.6 }}>
+                <span>Intro</span><span>Build</span><span>Peak</span><span>Outro</span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={() => setStep("persons")}>← Tilbake</button>
+              <button className="primary" onClick={() => {
+                recordLearning(`Steg 5: chose style=${chosenStyle}`);
+                setStep("live");
+              }}>
+                Neste: Live-arbeid →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ────── Step 6: Live-arbeid (Harry Potter mode) ────── */}
+        {step === "live" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              Nå starter jeg å arbeide. Du kan se hvert klipp som blir valgt i sanntid —
+              som om jeg redigerer foran øynene dine.
+            </div>
+
+            {!livePicksPath && !liveRunning && (
+              <button className="primary"
+                      disabled={!scanResult}
+                      onClick={async () => {
+                if (!scanResult) return;
+                const firstClip = (scanResult as unknown as { clips?: Array<{ path: string }> }).clips?.[0]?.path;
+                if (!firstClip) return;
+                setLiveRunning(true);
+                setLiveError(null);
+                setLivePct(0);
+                setLivePicks([]);
+                const unsubProm = onScriptEvent((ev: ScriptEvent) => {
+                  if (ev.type === "progress") {
+                    const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
+                    setLivePct(pct); setLiveMsg(ev.message || "");
+                  }
+                  // Når Python sender en "pick"-event som log med spesial-format kan vi
+                  // parse det. For nå viser vi bare progress.
+                });
+                try {
+                  const sum = await executeScript("extract_highlight_from_film", {
+                    videoPath: firstClip,
+                    genre: "wedding",
+                    interactiveReview: true,
+                  }, false);
+                  const r = sum.events.find((e) => e.type === "result");
+                  const val = r?.value as { picksPath?: string; picks?: Array<{ index: number; chapter: string }> } | undefined;
+                  if (val?.picksPath) setLivePicksPath(val.picksPath);
+                  if (val?.picks) setLivePicks(val.picks.map(p => ({ index: p.index, chapter: p.chapter })));
+                } catch (err) {
+                  setLiveError(String(err));
+                } finally {
+                  unsubProm.then((u) => u());
+                  setLiveRunning(false);
+                }
+              }}>
+                🎬 Start Claude
+              </button>
+            )}
+
+            {(liveRunning || livePicksPath) && (
+              <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between",
+                                fontSize: 12, marginBottom: 6 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {liveRunning ? <span style={{ color: "#f0a500" }}>🟡</span>
+                                  : <span style={{ color: "#4ad48a" }}>🟢</span>}
+                    {liveRunning ? "Claude redigerer …" : "Ferdig"}
+                  </span>
+                  <span>{livePct}%</span>
+                </div>
+                <div style={{ height: 6, background: "var(--bg-4)", borderRadius: 3,
+                                overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{ width: `${livePct}%`, height: "100%",
+                                  background: "var(--accent)", transition: "width 0.4s" }} />
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{liveMsg}</div>
+                {livePicks.length > 0 && (
+                  <div style={{ marginTop: 12, fontSize: 11 }}>
+                    <strong>{livePicks.length} klipp valgt</strong>{" "}
+                    <span style={{ opacity: 0.6 }}>
+                      ({Array.from(new Set(livePicks.map(p => p.chapter))).join(" · ")})
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {liveError && (
+              <div style={{ background: "var(--bg-3)", borderLeft: "3px solid var(--danger)",
+                              padding: 10, borderRadius: 4 }}>
+                <strong>Feil:</strong> {liveError}
+              </div>
+            )}
+
+            <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
+                            background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
+              💡 Etter dette skannes filmen for log-gamma + LUT-anbefaling.
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={() => setStep("style")} disabled={liveRunning}>← Tilbake</button>
+              <button className="primary" onClick={() => {
+                recordLearning(`Steg 6: extracted ${livePicks.length} picks`);
+                setStep("color");
+              }} disabled={liveRunning || !livePicksPath}>
+                Neste: Color / LUT →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ────── Step 7: Color / LUT ────── */}
+        {step === "color" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              Sjekker om filmen er tatt opp i log-gamma. Hvis ja, foreslår jeg en LUT
+              som matcher kameraet ditt. Vi bruker din egen LUT-mappe i Resolve.
+            </div>
+
+            {!logGamma && !logCheckBusy && (
+              <button className="primary"
+                      disabled={!scanResult}
+                      onClick={async () => {
+                if (!scanResult) return;
+                const firstClip = (scanResult as unknown as { clips?: Array<{ path: string }> }).clips?.[0]?.path;
+                if (!firstClip) return;
+                setLogCheckBusy(true);
+                try {
+                  const sum = await executeScript("detect_log_gamma", {
+                    videoPath: firstClip,
+                  }, false);
+                  const r = sum.events.find((e) => e.type === "result");
+                  const val = r?.value as { isLog: boolean; profile: string; suggestedLut?: string } | undefined;
+                  if (val) setLogGamma(val);
+                } catch { /* noop */ }
+                setLogCheckBusy(false);
+              }}>
+                🎨 Sjekk log-gamma
+              </button>
+            )}
+
+            {logCheckBusy && (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Sjekker log-profil …</div>
+            )}
+
+            {logGamma && (
+              <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
+                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                  <strong>Resultat:</strong> {logGamma.isLog
+                    ? <span style={{ color: "#f0a500" }}>📹 Log-gamma oppdaget</span>
+                    : <span style={{ color: "#4ad48a" }}>✓ Allerede gradet ({logGamma.profile})</span>}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 8 }}>
+                  Profil: {logGamma.profile}
+                </div>
+                {logGamma.isLog && logGamma.suggestedLut && (
+                  <>
+                    <div style={{ fontSize: 12, marginBottom: 8 }}>
+                      Foreslått LUT: <code>{logGamma.suggestedLut}</code>
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input type="checkbox" checked={applyLut}
+                              onChange={(e) => setApplyLut(e.target.checked)} />
+                      <span>Apply LUT i Resolve-timeline</span>
+                    </label>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={() => setStep("live")}>← Tilbake</button>
+              <button className="primary" onClick={() => {
+                recordLearning(`Steg 7: isLog=${logGamma?.isLog} applyLut=${applyLut}`);
+                if (livePicksPath) onComplete(livePicksPath);
+                else onComplete(folder);
+              }}>
+                Ferdig — åpne Creative Editor →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Catch-all (skulle aldri trigge) */}
+        {!["material","audio","music","persons","style","live","color"].includes(step) && (
           <div style={{ padding: 32, textAlign: "center", opacity: 0.7 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
             <div style={{ fontSize: 15, marginBottom: 6 }}>
