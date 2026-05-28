@@ -1,3 +1,5 @@
+import authSessionService from './authSessionService';
+
 type SettingsEntry = {
   projectId: string;
   namespace: string;
@@ -5,6 +7,12 @@ type SettingsEntry = {
 };
 
 const STORAGE_PREFIX = 'app_settings_cache';
+
+// Bygg auth-headers (Bearer-token) på alle settings-kall. Etter backend
+// user-isolation-fix krever /api/settings auth — ellers 401. Frontend
+// stoler ikke på cookies, bare localStorage-tokenet.
+const getAuthHeaders = (): Record<string, string> =>
+  authSessionService.getAuthHeadersSync() as Record<string, string>;
 
 type RemoteSettingsListResponse = {
   entries?: Array<{
@@ -145,6 +153,7 @@ const fetchRemoteSetting = async <T>(
   try {
     const response = await fetch(`/api/settings?${params.toString()}`, {
       cache: 'no-store',
+      headers: getAuthHeaders(),
     });
     if (!response.ok) {
       return null;
@@ -179,6 +188,7 @@ const fetchRemoteSettingsList = async (
   try {
     const response = await fetch(`/api/settings/list?${params.toString()}`, {
       cache: 'no-store',
+      headers: getAuthHeaders(),
     });
     if (!response.ok) {
       return null;
@@ -217,7 +227,7 @@ const writeRemoteSetting = async (
   try {
     await fetch('/api/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({
         userId,
         namespace,
@@ -248,6 +258,7 @@ const deleteRemoteSetting = async (
   try {
     await fetch(`/api/settings?${params.toString()}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     });
   } catch {
     // Ignore network failures; local cache is already cleared.
