@@ -63,6 +63,7 @@ import {
 import PlatformStatusCard from './PlatformStatusCard';
 import MigrationsCard from './MigrationsCard';
 import RoleRoomBillingHealthCard from './RoleRoomBillingHealthCard';
+import RoleRoomBillingAlertsPanel from '../../role-room/components/admin/RoleRoomBillingAlertsPanel';
 
 /**
  * Role Room økonomi-tab — Stripe-subscribers, kostnads-margin og plattform-kostnader
@@ -174,6 +175,13 @@ export function RoleRoomEconomyTab() {
       <PlatformStatusCard />
       <MigrationsCard />
       <RoleRoomBillingHealthCard />
+
+      {/* Seat-management billing-alerts: Stripe-sync-feil fra fjern/aktiver-
+          flows. Vises her sammen med øvrig Stripe-økonomi-status. */}
+      <Box sx={{ mb: 3, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2,
+                  bgcolor: '#0d1117', overflow: 'hidden' }}>
+        <RoleRoomBillingAlertsPanel />
+      </Box>
 
       <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
         <Box>

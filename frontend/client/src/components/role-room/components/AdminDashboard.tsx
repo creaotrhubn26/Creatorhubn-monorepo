@@ -59,6 +59,7 @@ import {
   MenuBook as GuideBookIcon,
   Shield as ShieldIcon,
   RocketLaunch as RocketLaunchIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import {
@@ -75,6 +76,7 @@ import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import { GuideEditorPanel } from './admin/visual-editor/GuideEditorPanel';
 import RoleRoomAiGovernancePanel from './ai/RoleRoomAiGovernancePanel';
 import RoleRoomOnboardingConfigPanel from './admin/RoleRoomOnboardingConfigPanel';
+import RoleRoomBillingAlertsPanel from './admin/RoleRoomBillingAlertsPanel';
 
 interface AdminUser {
   id: number;
@@ -2310,6 +2312,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
             <Tab label="Guider" icon={<GuideBookIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
             <Tab label="AI Governance" icon={<ShieldIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
             <Tab label="Onboarding" icon={<RocketLaunchIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
+            <Tab label="Billing-alerts" icon={<WarningIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
           </Tabs>
         </Box>
 
@@ -3127,6 +3130,12 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
             <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
                         bgcolor: '#0d1117' }}>
               <RoleRoomOnboardingConfigPanel />
+            </Box>
+          )}
+          {mainTab === 6 && (
+            <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                        bgcolor: '#0d1117' }}>
+              <RoleRoomBillingAlertsPanel />
             </Box>
           )}
         </DialogContent>

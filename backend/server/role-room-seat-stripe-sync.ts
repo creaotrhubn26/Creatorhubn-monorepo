@@ -66,6 +66,12 @@ export async function syncRoleRoomSeatQuantity(opts: SyncOptions): Promise<SyncR
 
   const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
   if (!stripeKey) {
+    await logBillingAlert(pool, {
+      projectId, ownerUserId, actorUserId,
+      kind: "stripe_sync_failed",
+      detail: "STRIPE_SECRET_KEY mangler i miljøet — kan ikke synce seat-quantity",
+      stripeSubscriptionId,
+    });
     return { ok: false, reason: "stripe_not_configured" };
   }
 
@@ -82,7 +88,15 @@ export async function syncRoleRoomSeatQuantity(opts: SyncOptions): Promise<SyncR
     });
 
     const items = subscription.items?.data ?? [];
-    if (items.length === 0) return { ok: false, reason: "no_subscription_items" };
+    if (items.length === 0) {
+      await logBillingAlert(pool, {
+        projectId, ownerUserId, actorUserId,
+        kind: "missing_subscription_item",
+        detail: `Subscription ${stripeSubscriptionId} har ingen items — kan ikke sette seat-quantity`,
+        stripeSubscriptionId,
+      });
+      return { ok: false, reason: "no_subscription_items" };
+    }
 
     const roleRoomPriceIds = new Set<string>(
       [
@@ -150,7 +164,61 @@ export async function syncRoleRoomSeatQuantity(opts: SyncOptions): Promise<SyncR
     return { ok: true, previousQuantity: currentQuantity, newQuantity: desiredQuantity };
   } catch (err) {
     console.error("[rr-seat-sync] stripe update failed:", err);
+    await logBillingAlert(pool, {
+      projectId, ownerUserId, actorUserId,
+      kind: "stripe_sync_failed",
+      detail: (err as Error).message,
+      stripeSubscriptionId,
+    });
     return { ok: false, reason: (err as Error).message };
+  }
+}
+
+/**
+ * Logger billing-incident i en admin-synlig tabell. Brukes når Stripe-sync
+ * feiler så support kan reagere uten å lese server-logger.
+ */
+export async function logBillingAlert(
+  pool: Pool,
+  alert: {
+    projectId: string;
+    ownerUserId: string;
+    actorUserId: string;
+    kind: "stripe_sync_failed" | "no_active_subscription" | "missing_subscription_item" | string;
+    detail: string;
+    stripeSubscriptionId?: string | null;
+  },
+): Promise<void> {
+  try {
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS role_room_billing_alerts (
+         id BIGSERIAL PRIMARY KEY,
+         project_id VARCHAR(255) NOT NULL,
+         owner_user_id VARCHAR(255) NOT NULL,
+         actor_user_id VARCHAR(255) NOT NULL,
+         kind VARCHAR(64) NOT NULL,
+         detail TEXT NOT NULL,
+         stripe_subscription_id VARCHAR(255),
+         resolved_at TIMESTAMPTZ,
+         resolved_by_user_id VARCHAR(255),
+         resolution_note TEXT,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+       );
+       CREATE INDEX IF NOT EXISTS idx_rr_billing_alerts_unresolved
+         ON role_room_billing_alerts(created_at DESC) WHERE resolved_at IS NULL;`,
+    );
+    await pool.query(
+      `INSERT INTO role_room_billing_alerts
+        (project_id, owner_user_id, actor_user_id, kind, detail, stripe_subscription_id)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [
+        alert.projectId, alert.ownerUserId, alert.actorUserId,
+        alert.kind, alert.detail.slice(0, 2000),
+        alert.stripeSubscriptionId ?? null,
+      ],
+    );
+  } catch (err) {
+    console.error("[rr-seat-sync] logBillingAlert failed:", err);
   }
 }
 
