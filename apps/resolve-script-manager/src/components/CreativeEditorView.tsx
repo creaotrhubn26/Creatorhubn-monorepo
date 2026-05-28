@@ -266,11 +266,12 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [editingTitle, setEditingTitle] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   // Preview-høyde i px, justeres via drag-handle. Persisterer per session.
+  // Default 560 — gir Resolve-lignende viewer-prioritet uten å klemme klipp-strip.
   const [previewHeight, setPreviewHeight] = useState<number>(() => {
     try {
       const v = parseInt(localStorage.getItem("trrpa.previewHeight") || "0", 10);
-      return v >= 200 && v <= 1200 ? v : 460;
-    } catch { return 460; }
+      return v >= 200 && v <= 1200 ? v : 560;
+    } catch { return 560; }
   });
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
 
