@@ -30,6 +30,8 @@ import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
+import RoleRoomOnboardingDialog from './components/RoleRoomOnboardingDialog';
+import { roleRoomMemberProfileService } from './services/roleRoomMemberProfileService';
 import RoleRoomMobileBriefWizard from './components/mobile-brief/RoleRoomMobileBriefWizard';
 import RoleRoomMobilePlannerView from './components/mobile-planner/RoleRoomMobilePlannerView';
 import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRoomMobileShootingDayView';
@@ -307,6 +309,25 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const viewport = useRoleRoomViewportMode();
   const useTabRail = viewport.mode === 'tabletLandscape';
   const auth = useAuth();
+
+  // Onboarding: sjekk om bruker må fullføre profil
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingMinimized, setOnboardingMinimized] = useState(false);
+  useEffect(() => {
+    if (!auth.user?.id) return;
+    if (onboardingMinimized) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const status = await roleRoomMemberProfileService.getOnboardingStatus();
+        if (cancelled) return;
+        if (status.requiresOnboarding) setOnboardingOpen(true);
+      } catch (err) {
+        console.warn('Onboarding status check failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [auth.user?.id, onboardingMinimized]);
 
   // Sentralt tab-katalog. Brukes av top-Tabs, side-rail og bottom-nav slik
   // at admin-konfigen virker likt på tvers av viewports.
@@ -1312,6 +1333,16 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           />
         );
       })()}
+
+      {/* First-time onboarding-flow for ALL Role Room-members */}
+      <RoleRoomOnboardingDialog
+        open={onboardingOpen}
+        onComplete={() => setOnboardingOpen(false)}
+        onMinimize={() => {
+          setOnboardingOpen(false);
+          setOnboardingMinimized(true);
+        }}
+      />
     </Box>
   );
 };
