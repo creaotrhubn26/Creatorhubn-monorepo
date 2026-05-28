@@ -30,6 +30,7 @@ import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
 import ProjectTabAccessDialog from './components/ProjectTabAccessDialog';
+import { roleRoomProjectTabConfigService } from './services/roleRoomProjectTabConfigService';
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
 import RoleRoomOnboardingDialog from './components/RoleRoomOnboardingDialog';
 import { roleRoomMemberProfileService } from './services/roleRoomMemberProfileService';
@@ -1714,7 +1715,18 @@ function CrewSubPanel({
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [tabAccessOpen, setTabAccessOpen] = useState(false);
+  const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
   const qc = useQueryClient();
+
+  // Seat-status: hvor mange seats er brukt vs. inkludert i abonnementet
+  const seatStatusQuery = useQuery({
+    queryKey: ['role-room-seat-status', projectId],
+    queryFn: () => roleRoomProjectTabConfigService.getSeatStatus(projectId),
+    enabled: !!projectId,
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const seatStatus = seatStatusQuery.data;
 
   // Seats granted on this project, keyed by user email (for matching crew rows by email)
   const seatsQuery = useQuery<{ seats: Array<{ userId: string; email?: string; isActive?: boolean }> }>({
@@ -1827,17 +1839,71 @@ function CrewSubPanel({
               Tab-tilganger
             </Button>
           )}
-          <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
+          <Button size="small" startIcon={<AddIcon />}
+                  onClick={() => {
+                    if (isProjectLeader && seatStatus?.nextSeatNeedsBilling) {
+                      setSeatConfirmOpen(true);
+                    } else {
+                      setOpen(true);
+                    }
+                  }}>
             Legg til
           </Button>
         </Stack>
       </Box>
+
+      {/* Seat-status: leder ser hvor mange seats abonnementet dekker.
+          Vises kun for leder for å unngå støy for crew-medlemmer. */}
+      {isProjectLeader && seatStatus && seatStatus.hasActiveSubscription && (
+        <Alert
+          severity={seatStatus.extraSeats > 0 ? 'warning' : seatStatus.nextSeatNeedsBilling ? 'info' : 'success'}
+          variant="outlined"
+          sx={{ mb: 2 }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {seatStatus.usedSeats} av {seatStatus.includedSeats} seats brukt
+            {seatStatus.extraSeats > 0 && ` (+${seatStatus.extraSeats} ekstra)`}
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block' }}>
+            {seatStatus.extraSeats > 0
+              ? `Du betaler ${seatStatus.extraCostPerMonth} kr/mnd ekstra for seats utover de ${seatStatus.includedSeats} inkluderte.`
+              : seatStatus.nextSeatNeedsBilling
+                ? `Neste seat koster ${seatStatus.nextSeatCost} kr/mnd ekstra.`
+                : `Du har ${seatStatus.includedSeats - seatStatus.usedSeats} ledige seats igjen på abonnementet.`}
+          </Typography>
+        </Alert>
+      )}
+
       {isProjectLeader && tabAccessOpen && (
         <ProjectTabAccessDialog
           open={tabAccessOpen}
           onClose={() => setTabAccessOpen(false)}
           projectId={projectId}
         />
+      )}
+
+      {isProjectLeader && seatConfirmOpen && seatStatus && (
+        <Dialog open={seatConfirmOpen} onClose={() => setSeatConfirmOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Ekstra seat — bekreft</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ mb: 1.5 }}>
+              Du har brukt {seatStatus.usedSeats} av {seatStatus.includedSeats} seats inkludert i
+              abonnementet ditt. Hvis du legger til en til vil det koste{' '}
+              <strong>{seatStatus.nextSeatCost} kr/mnd</strong> ekstra (ex. mva.).
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Beløpet legges som en line-item på neste faktura.
+              Du kan fjerne seats senere ved å slette crew-medlemmet.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSeatConfirmOpen(false)}>Avbryt</Button>
+            <Button variant="contained"
+                    onClick={() => { setSeatConfirmOpen(false); setOpen(true); }}>
+              Forstått — fortsett
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
 
       {/* Post Agent must be activated for the project first (via marketplace

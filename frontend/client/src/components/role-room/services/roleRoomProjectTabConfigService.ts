@@ -33,6 +33,21 @@ export interface MyTabsResponse {
   role: string | null;
 }
 
+export interface SeatStatusResponse {
+  projectId: string;
+  ownerUserId: string;
+  isViewerLeader: boolean;
+  hasActiveSubscription: boolean;
+  persona: 'production_team' | 'content_producer' | null;
+  includedSeats: number;
+  usedSeats: number;
+  extraSeats: number;
+  seatPriceExVat: number;
+  extraCostPerMonth: number;
+  nextSeatNeedsBilling: boolean;
+  nextSeatCost: number;
+}
+
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -76,5 +91,9 @@ export const roleRoomProjectTabConfigService = {
 
   async getMyTabs(projectId: string): Promise<MyTabsResponse> {
     return jsonRequest(`/api/role-room/projects/${encodeURIComponent(projectId)}/my-tabs`, { method: 'GET' });
+  },
+
+  async getSeatStatus(projectId: string): Promise<SeatStatusResponse> {
+    return jsonRequest(`/api/role-room/projects/${encodeURIComponent(projectId)}/seat-status`, { method: 'GET' });
   },
 };

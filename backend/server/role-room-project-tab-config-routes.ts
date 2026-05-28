@@ -256,6 +256,103 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
     },
   );
 
+  // ── GET seat-status: hvor mange seats er brukt vs. inkludert? ──
+  // Production team-planen inkluderer 3 seats. Når leder legger til
+  // brukere utover det skal frontend vise pris-preview + krev bekreftelse.
+  app.get(
+    "/api/role-room/projects/:projectId/seat-status",
+    async (req: Request, res: Response) => {
+      const viewerId = getUserIdFromRequest(req, activeSessions);
+      if (!viewerId) {
+        res.status(401).json({ error: "krever_innlogging" }); return;
+      }
+      const projectId = String(req.params.projectId ?? "").trim();
+      if (!projectId) {
+        res.status(400).json({ error: "projectId_mangler" }); return;
+      }
+
+      try {
+        // Hent prosjekt-eier — det er deres subscription som styrer seats
+        const projRes = await pool.query(
+          `SELECT created_by FROM casting_projects WHERE id = $1 LIMIT 1`,
+          [projectId],
+        );
+        const ownerUserId: string | null = projRes.rows[0]?.created_by ?? null;
+        if (!ownerUserId) {
+          res.status(404).json({ error: "prosjekt_ikke_funnet" }); return;
+        }
+
+        // Hvor mange brukere er aktivt knyttet til prosjektet?
+        // Eier + alle med casting_user_role (dedup på user_id)
+        const usedRes = await pool.query(
+          `SELECT COUNT(*)::int AS used FROM (
+              SELECT $1::text AS uid
+              UNION
+              SELECT DISTINCT user_id FROM casting_user_roles WHERE project_id = $2
+           ) s`,
+          [ownerUserId, projectId],
+        );
+        const usedSeats: number = usedRes.rows[0]?.used ?? 1;
+
+        // Finn eierens aktive Role Room-abonnement — bestem persona/inkluderte seats
+        let persona: "production_team" | "content_producer" | null = null;
+        let includedSeats = 3;
+        let seatPriceExVat = 795;
+        let hasActiveSubscription = false;
+
+        try {
+          const subRes = await pool.query(
+            `SELECT stripe_subscription_id, plan_name, status
+               FROM subscriptions
+              WHERE user_id = $1 AND status IN ('active','trialing')
+              ORDER BY start_date DESC LIMIT 1`,
+            [ownerUserId],
+          );
+          if (subRes.rows[0]) {
+            hasActiveSubscription = true;
+            const planName = String(subRes.rows[0].plan_name ?? "").toLowerCase();
+            // Heuristikk: hvis plan-navnet inneholder "content" eller "produsent",
+            // er det content_producer-plan. Ellers production_team som default.
+            if (planName.includes("content") || planName.includes("produsent")) {
+              persona = "content_producer";
+              includedSeats = 1;
+              seatPriceExVat = 495;
+            } else {
+              persona = "production_team";
+              includedSeats = 3;
+              seatPriceExVat = 795;
+            }
+          }
+        } catch {
+          // Subscriptions-tabellen mangler eller query feilet — fallback til defaults
+        }
+
+        const extraSeats = Math.max(0, usedSeats - includedSeats);
+        const extraCostPerMonth = extraSeats * seatPriceExVat;
+        const nextSeatNeedsBilling = usedSeats >= includedSeats;
+        const isViewerLeader = ownerUserId === viewerId;
+
+        res.json({
+          projectId,
+          ownerUserId,
+          isViewerLeader,
+          hasActiveSubscription,
+          persona,
+          includedSeats,
+          usedSeats,
+          extraSeats,
+          seatPriceExVat,
+          extraCostPerMonth,
+          nextSeatNeedsBilling,
+          nextSeatCost: nextSeatNeedsBilling ? seatPriceExVat : 0,
+        });
+      } catch (err) {
+        console.error("[rr-project-tab-config] seat-status failed:", err);
+        res.status(500).json({ error: "intern_feil" });
+      }
+    },
+  );
+
   // ── GET my-tabs: hva ser jeg på dette prosjektet? ──────────────
   // Returnerer { tabValues: string[] | null, source: 'user'|'role'|'default' }
   // Frontend bruker tabValues=null som "bruk plattform-defaults for min rolle".
