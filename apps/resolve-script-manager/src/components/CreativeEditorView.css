@@ -524,7 +524,7 @@
 /* ─── Main editor area ─── */
 .ce-main {
   display: grid;
-  grid-template-rows: auto 1fr auto auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto auto auto auto;
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -579,6 +579,28 @@
   height: auto;
   object-fit: contain;
   background: black;
+}
+
+/* Drag-handle nedenfor preview — bruker drar for å resize */
+.ce-preview-resize {
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  margin: -4px 0 -2px;
+  user-select: none;
+}
+.ce-preview-resize:hover .ce-preview-resize-handle {
+  background: rgba(160, 48, 192, 0.6);
+  width: 80px;
+}
+.ce-preview-resize-handle {
+  width: 50px;
+  height: 4px;
+  background: rgba(160, 48, 192, 0.30);
+  border-radius: 2px;
+  transition: background 0.15s, width 0.15s;
 }
 .ce-preview-overlay {
   position: absolute;

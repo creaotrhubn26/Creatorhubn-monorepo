@@ -265,6 +265,13 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [projectTitle, setProjectTitle] = useState<string>("");
   const [editingTitle, setEditingTitle] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  // Preview-høyde i px, justeres via drag-handle. Persisterer per session.
+  const [previewHeight, setPreviewHeight] = useState<number>(() => {
+    try {
+      const v = parseInt(localStorage.getItem("trrpa.previewHeight") || "0", 10);
+      return v >= 200 && v <= 1200 ? v : 460;
+    } catch { return 460; }
+  });
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
 
   // Export dropdown — leveranse-varianter + Resolve/EDL/FCPXML-eksport
@@ -2122,25 +2129,21 @@ ${ctxLines.join("\n")}`;
             <button className={`ce-tab ${activeTab === "story" ? "active" : ""}`} onClick={() => setActiveTab("story")}>Story</button>
           </div>
 
-          {/* Live preview — flex-fill den ledige 1fr-raden i ce-main grid.
-              For 16:9: container fyller hele plassen, video centers via
-              object-fit:contain. For 9:16/1:1: lock aspect for å unngå
-              for store/små portrait/square previews. */}
+          {/* Live preview — height styres av brukerens drag-handle nedenfor.
+              For 9:16/1:1: lock aspect for å unngå ekstreme portrait/square. */}
           <div
             className="ce-preview-wrap"
             style={{
+              height: aspectRatio === "16:9" ? previewHeight : undefined,
               ...(aspectRatio === "9:16" ? {
                 aspectRatio: "9 / 16",
-                maxHeight: "78vh",
-                maxWidth: "44vh",
+                maxHeight: previewHeight,
                 margin: "0 auto",
-                height: "auto",
               } : aspectRatio === "1:1" ? {
                 aspectRatio: "1 / 1",
-                maxWidth: "65vh",
-                maxHeight: "65vh",
+                maxHeight: previewHeight,
+                maxWidth: previewHeight,
                 margin: "0 auto",
-                height: "auto",
               } : {}),
             }}
           >
@@ -2209,6 +2212,32 @@ ${ctxLines.join("\n")}`;
                 <button className="ce-icon-btn">⛶</button>
               </div>
             </div>
+          </div>
+
+          {/* Drag-handle: bruker drar opp/ned for å justere preview-størrelse */}
+          <div
+            className="ce-preview-resize"
+            onMouseDown={(e) => {
+              const startY = e.clientY;
+              const startH = previewHeight;
+              let latest = startH;
+              const onMove = (mv: MouseEvent) => {
+                latest = Math.max(200, Math.min(1000, startH + (mv.clientY - startY)));
+                setPreviewHeight(latest);
+              };
+              const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                document.body.style.cursor = "";
+                try { localStorage.setItem("trrpa.previewHeight", String(latest)); } catch { /* noop */ }
+              };
+              document.addEventListener("mousemove", onMove);
+              document.addEventListener("mouseup", onUp);
+              document.body.style.cursor = "ns-resize";
+            }}
+            title="Dra for å justere preview-størrelse"
+          >
+            <div className="ce-preview-resize-handle" />
           </div>
 
           {/* Claude status bar — viser ekte tilstand basert på busy-flags */}
