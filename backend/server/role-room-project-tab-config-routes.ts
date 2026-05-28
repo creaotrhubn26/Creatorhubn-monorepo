@@ -15,6 +15,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { getSubscriptionHealth } from "./role-room-subscription-health.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -352,6 +353,10 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
         const nextSeatNeedsBilling = usedSeats >= includedSeats;
         const isViewerLeader = ownerUserId === viewerId;
 
+        // Hent live subscription-helse fra Stripe så frontend kan vise
+        // varsler (past_due, canceled, paused) og blokke mutasjons-knapper
+        const health = await getSubscriptionHealth(pool, ownerUserId);
+
         res.json({
           projectId,
           ownerUserId,
@@ -365,6 +370,12 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
           extraCostPerMonth,
           nextSeatNeedsBilling,
           nextSeatCost: nextSeatNeedsBilling ? seatPriceExVat : 0,
+          subscriptionHealth: {
+            status: health.status,
+            canMutateSeats: health.canMutateSeats,
+            shouldRevokeAccess: health.shouldRevokeAccess,
+            message: health.message,
+          },
         });
       } catch (err) {
         console.error("[rr-project-tab-config] seat-status failed:", err);

@@ -16,6 +16,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { syncRoleRoomSeatQuantity, countActiveSeats } from "./role-room-seat-stripe-sync.js";
+import { getSubscriptionHealth } from "./role-room-subscription-health.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -245,6 +246,18 @@ export function registerRoleRoomProjectMembersRoutes(app: Express, deps: Deps): 
       }
       if (!(await ensureColumns(pool))) {
         res.status(503).json({ error: "kolonner_ikke_klare" }); return;
+      }
+
+      // Pre-flight: blokker reaktivering hvis abonnementet ikke er sunt
+      // (reaktivering = ekstra seat = ekstra fakturering)
+      const health = await getSubscriptionHealth(pool, viewerId);
+      if (!health.canMutateSeats) {
+        res.status(402).json({
+          error: "subscription_not_healthy",
+          detail: health.message,
+          status: health.status,
+        });
+        return;
       }
 
       try {

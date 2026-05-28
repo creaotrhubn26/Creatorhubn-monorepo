@@ -1852,6 +1852,18 @@ function CrewSubPanel({
             </Button>
           )}
           <Button size="small" startIcon={<AddIcon />}
+                  disabled={isProjectLeader
+                    && seatStatus?.subscriptionHealth?.status !== undefined
+                    && seatStatus.subscriptionHealth.status !== 'none'
+                    && !seatStatus.subscriptionHealth.canMutateSeats}
+                  title={
+                    isProjectLeader
+                      && seatStatus?.subscriptionHealth?.status !== undefined
+                      && seatStatus.subscriptionHealth.status !== 'none'
+                      && !seatStatus.subscriptionHealth.canMutateSeats
+                        ? seatStatus.subscriptionHealth.message
+                        : undefined
+                  }
                   onClick={() => {
                     if (isProjectLeader && seatStatus?.nextSeatNeedsBilling) {
                       setSeatConfirmOpen(true);
@@ -1863,6 +1875,22 @@ function CrewSubPanel({
           </Button>
         </Stack>
       </Box>
+
+      {/* Subscription-health-varsel: hvis past_due/canceled/paused — vis
+          tydelig over seat-banneret slik at leder forstår hvorfor knapper
+          er disabled */}
+      {isProjectLeader && seatStatus?.subscriptionHealth
+        && !seatStatus.subscriptionHealth.canMutateSeats
+        && seatStatus.subscriptionHealth.status !== 'none' && (
+        <Alert severity="error" variant="filled" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            Abonnementet trenger oppmerksomhet
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block' }}>
+            {seatStatus.subscriptionHealth.message}
+          </Typography>
+        </Alert>
+      )}
 
       {/* Seat-status: leder ser hvor mange seats abonnementet dekker.
           Vises kun for leder for å unngå støy for crew-medlemmer. */}

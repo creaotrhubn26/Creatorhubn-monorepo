@@ -46,6 +46,12 @@ export interface SeatStatusResponse {
   extraCostPerMonth: number;
   nextSeatNeedsBilling: boolean;
   nextSeatCost: number;
+  subscriptionHealth?: {
+    status: 'active' | 'trialing' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'canceled' | 'paused' | 'unpaid' | 'none';
+    canMutateSeats: boolean;
+    shouldRevokeAccess: boolean;
+    message: string;
+  };
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {

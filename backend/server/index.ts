@@ -45,6 +45,7 @@ import { registerRoleRoomProjectTabConfigRoutes } from "./role-room-project-tab-
 import { registerRoleRoomProjectMembersRoutes } from "./role-room-project-members-routes.js";
 import { registerRoleRoomSeatManagementRoutes } from "./role-room-seat-management-routes.js";
 import { registerRoleRoomBillingAlertsRoutes } from "./role-room-billing-alerts-routes.js";
+import { registerRoleRoomSeatReconciliationRoutes } from "./role-room-seat-reconciliation-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -98,6 +99,11 @@ import { persistWebhookEvents } from "./role-room-whatsapp-events-service.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createPostAgentRouter } from "./post-agent-anthropic-routes.js";
 import { handlePostAgentStripeWebhook } from "./post-agent-stripe-webhook.js";
+import {
+  handleRoleRoomSubscriptionUpdated,
+  handleRoleRoomSubscriptionDeleted,
+  handleRoleRoomPaymentFailed,
+} from "./role-room-seat-webhook-handlers.js";
 import { createSfxMatchRouter } from "./sfx-match-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -1055,6 +1061,8 @@ app.post(
           if (!agentResult.matched) {
             await clearRoleRoomCommercialStripeSubscription(invoice);
           }
+          // I tillegg: logg billing-alert for Role Room seat-billing
+          await handleRoleRoomPaymentFailed(pool, invoice);
           break;
         }
         case "customer.subscription.deleted": {
@@ -1070,6 +1078,14 @@ app.post(
           if (!agentResult.matched) {
             await clearRoleRoomCommercialStripeSubscription(subscription);
           }
+          // I tillegg: revoker tilgangen til alle team-medlemmer
+          await handleRoleRoomSubscriptionDeleted(pool, subscription);
+          break;
+        }
+        case "customer.subscription.updated": {
+          const subscription = event.data.object as Stripe.Subscription;
+          // Detecter quantity-drift + status-overganger til past_due/unpaid
+          await handleRoleRoomSubscriptionUpdated(pool, subscription);
           break;
         }
         default:
@@ -1721,6 +1737,7 @@ registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
 registerRoleRoomProjectMembersRoutes(app, { pool, activeSessions });
 registerRoleRoomSeatManagementRoutes(app, { pool, activeSessions });
 registerRoleRoomBillingAlertsRoutes(app, { pool, requireAdminSession });
+registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());

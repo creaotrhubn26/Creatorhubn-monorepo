@@ -10,6 +10,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { getSubscriptionHealth } from "./role-room-subscription-health.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -71,19 +72,20 @@ export function registerRoleRoomSeatManagementRoutes(app: Express, deps: Deps): 
         res.status(403).json({ error: "kun_team_leder" }); return;
       }
 
-      // Finn aktiv subscription for lederen
-      let stripeSubscriptionId: string | null = null;
-      try {
-        const { rows } = await pool.query(
-          `SELECT stripe_subscription_id FROM subscriptions
-            WHERE user_id = $1 AND status IN ('active','trialing')
-            ORDER BY start_date DESC LIMIT 1`,
-          [ownerUserId],
-        );
-        stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
-      } catch (err) {
-        console.error("[rr-seat-mgmt] subscription lookup failed:", err);
+      // Pre-flight: sjekk subscription-helse fra Stripe (ikke bare DB).
+      // Hindrer at vi bumper på past_due/canceled/unpaid-abonnementer.
+      const health = await getSubscriptionHealth(pool, ownerUserId);
+      if (!health.canMutateSeats) {
+        res.status(402).json({
+          error: "subscription_not_healthy",
+          detail: health.message,
+          status: health.status,
+          actionUrl: "/billing",
+          actionLabel: "Åpne Stripe Portal",
+        });
+        return;
       }
+      const stripeSubscriptionId = health.stripeSubscriptionId;
       if (!stripeSubscriptionId) {
         res.status(402).json({
           error: "ingen_aktiv_subscription",

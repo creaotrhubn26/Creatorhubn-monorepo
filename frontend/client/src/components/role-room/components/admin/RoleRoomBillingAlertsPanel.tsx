@@ -12,7 +12,7 @@ import {
   Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, Stack, TextField, Typography,
 } from '@mui/material';
-import { CheckCircle, OpenInNew, PlayArrow, Refresh } from '@mui/icons-material';
+import { CheckCircle, OpenInNew, PlayArrow, Refresh, Sync } from '@mui/icons-material';
 
 interface BillingAlert {
   id: number;
@@ -62,6 +62,8 @@ export function RoleRoomBillingAlertsPanel() {
   const [resolveNote, setResolveNote] = useState('');
   const [retrying, setRetrying] = useState<number | null>(null);
   const [retryResult, setRetryResult] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState<'dry' | 'apply' | null>(null);
+  const [reconcileSummary, setReconcileSummary] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -78,6 +80,28 @@ export function RoleRoomBillingAlertsPanel() {
   };
 
   useEffect(() => { void load(); }, [showResolved]);
+
+  const handleReconcile = async (mode: 'dry' | 'apply') => {
+    if (mode === 'apply' && !confirm('Kjør reconciliation med apply=true — dette vil oppdatere Stripe-quantity for ALLE drift som finnes. Sikker?')) return;
+    setReconciling(mode); setError(null); setReconcileSummary(null);
+    try {
+      const data = await jsonRequest<{
+        scannedOwners: number; driftCount: number;
+        totalDriftMagnitude: number; mode: string;
+      }>(
+        `/api/admin-room/role-room/reconcile-seats?apply=${mode === 'apply'}`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      setReconcileSummary(
+        `Reconciliation ${data.mode}: skannet ${data.scannedOwners} eiere, fant ${data.driftCount} med drift (total magnitude ${data.totalDriftMagnitude} seats).`,
+      );
+      await load();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setReconciling(null);
+    }
+  };
 
   const handleRetrySync = async (alert: BillingAlert) => {
     setRetrying(alert.id); setError(null); setRetryResult(null);
@@ -135,6 +159,17 @@ export function RoleRoomBillingAlertsPanel() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
+          <Button startIcon={<Sync />} onClick={() => void handleReconcile('dry')}
+                  disabled={reconciling != null}
+                  sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            {reconciling === 'dry' ? 'Sjekker …' : 'Reconcile (dry-run)'}
+          </Button>
+          <Button startIcon={<Sync />} onClick={() => void handleReconcile('apply')}
+                  disabled={reconciling != null}
+                  variant="outlined"
+                  sx={{ color: '#fca5a5', borderColor: 'rgba(252,165,165,0.4)' }}>
+            {reconciling === 'apply' ? 'Bumper …' : 'Reconcile + apply'}
+          </Button>
           <Button startIcon={<Refresh />} onClick={load} disabled={loading}
                   sx={{ color: 'rgba(255,255,255,0.7)' }}>
             Oppdater
@@ -148,6 +183,7 @@ export function RoleRoomBillingAlertsPanel() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
       {retryResult && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setRetryResult(null)}>{retryResult}</Alert>}
+      {reconcileSummary && <Alert severity="info" sx={{ mb: 2 }} onClose={() => setReconcileSummary(null)}>{reconcileSummary}</Alert>}
 
       {!loading && alerts.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 8, color: 'rgba(255,255,255,0.5)' }}>
