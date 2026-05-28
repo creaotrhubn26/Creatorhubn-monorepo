@@ -1432,12 +1432,41 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
               <button onClick={() => setStep("live")}>← Tilbake</button>
-              <button className="primary" onClick={() => {
-                recordLearning(`Steg 7: isLog=${logGamma?.isLog} applyLut=${applyLut}`);
+              <button className="primary" onClick={async () => {
+                recordLearning(`Steg 7: isLog=${logGamma?.isLog} applyLut=${applyLut} timelines: long=${makeLongFilm} hl=${makeHighlight} teaser=${makeTeaser}`);
+
+                // 1. Hvis backup-manifest finnes → lag Resolve-bins
+                if (backupResult?.manifestPath) {
+                  try {
+                    await executeScript("create_resolve_bins_from_manifest", {
+                      manifestPath: backupResult.manifestPath,
+                    }, false);
+                  } catch (e) {
+                    console.warn("Resolve-bins-build failed:", e);
+                  }
+                }
+
+                // 2. Bygg 3 timelines i ett kall basert på Steg 1-valgene
+                if (livePicksPath && (makeLongFilm || makeHighlight || makeTeaser)) {
+                  try {
+                    await executeScript("build_three_timelines", {
+                      picksPath: livePicksPath,
+                      projectName: projectName || "Untitled",
+                      wanted: {
+                        longFilm: makeLongFilm,
+                        highlight: makeHighlight,
+                        teaser: makeTeaser,
+                      },
+                    }, false);
+                  } catch (e) {
+                    console.warn("Three-timelines-build failed:", e);
+                  }
+                }
+
                 if (livePicksPath) onComplete(livePicksPath);
                 else onComplete(folder);
               }}>
-                Ferdig — åpne Creative Editor →
+                Ferdig — bygg timelines + åpne editor →
               </button>
             </div>
           </div>

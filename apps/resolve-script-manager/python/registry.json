@@ -2181,6 +2181,20 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": false
+    },
+    {
+      "id": "build_three_timelines",
+      "name": "Build Three Timelines",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_three_timelines.py",
+      "description": "Orchestrator: bygg long film + highlight + teaser i ett kall.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
     }
   ]
 }
