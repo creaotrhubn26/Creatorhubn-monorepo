@@ -1603,7 +1603,9 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
   }
   
   try {
-    const response = await fetch('/api/casting/projects');
+    const response = await fetch('/api/casting/projects', {
+      headers: getRoleRoomAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch projects: ${response.statusText}`);
     }
@@ -1826,9 +1828,11 @@ export const castingService = {
       }
 
       try {
-        const response = await fetch(`/api/casting/projects/${id}`);
+        const response = await fetch(`/api/casting/projects/${id}`, {
+          headers: getRoleRoomAuthHeaders(),
+        });
         if (!response.ok) {
-          if (response.status === 404) {
+          if (response.status === 404 || response.status === 401) {
             const fallbackProject = localProject || null;
             projectFetchCache.set(id, { project: fallbackProject, cachedAt: Date.now() });
             return fallbackProject;
