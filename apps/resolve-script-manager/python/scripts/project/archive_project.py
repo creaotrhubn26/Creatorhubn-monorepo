@@ -62,6 +62,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         pass
 
     bridge.log(f"Archived → {archive_path}")
+    try:
+        from activity_log import log_activity
+        log_activity(source_video, "manual_edit", f"Prosjekt arkivert",
+                     summary=os.path.basename(archive_path))
+    except Exception:  # noqa: BLE001
+        pass
     bridge.result({
         "archivePath": archive_path,
         "sourceVideo": source_video,

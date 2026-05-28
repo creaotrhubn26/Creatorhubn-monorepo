@@ -2265,6 +2265,20 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": false
+    },
+    {
+      "id": "read_activity_log",
+      "name": "Read Activity Log",
+      "category": "project",
+      "scriptPath": "scripts/project/read_activity_log.py",
+      "description": "Returnerer Python-loggede activity-entries (terminal-runs etc.).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }

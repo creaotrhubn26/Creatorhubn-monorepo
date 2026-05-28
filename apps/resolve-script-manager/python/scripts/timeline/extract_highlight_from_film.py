@@ -494,6 +494,38 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         with open(all_shots_path, "w") as f:
             json.dump(all_shots_payload, f, indent=2)
         bridge.log(f"Cached {len(shot_scores)} totale shots → {all_shots_path}")
+
+        # Activity-log → vises i HomeView / Mine prosjekter
+        try:
+            from activity_log import log_activity
+            log_activity(
+                video_path, "extract",
+                f"Extract ferdig: {len(picked)} picks",
+                summary=f"{len(shot_scores)} totale shots · {chapters_summary.lstrip(' · ') if chapters_summary else 'ingen chapter-labels'}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Auto-arkiver picks-cache så prosjektet vises i Mine prosjekter UI
+        try:
+            import shutil as _shutil
+            import re as _re
+            picks_dir = os.path.join(cache_dir, "picks")
+            os.makedirs(picks_dir, exist_ok=True)
+            base = os.path.splitext(os.path.basename(video_path))[0]
+            safe = _re.sub(r"[^\w-]+", "_", base)[:80]
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            archive_path = os.path.join(picks_dir, f"{safe}_{ts}.json")
+            _shutil.copy2(picks_path, archive_path)
+            bridge.log(f"Auto-arkivert til {archive_path}")
+            try:
+                from activity_log import log_activity as _la
+                _la(video_path, "manual_edit",
+                    "Prosjekt auto-arkivert", summary=os.path.basename(archive_path))
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception as _exc:  # noqa: BLE001
+            bridge.warn(f"Auto-archive failed: {_exc}")
         bridge.progress(100, 100, "Klar for review")
         bridge.result({
             "reviewMode": True,

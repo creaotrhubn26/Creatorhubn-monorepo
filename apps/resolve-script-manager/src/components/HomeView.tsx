@@ -29,7 +29,8 @@ import {
 } from "./Icons";
 import { RoleRoomProjectSync } from "./RoleRoomProjectSync";
 import { executeScript } from "../api";
-import { loadProjectActivity, ACTIVITY_ICONS } from "../lib/projectActivity";
+import { loadProjectActivity, logActivity, ACTIVITY_ICONS } from "../lib/projectActivity";
+import type { ActivityKind } from "../lib/projectActivity";
 
 type IconCmp = (p: { size?: number }) => JSX.Element;
 
@@ -125,6 +126,34 @@ export function HomeView({
     };
     window.addEventListener("focus", handler);
     return () => window.removeEventListener("focus", handler);
+  }, []);
+
+  // Sync Python-loggede activity-events fra activity_log.jsonl inn i localStorage.
+  // Triggers så terminal-runs også vises i UI.
+  useEffect(() => {
+    executeScript("read_activity_log", {}, false).then((sum) => {
+      const r = sum.events.find((e) => e.type === "result");
+      const val = r?.value as { entries?: Array<{ ts: number; kind: string; label: string; summary?: string; sourceVideo?: string | null }> } | undefined;
+      const entries = val?.entries || [];
+      if (entries.length === 0) return;
+      // For hver entry, sjekk om den finnes lokalt (samme ts) — hvis ikke, legg inn
+      try {
+        for (const e of entries) {
+          if (!e.sourceVideo) continue;
+          const key = `trrpa.projectActivity.${e.sourceVideo}`;
+          const raw = localStorage.getItem(key);
+          const local = (raw ? JSON.parse(raw) : []) as Array<{ ts: number }>;
+          if (local.some((l) => l.ts === e.ts)) continue;
+          logActivity(e.sourceVideo, {
+            kind: (e.kind as ActivityKind) || "manual_edit",
+            label: e.label,
+            summary: e.summary,
+          });
+        }
+      } catch (err) {
+        console.warn("Activity-sync failed:", err);
+      }
+    }).catch(() => { /* non-critical */ });
   }, []);
 
   // Sync localStorage savedProjects with on-disk archive on mount.
