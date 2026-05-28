@@ -91,6 +91,10 @@ interface Props {
   signedIn: boolean;
   onSignIn: () => void;
   resolveConnected: boolean;
+  /** Granulær Resolve-status: undefined når aldri sjekket */
+  resolveRunning?: boolean;
+  resolveProjectOpen?: boolean;
+  resolveProjectName?: string | null;
 }
 
 interface SavedProject {
@@ -152,7 +156,19 @@ export function HomeView({
   signedIn,
   onSignIn,
   resolveConnected,
+  resolveRunning,
+  resolveProjectName,
 }: Props) {
+  // Granulær status: 0 = ikke åpen, 1 = åpen uten prosjekt, 2 = tilkoblet
+  const resolveLevel = resolveConnected ? 2 : (resolveRunning ? 1 : 0);
+  const resolveColor = resolveLevel === 2 ? "#4ad48a" : resolveLevel === 1 ? "#f0a500" : "#ef4f6f";
+  const resolveBg = resolveLevel === 2 ? "rgba(74, 212, 138, 0.10)"
+                                    : resolveLevel === 1 ? "rgba(240, 165, 0, 0.10)"
+                                    : "rgba(239, 79, 111, 0.10)";
+  const resolveText = resolveLevel === 2
+    ? `Resolve: ${resolveProjectName || "tilkoblet"}`
+    : resolveLevel === 1 ? "Resolve åpen — ingen prosjekt"
+    : "Resolve ikke åpen";
   const [recent, setRecent] = useState<RecentProject[]>(() => loadRecentProjects());
   const [saved, setSaved] = useState<SavedProject[]>(() => loadSavedProjects());
 
@@ -246,13 +262,13 @@ export function HomeView({
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6,
                             padding: "6px 12px", borderRadius: 999,
-                            background: resolveConnected ? "rgba(74, 212, 138, 0.10)" : "rgba(240, 165, 0, 0.10)",
-                            border: `1px solid ${resolveConnected ? "#4ad48a" : "#f0a500"}`,
+                            background: resolveBg,
+                            border: `1px solid ${resolveColor}`,
                             fontSize: 11 }}>
-              <span className={`anim-pulse-dot`}
+              <span className={resolveLevel === 2 ? "anim-pulse-dot" : ""}
                      style={{ width: 8, height: 8, borderRadius: "50%",
-                               background: resolveConnected ? "#4ad48a" : "#f0a500" }} />
-              <span>Resolve {resolveConnected ? "tilkoblet" : "ikke åpen"}</span>
+                               background: resolveColor }} />
+              <span>{resolveText}</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6,
                             padding: "6px 12px", borderRadius: 999,

@@ -40,6 +40,7 @@ import {
   IconSparkle,
   IconCheck,
   IconChevronLeft,
+  IconClaude,
 } from "./Icons";
 import "./CreativeEditorView.css";
 
@@ -2983,7 +2984,11 @@ ${ctxLines.join("\n")}`;
           style={{ borderColor: AGENT_PROFILES[agentRole].accent + "60" }}
         >
           <div className="ce-claude-header">
-            <span className="ce-claude-icon">{AGENT_PROFILES[agentRole].icon}</span>
+            <span className="ce-claude-icon">
+              {agentRole === "claude"
+                ? <IconClaude size={18} color={AGENT_PROFILES[agentRole].accent} />
+                : AGENT_PROFILES[agentRole].icon}
+            </span>
             <span className="ce-claude-name" style={{ color: AGENT_PROFILES[agentRole].accent }}>
               {AGENT_PROFILES[agentRole].name}
             </span>
@@ -3016,7 +3021,11 @@ ${ctxLines.join("\n")}`;
                   title={profile.systemPrompt.split(".")[0]}
                   onClick={() => setAgentRole(role)}
                 >
-                  <span className="ce-agent-tab-icon">{profile.icon}</span>
+                  <span className="ce-agent-tab-icon">
+                    {role === "claude"
+                      ? <IconClaude size={14} color={profile.accent} />
+                      : profile.icon}
+                  </span>
                   <span className="ce-agent-tab-name">{profile.name}</span>
                   {chatHistory[role].length > 0 && (
                     <span className="ce-agent-tab-badge">{chatHistory[role].filter(m => m.role === "assistant").length}</span>
@@ -3296,7 +3305,7 @@ ${ctxLines.join("\n")}`;
         <div className="ce-shortcuts-backdrop">
           <div className="ce-onboarding-modal">
             <div className="ce-onboarding-header">
-              <span style={{ fontSize: 22 }}>🌸</span>
+              <IconClaude size={22} color="#c850e0" />
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14, color: "#c850e0" }}>Claude</div>
                 <div style={{ fontSize: 10, color: "#8674a8", letterSpacing: 0.3 }}>AI CREATIVE DIRECTOR</div>

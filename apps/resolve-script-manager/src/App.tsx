@@ -370,6 +370,29 @@ export default function App() {
     }
   }, [recordRun]);
 
+  // Silent helper — refresh health uten busy/log-spam (for autosjekk)
+  const silentHealthCheck = useCallback(async () => {
+    try {
+      const summary = await runHealthCheck();
+      const resultEvent = summary.events.find((e) => e.type === "result");
+      if (resultEvent?.value && typeof resultEvent.value === "object") {
+        setHealth(resultEvent.value as HealthStatus);
+      }
+    } catch { /* non-critical */ }
+  }, []);
+
+  // Auto-refresh health: ved fokus + hvert 20. sekund når Home er synlig
+  useEffect(() => {
+    void silentHealthCheck();
+    const onFocus = () => silentHealthCheck();
+    window.addEventListener("focus", onFocus);
+    const interval = setInterval(silentHealthCheck, 20_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
+  }, [silentHealthCheck]);
+
   const handleOpenFolder = useCallback(async () => {
     try {
       await openScriptFolder();
@@ -482,6 +505,9 @@ export default function App() {
           signedIn={Boolean(loadSettings().RR_BEARER_TOKEN)}
           onSignIn={() => setShowSignIn(true)}
           resolveConnected={Boolean(health?.resolveRunning && health?.projectOpen)}
+          resolveRunning={Boolean(health?.resolveRunning)}
+          resolveProjectOpen={Boolean(health?.projectOpen)}
+          resolveProjectName={health?.projectName}
         />
       )}
 

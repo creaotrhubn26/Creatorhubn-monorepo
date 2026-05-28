@@ -1,7 +1,31 @@
 import type { SVGProps } from "react";
+import { useState } from "react";
 
 interface IconProps extends SVGProps<SVGSVGElement> {
   size?: number;
+}
+
+/** Claude (Anthropic) — offisiell brand-logo fra Clearbit-CDN.
+ *  Fallback til stilisert SVG-mark hvis bilde feiler. */
+export function IconClaude({ size = 16, color = "#CC785C" }: { size?: number; color?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" fill={color}
+            style={{ display: "inline-block", verticalAlign: "-2px" }}>
+        {/* Stylized sunburst som approksimerer Anthropic-mark */}
+        <path d="M16 3 L18 13 L28 16 L18 19 L16 29 L14 19 L4 16 L14 13 Z" />
+      </svg>
+    );
+  }
+  return (
+    <img src="https://logo.clearbit.com/claude.ai?size=64"
+          alt="Claude"
+          onError={() => setFailed(true)}
+          style={{ width: size, height: size, objectFit: "contain",
+                    display: "inline-block", verticalAlign: "-2px",
+                    borderRadius: 3 }} />
+  );
 }
 
 function Svg({ size = 14, children, ...rest }: IconProps & { children: React.ReactNode }) {
