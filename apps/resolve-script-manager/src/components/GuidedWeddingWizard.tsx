@@ -17,8 +17,8 @@
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { executeScript, onScriptEvent, listMountedCards } from "../api";
-import type { ScriptEvent, MountedCard } from "../types";
+import { executeScript, onScriptEvent, listMountedCards, runHealthCheck, launchResolve } from "../api";
+import type { ScriptEvent, MountedCard, HealthStatus } from "../types";
 
 interface Props {
   onClose: () => void;
@@ -37,6 +37,7 @@ interface ScanResult {
   clipCount: number;
   multicamGroups: MulticamGroup[];
   multicamGroupCount: number;
+  clips?: Array<{ path: string; duration: number; fps?: number; width?: number; height?: number }>;
 }
 
 type Step = "sources" | "material" | "audio" | "music" | "persons" | "style" | "live" | "color" | "done";
@@ -88,6 +89,22 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   useEffect(() => {
     listMountedCards().then(setMountedCards).catch(() => { /* non-critical */ });
   }, []);
+
+  // Resolve connection state
+  const [resolveHealth, setResolveHealth] = useState<HealthStatus | null>(null);
+  const [resolveChecking, setResolveChecking] = useState(false);
+
+  const checkResolve = async () => {
+    setResolveChecking(true);
+    try {
+      const sum = await runHealthCheck();
+      const r = sum.events.find((e) => e.type === "result");
+      if (r?.value) setResolveHealth(r.value as HealthStatus);
+    } catch { /* non-critical */ }
+    setResolveChecking(false);
+  };
+
+  useEffect(() => { checkResolve(); }, []);
 
   // Steg 1: Material state
   const [folder, setFolder] = useState<string>("");
@@ -247,6 +264,50 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
            style={{ maxWidth: 860, width: "min(96vw, 860px)", maxHeight: "92vh",
                      overflowY: "auto" }}>
         <h2>Nytt bryllup — {STEPS[currentStepN - 1].label}</h2>
+
+        {/* Resolve-connection status banner */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10,
+                       padding: "8px 12px", borderRadius: 6, marginTop: 10,
+                       background: resolveHealth?.resolveRunning && resolveHealth?.projectOpen
+                         ? "rgba(74, 212, 138, 0.10)"
+                         : resolveHealth?.resolveRunning
+                         ? "rgba(240, 165, 0, 0.10)"
+                         : "rgba(239, 79, 111, 0.10)",
+                       border: `1px solid ${
+                         resolveHealth?.resolveRunning && resolveHealth?.projectOpen
+                           ? "#4ad48a"
+                           : resolveHealth?.resolveRunning
+                           ? "#f0a500"
+                           : "#ef4f6f"
+                       }`,
+                       fontSize: 12 }}>
+          <span style={{ fontSize: 14 }}>
+            {resolveHealth?.resolveRunning && resolveHealth?.projectOpen ? "🟢"
+              : resolveHealth?.resolveRunning ? "🟡" : "🔴"}
+          </span>
+          <span style={{ flex: 1 }}>
+            <strong>DaVinci Resolve:</strong>{" "}
+            {resolveHealth === null
+              ? "Sjekker tilkobling …"
+              : resolveHealth.resolveRunning && resolveHealth.projectOpen
+              ? `Koblet til "${resolveHealth.projectName}"`
+              : resolveHealth.resolveRunning
+              ? "Kjører, men ingen prosjekt er åpnet"
+              : "Ikke kjører — åpne Resolve med et prosjekt"}
+          </span>
+          <button onClick={checkResolve} disabled={resolveChecking}
+                  style={{ fontSize: 11, padding: "4px 10px" }}>
+            {resolveChecking ? "⏳" : "🔄 Sjekk"}
+          </button>
+          {!resolveHealth?.resolveRunning && (
+            <button onClick={async () => {
+              try { await launchResolve(); setTimeout(checkResolve, 3000); }
+              catch { /* noop */ }
+            }} style={{ fontSize: 11, padding: "4px 10px" }}>
+              ▶ Åpne Resolve
+            </button>
+          )}
+        </div>
 
         {/* Step-progress strip */}
         <div style={{ display: "flex", gap: 4, margin: "12px 0 20px", flexWrap: "wrap" }}>
@@ -1435,7 +1496,45 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
               <button className="primary" onClick={async () => {
                 recordLearning(`Steg 7: isLog=${logGamma?.isLog} applyLut=${applyLut} timelines: long=${makeLongFilm} hl=${makeHighlight} teaser=${makeTeaser}`);
 
-                // 1. Hvis backup-manifest finnes → lag Resolve-bins
+                // 1. Apply project settings (resolution + framerate + CST)
+                //    basert på første kameras codec + log-gamma-deteksjon
+                if (resolveHealth?.resolveRunning && resolveHealth?.projectOpen) {
+                  try {
+                    const firstCam = cameras[0];
+                    const resolution = firstCam?.resolution?.replace("×", "x");
+                    // Sjekk codec / fps fra første klipp (heuristikk)
+                    const cstParams: Record<string, unknown> = {};
+                    if (resolution) cstParams.resolution = resolution;
+                    // FPS henter vi fra scan_folder_multicam dersom tilgjengelig
+                    if (scanResult && scanResult.clips && scanResult.clips[0]?.fps) {
+                      cstParams.frameRate = scanResult.clips[0].fps;
+                    }
+                    // CST log-gamma fra detect-resultatet
+                    if (logGamma?.isLog && logGamma.profile) {
+                      // Map profile-string til CST-input
+                      const p = logGamma.profile.toLowerCase();
+                      if (p.includes("c-log")) {
+                        cstParams.cstInputGamma = "Canon C-Log 2";
+                        cstParams.cstInputGamut = "Canon Cinema Gamut";
+                      } else if (p.includes("s-log")) {
+                        cstParams.cstInputGamma = "Sony S-Log 3";
+                        cstParams.cstInputGamut = "Sony S-Gamut3.Cine";
+                      } else if (p.includes("v-log")) {
+                        cstParams.cstInputGamma = "Panasonic V-Log";
+                        cstParams.cstInputGamut = "Panasonic V-Gamut";
+                      } else if (p.includes("logc") || p.includes("log c")) {
+                        cstParams.cstInputGamma = "ARRI Log C / HLG";
+                      }
+                    }
+                    if (Object.keys(cstParams).length > 0) {
+                      await executeScript("apply_project_settings", cstParams, false);
+                    }
+                  } catch (e) {
+                    console.warn("apply_project_settings failed:", e);
+                  }
+                }
+
+                // 2. Hvis backup-manifest finnes → lag Resolve-bins
                 if (backupResult?.manifestPath) {
                   try {
                     await executeScript("create_resolve_bins_from_manifest", {
@@ -1446,7 +1545,7 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                   }
                 }
 
-                // 2. Bygg 3 timelines i ett kall basert på Steg 1-valgene
+                // 3. Bygg 3 timelines i ett kall basert på Steg 1-valgene
                 if (livePicksPath && (makeLongFilm || makeHighlight || makeTeaser)) {
                   try {
                     await executeScript("build_three_timelines", {
@@ -1466,7 +1565,7 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                 if (livePicksPath) onComplete(livePicksPath);
                 else onComplete(folder);
               }}>
-                Ferdig — bygg timelines + åpne editor →
+                Ferdig — konfigurer Resolve + bygg timelines →
               </button>
             </div>
           </div>
