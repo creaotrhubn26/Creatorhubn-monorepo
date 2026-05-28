@@ -95,6 +95,9 @@ interface Props {
   resolveRunning?: boolean;
   resolveProjectOpen?: boolean;
   resolveProjectName?: string | null;
+  /** Role Room auth: checking / ok / expired / none */
+  authStatus?: "checking" | "ok" | "expired" | "none";
+  authUserEmail?: string | null;
 }
 
 interface SavedProject {
@@ -158,6 +161,8 @@ export function HomeView({
   resolveConnected,
   resolveRunning,
   resolveProjectName,
+  authStatus = "none",
+  authUserEmail,
 }: Props) {
   // Granulær status: 0 = ikke åpen, 1 = åpen uten prosjekt, 2 = tilkoblet
   const resolveLevel = resolveConnected ? 2 : (resolveRunning ? 1 : 0);
@@ -270,15 +275,31 @@ export function HomeView({
                                background: resolveColor }} />
               <span>{resolveText}</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6,
-                            padding: "6px 12px", borderRadius: 999,
-                            background: signedIn ? "rgba(160, 48, 192, 0.10)" : "var(--bg-3)",
-                            border: `1px solid ${signedIn ? "var(--accent)" : "var(--border)"}`,
-                            fontSize: 11, cursor: signedIn ? "default" : "pointer" }}
-                  onClick={() => !signedIn && onSignIn()}>
-              <IconSparkle size={11} />
-              <span>{signedIn ? "Role Room pålogget" : "Logg inn"}</span>
-            </div>
+            {(() => {
+              const authColor = authStatus === "ok" ? "var(--accent)"
+                : authStatus === "expired" ? "#f0a500"
+                : authStatus === "checking" ? "#8674a8" : "var(--border)";
+              const authBg = authStatus === "ok" ? "rgba(160, 48, 192, 0.10)"
+                : authStatus === "expired" ? "rgba(240, 165, 0, 0.10)"
+                : "var(--bg-3)";
+              const authText = authStatus === "ok"
+                ? (authUserEmail ? `Role Room: ${authUserEmail}` : "Role Room pålogget")
+                : authStatus === "expired" ? "Token utløpt — logg inn på nytt"
+                : authStatus === "checking" ? "Sjekker innlogging…"
+                : "Logg inn med Role Room";
+              const clickable = authStatus !== "ok";
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6,
+                                padding: "6px 12px", borderRadius: 999,
+                                background: authBg,
+                                border: `1px solid ${authColor}`,
+                                fontSize: 11, cursor: clickable ? "pointer" : "default" }}
+                      onClick={() => clickable && onSignIn()}>
+                  <IconSparkle size={11} />
+                  <span>{authText}</span>
+                </div>
+              );
+            })()}
             {saved.length > 0 && (
               <div style={{ padding: "6px 12px", borderRadius: 999,
                               background: "var(--bg-3)", border: "1px solid var(--border)",

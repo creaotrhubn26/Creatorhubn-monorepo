@@ -381,17 +381,52 @@ export default function App() {
     } catch { /* non-critical */ }
   }, []);
 
-  // Auto-refresh health: ved fokus + hvert 20. sekund når Home er synlig
+  // Role Room auth-status: undefined (sjekker), "ok" (gyldig token), "expired" (token finnes men 401), "none" (ingen token)
+  const [authStatus, setAuthStatus] = useState<"checking" | "ok" | "expired" | "none">("checking");
+  const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
+
+  const silentAuthCheck = useCallback(async () => {
+    const s = loadSettings();
+    const token = s.RR_BEARER_TOKEN?.trim();
+    if (!token) {
+      setAuthStatus("none");
+      setAuthUserEmail(null);
+      return;
+    }
+    try {
+      const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+      const res = await fetch(`${base}/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const me = await res.json() as { email?: string };
+        setAuthStatus("ok");
+        setAuthUserEmail(me.email || null);
+      } else if (res.status === 401) {
+        setAuthStatus("expired");
+      } else {
+        setAuthStatus("ok");  // andre feil = nettverk; ikke claim expired
+      }
+    } catch {
+      setAuthStatus("ok");  // nettverksfeil — don't false-fail
+    }
+  }, []);
+
+  // Auto-refresh health + auth: ved fokus + hvert 30. sekund
   useEffect(() => {
     void silentHealthCheck();
-    const onFocus = () => silentHealthCheck();
+    void silentAuthCheck();
+    const onFocus = () => { silentHealthCheck(); silentAuthCheck(); };
     window.addEventListener("focus", onFocus);
-    const interval = setInterval(silentHealthCheck, 20_000);
+    const interval = setInterval(() => {
+      silentHealthCheck();
+      silentAuthCheck();
+    }, 30_000);
     return () => {
       window.removeEventListener("focus", onFocus);
       clearInterval(interval);
     };
-  }, [silentHealthCheck]);
+  }, [silentHealthCheck, silentAuthCheck]);
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -502,7 +537,9 @@ export default function App() {
           onOpenWeddingWizard={() => setShowWeddingWizard(true)}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
-          signedIn={Boolean(loadSettings().RR_BEARER_TOKEN)}
+          signedIn={authStatus === "ok"}
+          authStatus={authStatus}
+          authUserEmail={authUserEmail}
           onSignIn={() => setShowSignIn(true)}
           resolveConnected={Boolean(health?.resolveRunning && health?.projectOpen)}
           resolveRunning={Boolean(health?.resolveRunning)}
