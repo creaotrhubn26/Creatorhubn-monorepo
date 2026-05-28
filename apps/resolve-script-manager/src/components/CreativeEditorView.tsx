@@ -2104,14 +2104,39 @@ ${ctxLines.join("\n")}`;
             </div>
           </div>
 
-          {/* Claude status bar — wired to real actions */}
+          {/* Claude status bar — viser ekte tilstand basert på busy-flags */}
           <div className="ce-claude-status">
             <div className="ce-claude-status-icon"><IconSparkle size={14} /></div>
             <div className="ce-claude-status-text">
-              {suggBusy ? "Claude analyserer sekvensen …"
-                : suggestions.length > 0 ? `Claude har ${suggestions.length} forslag klare`
-                : "Claude ser på tidslinjen din"}
-              <span className="ce-collab"> ● Samarbeider</span>
+              {(() => {
+                const working = suggBusy || flowBusy || wishesBusy || chatBusy;
+                if (working) {
+                  const what = suggBusy ? "henter forslag"
+                    : flowBusy ? "analyserer narrativ flyt"
+                    : wishesBusy ? "anvender ønsker"
+                    : "svarer i chat";
+                  return (
+                    <>
+                      <span style={{ color: "#f0a500" }}>● </span>
+                      Claude {what} …
+                    </>
+                  );
+                }
+                if (suggestions.length > 0) {
+                  return (
+                    <>
+                      <span style={{ color: "#4ad48a" }}>● </span>
+                      Claude har {suggestions.length} forslag klare
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <span style={{ color: "#8674a8" }}>● </span>
+                    Claude venter på deg
+                  </>
+                );
+              })()}
             </div>
             <button
               className="ce-claude-ask"
@@ -2612,16 +2637,39 @@ ${ctxLines.join("\n")}`;
               );
             })}
           </div>
-          <div className="ce-claude-banner">
-            <div className="ce-claude-banner-title">Claude analyserer klippene dine</div>
-            <div className="ce-claude-banner-subtitle">
-              Jeg sjekker flyt, rytme og emosjon for å lage den beste historien.
-            </div>
-            <div className="ce-claude-progress">
-              <div className="ce-claude-progress-fill" style={{ width: "82%" }} />
-            </div>
-            <div className="ce-claude-progress-pct">82%</div>
-          </div>
+          {(() => {
+            const working = suggBusy || flowBusy || wishesBusy || chatBusy;
+            const what = suggBusy ? "Henter forslag fra Claude"
+              : flowBusy ? "Analyserer narrativ flyt"
+              : wishesBusy ? "Anvender klient-ønsker"
+              : chatBusy ? "Claude svarer i chat"
+              : null;
+            if (working) {
+              return (
+                <div className="ce-claude-banner">
+                  <div className="ce-claude-banner-title">{what} …</div>
+                  <div className="ce-claude-banner-subtitle">
+                    Sjekker flyt, rytme og emosjon for å lage den beste historien.
+                  </div>
+                  <div className="ce-claude-progress">
+                    <div className="ce-claude-progress-fill"
+                          style={{ width: "40%", animation: "ce-progress-indeterminate 1.6s linear infinite" }} />
+                  </div>
+                </div>
+              );
+            }
+            // Idle: vis prosjekt-summary i stedet for fake progress
+            return (
+              <div className="ce-claude-banner">
+                <div className="ce-claude-banner-title">
+                  {filteredPicks.length} segmenter · {Math.round(totalDuration)}s highlight
+                </div>
+                <div className="ce-claude-banner-subtitle">
+                  Klikk «Analyser flyt» eller «Hent forslag» når du vil ha tilbakemelding.
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Agent-specific action panels */}
           {agentRole === "audio" && (

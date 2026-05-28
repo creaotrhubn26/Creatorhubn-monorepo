@@ -1696,6 +1696,10 @@
   background: linear-gradient(to right, #a030c0, #c850e0);
   border-radius: 2px;
 }
+@keyframes ce-progress-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
 .ce-claude-progress-pct {
   position: absolute;
   top: 12px; right: 12px;
