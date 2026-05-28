@@ -36,6 +36,10 @@ export interface RoleRoomOnboardingDialogProps {
   onComplete: () => void;
   /** Lar bruker minimere — lagrer progress men holder onboarding-flag aktivt. */
   onMinimize?: () => void;
+  /** 'edit' lar bruker lukke og redigere fritt; setter ikke onboarding-completed. */
+  mode?: 'onboarding' | 'edit';
+  /** Lukk uten å fullføre (kun edit-modus). */
+  onClose?: () => void;
 }
 
 interface FormState {
@@ -122,8 +126,9 @@ function profileToForm(profile: RoleRoomMemberProfile): FormState {
 }
 
 export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> = ({
-  open, onComplete, onMinimize,
+  open, onComplete, onMinimize, mode = 'onboarding', onClose,
 }) => {
+  const isEditMode = mode === 'edit';
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -209,7 +214,9 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
       if (Object.keys(updates).length > 0) {
         await roleRoomMemberProfileService.updateMyProfile(updates as Partial<RoleRoomMemberProfile>);
       }
-      await roleRoomMemberProfileService.updateOnboarding({ complete: true });
+      if (!isEditMode) {
+        await roleRoomMemberProfileService.updateOnboarding({ complete: true });
+      }
       onComplete();
     } catch (err) {
       setError(String(err));
@@ -266,12 +273,13 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
   return (
     <Dialog open={open} fullWidth maxWidth="sm"
-            disableEscapeKeyDown
+            disableEscapeKeyDown={!isEditMode}
+            onClose={isEditMode ? onClose : undefined}
             PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}>
       <Box sx={{ position: 'relative' }}>
-        {onMinimize && (
-          <IconButton onClick={onMinimize}
-                       sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
+        {(isEditMode ? onClose : onMinimize) && (
+          <IconButton onClick={isEditMode ? onClose : onMinimize}
+                       sx={{ position: 'absolute', top: 8, right: 8, zIndex: 2, color: 'white' }}
                        size="small">
             <Close fontSize="small" />
           </IconButton>
@@ -484,7 +492,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           {isLastStep ? (
             <Button onClick={finishOnboarding} disabled={saving || loading}
                      variant="contained" endIcon={saving ? <CircularProgress size={14} /> : <Check />}>
-              Fullfør profil
+              {isEditMode ? 'Lagre endringer' : 'Fullfør profil'}
             </Button>
           ) : (
             <Button onClick={() => void saveStep(step + 1)}

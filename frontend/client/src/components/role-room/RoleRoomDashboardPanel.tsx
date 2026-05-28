@@ -313,21 +313,26 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   // Onboarding: sjekk om bruker må fullføre profil
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingMinimized, setOnboardingMinimized] = useState(false);
+  const [memberProfileImageUrl, setMemberProfileImageUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!auth.user?.id) return;
     if (onboardingMinimized) return;
     let cancelled = false;
     void (async () => {
       try {
-        const status = await roleRoomMemberProfileService.getOnboardingStatus();
+        const [status, profile] = await Promise.all([
+          roleRoomMemberProfileService.getOnboardingStatus(),
+          roleRoomMemberProfileService.getMyProfile().catch(() => null),
+        ]);
         if (cancelled) return;
         if (status.requiresOnboarding) setOnboardingOpen(true);
+        if (profile?.profileImageUrl) setMemberProfileImageUrl(profile.profileImageUrl);
       } catch (err) {
         console.warn('Onboarding status check failed:', err);
       }
     })();
     return () => { cancelled = true; };
-  }, [auth.user?.id, onboardingMinimized]);
+  }, [auth.user?.id, onboardingMinimized, onboardingOpen]);
 
   // Sentralt tab-katalog. Brukes av top-Tabs, side-rail og bottom-nav slik
   // at admin-konfigen virker likt på tvers av viewports.
@@ -678,7 +683,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
               }}
             >
-              {profileInitials ? (
+              {memberProfileImageUrl ? (
+                <Avatar src={memberProfileImageUrl} sx={{ width: 28, height: 28 }} />
+              ) : profileInitials ? (
                 <Avatar sx={{ width: 28, height: 28, bgcolor: 'transparent', fontSize: '0.78rem', fontWeight: 700, color: '#fff' }}>
                   {profileInitials}
                 </Avatar>
@@ -733,6 +740,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             inboxUnreadCount={inboxUnreadCount ?? 0}
             onOpenProfile={handleOpenProfile}
             profileInitials={profileInitials}
+            profileImageUrl={memberProfileImageUrl}
           />
           <RoleRoomProjectSwitcher
             open={switcherOpen}
@@ -830,7 +838,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               sx={{ ml: 0.5 }}
               aria-label="Åpne profil"
             >
-              {profileInitials ? (
+              {memberProfileImageUrl ? (
+                <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }} />
+              ) : profileInitials ? (
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#6366f1', fontSize: '0.85rem', fontWeight: 700 }}>
                   {profileInitials}
                 </Avatar>

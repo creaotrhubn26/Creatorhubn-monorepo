@@ -61,6 +61,7 @@ interface RoleRoomMobileTopBarProps {
   /** Item 028: Profil top action. */
   onOpenProfile?: (anchor: HTMLElement) => void;
   profileInitials?: string | null;
+  profileImageUrl?: string | null;
 }
 
 const SYNC_ICON: Record<MobileSyncStatus, React.ReactNode> = {
@@ -94,6 +95,7 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
   inboxUnreadCount = 0,
   onOpenProfile,
   profileInitials,
+  profileImageUrl,
 }) => {
   const projectLabel = projectName ?? (projectCount === 0 ? 'Ingen prosjekter' : 'Velg prosjekt');
   const switcherDisabled = projectCount === 0;
@@ -248,7 +250,9 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
                 p: 0,
               }}
             >
-              {profileInitials ? (
+              {profileImageUrl ? (
+                <Avatar src={profileImageUrl} sx={{ width: 32, height: 32 }} />
+              ) : profileInitials ? (
                 <Avatar
                   sx={{
                     width: 32,
