@@ -1,170 +1,74 @@
-import { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Container,
-  Alert,
-  Stack,
-} from '@mui/material';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import {
-  PlayArrow as PlayArrowIcon,
-  PersonSearch as PersonSearchIcon,
-  Event as EventIcon,
-  PeopleAlt as PeopleAltIcon,
-  AutoStories as AutoStoriesIcon,
-  CalendarMonth as CalendarMonthIcon,
-  LocationOn as LocationOnIcon,
-  Gavel as GavelIcon,
-  Email as EmailIcon,
-  Videocam as VideocamIcon,
-} from '@mui/icons-material';
-import PublicSocialLinks from '@/components/common/PublicSocialLinks';
-import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { Alert, Box, Container } from '@mui/material';
+import { motion, useReducedMotion } from 'framer-motion';
 import BlockRenderer from '../cms/BlockRenderer';
 import { useCmsBlocks } from '../cms/useCmsBlocks';
 import { useLocale } from '../cms/useLocale';
 import LoginDialog from './LoginDialog';
-import DeviceMockup from './DeviceMockup';
 import LandingFAQSection from './LandingFAQSection';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
-import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
+import { LandingBackdrop } from './landing-sections/LandingBackdrop';
+import { LandingIntro } from './landing-sections/LandingIntro';
+import { LandingHero } from './landing-sections/LandingHero';
+import { LandingCTA } from './landing-sections/LandingCTA';
+import { LandingFooter } from './landing-sections/LandingFooter';
+import { LandingStickyCTA } from './landing-sections/LandingStickyCTA';
+import { LandingExitIntent } from './landing-sections/LandingExitIntent';
+
+// Tunge under-fold-seksjoner — lazy-load for bedre initial paint + LCP
+const LandingFeatures = lazy(() => import('./landing-sections/LandingFeatures'));
+const LandingDeviceShowcase = lazy(() => import('./landing-sections/LandingDeviceShowcase'));
 
 interface CastingLandingPageProps {
   onEnter: () => void;
   onGuestEnter?: () => void;
 }
 
-/* ── Golden Circle content ──────────────────────────────────────────
- * WHY  — Purpose  (innermost circle — lead with this)
- * HOW  — Process  (how the purpose is fulfilled)
- * WHAT — Product  (the tangible features / result)
- * ────────────────────────────────────────────────────────────────── */
-const WHY  = 'Vi tror at hver god fortelling starter med de rette menneskene i de rette rollene.';
-const HOW  = 'Vi samler roller, kandidater, auditions og produksjonsplan i ett arbeidsrom — slik at du aldri mister oversikten.';
-const WHAT_FEATURES = [
-  { icon: <PersonSearchIcon sx={{ fontSize: 36 }} />, title: 'Casting & Kandidater',    desc: 'Søk, filtrer og administrer kandidater i grid eller tabell. Flytt dem gjennom prosessen med drag-and-drop Kanban.' },
-  { icon: <PeopleAltIcon    sx={{ fontSize: 36 }} />, title: 'Roller & Crew',           desc: 'Bygg roller med krav og tilordne kandidater. Administrer hele crewet med avdeling, kontaktinfo og tilgjengelighet.' },
-  { icon: <EventIcon        sx={{ fontSize: 36 }} />, title: 'Audition & Planlegging',  desc: 'Planlegg audition-tider, tildel kandidater til slots og administrer en felles audition-pool på tvers av prosjekter.' },
-  { icon: <AutoStoriesIcon  sx={{ fontSize: 36 }} />, title: 'Manus & Historiestruktur',desc: 'Skriv manus med profesjonell filmatisk formatering og organiser historiestrukturen som beat-kort på korkplansje.' },
-  { icon: <VideocamIcon     sx={{ fontSize: 36 }} />, title: 'Storyboard',   desc: 'Tegn storyboard direkte i nettleseren, kombiner med manus i split-visning, og la AI foreslå kameravinkler.' },
-  { icon: <CalendarMonthIcon sx={{ fontSize: 36 }}/>, title: 'Produksjonskalender',     desc: 'Opprett produksjonsdagsplaner, sjekk crew-konflikter automatisk og send varsler til hele teamet.' },
-  { icon: <LocationOnIcon   sx={{ fontSize: 36 }} />, title: 'Utstyr & Lokasjoner',     desc: 'Book filmingsutstyr med tilgjengelighetssporing og administrer opptakslokasjoner med kart og kontaktinfo.' },
-  { icon: <GavelIcon        sx={{ fontSize: 36 }} />, title: 'Kontrakter & Samtykke',   desc: 'Send tilbud og kontrakter til cast/crew. Opprett og spor samtykkeskjemaer per kandidat med signeringsstatus.' },
-  { icon: <EmailIcon        sx={{ fontSize: 36 }} />, title: 'Call Sheets & E-post',    desc: 'Generer komplette call sheets klar for utskrift og design rike HTML-e-poster med mal-bibliotek og forhåndsvisning.' },
-];
-const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
+/**
+ * Public landing-side for The Role Room. Orchestrerer 7 seksjon-
+ * komponenter pluss intro/backdrop/sticky CTA/exit-intent.
+ *
+ * Seksjons-komponenter: LandingBackdrop, LandingIntro, LandingHero,
+ * LandingCTA, LandingFeatures (lazy), LandingDeviceShowcase (lazy),
+ * LandingFAQSection, LandingFooter.
+ *
+ * Performance:
+ *  - Lazy-load Features + DeviceShowcase (tunge ikoner + mockups under fold)
+ *  - Preload hero-logo (eager + fetchpriority high inne i LandingHero)
+ *  - React.memo på alle seksjon-komponenter
+ *  - useReducedMotion respekteres globalt
+ *
+ * Conversion:
+ *  - LandingStickyCTA dukker opp etter 600px scroll
+ *  - LandingExitIntent på mouse-leave-top + Page Visibility
+ *  - Microcopy i CTA-er: "Start The Role Room" + "Kom i gang" (sticky)
+ */
 export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPageProps) {
   const { locale } = useLocale();
   const cmsBlocks = useCmsBlocks('home');
   const shouldReduceMotion = useReducedMotion();
-  const [showIntro, setShowIntro]       = useState(true);
+
+  const introEnabled = ROLE_ROOM_LANDING_CONFIG.intro.enabled;
+  const [showIntro, setShowIntro] = useState<boolean>(introEnabled);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
   const [googleAuthMessage, setGoogleAuthMessage] = useState<string | null>(null);
-  const [typedWhy,  setTypedWhy]  = useState('');
-  const [typedHow,  setTypedHow]  = useState('');
-  const [typedWhat, setTypedWhat] = useState('');
-  const [cursorTarget, setCursorTarget] = useState<'why'|'how'|'what'|'none'>('none');
-  const [cursorVisible, setCursorVisible] = useState(true);
-  const [backdropVideoReady, setBackdropVideoReady] = useState(false);
-  const [backdropVideoFailed, setBackdropVideoFailed] = useState(false);
-  const [introVideoReady, setIntroVideoReady] = useState(false);
-  const [introVideoFailed, setIntroVideoFailed] = useState(false);
-
-  const demoModeEnabled = ROLE_ROOM_LANDING_CONFIG.demoModeEnabled;
-  const introEnabled = ROLE_ROOM_LANDING_CONFIG.intro.enabled;
-  const introVideoUrl = ROLE_ROOM_LANDING_CONFIG.intro.videoUrl;
-  const introSkipLabel = ROLE_ROOM_LANDING_CONFIG.intro.skipLabel;
-  const backdropVideoUrl = ROLE_ROOM_LANDING_CONFIG.intro.backdropVideoUrl;
-  const whyLabel = ROLE_ROOM_LANDING_CONFIG.intro.whyLabel;
-  const whyText = WHY;
-  const howLabel = ROLE_ROOM_LANDING_CONFIG.intro.howLabel;
-  const howText = HOW;
-  const whatLabel = ROLE_ROOM_LANDING_CONFIG.intro.whatLabel;
-  const backdropStillUrl = getRoleRoomVideoStillUrl(backdropVideoUrl, '/role-room-assets/landing_backdrop.webp');
-  const introStillUrl = getRoleRoomVideoPosterUrl(introVideoUrl, '/role-room-assets/landing_backdrop_with_logo.webp');
 
   /* skip intro entirely if disabled in role room config, or if user prefers reduced motion */
   useEffect(() => {
     if (!introEnabled || shouldReduceMotion) setShowIntro(false);
   }, [introEnabled, shouldReduceMotion]);
 
-  useEffect(() => {
-    setBackdropVideoReady(false);
-    setBackdropVideoFailed(false);
-  }, [backdropVideoUrl]);
-
-  useEffect(() => {
-    setIntroVideoReady(false);
-    setIntroVideoFailed(false);
-  }, [introVideoUrl]);
-
-  // Chain typewriter: WHY label → HOW label → WHAT label.
-  // Brukere som ber om redusert bevegelse får hele labelene umiddelbart uten cursor.
-  useEffect(() => {
-    if (showIntro) return;
-    if (shouldReduceMotion) {
-      setTypedWhy(whyLabel);
-      setTypedHow(howLabel);
-      setTypedWhat(whatLabel);
-      setCursorVisible(false);
-      setCursorTarget('none');
-      return;
-    }
-    const steps = [
-      { label: whyLabel,  setter: setTypedWhy,  target: 'why'  as const },
-      { label: howLabel,   setter: setTypedHow,  target: 'how'  as const },
-      { label: whatLabel,  setter: setTypedWhat, target: 'what' as const },
-    ];
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const intervals: ReturnType<typeof setInterval>[] = [];
-    let stepIdx = 0;
-    const runStep = (delay: number) => {
-      if (stepIdx >= steps.length) {
-        let blinks = 0;
-        const blink = setInterval(() => {
-          setCursorVisible(v => !v);
-          if (++blinks >= 6) { clearInterval(blink); setCursorVisible(false); setCursorTarget('none'); }
-        }, 350);
-        intervals.push(blink);
-        return;
-      }
-      const { label, setter, target } = steps[stepIdx++];
-      const t = setTimeout(() => {
-        setCursorTarget(target);
-        setCursorVisible(true);
-        let i = 0;
-        const iv = setInterval(() => {
-          setter(label.slice(0, ++i));
-          if (i >= label.length) { clearInterval(iv); runStep(150); }
-        }, 25);
-        intervals.push(iv);
-      }, delay);
-      timers.push(t);
-    };
-    runStep(400);
-    return () => {
-      timers.forEach(clearTimeout);
-      intervals.forEach(clearInterval);
-    };
-  }, [showIntro, shouldReduceMotion, whyLabel, howLabel, whatLabel]);
-
-  // Safety fallback — dismiss intro if video never fires onEnded
-  useEffect(() => {
-    const t = setTimeout(() => setShowIntro(false), 20_000);
-    return () => clearTimeout(t);
-  }, []);
-
   const handleStartClick = () => {
     setLoginDialogVariant('landing');
     setLoginDialogOpen(true);
   };
+
   const handleAdminLoginClick = () => {
     setLoginDialogVariant('admin');
     setLoginDialogOpen(true);
   };
+
   const handleLoginSuccess = () => {
     try {
       window.sessionStorage.removeItem('role-room-commercial-draft-v1');
@@ -185,6 +89,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     setLoginDialogVariant('landing');
     onEnter();
   };
+
   const handleLoginDialogClose = () => {
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -200,11 +105,9 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     setLoginDialogVariant('landing');
   };
 
+  // Parse URL-params for OAuth-callbacks / admin-login / checkout-resume
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
+    if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const googleStatus = params.get('rrGoogleStatus');
     const googleMessage = params.get('rrGoogleMessage');
@@ -215,7 +118,6 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
       setLoginDialogOpen(true);
       return;
     }
-
     if (params.get('rrAdminLogin')) {
       setLoginDialogVariant('admin');
       setLoginDialogOpen(true);
@@ -231,19 +133,16 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   // Re-enable vertical scrolling while the landing page is mounted.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-
     const html = document.documentElement;
     const body = document.body;
     const prevHtmlOverflow = html.style.overflow;
     const prevHtmlOverflowY = html.style.overflowY;
     const prevBodyOverflow = body.style.overflow;
     const prevBodyOverflowY = body.style.overflowY;
-
     html.style.overflow = 'auto';
     html.style.overflowY = 'auto';
     body.style.overflow = 'auto';
     body.style.overflowY = 'auto';
-
     return () => {
       html.style.overflow = prevHtmlOverflow;
       html.style.overflowY = prevHtmlOverflowY;
@@ -252,6 +151,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     };
   }, []);
 
+  // CMS-overridde rendering (when blocks-content er definert i CMS)
   if (cmsBlocks) {
     return (
       <Box
@@ -272,70 +172,17 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   }
 
   return (
-      <Box sx={{
+    <Box
+      sx={{
         width: '100%',
         minHeight: '100vh',
         bgcolor: '#0a0a0f',
         overflowX: loginDialogOpen ? 'visible' : 'hidden',
-      overflowY: loginDialogOpen ? 'visible' : 'auto',
-      position: 'relative',
-    }}>
-
-      {/* ── full-bleed video backdrop ── */}
-      {backdropStillUrl ? (
-        <Box
-          component="img"
-          src={backdropStillUrl}
-          alt=""
-          aria-hidden="true"
-          sx={{
-            position: 'fixed', inset: 0,
-            width: '100%', height: '100%',
-            objectFit: 'cover', objectPosition: 'center 30%',
-            opacity: 0.22,
-            zIndex: 0,
-            pointerEvents: 'none',
-            filter: 'saturate(0.6) brightness(0.55)',
-          }}
-        />
-      ) : null}
-      <Box
-        component="video"
-        src={backdropVideoUrl}
-        autoPlay={!shouldReduceMotion}
-        loop
-        muted
-        playsInline
-        onLoadedData={() => {
-          setBackdropVideoReady(true);
-          setBackdropVideoFailed(false);
-        }}
-        onCanPlay={() => {
-          setBackdropVideoReady(true);
-          setBackdropVideoFailed(false);
-        }}
-        onError={() => {
-          setBackdropVideoReady(false);
-          setBackdropVideoFailed(true);
-        }}
-        data-testid="role-room-landing-backdrop-video"
-        data-media-mode={backdropVideoReady && !backdropVideoFailed ? 'video' : 'image'}
-        sx={{
-          position: 'fixed', inset: 0,
-          width: '100%', height: '100%',
-          objectFit: 'cover', objectPosition: 'center 30%',
-          opacity: backdropVideoReady && !backdropVideoFailed ? 0.22 : 0,
-          zIndex: 0,
-          pointerEvents: 'none',
-          filter: 'saturate(0.6) brightness(0.55)',
-          transition: 'opacity 0.3s ease',
-        }}
-      />
-      {/* dark gradient over video so text is always readable */}
-      <Box sx={{
-        position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none',
-        background: 'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.4) 40%, rgba(10,10,15,0.75) 100%)',
-      }} />
+        overflowY: loginDialogOpen ? 'visible' : 'auto',
+        position: 'relative',
+      }}
+    >
+      <LandingBackdrop />
 
       {googleAuthMessage ? (
         <Container maxWidth="md" sx={{ position: 'relative', zIndex: 3, pt: { xs: 10, md: 12 } }}>
@@ -357,156 +204,8 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
         </Container>
       ) : null}
 
-      {/* ── intro video splash ── */}
-      <AnimatePresence>
-        {showIntro && (
-          <motion.div
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            style={{
-              position: 'fixed', inset: 0,
-              zIndex: 100,
-              background: '#000',
-            }}
-          >
-            {introStillUrl ? (
-              <Box
-                component="img"
-                src={introStillUrl}
-                alt=""
-                aria-hidden="true"
-                sx={{
-                  position: 'absolute', inset: 0,
-                  width: '100%', height: '100%',
-                  objectFit: 'cover',
-                  opacity: introVideoReady && !introVideoFailed ? 0.12 : 1,
-                  transition: 'opacity 0.3s ease',
-                }}
-              />
-            ) : null}
-            <Box
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                px: { xs: 0, sm: 2.5, md: 4 },
-                py: { xs: 0, sm: 2.5, md: 4 },
-              }}
-            >
-              <Box
-                sx={{
-                  position: 'relative',
-                  width: {
-                    xs: '100%',
-                    sm: 'min(calc(100vw - 32px), calc(100vh - 32px), 820px)',
-                    md: 'min(calc(100vw - 64px), calc(100vh - 64px), 920px)',
-                    xl: 'min(calc(100vw - 96px), calc(100vh - 80px), 1080px)',
-                  },
-                  height: {
-                    xs: '100%',
-                    sm: 'min(calc(100vw - 32px), calc(100vh - 32px), 820px)',
-                    md: 'min(calc(100vw - 64px), calc(100vh - 64px), 920px)',
-                    xl: 'min(calc(100vw - 96px), calc(100vh - 80px), 1080px)',
-                  },
-                  borderRadius: { xs: 0, sm: '28px', md: '34px' },
-                  overflow: 'hidden',
-                  border: { xs: 'none', sm: '1px solid rgba(255,255,255,0.08)' },
-                  boxShadow: {
-                    xs: 'none',
-                    sm: '0 32px 120px rgba(0,0,0,0.42)',
-                    md: '0 36px 140px rgba(0,0,0,0.5)',
-                  },
-                  background: '#000',
-                }}
-              >
-                <Box
-                  component="video"
-                  src={introVideoUrl}
-                  autoPlay
-                  muted
-                  playsInline
-                  onEnded={() => setShowIntro(false)}
-                  onLoadedData={() => {
-                    setIntroVideoReady(true);
-                    setIntroVideoFailed(false);
-                  }}
-                  onCanPlay={() => {
-                    setIntroVideoReady(true);
-                    setIntroVideoFailed(false);
-                  }}
-                  onError={() => {
-                    setIntroVideoReady(false);
-                    setIntroVideoFailed(true);
-                  }}
-                  data-testid="role-room-landing-intro-video"
-                  data-media-mode={introVideoReady && !introVideoFailed ? 'video' : 'image'}
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    objectPosition: 'center center',
-                    opacity: introVideoReady && !introVideoFailed ? 1 : 0,
-                    transition: 'opacity 0.3s ease',
-                  }}
-                />
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    pointerEvents: 'none',
-                    background: {
-                      xs: 'linear-gradient(180deg, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.12) 100%)',
-                      sm: 'radial-gradient(circle at center, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0.16) 72%, rgba(0,0,0,0.34) 100%)',
-                    },
-                  }}
-                />
-              </Box>
-            </Box>
-            {/* Skip button */}
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }}
-              style={{ position: 'absolute', zIndex: 10 }}
-            >
-              <Button
-                onClick={() => setShowIntro(false)}
-                aria-label="Hopp over intro-video"
-                data-testid="role-room-landing-intro-skip"
-                sx={{
-                  position: 'fixed',
-                  right: { xs: 14, sm: 24, md: 40 },
-                  bottom: { xs: 14, sm: 24, md: 40 },
-                  color: 'rgba(255,255,255,0.56)',
-                  fontSize: { xs: '0.78rem', sm: '0.85rem' },
-                  px: { xs: 1.1, sm: 1.35 },
-                  py: 0.45,
-                  minHeight: 44,
-                  minWidth: 44,
-                  borderRadius: 999,
-                  backdropFilter: 'blur(10px)',
-                  bgcolor: 'rgba(8,10,18,0.34)',
-                  '&:hover': {
-                    color: 'rgba(255,255,255,0.88)',
-                    bgcolor: 'rgba(8,10,18,0.5)',
-                  },
-                  '&:focus-visible': {
-                    outline: '2px solid rgba(255,255,255,0.7)',
-                    outlineOffset: 2,
-                  },
-                }}
-              >
-                {introSkipLabel}
-              </Button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <LandingIntro visible={showIntro} onDismiss={() => setShowIntro(false)} />
 
-      {/* ── main page ── */}
       <motion.main
         initial={shouldReduceMotion ? false : { opacity: 0 }}
         animate={{ opacity: showIntro ? 0 : 1 }}
@@ -515,380 +214,28 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
         data-testid="role-room-landing-main"
       >
         <Container maxWidth="lg" sx={{ pt: { xs: 4, md: 6 }, pb: 10 }}>
-
-          {/* ── Logo hero ── */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 0 }} component="header">
-            <motion.div
-              initial={shouldReduceMotion ? false : { y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.3, duration: shouldReduceMotion ? 0 : 1 }}
-            >
-              <Box
-                component="img"
-                src="/role-room-assets/landing_logo.webp"
-                alt="The Role Room"
-                width={640}
-                height={240}
-                loading="eager"
-                {...{ fetchpriority: 'high' }}
-                data-testid="role-room-landing-logo"
-                sx={{
-                  width: '100%',
-                  maxWidth: 640,
-                  height: 'auto',
-                  display: 'block',
-                  filter: 'drop-shadow(0 0 32px rgba(139,92,246,0.55))',
-                }}
-              />
-            </motion.div>
-          </Box>
-
-          {/* ════ WHY ════ */}
-          <Box sx={{ textAlign: 'center', mb: 6 }}>
-            <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.5, duration: 0.8 }}>
-              <Typography sx={{
-                fontFamily: '"Courier New", Courier, monospace',
-                fontSize: '1.1rem', fontWeight: 700, letterSpacing: '0.25em',
-                textTransform: 'uppercase', mb: 2, minHeight: '1.4em',
-                background: 'linear-gradient(90deg, #fff 0%, #8b5cf6 55%, #6366f1 100%)',
-                backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              }}>
-                {typedWhy}
-                <Box component="span" sx={{
-                  display: 'inline-block', width: '2px', height: '0.85em',
-                  bgcolor: '#8b5cf6', ml: '2px', verticalAlign: 'middle',
-                  opacity: cursorTarget === 'why' && cursorVisible ? 1 : 0, transition: 'opacity 0.15s',
-                }} />
-              </Typography>
-              <Typography variant="h1" sx={{
-                fontSize: { xs: '2rem', sm: '2.8rem', md: '3.6rem' },
-                fontWeight: 800, color: '#fff', lineHeight: 1.15,
-                maxWidth: 780, mx: 'auto',
-              }}>
-                {whyText}
-              </Typography>
-            </motion.div>
-          </Box>
-
-          {/* ════ HOW ════ */}
-          <Box sx={{ textAlign: 'center', mb: 10 }}>
-            <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.75, duration: 0.8 }}>
-              <Typography sx={{
-                fontFamily: '"Courier New", Courier, monospace',
-                fontSize: '1.1rem', fontWeight: 700, letterSpacing: '0.25em',
-                textTransform: 'uppercase', mb: 2, minHeight: '1.4em',
-                background: 'linear-gradient(90deg, #fff 0%, #8b5cf6 55%, #6366f1 100%)',
-                backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              }}>
-                {typedHow}
-                <Box component="span" sx={{
-                  display: 'inline-block', width: '2px', height: '0.85em',
-                  bgcolor: '#8b5cf6', ml: '2px', verticalAlign: 'middle',
-                  opacity: cursorTarget === 'how' && cursorVisible ? 1 : 0, transition: 'opacity 0.15s',
-                }} />
-              </Typography>
-              <Typography sx={{
-                fontSize: { xs: '1.05rem', sm: '1.2rem' },
-                color: 'rgba(255,255,255,0.72)',
-                maxWidth: 600, mx: 'auto', lineHeight: 1.75, fontWeight: 300,
-              }}>
-                {howText}
-              </Typography>
-            </motion.div>
-          </Box>
-
-          {/* ── CTA ── */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, mb: 6 }}>
-            <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 1, duration: 0.8 }}>
-              <Button
-                variant="contained" size="large"
-                onClick={handleStartClick}
-                startIcon={<PlayArrowIcon />}
-                aria-label="Start The Role Room — åpner innlogging"
-                data-testid="role-room-landing-cta-primary"
-                sx={{
-                  px: 5, py: 2, fontSize: '1.05rem', fontWeight: 600, borderRadius: 3,
-                  minHeight: 56,
-                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                  boxShadow: '0 8px 32px rgba(139,92,246,0.4)',
-                  '&:hover': {
-                    background: 'linear-gradient(135deg, #9b6cf6 0%, #7376f1 100%)',
-                    boxShadow: '0 12px 40px rgba(139,92,246,0.55)',
-                    transform: 'translateY(-2px)',
-                  },
-                  '&:focus-visible': {
-                    outline: '2px solid #fff',
-                    outlineOffset: 3,
-                  },
-                  transition: 'all 0.3s ease',
-                }}
-              >
-                Start The Role Room
-              </Button>
-            </motion.div>
-            {onGuestEnter && demoModeEnabled && (
-              <motion.div
-                initial={shouldReduceMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.6, duration: 0.6 }}
-              >
-                <Button
-                  onClick={onGuestEnter}
-                  size="small"
-                  aria-label="Gå inn uten innlogging — utforsk demoen som gjest"
-                  data-testid="role-room-landing-cta-guest"
-                  sx={{
-                    color: 'rgba(200,185,255,0.5)',
-                    fontSize: '0.78rem',
-                    fontWeight: 400,
-                    textTransform: 'none',
-                    letterSpacing: '0.02em',
-                    minHeight: 36,
-                    '&:hover': { color: 'rgba(200,185,255,0.85)', bgcolor: 'transparent', textDecoration: 'underline' },
-                    '&:focus-visible': {
-                      outline: '2px solid rgba(200,185,255,0.7)',
-                      outlineOffset: 2,
-                    },
-                  }}
-                >
-                  Gå inn uten innlogging →
-                </Button>
-              </motion.div>
-            )}
-          </Box>
-
-          {/* ════ WHAT ════ */}
-          <Box sx={{ mb: 4, textAlign: 'center' }}>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2, duration: 0.6 }}>
-              <Typography sx={{
-                fontFamily: '"Courier New", Courier, monospace',
-                fontSize: '1.1rem', fontWeight: 700, letterSpacing: '0.25em',
-                textTransform: 'uppercase', mb: 1, minHeight: '1.4em',
-                background: 'linear-gradient(90deg, #fff 0%, #8b5cf6 55%, #6366f1 100%)',
-                backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              }}>
-                {typedWhat}
-                <Box component="span" sx={{
-                  display: 'inline-block', width: '2px', height: '0.85em',
-                  bgcolor: '#8b5cf6', ml: '2px', verticalAlign: 'middle',
-                  opacity: cursorTarget === 'what' && cursorVisible ? 1 : 0, transition: 'opacity 0.15s',
-                }} />
-              </Typography>
-            </motion.div>
-          </Box>
-          <Box
-            component="section"
-            aria-label="Funksjonalitet i The Role Room"
-            data-testid="role-room-landing-features"
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' },
-              gap: 3,
-              mb: 10,
-            }}
-          >
-            {WHAT_FEATURES.map((f, i) => (
-              <motion.div
-                key={f.title}
-                initial={{ y: 50, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 1.3 + i * 0.12, duration: 0.6 }}
-              >
-                <Box sx={{
-                  p: 4, borderRadius: 3, height: '100%',
-                  bgcolor: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.07)',
-                  textAlign: 'center',
-                  transition: 'all 0.3s ease',
-                  backdropFilter: 'blur(12px)',
-                  '&:hover': {
-                    bgcolor: 'rgba(139,92,246,0.09)',
-                    borderColor: 'rgba(139,92,246,0.28)',
-                    transform: 'translateY(-4px)',
-                  },
-                }}>
-                  <Box sx={{ color: '#8b5cf6', mb: 2 }}>{f.icon}</Box>
-                  <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '1.05rem', mb: 1 }}>
-                    {f.title}
-                  </Typography>
-                  <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.88rem', lineHeight: 1.6 }}>
-                    {f.desc}
-                  </Typography>
-                </Box>
-              </motion.div>
-            ))}
-          </Box>
-
-          {/* ════ DEVICE SHOWCASE ════ */}
-          <Box sx={{ mb: 10, mt: 4 }}>
-            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
-              <Box sx={{ textAlign: 'center', mb: 5 }}>
-                <Typography
-                  component="h2"
-                  sx={{
-                    fontFamily: '"Courier New", Courier, monospace',
-                    fontSize: { xs: '1rem', md: '1.1rem' },
-                    fontWeight: 700,
-                    letterSpacing: '0.25em',
-                    textTransform: 'uppercase',
-                    mb: 1.5,
-                    background: 'linear-gradient(90deg, #fff 0%, #8b5cf6 55%, #6366f1 100%)',
-                    backgroundClip: 'text',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  Bruk hvor du jobber
-                </Typography>
-                <Typography
-                  sx={{
-                    color: 'rgba(255,255,255,0.72)',
-                    fontSize: { xs: '0.92rem', md: '1.02rem' },
-                    maxWidth: 620,
-                    mx: 'auto',
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Bygget for desktop, tablet og telefon — naturlig flyt fra forberedelse i studio til reaksjon i felt.
-                </Typography>
-              </Box>
-            </motion.div>
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1.4fr 1.1fr 0.6fr' },
-                gap: { xs: 4, md: 3 },
-                alignItems: 'end',
-                justifyItems: 'center',
-                px: { xs: 0, md: 2 },
-              }}
-            >
-              <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1, duration: 0.7 }}>
-                <DeviceMockup
-                  variant="macbook"
-                  screenshotUrl="/role-room-assets/roleroom_dashboard.webp"
-                  screenshotAlt="The Role Room dashboard på MacBook — full oversikt over prosjekt, roller og kandidater"
-                  caption="Planlegg på Mac · full produksjonsoversikt"
-                />
-              </motion.div>
-              <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.25, duration: 0.7 }}>
-                <DeviceMockup
-                  variant="ipad"
-                  screenshotUrl="/role-room-assets/roleroom_calender.webp"
-                  screenshotAlt="The Role Room kalender på iPad — opptaksdager og crew-tilgjengelighet"
-                  caption="Koordiner på iPad · opptaksdager og crew-plan"
-                />
-              </motion.div>
-              <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.4, duration: 0.7 }}>
-                <DeviceMockup
-                  variant="iphone"
-                  screenshotUrl="/role-room-assets/roleroom_castingcall.webp"
-                  screenshotAlt="The Role Room casting på iPhone — reager på audition-respons i felt"
-                  caption="Reager på iPhone · audition-status i felt"
-                />
-              </motion.div>
-            </Box>
-          </Box>
-
-          {/* ── FAQ — synlig content for GEO/AI-søk ── */}
+          <LandingHero introShowing={showIntro} />
+          <LandingCTA onStartClick={handleStartClick} onGuestEnter={onGuestEnter} />
+          <Suspense fallback={<Box sx={{ minHeight: 400 }} />}>
+            <LandingFeatures introShowing={showIntro} />
+          </Suspense>
+          <Suspense fallback={<Box sx={{ minHeight: 400 }} />}>
+            <LandingDeviceShowcase />
+          </Suspense>
           <LandingFAQSection />
-
-          {/* ── footer ── */}
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.2, duration: 1 }}>
-            <Box sx={{
-              mt: 12, textAlign: 'center',
-              color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-            }}>
-              <PublicSocialLinks
-                label="Sosiale medier"
-                body="Følg The Role Room for nye verktøy, case og produktoppdateringer fra produksjonsmiljøet."
-                links={roleRoomSocialLinks}
-                tone="roleRoom"
-                align="center"
-                maxWidth={420}
-              />
-              <Box
-                sx={{
-                  width: 72,
-                  height: 1,
-                  bgcolor: 'rgba(255,255,255,0.12)',
-                }}
-              />
-              <Typography>Et produkt av</Typography>
-              <Box
-                component="img"
-                src="/creatorhub-wordmark-light.png"
-                alt="CreatorHub"
-                sx={{
-                  height: { xs: 24, sm: 28 },
-                  width: 'auto',
-                  opacity: 0.78,
-                }}
-              />
-              <Button
-                type="button"
-                onClick={handleAdminLoginClick}
-                sx={{
-                  mt: 0.75,
-                  minHeight: 36,
-                  px: 1.75,
-                  textTransform: 'none',
-                  borderRadius: '999px',
-                  color: 'rgba(255,255,255,0.72)',
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  bgcolor: 'rgba(255,255,255,0.03)',
-                  '&:hover': {
-                    color: '#fff',
-                    borderColor: 'rgba(139,92,246,0.45)',
-                    bgcolor: 'rgba(139,92,246,0.12)',
-                  },
-                }}
-              >
-                Admin login
-              </Button>
-              <Stack
-                direction="row"
-                spacing={1.25}
-                flexWrap="wrap"
-                justifyContent="center"
-                sx={{ color: 'rgba(255,255,255,0.58)' }}
-              >
-                <Button
-                  variant="text"
-                  href="/privacy-policy"
-                  sx={{
-                    minWidth: 'auto',
-                    px: 0.25,
-                    color: 'inherit',
-                    textTransform: 'none',
-                    '&:hover': { color: '#fff', backgroundColor: 'transparent' },
-                  }}
-                >
-                  Personvernerklæring
-                </Button>
-                <Typography component="span" sx={{ opacity: 0.35, alignSelf: 'center' }}>
-                  •
-                </Typography>
-                <Button
-                  variant="text"
-                  href="/terms-and-conditions"
-                  sx={{
-                    minWidth: 'auto',
-                    px: 0.25,
-                    color: 'inherit',
-                    textTransform: 'none',
-                    '&:hover': { color: '#fff', backgroundColor: 'transparent' },
-                  }}
-                >
-                  Vilkår og betingelser
-                </Button>
-              </Stack>
-            </Box>
-          </motion.div>
-
+          <LandingFooter onAdminLoginClick={handleAdminLoginClick} />
         </Container>
       </motion.main>
+
+      <LandingStickyCTA
+        onStartClick={handleStartClick}
+        visible={!showIntro && !loginDialogOpen}
+      />
+
+      <LandingExitIntent
+        enabled={!showIntro && !loginDialogOpen}
+        onStartClick={handleStartClick}
+      />
 
       <LoginDialog
         key={loginDialogVariant}
@@ -901,3 +248,5 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     </Box>
   );
 }
+
+export default CastingLandingPage;
