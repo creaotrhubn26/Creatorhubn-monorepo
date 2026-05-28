@@ -565,17 +565,18 @@
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border: 1px solid #1a0d45;
   isolation: isolate;
 }
+/* Video tar HELE wrap-arealet, object-fit:contain skalerer den naturlige
+   16:9-rammen innenfor med letterbox/pillarbox sentrert. */
 .ce-preview-video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: center;
   background: black;
   display: block;
 }
