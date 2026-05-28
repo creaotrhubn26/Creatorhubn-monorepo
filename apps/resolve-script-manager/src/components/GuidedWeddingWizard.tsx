@@ -17,8 +17,8 @@
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { executeScript, onScriptEvent } from "../api";
-import type { ScriptEvent } from "../types";
+import { executeScript, onScriptEvent, listMountedCards } from "../api";
+import type { ScriptEvent, MountedCard } from "../types";
 
 interface Props {
   onClose: () => void;
@@ -39,20 +39,49 @@ interface ScanResult {
   multicamGroupCount: number;
 }
 
-type Step = "material" | "audio" | "music" | "persons" | "style" | "live" | "color" | "done";
+type Step = "sources" | "material" | "audio" | "music" | "persons" | "style" | "live" | "color" | "done";
 
 const STEPS: Array<{ id: Step; label: string; n: number }> = [
-  { id: "material", label: "Materialet",      n: 1 },
-  { id: "audio",    label: "Ekstern lyd",     n: 2 },
-  { id: "music",    label: "Sanger + kultur", n: 3 },
-  { id: "persons",  label: "Personer",        n: 4 },
-  { id: "style",    label: "Stil",            n: 5 },
-  { id: "live",     label: "Live-arbeid",     n: 6 },
-  { id: "color",    label: "Color / LUT",     n: 7 },
+  { id: "sources",  label: "Kilder + kameraer", n: 1 },
+  { id: "material", label: "Multicam-scan",     n: 2 },
+  { id: "audio",    label: "Ekstern lyd",       n: 3 },
+  { id: "music",    label: "Sanger",            n: 4 },
+  { id: "persons",  label: "Personer",          n: 5 },
+  { id: "style",    label: "Stil",              n: 6 },
+  { id: "live",     label: "Live-arbeid",       n: 7 },
+  { id: "color",    label: "Color / LUT",       n: 8 },
 ];
 
+interface SourceEntry { path: string; role: "card" | "folder" | "ssd"; label?: string }
+interface CameraInfo {
+  id: string; make: string | null; model: string | null; serial: string | null;
+  clips: Array<{ path: string; duration: number; sizeBytes: number }>;
+  totalDuration: number; totalSizeBytes: number; codec: string | null;
+  resolution: string | null; suggestedAngle: number; clipCount: number;
+}
+
 export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
-  const [step, setStep] = useState<Step>("material");
+  const [step, setStep] = useState<Step>("sources");
+
+  // Steg 0 (NY): Kilder + kameraer
+  const [mountedCards, setMountedCards] = useState<MountedCard[]>([]);
+  const [sources, setSources] = useState<SourceEntry[]>([]);
+  const [sourceScanBusy, setSourceScanBusy] = useState(false);
+  const [sourceScanPct, setSourceScanPct] = useState(0);
+  const [sourceScanMsg, setSourceScanMsg] = useState("");
+  const [cameras, setCameras] = useState<CameraInfo[]>([]);
+  const [audioFilesDetected, setAudioFilesDetected] = useState<Array<{ path: string; duration: number; sizeBytes: number }>>([]);
+  const [angleAssignment, setAngleAssignment] = useState<Record<string, number>>({});
+  const [angleLabels, setAngleLabels] = useState<Record<string, string>>({});
+  const [sourceScanError, setSourceScanError] = useState<string | null>(null);
+  const [backupTarget, setBackupTarget] = useState<string>("");
+  const [wantBackup, setWantBackup] = useState<boolean>(false);
+  const [benchmarkResult, setBenchmarkResult] = useState<{ writeMBs: number; readMBs: number; verdict: string } | null>(null);
+  const [benchmarkBusy, setBenchmarkBusy] = useState(false);
+
+  useEffect(() => {
+    listMountedCards().then(setMountedCards).catch(() => { /* non-critical */ });
+  }, []);
 
   // Steg 1: Material state
   const [folder, setFolder] = useState<string>("");
@@ -229,7 +258,253 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
           ))}
         </div>
 
-        {/* ────── Step 1: Materialet ────── */}
+        {/* ────── Step 1 (NY): Kilder + kameraer ────── */}
+        {step === "sources" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              Hvor ligger materialet? Du kan legge til flere kilder (SD-kort, SSD, mapper).
+              Jeg leser kamera-metadata og grupperer klipp per kamera.
+            </div>
+
+            {mountedCards.length > 0 && (
+              <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+                  📷 Tilkoblede kort/SSD-er:
+                </div>
+                {mountedCards.map((c) => {
+                  const added = sources.find((s) => s.path === c.mount_path);
+                  return (
+                    <div key={c.mount_path}
+                          style={{ display: "flex", alignItems: "center", gap: 8,
+                                    padding: 8, borderRadius: 4, marginBottom: 6,
+                                    background: added ? "rgba(74, 212, 138, 0.10)" : "transparent" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <strong style={{ fontSize: 13 }}>{c.volume_label}</strong>
+                        {c.camera_guess && (
+                          <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 6 }}>
+                            — {c.camera_guess}
+                          </span>
+                        )}
+                        <div style={{ fontSize: 11, opacity: 0.6 }}>
+                          {c.mount_path} · {c.total_clips} klipp · {(c.total_bytes / 1e9).toFixed(1)} GB
+                        </div>
+                      </div>
+                      {!added ? (
+                        <button onClick={() => setSources((p) => [...p, { path: c.mount_path, role: "card", label: c.volume_label }])}
+                                style={{ fontSize: 11, padding: "4px 10px" }}>
+                          + Legg til
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#4ad48a" }}>✓ Lagt til</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={async () => {
+                const sel = await openDialog({ multiple: false, directory: true, title: "Pek på mappe" });
+                if (typeof sel === "string") {
+                  setSources((p) => [...p, { path: sel, role: "folder", label: sel.split("/").pop() }]);
+                }
+              }}>+ Legg til mappe</button>
+              <button onClick={() => listMountedCards().then(setMountedCards)}
+                      style={{ fontSize: 11 }}>
+                🔄 Re-skann
+              </button>
+            </div>
+
+            {sources.length > 0 && (
+              <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+                  Valgte kilder ({sources.length}):
+                </div>
+                {sources.map((s, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8,
+                                          padding: "4px 6px", fontSize: 12 }}>
+                    <span style={{ fontSize: 14 }}>
+                      {s.role === "card" ? "💾" : s.role === "ssd" ? "🗄" : "📁"}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden",
+                                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.label || s.path}
+                    </span>
+                    <button onClick={() => setSources((p) => p.filter((_, idx) => idx !== i))}
+                            style={{ fontSize: 11, padding: "2px 8px" }}>✕</button>
+                  </div>
+                ))}
+
+                {cameras.length === 0 && !sourceScanBusy && (
+                  <button className="primary"
+                          style={{ marginTop: 10, width: "100%" }}
+                          onClick={async () => {
+                    setSourceScanBusy(true);
+                    setSourceScanError(null);
+                    const unsub = onScriptEvent((ev: ScriptEvent) => {
+                      if (ev.type === "progress") {
+                        const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
+                        setSourceScanPct(pct); setSourceScanMsg(ev.message || "");
+                      }
+                    });
+                    try {
+                      const sum = await executeScript("scan_and_organize_sources", {
+                        sources: sources.map((s) => ({ path: s.path, role: s.role })),
+                      }, false);
+                      const r = sum.events.find((e) => e.type === "result");
+                      const val = r?.value as { cameras?: CameraInfo[]; audioFiles?: typeof audioFilesDetected } | undefined;
+                      if (val?.cameras) {
+                        setCameras(val.cameras);
+                        const assign: Record<string, number> = {};
+                        val.cameras.forEach((c) => { assign[c.id] = c.suggestedAngle; });
+                        setAngleAssignment(assign);
+                      }
+                      if (val?.audioFiles) setAudioFilesDetected(val.audioFiles);
+                    } catch (err) {
+                      setSourceScanError(String(err));
+                    } finally {
+                      unsub.then((u) => u());
+                      setSourceScanBusy(false);
+                    }
+                  }}>
+                    🔍 Skanne alle kilder + identifiser kameraer
+                  </button>
+                )}
+              </div>
+            )}
+
+            {sourceScanBusy && (
+              <div>
+                <div style={{ height: 6, background: "var(--bg-3)", borderRadius: 3, overflow: "hidden", marginBottom: 6 }}>
+                  <div style={{ width: `${sourceScanPct}%`, height: "100%",
+                                  background: "var(--accent)", transition: "width 0.3s" }} />
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{sourceScanMsg} — {sourceScanPct}%</div>
+              </div>
+            )}
+
+            {sourceScanError && (
+              <div style={{ background: "var(--bg-3)", borderLeft: "3px solid var(--danger)",
+                              padding: 10, borderRadius: 4 }}>
+                <strong>Feil:</strong> {sourceScanError}
+              </div>
+            )}
+
+            {cameras.length > 0 && (
+              <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+                  Fant {cameras.length} kamera{cameras.length > 1 ? "er" : ""}. Tilordne vinkel:
+                </div>
+                {cameras.map((cam) => (
+                  <div key={cam.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                                                padding: 8, background: "rgba(0,0,0,0.2)",
+                                                borderRadius: 6, marginBottom: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>
+                        {cam.model || cam.make || "Ukjent kamera"}
+                      </div>
+                      <div style={{ fontSize: 11, opacity: 0.7 }}>
+                        {cam.clipCount} klipp · {(cam.totalDuration / 60).toFixed(1)} min ·{" "}
+                        {(cam.totalSizeBytes / 1e9).toFixed(1)} GB
+                        {cam.codec && ` · ${cam.codec}`}
+                        {cam.resolution && ` · ${cam.resolution}`}
+                      </div>
+                    </div>
+                    <select value={angleAssignment[cam.id] || cam.suggestedAngle}
+                            onChange={(e) => setAngleAssignment((p) => ({ ...p, [cam.id]: parseInt(e.target.value) }))}
+                            style={{ fontSize: 12, padding: "4px 8px", minWidth: 90 }}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={n}>Vinkel {n}</option>
+                      ))}
+                    </select>
+                    <input type="text" placeholder="Beskrivelse"
+                            value={angleLabels[cam.id] || ""}
+                            onChange={(e) => setAngleLabels((p) => ({ ...p, [cam.id]: e.target.value }))}
+                            style={{ fontSize: 11, width: 130 }} />
+                  </div>
+                ))}
+                {audioFilesDetected.length > 0 && (
+                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 10 }}>
+                    + {audioFilesDetected.length} lyd-fil{audioFilesDetected.length > 1 ? "er" : ""} funnet
+                  </div>
+                )}
+              </div>
+            )}
+
+            {cameras.length > 0 && (
+              <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={wantBackup}
+                          onChange={(e) => setWantBackup(e.target.checked)} />
+                  <span>
+                    <strong>Backup til SSD før jobben</strong>
+                    <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 400 }}>
+                      Anbefales for SD-kort. Lager DIT-struktur med kamera-mapper per vinkel.
+                    </div>
+                  </span>
+                </label>
+                {wantBackup && (
+                  <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                    <input readOnly value={backupTarget || "Ingen SSD valgt"} style={{ flex: 1 }} />
+                    <button onClick={async () => {
+                      const sel = await openDialog({ multiple: false, directory: true,
+                        title: "Pek på SSD/backup-mappe" });
+                      if (typeof sel === "string") setBackupTarget(sel);
+                    }} style={{ fontSize: 11 }}>Velg…</button>
+                    {backupTarget && (
+                      <button disabled={benchmarkBusy} style={{ fontSize: 11 }}
+                              onClick={async () => {
+                        setBenchmarkBusy(true);
+                        try {
+                          const sum = await executeScript("benchmark_drive", {
+                            path: backupTarget, testSizeBytes: 200_000_000,
+                          }, false);
+                          const r = sum.events.find((e) => e.type === "result");
+                          const val = r?.value as typeof benchmarkResult;
+                          if (val) setBenchmarkResult(val);
+                        } catch { /* noop */ }
+                        setBenchmarkBusy(false);
+                      }}>
+                        {benchmarkBusy ? "⏳" : "Test hastighet"}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {benchmarkResult && (
+                  <div style={{ fontSize: 11, marginTop: 8, padding: 8,
+                                  background: "rgba(0,0,0,0.2)", borderRadius: 4 }}>
+                    <strong>Hastighet:</strong> Skriv {benchmarkResult.writeMBs.toFixed(0)} MB/s ·
+                    Les {benchmarkResult.readMBs.toFixed(0)} MB/s ·{" "}
+                    <span style={{ color: benchmarkResult.verdict === "ok" ? "#4ad48a"
+                                          : benchmarkResult.verdict === "marginal" ? "#f0a500" : "#ef4f6f" }}>
+                      {benchmarkResult.verdict}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
+                            background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
+              💡 Vinkel-tilordningen brukes til å lage Resolve-bins automatisk.
+              Si fra hvis jeg gjettet feil — jeg lærer.
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={onClose}>Avbryt</button>
+              <button className="primary" onClick={() => {
+                recordLearning(`Steg 1: ${cameras.length} kameraer, ${sources.length} kilder, backup=${wantBackup}`);
+                if (cameras.length > 0 && sources[0]) setFolder(sources[0].path);
+                setStep("material");
+              }} disabled={cameras.length === 0 || sourceScanBusy}>
+                Neste: Multicam-scan →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ────── Step 2: Multicam-scan (var Step 1: Materialet) ────── */}
         {step === "material" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div className="field">

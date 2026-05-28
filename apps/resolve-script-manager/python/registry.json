@@ -2139,6 +2139,20 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "scan_and_organize_sources",
+      "name": "Scan and Organize Sources",
+      "category": "project",
+      "scriptPath": "scripts/project/scan_and_organize_sources.py",
+      "description": "Multi-source scan: les kamera-metadata, grupper klipp per kamera.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }
