@@ -55,6 +55,19 @@ export interface OnboardingConfig {
   };
 }
 
+export interface MemberListItem {
+  userId: string;
+  displayName: string | null;
+  bio: string | null;
+  professions: string[];
+  skills: string[];
+  companyName: string | null;
+  locationCity: string | null;
+  locationCountry: string | null;
+  profileImageUrl: string | null;
+  visibility: ProfileVisibility;
+}
+
 export interface AdminOnboardingConfigResponse {
   config: OnboardingConfig;
   defaults: OnboardingConfig;
@@ -124,6 +137,19 @@ export const roleRoomMemberProfileService = {
       '/api/role-room/profile/me/onboarding',
       { method: 'POST', body: JSON.stringify(payload) },
     );
+  },
+
+  async listMembers(params?: {
+    q?: string; profession?: string; projectId?: string;
+    limit?: number; offset?: number;
+  }): Promise<{ members: MemberListItem[]; hasMore: boolean; offset: number; limit: number }> {
+    const u = new URLSearchParams();
+    if (params?.q) u.set('q', params.q);
+    if (params?.profession) u.set('profession', params.profession);
+    if (params?.projectId) u.set('projectId', params.projectId);
+    if (params?.limit != null) u.set('limit', String(params.limit));
+    if (params?.offset != null) u.set('offset', String(params.offset));
+    return jsonRequest(`/api/role-room/members?${u.toString()}`, { method: 'GET' });
   },
 
   async getPublicProfile(userId: string): Promise<RoleRoomMemberProfile> {

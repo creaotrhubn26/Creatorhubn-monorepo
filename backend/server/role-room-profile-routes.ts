@@ -468,6 +468,114 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
   });
 
   // ── GET /api/role-room/profile/:userId (offentlig basert på visibility) ──
+  // ── GET /api/role-room/members ── (katalog/søk) ────────────────────
+  //
+  // Scope: kun medlemmer som deler minst ett produksjonsteam-prosjekt
+  // med viewer. Eier-av-prosjekt + alle som er lagt til via
+  // casting_user_roles teller som "i samme team".
+  //
+  // Filtre: q (fritekst), profession (eksakt match mot array), projectId
+  // (snevre til ett spesifikt prosjekt).
+  app.get("/api/role-room/members", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) {
+      res.status(401).json({ error: "krever_innlogging" });
+      return;
+    }
+    if (!(await ensureProfileTable(pool))) {
+      res.status(503).json({ error: "tabell_ikke_klar" }); return;
+    }
+
+    const q = String(req.query.q ?? "").trim().toLowerCase().slice(0, 100);
+    const profession = String(req.query.profession ?? "").trim().slice(0, 60);
+    const projectId = String(req.query.projectId ?? "").trim().slice(0, 64);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "30"), 10) || 30));
+    const offset = Math.max(0, parseInt(String(req.query.offset ?? "0"), 10) || 0);
+
+    try {
+      const params: unknown[] = [viewerId];
+
+      // Viewer's tilgjengelige prosjekter (eier-av + lagt-til-via-rolle)
+      let scopeProjectsSql = `
+        SELECT id FROM casting_projects WHERE created_by = $1
+        UNION
+        SELECT project_id FROM casting_user_roles WHERE user_id = $1`;
+
+      if (projectId) {
+        params.push(projectId);
+        scopeProjectsSql = `
+          SELECT id FROM (${scopeProjectsSql}) v
+           WHERE id = $${params.length}`;
+      }
+
+      // Andre brukere som er i samme prosjekt-sett
+      const teamMembersSql = `
+        SELECT DISTINCT cp.created_by AS user_id
+          FROM casting_projects cp
+         WHERE cp.id IN (${scopeProjectsSql}) AND cp.created_by IS NOT NULL
+        UNION
+        SELECT DISTINCT cur.user_id
+          FROM casting_user_roles cur
+         WHERE cur.project_id IN (${scopeProjectsSql})`;
+
+      const where: string[] = [
+        "p.visibility IN ('public','connections')",
+        "p.onboarding_completed = TRUE",
+        `p.user_id != $1`,
+        `p.user_id IN (${teamMembersSql})`,
+      ];
+
+      if (q) {
+        params.push(`%${q}%`);
+        const i = params.length;
+        where.push(`(
+          LOWER(COALESCE(p.display_name,'')) LIKE $${i}
+          OR LOWER(COALESCE(p.company_name,'')) LIKE $${i}
+          OR LOWER(COALESCE(p.bio,'')) LIKE $${i}
+          OR LOWER(COALESCE(p.location_city,'')) LIKE $${i}
+        )`);
+      }
+      if (profession) {
+        params.push(profession);
+        where.push(`$${params.length} = ANY(p.professions)`);
+      }
+
+      params.push(limit, offset);
+      const limitIdx = params.length - 1;
+      const offsetIdx = params.length;
+
+      const { rows } = await pool.query(
+        `SELECT p.user_id, p.display_name, p.bio, p.professions, p.skills,
+                p.company_name, p.location_city, p.location_country,
+                p.profile_image_url, p.visibility, p.updated_at, u.email
+           FROM role_room_member_profiles p
+           JOIN users u ON u.id = p.user_id
+          WHERE ${where.join(" AND ")}
+          ORDER BY p.updated_at DESC
+          LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        params,
+      );
+
+      const members = rows.map((row) => ({
+        userId: row.user_id,
+        displayName: row.display_name,
+        bio: row.bio,
+        professions: row.professions ?? [],
+        skills: row.skills ?? [],
+        companyName: row.company_name,
+        locationCity: row.location_city,
+        locationCountry: row.location_country,
+        profileImageUrl: row.profile_image_url,
+        visibility: row.visibility,
+      }));
+
+      res.json({ members, limit, offset, hasMore: members.length === limit });
+    } catch (err) {
+      console.error("[rr-profile] GET /members failed:", err);
+      res.status(500).json({ error: "intern_feil" });
+    }
+  });
+
   app.get("/api/role-room/profile/:userId", async (req: Request, res: Response) => {
     const viewerId = getUserIdFromRequest(req, activeSessions);
     const targetUserId = req.params.userId;

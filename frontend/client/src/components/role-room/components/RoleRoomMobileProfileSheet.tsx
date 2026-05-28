@@ -28,6 +28,7 @@ import {
 import {
   Close as CloseIcon,
   Edit as EditIcon,
+  Group as GroupIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
   SwapHoriz as ModeIcon,
@@ -37,6 +38,7 @@ import type { RoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import ProfessionModeSwitcher from './ProfessionModeSwitcher';
 import { getActiveProfessionMode } from '../config/professionMode';
 import RoleRoomOnboardingDialog from './RoleRoomOnboardingDialog';
+import RoleRoomMemberDirectoryDialog from './RoleRoomMemberDirectoryDialog';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type { RoleRoomMemberProfile } from '../services/roleRoomMemberProfileService';
 
@@ -87,6 +89,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   );
   const [modeSwitcherOpen, setModeSwitcherOpen] = React.useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
   const [memberProfile, setMemberProfile] = useState<RoleRoomMemberProfile | null>(null);
   const activeProfessionMode = getActiveProfessionMode();
 
@@ -152,22 +155,40 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         </Box>
       )}
 
-      <Button
-        fullWidth
-        variant="outlined"
-        startIcon={<EditIcon />}
-        onClick={() => setEditOpen(true)}
-        sx={{
-          minHeight: 'var(--rr-touch-target-min, 44px)',
-          justifyContent: 'flex-start',
-          borderColor: 'rgba(124,58,237,0.35)',
-          color: '#6d28d9',
-          textTransform: 'none',
-          fontWeight: 600,
-        }}
-      >
-        Rediger profil
-      </Button>
+      <Stack spacing={1}>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<EditIcon />}
+          onClick={() => setEditOpen(true)}
+          sx={{
+            minHeight: 'var(--rr-touch-target-min, 44px)',
+            justifyContent: 'flex-start',
+            borderColor: 'rgba(124,58,237,0.35)',
+            color: '#6d28d9',
+            textTransform: 'none',
+            fontWeight: 600,
+          }}
+        >
+          Rediger profil
+        </Button>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<GroupIcon />}
+          onClick={() => setDirectoryOpen(true)}
+          sx={{
+            minHeight: 'var(--rr-touch-target-min, 44px)',
+            justifyContent: 'flex-start',
+            borderColor: 'rgba(124,58,237,0.35)',
+            color: '#6d28d9',
+            textTransform: 'none',
+            fontWeight: 600,
+          }}
+        >
+          Finn medlemmer
+        </Button>
+      </Stack>
 
       {showWorkspace ? (
         <>
@@ -273,6 +294,13 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
     />
   );
 
+  const directoryDialog = (
+    <RoleRoomMemberDirectoryDialog
+      open={directoryOpen}
+      onClose={() => setDirectoryOpen(false)}
+    />
+  );
+
   if (usePopover) {
     return (
       <>
@@ -296,6 +324,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         </Popover>
         {modeSwitcherDialog}
         {editDialog}
+        {directoryDialog}
       </>
     );
   }
