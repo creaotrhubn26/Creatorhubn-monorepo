@@ -1200,6 +1200,12 @@ type RoleRoomProjectWorkspaceState = {
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [producerWorkflowBootstrapVersion, setProducerWorkflowBootstrapVersion] = useState(0);
   
+  // Mount-fase: før initializeData() er ferdig får URL-state-sync IKKE
+  // lov til å skrive til URL. Uten denne porten strippet URL-write-effekten
+  // ?project=<id> FØR seed-effekten + loadProjects rakk å lese den, og
+  // "Last demo" + dypelenker endte i tom-state "Ingen prosjekt valgt".
+  const [bootstrapComplete, setBootstrapComplete] = useState(false);
+
   // Ref to track current project ID for stale response detection
   const currentProjectIdRef = useRef<string | null>(null);
   const currentProjectRef = useRef<CastingProject | null>(null);
@@ -4367,6 +4373,12 @@ type RoleRoomProjectWorkspaceState = {
   // Skipped entirely when client-portal URL schema owns the query string.
   useEffect(() => {
     if (isExternalClientPortalMode || typeof window === 'undefined') return;
+    // Vent til initializeData()/loadProjects() har kjørt og enten satt
+    // currentProject (fra URL/persisted-state) eller bekreftet at intet
+    // prosjekt finnes. Uten denne sjekken skriver effekten med
+    // desiredProject='' BEFORE seed-effekten leser URL, og ?project=<id>
+    // i delelenke strippes før det får materialisert seg som state.
+    if (!bootstrapComplete) return;
     const params = new URLSearchParams(window.location.search);
     const tabId = TAB_IDS[activeTab];
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
@@ -4395,7 +4407,7 @@ type RoleRoomProjectWorkspaceState = {
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
     window.history.pushState({ rrStateSync: true }, '', nextUrl);
-  }, [activeTab, currentProject?.id, storyArcView, contentProducerPlannerSurface, isExternalClientPortalMode]);
+  }, [bootstrapComplete, activeTab, currentProject?.id, storyArcView, contentProducerPlannerSurface, isExternalClientPortalMode]);
 
   // Rehydrate activeTab + currentProject when the user hits browser
   // back/forward. Without this, pushing URLs only *writes* history
@@ -5268,6 +5280,10 @@ type RoleRoomProjectWorkspaceState = {
         console.error('❌ Error initializing data:', error);
       } finally {
         setProjectsLoading(false);
+        // Nå er enten currentProject satt fra URL/persisted state eller
+        // bekreftet null. Åpne URL-state-sync så fremtidige tab/prosjekt-
+        // bytter får skrive til URL.
+        setBootstrapComplete(true);
       }
     };
 
