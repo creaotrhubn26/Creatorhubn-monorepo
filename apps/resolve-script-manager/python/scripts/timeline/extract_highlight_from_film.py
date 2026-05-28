@@ -480,6 +480,20 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         with open(picks_path, "w") as f:
             json.dump(picks_payload, f, indent=2)
         bridge.log(f"Cached {len(picked)} picks for interactive review → {picks_path}")
+
+        # Lagre ALL scene-detected shots (ikke bare picks) for long-film-build.
+        # Disse trengs for å bygge "ekte" long-film med MELLOM-klipp inkludert.
+        all_shots_payload = {
+            "sourceVideo": video_path,
+            "sourceDurationSec": duration,
+            "fps": fps,
+            "shots": shot_scores,  # ALL detected shots med score + signals + chapter
+            "chapters": sorted(set(chapter_labels.values())) if chapter_labels else [],
+        }
+        all_shots_path = os.path.join(cache_dir, "last_all_shots.json")
+        with open(all_shots_path, "w") as f:
+            json.dump(all_shots_payload, f, indent=2)
+        bridge.log(f"Cached {len(shot_scores)} totale shots → {all_shots_path}")
         bridge.progress(100, 100, "Klar for review")
         bridge.result({
             "reviewMode": True,

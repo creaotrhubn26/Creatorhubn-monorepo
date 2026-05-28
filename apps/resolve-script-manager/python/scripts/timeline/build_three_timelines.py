@@ -76,15 +76,15 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             bridge.warn(f"Highlight build failed: {exc}")
             results["highlight"] = "failed"
 
-    # Long film (via delivery_variants)
+    # Long film (NY: bruker build_long_film_timeline — bygger m/ ALLE shots,
+    # ikke bare picks, så ceremony/vows/speeches kommer hele)
     if wanted.get("longFilm"):
-        bridge.progress(35, 100, "Bygger long-film-timeline …")
+        bridge.progress(35, 100, "Bygger ekte long-film (full ceremony + speeches) …")
         try:
-            mod = load_module("python/scripts/timeline/build_delivery_variants.py")
+            mod = load_module("python/scripts/timeline/build_long_film_timeline.py")
             if mod:
                 mod.run({
-                    "variants": ["long_film"],
-                    "timelinePrefix": project_name or None,
+                    "timelineName": f"{project_name} — Long Film" if project_name else "Long Film",
                 }, False)
                 results["longFilm"] = "ok"
         except SystemExit:

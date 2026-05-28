@@ -2251,6 +2251,20 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": true
+    },
+    {
+      "id": "build_long_film_timeline",
+      "name": "Build Long-Film Timeline",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_long_film_timeline.py",
+      "description": "Ekte wedding-film: full ceremony/vows/speeches + curated dans+reception. Bruker ALLE shots, ikke bare picks.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
     }
   ]
 }
