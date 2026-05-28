@@ -12898,20 +12898,26 @@ type RoleRoomProjectWorkspaceState = {
           ) : (
             <>
               {/* §5.3 ads-økonomi: faktisk annonsekostnad + 20 % påslag, budsjett-tak,
-                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til. */}
-              <Suspense fallback={null}>
-                <ClientEconomyPanel
-                  projectId={currentProject.id}
-                  userRole={isClientReviewerMode ? 'client_reviewer' : 'content_producer'}
-                />
-              </Suspense>
-              {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
-              {!isClientReviewerMode && (
-                <Box sx={{ mb: 2 }}>
+                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til.
+                  KUN for innholdsprodusent-modus eller klient-review (per Daniels krav:
+                  produksjonsteam-økonomi handler om budsjett-pakker, ikke ads-fakturering). */}
+              {(isContentProducerMode || isClientReviewerMode) && (
+                <>
                   <Suspense fallback={null}>
-                    <AdsManagementPanel projectId={currentProject.id} />
+                    <ClientEconomyPanel
+                      projectId={currentProject.id}
+                      userRole={isClientReviewerMode ? 'client_reviewer' : 'content_producer'}
+                    />
                   </Suspense>
-                </Box>
+                  {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
+                  {!isClientReviewerMode && (
+                    <Box sx={{ mb: 2 }}>
+                      <Suspense fallback={null}>
+                        <AdsManagementPanel projectId={currentProject.id} />
+                      </Suspense>
+                    </Box>
+                  )}
+                </>
               )}
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
@@ -12926,8 +12932,14 @@ type RoleRoomProjectWorkspaceState = {
               canSendBudgetReview={canSendBudgetReview}
               productionMode={plannerAudience}
               onProjectUpdated={async (updatedProject) => {
-                setCurrentProject(updatedProject);
-                await loadProjects();
+                // Bare oppdater hvis vi får gyldig prosjekt-objekt — ellers
+                // beholder vi nåværende state. Tidligere kalt loadProjects()
+                // som med "ingen auto-create"-fix kan returnere tom liste
+                // for et øyeblikk og sette currentProject=null → hele
+                // prosjektet "lukket seg" etter "Lagre totalramme"-klikk.
+                if (updatedProject && updatedProject.id) {
+                  setCurrentProject(updatedProject);
+                }
               }}
               onOpenTeam={!isContentProducerMode && !isClientReviewerMode ? () => {
                 navigateToTab(TEAM_TAB_INDEX);
@@ -12985,8 +12997,14 @@ type RoleRoomProjectWorkspaceState = {
               entityOptions={producerWorkflowEntityOptions}
               ownerOptions={producerWorkflowOwnerOptions}
               onProjectUpdated={async (updatedProject) => {
-                setCurrentProject(updatedProject);
-                await loadProjects();
+                // Bare oppdater hvis vi får gyldig prosjekt-objekt — ellers
+                // beholder vi nåværende state. Tidligere kalt loadProjects()
+                // som med "ingen auto-create"-fix kan returnere tom liste
+                // for et øyeblikk og sette currentProject=null → hele
+                // prosjektet "lukket seg" etter "Lagre totalramme"-klikk.
+                if (updatedProject && updatedProject.id) {
+                  setCurrentProject(updatedProject);
+                }
               }}
               onOpenReviews={isContentProducerMode || isClientReviewerMode ? (focus) => {
                 navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX, focus);
