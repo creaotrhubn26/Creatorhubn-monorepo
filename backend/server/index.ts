@@ -113,6 +113,7 @@ import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
+import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31505,6 +31506,9 @@ function requireAdminOrDemoBypass(
   if (isDemoBypassed(req)) return true;
   return Boolean(requireAdminSession(req, res));
 }
+
+// Meta App Review demo for oEmbed Read — egen modul (overlever branch-flips).
+setupOEmbedRoutes({ app, requireAdminOrDemoBypass });
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
