@@ -30,6 +30,7 @@ import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
 import ProjectTabAccessDialog from './components/ProjectTabAccessDialog';
+import ProjectMembersDialog from './components/ProjectMembersDialog';
 import { roleRoomProjectTabConfigService } from './services/roleRoomProjectTabConfigService';
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
 import RoleRoomOnboardingDialog from './components/RoleRoomOnboardingDialog';
@@ -1716,6 +1717,7 @@ function CrewSubPanel({
   const [role, setRole] = useState('');
   const [tabAccessOpen, setTabAccessOpen] = useState(false);
   const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const qc = useQueryClient();
 
   // Seat-status: hvor mange seats er brukt vs. inkludert i abonnementet
@@ -1834,6 +1836,12 @@ function CrewSubPanel({
         </Typography>
         <Stack direction="row" spacing={1}>
           {isProjectLeader && (
+            <Button size="small" startIcon={<GroupIcon />} onClick={() => setMembersOpen(true)}
+                    sx={{ color: '#6d28d9' }}>
+              Medlemmer
+            </Button>
+          )}
+          {isProjectLeader && (
             <Button size="small" startIcon={<TuneIcon />} onClick={() => setTabAccessOpen(true)}
                     sx={{ color: '#6d28d9' }}>
               Tab-tilganger
@@ -1879,6 +1887,17 @@ function CrewSubPanel({
           open={tabAccessOpen}
           onClose={() => setTabAccessOpen(false)}
           projectId={projectId}
+        />
+      )}
+
+      {isProjectLeader && membersOpen && (
+        <ProjectMembersDialog
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+          projectId={projectId}
+          onMembershipChanged={() => {
+            qc.invalidateQueries({ queryKey: ['role-room-seat-status', projectId] });
+          }}
         />
       )}
 

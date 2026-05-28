@@ -283,15 +283,30 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
         }
 
         // Hvor mange brukere er aktivt knyttet til prosjektet?
-        // Eier + alle med casting_user_role (dedup på user_id)
-        const usedRes = await pool.query(
-          `SELECT COUNT(*)::int AS used FROM (
-              SELECT $1::text AS uid
-              UNION
-              SELECT DISTINCT user_id FROM casting_user_roles WHERE project_id = $2
-           ) s`,
-          [ownerUserId, projectId],
-        );
+        // Eier + alle med casting_user_role (deaktiverte ekskludert via
+        // deactivated_at som settes av members-routes). Fallback til å
+        // telle alle hvis kolonnen ikke finnes ennå.
+        let usedRes;
+        try {
+          usedRes = await pool.query(
+            `SELECT COUNT(*)::int AS used FROM (
+                SELECT $1::text AS uid
+                UNION
+                SELECT DISTINCT user_id FROM casting_user_roles
+                  WHERE project_id = $2 AND deactivated_at IS NULL
+             ) s`,
+            [ownerUserId, projectId],
+          );
+        } catch {
+          usedRes = await pool.query(
+            `SELECT COUNT(*)::int AS used FROM (
+                SELECT $1::text AS uid
+                UNION
+                SELECT DISTINCT user_id FROM casting_user_roles WHERE project_id = $2
+             ) s`,
+            [ownerUserId, projectId],
+          );
+        }
         const usedSeats: number = usedRes.rows[0]?.used ?? 1;
 
         // Finn eierens aktive Role Room-abonnement — bestem persona/inkluderte seats
