@@ -15,6 +15,7 @@ import IntimacyCoordinatorPage from './IntimacyCoordinatorPage';
 import KameraFolkVerktoyPage from './KameraFolkVerktoyPage';
 import EtterproduksjonNorgePage from './EtterproduksjonNorgePage';
 import ProduksjonsOSPage from './ProduksjonsOSPage';
+import InnholdsprodusentPage from './InnholdsprodusentPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -76,6 +77,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <EtterproduksjonNorgePage />;
     case 'produksjons-os':
       return <ProduksjonsOSPage />;
+    case 'innholdsprodusent-norge':
+      return <InnholdsprodusentPage />;
     default:
       return null;
   }

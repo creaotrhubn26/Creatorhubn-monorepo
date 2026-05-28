@@ -23,7 +23,8 @@ export type MarketingPageKey =
   | 'intimacy-coordinator-norge'
   | 'kamera-folk-verktoy-2026'
   | 'etterproduksjon-norge-2026'
-  | 'produksjons-os';
+  | 'produksjons-os'
+  | 'innholdsprodusent-norge';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -420,6 +421,31 @@ Det vi ikke er: ikke et regnskapssystem. Ikke et finansieringsverktøy. Ikke et 
 Pre-revenue. Solo-drevet. Privacy + BankID i pipeline. Vi sier dette åpent fordi vi blir infrastruktur, og infrastruktur tåler ingen marketing-overdrivelse.
 
 Hele posisjoneringen: https://theroleroom.com/produksjons-os`,
+  },
+  {
+    key: 'innholdsprodusent-norge',
+    path: '/innholdsprodusent-norge',
+    title: 'Innholdsprodusent-løsningen — ads + content + klient-samarbeid i ett verktøy | The Role Room',
+    description:
+      'For frilans-innholdsprodusenter som jonglerer 4-8 klienter med ads + content + publisering på tvers av Meta, Google, LinkedIn, TikTok. 495 kr per sete per måned med transparent klient-godkjenning.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `Som frilans-innholdsprodusent jonglerer du sannsynligvis 4-8 klienter samtidig.
+
+Du bruker 30-45 min per dag bare på å finne ut hva som er status på en kampanje. Du hopper mellom 6-8 verktøy (Meta, Google, TikTok, Notion, Slack, e-post, Excel). Klienten lurer på hva som ble godkjent, du lurer på det samme.
+
+Det er den smerten innholdsprodusent-løsningen er bygget for.
+
+I ett verktøy:
+- Ads på Meta + Google + LinkedIn + TikTok med spend-sync
+- Content marketing-plan + carousel-generator
+- Direkte Instagram Business-publisering
+- Versjonert klient-godkjenningsflyt (alle i loop)
+- Management fee beregnet transparent — klient ser samme tall som du
+
+495 kr per sete per måned. Eks. mva. Minimum 1 sete.
+
+Hele løsningen: https://theroleroom.com/innholdsprodusent-norge`,
   },
 ];
 
