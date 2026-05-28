@@ -12,6 +12,8 @@
 
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import CheckIcon from "@mui/icons-material/Check";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import {
   executeScript,
   fetchClipDownloadUrls,
@@ -570,7 +572,9 @@ export function RoleRoomProjectSync() {
               borderRadius: 6,
               fontSize: 12,
             }}>
-              <strong>{ingestResult.failed > 0 ? "⚠" : "✓"}</strong>{" "}
+              {ingestResult.failed > 0
+                ? <WarningAmberIcon sx={{ fontSize: 14, verticalAlign: "middle" }} />
+                : <CheckIcon sx={{ fontSize: 14, verticalAlign: "middle" }} />}{" "}
               {ingestResult.imported} klipp importert
               {ingestResult.binsCreated > 0 && `, ${ingestResult.binsCreated} nye bins`}
               {ingestResult.failed > 0 && `, ${ingestResult.failed} feilet`}.
@@ -608,7 +612,9 @@ export function RoleRoomProjectSync() {
               borderRadius: 6,
               fontSize: 12,
             }}>
-              <strong>{binResult.failed > 0 ? "⚠" : "✓"}</strong>{" "}
+              {binResult.failed > 0
+                ? <WarningAmberIcon sx={{ fontSize: 14, verticalAlign: "middle" }} />
+                : <CheckIcon sx={{ fontSize: 14, verticalAlign: "middle" }} />}{" "}
               {binResult.created.length} opprettet
               {binResult.skipped.length > 0 && `, ${binResult.skipped.length} hoppet over (fantes fra før)`}
               {binResult.failed > 0 && `, ${binResult.failed} feilet`}.
@@ -686,7 +692,9 @@ export function RoleRoomProjectSync() {
           borderRadius: 6,
           fontSize: 12,
         }}>
-          <strong>{settingsResult.failed > 0 ? "⚠" : "✓"}</strong>{" "}
+          {settingsResult.failed > 0
+            ? <WarningAmberIcon sx={{ fontSize: 14, verticalAlign: "middle" }} />
+            : <CheckIcon sx={{ fontSize: 14, verticalAlign: "middle" }} />}{" "}
           {settingsResult.applied} satt
           {settingsResult.skipped > 0 && `, ${settingsResult.skipped} allerede korrekt`}
           {settingsResult.failed > 0 && `, ${settingsResult.failed} feilet (Resolve avviste verdien)`}.
@@ -765,20 +773,20 @@ export function RoleRoomProjectSync() {
 
                 {mismatch && (
                   <div style={{ padding: 10, background: "rgba(239,79,111,0.10)", border: "1px solid rgba(239,79,111,0.4)", color: "#ef4f6f", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
-                    ⚠ Standard-mismatch: utstyret er konfigurert for <strong>{expectedStd}</strong>, men filene på kortet er <strong>{actualStd}</strong>.
+                    <WarningAmberIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> Standard-mismatch: utstyret er konfigurert for <strong>{expectedStd}</strong>, men filene på kortet er <strong>{actualStd}</strong>.
                     Sjekk at kameraet ble satt i riktig modus før shoot.
                   </div>
                 )}
 
                 {probeResult.mixedStandards && (
                   <div style={{ padding: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.4)", color: "#a16207", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
-                    ⚠ Blandet format på kortet (PAL + NTSC + Cinema). Resolve-prosjektet må enten settes til dominant standard, eller klippene må konformes ved import.
+                    <WarningAmberIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> Blandet format på kortet (PAL + NTSC + Cinema). Resolve-prosjektet må enten settes til dominant standard, eller klippene må konformes ved import.
                   </div>
                 )}
 
                 {!mismatch && !probeResult.mixedStandards && expectedStd && actualStd === expectedStd && (
                   <div style={{ padding: 10, background: "rgba(74,212,138,0.10)", border: "1px solid rgba(74,212,138,0.4)", color: "#4ad48a", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
-                    ✓ Filer matcher utstyrs-standard ({expectedStd}). Trygt å importere.
+                    <CheckIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> Filer matcher utstyrs-standard ({expectedStd}). Trygt å importere.
                   </div>
                 )}
 
@@ -817,7 +825,7 @@ export function RoleRoomProjectSync() {
                     )}
                     {probeResult.dominantLogCurve.confidence < 0.7 && (
                       <div style={{ marginTop: 6, fontSize: 11, color: "#a16207" }}>
-                        ⚠ Lavt sikkerhetstall — anbefalingen baserer seg på filnavn-mønster, ikke metadata.
+                        <WarningAmberIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> Lavt sikkerhetstall — anbefalingen baserer seg på filnavn-mønster, ikke metadata.
                         Bekreft mot kamera-spesifikasjon før du setter CST.
                       </div>
                     )}
@@ -826,7 +834,7 @@ export function RoleRoomProjectSync() {
 
                 {probeResult.mixedLogCurves && (
                   <div style={{ padding: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.4)", color: "#a16207", borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
-                    ⚠ Blandet log-kurve på kortet — flere kameraer/profiler. Each clip vil kreve eget input transform i Color page.
+                    <WarningAmberIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> Blandet log-kurve på kortet — flere kameraer/profiler. Each clip vil kreve eget input transform i Color page.
                   </div>
                 )}
 
@@ -949,7 +957,7 @@ export function RoleRoomProjectSync() {
             borderRadius: 6,
             fontSize: 12,
           }}>
-            <strong>✓</strong> {analyzeResult.cuts} cuts detektert, {analyzeResult.markersAdded} markører plassert på timeline <code>{analyzeResult.timelineName}</code>.
+            <CheckIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> {analyzeResult.cuts} cuts detektert, {analyzeResult.markersAdded} markører plassert på timeline <code>{analyzeResult.timelineName}</code>.
             {analyzeResult.samplePlan && analyzeResult.samplePlan.length > 0 && (
               <div style={{ marginTop: 8, maxHeight: 160, overflowY: "auto", fontSize: 11, color: "#d8c8e8" }}>
                 {analyzeResult.samplePlan.slice(0, 15).map((p) => (
@@ -1041,7 +1049,7 @@ export function RoleRoomProjectSync() {
                   <strong>{matchResult.sourceCount}</strong> raw-klipp · <strong>{matchResult.sourceFrameCount}</strong> sample-frames indeksert
                 </div>
                 <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 8 }}>
-                  {matchResult.confidenceBreakdown.high ? <span style={{ color: "#4ad48a" }}>✓ {matchResult.confidenceBreakdown.high} høy</span> : null}
+                  {matchResult.confidenceBreakdown.high ? <span style={{ color: "#4ad48a", display: "inline-flex", alignItems: "center", gap: 2 }}><CheckIcon sx={{ fontSize: 12 }} /> {matchResult.confidenceBreakdown.high} høy</span> : null}
                   {matchResult.confidenceBreakdown.medium ? <span style={{ color: "#f59e0b" }}>~ {matchResult.confidenceBreakdown.medium} medium</span> : null}
                   {matchResult.confidenceBreakdown.low ? <span style={{ color: "#ef4f6f" }}>? {matchResult.confidenceBreakdown.low} lav</span> : null}
                   {matchResult.confidenceBreakdown.none ? <span style={{ color: "#8674a8" }}>× {matchResult.confidenceBreakdown.none} ingen</span> : null}

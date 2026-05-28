@@ -8,6 +8,13 @@ import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { executeScript, onScriptEvent } from "../api";
 import type { ScriptEvent } from "../types";
+import SearchIcon from "@mui/icons-material/Search";
+import WarningIcon from "@mui/icons-material/Warning";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
+import StopIcon from "@mui/icons-material/Stop";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import PlaceIcon from "@mui/icons-material/Place";
 
 interface Props {
   onClose: () => void;
@@ -90,7 +97,9 @@ export function QcSourceVideoModal({ onClose }: Props) {
     <div className="modal-backdrop" onClick={!busy ? onClose : undefined}>
       <div className="modal" onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 720, width: "min(96vw, 720px)", maxHeight: "90vh", overflowY: "auto" }}>
-        <h2>🔍 QC av video</h2>
+        <h2 style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <SearchIcon sx={{ fontSize: 22 }} /> QC av video
+        </h2>
         <p style={{ fontSize: 12, opacity: 0.75, marginTop: -4 }}>
           Sjekker for svarte intervaller + stille perioder. Bruker ffmpeg lokalt — krever ikke Resolve.
         </p>
@@ -104,8 +113,10 @@ export function QcSourceVideoModal({ onClose }: Props) {
         </div>
 
         {videoPath && !busy && !result && (
-          <button className="primary" onClick={runQc} style={{ width: "100%", marginTop: 12 }}>
-            🔍 Start QC
+          <button className="primary" onClick={runQc}
+                  style={{ width: "100%", marginTop: 12, display: "inline-flex",
+                            alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <SearchIcon sx={{ fontSize: 16 }} /> Start QC
           </button>
         )}
 
@@ -116,8 +127,9 @@ export function QcSourceVideoModal({ onClose }: Props) {
                               transition: "width 0.3s" }} />
             </div>
             <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{msg} — {pct}%</div>
-            <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8, fontStyle: "italic" }}>
-              ⚠️ Skanning av lang film kan ta 1-3 min (avhenger av varighet)
+            <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8, fontStyle: "italic",
+                            display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <WarningIcon sx={{ fontSize: 14 }} /> Skanning av lang film kan ta 1-3 min (avhenger av varighet)
             </div>
           </div>
         )}
@@ -138,10 +150,15 @@ export function QcSourceVideoModal({ onClose }: Props) {
                               result.verdict === "clean" ? "#4ad48a"
                                 : result.verdict === "minor_issues" ? "#f0a500" : "#ef4f6f"}`,
                             padding: 14, borderRadius: 8 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>
-                {result.verdict === "clean" ? "🟢 Clean — ingen problemer"
-                  : result.verdict === "minor_issues" ? "🟡 Minor issues"
-                  : "🔴 Major issues"}
+              <div style={{ fontSize: 14, fontWeight: 600, display: "inline-flex",
+                              alignItems: "center", gap: 6 }}>
+                {result.verdict === "clean" ? (
+                  <><CheckCircleIcon sx={{ fontSize: 16, color: "#4ad48a" }} /> Clean — ingen problemer</>
+                ) : result.verdict === "minor_issues" ? (
+                  <><WarningIcon sx={{ fontSize: 16, color: "#f0a500" }} /> Minor issues</>
+                ) : (
+                  <><ErrorIcon sx={{ fontSize: 16, color: "#ef4f6f" }} /> Major issues</>
+                )}
               </div>
               <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
                 Varighet: {fmtTime(result.durationSec)} ·{" "}
@@ -152,8 +169,9 @@ export function QcSourceVideoModal({ onClose }: Props) {
 
             {result.blackIntervals.length > 0 && (
               <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-                  ⬛ Svarte intervaller ({result.blackIntervals.length})
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8,
+                                 display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <StopIcon sx={{ fontSize: 14 }} /> Svarte intervaller ({result.blackIntervals.length})
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4,
                                 fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
@@ -174,8 +192,9 @@ export function QcSourceVideoModal({ onClose }: Props) {
 
             {result.silentIntervals.length > 0 && (
               <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-                  🎵 Stille intervaller ({result.silentIntervals.length})
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8,
+                                 display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <MusicNoteIcon sx={{ fontSize: 14 }} /> Stille intervaller ({result.silentIntervals.length})
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4,
                                 fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
@@ -211,8 +230,8 @@ export function QcSourceVideoModal({ onClose }: Props) {
                 } catch (e) {
                   alert(`Feil: ${e}\n\nSjekk at Resolve er åpen + timeline '${videoPath.split("/").pop()?.replace(/\.[^.]+$/, "")}' eksisterer.`);
                 }
-              }}>
-                📍 Legg markers i Resolve
+              }} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <PlaceIcon sx={{ fontSize: 14 }} /> Legg markers i Resolve
               </button>
             </div>
           </div>

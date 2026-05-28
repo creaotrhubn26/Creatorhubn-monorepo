@@ -74,17 +74,21 @@ export function loadGlobalActivity(): ActivityEntry[] {
   }
 }
 
+/**
+ * MUI icon names per activity kind. HomeView maps these to actual icon
+ * components via the ActivityIcon helper in HomeView.tsx.
+ */
 export const ACTIVITY_ICONS: Record<ActivityKind, string> = {
-  extract: "🎬",
-  multicam_scan: "📷",
-  audio_match: "🔊",
-  face_cluster: "👤",
-  music_id: "🎵",
-  backup: "💾",
-  resolve_bins: "📁",
-  timelines_built: "🎞",
-  qc_run: "🔍",
-  claude_suggestion: "✨",
-  wizard_step: "🧙",
-  manual_edit: "✏️",
+  extract: "Movie",
+  multicam_scan: "CameraAlt",
+  audio_match: "VolumeUp",
+  face_cluster: "Person",
+  music_id: "MusicNote",
+  backup: "Save",
+  resolve_bins: "Folder",
+  timelines_built: "VideoLibrary",
+  qc_run: "Search",
+  claude_suggestion: "AutoAwesome",
+  wizard_step: "AutoFixHigh",
+  manual_edit: "Edit",
 };

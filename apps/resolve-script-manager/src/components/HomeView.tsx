@@ -27,10 +27,48 @@ import {
   IconHeart,
   IconPlay,
 } from "./Icons";
+import ChurchIcon from "@mui/icons-material/Church";
+import SearchIcon from "@mui/icons-material/Search";
+import CloseIcon from "@mui/icons-material/Close";
+import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowRight from "@mui/icons-material/KeyboardArrowRight";
+import MovieIcon from "@mui/icons-material/Movie";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import PersonIcon from "@mui/icons-material/Person";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import SaveIcon from "@mui/icons-material/Save";
+import FolderIcon from "@mui/icons-material/Folder";
+import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
+import EditIcon from "@mui/icons-material/Edit";
+import CircleIcon from "@mui/icons-material/Circle";
+import type { SvgIconComponent } from "@mui/icons-material";
 import { RoleRoomProjectSync } from "./RoleRoomProjectSync";
 import { executeScript } from "../api";
 import { loadProjectActivity, logActivity, ACTIVITY_ICONS } from "../lib/projectActivity";
 import type { ActivityKind } from "../lib/projectActivity";
+
+const ACTIVITY_ICON_MAP: Record<string, SvgIconComponent> = {
+  Movie: MovieIcon,
+  CameraAlt: CameraAltIcon,
+  VolumeUp: VolumeUpIcon,
+  Person: PersonIcon,
+  MusicNote: MusicNoteIcon,
+  Save: SaveIcon,
+  Folder: FolderIcon,
+  VideoLibrary: VideoLibraryIcon,
+  Search: SearchIcon,
+  AutoAwesome: AutoAwesomeIcon,
+  AutoFixHigh: AutoFixHighIcon,
+  Edit: EditIcon,
+};
+
+function ActivityIcon({ name }: { name: string }) {
+  const Icon = ACTIVITY_ICON_MAP[name] ?? CircleIcon;
+  return <Icon sx={{ fontSize: 14 }} />;
+}
 
 type IconCmp = (p: { size?: number }) => JSX.Element;
 
@@ -232,7 +270,9 @@ export function HomeView({
           <IconHeart size={24} />
         </div>
         <div className="home-new-project-body">
-          <div className="home-new-project-title">💒 Bryllups-veiviser</div>
+          <div className="home-new-project-title" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <ChurchIcon sx={{ fontSize: 18 }} /> Bryllups-veiviser
+          </div>
           <div className="home-new-project-desc">
             Steg-for-steg: mappa → multicam → ekstern lyd → sanger → personer → stil → live-arbeid → LUT. Claude lærer.
           </div>
@@ -332,8 +372,8 @@ export function HomeView({
       </div>
 
       <div className="home-footer-hints" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <button className="home-link-button" onClick={onOpenQcVideo}>
-          🔍 QC sjekk av video (gaps + stille) →
+        <button className="home-link-button" onClick={onOpenQcVideo} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <SearchIcon sx={{ fontSize: 16 }} /> QC sjekk av video (gaps + stille) →
         </button>
         <button className="home-link-button" onClick={onOpenAdvanced}>
           Avansert: kjør enkelt-script eller se pipeline-detaljer →
@@ -374,7 +414,7 @@ function SavedProjectRow({ project, onOpen, onRemove }:
                   style={{ padding: "0 12px", fontSize: 12,
                             background: expanded ? "var(--accent-dim)" : "transparent",
                             border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer" }}>
-            {expanded ? "▾" : "▸"}
+            {expanded ? <KeyboardArrowDown sx={{ fontSize: 16 }} /> : <KeyboardArrowRight sx={{ fontSize: 16 }} />}
           </button>
         )}
         <button onClick={() => {
@@ -384,7 +424,7 @@ function SavedProjectRow({ project, onOpen, onRemove }:
                 style={{ padding: "0 12px", color: "var(--text-dim)", fontSize: 16,
                           background: "transparent", border: "1px solid var(--border)",
                           borderRadius: 8, cursor: "pointer" }}>
-          ✕
+          <CloseIcon sx={{ fontSize: 16 }} />
         </button>
       </div>
       {expanded && activity.length > 0 && (
@@ -396,7 +436,9 @@ function SavedProjectRow({ project, onOpen, onRemove }:
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {activity.slice(0, 15).map((a, i) => (
               <div key={i} style={{ display: "flex", gap: 8, fontSize: 11 }}>
-                <span style={{ fontSize: 14, minWidth: 18 }}>{ACTIVITY_ICONS[a.kind] || "•"}</span>
+                <span style={{ minWidth: 18, display: "inline-flex", alignItems: "center" }}>
+                  <ActivityIcon name={ACTIVITY_ICONS[a.kind] || "Circle"} />
+                </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div>{a.label}</div>
                   {a.summary && (

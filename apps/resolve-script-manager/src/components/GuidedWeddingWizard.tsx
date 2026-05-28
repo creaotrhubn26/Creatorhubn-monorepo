@@ -20,6 +20,31 @@ import { invoke } from "@tauri-apps/api/core";
 import { executeScript, onScriptEvent, listMountedCards, runHealthCheck, launchResolve, convertFileSrc } from "../api";
 import type { ScriptEvent, MountedCard, HealthStatus } from "../types";
 import { logActivity } from "../lib/projectActivity";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import WarningIcon from "@mui/icons-material/Warning";
+import ErrorIcon from "@mui/icons-material/Error";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import CheckIcon from "@mui/icons-material/Check";
+import SaveIcon from "@mui/icons-material/Save";
+import StorageIcon from "@mui/icons-material/Storage";
+import FolderIcon from "@mui/icons-material/Folder";
+import CloseIcon from "@mui/icons-material/Close";
+import SearchIcon from "@mui/icons-material/Search";
+import LightbulbIcon from "@mui/icons-material/Lightbulb";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import GroupIcon from "@mui/icons-material/Group";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
+import MovieIcon from "@mui/icons-material/Movie";
+import BoltIcon from "@mui/icons-material/Bolt";
+import BalanceIcon from "@mui/icons-material/Balance";
+import PaletteIcon from "@mui/icons-material/Palette";
+import VideocamIcon from "@mui/icons-material/Videocam";
+import ConstructionIcon from "@mui/icons-material/Construction";
 
 interface Props {
   onClose: () => void;
@@ -285,9 +310,12 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                            : "#ef4f6f"
                        }`,
                        fontSize: 12 }}>
-          <span style={{ fontSize: 14 }}>
-            {resolveHealth?.resolveRunning && resolveHealth?.projectOpen ? "🟢"
-              : resolveHealth?.resolveRunning ? "🟡" : "🔴"}
+          <span style={{ display: "inline-flex", alignItems: "center" }}>
+            {resolveHealth?.resolveRunning && resolveHealth?.projectOpen
+              ? <CheckCircleIcon sx={{ fontSize: 16, color: "#4ad48a" }} />
+              : resolveHealth?.resolveRunning
+              ? <WarningIcon sx={{ fontSize: 16, color: "#f0a500" }} />
+              : <ErrorIcon sx={{ fontSize: 16, color: "#ef4f6f" }} />}
           </span>
           <span style={{ flex: 1 }}>
             <strong>DaVinci Resolve:</strong>{" "}
@@ -300,15 +328,17 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
               : "Ikke kjører — åpne Resolve med et prosjekt"}
           </span>
           <button onClick={checkResolve} disabled={resolveChecking}
-                  style={{ fontSize: 11, padding: "4px 10px" }}>
-            {resolveChecking ? "⏳" : "🔄 Sjekk"}
+                  style={{ fontSize: 11, padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            {resolveChecking
+              ? <HourglassEmptyIcon sx={{ fontSize: 12 }} />
+              : <><RefreshIcon sx={{ fontSize: 12 }} /> Sjekk</>}
           </button>
           {!resolveHealth?.resolveRunning && (
             <button onClick={async () => {
               try { await launchResolve(); setTimeout(checkResolve, 3000); }
               catch { /* noop */ }
-            }} style={{ fontSize: 11, padding: "4px 10px" }}>
-              ▶ Åpne Resolve
+            }} style={{ fontSize: 11, padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <PlayArrowIcon sx={{ fontSize: 12 }} /> Åpne Resolve
             </button>
           )}
         </div>
@@ -339,8 +369,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
 
             {mountedCards.length > 0 && (
               <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-                  📷 Tilkoblede kort/SSD-er:
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8,
+                                display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <CameraAltIcon sx={{ fontSize: 14 }} /> Tilkoblede kort/SSD-er:
                 </div>
                 {mountedCards.map((c) => {
                   const added = sources.find((s) => s.path === c.mount_path);
@@ -366,7 +397,7 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                           + Legg til
                         </button>
                       ) : (
-                        <span style={{ fontSize: 11, color: "#4ad48a" }}>✓ Lagt til</span>
+                        <span style={{ fontSize: 11, color: "#4ad48a", display: "inline-flex", alignItems: "center", gap: 2 }}><CheckIcon sx={{ fontSize: 12 }} /> Lagt til</span>
                       )}
                     </div>
                   );
@@ -382,8 +413,8 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                 }
               }}>+ Legg til mappe</button>
               <button onClick={() => listMountedCards().then(setMountedCards)}
-                      style={{ fontSize: 11 }}>
-                🔄 Re-skann
+                      style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <RefreshIcon sx={{ fontSize: 12 }} /> Re-skann
               </button>
             </div>
 
@@ -395,15 +426,21 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                 {sources.map((s, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 8,
                                           padding: "4px 6px", fontSize: 12 }}>
-                    <span style={{ fontSize: 14 }}>
-                      {s.role === "card" ? "💾" : s.role === "ssd" ? "🗄" : "📁"}
+                    <span style={{ display: "inline-flex", alignItems: "center" }}>
+                      {s.role === "card"
+                        ? <SaveIcon sx={{ fontSize: 14 }} />
+                        : s.role === "ssd"
+                        ? <StorageIcon sx={{ fontSize: 14 }} />
+                        : <FolderIcon sx={{ fontSize: 14 }} />}
                     </span>
                     <span style={{ flex: 1, minWidth: 0, overflow: "hidden",
                                     textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {s.label || s.path}
                     </span>
                     <button onClick={() => setSources((p) => p.filter((_, idx) => idx !== i))}
-                            style={{ fontSize: 11, padding: "2px 8px" }}>✕</button>
+                            style={{ fontSize: 11, padding: "2px 8px", display: "inline-flex", alignItems: "center" }}>
+                      <CloseIcon sx={{ fontSize: 12 }} />
+                    </button>
                   </div>
                 ))}
 
@@ -444,7 +481,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                       setSourceScanBusy(false);
                     }
                   }}>
-                    🔍 Skanne alle kilder + identifiser kameraer
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <SearchIcon sx={{ fontSize: 14 }} /> Skanne alle kilder + identifiser kameraer
+                    </span>
                   </button>
                 )}
               </div>
@@ -548,7 +587,7 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                         } catch { /* noop */ }
                         setBenchmarkBusy(false);
                       }}>
-                        {benchmarkBusy ? "⏳" : "Test hastighet"}
+                        {benchmarkBusy ? <HourglassEmptyIcon sx={{ fontSize: 14 }} /> : "Test hastighet"}
                       </button>
                     )}
                   </div>
@@ -568,15 +607,18 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
             )}
 
             <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
-                            background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
-              💡 Vinkel-tilordningen brukes til å lage Resolve-bins automatisk.
-              Si fra hvis jeg gjettet feil — jeg lærer.
+                            background: "var(--bg-3)", padding: 10, borderRadius: 6,
+                            display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <LightbulbIcon sx={{ fontSize: 14, flexShrink: 0, marginTop: "1px" }} />
+              <span>Vinkel-tilordningen brukes til å lage Resolve-bins automatisk.
+              Si fra hvis jeg gjettet feil — jeg lærer.</span>
             </div>
 
             {backupBusy && (
               <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-                  📦 Backup pågår…
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6,
+                                display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Inventory2Icon sx={{ fontSize: 14 }} /> Backup pågår…
                 </div>
                 <div style={{ height: 6, background: "var(--bg-4)", borderRadius: 3,
                                 overflow: "hidden", marginBottom: 6 }}>
@@ -591,7 +633,7 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
               <div style={{ background: "rgba(74, 212, 138, 0.10)",
                               border: "1px solid #4ad48a", padding: 12, borderRadius: 8,
                               fontSize: 12 }}>
-                ✓ Backup ferdig: <strong>{backupResult.filesCount} filer</strong> kopiert til
+                <CheckIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> Backup ferdig: <strong>{backupResult.filesCount} filer</strong> kopiert til
                 <br />
                 <code style={{ fontSize: 11, opacity: 0.8 }}>{backupResult.projectRoot}</code>
               </div>
@@ -666,7 +708,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                 setStep("material");
               }}>
                 {wantBackup && backupTarget && !backupResult
-                  ? "📦 Backup + Neste →"
+                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Inventory2Icon sx={{ fontSize: 14 }} /> Backup + Neste →
+                    </span>
                   : "Neste: Multicam-scan →"}
               </button>
             </div>
@@ -689,8 +733,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
             </div>
 
             {!scanResult && !scanning && folder && (
-              <button className="primary" onClick={startScan}>
-                🔍 Skanne mappa
+              <button className="primary" onClick={startScan}
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <SearchIcon sx={{ fontSize: 14 }} /> Skanne mappa
               </button>
             )}
 
@@ -790,8 +835,10 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                 </div>
 
                 <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
-                               background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
-                  💡 Hvis jeg gjør feil — korriger det. Jeg lærer av valgene dine.
+                               background: "var(--bg-3)", padding: 10, borderRadius: 6,
+                               display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <LightbulbIcon sx={{ fontSize: 14, flexShrink: 0, marginTop: "1px" }} />
+                  <span>Hvis jeg gjør feil — korriger det. Jeg lærer av valgene dine.</span>
                 </div>
               </>
             )}
@@ -881,7 +928,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                       setMatching(false);
                     }
                   }}>
-                    🔊 Match audio mot klipp
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <VolumeUpIcon sx={{ fontSize: 14 }} /> Match audio mot klipp
+                    </span>
                   </button>
                 )}
 
@@ -933,8 +982,8 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                               setMatchOverrides(prev => ({ ...prev, [i]: "wrong" }));
                               recordLearning(`Steg 2: Avvist match (conf ${(m.confidence * 100).toFixed(0)}%): ${ext} ↔ ${clip}`);
                             }} title="Feil match — Claude lærer"
-                                     style={{ padding: "2px 8px", fontSize: 11 }}>
-                              ✕
+                                     style={{ padding: "2px 8px", fontSize: 11, display: "inline-flex", alignItems: "center" }}>
+                              <CloseIcon sx={{ fontSize: 12 }} />
                             </button>
                           </div>
                         );
@@ -952,8 +1001,10 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                 )}
 
                 <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
-                               background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
-                  💡 Hvis jeg matcher feil — klikk ✕. Jeg lærer å unngå lignende feil neste gang.
+                               background: "var(--bg-3)", padding: 10, borderRadius: 6,
+                               display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <LightbulbIcon sx={{ fontSize: 14, flexShrink: 0, marginTop: "1px" }} />
+                  <span>Hvis jeg matcher feil — klikk lukk-knappen. Jeg lærer å unngå lignende feil neste gang.</span>
                 </div>
               </>
             )}
@@ -1055,8 +1106,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                         <option value="exit">Avslutning</option>
                       </select>
                       <button onClick={() => setWishedSongs((prev) => prev.filter(x => x.id !== s.id))}
-                              title="Fjern" style={{ padding: "4px 8px", fontSize: 12 }}>
-                        ✕
+                              title="Fjern" style={{ padding: "4px 8px", fontSize: 12,
+                                                      display: "inline-flex", alignItems: "center" }}>
+                        <CloseIcon sx={{ fontSize: 12 }} />
                       </button>
                     </div>
                   ))}
@@ -1129,9 +1181,15 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
               }}
               style={{ padding: "10px 14px" }}
             >
-              {musicSuggestBusy ? "✨ Henter forslag…"
-                : !culture ? "Velg kultur først"
-                : `✨ Få anbefalinger for ${culture === "annet" ? cultureOther || "kultur" : culture}`}
+              {musicSuggestBusy ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 14 }} /> Henter forslag…
+                </span>
+              ) : !culture ? "Velg kultur først" : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 14 }} /> Få anbefalinger for {culture === "annet" ? cultureOther || "kultur" : culture}
+                </span>
+              )}
             </button>
 
             {musicSuggestError && (
@@ -1142,8 +1200,10 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
             )}
 
             <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
-                           background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
-              💡 AI-forslag kan være feil. Fjern de som ikke passer — jeg lærer hva du foretrekker.
+                           background: "var(--bg-3)", padding: 10, borderRadius: 6,
+                           display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <LightbulbIcon sx={{ fontSize: 14, flexShrink: 0, marginTop: "1px" }} />
+              <span>AI-forslag kan være feil. Fjern de som ikke passer — jeg lærer hva du foretrekker.</span>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
@@ -1204,7 +1264,9 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                   }
                 }}
               >
-                👥 Skanne ansikter
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <GroupIcon sx={{ fontSize: 14 }} /> Skanne ansikter
+                </span>
               </button>
             )}
 
@@ -1269,9 +1331,11 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
             )}
 
             <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
-                           background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
-              💡 Du kan hoppe over personer du ikke kjenner. Claude bruker label-ene
-              til å prioritere klipp i highlight (f.eks. flere shot av brudens mor).
+                           background: "var(--bg-3)", padding: 10, borderRadius: 6,
+                           display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <LightbulbIcon sx={{ fontSize: 14, flexShrink: 0, marginTop: "1px" }} />
+              <span>Du kan hoppe over personer du ikke kjenner. Claude bruker label-ene
+              til å prioritere klipp i highlight (f.eks. flere shot av brudens mor).</span>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
@@ -1297,22 +1361,22 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
               {([
-                { id: "storytelling", icon: "📖", name: "Storytelling",
+                { id: "storytelling", Icon: MenuBookIcon, name: "Storytelling",
                   desc: "Rolig tempo, mer dialog/tale, kronologisk. Familie-vekt." },
-                { id: "cinematic", icon: "🎬", name: "Cinematic",
+                { id: "cinematic", Icon: MovieIcon, name: "Cinematic",
                   desc: "Slow-mo, bokeh, color-grade. Visuell vekt over hastighet." },
-                { id: "energetic", icon: "⚡", name: "Energisk",
+                { id: "energetic", Icon: BoltIcon, name: "Energisk",
                   desc: "Kort cuts, beat-sync, dans-fokus. Høyere BPM, mer action." },
-                { id: "balanced", icon: "⚖", name: "Balansert",
+                { id: "balanced", Icon: BalanceIcon, name: "Balansert",
                   desc: "Storytelling + energi mix. Default for de fleste bryllup." },
-              ] as Array<{ id: Style; icon: string; name: string; desc: string }>).map((opt) => (
+              ] as Array<{ id: Style; Icon: typeof MenuBookIcon; name: string; desc: string }>).map((opt) => (
                 <button key={opt.id}
                         onClick={() => setChosenStyle(opt.id)}
                         className={chosenStyle === opt.id ? "primary" : ""}
                         style={{ display: "flex", flexDirection: "column",
                                   alignItems: "flex-start", gap: 4, padding: 14,
                                   textAlign: "left" }}>
-                  <div style={{ fontSize: 18 }}>{opt.icon}</div>
+                  <div><opt.Icon sx={{ fontSize: 20 }} /></div>
                   <div style={{ fontWeight: 600 }}>{opt.name}</div>
                   <div style={{ fontSize: 11, opacity: 0.8, lineHeight: 1.4 }}>{opt.desc}</div>
                 </button>
@@ -1428,8 +1492,8 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                   unsubProm.then((u) => u());
                   setLiveRunning(false);
                 }
-              }}>
-                🎬 Start Claude
+              }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <MovieIcon sx={{ fontSize: 14 }} /> Start Claude
               </button>
             )}
 
@@ -1438,8 +1502,9 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                 <div style={{ display: "flex", justifyContent: "space-between",
                                 fontSize: 12, marginBottom: 6 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {liveRunning ? <span style={{ color: "#f0a500" }}>🟡</span>
-                                  : <span style={{ color: "#4ad48a" }}>🟢</span>}
+                    {liveRunning
+                      ? <WarningIcon sx={{ fontSize: 14, color: "#f0a500" }} />
+                      : <CheckCircleIcon sx={{ fontSize: 14, color: "#4ad48a" }} />}
                     {liveRunning ? "Claude redigerer …" : "Ferdig"}
                   </span>
                   <span>{liveShots.length > 0 ? `${liveShots.length} skann` : `${livePct}%`}</span>
@@ -1464,8 +1529,10 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                           const m = Math.floor(sec / 60); const ss = Math.floor(sec % 60);
                           return `${m}:${String(ss).padStart(2, "0")}`;
                         };
-                        const status = s.accepted === true ? "✓ valgt"
-                          : s.accepted === false ? "✕ skip"
+                        const status: React.ReactNode = s.accepted === true
+                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}><CheckIcon sx={{ fontSize: 10 }} /> valgt</span>
+                          : s.accepted === false
+                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}><CloseIcon sx={{ fontSize: 10 }} /> skip</span>
                           : "skann…";
                         const borderColor = s.accepted === true ? "#4ad48a"
                           : s.accepted === false ? "#3a2548"
@@ -1484,8 +1551,8 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                                       style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                               : <div style={{ width: "100%", height: "100%",
                                                 display: "flex", alignItems: "center",
-                                                justifyContent: "center", fontSize: 16 }}>
-                                  🎬
+                                                justifyContent: "center" }}>
+                                  <MovieIcon sx={{ fontSize: 20 }} />
                                 </div>}
                             <div style={{ position: "absolute", bottom: 0, left: 0, right: 0,
                                             background: "rgba(0,0,0,0.7)", padding: "2px 4px",
@@ -1525,8 +1592,10 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
             )}
 
             <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
-                            background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
-              💡 Etter dette skannes filmen for log-gamma + LUT-anbefaling.
+                            background: "var(--bg-3)", padding: 10, borderRadius: 6,
+                            display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <LightbulbIcon sx={{ fontSize: 14, flexShrink: 0, marginTop: "1px" }} />
+              <span>Etter dette skannes filmen for log-gamma + LUT-anbefaling.</span>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
@@ -1566,8 +1635,8 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                   if (val) setLogGamma(val);
                 } catch { /* noop */ }
                 setLogCheckBusy(false);
-              }}>
-                🎨 Sjekk log-gamma
+              }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <PaletteIcon sx={{ fontSize: 14 }} /> Sjekk log-gamma
               </button>
             )}
 
@@ -1579,8 +1648,12 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
               <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
                 <div style={{ fontSize: 13, marginBottom: 8 }}>
                   <strong>Resultat:</strong> {logGamma.isLog
-                    ? <span style={{ color: "#f0a500" }}>📹 Log-gamma oppdaget</span>
-                    : <span style={{ color: "#4ad48a" }}>✓ Allerede gradet ({logGamma.profile})</span>}
+                    ? <span style={{ color: "#f0a500", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <VideocamIcon sx={{ fontSize: 14 }} /> Log-gamma oppdaget
+                      </span>
+                    : <span style={{ color: "#4ad48a", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <CheckIcon sx={{ fontSize: 14 }} /> Allerede gradet ({logGamma.profile})
+                      </span>}
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 8 }}>
                   Profil: {logGamma.profile}
@@ -1781,7 +1854,7 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
         {/* Catch-all (skulle aldri trigge) */}
         {!["material","audio","music","persons","style","live","color"].includes(step) && (
           <div style={{ padding: 32, textAlign: "center", opacity: 0.7 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
+            <div style={{ marginBottom: 12 }}><ConstructionIcon sx={{ fontSize: 48 }} /></div>
             <div style={{ fontSize: 15, marginBottom: 6 }}>
               <strong>Steg {currentStepN}: {STEPS[currentStepN - 1].label}</strong>
             </div>
