@@ -700,8 +700,25 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const toggleChapter = useCallback((ch: string) => {
     setIncludedChapters((prev) => {
       const next = new Set(prev);
-      if (next.has(ch)) next.delete(ch);
-      else next.add(ch);
+      const wasIncluded = next.has(ch);
+      if (wasIncluded) {
+        next.delete(ch);
+        // Bruker fjernet et helt kapittel — Claude bør lære
+        try {
+          const entry = {
+            ts: Date.now(),
+            kind: "manual_skip" as const,
+            chapter: ch,
+            note: `Bruker fjernet kapitlet "${ch}" manuelt`,
+          };
+          const raw = localStorage.getItem("trrpa.learnings.global");
+          const list = raw ? JSON.parse(raw) : [];
+          list.unshift(entry);
+          localStorage.setItem("trrpa.learnings.global", JSON.stringify(list.slice(0, 200)));
+        } catch { /* non-critical */ }
+      } else {
+        next.add(ch);
+      }
       return next;
     });
   }, []);
@@ -1025,7 +1042,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
         : "",
     }));
     const systemPrompt = `Du er en AI Creative Director som re-ordner picks for å lage en alternativ edit i en spesifikk stil. Du må returnere en gyldig sekvens av pick-indeksene (subset av tilgjengelige picks), i den rekkefølgen de skal spille av.
-
+${buildLearningsSummary()}
 Tilgjengelige picks (${pickSummary.length} stk):
 ${pickSummary.map(p => `  shot#${p.index}: ${p.duration.toFixed(2)}s, chapter=${p.chapter}, score=${p.score.toFixed(2)}, signals[${p.signals}]`).join("\n")}
 
@@ -1101,8 +1118,9 @@ Du MÅ kalle generate_alternate_edit-verktøyet med en re-ordned pickOrder + rat
             .join(",")
         : "",
     }));
+    const learnings = buildLearningsSummary();
     const systemPrompt = `Du er en AI Creative Director som ser etter konkrete forbedringer i en wedding-highlight. Du skal returnere NØYAKTIG 3 actionable forslag basert på sekvensen og signal-data.
-
+${learnings}
 Sekvens (${filteredPicks.length} picks):
 ${pickSummary.map(p => `  pos ${p.pos}: shot#${p.index} chapter=${p.chapter} ${p.duration.toFixed(2)}s score=${p.score.toFixed(2)} signals[${p.topSignals}]`).join("\n")}
 
@@ -1186,6 +1204,72 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
     }
   }, [suggBusy, filteredPicks, projectTitle, totalDuration, balance]);
 
+  // ─── Learning store: lagrer beslutninger + bygger lærdom-string for Claude ───
+  // Pure frontend (localStorage). Global key + per-project key.
+  type Decision = {
+    ts: number;
+    kind: "suggestion_accepted" | "suggestion_rejected" | "manual_trim"
+        | "manual_skip" | "manual_reorder" | "wishes_applied";
+    chapter?: string;
+    action?: string;
+    note?: string;       // kort norsk-tekst som beskriver hva som skjedde
+  };
+  const recordDecision = useCallback((d: Omit<Decision, "ts">) => {
+    const entry: Decision = { ts: Date.now(), ...d };
+    try {
+      const sourceKey = payload?.sourceVideo
+        ? `trrpa.learnings.project.${payload.sourceVideo}` : null;
+      const writeTo = (key: string) => {
+        const raw = localStorage.getItem(key);
+        const list = (raw ? JSON.parse(raw) : []) as Decision[];
+        list.unshift(entry);
+        localStorage.setItem(key, JSON.stringify(list.slice(0, 200)));
+      };
+      writeTo("trrpa.learnings.global");
+      if (sourceKey) writeTo(sourceKey);
+    } catch { /* non-critical */ }
+  }, [payload]);
+
+  // Bygg en kort summary som injiseres i Claude-prompts.
+  const buildLearningsSummary = useCallback((): string => {
+    try {
+      const sourceKey = payload?.sourceVideo
+        ? `trrpa.learnings.project.${payload.sourceVideo}` : null;
+      const local = sourceKey ? JSON.parse(localStorage.getItem(sourceKey) || "[]") as Decision[] : [];
+      const global = JSON.parse(localStorage.getItem("trrpa.learnings.global") || "[]") as Decision[];
+      if (local.length === 0 && global.length === 0) return "";
+
+      // Aggregate kjente mønstre
+      const recent = [...local.slice(0, 40), ...global.slice(0, 60)];
+      const rejectedActions: Record<string, number> = {};
+      const acceptedActions: Record<string, number> = {};
+      const skippedChapters: Record<string, number> = {};
+      for (const d of recent) {
+        if (d.kind === "suggestion_rejected" && d.action)
+          rejectedActions[d.action] = (rejectedActions[d.action] ?? 0) + 1;
+        if (d.kind === "suggestion_accepted" && d.action)
+          acceptedActions[d.action] = (acceptedActions[d.action] ?? 0) + 1;
+        if (d.kind === "manual_skip" && d.chapter)
+          skippedChapters[d.chapter] = (skippedChapters[d.chapter] ?? 0) + 1;
+      }
+      const lines: string[] = [];
+      for (const [act, n] of Object.entries(rejectedActions)) {
+        if (n >= 2) lines.push(`Brukeren avviser ofte "${act}"-forslag (${n} ganger). Foreslå dette varsomt.`);
+      }
+      for (const [act, n] of Object.entries(acceptedActions)) {
+        if (n >= 3) lines.push(`Brukeren liker "${act}"-forslag (${n} aksepteringer). Vurder dette først.`);
+      }
+      for (const [ch, n] of Object.entries(skippedChapters)) {
+        if (n >= 2) lines.push(`Brukeren utelukker ofte kapitlet "${ch}" (${n} ganger). Unngå å foreslå inkludering uten god grunn.`);
+      }
+      if (lines.length === 0) return "";
+      return "\nTidligere lærdom fra brukerens valg (siste 100 sessions):\n" +
+             lines.map(l => `  - ${l}`).join("\n") + "\n";
+    } catch {
+      return "";
+    }
+  }, [payload]);
+
   // ─── Apply suggestion: execute the suggested action ───
   const applySuggestion = useCallback((s: Suggestion) => {
     const idx = filteredPicks.findIndex(p => p.index === s.targetPickIndex);
@@ -1194,19 +1278,32 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
     if (s.action === "trim") {
       setTrimMode(true);
     } else if (s.action === "skip") {
-      // Add to excluded — toggle off chapter that contains only this pick if possible,
-      // else just inform user (more nuanced "skip individual pick" is future-work).
       const pick = filteredPicks[idx];
       const chapter = (pick.chapter || "details").toLowerCase();
       const sameChapter = filteredPicks.filter(p => (p.chapter || "details").toLowerCase() === chapter);
       if (sameChapter.length === 1) toggleChapter(chapter);
     } else if (s.action === "promote") {
-      // Move pick to front of order
       const newOrder = [s.targetPickIndex, ...filteredPicks.filter(p => p.index !== s.targetPickIndex).map(p => p.index)];
       setActivePickOrder(newOrder);
     }
-    // For "focus" action — just focus, already done above
-  }, [filteredPicks, toggleChapter]);
+    // Lagre lærdom: brukeren aksepterte denne action-typen
+    recordDecision({
+      kind: "suggestion_accepted",
+      action: s.action,
+      note: s.title,
+    });
+    // Fjern fra forslags-listen så brukeren ser den er handled
+    setSuggestions(prev => prev.filter(x => x !== s));
+  }, [filteredPicks, toggleChapter, recordDecision]);
+
+  const dismissSuggestion = useCallback((s: Suggestion) => {
+    recordDecision({
+      kind: "suggestion_rejected",
+      action: s.action,
+      note: s.title,
+    });
+    setSuggestions(prev => prev.filter(x => x !== s));
+  }, [recordDecision]);
 
   // ─── Apply Wishes from couple: Claude oversetter wishes til edit-handlinger ───
   const applyWishes = useCallback(async () => {
@@ -1226,7 +1323,7 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
         : "",
     }));
     const systemPrompt = `Du er en AI Creative Director som oversetter naturlig-språk-ønsker fra bryllupsparet til konkrete edit-handlinger. Du må forstå hva paret mener selv om de ikke bruker tekniske termer.
-
+${buildLearningsSummary()}
 Eksempler på vanlige wishes:
   "mer av pappa sin tale"     → finn picks med høy speech + faces=family-pose, prioriter dem
   "kortere reception"         → trim reception-picks med 30-50%
@@ -1563,7 +1660,7 @@ Du MÅ kalle apply_couple_wishes-tool med:
         : "",
     }));
     const systemPrompt = `Du er en AI Creative Director som analyserer narrativ flyt i en wedding-highlight. Du skal evaluere hver pick i sekvensen og flagge hvor flyten er sterk vs problematisk.
-
+${buildLearningsSummary()}
 Sekvens (i playback-rekkefølge):
 ${pickSummary.map(p => `  pos ${p.pos}: shot#${p.index} chapter=${p.chapter} ${p.duration.toFixed(2)}s, score=${p.score.toFixed(2)}, top-signals[${p.topSignals}]`).join("\n")}
 
@@ -1674,7 +1771,7 @@ Du MÅ kalle analyze_narrative_flow-tool med evaluations-array som inkluderer AL
       ctxLines.push(`Currently focused: shot#${focusedPick.index} (${focusedPick.chapter || "?"}) — ${focusedPick.durationSec.toFixed(2)}s, score ${focusedPick.score.toFixed(3)}`);
     }
     const systemPrompt = `${AGENT_PROFILES[agentRole].systemPrompt}
-
+${buildLearningsSummary()}
 Project-kontekst:
 ${ctxLines.join("\n")}`;
     try {
@@ -2847,6 +2944,7 @@ ${ctxLines.join("\n")}`;
                     const idx = filteredPicks.findIndex(p => p.index === s.targetPickIndex);
                     if (idx >= 0) setFocusedPickIdx(idx);
                   }}
+                  onDismiss={() => dismissSuggestion(s)}
                 />
               );
             })}
@@ -3579,7 +3677,7 @@ function TrimPanel({ pick, originalPick, bpm, snapToBeat, onSnapToggle, onChange
   );
 }
 
-function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", secondaryLabel = "Se klipp", onPrimary, onSecondary, reasoning }: {
+function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", secondaryLabel = "Se klipp", onPrimary, onSecondary, onDismiss, reasoning }: {
   thumb?: string;
   title: string;
   desc: string;
@@ -3587,6 +3685,7 @@ function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", sec
   secondaryLabel?: string;
   onPrimary?: () => void;
   onSecondary?: () => void;
+  onDismiss?: () => void;
   reasoning?: { category: string; text: string }[];
 }) {
   const categoryStyle: Record<string, { icon: string; color: string }> = {
@@ -3598,7 +3697,18 @@ function SuggestionCard({ thumb, title, desc, primaryLabel = "Bruk forslag", sec
     technical:  { icon: "⚙",  color: "#8674a8" },
   };
   return (
-    <div className="ce-suggest-card">
+    <div className="ce-suggest-card" style={{ position: "relative" }}>
+      {onDismiss && (
+        <button
+          onClick={onDismiss}
+          title="Avvis — Claude lærer å unngå lignende forslag"
+          style={{ position: "absolute", top: 4, right: 4, width: 20, height: 20,
+                    background: "transparent", border: "none", color: "#8674a8",
+                    cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 }}
+        >
+          ✕
+        </button>
+      )}
       {thumb && (
         <div className="ce-suggest-thumb">
           <img src={convertFileSrc(thumb)} alt="" />
