@@ -1002,7 +1002,7 @@ type RoleRoomWorkspaceFilterState = {
   candidateStatusFilter?: string;
   candidateViewMode?: 'list' | 'kanban';
   selectionPhaseFilter?: SelectionPhaseFilter;
-  calendarViewMode?: 'production' | 'crew';
+  calendarViewMode?: 'production' | 'crew' | 'productionDay';
   contentProducerPlannerSurface?: ContentProducerPlannerSurface;
   producerMediaWorkspace?: string | null;
 };
@@ -1136,7 +1136,7 @@ type RoleRoomProjectWorkspaceState = {
   const [globalTagRegistry, setGlobalTagRegistry] = useState<string[]>([]);
   const [globalTagRegistryLoaded, setGlobalTagRegistryLoaded] = useState(false);
   const [storyLogicData, setStoryLogicData] = useState<StoryLogicState | null>(null);
-  const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew'>('production');
+  const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew' | 'productionDay'>('production');
   const [projects, setProjects] = useState<CastingProject[]>([]);
   const [currentProject, setCurrentProject] = useState<CastingProject | null>(null);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -11462,6 +11462,24 @@ type RoleRoomProjectWorkspaceState = {
                 >
                   {branding.tokens.labels.crewCalendar}
                 </Button>
+                <Button
+                  variant={calendarViewMode === 'productionDay' ? 'contained' : 'outlined'}
+                  onClick={() => {
+                    startTransition(() => setCalendarViewMode('productionDay'));
+                  }}
+                  startIcon={<CalendarIcon />}
+                  size={isMobile ? 'small' : 'medium'}
+                  sx={{
+                    bgcolor: calendarViewMode === 'productionDay' ? 'rgba(251,191,36,0.9)' : 'transparent',
+                    borderColor: 'rgba(251,191,36,0.5)',
+                    color: calendarViewMode === 'productionDay' ? '#fff' : 'rgba(255,255,255,0.7)',
+                    '&:hover': {
+                      bgcolor: calendarViewMode === 'productionDay' ? 'rgba(251,191,36,1)' : 'rgba(251,191,36,0.1)',
+                    },
+                  }}
+                >
+                  Operativ produksjonsstyring
+                </Button>
               </Box>
 
               {/* Calendar Content */}
@@ -11512,17 +11530,25 @@ type RoleRoomProjectWorkspaceState = {
                     reopenDialogSignal={calendarReopenSignal}
                     preselectedFromCreate={calendarPreselectedFromCreate}
                   />
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-                  <ProductionDayView
-                    key={`${currentProject.id}:calendar-production-day`}
-                    projectId={currentProject.id}
-                    onUpdate={async () => {
-                      const updated = await castingService.getProject(currentProject.id);
-                      if (updated) setCurrentProject(updated);
-                    }}
-                    profession={profession}
-                  />
                 </>
+              ) : calendarViewMode === 'productionDay' ? (
+                <Box sx={{ flex: 1, minHeight: 0 }}>
+                  <Suspense fallback={
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                      <CircularProgress sx={{ color: 'rgba(251,191,36,0.8)' }} />
+                    </Box>
+                  }>
+                    <ProductionDayView
+                      key={`${currentProject.id}:calendar-production-day`}
+                      projectId={currentProject.id}
+                      onUpdate={async () => {
+                        const updated = await castingService.getProject(currentProject.id);
+                        if (updated) setCurrentProject(updated);
+                      }}
+                      profession={profession}
+                    />
+                  </Suspense>
+                </Box>
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0 }}>
                   <Suspense fallback={
