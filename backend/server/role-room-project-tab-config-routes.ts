@@ -259,6 +259,8 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
   // ── GET seat-status: hvor mange seats er brukt vs. inkludert? ──
   // Production team-planen inkluderer 3 seats. Når leder legger til
   // brukere utover det skal frontend vise pris-preview + krev bekreftelse.
+  // KUN leder ser pris/billing-info — vanlige medlemmer får 403 for å unngå
+  // info-leak om abonnement-status og kostnader.
   app.get(
     "/api/role-room/projects/:projectId/seat-status",
     async (req: Request, res: Response) => {
@@ -269,6 +271,9 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
       const projectId = String(req.params.projectId ?? "").trim();
       if (!projectId) {
         res.status(400).json({ error: "projectId_mangler" }); return;
+      }
+      if (!(await isProjectLeader(pool, viewerId, projectId))) {
+        res.status(403).json({ error: "kun_team_leder" }); return;
       }
 
       try {

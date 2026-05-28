@@ -15,6 +15,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { syncRoleRoomSeatQuantity, countActiveSeats } from "./role-room-seat-stripe-sync.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -69,6 +70,20 @@ async function isProjectLeader(
   } catch (err) {
     console.error("[rr-project-members] isProjectLeader failed:", err);
     return false;
+  }
+}
+
+async function getProjectOwner(
+  pool: Pool, projectId: string,
+): Promise<string | null> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT created_by FROM casting_projects WHERE id = $1 LIMIT 1`,
+      [projectId],
+    );
+    return rows[0]?.created_by ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -188,7 +203,23 @@ export function registerRoleRoomProjectMembersRoutes(app: Express, deps: Deps): 
         if (result.rowCount === 0) {
           res.status(404).json({ error: "ikke_funnet_eller_allerede_fjernet" }); return;
         }
-        res.json({ ok: true, deactivated: true });
+
+        // Auto-sync Stripe quantity ned — frigir billing for denne seaten.
+        // Hvis sync feiler, beholder vi soft-delete (cleanup kommer via cron
+        // eller manuell admin), men returnerer warning så frontend kan vise det.
+        const ownerUserId = await getProjectOwner(pool, projectId);
+        let stripeWarning: string | null = null;
+        if (ownerUserId) {
+          const used = await countActiveSeats(pool, ownerUserId, projectId);
+          const sync = await syncRoleRoomSeatQuantity({
+            pool, ownerUserId, projectId,
+            targetActiveUsers: used,
+            actorUserId: viewerId,
+          });
+          if (!sync.ok) stripeWarning = sync.reason ?? "stripe_sync_failed";
+        }
+
+        res.json({ ok: true, deactivated: true, stripeWarning });
       } catch (err) {
         console.error("[rr-project-members] DELETE failed:", err);
         res.status(500).json({ error: "intern_feil" });
@@ -196,8 +227,7 @@ export function registerRoleRoomProjectMembersRoutes(app: Express, deps: Deps): 
     },
   );
 
-  // ── POST: reaktiver (frigir IKKE billing — leder må forstå at
-  //          billing-counten øker igjen) ────────────────────────────
+  // ── POST: reaktiver (auto-bump Stripe så billing starter på nytt) ──
   app.post(
     "/api/role-room/projects/:projectId/members/:userId/reactivate",
     async (req: Request, res: Response) => {
@@ -230,7 +260,21 @@ export function registerRoleRoomProjectMembersRoutes(app: Express, deps: Deps): 
         if (result.rowCount === 0) {
           res.status(404).json({ error: "ikke_funnet_eller_aktiv" }); return;
         }
-        res.json({ ok: true, reactivated: true });
+
+        // Auto-bump Stripe quantity — billing starter på nytt for denne seaten
+        const ownerUserId = await getProjectOwner(pool, projectId);
+        let stripeWarning: string | null = null;
+        if (ownerUserId) {
+          const used = await countActiveSeats(pool, ownerUserId, projectId);
+          const sync = await syncRoleRoomSeatQuantity({
+            pool, ownerUserId, projectId,
+            targetActiveUsers: used,
+            actorUserId: viewerId,
+          });
+          if (!sync.ok) stripeWarning = sync.reason ?? "stripe_sync_failed";
+        }
+
+        res.json({ ok: true, reactivated: true, stripeWarning });
       } catch (err) {
         console.error("[rr-project-members] reactivate failed:", err);
         res.status(500).json({ error: "intern_feil" });

@@ -98,20 +98,41 @@ export function registerRoleRoomSeatManagementRoutes(app: Express, deps: Deps): 
       }
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const Stripe = require("stripe").default ?? require("stripe");
+        // ESM-kompatibel import (backend er "type": "module")
+        const { default: Stripe } = await import("stripe");
         const stripe = new Stripe(stripeKey);
         const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId, {
           expand: ["items.data.price"],
         });
 
-        // Finn rolle-room-seat-item: vi tar bare første item — production_team-
-        // sjeknka oppretter ALLTID ett seat-item, ikke flere line-items.
+        // Finn riktig seat-item: matcher mot kjent Role Room-seat-price.
+        // Vi har 2 personas (production_team/content_producer) med distinkte
+        // priser. Hvis vi ikke finner match, faller vi tilbake til første item
+        // som siste utvei — bedre å feile tydelig enn å bumpe feil add-on.
         const items = subscription.items?.data ?? [];
         if (items.length === 0) {
           res.status(500).json({ error: "ingen_subscription_items" }); return;
         }
-        const item = items[0];
+        const roleRoomPriceIds = new Set<string>(
+          [
+            process.env.ROLE_ROOM_STRIPE_PRICE_ID_PRODUCTION_TEAM,
+            process.env.ROLE_ROOM_STRIPE_PRICE_ID_CONTENT_PRODUCER,
+          ].filter((v): v is string => !!v && v.trim().length > 0),
+        );
+        let item = roleRoomPriceIds.size > 0
+          ? items.find((i: { price?: { id?: string } }) => i.price?.id && roleRoomPriceIds.has(i.price.id))
+          : undefined;
+        if (!item) {
+          // Hvis ingen Role Room-price-IDer er konfigurert eller match feiler,
+          // bruk første item men logg det tydelig for senere debugging
+          item = items[0];
+          console.warn(
+            "[rr-seat-mgmt] no Role Room price-id match on subscription",
+            stripeSubscriptionId,
+            "— falling back to first item",
+            item.id,
+          );
+        }
         const currentQuantity: number = item.quantity ?? 1;
 
         const requestedTarget = Number(req.body?.targetQuantity);

@@ -68,10 +68,13 @@ export function ProjectMembersDialog({
     if (!confirmRemove) return;
     setBusy(confirmRemove.userId); setError(null);
     try {
-      await roleRoomProjectMembersService.deactivate(projectId, confirmRemove.userId, removeReason);
+      const res = await roleRoomProjectMembersService.deactivate(projectId, confirmRemove.userId, removeReason);
       setConfirmRemove(null); setRemoveReason('');
       await load();
       onMembershipChanged?.();
+      if (res.stripeWarning) {
+        setError(`Medlemmet er fjernet, men abonnementet ble ikke oppdatert: ${res.stripeWarning}. Kontakt support hvis det vedvarer.`);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -82,9 +85,12 @@ export function ProjectMembersDialog({
   const handleReactivate = async (m: ProjectMember) => {
     setBusy(m.userId); setError(null);
     try {
-      await roleRoomProjectMembersService.reactivate(projectId, m.userId);
+      const res = await roleRoomProjectMembersService.reactivate(projectId, m.userId);
       await load();
       onMembershipChanged?.();
+      if (res.stripeWarning) {
+        setError(`Medlemmet er aktivert, men abonnementet ble ikke oppdatert: ${res.stripeWarning}. Kontakt support hvis det vedvarer.`);
+      }
     } catch (err) {
       setError(String(err));
     } finally {

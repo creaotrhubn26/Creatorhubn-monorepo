@@ -50,14 +50,14 @@ export const roleRoomProjectMembersService = {
     );
   },
 
-  async deactivate(projectId: string, userId: string, reason?: string): Promise<{ ok: boolean }> {
+  async deactivate(projectId: string, userId: string, reason?: string): Promise<{ ok: boolean; stripeWarning?: string | null }> {
     return jsonRequest(
       `/api/role-room/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`,
       { method: 'DELETE', body: JSON.stringify({ reason: reason ?? '' }) },
     );
   },
 
-  async reactivate(projectId: string, userId: string): Promise<{ ok: boolean }> {
+  async reactivate(projectId: string, userId: string): Promise<{ ok: boolean; stripeWarning?: string | null }> {
     return jsonRequest(
       `/api/role-room/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}/reactivate`,
       { method: 'POST' },

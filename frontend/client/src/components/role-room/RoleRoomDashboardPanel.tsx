@@ -1722,11 +1722,13 @@ function CrewSubPanel({
   const [membersOpen, setMembersOpen] = useState(false);
   const qc = useQueryClient();
 
-  // Seat-status: hvor mange seats er brukt vs. inkludert i abonnementet
+  // Seat-status: hvor mange seats er brukt vs. inkludert i abonnementet.
+  // Kun leder kalle endpoint (det returnerer 403 til vanlige medlemmer for
+  // å unngå info-leak om billing-state) — enabled-flagget unngår 403-støy.
   const seatStatusQuery = useQuery({
     queryKey: ['role-room-seat-status', projectId],
     queryFn: () => roleRoomProjectTabConfigService.getSeatStatus(projectId),
-    enabled: !!projectId,
+    enabled: !!projectId && !!isProjectLeader,
     staleTime: 30_000,
     retry: 1,
   });
