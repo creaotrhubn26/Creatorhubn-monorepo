@@ -78,6 +78,12 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   const [wantBackup, setWantBackup] = useState<boolean>(false);
   const [benchmarkResult, setBenchmarkResult] = useState<{ writeMBs: number; readMBs: number; verdict: string } | null>(null);
   const [benchmarkBusy, setBenchmarkBusy] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupPct, setBackupPct] = useState(0);
+  const [backupMsg, setBackupMsg] = useState("");
+  const [backupResult, setBackupResult] = useState<{ projectRoot: string; manifestPath: string; filesCount: number } | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string>("");
 
   useEffect(() => {
     listMountedCards().then(setMountedCards).catch(() => { /* non-critical */ });
@@ -434,13 +440,19 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
 
             {cameras.length > 0 && (
               <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
+                <div className="field" style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 12 }}>Prosjekt-navn (for mappestruktur)</label>
+                  <input type="text" value={projectName}
+                          onChange={(e) => setProjectName(e.target.value)}
+                          placeholder="F.eks. Hamis_Rukhma" />
+                </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                   <input type="checkbox" checked={wantBackup}
                           onChange={(e) => setWantBackup(e.target.checked)} />
                   <span>
                     <strong>Backup til SSD før jobben</strong>
                     <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 400 }}>
-                      Anbefales for SD-kort. Lager DIT-struktur med kamera-mapper per vinkel.
+                      Anbefales for SD-kort. Lager DIT-struktur med kamera-mapper per vinkel + lager Resolve-bins automatisk.
                     </div>
                   </span>
                 </label>
@@ -491,14 +503,96 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
               Si fra hvis jeg gjettet feil — jeg lærer.
             </div>
 
+            {backupBusy && (
+              <div style={{ background: "var(--bg-3)", padding: 12, borderRadius: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                  📦 Backup pågår…
+                </div>
+                <div style={{ height: 6, background: "var(--bg-4)", borderRadius: 3,
+                                overflow: "hidden", marginBottom: 6 }}>
+                  <div style={{ width: `${backupPct}%`, height: "100%",
+                                  background: "var(--accent)", transition: "width 0.3s" }} />
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{backupMsg} — {backupPct}%</div>
+              </div>
+            )}
+
+            {backupResult && (
+              <div style={{ background: "rgba(74, 212, 138, 0.10)",
+                              border: "1px solid #4ad48a", padding: 12, borderRadius: 8,
+                              fontSize: 12 }}>
+                ✓ Backup ferdig: <strong>{backupResult.filesCount} filer</strong> kopiert til
+                <br />
+                <code style={{ fontSize: 11, opacity: 0.8 }}>{backupResult.projectRoot}</code>
+              </div>
+            )}
+
+            {backupError && (
+              <div style={{ background: "var(--bg-3)", borderLeft: "3px solid var(--danger)",
+                              padding: 10, borderRadius: 4 }}>
+                <strong>Backup-feil:</strong> {backupError}
+              </div>
+            )}
+
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-              <button onClick={onClose}>Avbryt</button>
-              <button className="primary" onClick={() => {
+              <button onClick={onClose} disabled={backupBusy}>Avbryt</button>
+              <button className="primary" disabled={cameras.length === 0 || sourceScanBusy || backupBusy}
+                      onClick={async () => {
                 recordLearning(`Steg 1: ${cameras.length} kameraer, ${sources.length} kilder, backup=${wantBackup}`);
+
+                // Hvis backup ønsket og ikke ferdig: kjør det først
+                if (wantBackup && backupTarget && !backupResult) {
+                  setBackupBusy(true);
+                  setBackupError(null);
+                  setBackupPct(0);
+                  const unsub = onScriptEvent((ev: ScriptEvent) => {
+                    if (ev.type === "progress") {
+                      const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
+                      setBackupPct(pct); setBackupMsg(ev.message || "");
+                    }
+                  });
+                  try {
+                    const audioFolders = audioFilesDetected.length > 0
+                      ? Array.from(new Set(audioFilesDetected.map((a) => a.path.split("/").slice(0, -1).join("/"))))
+                      : [];
+                    const sum = await executeScript("backup_multi_source_with_angles", {
+                      sources: sources.map((s) => {
+                        // Find first camera matching this source (best effort)
+                        const cam = cameras.find((c) => c.clips.some((cl) => cl.path.startsWith(s.path)));
+                        return {
+                          path: s.path, role: s.role,
+                          cameraId: cam?.id || null,
+                          cameraModel: cam?.model || cam?.make || "Camera",
+                          angleNumber: cam ? (angleAssignment[cam.id] || cam.suggestedAngle) : 0,
+                          angleLabel: cam ? (angleLabels[cam.id] || "") : "",
+                        };
+                      }),
+                      ssdPath: backupTarget,
+                      projectName: projectName || "Untitled",
+                      audioFolders,
+                    }, false);
+                    const r = sum.events.find((e) => e.type === "result");
+                    const val = r?.value as { projectRoot: string; manifestPath: string; filesCount: number } | undefined;
+                    if (val) {
+                      setBackupResult(val);
+                      recordLearning(`Backup: ${val.filesCount} filer → ${val.projectRoot}`);
+                    }
+                  } catch (err) {
+                    setBackupError(String(err));
+                    unsub.then((u) => u());
+                    setBackupBusy(false);
+                    return; // Ikke gå videre hvis backup feilet
+                  }
+                  unsub.then((u) => u());
+                  setBackupBusy(false);
+                }
+
                 if (cameras.length > 0 && sources[0]) setFolder(sources[0].path);
                 setStep("material");
-              }} disabled={cameras.length === 0 || sourceScanBusy}>
-                Neste: Multicam-scan →
+              }}>
+                {wantBackup && backupTarget && !backupResult
+                  ? "📦 Backup + Neste →"
+                  : "Neste: Multicam-scan →"}
               </button>
             </div>
           </div>

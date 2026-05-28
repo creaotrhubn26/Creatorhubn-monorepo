@@ -2153,6 +2153,34 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "backup_multi_source_with_angles",
+      "name": "Backup Multi-Source with Angles",
+      "category": "project",
+      "scriptPath": "scripts/project/backup_multi_source_with_angles.py",
+      "description": "Kopier flere kilder til organisert DIT-struktur med vinkel-baserte kamera-mapper.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "create_resolve_bins_from_manifest",
+      "name": "Create Resolve Bins From Manifest",
+      "category": "project",
+      "scriptPath": "scripts/project/create_resolve_bins_from_manifest.py",
+      "description": "Lag bins i Resolve-MediaPool basert p\u00e5 bins.json fra backup-kj\u00f8ringen.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
     }
   ]
 }
