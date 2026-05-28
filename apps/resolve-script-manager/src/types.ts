@@ -46,7 +46,8 @@ export interface Workflow {
 export type WorkflowMap = Record<string, Workflow>;
 
 export interface ScriptEvent {
-  type: "log" | "warn" | "error" | "result" | "stderr" | "started" | "finished" | "progress";
+  type: "log" | "warn" | "error" | "result" | "stderr" | "started" | "finished" | "progress"
+      | "shot_scored" | "picks_finalized";
   ts?: number;
   runId: string;
   scriptId?: string;
@@ -61,6 +62,17 @@ export interface ScriptEvent {
   total?: number;
   percent?: number;
   label?: string;
+  // shot_scored payload
+  index?: number;
+  startSec?: number;
+  endSec?: number;
+  durationSec?: number;
+  score?: number;
+  thumbnailPath?: string | null;
+  // picks_finalized payload
+  indices?: number[];
+  totalPicked?: number;
+  totalShots?: number;
 }
 
 export interface RunSummary {

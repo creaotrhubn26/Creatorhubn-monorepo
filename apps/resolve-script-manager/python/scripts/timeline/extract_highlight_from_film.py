@@ -236,11 +236,18 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     bridge.progress(20, 100, "Scoring each shot (motion + audio)…")
     shot_scores: list[dict] = []
+    # Live-mode: generer thumbnail for hvert shot slik at frontend kan vise
+    # Harry-Potter-stil preview. Kun shots > 1s for å spare tid på korte cuts.
+    thumb_dir = os.path.join(
+        os.path.expanduser("~/Library/Application Support/no.creatorhubn.roleroom-post-agent"),
+        "shot_thumbs",
+    )
+    os.makedirs(thumb_dir, exist_ok=True)
+
     for i, (start, end) in enumerate(shots):
         motion = shot_motion_score(ffmpeg, video_path, start, end)
         audio = shot_audio_energy(ffmpeg, video_path, start, end)
         shot_dur = end - start
-        # Length bonus: reward 1-6s shots, lightly penalize very long static ones
         length_factor = 1.0 if 1.0 <= shot_dur <= 6.0 else (0.7 if shot_dur < 1.0 else 0.85)
         base_score = (motion * motion_w + audio * audio_w) * length_factor
         shot_scores.append({
@@ -251,9 +258,31 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "motion": round(motion, 3),
             "audio": round(audio, 3),
             "baseScore": round(base_score, 4),
-            "score": round(base_score, 4),  # may be augmented below
-            "signals": {},  # populated by signal pipeline
+            "score": round(base_score, 4),
+            "signals": {},
         })
+        # Live-mode: hent thumbnail ved shot-midpunkt + emit event
+        thumb_path = None
+        if shot_dur >= 1.0:
+            thumb_path = os.path.join(thumb_dir, f"shot_{i:05d}.jpg")
+            if not os.path.isfile(thumb_path):
+                try:
+                    mid = start + shot_dur / 2
+                    import subprocess as _sp
+                    _sp.run([
+                        ffmpeg, "-y", "-loglevel", "error",
+                        "-ss", f"{mid:.2f}", "-i", video_path,
+                        "-frames:v", "1", "-vf", "scale=160:-1", "-q:v", "5",
+                        thumb_path,
+                    ], capture_output=True, timeout=8)
+                except Exception:  # noqa: BLE001
+                    thumb_path = None
+        bridge.emit("shot_scored",
+                    index=i, total=len(shots),
+                    startSec=round(start, 2), endSec=round(end, 2),
+                    durationSec=round(shot_dur, 2),
+                    score=round(base_score, 3),
+                    thumbnailPath=thumb_path if thumb_path and os.path.isfile(thumb_path) else None)
         if (i + 1) % 10 == 0:
             bridge.progress(20 + int(35 * (i + 1) / len(shots)), 100, f"Scored {i + 1}/{len(shots)}")
 
@@ -375,6 +404,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     # Sort picks chronologically for narrative flow
     picked.sort(key=lambda s: s["startSec"])
+
+    # Live-mode: emit "picks_finalized" event så frontend kan markere hvilke
+    # shots som ble valgt (versus bare scored). Sender bare picked-indekser.
+    picked_indexes = [p["index"] for p in picked]
+    bridge.emit("picks_finalized", indices=picked_indexes,
+                totalPicked=len(picked), totalShots=len(shots))
     chapters_summary = ""
     if chapter_labels:
         used_chaps: dict[str, float] = {}

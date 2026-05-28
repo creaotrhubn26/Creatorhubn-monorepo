@@ -17,7 +17,7 @@
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { executeScript, onScriptEvent, listMountedCards, runHealthCheck, launchResolve } from "../api";
+import { executeScript, onScriptEvent, listMountedCards, runHealthCheck, launchResolve, convertFileSrc } from "../api";
 import type { ScriptEvent, MountedCard, HealthStatus } from "../types";
 
 interface Props {
@@ -171,6 +171,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   const [livePicks, setLivePicks] = useState<Array<{ index: number; chapter: string; thumbPath?: string }>>([]);
   const [livePicksPath, setLivePicksPath] = useState<string | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
+  // Live shot-scoring stream (Harry Potter mode)
+  type LiveShot = { index: number; startSec: number; endSec: number; score: number; thumbnailPath: string | null; accepted: boolean | null };
+  const [liveShots, setLiveShots] = useState<LiveShot[]>([]);
 
   // Steg 7: Color / LUT
   const [logGamma, setLogGamma] = useState<{ isLog: boolean; profile: string; suggestedLut?: string } | null>(null);
@@ -1351,13 +1354,32 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                 setLiveError(null);
                 setLivePct(0);
                 setLivePicks([]);
+                setLiveShots([]);
                 const unsubProm = onScriptEvent((ev: ScriptEvent) => {
                   if (ev.type === "progress") {
                     const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
                     setLivePct(pct); setLiveMsg(ev.message || "");
                   }
-                  // Når Python sender en "pick"-event som log med spesial-format kan vi
-                  // parse det. For nå viser vi bare progress.
+                  if (ev.type === "shot_scored" && typeof ev.index === "number") {
+                    setLiveShots((prev) => [
+                      ...prev,
+                      {
+                        index: ev.index!,
+                        startSec: ev.startSec ?? 0,
+                        endSec: ev.endSec ?? 0,
+                        score: ev.score ?? 0,
+                        thumbnailPath: ev.thumbnailPath ?? null,
+                        accepted: null,
+                      },
+                    ]);
+                  }
+                  if (ev.type === "picks_finalized" && Array.isArray(ev.indices)) {
+                    const acceptedSet = new Set(ev.indices);
+                    setLiveShots((prev) => prev.map((s) => ({
+                      ...s,
+                      accepted: acceptedSet.has(s.index),
+                    })));
+                  }
                 });
                 try {
                   const sum = await executeScript("extract_highlight_from_film", {
@@ -1389,7 +1411,7 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                                   : <span style={{ color: "#4ad48a" }}>🟢</span>}
                     {liveRunning ? "Claude redigerer …" : "Ferdig"}
                   </span>
-                  <span>{livePct}%</span>
+                  <span>{liveShots.length > 0 ? `${liveShots.length} skann` : `${livePct}%`}</span>
                 </div>
                 <div style={{ height: 6, background: "var(--bg-4)", borderRadius: 3,
                                 overflow: "hidden", marginBottom: 8 }}>
@@ -1397,12 +1419,68 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                                   background: "var(--accent)", transition: "width 0.4s" }} />
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.7 }}>{liveMsg}</div>
-                {livePicks.length > 0 && (
-                  <div style={{ marginTop: 12, fontSize: 11 }}>
-                    <strong>{livePicks.length} klipp valgt</strong>{" "}
-                    <span style={{ opacity: 0.6 }}>
-                      ({Array.from(new Set(livePicks.map(p => p.chapter))).join(" · ")})
-                    </span>
+
+                {/* Harry-Potter live shot-grid */}
+                {liveShots.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "grid",
+                                    gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
+                                    gap: 6, maxHeight: 260, overflowY: "auto",
+                                    background: "rgba(0,0,0,0.25)", padding: 8, borderRadius: 6 }}>
+                      {liveShots.slice(-80).map((s) => {
+                        const url = s.thumbnailPath ? convertFileSrc(s.thumbnailPath) : null;
+                        const fmt = (sec: number) => {
+                          const m = Math.floor(sec / 60); const ss = Math.floor(sec % 60);
+                          return `${m}:${String(ss).padStart(2, "0")}`;
+                        };
+                        const status = s.accepted === true ? "✓ valgt"
+                          : s.accepted === false ? "✕ skip"
+                          : "skann…";
+                        const borderColor = s.accepted === true ? "#4ad48a"
+                          : s.accepted === false ? "#3a2548"
+                          : "#f0a500";
+                        return (
+                          <div key={s.index}
+                                style={{ aspectRatio: "16 / 9", borderRadius: 4,
+                                          overflow: "hidden", position: "relative",
+                                          background: "#1a0d45",
+                                          border: `2px solid ${borderColor}`,
+                                          opacity: s.accepted === false ? 0.4 : 1,
+                                          transition: "opacity 0.3s, border-color 0.3s",
+                                          animation: s.accepted === null ? "ce-fade-in 0.4s" : undefined }}>
+                            {url
+                              ? <img src={url} alt=""
+                                      style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              : <div style={{ width: "100%", height: "100%",
+                                                display: "flex", alignItems: "center",
+                                                justifyContent: "center", fontSize: 16 }}>
+                                  🎬
+                                </div>}
+                            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0,
+                                            background: "rgba(0,0,0,0.7)", padding: "2px 4px",
+                                            fontSize: 9, fontFamily: "ui-monospace, monospace",
+                                            display: "flex", justifyContent: "space-between" }}>
+                              <span>{fmt(s.startSec)}</span>
+                              <span style={{ color: s.score > 0.6 ? "#4ad48a" : s.score > 0.4 ? "#f0a500" : "#8674a8" }}>
+                                {s.score.toFixed(2)}
+                              </span>
+                            </div>
+                            <div style={{ position: "absolute", top: 2, right: 2,
+                                            background: "rgba(0,0,0,0.7)",
+                                            padding: "1px 5px", borderRadius: 3,
+                                            fontSize: 8, fontWeight: 600,
+                                            color: s.accepted === true ? "#4ad48a"
+                                              : s.accepted === false ? "#8674a8"
+                                              : "#f0a500" }}>
+                              {status}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
+                      Viser siste 80 av {liveShots.length} skannede klipp. Grønn = valgt, grå = skip.
+                    </div>
                   </div>
                 )}
               </div>
