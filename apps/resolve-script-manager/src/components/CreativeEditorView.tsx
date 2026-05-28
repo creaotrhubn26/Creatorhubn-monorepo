@@ -31,7 +31,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { executeScript } from "../api";
+import { executeScript, onScriptEvent } from "../api";
+import type { ScriptEvent } from "../types";
 import {
   IconPlay,
   IconMusic,
@@ -309,6 +310,20 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   } | null>(null);
   const [activeSongIdx, setActiveSongIdx] = useState(0);
   const [songMenuOpen, setSongMenuOpen] = useState(false);
+  // Music-overrides: bruker korrigerer Shazam-feilidentifikasjoner
+  // (f.eks. religiøse kirtan som ikke finnes i Shazams database).
+  // Key = `${originalTitle}|${originalArtist}`, value = { title, artist, note }
+  const [musicOverrides, setMusicOverrides] = useState<Record<string, { title: string; artist: string; note?: string; downloadedPath?: string; youtubeUrl?: string }>>({});
+  const [editingSongKey, setEditingSongKey] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editArtist, setEditArtist] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editYoutubeUrl, setEditYoutubeUrl] = useState("");
+  const [editYtBusy, setEditYtBusy] = useState(false);
+  const [editYtPct, setEditYtPct] = useState(0);
+  const [editYtMsg, setEditYtMsg] = useState("");
+  const [editYtError, setEditYtError] = useState<string | null>(null);
+  const [editDownloadedPath, setEditDownloadedPath] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"rediger" | "story">("rediger");
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
 
@@ -615,7 +630,34 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   }, [payload, includedChapters, activePickOrder, pickOverrides, allPicks, extraPicks.length, segmentOrder]);
   const balance = useMemo(() => computeHistorybalance(filteredPicks), [filteredPicks]);
   const totalDuration = useMemo(() => filteredPicks.reduce((s, p) => s + p.durationSec, 0), [filteredPicks]);
-  const songs = advisor?.uniqueSongs ?? [];
+  // Last music-overrides for dette prosjektet
+  useEffect(() => {
+    if (!payload?.sourceVideo) return;
+    try {
+      const raw = localStorage.getItem(`trrpa.musicOverrides.${payload.sourceVideo}`);
+      if (raw) setMusicOverrides(JSON.parse(raw));
+    } catch { /* noop */ }
+  }, [payload?.sourceVideo]);
+
+  // Persist overrides
+  useEffect(() => {
+    if (!payload?.sourceVideo) return;
+    if (Object.keys(musicOverrides).length === 0) return;
+    try {
+      localStorage.setItem(
+        `trrpa.musicOverrides.${payload.sourceVideo}`,
+        JSON.stringify(musicOverrides),
+      );
+    } catch { /* noop */ }
+  }, [payload?.sourceVideo, musicOverrides]);
+
+  // Songs med overrides anvendt
+  const songs = (advisor?.uniqueSongs ?? []).map((s) => {
+    const key = `${s.title}|${s.artist}`;
+    const ov = musicOverrides[key];
+    if (ov) return { ...s, title: ov.title, artist: ov.artist, _overridden: true, _note: ov.note };
+    return { ...s, _overridden: false, _note: undefined };
+  });
   const activeSong = songs[activeSongIdx];
 
   // Trigger music-analysis on song-change
@@ -1936,18 +1978,207 @@ ${ctxLines.join("\n")}`;
           </button>
           {songMenuOpen && songs.length > 0 && (
             <div className="ce-song-menu">
-              {songs.map((s, i) => (
-                <div
-                  key={`${s.title}-${i}`}
-                  className={`ce-song-item ${i === activeSongIdx ? "active" : ""}`}
-                  onClick={() => { setActiveSongIdx(i); setSongMenuOpen(false); }}
-                >
-                  <div className="ce-song-item-title">{s.title}</div>
-                  <div className="ce-song-item-meta">
-                    {s.artist} · {s.bpm ? `${s.bpm} BPM` : "—"} · {Math.round((s.percentOfMusic ?? 0))}% av film
+              {songs.map((s, i) => {
+                const rawSong = advisor?.uniqueSongs?.[i];
+                const origKey = rawSong ? `${rawSong.title}|${rawSong.artist}` : "";
+                // Auto-flag mistenkelig (lang varighet + ikke-passende genre)
+                const genre = (rawSong as { genre?: string } | undefined)?.genre?.toLowerCase() ?? "";
+                const suspiciousGenre = /prog-rock|art rock|metal|country|opera|classical \(western\)/i.test(genre);
+                const longDuration = (rawSong?.totalDuration ?? 0) > 300;
+                const flagged = !s._overridden && suspiciousGenre && longDuration;
+                return (
+                  <div
+                    key={`${s.title}-${i}`}
+                    className={`ce-song-item ${i === activeSongIdx ? "active" : ""}`}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+                          onClick={() => { setActiveSongIdx(i); setSongMenuOpen(false); }}>
+                      <div className="ce-song-item-title">
+                        {flagged && <span title="Sannsynligvis feilidentifisert">⚠️ </span>}
+                        {s._overridden && <span title="Korrigert manuelt">✏️ </span>}
+                        {s.title}
+                      </div>
+                      <div className="ce-song-item-meta">
+                        {s.artist} · {s.bpm ? `${s.bpm} BPM` : "—"} · {Math.round((s.percentOfMusic ?? 0))}% av film
+                        {s._note && <div style={{ opacity: 0.6, fontSize: 10, marginTop: 2 }}>{s._note}</div>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingSongKey(origKey);
+                        setEditTitle(s.title);
+                        setEditArtist(s.artist);
+                        setEditNote(s._note ?? "");
+                      }}
+                      title="Korrigér navn"
+                      style={{ padding: "4px 8px", fontSize: 11,
+                               background: "transparent",
+                               border: "1px solid rgba(160,48,192,0.30)",
+                               borderRadius: 4, color: "#cca0e8", cursor: "pointer" }}
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Edit-modal for korrigering */}
+              {editingSongKey && (
+                <div style={{ position: "absolute", top: 60, left: 0, right: 0,
+                                background: "var(--bg-2)", padding: 14,
+                                border: "1px solid var(--accent)", borderRadius: 8,
+                                zIndex: 100, boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                                maxHeight: "70vh", overflowY: "auto" }}
+                      onClick={(e) => e.stopPropagation()}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+                    Korrigér sang-identifikasjon
+                  </div>
+
+                  <div style={{ fontSize: 10, opacity: 0.65, marginBottom: 10, lineHeight: 1.5 }}>
+                    Shazam mister ofte religiøse kirtan/shabad og lokale opptak.
+                    Korrigér navnet — du kan også laste ned ekte versjon fra YouTube.
+                  </div>
+
+                  <div className="field">
+                    <label style={{ fontSize: 10 }}>Sang-tittel</label>
+                    <input type="text" placeholder='F.eks. "Mool Mantar"' value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            style={{ fontSize: 12 }} />
+                  </div>
+                  <div className="field">
+                    <label style={{ fontSize: 10 }}>Artist / Råga</label>
+                    <input type="text" placeholder='F.eks. "Bhai Joginder Singh Riar"'
+                            value={editArtist}
+                            onChange={(e) => setEditArtist(e.target.value)}
+                            style={{ fontSize: 12 }} />
+                  </div>
+                  <div className="field">
+                    <label style={{ fontSize: 10 }}>Note (valgfri)</label>
+                    <input type="text" placeholder='F.eks. "Anand Karaj-seremoni"'
+                            value={editNote}
+                            onChange={(e) => setEditNote(e.target.value)}
+                            style={{ fontSize: 11 }} />
+                  </div>
+
+                  {/* YouTube-fetch-seksjon */}
+                  <div style={{ marginTop: 12, padding: 10, background: "var(--bg-3)",
+                                  borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
+                      📥 Last ned ekte versjon fra YouTube
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input type="text"
+                              placeholder="https://youtube.com/watch?v=..."
+                              value={editYoutubeUrl}
+                              onChange={(e) => setEditYoutubeUrl(e.target.value)}
+                              disabled={editYtBusy}
+                              style={{ flex: 1, fontSize: 11 }} />
+                      <button disabled={editYtBusy || !editYoutubeUrl.trim()}
+                              onClick={async () => {
+                        setEditYtBusy(true);
+                        setEditYtError(null);
+                        setEditYtPct(0);
+                        const unsub = await onScriptEvent((ev: ScriptEvent) => {
+                          if (ev.type === "progress") {
+                            const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
+                            setEditYtPct(pct); setEditYtMsg(ev.message || "");
+                          }
+                        });
+                        try {
+                          const sum = await executeScript("fetch_source_song", {
+                            youtubeUrl: editYoutubeUrl.trim(),
+                            projectType: "wedding",
+                            projectId: payload?.sourceVideo?.split("/").pop()?.replace(/\.[^.]+$/, "") || "manual",
+                          }, false);
+                          const r = sum.events.find((e) => e.type === "result");
+                          const val = r?.value as { wavPath?: string; title?: string; uploader?: string } | undefined;
+                          if (val?.wavPath) {
+                            setEditDownloadedPath(val.wavPath);
+                            // Pre-fyll title/artist hvis tom
+                            if (!editTitle && val.title) setEditTitle(val.title);
+                            if (!editArtist && val.uploader) setEditArtist(val.uploader);
+                          } else {
+                            setEditYtError("Ingen WAV-fil returnert");
+                          }
+                        } catch (err) {
+                          setEditYtError(String(err));
+                        } finally {
+                          unsub();
+                          setEditYtBusy(false);
+                        }
+                      }} style={{ fontSize: 11, padding: "4px 10px" }}>
+                        {editYtBusy ? "⏳" : "Last ned"}
+                      </button>
+                    </div>
+                    {editYtBusy && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ height: 4, background: "var(--bg-4)", borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ width: `${editYtPct}%`, height: "100%",
+                                          background: "var(--accent)", transition: "width 0.3s" }} />
+                        </div>
+                        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 2 }}>{editYtMsg} — {editYtPct}%</div>
+                      </div>
+                    )}
+                    {editYtError && (
+                      <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }}>
+                        ⚠ {editYtError}
+                      </div>
+                    )}
+                    {editDownloadedPath && (
+                      <div style={{ fontSize: 11, color: "#4ad48a", marginTop: 6 }}>
+                        ✓ Lastet ned: {editDownloadedPath.split("/").pop()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
+                                  marginTop: 12 }}>
+                    <button onClick={() => {
+                      setEditingSongKey(null);
+                      setEditYoutubeUrl(""); setEditDownloadedPath(null);
+                      setEditYtError(null); setEditYtPct(0);
+                    }} style={{ fontSize: 11, padding: "4px 10px" }}>Avbryt</button>
+                    <button onClick={() => {
+                      if (!editTitle.trim() || !editingSongKey) return;
+                      setMusicOverrides((prev) => ({
+                        ...prev,
+                        [editingSongKey]: {
+                          title: editTitle.trim(),
+                          artist: editArtist.trim(),
+                          note: editNote.trim() || undefined,
+                          downloadedPath: editDownloadedPath ?? undefined,
+                          youtubeUrl: editYoutubeUrl.trim() || undefined,
+                        },
+                      }));
+                      setEditingSongKey(null);
+                      setEditYoutubeUrl(""); setEditDownloadedPath(null);
+                    }} className="primary"
+                            style={{ fontSize: 11, padding: "4px 10px" }}>
+                      Lagre
+                    </button>
+                    {musicOverrides[editingSongKey] && (
+                      <button onClick={() => {
+                        setMusicOverrides((prev) => {
+                          const next = { ...prev };
+                          delete next[editingSongKey];
+                          try {
+                            localStorage.setItem(
+                              `trrpa.musicOverrides.${payload?.sourceVideo}`,
+                              JSON.stringify(next),
+                            );
+                          } catch { /* noop */ }
+                          return next;
+                        });
+                        setEditingSongKey(null);
+                      }} style={{ fontSize: 11, padding: "4px 10px", color: "var(--danger)" }}>
+                        Fjern override
+                      </button>
+                    )}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
