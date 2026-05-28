@@ -105,19 +105,28 @@ def probe_camera(ffprobe: str, path: str) -> dict:
         try: info["createdAt"] = os.path.getmtime(path)
         except OSError: pass
 
-    # Filename-heuristics — fallback for kameraer som ikke skriver EXIF
+    # Filename-heuristics — fallback for kameraer som ikke skriver EXIF.
+    # Sjekk også parent-mappens navn (Bjarne organiserer ofte i Canon_C80/, GoPro/, etc.)
     base = os.path.basename(path).lower()
+    parent = os.path.basename(os.path.dirname(path)).lower()
+    haystack = f"{parent}/{base}"
     if not info["model"]:
-        if "c80" in base: info["model"] = "Canon C80"
-        elif "c70" in base: info["model"] = "Canon C70"
-        elif "c300" in base: info["model"] = "Canon C300"
-        elif "r5c" in base or "r5" in base: info["model"] = "Canon R5"
-        elif "fx3" in base: info["model"] = "Sony FX3"
-        elif "fx6" in base: info["model"] = "Sony FX6"
-        elif "a7s" in base: info["model"] = "Sony A7S"
-        elif "bmpcc" in base or "blackmagic" in base: info["model"] = "Blackmagic Pocket"
-        elif "gh5" in base or "gh6" in base: info["model"] = "Panasonic GH"
-        elif "fs7" in base: info["model"] = "Sony FS7"
+        if "c80" in haystack: info["model"] = "Canon C80"
+        elif "c70" in haystack: info["model"] = "Canon C70"
+        elif "c300" in haystack: info["model"] = "Canon C300"
+        elif "r5c" in haystack: info["model"] = "Canon R5C"
+        elif "r5" in haystack: info["model"] = "Canon R5"
+        elif "fx3" in haystack: info["model"] = "Sony FX3"
+        elif "fx6" in haystack: info["model"] = "Sony FX6"
+        elif "fx9" in haystack: info["model"] = "Sony FX9"
+        elif "a7s" in haystack: info["model"] = "Sony A7S"
+        elif "fs7" in haystack: info["model"] = "Sony FS7"
+        elif "bmpcc" in haystack or "blackmagic" in haystack: info["model"] = "Blackmagic Pocket"
+        elif "gh5" in haystack or "gh6" in haystack: info["model"] = "Panasonic GH"
+        elif "gopro" in haystack or "gh01" in base or "gh02" in base or "gx01" in base:
+            info["model"] = "GoPro"
+        elif "dji" in haystack or "mavic" in haystack: info["model"] = "DJI"
+        elif "iphone" in haystack or "img_" in base: info["model"] = "iPhone"
 
     return info
 
