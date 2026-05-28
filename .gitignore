@@ -62,6 +62,7 @@ docs/
 !docs/role-room/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
 !backend/docs/whatsapp-app-review-runbook.md
+!backend/docs/oembed-app-review-runbook.md
 !backend/docs/role-room-agent-ux.md
 !TheRoleRoom-Admin-Room-Operating-System.md
 *.glb
