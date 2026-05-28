@@ -78,8 +78,14 @@ def probe_camera(ffprobe: str, path: str) -> dict:
             # Make/model fra EXIF-lignende tags
             info["make"] = (tags.get("make") or vtags.get("make")
                             or tags.get("manufacturer") or vtags.get("manufacturer"))
-            info["model"] = (tags.get("model") or vtags.get("model")
-                             or tags.get("major_brand") or None)
+            # major_brand er ofte generisk ("isom", "mp42", "qt  ") for eksportert MP4
+            # → ikke bruk som model med mindre ingen ekte metadata finnes
+            model = tags.get("model") or vtags.get("model")
+            if not model:
+                mb = tags.get("major_brand")
+                if mb and mb.lower().strip() not in {"isom", "mp42", "qt  ", "qt", "iso2", "avc1", "mp41", "mp4v", "f4v "}:
+                    model = mb
+            info["model"] = model
             info["serial"] = (tags.get("serial_number") or vtags.get("serial_number")
                               or tags.get("uuid") or None)
 
