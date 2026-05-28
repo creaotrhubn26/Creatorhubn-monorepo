@@ -2279,6 +2279,34 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "search_music_providers",
+      "name": "Search Music Providers",
+      "category": "audio",
+      "scriptPath": "scripts/audio/search_music_providers.py",
+      "description": "Unified s\u00f8k over alle konfigurerte providers (Jamendo, Pixabay, Soundstripe, Artlist).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "download_provider_track",
+      "name": "Download Provider Track",
+      "category": "audio",
+      "scriptPath": "scripts/audio/download_provider_track.py",
+      "description": "Last ned valgt track fra en provider. Returnerer lokal WAV-path.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }
