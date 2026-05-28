@@ -17971,6 +17971,69 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
       pool.query("SELECT * FROM casting_locations WHERE project_id = $1", [report.project.id]),
     ]);
 
+    // Speil seedet data inn i compat-store så frontend's castingService.getProject()
+    // (som leser /api/casting/projects/:id → compat-store, IKKE de normaliserte
+    // tabellene) faktisk ser dataene. Uten dette viste demo-en 0 roller/0
+    // kandidater i dashbordet selv om DB hadde 8/8 seedet.
+    try {
+      const projectId = report.project.id;
+      const [
+        projectRes, rolesRes, candidatesRes, schedulesRes, propsRes, shotListsRes, userRolesRes,
+      ] = await Promise.all([
+        pool.query("SELECT * FROM casting_projects WHERE id = $1", [projectId]),
+        pool.query("SELECT * FROM casting_roles WHERE project_id = $1", [projectId]),
+        pool.query("SELECT * FROM casting_candidates WHERE project_id = $1", [projectId]),
+        pool.query("SELECT * FROM casting_schedules WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+        pool.query("SELECT * FROM casting_props WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+        pool.query("SELECT * FROM casting_shot_lists WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+        pool.query("SELECT * FROM casting_user_roles WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+      ]);
+      if (projectRes.rowCount && projectRes.rowCount > 0) {
+        const row = projectRes.rows[0] as Record<string, unknown>;
+        let metadata: Record<string, unknown> = {};
+        if (row.metadata && typeof row.metadata === "object") {
+          metadata = row.metadata as Record<string, unknown>;
+        } else if (typeof row.metadata === "string") {
+          try { metadata = JSON.parse(row.metadata); } catch { metadata = {}; }
+        }
+        const readStr = (v: unknown): string => (typeof v === "string" ? v : "");
+        const compatProject = {
+          ...row,
+          roles: rolesRes.rows,
+          candidates: candidatesRes.rows,
+          crew: crewRes.rows,
+          schedules: schedulesRes.rows,
+          locations: locsRes.rows,
+          props: propsRes.rows,
+          shotLists: shotListsRes.rows,
+          userRoles: userRolesRes.rows,
+          metadata,
+          projectId: row.id,
+          projectName: row.name,
+          projectType: readStr(metadata.projectType) || row.project_type,
+          clientName: readStr(metadata.clientName),
+          clientEmail: readStr(metadata.clientEmail),
+          clientPhone: readStr(metadata.clientPhone),
+          clientCompanyName: readStr(metadata.clientCompanyName),
+          clientOrganizationNumber: readStr(metadata.clientOrganizationNumber),
+          clientCompanyAddress: readStr(metadata.clientCompanyAddress),
+          eventDate: readStr(metadata.eventDate),
+          location: readStr(metadata.location),
+          guestCount: readStr(metadata.guestCount),
+          socialProfiles: Array.isArray(metadata.socialProfiles) ? metadata.socialProfiles : [],
+          collaborators: Array.isArray(metadata.collaborators) ? metadata.collaborators : [],
+          competitorAnalysis: metadata.competitorAnalysis ?? null,
+          localPresencePlan: metadata.localPresencePlan ?? null,
+          roleRoomAgentPrefill: metadata.roleRoomAgentPrefill ?? null,
+          splitSheetData: metadata.splitSheetData ?? null,
+          enableSplitSheet: metadata.enableSplitSheet === true,
+        };
+        await compatStoreSet(`casting:project:${projectId}`, compatProject);
+      }
+    } catch (mirrorErr) {
+      console.warn("[troll-demo] compat-store-mirror failed (non-fatal)", mirrorErr);
+    }
+
     res.json({
       success: true,
       areas: {
