@@ -2122,16 +2122,26 @@ ${ctxLines.join("\n")}`;
             <button className={`ce-tab ${activeTab === "story" ? "active" : ""}`} onClick={() => setActiveTab("story")}>Story</button>
           </div>
 
-          {/* Live preview */}
+          {/* Live preview — flex-fill den ledige 1fr-raden i ce-main grid.
+              For 16:9: container fyller hele plassen, video centers via
+              object-fit:contain. For 9:16/1:1: lock aspect for å unngå
+              for store/små portrait/square previews. */}
           <div
             className="ce-preview-wrap"
             style={{
-              aspectRatio: aspectRatio === "16:9" ? "16 / 9"
-                : aspectRatio === "9:16" ? "9 / 16"
-                : "1 / 1",
-              maxHeight: aspectRatio === "9:16" ? "70vh" : "none",
-              maxWidth: aspectRatio === "9:16" ? "40vh" : aspectRatio === "1:1" ? "60vh" : "none",
-              margin: aspectRatio !== "16:9" ? "0 auto" : "0",
+              ...(aspectRatio === "9:16" ? {
+                aspectRatio: "9 / 16",
+                maxHeight: "78vh",
+                maxWidth: "44vh",
+                margin: "0 auto",
+                height: "auto",
+              } : aspectRatio === "1:1" ? {
+                aspectRatio: "1 / 1",
+                maxWidth: "65vh",
+                maxHeight: "65vh",
+                margin: "0 auto",
+                height: "auto",
+              } : {}),
             }}
           >
             <video
