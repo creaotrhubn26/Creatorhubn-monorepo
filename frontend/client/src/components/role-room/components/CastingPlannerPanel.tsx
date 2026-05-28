@@ -3396,11 +3396,12 @@ type RoleRoomProjectWorkspaceState = {
     if (isTemplateProject(project)) {
       return false;
     }
-    // TROLL er restorable KUN i produksjonsmodus (per Daniels krav: demoen
-    // skal kun være tilgjengelig der, og andre moduser skal ikke få noe
-    // TROLL-innhold). I innholdsprodusent/dansestudio/utdanning er TROLL
-    // ikke noe brukeren skal kunne åpne fra prosjekt-velgeren.
-    if (isTrollProject(project) && !isProducerWorkspaceSession) {
+    // TROLL skal ALDRI auto-velges som "restorable" (Daniels krav: demoen
+    // er et eksplisitt valg via "Last demo"-knappen eller prosjekt-
+    // velgeren). Den vises i prosjekt-velgeren i produksjonsmodus, men
+    // ikke som default-prosjekt for ny innlogging eller for "best
+    // available"-fallback.
+    if (isTrollProject(project)) {
       return false;
     }
     if (isContentProducerDemoProject(project)) {
@@ -3412,7 +3413,6 @@ type RoleRoomProjectWorkspaceState = {
     return true;
   }, [
     isContentProducerDemoProject,
-    isProducerWorkspaceSession,
     isProtectedDemoProject,
     isTemplateProject,
     isTrollProject,
@@ -5770,39 +5770,14 @@ type RoleRoomProjectWorkspaceState = {
           setCurrentProject(fullProject ?? preferredProject);
         }
       } else if (loadedProjects.length === 0) {
-        // Client portal view is read-only against a specific projectId
-        // supplied via URL. Do NOT synthesize a fresh `project-${Date.now()}`
-        // fallback here — otherwise every render generates a new id, each
-        // child effect fetches /api/projects/<new-id>/files → 404 → state
-        // updates → URL rewrite → re-mount → new id → Chrome throttles
-        // navigation. The client-portal-intent effect handles the URL-
-        // specified project separately; if that project truly isn't
-        // reachable, showing `currentProject = null` is the correct state.
-        if (clientPortalIntent) {
-          setProjects([]);
-          setCurrentProject(null);
-        } else {
-          // Only create empty project if mock data initialization didn't work
-          const defaultProject: CastingProject = {
-            id: `project-${Date.now()}`,
-            name: profession ? `${branding.tokens.labels.newProjectPrefix} ${getTerm('project')}` : 'Nytt Role Room prosjekt',
-            description: '',
-            roles: [],
-            candidates: [],
-            schedules: [],
-            crew: [],
-            locations: [],
-            props: [],
-            productionDays: [],
-            shotLists: [],
-            userRoles: [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-          await castingService.saveProject(defaultProject);
-          setProjects([defaultProject]);
-          setCurrentProject(defaultProject);
-        }
+        // Per Daniels krav: ikke auto-opprett default-prosjekt. Race
+        // condition mellom denne grenen og castingService.getProjects()
+        // skapte tomme "Nytt Role Room prosjekt-<ts>"-skall som forurenset
+        // DB-en og overstyrte URL-param som pekte til TROLL eller andre
+        // ekte prosjekter. Tom state med "Nytt prosjekt"-knapp i UI er
+        // riktig tilstand når brukeren ikke har noen prosjekter.
+        setProjects([]);
+        setCurrentProject(null);
       }
     } catch (error) {
       logRoleRoomDiagnostic('projects:load-failed', {
