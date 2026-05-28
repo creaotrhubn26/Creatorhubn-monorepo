@@ -161,6 +161,22 @@ export function IndustryTargetsTab() {
   const tier1CommentTarget = 5;
   const askReadyCount = targets.filter((t) => (t.ask_readiness ?? 0) === 3).length;
 
+  // Outreach Plan v2 — fase-progress
+  const fase1Producers = targets.filter((t) => t.segment === 'producer' && t.tier === 'T1');
+  const fase1Contacted = fase1Producers.filter((t) => !!t.first_contact_at).length;
+  const fase1MetWith = fase1Producers.filter((t) => !!t.meeting_at).length;
+  const fase1Piloted = fase1Producers.filter((t) => !!t.pilot_started_at).length;
+
+  const fase2aContent = targets.filter((t) => t.segment === 'content_producer');
+  const fase2aPiloted = fase2aContent.filter((t) => !!t.pilot_started_at).length;
+  const fase2bDance = targets.filter((t) => t.segment === 'skuda' || t.segment === 'noda' || t.segment === 'dance_studio');
+  const fase2bSkudaNoda = targets.filter((t) => (t.segment === 'skuda' || t.segment === 'noda') && !!t.meeting_at).length;
+
+  const fase3Partners = targets.filter((t) =>
+    ['nsf', 'nfi', 'institution', 'education_institution', 'affiliate_partner'].includes(t.segment),
+  );
+  const fase3MetWith = fase3Partners.filter((t) => !!t.meeting_at).length;
+
   async function handleSetAskReadiness(target: IndustryTarget, next: number) {
     try {
       await industryTargetsApi.patch(target.id, { askReadiness: next });
@@ -191,6 +207,77 @@ export function IndustryTargetsTab() {
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
       <OutreachWeek1Checklist />
+
+      <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.22)' }}>
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1.5 }}>
+          <Typography sx={{ color: '#a78bfa', fontWeight: 800, fontSize: '0.92rem', letterSpacing: '0.04em' }}>
+            Outreach Plan v2 — fase-progress
+          </Typography>
+          <Tooltip
+            arrow
+            placement="top"
+            title="Beregnet fra targets-data i denne CRM-en. Fase 1 = produksjonsteam (mål 3-5 piloter), Fase 2 = innholdsprodusent + dansestudio, Fase 3 = partnere (NSF/NFI/utdanning/affiliate). v2-disiplin: maks 2 grupper aktivt om gangen, ikke 6."
+          >
+            <Chip
+              label="i"
+              size="small"
+              sx={{ height: 18, width: 18, fontSize: '0.6rem', bgcolor: 'rgba(167,139,250,0.2)', color: '#c4b5fd', cursor: 'help', '& .MuiChip-label': { px: 0 } }}
+            />
+          </Tooltip>
+        </Stack>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.25)' }}>
+            <Typography sx={{ color: '#22d3ee', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
+              Fase 1 · Produksjonsteam (mnd 1-3)
+            </Typography>
+            <Stack spacing={0.4} sx={{ mb: 0.5 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem' }}>
+                <strong>{fase1Producers.length}</strong> Tier-1 produsenter opprettet
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                {fase1Contacted} kontaktet · {fase1MetWith} møter · <strong style={{ color: fase1Piloted >= 3 ? '#22c55e' : '#fbbf24' }}>{fase1Piloted}</strong> piloter
+              </Typography>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.7rem' }}>
+              Mål: 3-5 piloter à 6 mnd
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(167,139,250,0.05)', border: '1px solid rgba(167,139,250,0.25)' }}>
+            <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
+              Fase 2 · Innhold + dans (mnd 3-6)
+            </Typography>
+            <Stack spacing={0.4} sx={{ mb: 0.5 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem' }}>
+                <strong>{fase2aContent.length}</strong> innholdsprodusenter · <strong>{fase2aPiloted}</strong> piloter
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                <strong>{fase2bDance.length}</strong> dans · Skuda/NoDa-møter: <strong style={{ color: fase2bSkudaNoda > 0 ? '#86efac' : '#fbbf24' }}>{fase2bSkudaNoda}</strong>
+              </Typography>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.7rem' }}>
+              Start når Fase 1 har ≥3 piloter
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(52,211,153,0.05)', border: '1px solid rgba(52,211,153,0.25)' }}>
+            <Typography sx={{ color: '#34d399', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
+              Fase 3 · Partnere (mnd 6-12)
+            </Typography>
+            <Stack spacing={0.4} sx={{ mb: 0.5 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem' }}>
+                <strong>{fase3Partners.length}</strong> partner-targets opprettet
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                <strong>{fase3MetWith}</strong> partner-møter holdt (NSF/NFI/utdanning/affiliate)
+              </Typography>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.7rem' }}>
+              Vent — krever varm intro fra Fase 1-piloter
+            </Typography>
+          </Box>
+        </Box>
+      </Paper>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(6, 1fr)' }, gap: 1.5, mb: 3 }}>
         <StatCard label="Targets totalt" value={stats?.totals.total ?? 0} accent="#a78bfa" />
