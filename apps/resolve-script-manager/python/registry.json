@@ -2237,6 +2237,20 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "mark_qc_issues_on_timeline",
+      "name": "Mark QC Issues on Timeline",
+      "category": "markers",
+      "scriptPath": "scripts/qc/mark_qc_issues_on_timeline.py",
+      "description": "Legg til Resolve-markers ved hvert svart/stille intervall \u2014 r\u00f8d for gap, gul for stille.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
     }
   ]
 }

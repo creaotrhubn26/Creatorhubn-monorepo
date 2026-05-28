@@ -194,9 +194,27 @@ export function QcSourceVideoModal({ onClose }: Props) {
               </div>
             )}
 
-            <button onClick={() => { setResult(null); setVideoPath(""); }} style={{ width: "100%" }}>
-              Sjekk en annen fil
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setResult(null); setVideoPath(""); }} style={{ flex: 1 }}>
+                Sjekk en annen fil
+              </button>
+              <button className="primary"
+                      onClick={async () => {
+                if (!confirm("Dette krever at videoen finnes som en TIMELINE i et åpent Resolve-prosjekt med samme navn. Vil du fortsette?")) return;
+                try {
+                  const base = videoPath.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
+                  await executeScript("mark_qc_issues_on_timeline", {
+                    timelineName: base,
+                    removeOldQc: true,
+                  }, false);
+                  alert(`✓ Markers lagt til (røde = svart-gap, gule = stille).\nNavigér via Resolve sin marker-liste.`);
+                } catch (e) {
+                  alert(`Feil: ${e}\n\nSjekk at Resolve er åpen + timeline '${videoPath.split("/").pop()?.replace(/\.[^.]+$/, "")}' eksisterer.`);
+                }
+              }}>
+                📍 Legg markers i Resolve
+              </button>
+            </div>
           </div>
         )}
 

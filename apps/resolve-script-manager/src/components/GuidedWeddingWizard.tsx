@@ -1619,8 +1619,33 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                   }
                 }
                 if (qcWarnings.length > 0) {
-                  alert(`⚠️ QC-rapport før delivery:\n\n${qcWarnings.join("\n\n")}\n\nÅpne timeline i Resolve for å fikse.`);
-                  recordLearning(`QC: ${qcWarnings.length} advarsler`);
+                  const wantMarkers = confirm(
+                    `⚠️ QC-rapport før delivery:\n\n${qcWarnings.join("\n\n")}\n\n` +
+                    `Vil du at jeg legger til markers på timeline i Resolve så du kan navigere direkte til hvert problem?`
+                  );
+                  recordLearning(`QC: ${qcWarnings.length} advarsler — wantMarkers=${wantMarkers}`);
+
+                  if (wantMarkers) {
+                    let totalMarkers = 0;
+                    for (const tlName of Object.values(timelineNames)) {
+                      if (!tlName) continue;
+                      try {
+                        const sum = await executeScript("mark_qc_issues_on_timeline", {
+                          timelineName: tlName,
+                          unusedSongs,
+                          removeOldQc: true,
+                        }, false);
+                        const r = sum.events.find((e) => e.type === "result");
+                        const val = r?.value as { markersAdded?: number } | undefined;
+                        if (val?.markersAdded) totalMarkers += val.markersAdded;
+                      } catch (e) {
+                        console.warn("Marker failed:", e);
+                      }
+                    }
+                    if (totalMarkers > 0) {
+                      alert(`✓ La til ${totalMarkers} QC-markers i Resolve. Røde = svart-gap, gule = stille. Hopp til hver via marker-listen.`);
+                    }
+                  }
                 }
 
                 if (livePicksPath) onComplete(livePicksPath);
