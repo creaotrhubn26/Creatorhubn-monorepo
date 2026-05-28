@@ -12,6 +12,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { executeScript } from "../api";
+import { MusicProvidersSettings } from "./MusicProvidersSettings";
+import { loadSettings } from "./SettingsModal";
 
 interface TrackResult {
   provider: string;
@@ -54,6 +56,13 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect }: Props) {
   const [providerFilter, setProviderFilter] = useState<string>("");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const isLoggedInRR = useMemo(() => {
+    try {
+      const s = loadSettings();
+      return Boolean(s.RR_BEARER_TOKEN?.trim());
+    } catch { return false; }
+  }, [settingsOpen]);  // refresh when settings closed
 
   // Last profile på mount
   useEffect(() => {
@@ -154,7 +163,32 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect }: Props) {
     <div className="modal-backdrop" onClick={!downloadingId ? onClose : undefined}>
       <div className="modal" onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 800, width: "min(96vw, 800px)", maxHeight: "92vh", overflowY: "auto" }}>
-        <h2>🎵 Søk musikk fra leverandør</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0 }}>🎵 Søk musikk fra leverandør</h2>
+          <button onClick={() => setSettingsOpen(true)}
+                  title="Administrer credentials per leverandør"
+                  style={{ fontSize: 11, padding: "4px 10px" }}>
+            ⚙ Profiler
+          </button>
+        </div>
+
+        {/* Login-status for Vault */}
+        {!isLoggedInRR ? (
+          <div style={{ marginTop: 10, background: "var(--bg-3)",
+                          borderLeft: "3px solid #f0a500",
+                          padding: 10, borderRadius: 4, fontSize: 11 }}>
+            ⓘ <strong>Ikke logget inn med Role Room</strong> — du kan bruke lokal profil
+            for credentials. For å hente kunde-credentials fra Vault må du logge inn
+            via Settings → Sign in.
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, background: "rgba(74, 212, 138, 0.10)",
+                          borderLeft: "3px solid #4ad48a",
+                          padding: 10, borderRadius: 4, fontSize: 11 }}>
+            🟢 <strong>Logget inn med Role Room</strong> — Vault-credentials fra prosjekt-tildelte
+            klienter er tilgjengelige (kommer i neste iterasjon).
+          </div>
+        )}
 
         {/* Profil-velger */}
         <div className="field" style={{ marginTop: 12 }}>
@@ -307,6 +341,19 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect }: Props) {
           <button onClick={onClose} disabled={!!downloadingId}>Lukk</button>
         </div>
       </div>
+
+      {settingsOpen && (
+        <MusicProvidersSettings onClose={() => {
+          setSettingsOpen(false);
+          // Reload profiles to pick up any changes
+          executeScript("read_credential_profiles", {}, false).then((sum) => {
+            const r = sum.events.find((e) => e.type === "result");
+            const val = r?.value as { profiles?: ProfileInfo[]; activeProfileId?: string } | undefined;
+            if (val?.profiles) setProfiles(val.profiles);
+            if (val?.activeProfileId && !activeProfileId) setActiveProfileId(val.activeProfileId);
+          });
+        }} />
+      )}
     </div>
   );
 }
