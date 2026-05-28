@@ -2111,6 +2111,20 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "match_external_audio_to_clips",
+      "name": "Match External Audio to Clips",
+      "category": "audio",
+      "scriptPath": "scripts/audio/match_external_audio_to_clips.py",
+      "description": "Match eksterne lyd-opptak (lavalier/recorder) til video-klipp via cross-correlation. Returnerer matches med offset + confidence.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }

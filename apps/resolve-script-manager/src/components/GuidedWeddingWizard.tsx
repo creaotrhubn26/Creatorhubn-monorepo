@@ -67,6 +67,20 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   const [makeHighlight, setMakeHighlight] = useState(true);
   const [makeTeaser, setMakeTeaser] = useState(true);
 
+  // Steg 2: Ekstern lyd state
+  const [hasExternal, setHasExternal] = useState<boolean | null>(null);
+  const [externalFolder, setExternalFolder] = useState<string>("");
+  const [matchPct, setMatchPct] = useState(0);
+  const [matchMsg, setMatchMsg] = useState("");
+  const [matching, setMatching] = useState(false);
+  const [matchResult, setMatchResult] = useState<{
+    matches: Array<{ externalAudio: string; clipPath: string; offsetSec: number; confidence: number }>;
+    matchCount: number;
+  } | null>(null);
+  const [matchError, setMatchError] = useState<string | null>(null);
+  // Bruker-overrides: matchIndex → "correct" | "wrong" (læring)
+  const [matchOverrides, setMatchOverrides] = useState<Record<number, "correct" | "wrong">>({});
+
   // Læring: record decisions
   const recordLearning = (note: string) => {
     try {
@@ -304,8 +318,165 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
           </div>
         )}
 
-        {/* ────── Step 2-7: TODO placeholders ────── */}
-        {step !== "material" && (
+        {/* ────── Step 2: Ekstern lyd ────── */}
+        {step === "audio" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              Har du tatt opp lyd fra en ekstern opptaker (lavalier, zoom-recorder) for taler?
+              Hvis ja, finner jeg klippene og syncer lyden mot kamera-audio.
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={() => setHasExternal(false)}
+                className={hasExternal === false ? "primary" : ""}
+                style={{ flex: 1, padding: "12px 18px" }}
+              >
+                Nei, bare kamera-audio
+              </button>
+              <button
+                onClick={() => setHasExternal(true)}
+                className={hasExternal === true ? "primary" : ""}
+                style={{ flex: 1, padding: "12px 18px" }}
+              >
+                Ja, jeg har eksterne opptak
+              </button>
+            </div>
+
+            {hasExternal === true && (
+              <>
+                <div className="field">
+                  <label>Mappe med ekstern lyd (.wav, .mp3, .m4a, etc.)</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input readOnly value={externalFolder || "Ingen valgt"} style={{ flex: 1 }} />
+                    <button onClick={async () => {
+                      const sel = await openDialog({
+                        multiple: false, directory: true,
+                        title: "Pek mappa med eksterne lyd-opptak",
+                      });
+                      if (typeof sel === "string") setExternalFolder(sel);
+                    }} disabled={matching}>Pek på mappe…</button>
+                  </div>
+                </div>
+
+                {externalFolder && !matchResult && !matching && (
+                  <button className="primary" onClick={async () => {
+                    if (!scanResult) return;
+                    setMatching(true);
+                    setMatchError(null);
+                    setMatchPct(0);
+                    const unsubProm = onScriptEvent((ev: ScriptEvent) => {
+                      if (ev.type === "progress") {
+                        const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
+                        setMatchPct(pct); setMatchMsg(ev.message || "");
+                      }
+                    });
+                    try {
+                      const sum = await executeScript("match_external_audio_to_clips", {
+                        externalAudioFolder: externalFolder,
+                        clips: scanResult ? (scanResult as unknown as { clips?: Array<{ path: string }> }).clips || [] : [],
+                      }, false);
+                      const r = sum.events.find((e) => e.type === "result");
+                      const val = r?.value as typeof matchResult;
+                      if (val) setMatchResult(val);
+                    } catch (err) {
+                      setMatchError(String(err));
+                    } finally {
+                      unsubProm.then((u) => u());
+                      setMatching(false);
+                    }
+                  }}>
+                    🔊 Match audio mot klipp
+                  </button>
+                )}
+
+                {matching && (
+                  <div>
+                    <div style={{ height: 6, background: "var(--bg-3)", borderRadius: 3,
+                                   overflow: "hidden", marginBottom: 6 }}>
+                      <div style={{ width: `${matchPct}%`, height: "100%",
+                                     background: "var(--accent)", transition: "width 0.3s" }} />
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>{matchMsg} — {matchPct}%</div>
+                  </div>
+                )}
+
+                {matchError && (
+                  <div style={{ background: "var(--bg-3)", borderLeft: "3px solid var(--danger)",
+                                 padding: 10, borderRadius: 4 }}>
+                    <strong>Feil:</strong> {matchError}
+                  </div>
+                )}
+
+                {matchResult && matchResult.matches.length > 0 && (
+                  <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+                      Fant {matchResult.matchCount} sync-kandidater — kryss av om noe er feil:
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6,
+                                   maxHeight: 280, overflowY: "auto" }}>
+                      {matchResult.matches.slice(0, 30).map((m, i) => {
+                        const ext = m.externalAudio.split("/").pop() || "";
+                        const clip = m.clipPath.split("/").pop() || "";
+                        const override = matchOverrides[i];
+                        return (
+                          <div key={i} style={{ display: "flex", alignItems: "center",
+                                                  gap: 10, padding: "6px 8px", borderRadius: 4,
+                                                  background: override === "wrong" ? "rgba(239, 79, 111, 0.10)" : "transparent",
+                                                  opacity: override === "wrong" ? 0.6 : 1 }}>
+                            <span style={{ color: m.confidence > 0.7 ? "#4ad48a"
+                                                     : m.confidence > 0.5 ? "#f0a500"
+                                                     : "#ef4f6f", fontSize: 12, minWidth: 44 }}>
+                              {(m.confidence * 100).toFixed(0)}%
+                            </span>
+                            <span style={{ fontSize: 12, fontFamily: "ui-monospace, monospace",
+                                            flex: 1, overflow: "hidden", textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap" }}>
+                              {ext} → {clip} <span style={{ opacity: 0.5 }}>(offset {m.offsetSec.toFixed(2)}s)</span>
+                            </span>
+                            <button onClick={() => {
+                              setMatchOverrides(prev => ({ ...prev, [i]: "wrong" }));
+                              recordLearning(`Steg 2: Avvist match (conf ${(m.confidence * 100).toFixed(0)}%): ${ext} ↔ ${clip}`);
+                            }} title="Feil match — Claude lærer"
+                                     style={{ padding: "2px 8px", fontSize: 11 }}>
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {matchResult && matchResult.matches.length === 0 && (
+                  <div style={{ background: "var(--bg-3)", padding: 14, borderRadius: 8,
+                                 fontSize: 12, opacity: 0.8 }}>
+                    Fant ingen klare matches. Sjekk at lyd-filene er fra samme tidsperiode
+                    som videoene, og at lyden er hørbar (ikke bare bakgrunnsstøy).
+                  </div>
+                )}
+
+                <div style={{ fontSize: 11, opacity: 0.6, fontStyle: "italic",
+                               background: "var(--bg-3)", padding: 10, borderRadius: 6 }}>
+                  💡 Hvis jeg matcher feil — klikk ✕. Jeg lærer å unngå lignende feil neste gang.
+                </div>
+              </>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={() => setStep("material")} disabled={matching}>← Tilbake</button>
+              <button className="primary" onClick={() => {
+                recordLearning(`Steg 2: hasExternal=${hasExternal} matches=${matchResult?.matchCount || 0} wrong=${Object.values(matchOverrides).filter(v => v === "wrong").length}`);
+                setStep("music");
+              }} disabled={hasExternal === null || matching}>
+                Neste: Sanger →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ────── Step 3-7: TODO placeholders ────── */}
+        {step !== "material" && step !== "audio" && (
           <div style={{ padding: 32, textAlign: "center", opacity: 0.7 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
             <div style={{ fontSize: 15, marginBottom: 6 }}>
