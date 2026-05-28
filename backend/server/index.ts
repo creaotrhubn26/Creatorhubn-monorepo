@@ -40,6 +40,8 @@ import { Pool } from "pg";
 import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
+import { registerRoleRoomProfileRoutes } from "./role-room-profile-routes.js";
+import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
   readAuditionReminderStatus,
@@ -1681,6 +1683,36 @@ registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
+
+// Role Room member profile (separat fra Creatorhub-profil) — central solution
+// for alle Role Room-medlemmer. Inkluderer onboarding-state + R2-image-upload.
+{
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const s3sdk = require("@aws-sdk/client-s3") as typeof import("@aws-sdk/client-s3");
+  const r2cfg = buildCmsR2Config();
+  let uploadImage: ((buf: Buffer, mime: string, key: string) => Promise<string>) | undefined;
+  if (r2cfg.enabled && r2cfg.endpoint && r2cfg.accessKeyId && r2cfg.secretAccessKey && r2cfg.bucket) {
+    const client = new s3sdk.S3Client({
+      region: "auto",
+      endpoint: r2cfg.endpoint,
+      credentials: {
+        accessKeyId: r2cfg.accessKeyId,
+        secretAccessKey: r2cfg.secretAccessKey,
+      },
+    });
+    const bucket = r2cfg.bucket;
+    const publicBase = r2cfg.publicUrlBase?.replace(/\/+$/, "");
+    uploadImage = async (buffer, mimeType, key) => {
+      await client.send(new s3sdk.PutObjectCommand({
+        Bucket: bucket, Key: key, Body: buffer,
+        ContentType: mimeType,
+        CacheControl: "public, max-age=31536000, immutable",
+      }));
+      return publicBase ? `${publicBase}/${key}` : `${r2cfg.endpoint}/${bucket}/${key}`;
+    };
+  }
+  registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage });
+}
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
