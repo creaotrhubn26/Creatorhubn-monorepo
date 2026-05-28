@@ -473,60 +473,104 @@ export function IndustryTargetsTab() {
 // Persisteres til localStorage så Daniel beholder progresjonen ved
 // reload. "Skjul"-knapp ved bunnen setter hidden=true permanent.
 
-const WEEK1_STORAGE_KEY = 'roleroom-outreach-week1-v1';
-const WEEK1_DAYS: Array<{ day: string; label: string; action: string }> = [
-  { day: 'Mon', label: 'Foundation', action: 'Bygg CRM. List 15 CDs + 30 produsenter. Finn én felles kontakt per target.' },
-  { day: 'Tue', label: 'LinkedIn-rytme', action: 'Sett opp LinkedIn-engagement — 30 min/dag på substantive kommentarer mot Tier-1 targets.' },
-  { day: 'Wed', label: 'Første CD-DM', action: 'Skriv personaliserte DM-er til topp 5 CDs. Send 1 (bruk AI-utkast på en target).' },
-  { day: 'Thu', label: 'Første produsent-mail', action: 'Skriv personaliserte mailer til topp 5 produsenter. Send 1.' },
-  { day: 'Fri', label: 'Første møte', action: 'Kaffe eller møte booket med 1 CD eller 1 produsent. Hvis ingen møter — meldingen er feil, skriv om.' },
-  { day: 'Sat', label: 'Rushprint-utkast', action: 'Skriv guest-artikkel (1.200 ord). Topic-forslag: AI-klausuler, casting-tid-data, eller barne-compliance.' },
-  { day: 'Sun', label: 'Hvile', action: 'Norsk forretningskultur respekterer arbeidsfri. Outreach på søndag signaliserer desperasjon.' },
+const OUTREACH_V2_STORAGE_KEY = 'roleroom-outreach-30days-v2';
+
+const OUTREACH_V2_WEEKS: Array<{
+  week: number;
+  title: string;
+  subtitle: string;
+  actions: string[];
+}> = [
+  {
+    week: 1,
+    title: 'Uke 1 — Foundation',
+    subtitle: 'Bygg infrastrukturen før du kontakter noen',
+    actions: [
+      'Opprett 8 Tier-1-produksjonsselskaper i denne CRM-en: Indie Film, Motlys, Maipo, Friland, Paradox, Mer Film, Bacon, Newsy.',
+      'Finn navngitt kontaktperson hos hvert via LinkedIn — produsent eller produksjonsleder. Aldri "info@". Hvis du ikke vet hvem, har du ikke gjort hjemmeleksen.',
+      'Send 1 substantiv LinkedIn-engagement (kommentar på siste innlegg) til hver kontaktperson. Ingen pitch.',
+    ],
+  },
+  {
+    week: 2,
+    title: 'Uke 2 — Første kontakt',
+    subtitle: 'Personlige meldinger — ikke skala, ikke spray',
+    actions: [
+      'Send 3 personlige meldinger til Tier-1 via AutoAwesome-knappen med producer-os-pilot-template.',
+      'Skriv første LinkedIn-innlegg som gründer om støy-eliminering i norsk produksjon.',
+      'Send Skuda + NoDa-partnerskaps-mail med skuda-noda-partnership-template (måned 3-prep).',
+    ],
+  },
+  {
+    week: 3,
+    title: 'Uke 3 — Lyttemøter',
+    subtitle: '20 min lytting > 5 min pitch',
+    actions: [
+      'Hold 2-3 lyttemøter med produksjonsselskap. Tre spørsmål: "Gå meg gjennom siste produksjon — hvor mistet dere oversikt?" / "Tid på koordinering vs. kreativt?" / "Hvilket verktøy ville dere kvitte dere med?"',
+      'Vis Role Room kort — kun det de klagde på, ikke alle features.',
+      'Skriv svarene i target-notes så Claude-personalisering blir bedre neste gang.',
+    ],
+  },
+  {
+    week: 4,
+    title: 'Uke 4 — Konvertere',
+    subtitle: 'Pilot er en gave, ikke et salg',
+    actions: [
+      'Tilby gratis 6-måneders pilot til 2-3 av de mest interesserte. Sett pilot_started_at på target.',
+      'Onboard personlig — 30 min video der du selv setter opp deres første prosjekt sammen med dem.',
+      'Andre LinkedIn-innlegg som gründer — bygg-i-offentlighet, ærlig om hva som funket og ikke.',
+      'Håndskrevet takkekort 48 timer etter onboarding-møtet.',
+    ],
+  },
 ];
 
-function loadWeek1State(): { done: boolean[]; hidden: boolean } {
-  if (typeof window === 'undefined') return { done: Array(7).fill(false), hidden: false };
+const OUTREACH_V2_TOTAL_ACTIONS = OUTREACH_V2_WEEKS.reduce((acc, w) => acc + w.actions.length, 0);
+
+type OutreachV2State = { done: Record<string, boolean>; hidden: boolean };
+
+function loadOutreachV2State(): OutreachV2State {
+  if (typeof window === 'undefined') return { done: {}, hidden: false };
   try {
-    const raw = window.localStorage.getItem(WEEK1_STORAGE_KEY);
-    if (!raw) return { done: Array(7).fill(false), hidden: false };
+    const raw = window.localStorage.getItem(OUTREACH_V2_STORAGE_KEY);
+    if (!raw) return { done: {}, hidden: false };
     const parsed = JSON.parse(raw);
     return {
-      done: Array.isArray(parsed.done) && parsed.done.length === 7 ? parsed.done.map(Boolean) : Array(7).fill(false),
+      done: parsed.done && typeof parsed.done === 'object' ? parsed.done : {},
       hidden: !!parsed.hidden,
     };
   } catch {
-    return { done: Array(7).fill(false), hidden: false };
+    return { done: {}, hidden: false };
   }
 }
 
-function saveWeek1State(state: { done: boolean[]; hidden: boolean }): void {
+function saveOutreachV2State(state: OutreachV2State): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(WEEK1_STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(OUTREACH_V2_STORAGE_KEY, JSON.stringify(state));
   } catch {
     /* localStorage kan være blokkert — gi opp stille */
   }
 }
 
 function OutreachWeek1Checklist() {
-  const [state, setState] = useState(loadWeek1State);
+  const [state, setState] = useState(loadOutreachV2State);
 
-  function toggle(idx: number) {
-    const next = { ...state, done: state.done.map((d, i) => (i === idx ? !d : d)) };
+  function toggle(key: string) {
+    const next: OutreachV2State = { ...state, done: { ...state.done, [key]: !state.done[key] } };
     setState(next);
-    saveWeek1State(next);
+    saveOutreachV2State(next);
   }
 
   function hideForever() {
-    const next = { ...state, hidden: true };
+    const next: OutreachV2State = { ...state, hidden: true };
     setState(next);
-    saveWeek1State(next);
+    saveOutreachV2State(next);
   }
 
   if (state.hidden) return null;
 
-  const doneCount = state.done.filter(Boolean).length;
-  const allDone = doneCount === 7;
+  const doneCount = Object.values(state.done).filter(Boolean).length;
+  const allDone = doneCount === OUTREACH_V2_TOTAL_ACTIONS;
 
   return (
     <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.28)', position: 'relative' }}>
@@ -535,11 +579,11 @@ function OutreachWeek1Checklist() {
           <RocketLaunchIcon sx={{ color: '#22d3ee', fontSize: 22 }} />
           <Box>
             <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1rem' }}>
-              Outreach Plan · Uke 1-handlingsliste
+              Outreach Plan v2 · Første 30 dager
               {allDone ? <Chip label="Ferdig!" size="small" sx={{ ml: 1.5, height: 18, bgcolor: 'rgba(34,197,94,0.2)', color: '#86efac', fontWeight: 700, fontSize: '0.66rem' }} /> : null}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem' }}>
-              {doneCount} / 7 fullført · Per dokumentet: "Hvis null møter etter fredag — meldingen er feil, skriv om"
+              {doneCount} / {OUTREACH_V2_TOTAL_ACTIONS} handlinger · Per v2: "Hvis ingen møter i kalenderen innen uke 3 — meldingen din er feil. Skriv om."
             </Typography>
           </Box>
         </Stack>
@@ -547,47 +591,63 @@ function OutreachWeek1Checklist() {
           Skjul permanent
         </Button>
       </Stack>
-      <Stack spacing={0.75}>
-        {WEEK1_DAYS.map((row, idx) => {
-          const done = state.done[idx];
+      <Stack spacing={2}>
+        {OUTREACH_V2_WEEKS.map((week) => {
+          const weekDoneCount = week.actions.filter((_, idx) => state.done[`w${week.week}_${idx}`]).length;
+          const weekAllDone = weekDoneCount === week.actions.length;
           return (
-            <Stack
-              key={row.day}
-              direction="row"
-              spacing={1.25}
-              alignItems="flex-start"
-              onClick={() => toggle(idx)}
-              sx={{
-                cursor: 'pointer',
-                p: 0.75,
-                borderRadius: 1,
-                opacity: done ? 0.55 : 1,
-                '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
-              }}
-            >
-              {done ? (
-                <CheckBoxIcon fontSize="small" sx={{ color: '#22d3ee', mt: 0.25 }} />
-              ) : (
-                <CheckBoxOutlineBlankIcon fontSize="small" sx={{ color: 'rgba(148,163,184,0.55)', mt: 0.25 }} />
-              )}
-              <Box sx={{ minWidth: 48 }}>
-                <Typography sx={{ color: done ? 'rgba(203,213,225,0.55)' : '#22d3ee', fontWeight: 800, fontSize: '0.74rem', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  {row.day}
+            <Box key={week.week}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+                <Typography sx={{ color: weekAllDone ? '#86efac' : '#22d3ee', fontWeight: 800, fontSize: '0.86rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  {week.title}
                 </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.5)', fontSize: '0.66rem' }}>{row.label}</Typography>
-              </Box>
-              <Typography
-                sx={{
-                  flex: 1,
-                  color: done ? 'rgba(203,213,225,0.55)' : '#e2e8f0',
-                  fontSize: '0.84rem',
-                  lineHeight: 1.5,
-                  textDecoration: done ? 'line-through' : 'none',
-                }}
-              >
-                {row.action}
+                <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.74rem' }}>
+                  · {weekDoneCount}/{week.actions.length}
+                </Typography>
+              </Stack>
+              <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.74rem', mb: 0.75, ml: 0.25 }}>
+                {week.subtitle}
               </Typography>
-            </Stack>
+              <Stack spacing={0.5}>
+                {week.actions.map((action, idx) => {
+                  const key = `w${week.week}_${idx}`;
+                  const done = !!state.done[key];
+                  return (
+                    <Stack
+                      key={key}
+                      direction="row"
+                      spacing={1.25}
+                      alignItems="flex-start"
+                      onClick={() => toggle(key)}
+                      sx={{
+                        cursor: 'pointer',
+                        p: 0.6,
+                        borderRadius: 1,
+                        opacity: done ? 0.55 : 1,
+                        '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
+                      }}
+                    >
+                      {done ? (
+                        <CheckBoxIcon fontSize="small" sx={{ color: '#22d3ee', mt: 0.25 }} />
+                      ) : (
+                        <CheckBoxOutlineBlankIcon fontSize="small" sx={{ color: 'rgba(148,163,184,0.55)', mt: 0.25 }} />
+                      )}
+                      <Typography
+                        sx={{
+                          flex: 1,
+                          color: done ? 'rgba(203,213,225,0.55)' : '#e2e8f0',
+                          fontSize: '0.84rem',
+                          lineHeight: 1.5,
+                          textDecoration: done ? 'line-through' : 'none',
+                        }}
+                      >
+                        {action}
+                      </Typography>
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            </Box>
           );
         })}
       </Stack>
