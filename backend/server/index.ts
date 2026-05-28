@@ -456,6 +456,7 @@ import { setupRoleRoomEducationInquiriesRoutes } from "./role-room-education-inq
 import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
 import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
+import { setupRoleRoomBillingHealthRoutes } from "./role-room-billing-health-routes";
 import { setupRoleRoomAuditionsRoutes } from "./role-room-auditions-routes";
 import { setupCmsPagesRoutes } from "./cms-pages-routes";
 import { setupCommunityPresenceRoutes } from "./community-presence-routes";
@@ -31098,6 +31099,15 @@ setupRoleRoomBillingAdminRoutes({
   ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
   ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
   ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+});
+
+// ── Role Room billing health-check — admin-gated Stripe-konfig-sjekk
+//   GET /api/admin/role-room/billing-health. Speiler scripten i
+//   backend/scripts/check-role-room-billing.mjs så Daniel kan sjekke
+//   Stripe-konfig fra Admin Room uten å åpne Render-shell.
+setupRoleRoomBillingHealthRoutes({
+  app,
+  requireAdminSession,
 });
 
 // ── Role Room auditions — Audition-entitet (migrasjon 140).

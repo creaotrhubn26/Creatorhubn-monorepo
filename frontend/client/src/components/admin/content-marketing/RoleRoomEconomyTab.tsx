@@ -62,6 +62,7 @@ import {
 } from '../../../services/adminRoomApi';
 import PlatformStatusCard from './PlatformStatusCard';
 import MigrationsCard from './MigrationsCard';
+import RoleRoomBillingHealthCard from './RoleRoomBillingHealthCard';
 
 /**
  * Role Room økonomi-tab — Stripe-subscribers, kostnads-margin og plattform-kostnader
@@ -172,6 +173,7 @@ export function RoleRoomEconomyTab() {
 
       <PlatformStatusCard />
       <MigrationsCard />
+      <RoleRoomBillingHealthCard />
 
       <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
         <Box>

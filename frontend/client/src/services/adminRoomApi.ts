@@ -1709,3 +1709,52 @@ export const newsletterTemplatesApi = {
     await jsonFetch(`/newsletter/role-room/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// Role Room billing-health — Stripe-konfig-sjekk
+// ─────────────────────────────────────────────────────────
+
+export interface RoleRoomBillingHealthPriceCheck {
+  configured: boolean;
+  priceIdPreview: string | null;
+  exists: boolean | null;
+  unitAmount: number | null;
+  currency: string | null;
+  interval: string | null;
+  active: boolean | null;
+  amountMatchesExpected: boolean | null;
+  expectedAmountKr: number;
+  errorMessage: string | null;
+}
+
+export interface RoleRoomBillingHealth {
+  checkedAt: string;
+  stripeSecretKey: {
+    configured: boolean;
+    preview: string | null;
+    mode: 'live' | 'test' | 'unknown';
+    validatedAgainstStripe: boolean | null;
+    errorMessage: string | null;
+  };
+  webhookSecret: {
+    configured: boolean;
+    preview: string | null;
+    formatOk: boolean;
+  };
+  productionTeamPrice: RoleRoomBillingHealthPriceCheck | null;
+  contentProducerPrice: RoleRoomBillingHealthPriceCheck | null;
+  publicUrl: {
+    configured: boolean;
+    value: string | null;
+  };
+  overall: 'ok' | 'warnings' | 'failed';
+  failureCount: number;
+  warningCount: number;
+  summary: string;
+}
+
+export const roleRoomBillingHealthApi = {
+  check: async (): Promise<RoleRoomBillingHealth> => {
+    return jsonFetch<RoleRoomBillingHealth>('/role-room-billing-health');
+  },
+};
