@@ -24,7 +24,8 @@ export type MarketingPageKey =
   | 'kamera-folk-verktoy-2026'
   | 'etterproduksjon-norge-2026'
   | 'produksjons-os'
-  | 'innholdsprodusent-norge';
+  | 'innholdsprodusent-norge'
+  | 'dansestudio-norge';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -446,6 +447,34 @@ I ett verktøy:
 495 kr per sete per måned. Eks. mva. Minimum 1 sete.
 
 Hele løsningen: https://theroleroom.com/innholdsprodusent-norge`,
+  },
+  {
+    key: 'dansestudio-norge',
+    path: '/dansestudio-norge',
+    title: 'Dansestudio-vertikalen — booking, koreografi, casting og medlemmer i ett | The Role Room',
+    description:
+      'For norske dansestudioer som driver med profesjonell dans. Time-booking + koreografi + casting til oppdrag + medlemshåndtering + formasjon + skadelogg i samme system. Dansere fra 149 kr/mnd.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `Norske dansestudioer kjører i dag på 4-6 verktøy:
+- Booking i ett system
+- Casting til oppdrag på Facebook-grupper og Instagram-DM
+- Medlemshåndtering i Excel eller papir
+- Koreografi forklart muntlig i sal
+- Skadelogg ad-hoc (eller ikke i det hele tatt)
+
+Det skaper konteksttap og re-skader.
+
+Dansestudio-vertikalen i The Role Room samler:
+- Time-booking med sal-konflikt-sjekk og auto-påminnelse
+- Casting til danseoppdrag — intern eller åpen for hele The Role Room-nettverket
+- Medlemshåndtering med Stripe-/EHF-fakturering
+- Formasjonsverktøy: bygg dansenummer visuelt, eksporter til hver danser for hjemmeøving
+- Strukturert skadelogg med «klar fra dato»-oppfølging
+
+Frilans-danser: 149 kr/mnd. Studio: 149 – 2 490 kr/mnd etter størrelse.
+
+Hele vertikalen: https://theroleroom.com/dansestudio-norge`,
   },
 ];
 
