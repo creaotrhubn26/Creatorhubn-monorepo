@@ -16687,19 +16687,33 @@ type RoleRoomProjectWorkspaceState = {
                           
                           // Invalidate query cache to force refresh
                           queryClient.invalidateQueries({ queryKey: ['/api/casting/projects'] });
-                          
-                          // Set the newly created project as current immediately
-                          // This ensures all child components (roles, candidates, locations, shots, etc.) use the same project ID
-                          setCurrentProject(projectWithCrew);
-                          
+
+                          // For TROLL-demo (og andre seed-baserte prosjekter) inneholder
+                          // projectData fra modalen kun {id, name, projectType, description} —
+                          // sub-arrays er tomme. Hent fullt prosjekt fra DB FØR vi setter
+                          // currentProject, slik at dashboardet ser 8 roller/8 kandidater
+                          // umiddelbart, ikke 0/0/0/0 frem til neste loadProjects-cycle.
+                          try {
+                            const fullProject = await castingService.getProject(normalizedProjectId);
+                            if (fullProject) {
+                              setCurrentProject({
+                                ...fullProject,
+                                crew: fullProject.crew || [],
+                              } as CastingProject);
+                            } else {
+                              // Fallback hvis prosjektet ennå ikke er lesbart (race)
+                              setCurrentProject(projectWithCrew);
+                            }
+                          } catch {
+                            setCurrentProject(projectWithCrew);
+                          }
+
                           // Reload projects list in the background to update the list
                           try {
                             const loadedProjects = filterProjectsForSession(await castingService.getProjects());
                             setProjects(loadedProjects);
-                            // Ensure the new project is still set as current (in case reload changed something)
                             const foundProject = loadedProjects.find((project) => project.id === normalizedProjectId);
                             if (foundProject) {
-                              // Ensure crew is initialized
                               const projectWithCrewFromDb = {
                                 ...foundProject,
                                 crew: foundProject.crew || [],
