@@ -225,6 +225,34 @@ export const patchGrant = (id: string, patch: Partial<DanceGrantApplication>) =>
   patchJson<DanceGrantApplication>(`/grants/${encodeURIComponent(id)}`, patch);
 export const deleteGrant = (id: string) => deletePath(`/grants/${encodeURIComponent(id)}`);
 
+export type AuditionStatus = 'open' | 'applied' | 'shortlisted' | 'rejected' | 'accepted' | 'withdrawn' | 'closed';
+export interface DanceAudition {
+  id: string;
+  ownerUserId: string;
+  projectId: string | null;
+  title: string;
+  organizer: string;
+  deadline: string | null;
+  auditionDate: string | null;
+  location: string | null;
+  status: AuditionStatus;
+  applied: boolean;
+  appliedAt: string | null;
+  sourceUrl: string | null;
+  feeKr: number | null;
+  requirements: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const listAuditions = (projectId?: string | null) => fetchList<DanceAudition>('/auditions', projectId);
+export const createAudition = (input: Partial<DanceAudition> & { title: string; organizer: string }) =>
+  postJson<DanceAudition>('/auditions', input);
+export const patchAudition = (id: string, patch: Partial<DanceAudition>) =>
+  patchJson<DanceAudition>(`/auditions/${encodeURIComponent(id)}`, patch);
+export const deleteAudition = (id: string) => deletePath(`/auditions/${encodeURIComponent(id)}`);
+
 export const listInvoices = (projectId?: string | null) => fetchList<DanceInvoice>('/invoices', projectId);
 export const createInvoice = (input: Partial<DanceInvoice> & { customerName: string }) =>
   postJson<DanceInvoice>('/invoices', input);

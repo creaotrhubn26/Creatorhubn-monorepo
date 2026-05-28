@@ -32,10 +32,13 @@ import {
   GppGoodOutlined as ShieldIcon,
   EventOutlined as CalendarIcon,
   VerifiedUserOutlined as VerifiedIcon,
+  Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from '../icons/CastingIcons';
 import ConsentSignatureDialog from './ConsentSignatureDialog';
 import type { Consent, ConsentType, ConsentSignatureData } from '../../models/casting';
+import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 
 interface ConsentPortalViewProps {
   accessCode?: string;
@@ -579,6 +582,8 @@ export default function ConsentPortalView({
     { icon: <VerifiedIcon sx={{ fontSize: 16 }} />, label: 'Juridisk bindende' },
   ];
 
+  const socialProfiles = getPublicSocialProfiles('roleRoom');
+
   return (
     <Box
       sx={{
@@ -622,6 +627,27 @@ export default function ConsentPortalView({
             <Box sx={{ color: BRAND, display: 'flex' }}>{b.icon}</Box>
             <Typography variant="caption" sx={{ fontWeight: 600 }}>{b.label}</Typography>
           </Stack>
+        ))}
+      </Stack>
+
+      <Stack direction="row" spacing={1} justifyContent="center" sx={{ mt: 2.5 }}>
+        {socialProfiles.map((p) => (
+          <IconButton
+            key={p.platform}
+            component="a"
+            href={p.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`The Role Room på ${p.label}`}
+            size="small"
+            sx={{
+              color: BRAND,
+              bgcolor: alpha(BRAND, 0.08),
+              '&:hover': { bgcolor: alpha(BRAND, 0.16) },
+            }}
+          >
+            {p.platform === 'instagram' ? <InstagramIcon fontSize="small" /> : <FacebookIcon fontSize="small" />}
+          </IconButton>
         ))}
       </Stack>
     </Box>

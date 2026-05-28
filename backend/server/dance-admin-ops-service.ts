@@ -177,6 +177,137 @@ export async function deletePerformance(pool: Pool, ownerUserId: string, id: str
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  AUDITIONS
+// ═══════════════════════════════════════════════════════════════════════
+
+export type AuditionStatus = 'open' | 'applied' | 'shortlisted' | 'rejected' | 'accepted' | 'withdrawn' | 'closed';
+
+export interface DanceAudition {
+  id: string;
+  ownerUserId: string;
+  projectId: string | null;
+  title: string;
+  organizer: string;
+  deadline: string | null;
+  auditionDate: string | null;
+  location: string | null;
+  status: AuditionStatus;
+  applied: boolean;
+  appliedAt: string | null;
+  sourceUrl: string | null;
+  feeKr: number | null;
+  requirements: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapAuditionRow(row: Record<string, unknown>): DanceAudition {
+  return {
+    id: String(row.id),
+    ownerUserId: String(row.owner_user_id),
+    projectId: row.project_id == null ? null : String(row.project_id),
+    title: String(row.title),
+    organizer: String(row.organizer),
+    deadline: isoTsOrNull(row.deadline),
+    auditionDate: isoTsOrNull(row.audition_date),
+    location: row.location == null ? null : String(row.location),
+    status: String(row.status) as AuditionStatus,
+    applied: Boolean(row.applied),
+    appliedAt: isoTsOrNull(row.applied_at),
+    sourceUrl: row.source_url == null ? null : String(row.source_url),
+    feeKr: asNumberOrNull(row.fee_kr),
+    requirements: row.requirements == null ? null : String(row.requirements),
+    notes: row.notes == null ? null : String(row.notes),
+    createdAt: isoTs(row.created_at),
+    updatedAt: isoTs(row.updated_at),
+  };
+}
+
+export interface AuditionInput {
+  title: string;
+  organizer: string;
+  deadline?: string | null;
+  auditionDate?: string | null;
+  location?: string | null;
+  status?: AuditionStatus;
+  applied?: boolean;
+  appliedAt?: string | null;
+  sourceUrl?: string | null;
+  feeKr?: number | null;
+  requirements?: string | null;
+  notes?: string | null;
+  projectId?: string | null;
+}
+export type AuditionPatch = Partial<AuditionInput>;
+
+export async function listAuditions(
+  pool: Pool,
+  ownerUserId: string,
+  projectId?: string | null,
+): Promise<DanceAudition[]> {
+  const conditions = ['owner_user_id = $1'];
+  const params: unknown[] = [ownerUserId];
+  if (projectId) {
+    params.push(projectId);
+    conditions.push(`(project_id = $${params.length} OR project_id IS NULL)`);
+  }
+  const { rows } = await pool.query(
+    `SELECT * FROM dance_audition WHERE ${conditions.join(' AND ')}
+     ORDER BY deadline ASC NULLS LAST LIMIT 500`,
+    params,
+  );
+  return rows.map((r) => mapAuditionRow(r));
+}
+
+export async function createAudition(pool: Pool, ownerUserId: string, input: AuditionInput): Promise<DanceAudition> {
+  const id = generateId('aud');
+  const { rows } = await pool.query(
+    `INSERT INTO dance_audition (
+       id, owner_user_id, project_id, title, organizer, deadline, audition_date, location,
+       status, applied, applied_at, source_url, fee_kr, requirements, notes
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+    [
+      id, ownerUserId, input.projectId ?? null, input.title, input.organizer,
+      input.deadline ?? null, input.auditionDate ?? null, input.location ?? null,
+      input.status ?? 'open', input.applied ?? false, input.appliedAt ?? null,
+      input.sourceUrl ?? null, input.feeKr ?? null, input.requirements ?? null, input.notes ?? null,
+    ],
+  );
+  return mapAuditionRow(rows[0]);
+}
+
+export async function patchAudition(pool: Pool, ownerUserId: string, id: string, patch: AuditionPatch): Promise<DanceAudition | null> {
+  const sets: string[] = []; const params: unknown[] = [ownerUserId, id];
+  const push = (col: string, v: unknown): void => { params.push(v); sets.push(`${col} = $${params.length}`); };
+  if (patch.title !== undefined) push('title', patch.title);
+  if (patch.organizer !== undefined) push('organizer', patch.organizer);
+  if (patch.deadline !== undefined) push('deadline', patch.deadline);
+  if (patch.auditionDate !== undefined) push('audition_date', patch.auditionDate);
+  if (patch.location !== undefined) push('location', patch.location);
+  if (patch.status !== undefined) push('status', patch.status);
+  if (patch.applied !== undefined) push('applied', patch.applied);
+  if (patch.appliedAt !== undefined) push('applied_at', patch.appliedAt);
+  if (patch.sourceUrl !== undefined) push('source_url', patch.sourceUrl);
+  if (patch.feeKr !== undefined) push('fee_kr', patch.feeKr);
+  if (patch.requirements !== undefined) push('requirements', patch.requirements);
+  if (patch.notes !== undefined) push('notes', patch.notes);
+  if (patch.projectId !== undefined) push('project_id', patch.projectId);
+  if (sets.length === 0) {
+    const { rows } = await pool.query(`SELECT * FROM dance_audition WHERE owner_user_id = $1 AND id = $2`, [ownerUserId, id]);
+    return rows.length ? mapAuditionRow(rows[0]) : null;
+  }
+  sets.push('updated_at = now()');
+  const { rows } = await pool.query(`UPDATE dance_audition SET ${sets.join(', ')} WHERE owner_user_id = $1 AND id = $2 RETURNING *`, params);
+  return rows.length ? mapAuditionRow(rows[0]) : null;
+}
+
+export async function deleteAudition(pool: Pool, ownerUserId: string, id: string): Promise<boolean> {
+  const { rowCount } = await pool.query(`DELETE FROM dance_audition WHERE owner_user_id = $1 AND id = $2`, [ownerUserId, id]);
+  return (rowCount ?? 0) > 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  MUSIC ARCHIVE
 // ═══════════════════════════════════════════════════════════════════════
 

@@ -173,6 +173,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
   const [liveData, setLiveData] = React.useState<{
     rehearsals: UpcomingRehearsal[];
     performances: UpcomingPerformance[];
+    auditions: OpenAudition[];
     counts: { choreographies: number; formations: number; dancers: number; clips: number };
   } | null>(null);
 
@@ -181,12 +182,13 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
     let cancelled = false;
     void (async () => {
       try {
-        const [rehearsalsRaw, performancesRaw, choreos, formations, dancers] = await Promise.all([
+        const [rehearsalsRaw, performancesRaw, choreos, formations, dancers, auditionsRaw] = await Promise.all([
           import('./danceRehearsalService').then((m) => m.listRehearsals({ projectId: projectId ?? undefined, limit: 10 })),
           import('./danceAdminOpsService').then((m) => m.listPerformances(projectId ?? null)),
           import('./choreographyService').then((m) => m.listChoreographies(projectId ?? undefined)),
           import('./danceFormationService').then((m) => m.listFormations(projectId ?? undefined)),
           import('./dancerProfileService').then((m) => m.listDancerProfiles(projectId ?? undefined)),
+          import('./danceAdminOpsService').then((m) => m.listAuditions(projectId ?? null)),
         ]);
         if (cancelled) return;
         const now = Date.now();
@@ -214,9 +216,21 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             ticketsSold: p.ticketsSold ?? undefined,
             ticketsTotal: p.capacity ?? undefined,
           }));
+        const upcomingAud: OpenAudition[] = auditionsRaw
+          .filter((a) => a.deadline == null || new Date(a.deadline).getTime() >= now - 86_400_000)
+          .sort((a, b) => new Date(a.deadline ?? 0).getTime() - new Date(b.deadline ?? 0).getTime())
+          .slice(0, 5)
+          .map((a) => ({
+            id: a.id,
+            title: a.title,
+            deadline: a.deadline ?? '',
+            organizer: a.organizer,
+            applied: a.applied,
+          }));
         setLiveData({
           rehearsals: upcoming,
           performances: upcomingPerf,
+          auditions: upcomingAud,
           counts: {
             choreographies: choreos.length,
             formations: formations.length,
@@ -244,6 +258,9 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
   const performancesToShow = liveData && liveData.performances.length > 0
     ? liveData.performances
     : DEMO_PERFORMANCES;
+  const auditionsToShow = liveData && liveData.auditions.length > 0
+    ? liveData.auditions
+    : DEMO_AUDITIONS;
   const heading = isStudio
     ? labels.danceProfessionStudioName
     : labels.danceProfessionFreelanceName;
@@ -505,7 +522,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
               icon={<AuditionIcon sx={{ fontSize: 18, color: '#34d399' }} />}
             >
               <Stack spacing={1}>
-                {DEMO_AUDITIONS.map((a) => (
+                {auditionsToShow.map((a) => (
                   <Box
                     key={a.id}
                     data-testid={`dance-audition-row-${a.id}`}

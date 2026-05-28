@@ -234,6 +234,46 @@ export function createDanceAdminOpsRouter(
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   });
 
+  // ─── AUDITIONS ─────────────────────────────────────
+  const auditionBody = z.object({
+    title: z.string().min(1).max(300),
+    organizer: z.string().min(1).max(200),
+    deadline: z.string().datetime().nullable().optional(),
+    auditionDate: z.string().datetime().nullable().optional(),
+    location: z.string().max(300).nullable().optional(),
+    status: z.enum(['open', 'applied', 'shortlisted', 'rejected', 'accepted', 'withdrawn', 'closed']).optional(),
+    applied: z.boolean().optional(),
+    appliedAt: z.string().datetime().nullable().optional(),
+    sourceUrl: z.string().url().max(2000).nullable().optional(),
+    feeKr: z.number().int().min(0).nullable().optional(),
+    requirements: z.string().max(5000).nullable().optional(),
+    notes: z.string().max(5000).nullable().optional(),
+    projectId: z.string().max(200).nullable().optional(),
+  });
+  router.get('/auditions', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    res.json({ success: true, data: await svc.listAuditions(pool, userId, projectIdQuery(req)) });
+  });
+  router.post('/auditions', auth, async (req, res) => {
+    const parsed = auditionBody.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_request', details: parsed.error.format() }); return; }
+    const { userId } = req as AuthedRequest;
+    res.status(201).json({ success: true, data: await svc.createAudition(pool, userId, parsed.data) });
+  });
+  router.patch('/auditions/:id', auth, async (req, res) => {
+    const parsed = auditionBody.partial().safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_request' }); return; }
+    const { userId } = req as AuthedRequest;
+    const r = await svc.patchAudition(pool, userId, req.params.id, parsed.data);
+    if (!r) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: r });
+  });
+  router.delete('/auditions/:id', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const ok = await svc.deleteAudition(pool, userId, req.params.id);
+    res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
+  });
+
   // ─── INVOICES ──────────────────────────────────────
   const lineItemSchema = z.object({
     description: z.string().min(1).max(500),
