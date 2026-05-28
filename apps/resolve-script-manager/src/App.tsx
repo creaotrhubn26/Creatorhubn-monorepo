@@ -399,18 +399,33 @@ export default function App() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const me = await res.json() as { email?: string };
-        setAuthStatus("ok");
-        setAuthUserEmail(me.email || null);
-      } else if (res.status === 401) {
+        const me = await res.json() as { email?: string; name?: string };
+        // Bekreft at responsen faktisk har bruker-data — ellers er endpoint trolig
+        // ikke autentisert riktig
+        if (me?.email) {
+          setAuthStatus("ok");
+          setAuthUserEmail(me.email);
+        } else {
+          setAuthStatus("expired");
+          setAuthUserEmail(null);
+        }
+      } else if (res.status === 401 || res.status === 403) {
         setAuthStatus("expired");
+        setAuthUserEmail(null);
       } else {
-        setAuthStatus("ok");  // andre feil = nettverk; ikke claim expired
+        // Andre HTTP-statuser (404, 500, etc.) = endpoint feiler.
+        // Vi kan ikke garantere innlogging — vis tilkoblings-status ærlig.
+        setAuthStatus("expired");
+        setAuthUserEmail(null);
       }
     } catch {
-      setAuthStatus("ok");  // nettverksfeil — don't false-fail
+      // Ekte nettverksfeil — vi vet ikke. Behold forrige state istedet for
+      // å hoppe til "ok" som var feil før.
+      setAuthStatus((prev) => prev === "ok" ? "ok" : "expired");
+      // Email ryddes hvis vi ikke kunne verifisere
+      if (!authUserEmail) setAuthUserEmail(null);
     }
-  }, []);
+  }, [authUserEmail]);
 
   // Auto-refresh health + auth: ved fokus + hvert 30. sekund
   useEffect(() => {
