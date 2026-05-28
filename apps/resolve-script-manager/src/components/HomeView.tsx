@@ -98,6 +98,11 @@ interface Props {
   /** Role Room auth: checking / ok / expired / none */
   authStatus?: "checking" | "ok" | "expired" | "none";
   authUserEmail?: string | null;
+  authMemberProfile?: {
+    displayName: string | null;
+    profileImageUrl: string | null;
+    professions: string[];
+  } | null;
 }
 
 interface SavedProject {
@@ -163,6 +168,7 @@ export function HomeView({
   resolveProjectName,
   authStatus = "none",
   authUserEmail,
+  authMemberProfile,
 }: Props) {
   // Granulær status: 0 = ikke åpen, 1 = åpen uten prosjekt, 2 = tilkoblet
   const resolveLevel = resolveConnected ? 2 : (resolveRunning ? 1 : 0);
@@ -282,21 +288,39 @@ export function HomeView({
               const authBg = authStatus === "ok" ? "rgba(160, 48, 192, 0.10)"
                 : authStatus === "expired" ? "rgba(240, 165, 0, 0.10)"
                 : "var(--bg-3)";
+              const displayName = authMemberProfile?.displayName ?? null;
+              const profileImage = authMemberProfile?.profileImageUrl ?? null;
+              const topProfession = authMemberProfile?.professions?.[0] ?? null;
               const authText = authStatus === "ok"
-                ? (authUserEmail ? `Role Room: ${authUserEmail}` : "Role Room pålogget")
+                ? (displayName ?? authUserEmail ?? "Role Room pålogget")
                 : authStatus === "expired" ? "Token utløpt — logg inn på nytt"
                 : authStatus === "checking" ? "Sjekker innlogging…"
                 : "Logg inn med Role Room";
               const clickable = authStatus !== "ok";
               return (
-                <div style={{ display: "flex", alignItems: "center", gap: 6,
-                                padding: "6px 12px", borderRadius: 999,
+                <div style={{ display: "flex", alignItems: "center", gap: 8,
+                                padding: "4px 12px 4px 4px", borderRadius: 999,
                                 background: authBg,
                                 border: `1px solid ${authColor}`,
                                 fontSize: 11, cursor: clickable ? "pointer" : "default" }}
                       onClick={() => clickable && onSignIn()}>
-                  <IconSparkle size={11} />
+                  {authStatus === "ok" && profileImage ? (
+                    <img src={profileImage} alt="" width={22} height={22}
+                         style={{ borderRadius: "50%", objectFit: "cover", display: "block" }} />
+                  ) : authStatus === "ok" && displayName ? (
+                    <div style={{ width: 22, height: 22, borderRadius: "50%",
+                                   background: "var(--accent)", color: "#fff",
+                                   display: "flex", alignItems: "center", justifyContent: "center",
+                                   fontSize: 10, fontWeight: 700 }}>
+                      {displayName.slice(0, 2).toUpperCase()}
+                    </div>
+                  ) : (
+                    <div style={{ paddingLeft: 8 }}><IconSparkle size={11} /></div>
+                  )}
                   <span>{authText}</span>
+                  {authStatus === "ok" && topProfession && (
+                    <span style={{ opacity: 0.6, marginLeft: 2 }}>· {topProfession}</span>
+                  )}
                 </div>
               );
             })()}

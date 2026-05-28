@@ -1818,6 +1818,50 @@
       "requiresTimeline": false
     },
     {
+      "id": "claude_music_suggestions",
+      "name": "Claude Music Suggestions",
+      "category": "audio",
+      "scriptPath": "scripts/audio/claude_music_suggestions.py",
+      "description": "Spør Claude om 3-5 musikk-forslag for en spesifikk scene (ceremony, vows, first_dance, speeches, nikkah ...). Returnerer søke-queries klare for å lime inn i provider-søk (Jamendo / Pixabay / Soundstripe / Artlist) — ikke navngitte populære artister, men stil-beskrivelser med BPM + lengde + begrunnelse.",
+      "requiredInputs": [
+        {
+          "key": "chapter",
+          "label": "Chapter (ceremony, vows, first_dance, speeches, nikkah, ...)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "durationSec",
+          "label": "Scene-varighet (sek)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "mood",
+          "label": "Mood-keywords (optional, kommaseparert)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "cuesAvailable",
+          "label": "Tilgjengelige providers (optional)",
+          "type": "json",
+          "required": false
+        },
+        {
+          "key": "cutPaceHz",
+          "label": "Kutt-pace (kutt per sek, optional)",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": false,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "apply_beat_markers_to_resolve",
       "name": "Apply Beat Markers to Resolve",
       "category": "audio",

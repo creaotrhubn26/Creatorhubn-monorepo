@@ -384,6 +384,11 @@ export default function App() {
   // Role Room auth-status: undefined (sjekker), "ok" (gyldig token), "expired" (token finnes men 401), "none" (ingen token)
   const [authStatus, setAuthStatus] = useState<"checking" | "ok" | "expired" | "none">("checking");
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
+  const [authMemberProfile, setAuthMemberProfile] = useState<{
+    displayName: string | null;
+    profileImageUrl: string | null;
+    professions: string[];
+  } | null>(null);
 
   const silentAuthCheck = useCallback(async () => {
     const s = loadSettings();
@@ -400,45 +405,74 @@ export default function App() {
       });
       if (res.ok) {
         const me = await res.json() as { email?: string; name?: string };
-        // Bekreft at responsen faktisk har bruker-data — ellers er endpoint trolig
-        // ikke autentisert riktig
         if (me?.email) {
           setAuthStatus("ok");
           setAuthUserEmail(me.email);
+
+          // Hent Role Room-medlemsprofil (avatar + navn + profesjon) i bakgrunnen.
+          // Origin: strip /api/post-agent fra base for å nå sibling-endpoint
+          try {
+            const origin = base.replace(/\/api\/post-agent\/?$/, "");
+            const profRes = await fetch(`${origin}/api/role-room/profile/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (profRes.ok) {
+              const data = await profRes.json() as {
+                profile?: { displayName?: string | null; profileImageUrl?: string | null; professions?: string[] };
+              };
+              const p = data.profile;
+              if (p) {
+                setAuthMemberProfile({
+                  displayName: p.displayName ?? null,
+                  profileImageUrl: p.profileImageUrl ?? null,
+                  professions: p.professions ?? [],
+                });
+              }
+            }
+          } catch {
+            // Profil-fetch er best-effort — status er allerede satt ok
+          }
         } else {
           setAuthStatus("expired");
           setAuthUserEmail(null);
+          setAuthMemberProfile(null);
         }
       } else if (res.status === 401 || res.status === 403) {
         setAuthStatus("expired");
         setAuthUserEmail(null);
+        setAuthMemberProfile(null);
       } else {
-        // Andre HTTP-statuser (404, 500, etc.) = endpoint feiler.
-        // Vi kan ikke garantere innlogging — vis tilkoblings-status ærlig.
         setAuthStatus("expired");
         setAuthUserEmail(null);
+        setAuthMemberProfile(null);
       }
     } catch {
-      // Ekte nettverksfeil — vi vet ikke. Behold forrige state istedet for
-      // å hoppe til "ok" som var feil før.
       setAuthStatus((prev) => prev === "ok" ? "ok" : "expired");
-      // Email ryddes hvis vi ikke kunne verifisere
-      if (!authUserEmail) setAuthUserEmail(null);
+      if (!authUserEmail) {
+        setAuthUserEmail(null);
+        setAuthMemberProfile(null);
+      }
     }
   }, [authUserEmail]);
 
-  // Auto-refresh health + auth: ved fokus + hvert 30. sekund
+  // Auto-refresh health + auth: ved fokus + hvert 30. sekund + på auth-change-event
   useEffect(() => {
     void silentHealthCheck();
     void silentAuthCheck();
     const onFocus = () => { silentHealthCheck(); silentAuthCheck(); };
+    // Når pairing-dialogen lagrer ny token (saveBearerToSettings) fyrer
+    // den 'trrpa:auth-changed' — uten denne lytteren venter HomeView
+    // opp til 30s før status-pillen oppdateres.
+    const onAuthChange = () => { silentAuthCheck(); };
     window.addEventListener("focus", onFocus);
+    window.addEventListener("trrpa:auth-changed", onAuthChange);
     const interval = setInterval(() => {
       silentHealthCheck();
       silentAuthCheck();
     }, 30_000);
     return () => {
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("trrpa:auth-changed", onAuthChange);
       clearInterval(interval);
     };
   }, [silentHealthCheck, silentAuthCheck]);
@@ -555,6 +589,7 @@ export default function App() {
           signedIn={authStatus === "ok"}
           authStatus={authStatus}
           authUserEmail={authUserEmail}
+          authMemberProfile={authMemberProfile}
           onSignIn={() => setShowSignIn(true)}
           resolveConnected={Boolean(health?.resolveRunning && health?.projectOpen)}
           resolveRunning={Boolean(health?.resolveRunning)}
@@ -812,7 +847,7 @@ export default function App() {
       {!showFirstRun && showSignIn && (
         <RoleRoomSignInDialog
           onClose={() => setShowSignIn(false)}
-          onSignedIn={() => setShowSignIn(false)}
+          onSignedIn={() => { setShowSignIn(false); void silentAuthCheck(); }}
         />
       )}
 
@@ -829,7 +864,7 @@ export default function App() {
       {showSignIn && (
         <RoleRoomSignInDialog
           onClose={() => setShowSignIn(false)}
-          onSignedIn={() => setShowSignIn(false)}
+          onSignedIn={() => { setShowSignIn(false); void silentAuthCheck(); }}
         />
       )}
     </div>
