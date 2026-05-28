@@ -643,6 +643,15 @@ export type IndustrySegment =
   | 'steadicam_operator'
   | 'drone_operator'
   | 'video_assist'
+  // Etterproduksjon-segments (migrasjon 178)
+  | 'colorist'
+  | 'sound_designer'
+  | 'foley_artist'
+  | 'post_supervisor'
+  | 'post_vfx_artist'
+  | 'title_designer'
+  | 'music_supervisor'
+  | 'mastering_engineer'
   | 'other';
 export type IndustryStatus = 'cold' | 'warm' | 'engaged' | 'advocate' | 'paused';
 export type IndustryEngagementKind =
@@ -704,6 +713,8 @@ export interface IndustryTarget {
   lens_systems?: string[];
   dit_software?: string[];
   cloud_workflow?: string[];
+  // Post-prod-felter (migrasjon 178)
+  post_software?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -744,6 +755,8 @@ export type IndustryTargetInput = {
   lensSystems?: string[];
   ditSoftware?: string[];
   cloudWorkflow?: string[];
+  // Post-prod-felter (migrasjon 178)
+  postSoftware?: string[];
 };
 
 export interface IndustryTargetStats {
@@ -826,6 +839,15 @@ export const INDUSTRY_SEGMENT_LABELS: Record<IndustrySegment, string> = {
   steadicam_operator: 'Steadicam operator',
   drone_operator: 'Drone-operatør',
   video_assist: 'Video assist',
+  // Etterproduksjon-segments (migrasjon 178)
+  colorist: 'Colorist',
+  sound_designer: 'Sound designer',
+  foley_artist: 'Foley artist',
+  post_supervisor: 'Post supervisor',
+  post_vfx_artist: 'Post VFX artist',
+  title_designer: 'Title designer',
+  music_supervisor: 'Music supervisor',
+  mastering_engineer: 'Mastering engineer',
   other: 'Annet',
 };
 

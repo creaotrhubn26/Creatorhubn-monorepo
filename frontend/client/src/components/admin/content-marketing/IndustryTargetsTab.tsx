@@ -747,6 +747,7 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
         lensSystems: initial.lens_systems ?? [],
         ditSoftware: initial.dit_software ?? [],
         cloudWorkflow: initial.cloud_workflow ?? [],
+        postSoftware: initial.post_software ?? [],
       });
       setProductionsText(serializeProductions(initial.recent_productions ?? []));
     } else {
@@ -921,6 +922,24 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
                 placeholder="https://vimeo.com/... eller https://nettside.no"
                 helperText="Kritisk for DP/regissør-outreach — de svarer ikke uten å kunne sjekke reel."
               />
+
+              {/* Post-prod-spesifikke felter — vises kun for post-prod-roller */}
+              {['editor', 'colorist', 'sound_designer', 'foley_artist', 'post_supervisor', 'post_vfx_artist', 'title_designer', 'music_supervisor', 'mastering_engineer', 'composer'].includes(form.segment ?? '') ? (
+                <Stack spacing={1.25} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(167,139,250,0.05)', border: '1px dashed rgba(167,139,250,0.3)' }}>
+                  <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    Etterproduksjon · software-erfaring
+                  </Typography>
+                  <TextField
+                    label="Post-software"
+                    size="small"
+                    fullWidth
+                    value={(form.postSoftware ?? []).join(', ')}
+                    onChange={(e) => setForm((p) => ({ ...p, postSoftware: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                    placeholder="davinci_resolve, adobe_premiere, avid_media_composer, baselight, pro_tools, frame_io"
+                    helperText="Komma-separert. Bruk slugs (lowercase + underscore)."
+                  />
+                </Stack>
+              ) : null}
 
               {/* Kamera-spesifikke felter — vises kun for kamera-roller */}
               {['dp', 'first_ac', 'second_ac', 'camera_operator', 'steadicam_operator', 'drone_operator', 'dit'].includes(form.segment ?? '') ? (

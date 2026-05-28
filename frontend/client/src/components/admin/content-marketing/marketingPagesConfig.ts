@@ -21,7 +21,8 @@ export type MarketingPageKey =
   | 'crew-i-norge-2026'
   | 'innspillingsdag-koordinering'
   | 'intimacy-coordinator-norge'
-  | 'kamera-folk-verktoy-2026';
+  | 'kamera-folk-verktoy-2026'
+  | 'etterproduksjon-norge-2026';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -365,6 +366,34 @@ Men line producer bestiller DP basert på reel + magefølelse — ikke verktøy-
 Vi bygger søkbar verktøy-erfaring inn i Tier-1 CRM. Sony Venice + Cooke + Frame.io? Filtrér og se hvilke DPs har erfaring i alle tre.
 
 Hele datasettet + workflow-smerter: https://theroleroom.com/kamera-folk-verktoy-2026`,
+  },
+  {
+    key: 'etterproduksjon-norge-2026',
+    path: '/etterproduksjon-norge-2026',
+    title: 'Etterproduksjon i norsk filmbransje 2026 — størrelse, software, workflow-smerter | The Role Room',
+    description:
+      'Anslag av norsk post-prod-marked: ~200-250 klippere, ~25-40 colorister, ~30-50 sound designers, ~15-25 post supervisors. Frame.io ~65%, DaVinci Resolve ~75% av grading, Pro Tools ~80% av lyd-mix. Fem koordinerings-smerter med konkrete kostnads-anslag.',
+    pillar: 'data',
+    published: true,
+    linkedinDraft: `Klippere er bredeste crew-rolle i norsk filmbransje — ~200-250 aktive.
+
+Etterproduksjon i tall, anslag 2026:
+- Klippere: ~200-250
+- Colorister: ~25-40
+- Sound designers + mixers: ~30-50
+- Post supervisors: ~15-25
+- Post VFX-artister: ~40-60
+- Music supervisors: ~10-15
+
+Software-fordeling:
+- Klipp: Avid ~45% (drama), Premiere ~35%, Resolve ~15%
+- Color: DaVinci Resolve ~75% (industri-standard)
+- Lyd: Pro Tools ~80%, Logic ~12%
+- Cloud: Frame.io ~65%, ingen workflow ~22%
+
+Og likevel: 22% av norske produksjoner deler fortsatt master-versjoner via Dropbox med filnavn som "v3_final_FINAL_v4_for_real.mov". Colorist får LUT fra DIT i feil versjon. Sound mix sendes 1-2 dager før leveranse — ingen tid til revision-runde.
+
+Vi bygger koordineringslag for hele post-pipeline. Hele datasettet + 5 workflow-smerter med konkret kostnad: https://theroleroom.com/etterproduksjon-norge-2026`,
   },
 ];
 

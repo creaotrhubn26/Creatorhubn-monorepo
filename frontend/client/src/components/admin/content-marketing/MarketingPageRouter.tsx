@@ -13,6 +13,7 @@ import CrewINorgePage from './CrewINorgePage';
 import InnspillingsdagKoordineringPage from './InnspillingsdagKoordineringPage';
 import IntimacyCoordinatorPage from './IntimacyCoordinatorPage';
 import KameraFolkVerktoyPage from './KameraFolkVerktoyPage';
+import EtterproduksjonNorgePage from './EtterproduksjonNorgePage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -70,6 +71,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <IntimacyCoordinatorPage />;
     case 'kamera-folk-verktoy-2026':
       return <KameraFolkVerktoyPage />;
+    case 'etterproduksjon-norge-2026':
+      return <EtterproduksjonNorgePage />;
     default:
       return null;
   }

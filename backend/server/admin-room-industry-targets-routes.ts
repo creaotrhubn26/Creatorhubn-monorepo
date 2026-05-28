@@ -57,6 +57,15 @@ const VALID_SEGMENTS = new Set([
   "steadicam_operator",
   "drone_operator",
   "video_assist",
+  // Etterproduksjon-segments (migrasjon 178)
+  "colorist",
+  "sound_designer",
+  "foley_artist",
+  "post_supervisor",
+  "post_vfx_artist",
+  "title_designer",
+  "music_supervisor",
+  "mastering_engineer",
   "other",
 ]);
 const VALID_STATUSES = new Set([
@@ -298,6 +307,8 @@ export function setupAdminIndustryTargetsRoutes(deps: AdminRoomRoutesDeps): void
     if (body.lensSystems !== undefined) set("lens_systems", asJsonbArray(body.lensSystems), "jsonb");
     if (body.ditSoftware !== undefined) set("dit_software", asJsonbArray(body.ditSoftware), "jsonb");
     if (body.cloudWorkflow !== undefined) set("cloud_workflow", asJsonbArray(body.cloudWorkflow), "jsonb");
+    // Post-prod-felter (migrasjon 178)
+    if (body.postSoftware !== undefined) set("post_software", asJsonbArray(body.postSoftware), "jsonb");
 
     if (updates.length === 0) {
       res.status(400).json({ error: "Ingen felter å oppdatere" });
