@@ -69,17 +69,9 @@ const SKILLS_SUGGESTIONS = [
 
 const LANGUAGES_OPTIONS = [
   { code: 'no', name: 'Norsk' },
-  { code: 'en', name: 'English' },
   { code: 'sv', name: 'Svenska' },
   { code: 'da', name: 'Dansk' },
-  { code: 'pa', name: 'Punjabi' },
-  { code: 'ur', name: 'اردو' },
-  { code: 'hi', name: 'हिन्दी' },
-  { code: 'ar', name: 'العربية' },
-  { code: 'tr', name: 'Türkçe' },
-  { code: 'es', name: 'Español' },
-  { code: 'fr', name: 'Français' },
-  { code: 'de', name: 'Deutsch' },
+  { code: 'en', name: 'English' },
 ];
 
 const STEPS = [
