@@ -219,7 +219,11 @@
   color: white;
   border-color: #341d6c;
 }
-.ce-icon-mini:disabled { opacity: 0.35; cursor: not-allowed; }
+.ce-icon-mini:disabled {
+  opacity: 0.55;        /* fortsatt klart synlig icon */
+  cursor: not-allowed;
+  color: #8674a8;       /* dimmer farge istedet for transparens */
+}
 .ce-actions button {
   padding: 8px 16px;
   border-radius: 8px;
