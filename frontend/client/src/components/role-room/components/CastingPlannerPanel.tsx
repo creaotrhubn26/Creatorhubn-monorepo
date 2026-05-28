@@ -3396,7 +3396,11 @@ type RoleRoomProjectWorkspaceState = {
     if (isTemplateProject(project)) {
       return false;
     }
-    if (isTrollProject(project)) {
+    // TROLL er restorable KUN i produksjonsmodus (per Daniels krav: demoen
+    // skal kun være tilgjengelig der, og andre moduser skal ikke få noe
+    // TROLL-innhold). I innholdsprodusent/dansestudio/utdanning er TROLL
+    // ikke noe brukeren skal kunne åpne fra prosjekt-velgeren.
+    if (isTrollProject(project) && !isProducerWorkspaceSession) {
       return false;
     }
     if (isContentProducerDemoProject(project)) {
@@ -3408,6 +3412,7 @@ type RoleRoomProjectWorkspaceState = {
     return true;
   }, [
     isContentProducerDemoProject,
+    isProducerWorkspaceSession,
     isProtectedDemoProject,
     isTemplateProject,
     isTrollProject,
@@ -3419,10 +3424,18 @@ type RoleRoomProjectWorkspaceState = {
       return workspaceProjects.filter((project) => !isProtectedDemoProject(project));
     }
     if (isProducerWorkspaceSession) {
-      return workspaceProjects.filter((project) => !isTrollProject(project));
+      // Produksjonsmodus: TROLL-demo SKAL være synlig (det er den eneste modus
+      // hvor "Last Troll Demo"-knappen i Nytt-prosjekt-flyt har mening).
+      // Men ekskluder content-producer-demo siden den hører til vertikal #2.
+      return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
     }
 
-    return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
+    // Andre moduser (innholdsprodusent, dansestudio, utdanning): skjul TROLL
+    // helt fra prosjekt-listen. Bare content-producer-demo er relevant for
+    // dem (eller den modus-spesifikke demo-en).
+    return workspaceProjects.filter((project) =>
+      !isContentProducerDemoProject(project) && !isTrollProject(project),
+    );
   }, [
     isClientReviewerMode,
     isClientReviewerSession,
