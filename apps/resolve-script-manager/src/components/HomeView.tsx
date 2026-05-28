@@ -46,6 +46,7 @@ interface Props {
   onPickTemplate: (templateId: string) => void;
   onOpenAdvanced: () => void;
   onNewProjectFromFile: () => void;
+  onOpenWeddingWizard: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
   onSignIn: () => void;
@@ -105,6 +106,7 @@ export function HomeView({
   onPickTemplate,
   onOpenAdvanced,
   onNewProjectFromFile,
+  onOpenWeddingWizard,
   onOpenSavedProject,
   signedIn,
   onSignIn,
@@ -190,17 +192,36 @@ export function HomeView({
 
       <button
         className="home-new-project-card"
+        onClick={onOpenWeddingWizard}
+        disabled={!signedIn}
+        title={signedIn ? "Bryllups-veiviser: material-scan, multicam, sanger, personer, stil — Claude lærer av valgene dine" : "Logg inn først"}
+      >
+        <div className="home-new-project-icon">
+          <IconHeart size={24} />
+        </div>
+        <div className="home-new-project-body">
+          <div className="home-new-project-title">💒 Bryllups-veiviser</div>
+          <div className="home-new-project-desc">
+            Steg-for-steg: mappa → multicam → ekstern lyd → sanger → personer → stil → live-arbeid → LUT. Claude lærer.
+          </div>
+        </div>
+        <IconArrowRight />
+      </button>
+
+      <button
+        className="home-new-project-card"
         onClick={onNewProjectFromFile}
         disabled={!signedIn}
+        style={{ marginTop: 12 }}
         title={signedIn ? "Velg én ferdig redigert/eksportert video → AI lager picks + identifiserer musikk" : "Logg inn først"}
       >
         <div className="home-new-project-icon">
           <IconSparkle size={24} />
         </div>
         <div className="home-new-project-body">
-          <div className="home-new-project-title">+ Nytt prosjekt fra fil</div>
+          <div className="home-new-project-title">+ Nytt prosjekt fra én fil</div>
           <div className="home-new-project-desc">
-            Velg en video → AI scanner picks, identifiserer musikk, du velger rolle per sang → editor åpner
+            Rask flyt: én ferdig redigert video → AI scanner picks → editor åpner
           </div>
         </div>
         <IconArrowRight />

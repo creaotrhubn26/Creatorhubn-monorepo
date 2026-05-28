@@ -2097,6 +2097,20 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "scan_folder_multicam",
+      "name": "Scan Folder for Multicam",
+      "category": "cull",
+      "scriptPath": "scripts/cull/scan_folder_multicam.py",
+      "description": "Finn video-klipp i en mappe + grupper multicam-vinkler basert p\u00e5 tids-metadata + audio cross-correlation.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }
