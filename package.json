@@ -18,6 +18,7 @@
     "build:frontend": "npm --prefix frontend run build",
     "build:backend": "npm --prefix backend run build",
     "smoke:role-room:live": "node scripts/role-room-live-smoke.mjs",
+    "check:role-room-billing": "node backend/scripts/check-role-room-billing.mjs",
     "e2e:role-room-exporter:live": "node scripts/role-room-exporter-live-e2e.mjs",
     "e2e:role-room-google-workspace:live": "node scripts/role-room-google-workspace-live-e2e.mjs",
     "deploy:role-room:prod": "node scripts/deploy-role-room-prod.mjs",
