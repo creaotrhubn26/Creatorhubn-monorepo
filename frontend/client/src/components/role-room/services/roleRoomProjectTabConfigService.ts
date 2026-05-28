@@ -96,4 +96,21 @@ export const roleRoomProjectTabConfigService = {
   async getSeatStatus(projectId: string): Promise<SeatStatusResponse> {
     return jsonRequest(`/api/role-room/projects/${encodeURIComponent(projectId)}/seat-status`, { method: 'GET' });
   },
+
+  async upgradeSeat(projectId: string, targetQuantity?: number): Promise<{
+    ok: boolean;
+    previousQuantity: number;
+    newQuantity: number;
+    seatsAdded: number;
+    estimatedExtraCostPerMonthMajor: number;
+    currency: string;
+  }> {
+    return jsonRequest(
+      `/api/role-room/projects/${encodeURIComponent(projectId)}/seats/upgrade`,
+      {
+        method: 'POST',
+        body: JSON.stringify(targetQuantity != null ? { targetQuantity } : {}),
+      },
+    );
+  },
 };

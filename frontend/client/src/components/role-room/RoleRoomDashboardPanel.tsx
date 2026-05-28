@@ -1717,6 +1717,8 @@ function CrewSubPanel({
   const [role, setRole] = useState('');
   const [tabAccessOpen, setTabAccessOpen] = useState(false);
   const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
+  const [seatUpgrading, setSeatUpgrading] = useState(false);
+  const [seatUpgradeError, setSeatUpgradeError] = useState<string | null>(null);
   const [membersOpen, setMembersOpen] = useState(false);
   const qc = useQueryClient();
 
@@ -1902,7 +1904,7 @@ function CrewSubPanel({
       )}
 
       {isProjectLeader && seatConfirmOpen && seatStatus && (
-        <Dialog open={seatConfirmOpen} onClose={() => setSeatConfirmOpen(false)} maxWidth="xs" fullWidth>
+        <Dialog open={seatConfirmOpen} onClose={() => !seatUpgrading && setSeatConfirmOpen(false)} maxWidth="xs" fullWidth>
           <DialogTitle>Ekstra seat — bekreft</DialogTitle>
           <DialogContent>
             <Typography variant="body2" sx={{ mb: 1.5 }}>
@@ -1911,15 +1913,36 @@ function CrewSubPanel({
               <strong>{seatStatus.nextSeatCost} kr/mnd</strong> ekstra (ex. mva.).
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Beløpet legges som en line-item på neste faktura.
-              Du kan fjerne seats senere ved å slette crew-medlemmet.
+              Når du bekrefter blir Stripe-abonnementet oppdatert til ny seat-count
+              og beløpet legges proporsjonalt på neste faktura. Du kan fjerne
+              seats senere ved å fjerne medlemmer.
             </Typography>
+            {seatUpgradeError && (
+              <Alert severity="error" sx={{ mt: 2 }} onClose={() => setSeatUpgradeError(null)}>
+                {seatUpgradeError}
+              </Alert>
+            )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setSeatConfirmOpen(false)}>Avbryt</Button>
+            <Button onClick={() => setSeatConfirmOpen(false)} disabled={seatUpgrading}>Avbryt</Button>
             <Button variant="contained"
-                    onClick={() => { setSeatConfirmOpen(false); setOpen(true); }}>
-              Forstått — fortsett
+                    disabled={seatUpgrading}
+                    onClick={async () => {
+                      setSeatUpgrading(true);
+                      setSeatUpgradeError(null);
+                      try {
+                        await roleRoomProjectTabConfigService.upgradeSeat(projectId);
+                        // Suksess: lukk confirm-dialogen, oppdater seat-status, åpne add-crew
+                        await qc.invalidateQueries({ queryKey: ['role-room-seat-status', projectId] });
+                        setSeatConfirmOpen(false);
+                        setOpen(true);
+                      } catch (err) {
+                        setSeatUpgradeError(err instanceof Error ? err.message : String(err));
+                      } finally {
+                        setSeatUpgrading(false);
+                      }
+                    }}>
+              {seatUpgrading ? 'Oppgraderer…' : 'Bekreft + kjøp seat'}
             </Button>
           </DialogActions>
         </Dialog>
