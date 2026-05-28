@@ -17945,9 +17945,14 @@ setupMetaCapiRoutes({ app, getActiveSessionFromRequest });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
   try {
-    const ownerUserId = (req as { userId?: string }).userId
-      ?? readString(req.headers["x-user-id"] as string | undefined)
-      ?? "demo-user";
+    // Resolve faktisk innloggende bruker via Bearer-token. Faller tilbake til
+    // "demo-user" kun hvis ingen session — slik kan demo brukes anonymt i dev,
+    // men ekte brukere får prosjektet eid av seg selv så /api/casting/projects/:id
+    // finner det (filtrerer på created_by).
+    const resolvedUserId = compatResolveUserId(req);
+    const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
+      ? resolvedUserId
+      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
@@ -18004,9 +18009,10 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
 // Bare videre-kaller seed-all-handleren.
 app.post("/api/demo/troll/initialize-all", async (req, res) => {
   try {
-    const ownerUserId = (req as { userId?: string }).userId
-      ?? readString(req.headers["x-user-id"] as string | undefined)
-      ?? "demo-user";
+    const resolvedUserId = compatResolveUserId(req);
+    const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
+      ? resolvedUserId
+      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
