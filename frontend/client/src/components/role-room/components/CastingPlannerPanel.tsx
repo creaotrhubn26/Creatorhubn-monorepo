@@ -5730,18 +5730,18 @@ type RoleRoomProjectWorkspaceState = {
       const projectIdToLoad = activeRestorableProjectId ?? persistedRealProjectId;
       
       if (loadedProjects.length > 0 && projectIdToLoad) {
-        // Only refresh data if user already selected a project
-        const targetProject = loadedProjects.find((project) => (
-          project.id === projectIdToLoad
-          && isRestorableWorkspaceProject(project)
-        ));
+        // Hvis URL/persisted-state peker eksplisitt til et prosjekt (inkl. TROLL
+        // som er ikke-restorable for auto-fallback), respekter det valget.
+        // isRestorableWorkspaceProject brukes til AUTO-fallback (default-pick),
+        // ikke eksplisitt URL-navigasjon. Brukeren har valgt prosjektet.
+        const targetProject = loadedProjects.find((project) => project.id === projectIdToLoad);
         const resolvedTargetProject =
           targetProject && isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
             ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
             : targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
               ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
             : targetProject;
-        
+
         if (resolvedTargetProject) {
           // Fetch the full project with all nested data
           const fullProject = await castingService.getProject(resolvedTargetProject.id);
@@ -5751,11 +5751,10 @@ type RoleRoomProjectWorkspaceState = {
             setCurrentProject(resolvedTargetProject);
           }
         } else {
-          // Current project is no longer visible in this session (e.g. content producer + TROLL),
-          // switch to the best available project instead of keeping stale state.
-          const preferredProject = loadedProjects.find((project) => isRestorableWorkspaceProject(project))
-            ?? (isProducerWorkspaceSession ? null : loadedProjects[0]);
-          setCurrentProject(preferredProject ?? null);
+          // URL/persisted-prosjekt finnes ikke lenger i listen — la
+          // currentProject = null heller enn å auto-velge "best available".
+          // Brukeren får tom-state og kan velge på nytt fra velgeren.
+          setCurrentProject(null);
         }
       } else if (loadedProjects.length > 0 && !projectIdToLoad && isProducerWorkspaceSession) {
         const preferredProject = loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? null;
