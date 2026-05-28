@@ -14,6 +14,7 @@ import InnspillingsdagKoordineringPage from './InnspillingsdagKoordineringPage';
 import IntimacyCoordinatorPage from './IntimacyCoordinatorPage';
 import KameraFolkVerktoyPage from './KameraFolkVerktoyPage';
 import EtterproduksjonNorgePage from './EtterproduksjonNorgePage';
+import ProduksjonsOSPage from './ProduksjonsOSPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -73,6 +74,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <KameraFolkVerktoyPage />;
     case 'etterproduksjon-norge-2026':
       return <EtterproduksjonNorgePage />;
+    case 'produksjons-os':
+      return <ProduksjonsOSPage />;
     default:
       return null;
   }

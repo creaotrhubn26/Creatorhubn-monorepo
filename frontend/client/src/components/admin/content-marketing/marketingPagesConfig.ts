@@ -22,7 +22,8 @@ export type MarketingPageKey =
   | 'innspillingsdag-koordinering'
   | 'intimacy-coordinator-norge'
   | 'kamera-folk-verktoy-2026'
-  | 'etterproduksjon-norge-2026';
+  | 'etterproduksjon-norge-2026'
+  | 'produksjons-os';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -394,6 +395,31 @@ Software-fordeling:
 Og likevel: 22% av norske produksjoner deler fortsatt master-versjoner via Dropbox med filnavn som "v3_final_FINAL_v4_for_real.mov". Colorist får LUT fra DIT i feil versjon. Sound mix sendes 1-2 dager før leveranse — ingen tid til revision-runde.
 
 Vi bygger koordineringslag for hele post-pipeline. Hele datasettet + 5 workflow-smerter med konkret kostnad: https://theroleroom.com/etterproduksjon-norge-2026`,
+  },
+  {
+    key: 'produksjons-os',
+    path: '/produksjons-os',
+    title: 'Produksjons-OS — operativsystemet for film- og innholdsproduksjon i Norge | The Role Room',
+    description:
+      'The Role Room er operativsystemet for film- og innholdsproduksjoner. Tar produksjonen fra idé til distribuert og sett. Tre live vertikaler: produksjonsteam (795 kr/sete), innholdsprodusent (495 kr) og dansestudio (fra 149 kr). Norsk og EU-native.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `The Role Room er ikke en castingplattform.
+
+Casting er inngangsdøra — ikke sentrum. Vi er operativsystemet for film- og innholdsproduksjoner. Tar produksjonen fra idé og planlegging, gjennom casting og gjennomføring, helt til den er distribuert og sett av et publikum.
+
+Tre live vertikaler:
+- Produksjonsteam (795 kr/sete, min 3): casting, manus, produksjonsledelse, klient-godkjenning, distribusjon
+- Innholdsprodusent (495 kr/sete): ads, content marketing, sosial publisering, klient-flow
+- Dansestudio (fra 149 kr): booking, koreografi, casting, medlemskap, øving + skadelogg
+
+Pluss et AI-lag (Agenten, beta) som kobler kundens virksomhet til konkurrentanalyse, partner-discovery, merch og ads-strategi.
+
+Det vi ikke er: ikke et regnskapssystem. Ikke et finansieringsverktøy. Ikke et generisk Kanban-brett. Hva vi IKKE er, definerer hva vi faktisk er.
+
+Pre-revenue. Solo-drevet. Privacy + BankID i pipeline. Vi sier dette åpent fordi vi blir infrastruktur, og infrastruktur tåler ingen marketing-overdrivelse.
+
+Hele posisjoneringen: https://theroleroom.com/produksjons-os`,
   },
 ];
 
