@@ -22,6 +22,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -259,7 +260,34 @@ export function IndustryTargetsTab() {
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Segment</TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Status</TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Sist engasjert</TableCell>
-              <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 140 }} title="3-touch-regel fra Outreach Plan">3-touch</TableCell>
+              <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 140 }}>
+                <Tooltip
+                  arrow
+                  placement="top"
+                  title={
+                    <Box sx={{ p: 0.5, maxWidth: 280 }}>
+                      <Typography sx={{ color: '#22d3ee', fontWeight: 800, fontSize: '0.78rem', mb: 0.5 }}>
+                        3-touch-regel (Outreach Plan v2)
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(229,231,235,0.95)', fontSize: '0.72rem', lineHeight: 1.5, mb: 0.75 }}>
+                        Aldri pitch før du har gitt 3 substantive touches.
+                        20 dypt personaliserte meldinger gir mer enn 200 generiske.
+                      </Typography>
+                      <Typography sx={{ color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }}>
+                        T1: engaged offentlig (kommentar, repost)
+                      </Typography>
+                      <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 700 }}>
+                        T2: ga substantiv value (artikkel, stat, intro)
+                      </Typography>
+                      <Typography sx={{ color: '#22d3ee', fontSize: '0.7rem', fontWeight: 700 }}>
+                        T3: klar for ask (DM, mail, møte)
+                      </Typography>
+                    </Box>
+                  }
+                >
+                  <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(34,211,238,0.5)' }}>3-touch</span>
+                </Tooltip>
+              </TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 220 }}>Handlinger</TableCell>
             </TableRow>
           </TableHead>
@@ -672,21 +700,21 @@ function TouchCadence({ value, onChange }: { value: number; onChange: (next: num
       {[1, 2, 3].map((step) => {
         const reached = step <= clamped;
         return (
-          <Box
-            key={step}
-            onClick={() => onChange(clamped === step ? step - 1 : step)}
-            title={TOUCH_LABELS[step]}
-            sx={{
-              width: 14,
-              height: 14,
-              borderRadius: '50%',
-              cursor: 'pointer',
-              bgcolor: reached ? TOUCH_COLORS[step] : 'transparent',
-              border: `2px solid ${reached ? TOUCH_COLORS[step] : 'rgba(148,163,184,0.35)'}`,
-              transition: 'all 0.18s ease',
-              '&:hover': { transform: 'scale(1.18)', boxShadow: `0 0 0 3px ${TOUCH_COLORS[step]}33` },
-            }}
-          />
+          <Tooltip key={step} arrow placement="top" title={TOUCH_LABELS[step]}>
+            <Box
+              onClick={() => onChange(clamped === step ? step - 1 : step)}
+              sx={{
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                cursor: 'pointer',
+                bgcolor: reached ? TOUCH_COLORS[step] : 'transparent',
+                border: `2px solid ${reached ? TOUCH_COLORS[step] : 'rgba(148,163,184,0.35)'}`,
+                transition: 'all 0.18s ease',
+                '&:hover': { transform: 'scale(1.18)', boxShadow: `0 0 0 3px ${TOUCH_COLORS[step]}33` },
+              }}
+            />
+          </Tooltip>
         );
       })}
       {clamped === 3 ? (
