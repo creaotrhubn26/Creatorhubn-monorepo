@@ -24,6 +24,8 @@ import { LowerThirdsStudio } from "./LowerThirdsStudio";
 import { CaptionStudio } from "./CaptionStudio";
 import { BrollLibrary } from "./BrollLibrary";
 import { BrollSuggestionModal } from "./BrollSuggestionModal";
+import { MusicLibrary } from "./MusicLibrary";
+import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import SubtitlesIcon from "@mui/icons-material/Subtitles";
 import ClosedCaptionIcon from "@mui/icons-material/ClosedCaption";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
@@ -92,6 +94,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [lowerThirdsOpen, setLowerThirdsOpen] = useState(false);
   const [captionStudioOpen, setCaptionStudioOpen] = useState(false);
   const [brollLibraryOpen, setBrollLibraryOpen] = useState(false);
+  const [musicLibraryOpen, setMusicLibraryOpen] = useState(false);
   // B-roll suggestion-modal — kan trigges av Director-chat eller manuelt
   const [brollSuggestionOpen, setBrollSuggestionOpen] = useState(false);
   const [brollSuggestionContext, setBrollSuggestionContext] = useState<{
@@ -381,6 +384,16 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                     display: "inline-flex", alignItems: "center", gap: 5,
                   }}>
             <VideoLibraryIcon sx={{ fontSize: 14 }} /> B-roll
+          </button>
+          <button onClick={() => setMusicLibraryOpen(true)}
+                  style={{
+                    background: "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <LibraryMusicIcon sx={{ fontSize: 14 }} /> Music
           </button>
           <button onClick={requestBrollSuggestions}
                   title="Få Director-forslag til B-roll basert på nåværende kapittel + look"
@@ -1101,6 +1114,13 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       <BrollLibrary
         open={brollLibraryOpen}
         onClose={() => setBrollLibraryOpen(false)}
+        projectId={projectIdForStudio}
+      />
+
+      {/* Music Library — librosa-analyse + universal læring */}
+      <MusicLibrary
+        open={musicLibraryOpen}
+        onClose={() => setMusicLibraryOpen(false)}
         projectId={projectIdForStudio}
       />
 

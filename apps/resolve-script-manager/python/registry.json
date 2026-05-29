@@ -2020,6 +2020,63 @@
       "requiresTimeline": false
     },
     {
+      "id": "analyze_music_track",
+      "name": "Analyze Music Track (librosa)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_music_track.py",
+      "description": "Librosa-basert audio-analyse: BPM (beat-tracker), key (Krumhansl-Schmuckler), energy-curve (40 buckets), segmenter (intro/verse/chorus/break/outro), mood/genre-tags via spectral features. Foundation for music-suggestion-matching og auto-ducking.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio-fil", "type": "text", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_music_preview",
+      "name": "Extract Music Preview",
+      "category": "audio",
+      "scriptPath": "scripts/audio/extract_music_preview.py",
+      "description": "Generér waveform-PNG (Role Room-lilla på transparent bg) + 30-sek MP3-preview for music-library UI. Cache'es per audio-hash.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio-fil", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "apply_voice_ducking",
+      "name": "Apply Voice Ducking",
+      "category": "audio",
+      "scriptPath": "scripts/audio/apply_voice_ducking.py",
+      "description": "Sidechain-compress music under voice via ffmpeg sidechaincompress-filter. Standard broadcast-konvensjoner (ratio 4:1, threshold -25dB, attack 5ms, release 400ms, makeup +3dB). Konfigurerbart per agent/leveranse.",
+      "requiredInputs": [
+        { "key": "voicePath", "label": "Voice/narrasjon-track", "type": "text", "required": true },
+        { "key": "musicPath", "label": "Music-track", "type": "text", "required": true },
+        { "key": "outputPath", "label": "Output-path", "type": "text", "required": true },
+        { "key": "ratio", "label": "Compress-ratio (default 4)", "type": "number", "required": false },
+        { "key": "threshold", "label": "Threshold dB (default -25)", "type": "number", "required": false },
+        { "key": "attackMs", "label": "Attack ms (default 5)", "type": "number", "required": false },
+        { "key": "releaseMs", "label": "Release ms (default 400)", "type": "number", "required": false },
+        { "key": "makeupDb", "label": "Makeup-gain dB (default 3)", "type": "number", "required": false },
+        { "key": "musicGainDb", "label": "Music base-gain dB (default -5)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "analyze_broll_clip",
       "name": "Analyze B-roll Clip (Claude vision)",
       "category": "social",
