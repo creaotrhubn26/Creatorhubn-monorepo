@@ -621,8 +621,21 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   // New production control states
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(null);
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
+  // Auto-velg første scene når Storyboard-modus aktiveres uten valgt scene,
+  // så StoryboardIntegrationView (som krever selectedScene) renderes
+  // umiddelbart. Vente-state ('Velg en scene') var det som gjorde Storyboard
+  // Pro-grensesnittet usynlig selv om koden er der.
+  useEffect(() => {
+    if (sceneViewMode === 'storyboard' && !selectedScene && scenes.length > 0) {
+      setSelectedScene(scenes[0]);
+    }
+  }, [sceneViewMode, selectedScene, scenes]);
   const [showProductionPanel, setShowProductionPanel] = useState(false);
-  const [sceneViewMode, setSceneViewMode] = useState<'list' | 'drag' | 'storyboard'>('list');
+  // Default 'storyboard' (ikke 'list') så Storyboard Pro-grensesnittet vises
+  // umiddelbart når brukeren åpner Scener-fanen. Tidligere måtte man manuelt
+  // klikke 'Storyboard' i toggle-knappene — det var 4 klikk dypt og praktisk
+  // talt skjult. Brukeren kan fortsatt bytte til Liste/Dra hvis ønsket.
+  const [sceneViewMode, setSceneViewMode] = useState<'list' | 'drag' | 'storyboard'>('storyboard');
   const [productionWorkspaceMode, setProductionWorkspaceMode] = useState<'storyboard' | 'split'>('storyboard');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
