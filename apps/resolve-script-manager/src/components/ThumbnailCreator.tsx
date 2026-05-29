@@ -21,9 +21,25 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { executeScript } from "../api";
 import { feedPlanThumbnailService } from "../services/feedPlanThumbnailService";
+import { PhoneMockup } from "./PhoneMockup";
+import { DEVICES, PLATFORMS, platformsForAspect } from "../lib/devicePresets";
+import type { DeviceId, PlatformId } from "../lib/devicePresets";
 
 export type LayoutTemplate = "hero" | "quote" | "bold" | "split" | "frame" | "gradient";
-export type ThumbAspect = "1:1" | "9:16" | "4:5";
+export type ThumbAspect = "1:1" | "9:16" | "4:5" | "16:9";
+
+function aspectFromPlatform(p: PlatformId): ThumbAspect {
+  const cssAspect = PLATFORMS[p].cssAspect.replace(/\s/g, "");
+  if (cssAspect === "1/1") return "1:1";
+  if (cssAspect === "9/16") return "9:16";
+  if (cssAspect === "4/5") return "4:5";
+  if (cssAspect === "16/9") return "16:9";
+  return "1:1";
+}
+
+function defaultPlatformForAspect(a: ThumbAspect): PlatformId {
+  return platformsForAspect(a)[0];
+}
 
 interface BrandSnapshot {
   companyName?: string | null;
@@ -62,6 +78,7 @@ const ASPECT_DIMS: Record<ThumbAspect, { w: number; h: number; cssAspect: string
   "1:1":  { w: 1080, h: 1080, cssAspect: "1 / 1" },
   "9:16": { w: 1080, h: 1920, cssAspect: "9 / 16" },
   "4:5":  { w: 1080, h: 1350, cssAspect: "4 / 5" },
+  "16:9": { w: 1920, h: 1080, cssAspect: "16 / 9" },
 };
 
 const LAYOUT_LABELS: Record<LayoutTemplate, string> = {
@@ -78,7 +95,11 @@ export function ThumbnailCreator({
   initialTitle = "", initialCta = "", initialBrand,
   initialAspect = "1:1", feedPlanContext,
 }: Props) {
-  const [aspect, setAspect] = useState<ThumbAspect>(initialAspect);
+  const [platform, setPlatform] = useState<PlatformId>(defaultPlatformForAspect(initialAspect));
+  const aspect: ThumbAspect = aspectFromPlatform(platform);
+  const [device, setDevice] = useState<DeviceId>("iphone-15-pro");
+  const [showPlatformUI, setShowPlatformUI] = useState(true);
+  const [showSafeArea, setShowSafeArea] = useState(false);
   const [title, setTitle] = useState(initialTitle);
   const [cta, setCta] = useState(initialCta);
   const [companyName, setCompanyName] = useState(initialBrand?.companyName ?? "");
@@ -103,7 +124,7 @@ export function ThumbnailCreator({
       setAccentColor(initialBrand?.accentColor ?? "#a030c0");
       setTextColor(initialBrand?.textColor ?? "#ffffff");
       setCompanyName(initialBrand?.companyName ?? "");
-      setAspect(initialAspect);
+      setPlatform(defaultPlatformForAspect(initialAspect));
       setCandidates([]);
       setError(null);
     }
@@ -162,8 +183,6 @@ export function ThumbnailCreator({
   };
 
   if (!open) return null;
-
-  const previewBg = layout === "bold" ? accentColor : backgroundColor;
 
   return (
     <div
@@ -240,185 +259,92 @@ export function ThumbnailCreator({
           </div>
 
           <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8, color: "var(--text-2)" }}>
-            ASPECT
+            PLATTFORM
           </div>
-          {(Object.keys(ASPECT_DIMS) as ThumbAspect[]).map(a => (
-            <button key={a}
-                    onClick={() => setAspect(a)}
+          {(Object.keys(PLATFORMS) as PlatformId[]).map(p => {
+            const spec = PLATFORMS[p];
+            return (
+              <button key={p}
+                      onClick={() => setPlatform(p)}
+                      title={spec.uiDescription}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left",
+                        background: platform === p ? accentColor : "rgba(255,255,255,0.04)",
+                        color: platform === p ? "#fff" : "var(--text-1)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 4, padding: "6px 10px", marginBottom: 4,
+                        fontSize: 11, cursor: "pointer", lineHeight: 1.3,
+                      }}>
+                <div style={{ fontWeight: 600 }}>{spec.name}</div>
+                <div style={{ fontSize: 9.5, opacity: 0.75 }}>
+                  {spec.exportPx.w}×{spec.exportPx.h} px
+                </div>
+              </button>
+            );
+          })}
+
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 14, marginBottom: 8,
+                          color: "var(--text-2)" }}>
+            TELEFON-PREVIEW
+          </div>
+          {(Object.keys(DEVICES) as DeviceId[]).map(d => (
+            <button key={d}
+                    onClick={() => setDevice(d)}
                     style={{
                       display: "block", width: "100%", textAlign: "left",
-                      background: aspect === a ? accentColor : "rgba(255,255,255,0.04)",
-                      color: aspect === a ? "#fff" : "var(--text-1)",
+                      background: device === d ? accentColor : "rgba(255,255,255,0.04)",
+                      color: device === d ? "#fff" : "var(--text-1)",
                       border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: 4, padding: "6px 10px", marginBottom: 4,
+                      borderRadius: 4, padding: "5px 10px", marginBottom: 3,
                       fontSize: 11, cursor: "pointer",
                     }}>
-              {a} · {a === "1:1" ? "Square (IG feed)" : a === "9:16" ? "Reel/TikTok" : "Portrait (IG)"}
+              {DEVICES[d].name}
+              <span style={{ fontSize: 9, opacity: 0.7, marginLeft: 4 }}>
+                {DEVICES[d].pointSize.w}×{DEVICES[d].pointSize.h}
+              </span>
             </button>
           ))}
+
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6,
+                              fontSize: 11, color: "var(--text-2)", cursor: "pointer" }}>
+              <input type="checkbox" checked={showPlatformUI}
+                     onChange={e => setShowPlatformUI(e.target.checked)} />
+              Plattform-UI overlay
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6,
+                              fontSize: 11, color: "var(--text-2)", cursor: "pointer" }}>
+              <input type="checkbox" checked={showSafeArea}
+                     onChange={e => setShowSafeArea(e.target.checked)} />
+              Safe-area-guides
+            </label>
+          </div>
         </div>
 
         {/* CENTER: live preview + layout-picker */}
         <div style={{ background: "var(--bg-0)", padding: 24,
                         display: "flex", flexDirection: "column", overflow: "auto" }}>
-          {/* Preview */}
+          {/* Preview — design rendres inne i telefon-mockup med riktige
+              dimensjoner og plattform-UI-safe-zones synlig */}
           <div style={{ display: "flex", justifyContent: "center", flex: 1,
                           alignItems: "center" }}>
-            <div style={{
-              aspectRatio: dims.cssAspect, maxHeight: "60vh", maxWidth: "100%",
-              background: previewBg,
-              position: "relative", overflow: "hidden",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.5)",
-              borderRadius: 4,
-            }}>
-              {videoSrc && (
-                <video
-                  src={videoSrc}
-                  style={{
-                    position: "absolute", inset: 0,
-                    width: "100%", height: "100%",
-                    objectFit: "cover",
-                    opacity: layout === "bold" ? 0 : 1,
-                  }}
-                  muted
-                  onLoadedMetadata={(e) => { e.currentTarget.currentTime = frameSec; }}
-                />
-              )}
-              {/* Overlay basert på layout */}
-              {layout === "hero" && (
-                <>
-                  <div style={{
-                    position: "absolute", left: 0, right: 0, bottom: 0,
-                    height: "50%",
-                    background: "linear-gradient(to bottom, transparent, rgba(0,0,0,0.85))",
-                  }} />
-                  <div style={{
-                    position: "absolute", left: "5%", right: "5%", bottom: "10%",
-                    color: textColor,
-                  }}>
-                    <div style={{ fontSize: "min(7vh, 6vw)", fontWeight: 800, lineHeight: 1.1 }}>
-                      {title || "Tittel her"}
-                    </div>
-                    {cta && (
-                      <div style={{ fontSize: "min(3.5vh, 3vw)", marginTop: 12,
-                                      color: accentColor, fontWeight: 600 }}>
-                        {cta}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-              {layout === "quote" && (
-                <>
-                  <div style={{
-                    position: "absolute", left: 0, right: 0, bottom: 0,
-                    height: "45%", background: "#faf8f6",
-                    padding: "5%", color: "#14141e",
-                  }}>
-                    <div style={{ fontSize: "min(10vh, 9vw)", color: accentColor,
-                                    fontWeight: 800, lineHeight: 0.6 }}>"</div>
-                    <div style={{ fontSize: "min(4vh, 3.8vw)", fontWeight: 700,
-                                    marginTop: 8 }}>
-                      {title || "Sitatet"}
-                    </div>
-                    <div style={{ position: "absolute", bottom: "5%",
-                                    fontSize: "min(2.5vh, 2.2vw)",
-                                    color: accentColor, fontWeight: 600 }}>
-                      — {companyName.toUpperCase() || "STUDIO"}
-                    </div>
-                  </div>
-                </>
-              )}
-              {layout === "bold" && (
-                <div style={{
-                  position: "absolute", inset: 0, padding: "5%",
-                  color: "#fff",
-                  display: "flex", flexDirection: "column", justifyContent: "space-between",
-                }}>
-                  <div style={{ fontSize: "min(7vh, 6vw)", fontWeight: 900,
-                                  textTransform: "uppercase", lineHeight: 1.1 }}>
-                    {(cta || title || "Hook!").toUpperCase()}
-                  </div>
-                  <div style={{ fontSize: "min(2.8vh, 2.4vw)", maxWidth: "80%" }}>
-                    {title !== cta ? title : ""}
-                  </div>
-                </div>
-              )}
-              {layout === "split" && (
-                <>
-                  <div style={{
-                    position: "absolute", left: "50%", top: 0, bottom: 0,
-                    width: "50%", background: backgroundColor,
-                  }} />
-                  <div style={{
-                    position: "absolute", left: "55%", top: "10%", width: "40%",
-                    color: textColor, fontSize: "min(4.5vh, 4vw)", fontWeight: 800,
-                    lineHeight: 1.1,
-                  }}>
-                    {title || "Tittel"}
-                  </div>
-                  {cta && (
-                    <div style={{ position: "absolute", left: "55%", bottom: "8%",
-                                    color: accentColor, fontWeight: 700,
-                                    fontSize: "min(2.5vh, 2.2vw)", textTransform: "uppercase" }}>
-                      {cta}
-                    </div>
-                  )}
-                </>
-              )}
-              {layout === "frame" && (
-                <>
-                  <div style={{
-                    position: "absolute", inset: 0, border: `60px solid ${backgroundColor}`,
-                  }} />
-                  <div style={{
-                    position: "absolute", top: "3%", left: "8%", right: "8%",
-                    color: textColor, fontSize: "min(5vh, 4.5vw)", fontWeight: 800,
-                  }}>
-                    {title || "Tittel"}
-                  </div>
-                  {cta && (
-                    <div style={{
-                      position: "absolute", bottom: "5%", right: "10%",
-                      background: accentColor, color: "#fff",
-                      padding: "8px 18px", borderRadius: 999,
-                      fontSize: "min(3vh, 2.5vw)", fontWeight: 700,
-                      textTransform: "uppercase",
-                    }}>
-                      {cta}
-                    </div>
-                  )}
-                </>
-              )}
-              {layout === "gradient" && (
-                <>
-                  <div style={{
-                    position: "absolute", inset: 0,
-                    background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.85))",
-                  }} />
-                  <div style={{
-                    position: "absolute", bottom: 0, left: 0, right: 0,
-                    height: 8, background: accentColor,
-                  }} />
-                  <div style={{
-                    position: "absolute", left: "5%", right: "5%", bottom: "10%",
-                    color: "#fff",
-                  }}>
-                    <div style={{ fontSize: "min(6.5vh, 6vw)", fontWeight: 800,
-                                    lineHeight: 1.1 }}>
-                      {title || "Tittel"}
-                    </div>
-                  </div>
-                  <div style={{
-                    position: "absolute", top: "5%", left: "5%",
-                    color: accentColor, fontSize: "min(2.2vh, 2vw)",
-                    fontWeight: 700, textTransform: "uppercase",
-                  }}>
-                    {companyName || "Studio"}
-                  </div>
-                </>
-              )}
-            </div>
+            <PhoneMockup
+              deviceId={device}
+              platformId={platform}
+              maxWidth={420}
+              maxHeight={600}
+              showPlatformUI={showPlatformUI}
+              showSafeArea={showSafeArea}
+            >
+              <ThumbnailDesignOverlay
+                layout={layout}
+                title={title} cta={cta} companyName={companyName}
+                accentColor={accentColor} textColor={textColor}
+                backgroundColor={backgroundColor}
+                videoSrc={videoSrc}
+                frameSec={frameSec}
+              />
+            </PhoneMockup>
           </div>
 
           {/* Layout-picker bar */}
@@ -544,6 +470,180 @@ export function ThumbnailCreator({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * ThumbnailDesignOverlay — selve design-laget som rendres inne i
+ * telefon-mockup-skjermen. Bruker container-queries (cqw/cqh) så
+ * fontene skalerer fra content-slot-størrelsen, ikke viewporten.
+ *
+ * Editing-prinsipp: alle posisjoner og størrelser er prosent av
+ * containeren. Når Bjarne drar et tekst-element flyttes det inne i
+ * mocken og holder den samme prosent-posisjonen i eksport-PNG-en.
+ */
+function ThumbnailDesignOverlay({
+  layout, title, cta, companyName,
+  accentColor, textColor, backgroundColor,
+  videoSrc, frameSec,
+}: {
+  layout: LayoutTemplate;
+  title: string; cta: string; companyName: string;
+  accentColor: string; textColor: string; backgroundColor: string;
+  videoSrc: string; frameSec: number;
+}) {
+  const bg = layout === "bold" ? accentColor : backgroundColor;
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: bg,
+      // container-queries: fontstørrelse skalerer fra denne flata,
+      // ikke fra viewporten. Sikrer at preview ser likt ut som PIL-render.
+      containerType: "size",
+    } as React.CSSProperties}>
+      {videoSrc && layout !== "bold" && (
+        <video
+          src={videoSrc}
+          style={{
+            position: "absolute", inset: 0,
+            width: "100%", height: "100%", objectFit: "cover",
+          }}
+          muted
+          onLoadedMetadata={(e) => { e.currentTarget.currentTime = frameSec; }}
+        />
+      )}
+      {layout === "hero" && (
+        <>
+          <div style={{
+            position: "absolute", left: 0, right: 0, bottom: 0,
+            height: "50%",
+            background: "linear-gradient(to bottom, transparent, rgba(0,0,0,0.85))",
+          }} />
+          <div style={{
+            position: "absolute", left: "5%", right: "5%", bottom: "10%",
+            color: textColor,
+          }}>
+            <div style={{ fontSize: "7cqh", fontWeight: 800, lineHeight: 1.1 }}>
+              {title || "Tittel her"}
+            </div>
+            {cta && (
+              <div style={{ fontSize: "3.5cqh", marginTop: "1.5cqh",
+                              color: accentColor, fontWeight: 600 }}>
+                {cta}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {layout === "quote" && (
+        <div style={{
+          position: "absolute", left: 0, right: 0, bottom: 0,
+          height: "45%", background: "#faf8f6",
+          padding: "5%", color: "#14141e",
+        }}>
+          <div style={{ fontSize: "10cqh", color: accentColor,
+                          fontWeight: 800, lineHeight: 0.6 }}>"</div>
+          <div style={{ fontSize: "4cqh", fontWeight: 700, marginTop: "1cqh" }}>
+            {title || "Sitatet"}
+          </div>
+          <div style={{ position: "absolute", bottom: "5%",
+                          fontSize: "2.5cqh",
+                          color: accentColor, fontWeight: 600 }}>
+            — {(companyName || "STUDIO").toUpperCase()}
+          </div>
+        </div>
+      )}
+      {layout === "bold" && (
+        <div style={{
+          position: "absolute", inset: 0, padding: "5%",
+          color: "#fff",
+          display: "flex", flexDirection: "column", justifyContent: "space-between",
+        }}>
+          <div style={{ fontSize: "7cqh", fontWeight: 900,
+                          textTransform: "uppercase", lineHeight: 1.1 }}>
+            {(cta || title || "Hook!").toUpperCase()}
+          </div>
+          <div style={{ fontSize: "2.8cqh", maxWidth: "80%" }}>
+            {title !== cta ? title : ""}
+          </div>
+        </div>
+      )}
+      {layout === "split" && (
+        <>
+          <div style={{
+            position: "absolute", left: "50%", top: 0, bottom: 0,
+            width: "50%", background: backgroundColor,
+          }} />
+          <div style={{
+            position: "absolute", left: "55%", top: "10%", width: "40%",
+            color: textColor, fontSize: "4.5cqh", fontWeight: 800,
+            lineHeight: 1.1,
+          }}>
+            {title || "Tittel"}
+          </div>
+          {cta && (
+            <div style={{ position: "absolute", left: "55%", bottom: "8%",
+                            color: accentColor, fontWeight: 700,
+                            fontSize: "2.5cqh", textTransform: "uppercase" }}>
+              {cta}
+            </div>
+          )}
+        </>
+      )}
+      {layout === "frame" && (
+        <>
+          <div style={{
+            position: "absolute", inset: 0,
+            border: `6cqh solid ${backgroundColor}`,
+            boxSizing: "border-box",
+          }} />
+          <div style={{
+            position: "absolute", top: "3%", left: "8%", right: "8%",
+            color: textColor, fontSize: "5cqh", fontWeight: 800,
+          }}>
+            {title || "Tittel"}
+          </div>
+          {cta && (
+            <div style={{
+              position: "absolute", bottom: "5%", right: "10%",
+              background: accentColor, color: "#fff",
+              padding: "1cqh 2cqh", borderRadius: 999,
+              fontSize: "3cqh", fontWeight: 700,
+              textTransform: "uppercase",
+            }}>
+              {cta}
+            </div>
+          )}
+        </>
+      )}
+      {layout === "gradient" && (
+        <>
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.85))",
+          }} />
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0,
+            height: "1cqh", background: accentColor,
+          }} />
+          <div style={{
+            position: "absolute", left: "5%", right: "5%", bottom: "10%",
+            color: "#fff",
+          }}>
+            <div style={{ fontSize: "6.5cqh", fontWeight: 800, lineHeight: 1.1 }}>
+              {title || "Tittel"}
+            </div>
+          </div>
+          <div style={{
+            position: "absolute", top: "5%", left: "5%",
+            color: accentColor, fontSize: "2.2cqh",
+            fontWeight: 700, textTransform: "uppercase",
+          }}>
+            {companyName || "Studio"}
+          </div>
+        </>
+      )}
     </div>
   );
 }
