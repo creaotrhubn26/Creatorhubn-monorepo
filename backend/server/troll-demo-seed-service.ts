@@ -76,6 +76,8 @@ export async function seedTrollDemo(
       'casting_schedules',
       'casting_storyboards',
       'casting_candidate_videos',
+      'casting_revisions',
+      'casting_dialogue',
       'casting_scenes',
       'casting_acts',
       'casting_manuscripts',
@@ -515,6 +517,85 @@ THE END.
            (id, project_id, manuscript_id, act_number, title, description, start_scene_number, end_scene_number, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
         [eid(a.id), TROLL_PROJECT_ID, manuscriptId, a.num, a.title, a.description, a.startScene, a.endScene],
+      );
+    }
+
+    // ── 9c. casting_dialogue ──────────────────────────────────────────
+    // Migrasjon 184 opprettet casting_dialogue-tabellen. Seed utdrag av
+    // dialog fra scene 1, 4 og 10 så Karakterer-fanen (som hentes fra
+    // dialog) + Dialog-fanen viser realistisk arbeidsmateriale.
+    const dialogue = [
+      // Scene 1 — Tunnelen
+      { id: 'dl-1', sceneId: 'scene-1', line: 1, character: 'ARBEIDER 1', text: 'Hvor langt inn er vi?', type: 'dialogue' },
+      { id: 'dl-2', sceneId: 'scene-1', line: 2, character: 'ARBEIDER 2', text: 'Tre meter til. Hold ut.', type: 'dialogue' },
+      { id: 'dl-3', sceneId: 'scene-1', line: 3, character: 'ARBEIDER 1', text: 'Hva i…', type: 'dialogue' },
+
+      // Scene 2 — Tunnel-kollapsen
+      { id: 'dl-4', sceneId: 'scene-2', line: 4, character: 'ARBEIDER 2', text: 'LØP! LØP!!', type: 'dialogue', parenthetical: 'skrikende' },
+
+      // Scene 3 — Nora introduseres
+      { id: 'dl-5', sceneId: 'scene-3', line: 5, character: 'NORA', text: 'Tidemann.', type: 'dialogue' },
+      { id: 'dl-6', sceneId: 'scene-3', line: 6, character: 'STATSRÅDEN', text: 'Vi trenger deg. Nå.', type: 'voiceover' },
+
+      // Scene 4 — Krise-møtet
+      { id: 'dl-7', sceneId: 'scene-4', line: 7, character: 'NORA', text: 'Det er ikke et jordskjelv. Se på rystelsesmønsteret — det er FOTSTEG.', type: 'dialogue' },
+      { id: 'dl-8', sceneId: 'scene-4', line: 8, character: 'GENERAL ELVENES', text: 'Det er absurd.', type: 'dialogue' },
+      { id: 'dl-9', sceneId: 'scene-4', line: 9, character: 'ANDREAS', text: 'Nora. Si det.', type: 'dialogue' },
+      { id: 'dl-10', sceneId: 'scene-4', line: 10, character: 'NORA', text: 'Det er et troll.', type: 'dialogue', parenthetical: 'med tyngde' },
+
+      // Scene 5 — Til Dovrefjell
+      { id: 'dl-11', sceneId: 'scene-5', line: 11, character: 'ANDREAS', text: 'Det er rart å være tilbake i bil sammen.', type: 'dialogue' },
+      { id: 'dl-12', sceneId: 'scene-5', line: 12, character: 'NORA', text: 'La oss ikke gjøre dette nå.', type: 'dialogue' },
+      { id: 'dl-13', sceneId: 'scene-5', line: 13, character: 'ANDREAS', text: 'Aldri en gang så vi solnedgangen.', type: 'dialogue' },
+      { id: 'dl-14', sceneId: 'scene-5', line: 14, character: 'NORA', text: 'Du husker det.', type: 'dialogue', parenthetical: 'smiler så vidt' },
+
+      // Scene 6 — Bondens fortelling
+      { id: 'dl-15', sceneId: 'scene-6', line: 15, character: 'BONDEN', text: 'Bestefar tegnet dette i 1929. Han så det da han var sju.', type: 'dialogue' },
+      { id: 'dl-16', sceneId: 'scene-6', line: 16, character: 'BONDEN', text: 'Vi sa ingenting. Det skader ingen så lenge man holdt seg fra dets stier.', type: 'dialogue' },
+
+      // Scene 7 — Militær respons
+      { id: 'dl-17', sceneId: 'scene-7', line: 17, character: 'STATSMINISTEREN', text: 'Vi må handle.', type: 'dialogue' },
+      { id: 'dl-18', sceneId: 'scene-7', line: 18, character: 'NORA', text: 'Skyt det ikke. Ikke ennå. Hvis det er ekte — det betyr noe i vår historie.', type: 'dialogue' },
+      { id: 'dl-19', sceneId: 'scene-7', line: 19, character: 'GENERAL ELVENES', text: 'Hvis det er ekte er det ALLEREDE for sent.', type: 'dialogue' },
+
+      // Scene 9 — Forfølgelse
+      { id: 'dl-20', sceneId: 'scene-9', line: 20, character: 'NORA', text: 'Vi må stoppe dem!', type: 'dialogue' },
+      { id: 'dl-21', sceneId: 'scene-9', line: 21, character: 'ANDREAS', text: 'Jeg vet hvor han vil!', type: 'dialogue' },
+
+      // Scene 10 — Fars hemmelighet
+      { id: 'dl-22', sceneId: 'scene-10', line: 22, character: 'NORA', text: 'Pappa…', type: 'dialogue' },
+      { id: 'dl-23', sceneId: 'scene-10', line: 23, character: 'TOBIAS', text: 'Du fant meg.', type: 'dialogue' },
+      { id: 'dl-24', sceneId: 'scene-10', line: 24, character: 'NORA', text: 'Hvorfor forlot du oss?', type: 'dialogue' },
+      { id: 'dl-25', sceneId: 'scene-10', line: 25, character: 'TOBIAS', text: 'Fordi du måtte tro at det ikke eksisterte. Slik kunne du leve som et normalt menneske.', type: 'dialogue' },
+      { id: 'dl-26', sceneId: 'scene-10', line: 26, character: 'NORA', text: 'Det går ikke. Ikke nå.', type: 'dialogue' },
+      { id: 'dl-27', sceneId: 'scene-10', line: 27, character: 'TOBIAS', text: 'Da er det din tur, min datter.', type: 'dialogue' },
+    ];
+    for (const d of dialogue) {
+      await client.query(
+        `INSERT INTO casting_dialogue
+           (id, project_id, manuscript_id, scene_id, character_name, dialogue_text, dialogue_type, parenthetical, line_number, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
+        [eid(d.id), TROLL_PROJECT_ID, manuscriptId, eid(d.sceneId), d.character, d.text, d.type, (d as any).parenthetical ?? null, d.line],
+      );
+    }
+
+    // ── 9d. casting_revisions ─────────────────────────────────────────
+    // Migrasjon 185 opprettet casting_revisions. Seed tre revisjoner med
+    // change-summaries så Script Revisjoner & Diff Viewer kan demonstreres.
+    const revisions = [
+      { id: 'rev-v1', version: 'v1', summary: 'Første full draft. Etablert tre-akts-struktur.',
+        notes: 'Fokus: introdusere Nora, etablere trollet som troverdig fysisk skapning, slå an emosjonell kjerne (far-datter).' },
+      { id: 'rev-v2', version: 'v2', summary: 'Punch-up: dialog i Akt I + skarpere generalsfigur i Akt II.',
+        notes: 'Generalen var for endimensjonal i v1. Lagt til tre replikker som etablerer hans dilemma. Pre-tunnel-replikk av Arbeider 1/2 strammet inn.' },
+      { id: 'rev-v3', version: 'v3', summary: 'Final draft for produksjon. Sluttscenen mellom Nora og Tobias rebalansert.',
+        notes: 'Tobias monolog kortet med 40%. Vi stoler nå på subteksten. Bonden i Akt II har fått et ekstra øyeblikk så hans gravity matcher Tobias.' },
+    ];
+    for (const r of revisions) {
+      await client.query(
+        `INSERT INTO casting_revisions
+           (id, project_id, manuscript_id, version, change_summary, revision_notes, content, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+        [eid(r.id), TROLL_PROJECT_ID, manuscriptId, r.version, r.summary, r.notes, manuscriptContent, 'Roar Uthaug'],
       );
     }
 
@@ -964,7 +1045,10 @@ THE END.
         crew: crew.length,
         locations: locations.length,
         manuscripts: 1,
+        acts: acts.length,
         scenes: scenes.length,
+        dialogue: dialogue.length,
+        revisions: revisions.length,
         shotLists: shotLists.length,
         equipment: equipmentInserted,
         productionDays: productionDays.length,
