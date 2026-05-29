@@ -1903,6 +1903,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "setup_platform_timeline",
+      "name": "Setup Platform Timeline",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/setup_platform_timeline.py",
+      "description": "Setter ALLE timeline-settings korrekt for valgt plattform (instagram_reels, tiktok, youtube_shorts/master, instagram_feed_portrait/story, linkedin, vimeo_4k, theatrical_2k). Inkluderer resolution, fps, color space, audio sample rate, pixel aspect — ikke bare oppløsning. readOnly-mode returnerer current settings + diff mot platform-default.",
+      "requiredInputs": [
+        { "key": "platform", "label": "Platform-navn", "type": "text", "required": true },
+        { "key": "readOnly", "label": "Bare lese current settings", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "build_vertical_social_cut",
       "name": "Build Vertical Social Cut (Studio Smart Reframe)",
       "category": "timeline",
@@ -1917,6 +1934,25 @@
         { "key": "isStudio", "label": "Resolve Studio detected", "type": "boolean", "required": true }
       ],
       "resolvePageDependency": "Color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "transcribe_with_resolve_ai",
+      "name": "Transcribe with Resolve AI (Studio Speech-to-Text)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/transcribe_with_resolve_ai.py",
+      "description": "Studio AI Speech-to-Text på 19+ språk. Genererer subtitle-track på timelinen + SRT-fil. Aktiverer caption-burn-in på 9:16 social-cut for IG/TikTok (85% ser uten lyd).",
+      "requiredInputs": [
+        { "key": "language", "label": "no/en/ur/hi/ar/auto", "type": "text", "required": false },
+        { "key": "burnInForVertical", "label": "Burn-in på social-cut", "type": "boolean", "required": false },
+        { "key": "projectTitle", "label": "Tittel", "type": "text", "required": false },
+        { "key": "isStudio", "label": "Resolve Studio detected", "type": "boolean", "required": true }
+      ],
+      "resolvePageDependency": "Edit",
       "riskLevel": "low",
       "status": "ready",
       "dryRunSupported": true,

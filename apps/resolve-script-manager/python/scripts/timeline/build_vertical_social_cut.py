@@ -36,19 +36,145 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import bridge
 
 
-# Sosial-spesifikke render-presets
+# Komplette platform-presets med ALLE timeline-instillinger.
+# Hver plattform har sine spec'er: aspect, fps, max-dur, codec, audio,
+# color space. Auto-pilot setter alt riktig per plattform-valg.
 SOCIAL_PRESETS = {
     "instagram_reels": {
+        "label": "Instagram Reels",
         "width": 1080, "height": 1920, "fps": 30,
-        "videoBitrate": 8_000_000, "label": "Instagram Reels",
+        "maxDurationSec": 90,           # IG Reels cap
+        "videoBitrate": 8_000_000,      # 8 Mbps
+        "audioBitrate": 192_000,        # 192 kbps AAC
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -14.0,        # IG normalisering
+        "notes": "IG Reels: 9:16 aspect, max 90s, AAC stereo. Captions burnable.",
     },
     "tiktok": {
+        "label": "TikTok",
         "width": 1080, "height": 1920, "fps": 30,
-        "videoBitrate": 10_000_000, "label": "TikTok",
+        "maxDurationSec": 600,          # TikTok cap (10 min)
+        "videoBitrate": 10_000_000,
+        "audioBitrate": 256_000,
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -10.0,        # TikTok louder
+        "notes": "TikTok: 9:16, høy bitrate, louder LUFS (-10). Stitch-vennlig.",
     },
     "youtube_shorts": {
+        "label": "YouTube Shorts",
         "width": 1080, "height": 1920, "fps": 30,
-        "videoBitrate": 12_000_000, "label": "YouTube Shorts",
+        "maxDurationSec": 60,           # Shorts cap (60s)
+        "videoBitrate": 12_000_000,
+        "audioBitrate": 192_000,
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -14.0,
+        "notes": "YT Shorts: 9:16, max 60s. Inherits Shorts-shelf-format.",
+    },
+    "youtube_master": {
+        "label": "YouTube Master (16:9)",
+        "width": 1920, "height": 1080, "fps": 30,
+        "maxDurationSec": 600,
+        "videoBitrate": 12_000_000,
+        "audioBitrate": 320_000,
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -14.0,
+        "notes": "YouTube standard 1080p. Streaming-target -14 LUFS.",
+    },
+    "instagram_feed_portrait": {
+        "label": "Instagram Feed (4:5)",
+        "width": 1080, "height": 1350, "fps": 30,
+        "maxDurationSec": 60,
+        "videoBitrate": 8_000_000,
+        "audioBitrate": 192_000,
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -14.0,
+        "notes": "IG Feed portrait (4:5) — beste real-estate i feeden.",
+    },
+    "instagram_story": {
+        "label": "Instagram Story",
+        "width": 1080, "height": 1920, "fps": 30,
+        "maxDurationSec": 60,           # 60s per story-segment
+        "videoBitrate": 6_000_000,
+        "audioBitrate": 128_000,
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -14.0,
+        "notes": "IG Story: 9:16, max 60s, lett bitrate (story-format).",
+    },
+    "linkedin": {
+        "label": "LinkedIn Video",
+        "width": 1920, "height": 1080, "fps": 30,
+        "maxDurationSec": 600,
+        "videoBitrate": 10_000_000,
+        "audioBitrate": 256_000,
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -14.0,
+        "notes": "LinkedIn 1080p. Professional-grade encoding.",
+    },
+    "twitter": {
+        "label": "Twitter / X",
+        "width": 1280, "height": 720, "fps": 30,
+        "maxDurationSec": 140,          # 2:20 cap
+        "videoBitrate": 5_000_000,
+        "audioBitrate": 128_000,
+        "audioSampleRate": 48000,
+        "videoCodec": "H.264",
+        "audioCodec": "AAC",
+        "colorSpace": "Rec.709",
+        "colorScience": "DaVinci YRGB",
+        "audioChannels": 2,
+        "fileFormat": "MP4",
+        "pixelAspect": "Square",
+        "loudnessTarget": -14.0,
+        "notes": "Twitter: 720p, max 2:20, kompakt.",
     },
 }
 
@@ -150,17 +276,48 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     except Exception as exc:
         bridge.warn(f"SetCurrentTimeline feilet: {exc}")
 
-    # Sett resolution via project-settings (påvirker både timeline + render)
-    res_set = False
+    # KOMPLETT timeline-config for valgt platform — alle settings,
+    # ikke bare resolution. Hver SetSetting-call returnerer bool så vi
+    # vet hva som faktisk ble anvendt.
+    settings_applied = {}
+    timeline_settings_map = [
+        ("timelineResolutionWidth",    str(preset["width"])),
+        ("timelineResolutionHeight",   str(preset["height"])),
+        ("timelineFrameRate",          str(preset["fps"])),
+        ("timelineOutputResMatchesTimelineRes", "1"),
+        ("timelineOutputResolutionWidth",  str(preset["width"])),
+        ("timelineOutputResolutionHeight", str(preset["height"])),
+        ("timelinePlaybackFrameRate",  str(preset["fps"])),
+        ("timelineDropFrameTimecode",  "0"),
+        # Color space
+        ("colorScienceMode",           preset.get("colorScience", "DaVinci YRGB")),
+        ("colorSpaceTimeline",         preset.get("colorSpace", "Rec.709")),
+        ("colorSpaceOutput",           preset.get("colorSpace", "Rec.709")),
+        # Audio
+        ("timelineSampleRate",         str(preset.get("audioSampleRate", 48000))),
+        ("audioCaptureNumChannels",    str(preset.get("audioChannels", 2))),
+        ("audioPlayoutNumChannels",    str(preset.get("audioChannels", 2))),
+        # Pixel aspect
+        ("timelinePixelAspectRatio",   preset.get("pixelAspect", "Square")),
+    ]
     try:
-        ok_w = project.SetSetting("timelineResolutionWidth", str(preset["width"]))
-        ok_h = project.SetSetting("timelineResolutionHeight", str(preset["height"]))
-        ok_fps = project.SetSetting("timelineFrameRate", str(preset["fps"]))
-        res_set = bool(ok_w and ok_h)
-        bridge.log(f"Resolution: {preset['width']}×{preset['height']} @{preset['fps']}fps · "
-                   f"set={res_set}")
+        for key, val in timeline_settings_map:
+            try:
+                ok = project.SetSetting(key, val)
+                settings_applied[key] = bool(ok)
+            except Exception:
+                settings_applied[key] = False
     except Exception as exc:
-        bridge.warn(f"Resolution-set feilet: {exc}")
+        bridge.warn(f"Settings-set feilet: {exc}")
+
+    res_set = settings_applied.get("timelineResolutionWidth", False) and \
+              settings_applied.get("timelineResolutionHeight", False)
+    settings_success_count = sum(1 for v in settings_applied.values() if v)
+    bridge.log(
+        f"Timeline-config: {preset['width']}×{preset['height']} @{preset['fps']}fps · "
+        f"{preset.get('colorSpace', 'Rec.709')} · {preset.get('audioSampleRate', 48000)} Hz · "
+        f"{settings_success_count}/{len(settings_applied)} settings anvendt"
+    )
 
     # Bytt til Color Page slik at Smart Reframe-API er tilgjengelig
     try:
@@ -209,7 +366,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     try:
         # Hent alle eksisterende render-presets og pick en H.264-MP4
         render_preset = "H.264 Master"  # Studio-default som finnes på alle systemer
-        # Custom render-settings
+        # Custom render-settings — ALLE platform-spec'er ivaretatt
         render_settings = {
             "TargetDir": os.path.dirname(output_path),
             "CustomName": os.path.splitext(os.path.basename(output_path))[0],
@@ -218,6 +375,21 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "FrameRate": preset["fps"],
             "VideoQuality": "Custom",
             "VideoBitRate": preset["videoBitrate"],
+            "AudioCodec": preset.get("audioCodec", "AAC"),
+            "AudioBitDepth": "16",
+            "AudioSampleRate": preset.get("audioSampleRate", 48000),
+            "AudioBitRate": preset.get("audioBitrate", 192000),
+            "AudioChannels": preset.get("audioChannels", 2),
+            "ExportVideo": True,
+            "ExportAudio": True,
+            "FormatExt": preset.get("fileFormat", "MP4").lower(),
+            "VideoFormat": preset.get("fileFormat", "MP4"),
+            "VideoCodec": preset.get("videoCodec", "H.264"),
+            "EncodingProfile": "Main",
+            "ColorSpaceTag": preset.get("colorSpace", "Rec.709"),
+            "GammaTag": "Rec.709",
+            # Caption burn-in hvis ønsket
+            "ExportSubtitle": False,    # endres til True hvis caption-burn ønskes
         }
         if hasattr(project, "LoadRenderPreset"):
             try: project.LoadRenderPreset(render_preset)

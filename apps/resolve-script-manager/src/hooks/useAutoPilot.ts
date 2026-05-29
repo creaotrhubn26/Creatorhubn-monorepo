@@ -32,6 +32,7 @@ export type AutoPilotStepId =
   | "fairlight_setup"
   | "voice_isolation"
   | "vertical_reframe"
+  | "speech_to_text"
   | "qc_pass";
 
 export interface AutoPilotStep {
@@ -55,6 +56,7 @@ export const AUTO_PILOT_STEPS: AutoPilotStep[] = [
   { id: "fairlight_setup",           label: "Fairlight markører + clip-routing",   estSec: 15 },
   { id: "voice_isolation",           label: "Voice Isolation på speeches (Studio)", estSec: 25 },
   { id: "vertical_reframe",          label: "9:16 social cut m/ Smart Reframe (Studio)", estSec: 30 },
+  { id: "speech_to_text",            label: "Speech-to-Text + captions (Studio)", estSec: 35 },
   { id: "qc_pass",                   label: "Final QC + sync-sjekk",            estSec: 15 },
 ];
 
@@ -477,6 +479,9 @@ async function runStep(
       return;
     case "vertical_reframe":
       await stepVerticalReframe(inputs, ctx);
+      return;
+    case "speech_to_text":
+      await stepSpeechToText(inputs, ctx);
       return;
     case "qc_pass":
       await stepQcPass(inputs, ctx);
@@ -1041,6 +1046,64 @@ async function stepVerticalReframe(inputs: AutoPilotInputs, ctx: StepCtx): Promi
   } catch (err) {
     ctx.log({ step: "vertical_reframe", level: "warn",
       message: `Vertical reframe hoppet over: ${(err as Error).message}` });
+  }
+}
+
+async function stepSpeechToText(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.resolveConnected) {
+    ctx.log({ step: "speech_to_text", level: "info",
+      message: "Resolve ikke åpen — hopper over Speech-to-Text" });
+    return;
+  }
+  if (!inputs.studioConnected) {
+    ctx.log({ step: "speech_to_text", level: "info",
+      message: "Krever Studio: Speech-to-Text + 19+ språk — captions for social-cut (85% ser uten lyd)" });
+    return;
+  }
+  if (!inputs.picks || inputs.picks.length === 0) return;
+
+  // Sjekk om det er speech-chapters i highlighten
+  const speechChapters = ["vows", "speeches", "nikkah_dua", "ceremony"];
+  const hasSpeech = inputs.picks.some(p =>
+    speechChapters.includes((p.chapter ?? "").toLowerCase())
+  );
+  if (!hasSpeech) {
+    ctx.log({ step: "speech_to_text", level: "info",
+      message: "Ingen speech-picks — transcription ikke nødvendig" });
+    return;
+  }
+
+  const language = inputs.culturalContext?.toLowerCase().includes("urdu") ? "ur"
+    : inputs.culturalContext?.toLowerCase().includes("hindi") ? "hi"
+    : inputs.culturalContext?.toLowerCase().includes("arabic") ? "ar"
+    : "no";
+
+  ctx.log({ step: "speech_to_text", level: "claude",
+    message: `⭐ Studio: Speech-to-Text på speeches (språk: ${language}). Captions klargjøres for social-cut.` });
+
+  try {
+    const summary = await executeScript("transcribe_with_resolve_ai", {
+      language,
+      burnInForVertical: true,
+      projectTitle: inputs.projectTitle ?? "Highlight",
+      isStudio: true,
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      transcriptionSuccess?: boolean; srtExported?: boolean; srtPath?: string;
+      method?: string; burnInForVertical?: boolean; manualMarkers?: number;
+    } | undefined;
+    if (v?.transcriptionSuccess) {
+      ctx.sharedState.captionsSrtPath = v.srtPath;
+      ctx.log({ step: "speech_to_text", level: "success",
+        message: `Transkripsjon OK via ${v.method ?? "API"}${v.srtPath ? ` · SRT: ${v.srtPath.split("/").pop()}` : ""}${v.burnInForVertical ? " · burn-in på social-cut aktivert" : ""}` });
+    } else if (v?.manualMarkers) {
+      ctx.log({ step: "speech_to_text", level: "warn",
+        message: `API-transcription utilgjengelig — markør lagt til. Bjarne: Edit Page → høyreklikk track → Transcribe Audio` });
+    }
+  } catch (err) {
+    ctx.log({ step: "speech_to_text", level: "warn",
+      message: `Speech-to-Text hoppet over: ${(err as Error).message}` });
   }
 }
 
