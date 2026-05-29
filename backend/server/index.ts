@@ -18135,19 +18135,50 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
         return map;
       };
       const scenesByManuscript = groupByManuscript(scenesRes.rows as any[]);
+      // Frontend (ManuscriptPanel + Scene Breakdown) leser camelCase-felter
+      // (sceneNumber, sceneHeading, intExt, timeOfDay, actNumber osv).
+      // SQL-radene er snake_case, så vi mapper feltene før skriving til
+      // compat-store. Uten mapping vises tabell-kolonnene Scene #, Heading,
+      // INT/EXT, Time blank selv om dataene finnes.
       for (const [mid, rows] of scenesByManuscript) {
         await compatStoreSet(`casting:scenes:${mid}`, rows.map((s: any) => ({
           ...s,
           projectId: s.project_id ?? projectId,
+          manuscriptId: s.manuscript_id ?? mid,
+          sceneNumber: s.scene_number,
+          sceneHeading: s.title,
+          intExt: s.int_ext,
+          timeOfDay: s.time_of_day,
+          createdAt: s.created_at,
+          updatedAt: s.updated_at,
         })));
       }
       const dialogueByManuscript = groupByManuscript(dialogueRes.rows as any[]);
       for (const [mid, rows] of dialogueByManuscript) {
-        await compatStoreSet(`casting:dialogue:${mid}`, rows);
+        await compatStoreSet(`casting:dialogue:${mid}`, rows.map((d: any) => ({
+          ...d,
+          projectId: d.project_id ?? projectId,
+          manuscriptId: d.manuscript_id ?? mid,
+          sceneId: d.scene_id,
+          characterName: d.character_name,
+          dialogueText: d.dialogue_text,
+          lineNumber: d.line_number,
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+        })));
       }
       const actsByManuscript = groupByManuscript(actsRes.rows as any[]);
       for (const [mid, rows] of actsByManuscript) {
-        await compatStoreSet(`casting:acts:${mid}`, rows);
+        await compatStoreSet(`casting:acts:${mid}`, rows.map((a: any) => ({
+          ...a,
+          projectId: a.project_id ?? projectId,
+          manuscriptId: a.manuscript_id ?? mid,
+          actNumber: a.act_number,
+          startSceneNumber: a.start_scene_number,
+          endSceneNumber: a.end_scene_number,
+          createdAt: a.created_at,
+          updatedAt: a.updated_at,
+        })));
       }
       // ShotLists er per project i compat-store-konvensjonen.
       if (shotListsRes.rows.length > 0) {
