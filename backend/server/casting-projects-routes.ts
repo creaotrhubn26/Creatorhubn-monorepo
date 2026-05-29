@@ -469,13 +469,20 @@ export function setupCastingProjectsRoutes(
       ownerEmail,
       ownerId,
     );
+    // session.userId som siste fallback: hvis frontend ikke sender createdBy
+    // (Holy Crust-flowen er ett eksempel — POST gikk uten createdBy), endte
+    // prosjektet med created_by=null i compat-store, som så fikk GET
+    // /api/casting/projects/:id til å returnere null pga owner-sjekk →
+    // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
+    // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
+    // seg selv direkte etter opprettelse/oppdatering.
     const createdBy = readString(
       payloadRecord.createdBy,
       payloadRecord.created_by,
       existingRecord.createdBy,
       existingRecord.created_by,
       ownerId,
-    );
+    ) ?? session.userId;
     const createdByEmail = readString(
       payloadRecord.createdByEmail,
       payloadRecord.created_by_email,
@@ -581,7 +588,8 @@ export function setupCastingProjectsRoutes(
   });
 
   app.put("/api/casting/projects/:projectId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const id = rejectInvalidProjectId(
       res,
       req.params.projectId,
@@ -624,13 +632,20 @@ export function setupCastingProjectsRoutes(
       ownerEmail,
       ownerId,
     );
+    // session.userId som siste fallback: hvis frontend ikke sender createdBy
+    // (Holy Crust-flowen er ett eksempel — POST gikk uten createdBy), endte
+    // prosjektet med created_by=null i compat-store, som så fikk GET
+    // /api/casting/projects/:id til å returnere null pga owner-sjekk →
+    // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
+    // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
+    // seg selv direkte etter opprettelse/oppdatering.
     const createdBy = readString(
       payloadRecord.createdBy,
       payloadRecord.created_by,
       existingRecord.createdBy,
       existingRecord.created_by,
       ownerId,
-    );
+    ) ?? session.userId;
     const createdByEmail = readString(
       payloadRecord.createdByEmail,
       payloadRecord.created_by_email,
