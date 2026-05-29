@@ -3341,7 +3341,18 @@ type RoleRoomProjectWorkspaceState = {
   const isTrollProject = useCallback((project: CastingProject): boolean => {
     const projectId = String(project.id || '').trim().toLowerCase();
     const projectName = String(project.name || '').trim().toLowerCase();
-    return projectId === 'troll-project-2026' || projectName === 'troll';
+    // Matcher: (a) canonical static-ID fra seed-service,
+    // (b) name === 'troll' (case-insensitive),
+    // (c) dynamisk demo-ID på formen 'troll-{timestamp}' generert i
+    //     ProjectCreationModal når brukeren klikker "Last Troll Demo".
+    //     Uten denne grenen blir nyere TROLL-kopier (f.eks.
+    //     troll-1780071501773) ikke fanget av modus-gating og dukker opp
+    //     i innholdsprodusent-modus selv om de skulle vært skjult.
+    return (
+      projectId === 'troll-project-2026'
+      || projectName === 'troll'
+      || /^troll-\d{10,}$/.test(projectId)
+    );
   }, []);
 
   const isContentProducerDemoProject = useCallback((project: CastingProject): boolean => {
@@ -3473,6 +3484,24 @@ type RoleRoomProjectWorkspaceState = {
     isTrollProject,
   ]);
 
+  // Auto-clear av currentProject ved modus-bytte: TROLL er eksklusivt for
+  // produksjonsteam, så hvis brukeren har TROLL åpent og bytter til
+  // innholdsprodusent (eller dansestudio/utdanning/klient) må prosjektet
+  // closes. Ellers blir TROLL hengende som currentProject og rendres i
+  // Story Arc Studio / Creative Sync Workspace selv om listen filtrerer
+  // den bort. Sletter IKKE prosjekt-data — bare nuller frontend-ref.
+  useEffect(() => {
+    if (!currentProject) return;
+    if (!isTrollProject(currentProject)) return;
+    if (isProducerWorkspaceSession) return;
+    setCurrentProject(null);
+    setCurrentProjectId(null);
+  }, [
+    currentProject,
+    isProducerWorkspaceSession,
+    isTrollProject,
+  ]);
+
   useEffect(() => onProducerWorkflowEvent((payload) => {
     if (payload.domain !== 'project') {
       return;
@@ -3586,7 +3615,11 @@ type RoleRoomProjectWorkspaceState = {
       return;
     }
 
-    if (isProducerWorkspaceSession && isTrollProject(project)) {
+    // TROLL skal eksklusivt kunne åpnes i produksjonsteam-modus. Tidligere
+    // var sjekken bakvendt (blokkerte i produksjonsteam i stedet for i de
+    // andre modusene) slik at innholdsprodusent/dansestudio kunne åpne
+    // TROLL.
+    if (!isProducerWorkspaceSession && isTrollProject(project)) {
       toast.showWarning('TROLL-prosjektet er kun tilgjengelig for produksjonsteam.');
       return;
     }
