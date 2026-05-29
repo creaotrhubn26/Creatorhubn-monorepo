@@ -29,6 +29,8 @@ import { MusicSuggestionModal } from "./MusicSuggestionModal";
 import { VoiceDuckingDialog } from "./VoiceDuckingDialog";
 import { MulticamSyncStudio } from "./MulticamSyncStudio";
 import { SocialCutsStudio } from "./SocialCutsStudio";
+import { ReviewSessionsStudio } from "./ReviewSessionsStudio";
+import GroupsIcon from "@mui/icons-material/Groups";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import GraphicEqIcon2 from "@mui/icons-material/GraphicEq";
@@ -106,6 +108,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [duckingMusicPath, setDuckingMusicPath] = useState("");
   const [multicamOpen, setMulticamOpen] = useState(false);
   const [socialCutsOpen, setSocialCutsOpen] = useState(false);
+  const [reviewSessionsOpen, setReviewSessionsOpen] = useState(false);
 
   // Hvilke agenter har naturlig multi-cam-konvensjon
   const showMulticamButton = (
@@ -482,6 +485,17 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
               <ContentCutIcon sx={{ fontSize: 14 }} /> Social cuts
             </button>
           )}
+          <button onClick={() => setReviewSessionsOpen(true)}
+                  title="Lag signed-token review-link og send til klient for godkjenning"
+                  style={{
+                    background: "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <GroupsIcon sx={{ fontSize: 14 }} /> Client review
+          </button>
           <button onClick={requestBrollSuggestions}
                   title="Få Director-forslag til B-roll basert på nåværende kapittel + look"
                   style={{
@@ -1279,6 +1293,14 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
           agentKind={config.kind}
         />
       )}
+
+      {/* Client Review Portal — alle 8 agenter */}
+      <ReviewSessionsStudio
+        open={reviewSessionsOpen}
+        onClose={() => setReviewSessionsOpen(false)}
+        projectId={projectIdForStudio}
+        agentKind={config.kind}
+      />
 
       {/* B-roll Suggestion modal — Director foreslår basert på chapter+look */}
       {brollSuggestionContext && (

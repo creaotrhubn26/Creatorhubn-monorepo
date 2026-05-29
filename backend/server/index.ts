@@ -57,6 +57,7 @@ import { registerRoleRoomBrollRoutes } from "./role-room-broll-routes.js";
 import { registerRoleRoomMusicRoutes } from "./role-room-music-routes.js";
 import { registerRoleRoomMulticamRoutes } from "./role-room-multicam-routes.js";
 import { registerRoleRoomSocialCutsRoutes } from "./role-room-social-cuts-routes.js";
+import { registerRoleRoomReviewRoutes } from "./role-room-review-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -1763,6 +1764,7 @@ registerRoleRoomBrollRoutes(app, { pool, activeSessions });
 registerRoleRoomMusicRoutes(app, { pool, activeSessions });
 registerRoleRoomMulticamRoutes(app, { pool, activeSessions });
 registerRoleRoomSocialCutsRoutes(app, { pool, activeSessions });
+registerRoleRoomReviewRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
