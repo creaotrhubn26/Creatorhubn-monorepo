@@ -45,6 +45,7 @@ import {
   Link as LinkIcon,
   Sync as SyncIcon,
   Save as SaveIcon,
+  AutoFixHigh as AutoFixHighIcon,
   Close as CloseIcon,
   Visibility as VisibilityIcon,
   CollectionsBookmark as CollectionsBookmarkIcon,
@@ -1387,6 +1388,56 @@ const StoryboardView: React.FC<{
   const editingFrame = frames.find((frame) => frame.id === editingFrameId) || null;
   const quickViewFrame = frames.find((frame) => frame.id === quickViewFrameId) || null;
   const activeFrame = frames[activeFrameIndex] || null;
+  // AI-image-gen state. Når knappen klikkes, kaller vi backend's DALL-E 3-
+  // route med scene-context + valgt frames metadata. Resultat-bilde lagres
+  // som backgroundImage på framet via patchFrame, så tegneren kan tegne over.
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const handleGenerateAIImage = useCallback(async () => {
+    if (!activeFrame || !projectId) return;
+    setAiGenerating(true);
+    try {
+      const { upsertStoryboard, generateAIImage } = await import('../services/storyboardApiService');
+      // Sørg for at det finnes en server-rad for dette framet (idempotent
+      // upsert på frame_id). Vi trenger en uuid for å trigge DALL-E-routen.
+      const sbRow = await upsertStoryboard(projectId, {
+        sceneId,
+        frameId: activeFrame.id,
+        title: activeFrame.shotNumber
+          ? `${activeFrame.shotNumber} — ${activeFrame.description ?? ''}`.trim()
+          : (activeFrame.description ?? sceneLabel),
+        width: 1792,
+        height: 1024,
+        workflowLevel: activeFrame.detailLevel ?? 'idea',
+      });
+      const result = await generateAIImage(projectId, sbRow.id, {
+        sceneDescription: scene.description ?? scene.sceneHeading ?? sceneLabel,
+        intExt: scene.intExt,
+        timeOfDay: scene.timeOfDay,
+        locationName: scene.locationName ?? scene.location,
+        shotType: activeFrame.shotType ?? activeFrame.cameraAngle,
+        cinematicFormat: projectCinemaFormat,
+        styleNote: activeFrame.notes ?? undefined,
+        quality: 'standard',
+        aspectRatio: '1792x1024',
+      });
+      const imageUrl = result.storyboard.imageData ?? '';
+      if (imageUrl) {
+        // Sett som frame's imageUrl + imageSource så det vises som bakgrunn
+        // i FrameCard og kan tegnes over i FrameDrawingEditor.
+        patchFrame(activeFrame.id, {
+          imageUrl,
+          thumbnailUrl: imageUrl,
+          imageSource: 'ai-generated',
+          updatedAt: new Date().toISOString(),
+        });
+        showSuccess('AI-bilde generert. Klikk «Tegne» for å skissere over.');
+      }
+    } catch (err) {
+      showError(`Kunne ikke generere AI-bilde: ${(err as Error).message}`);
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, patchFrame, showSuccess, showError]);
   const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
   const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
   const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;
@@ -2087,6 +2138,16 @@ const StoryboardView: React.FC<{
               )}
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
+              <Button
+                startIcon={<AutoFixHighIcon />}
+                variant="contained"
+                color="secondary"
+                size="small"
+                onClick={handleGenerateAIImage}
+                disabled={!activeFrame || aiGenerating}
+              >
+                {aiGenerating ? 'Genererer…' : 'Generer AI-bilde'}
+              </Button>
               <Button
                 startIcon={<SaveIcon />}
                 variant="outlined"

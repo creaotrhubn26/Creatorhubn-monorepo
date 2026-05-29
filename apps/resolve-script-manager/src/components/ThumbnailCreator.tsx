@@ -24,6 +24,7 @@ import { feedPlanThumbnailService } from "../services/feedPlanThumbnailService";
 import { PhoneMockup } from "./PhoneMockup";
 import { DEVICES, PLATFORMS, platformsForAspect } from "../lib/devicePresets";
 import type { DeviceId, PlatformId } from "../lib/devicePresets";
+import { BrandAssetLibrary } from "./BrandAssetLibrary";
 
 export type LayoutTemplate = "hero" | "quote" | "bold" | "split" | "frame" | "gradient";
 export type ThumbAspect = "1:1" | "9:16" | "4:5" | "16:9";
@@ -167,6 +168,7 @@ export function ThumbnailCreator({
 
   const [uploading, setUploading] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   const pickCandidate = async (cand: ThumbnailCandidate) => {
     setUploadError(null);
@@ -461,9 +463,44 @@ export function ThumbnailCreator({
           <ColorRow label="Tekst" value={textColor} onChange={setTextColor} />
 
           <div style={{ fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 8,
-                          color: "var(--text-2)" }}>
-            LOGO
+                          color: "var(--text-2)",
+                          display: "flex", justifyContent: "space-between",
+                          alignItems: "center" }}>
+            <span>LOGO</span>
+            {feedPlanContext && (
+              <button onClick={() => setLibraryOpen(true)}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        color: "var(--text-2)", borderRadius: 4,
+                        padding: "2px 8px", fontSize: 10,
+                        cursor: "pointer", fontWeight: 500,
+                      }}>📚 Bibliotek</button>
+            )}
           </div>
+          {logoUrl && (
+            <div style={{
+              marginBottom: 6, padding: 6, borderRadius: 4,
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <img src={logoUrl} alt=""
+                   style={{ width: 32, height: 32, objectFit: "contain",
+                             background: "repeating-conic-gradient(#1a1a25 0% 25%, #14141e 0% 50%) 50% / 8px 8px",
+                             borderRadius: 2 }} />
+              <div style={{ flex: 1, fontSize: 10, color: "var(--text-3)",
+                             overflow: "hidden", textOverflow: "ellipsis",
+                             whiteSpace: "nowrap" }}>
+                Logo aktiv
+              </div>
+              <button onClick={() => setLogoUrl("")}
+                      title="Fjern logo"
+                      style={{ background: "transparent", border: 0,
+                                color: "var(--text-3)", cursor: "pointer",
+                                fontSize: 12 }}>✕</button>
+            </div>
+          )}
           <input value={logoUrl}
                  onChange={(e) => setLogoUrl(e.target.value)}
                  placeholder="Logo-URL (https:// eller data:image/…)"
@@ -530,6 +567,18 @@ export function ThumbnailCreator({
           </div>
         </div>
       </div>
+
+      {/* Brand asset-bibliotek (nestet modal) */}
+      {feedPlanContext && (
+        <BrandAssetLibrary
+          open={libraryOpen}
+          onClose={() => setLibraryOpen(false)}
+          projectId={feedPlanContext.projectId}
+          kind="logo"
+          accentColor={accentColor}
+          onPick={(asset) => setLogoUrl(asset.dataUrl)}
+        />
+      )}
     </div>
   );
 }
