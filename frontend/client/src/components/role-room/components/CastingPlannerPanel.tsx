@@ -1515,6 +1515,13 @@ type RoleRoomProjectWorkspaceState = {
 
   useEffect(() => {
     currentProjectRef.current = currentProject;
+    // DEBUG: ekspoenere current project til window for å diagnostisere
+    // hvorfor paneler viser 0 selv om API leverer data. Fjernes etter
+    // root-cause er funnet.
+    if (typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown>).__rrCurrentProject = currentProject;
+      (window as unknown as Record<string, unknown>).__rrProjectsCount = currentProject?.id;
+    }
   }, [currentProject]);
 
   useEffect(() => {
