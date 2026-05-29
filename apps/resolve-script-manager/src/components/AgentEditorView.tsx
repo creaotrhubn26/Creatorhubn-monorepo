@@ -21,7 +21,10 @@ import { useState } from "react";
 import { ThumbnailCreator } from "./ThumbnailCreator";
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import { LowerThirdsStudio } from "./LowerThirdsStudio";
+import { CaptionStudio } from "./CaptionStudio";
 import SubtitlesIcon from "@mui/icons-material/Subtitles";
+import ClosedCaptionIcon from "@mui/icons-material/ClosedCaption";
+import type { WhisperTranscript } from "../lib/captionTypes";
 import type { AgentConfig, ChapterDef, LookPackDef } from "../agents/types";
 import { executeScript } from "../api";
 import { claudeProxyService } from "../services/claudeProxyService";
@@ -79,6 +82,9 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [clientWishes, setClientWishes] = useState<string>("");
   const [thumbnailOpen, setThumbnailOpen] = useState(false);
   const [lowerThirdsOpen, setLowerThirdsOpen] = useState(false);
+  const [captionStudioOpen, setCaptionStudioOpen] = useState(false);
+  // Caption Studio gir oss transcript som vi inkluderer i Director-context
+  const [loadedTranscript, setLoadedTranscript] = useState<WhisperTranscript | null>(null);
   // Project-id for persistence av lower-thirds. Hentes via tilstand
   // som settes når user åpner agent fra HomeView; for nå fallback til
   // hardkodet test-id slik at button funker uten Role Room-context.
@@ -145,6 +151,16 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
     lines.push(`- Valgt look-pack: ${look.label} (${look.tags.join(", ")})`);
     if (genre) lines.push(`- ${showBpmGrid ? "Genre" : "Varemerke/industri"}: ${genre}`);
     if (clientWishes) lines.push(`- Klient wishes: ${clientWishes}`);
+    if (loadedTranscript) {
+      // Inkluder transkript som ekstra context. Cap til ~3000 chars
+      // for å ikke spise hele Claude-tokenbudsjettet — Director kan
+      // be om mer hvis nødvendig.
+      const fullText = loadedTranscript.fullText.slice(0, 3000);
+      const truncated = loadedTranscript.fullText.length > 3000;
+      lines.push(``);
+      lines.push(`TRANSKRIPT (${loadedTranscript.language}, ${loadedTranscript.segments.length} segments via ${loadedTranscript.method}${loadedTranscript.model ? `:${loadedTranscript.model}` : ""}):`);
+      lines.push(fullText + (truncated ? ` … [trunkert ved 3000 chars, totalt ${loadedTranscript.fullText.length} chars]` : ""));
+    }
     return lines.join("\n");
   };
 
@@ -260,6 +276,21 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         </div>
 
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => setCaptionStudioOpen(true)}
+                  style={{
+                    background: "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <ClosedCaptionIcon sx={{ fontSize: 14 }} /> Captions
+            {loadedTranscript && (
+              <span style={{ fontSize: 9, opacity: 0.7 }}>
+                · {loadedTranscript.segments.length}
+              </span>
+            )}
+          </button>
           {showLowerThirdsButton && (
             <button onClick={() => setLowerThirdsOpen(true)}
                     style={{
@@ -809,6 +840,16 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
           videoDurationSec={songLengthSec}
         />
       )}
+
+      {/* Caption Studio — Whisper-drevet, Role Room-brandet, alle agenter */}
+      <CaptionStudio
+        open={captionStudioOpen}
+        onClose={() => setCaptionStudioOpen(false)}
+        projectId={projectIdForStudio}
+        sourceVideoPath={sourcePath}
+        videoDurationSec={songLengthSec}
+        onTranscriptLoaded={setLoadedTranscript}
+      />
     </div>
   );
 }

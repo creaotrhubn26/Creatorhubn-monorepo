@@ -1961,6 +1961,43 @@
       "requiresTimeline": false
     },
     {
+      "id": "write_text_to_file",
+      "name": "Write Text To File",
+      "category": "utility",
+      "scriptPath": "scripts/utils/write_text_to_file.py",
+      "description": "Utility: skriver tekst-content til absolutt filsti. Brukes av Caption Studio (SRT/VTT-eksport), Resolve handoff (XML/EDL) og andre frontend-komponenter som trenger fil-output uten @tauri-apps/plugin-fs.",
+      "requiredInputs": [
+        { "key": "content", "label": "Tekst-content", "type": "text", "required": true },
+        { "key": "outputPath", "label": "Absolutt filsti", "type": "text", "required": true },
+        { "key": "encoding", "label": "Encoding (default utf-8)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "transcribe_whisper",
+      "name": "Transcribe Whisper",
+      "category": "audio",
+      "scriptPath": "scripts/audio/transcribe_whisper.py",
+      "description": "Transcribe audio/video til JSON med segments + words + timestamps + språk-detect. Tre-lags fallback: faster-whisper (anbefalt) → whisper (original) → OpenAI Whisper API. Foundation for Caption Studio og transkript-aware Director chat.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "model", "label": "Model (tiny/base/small/medium/large-v3)", "type": "text", "required": false },
+        { "key": "language", "label": "Språk (no/en/auto)", "type": "text", "required": false },
+        { "key": "wordTimestamps", "label": "Inkluder per-ord timing", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "render_lower_thirds",
       "name": "Render Lower Thirds (transparent PNG)",
       "category": "social",
