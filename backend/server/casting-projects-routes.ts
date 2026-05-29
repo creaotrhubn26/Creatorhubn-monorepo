@@ -435,7 +435,14 @@ export function setupCastingProjectsRoutes(
       return;
     }
     const now = new Date().toISOString();
-    const existing = legacyCastingProjects.get(id) || {};
+    // Les fra compat-store, IKKE bare in-memory. Seed-endepunkter som
+    // /api/demo/troll/seed-all skriver til compat-store men ikke til
+    // legacyCastingProjects-mappen, så `existing = {}` her ville wipet
+    // ut alle nested arrays (roles, candidates, crew, ...) via den
+    // shallow `{...existing, ...payload}`-mergen under. Resultatet var
+    // at frontend's saveProject-kall etter "Last demo" tømte 8 roller /
+    // 8 kandidater / 6 crew Daniel hadde seedet.
+    const existing = (await getLegacyCastingProject(id)) || {};
     const existingRecord = existing as Record<string, unknown>;
     const payloadRecord = payload as Record<string, unknown>;
     const ownerId = readString(
@@ -484,7 +491,7 @@ export function setupCastingProjectsRoutes(
       ownerLabel,
     );
     const project = {
-      ...existing,
+      ...(existing as Record<string, unknown>),
       ...payload,
       id,
       ownerId,
@@ -493,7 +500,7 @@ export function setupCastingProjectsRoutes(
       createdBy,
       createdByEmail,
       createdByLabel,
-      createdAt: existing.createdAt || now,
+      createdAt: (existing as Record<string, unknown>).createdAt || now,
       updatedAt: now,
     };
     const hadExisting = legacyCastingProjects.has(id);
