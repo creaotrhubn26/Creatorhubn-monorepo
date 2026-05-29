@@ -1688,10 +1688,12 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
     lastLocalSaveAt: project.updatedAt ?? toIsoNow(),
   });
 
-  if (shouldUseRoleRoomLocalFallback()) {
-    return;
-  }
-  
+  // FJERNET: shouldUseRoleRoomLocalFallback()-bypass.
+  // Den hoppet over saveProjectToRemote på theroleroom.com (prod-domenet),
+  // så ALLE frontend-utløste prosjektoppdateringer ble silentlig
+  // dropt for production users. Backend bevarer nested-arrays (4217a2be)
+  // og leveransen er trygg å alltid prøve.
+
   // Try to sync with database
   try {
     await saveProjectToRemote(project, options);
@@ -1729,10 +1731,9 @@ async function deleteProjectFromDb(id: string, options?: ProjectMutationOptions)
   projects = projects.filter(p => p.id !== id);
   saveProjectsToStorage(projects);
 
-  if (shouldUseRoleRoomLocalFallback()) {
-    return;
-  }
-  
+  // FJERNET: shouldUseRoleRoomLocalFallback()-bypass — samme grunn
+  // som saveProjectToDb. Production-users må kunne slette på backend.
+
   // Try to sync with database
   try {
     const response = await fetch(`/api/casting/projects/${id}`, {
@@ -1824,12 +1825,15 @@ export const castingService = {
     }
 
     const request = (async (): Promise<CastingProject | null> => {
-      if (shouldUseRoleRoomLocalFallback()) {
-        const fallbackProject = localProject || null;
-        projectFetchCache.set(id, { project: fallbackProject, cachedAt: Date.now() });
-        return fallbackProject;
-      }
-
+      // FJERNET: shouldUseRoleRoomLocalFallback()-fallback til localProject.
+      // Den returnerte true på `theroleroom.com/` (production-domenet),
+      // og bypasset API-kallet helt — så getProject returnerte alltid
+      // det lokale skall-prosjektet fra saveProjectsToStorage istedenfor
+      // det fulle prosjektet fra backend. Resultat etter Last demo:
+      // `currentProject.roles` var undefined (ikke i objektet), så
+      // dashboardet viste 0/0/0/0 selv om compat-store hadde 8/8/6.
+      // getProjects bruker samme check kun til logg-suppression, ikke
+      // til å skippe fetchen, så her gjør vi det samme: alltid prøv API.
       try {
         // cache: 'no-store' + cache-buster querystring tvinger fersk respons.
         // Uten denne returnerte browser-cachen en stale 404 fra FØR Last demo
@@ -5252,48 +5256,3 @@ export const castingService = {
   },
 };
 
-// DEBUG: ekspoenere castingService til window slik at konsoll kan kalle
-// window.__rrCS.getProject('troll-XXX') for å se eksakt hva getProject
-// returnerer i Daniels session. Fjernes etter root-cause er funnet.
-if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).__rrCS = castingService;
-  // Wrap apiRequest så vi får logget hva GET /api/casting/projects/:id
-  // faktisk returnerer.
-  const origGetProject = castingService.getProject.bind(castingService);
-  (window as unknown as Record<string, unknown>).__rrGetProjectRaw = async (id: string) => {
-    const r = await fetch(`/api/casting/projects/${id}?fresh=${Date.now()}`, {
-      cache: 'no-store',
-      headers: authSessionService.getAuthHeadersSync(),
-    });
-    const ok = r.ok;
-    const status = r.status;
-    const body = await r.text();
-    let parsed: unknown = null;
-    try { parsed = body ? JSON.parse(body) : null; } catch { parsed = null; }
-    const p = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
-    return {
-      ok, status,
-      hasBody: body.length,
-      id: p?.id,
-      rolesType: typeof p?.roles,
-      rolesIsArray: Array.isArray(p?.roles),
-      rolesLen: Array.isArray(p?.roles) ? p.roles.length : null,
-      candsLen: Array.isArray(p?.candidates) ? p.candidates.length : null,
-      crewLen: Array.isArray(p?.crew) ? p.crew.length : null,
-    };
-  };
-  (window as unknown as Record<string, unknown>).__rrGetProjectViaService = async (id: string) => {
-    const p = await origGetProject(id);
-    return {
-      hasProject: !!p,
-      id: p?.id,
-      name: p?.name,
-      rolesType: typeof p?.roles,
-      rolesIsArray: Array.isArray(p?.roles),
-      rolesLen: Array.isArray(p?.roles) ? p.roles.length : null,
-      candsLen: Array.isArray(p?.candidates) ? p.candidates.length : null,
-      crewLen: Array.isArray(p?.crew) ? p.crew.length : null,
-      keys: p ? Object.keys(p).sort() : [],
-    };
-  };
-}
