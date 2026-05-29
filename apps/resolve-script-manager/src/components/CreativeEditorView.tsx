@@ -38,6 +38,7 @@ import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
 import { AutoPilotPanel } from "./AutoPilotPanel";
 import { useContinuousPreview } from "../hooks/useContinuousPreview";
 import { useResolveSync } from "../hooks/useResolveSync";
+import { useCreatorProfile } from "../hooks/useCreatorProfile";
 import {
   IconPlay,
   IconMusic,
@@ -867,12 +868,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
           list.unshift(entry);
           localStorage.setItem("trrpa.learnings.global", JSON.stringify(list.slice(0, 200)));
         } catch { /* non-critical */ }
+        // Server-side learning: knyttet til bruker, ikke maskin
+        void creatorProfile.logLearning("skip_chapter", { chapter: ch });
       } else {
         next.add(ch);
       }
       return next;
     });
-  }, []);
+  }, [creatorProfile]);
 
   // ─── Undo/redo: snapshot editor state on changes ───
   // Push current state as a new history snapshot. Skipped når:
@@ -1120,6 +1123,34 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [pushingFullEdit, setPushingFullEdit] = useState(false);
   const [pushResult, setPushResult] = useState<string | null>(null);
   const resolveSync = useResolveSync({ enabled: resolveSyncEnabled });
+  // Creator-profil — preferanser fra serveren auto-anvendes på nye prosjekter.
+  // Knyttet til innlogget Role Room-bruker, ikke lokalt — Bjarne får sine
+  // learnings selv om han bytter maskin.
+  const creatorProfile = useCreatorProfile();
+
+  // Auto-anvend creator-profile defaults ÉN gang per prosjekt-mount.
+  // Skjer kun hvis state er på sine "uberørte" verdier — så vi ikke
+  // overskriver en bevisst endring brukeren har gjort i denne sesjonen.
+  const profileAppliedRef = useRef(false);
+  useEffect(() => {
+    if (profileAppliedRef.current) return;
+    if (creatorProfile.status !== "ready" || !payload) return;
+    profileAppliedRef.current = true;
+    const p = creatorProfile.profile;
+    if (p.preferredLookPack && lookPack === "none") {
+      setLookPack(p.preferredLookPack);
+    }
+    if (p.preferredAspectRatio && aspectRatio === "16:9") {
+      setAspectRatio(p.preferredAspectRatio);
+    }
+    if (p.preferredHighlightMin && projectTargetMin === 0) {
+      setProjectTargetMin(p.preferredHighlightMin);
+    }
+    if (p.preferredProjectKind && !projectKind) {
+      setProjectKind(p.preferredProjectKind);
+    }
+  }, [creatorProfile.status, creatorProfile.profile, payload,
+      lookPack, aspectRatio, projectTargetMin, projectKind]);
   const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
     const newAudio: CustomAudio = {
       id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -2194,7 +2225,14 @@ ${ctxLines.join("\n")}`;
                 <div
                   key={opt.v}
                   className={`ce-aspect-item ${aspectRatio === opt.v ? "active" : ""}`}
-                  onClick={() => { setAspectRatio(opt.v); setAspectMenuOpen(false); }}
+                  onClick={() => {
+                    setAspectRatio(opt.v);
+                    setAspectMenuOpen(false);
+                    void creatorProfile.logLearning("select_aspect", { value: opt.v });
+                    if (creatorProfile.editCount > 5) {
+                      void creatorProfile.update({ preferredAspectRatio: opt.v });
+                    }
+                  }}
                 >
                   <div className="ce-aspect-item-name">{opt.v} — {opt.name}</div>
                   <div className="ce-aspect-item-desc">{opt.desc}</div>
@@ -2219,7 +2257,16 @@ ${ctxLines.join("\n")}`;
                   <div
                     key={opt.v}
                     className={`ce-aspect-item ${lookPack === opt.v ? "active" : ""}`}
-                    onClick={() => { setLookPack(opt.v); setLookMenuOpen(false); }}
+                    onClick={() => {
+                      setLookPack(opt.v);
+                      setLookMenuOpen(false);
+                      void creatorProfile.logLearning("select_lut", { value: opt.v });
+                      // Etter 5+ edits begynner vi å lagre dette som preferanse
+                      // — slik unngår vi å lock'e in en feilklikk-default.
+                      if (creatorProfile.editCount > 5 && opt.v !== "none") {
+                        void creatorProfile.update({ preferredLookPack: opt.v });
+                      }
+                    }}
                   >
                     <div className="ce-aspect-item-name">{opt.name}</div>
                     <div className="ce-aspect-item-desc">{opt.desc}</div>
@@ -2450,6 +2497,21 @@ ${ctxLines.join("\n")}`;
           )}
         </div>
         <div className="ce-actions">
+          {/* Creator-profil-indikator */}
+          {creatorProfile.status === "ready" && creatorProfile.editCount > 0 && (
+            <span
+              title={`Din profil er lært fra ${creatorProfile.editCount} edits. Defaults auto-anvendes på nye prosjekter.`}
+              style={{
+                fontSize: 10.5, color: "rgba(200,128,255,0.85)",
+                background: "rgba(160,48,192,0.10)",
+                border: "1px solid rgba(160,48,192,0.30)",
+                padding: "3px 8px", borderRadius: 999,
+                marginRight: 8,
+                cursor: "default",
+              }}>
+              🧠 {creatorProfile.editCount} learnings
+            </span>
+          )}
           {/* Resolve sync-pill + push-knapp */}
           {(() => {
             const s = resolveSync.status;

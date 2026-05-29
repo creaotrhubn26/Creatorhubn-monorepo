@@ -433,6 +433,138 @@ export function createPostAgentRouter(
     }
   });
 
+  // ---- Creator Profile ----
+  //
+  // Per-bruker preferanser + learnings som Creative Editor auto-anvender
+  // på nye prosjekter. Knyttet til innlogget Role Room-bruker (RR_BEARER_TOKEN),
+  // ikke lokalt. Slik bytter Bjarne arbeidsmaskin og får sine learnings med.
+  //
+  // Tabell: post_agent_creator_profiles (user_id PK, profile JSONB, updated_at).
+
+  let creatorProfileTableEnsured = false;
+  async function ensureCreatorProfileTable(): Promise<void> {
+    if (creatorProfileTableEnsured) return;
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS post_agent_creator_profiles (
+          user_id VARCHAR(255) PRIMARY KEY,
+          profile JSONB NOT NULL DEFAULT '{}'::jsonb,
+          edit_count INT NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      creatorProfileTableEnsured = true;
+    } catch (err) {
+      console.error('[post-agent] ensure creator-profile table failed:', err);
+    }
+  }
+
+  // GET — returnerer brukers profil. Tom-objekt hvis ikke satt opp ennå.
+  router.get('/creator-profile', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    await ensureCreatorProfileTable();
+    try {
+      const { rows } = await pool.query(
+        `SELECT profile, edit_count, updated_at
+           FROM post_agent_creator_profiles WHERE user_id = $1`,
+        [userId],
+      );
+      const row = rows[0];
+      res.json({
+        profile: row?.profile ?? {},
+        editCount: row?.edit_count ?? 0,
+        updatedAt: row?.updated_at ?? null,
+      });
+    } catch (err) {
+      console.error('[post-agent] creator-profile GET failed:', err);
+      res.status(500).json({ error: 'profile_fetch_failed' });
+    }
+  });
+
+  // PATCH — merger inn nye preferanser. Frontend sender bare det som har
+  // endret seg slik at vi ikke trampler inn på andre felter.
+  router.patch('/creator-profile', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    await ensureCreatorProfileTable();
+    const patch = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof patch !== 'object' || patch === null) {
+      res.status(400).json({ error: 'invalid_body' });
+      return;
+    }
+    try {
+      const { rows: existing } = await pool.query(
+        `SELECT profile FROM post_agent_creator_profiles WHERE user_id = $1`,
+        [userId],
+      );
+      const current = (existing[0]?.profile ?? {}) as Record<string, unknown>;
+      const merged = { ...current, ...patch };
+      await pool.query(
+        `INSERT INTO post_agent_creator_profiles (user_id, profile)
+              VALUES ($1, $2::jsonb)
+         ON CONFLICT (user_id) DO UPDATE
+            SET profile = EXCLUDED.profile,
+                updated_at = NOW()`,
+        [userId, JSON.stringify(merged)],
+      );
+      res.json({ ok: true, profile: merged });
+    } catch (err) {
+      console.error('[post-agent] creator-profile PATCH failed:', err);
+      res.status(500).json({ error: 'profile_save_failed' });
+    }
+  });
+
+  // POST /learning — appender en learning (Bjarne aksepterte/avviste et
+  // forslag fra Claude, fjernet et chapter, etc.) Inkrementerer edit_count
+  // og opdaterer aggregert profil basert på hva som er lært.
+  router.post('/creator-profile/learning', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    await ensureCreatorProfileTable();
+    const body = (req.body ?? {}) as {
+      kind?: string;
+      data?: Record<string, unknown>;
+    };
+    const kind = String(body.kind ?? '').trim();
+    if (!kind) {
+      res.status(400).json({ error: 'missing_kind' });
+      return;
+    }
+    try {
+      const { rows: existing } = await pool.query(
+        `SELECT profile, edit_count FROM post_agent_creator_profiles WHERE user_id = $1`,
+        [userId],
+      );
+      const current = (existing[0]?.profile ?? {}) as Record<string, unknown>;
+      const recent = Array.isArray(current.recentLearnings)
+        ? (current.recentLearnings as Array<Record<string, unknown>>)
+        : [];
+      const newRecent = [
+        { ts: Date.now(), kind, ...(body.data ?? {}) },
+        ...recent,
+      ].slice(0, 200); // cap
+
+      // Aggregér enkle counter-felter
+      const counters = (current.counters ?? {}) as Record<string, number>;
+      counters[kind] = (counters[kind] ?? 0) + 1;
+
+      const merged = { ...current, recentLearnings: newRecent, counters };
+
+      await pool.query(
+        `INSERT INTO post_agent_creator_profiles (user_id, profile, edit_count)
+              VALUES ($1, $2::jsonb, 1)
+         ON CONFLICT (user_id) DO UPDATE
+            SET profile = EXCLUDED.profile,
+                edit_count = post_agent_creator_profiles.edit_count + 1,
+                updated_at = NOW()`,
+        [userId, JSON.stringify(merged)],
+      );
+      res.json({ ok: true, editCount: ((existing[0]?.edit_count as number | undefined) ?? 0) + 1 });
+    } catch (err) {
+      console.error('[post-agent] creator-profile learning POST failed:', err);
+      res.status(500).json({ error: 'learning_save_failed' });
+    }
+  });
+
   // ---- Billing / Add-on ----
 
   /**
