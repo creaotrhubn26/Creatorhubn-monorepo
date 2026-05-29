@@ -17,7 +17,8 @@
  * Auto-pilot er disabled i V1 — kommer per-agent i V2.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ROLE_ROOM_BRAND } from "../lib/lowerThirdTypes";
 import { ThumbnailCreator } from "./ThumbnailCreator";
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import { LowerThirdsStudio } from "./LowerThirdsStudio";
@@ -30,7 +31,10 @@ import { VoiceDuckingDialog } from "./VoiceDuckingDialog";
 import { MulticamSyncStudio } from "./MulticamSyncStudio";
 import { SocialCutsStudio } from "./SocialCutsStudio";
 import { ReviewSessionsStudio } from "./ReviewSessionsStudio";
+import { CollaborationSidebar } from "./CollaborationSidebar";
+import { editorCommentsService } from "../services/editorCommentsService";
 import GroupsIcon from "@mui/icons-material/Groups";
+import ForumIcon from "@mui/icons-material/Forum";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import GraphicEqIcon2 from "@mui/icons-material/GraphicEq";
@@ -109,6 +113,12 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [multicamOpen, setMulticamOpen] = useState(false);
   const [socialCutsOpen, setSocialCutsOpen] = useState(false);
   const [reviewSessionsOpen, setReviewSessionsOpen] = useState(false);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
+  // Globalt "open + in-progress"-tråd-count for header-badge
+  const [activeThreadCount, setActiveThreadCount] = useState(0);
+  // Unread @-mentions for header-badge
+  const [unreadMentions, setUnreadMentions] = useState(0);
+  // useEffect for polling flyttes til etter projectIdForStudio er deklarert
 
   // Hvilke agenter har naturlig multi-cam-konvensjon
   const showMulticamButton = (
@@ -222,6 +232,31 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   // som settes når user åpner agent fra HomeView; for nå fallback til
   // hardkodet test-id slik at button funker uten Role Room-context.
   const projectIdForStudio = "test-project-default";
+
+  // Poll for thread-count + unread mentions hver 15 sek (etter
+  // projectIdForStudio er deklarert)
+  useEffect(() => {
+    let cancelled = false;
+    const loadCounts = async () => {
+      try {
+        const [comments, mentions] = await Promise.all([
+          editorCommentsService.list(projectIdForStudio).catch(() => null),
+          editorCommentsService.listMentions(true).catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (comments) {
+          const active = comments.comments.filter(c =>
+            c.parentId === null
+            && (c.status === "open" || c.status === "in_progress")).length;
+          setActiveThreadCount(active);
+        }
+        if (mentions) setUnreadMentions(mentions.unreadCount);
+      } catch { /* ignore */ }
+    };
+    void loadCounts();
+    const id = window.setInterval(loadCounts, 15000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [projectIdForStudio]);
   // Hvilke agenter har lower-thirds som naturlig konvensjon
   const showLowerThirdsButton = (
     config.kind === "event" || config.kind === "podcast"
@@ -495,6 +530,38 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                     display: "inline-flex", alignItems: "center", gap: 5,
                   }}>
             <GroupsIcon sx={{ fontSize: 14 }} /> Client review
+          </button>
+          <button onClick={() => setCollaborationOpen(true)}
+                  title="Team-diskusjon med kommentarer forankret til timestamps, picks, cuts. Real-time via polling."
+                  style={{
+                    background: unreadMentions > 0
+                      ? ROLE_ROOM_BRAND.signatureGradient
+                      : "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    position: "relative",
+                  }}>
+            <ForumIcon sx={{ fontSize: 14 }} />
+            Diskusjon
+            {activeThreadCount > 0 && (
+              <span style={{
+                background: "rgba(0,0,0,0.4)",
+                padding: "0 6px", borderRadius: 8,
+                fontSize: 9, fontWeight: 700,
+              }}>{activeThreadCount}</span>
+            )}
+            {unreadMentions > 0 && (
+              <span style={{
+                position: "absolute", top: -4, right: -4,
+                background: "#ef4f6f", color: "#fff",
+                width: 14, height: 14, borderRadius: 7,
+                fontSize: 9, fontWeight: 700,
+                display: "inline-flex", alignItems: "center",
+                justifyContent: "center",
+              }}>{unreadMentions}</span>
+            )}
           </button>
           <button onClick={requestBrollSuggestions}
                   title="Få Director-forslag til B-roll basert på nåværende kapittel + look"
@@ -1300,6 +1367,20 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         onClose={() => setReviewSessionsOpen(false)}
         projectId={projectIdForStudio}
         agentKind={config.kind}
+      />
+
+      {/* Team Collaboration Sidebar — real-time diskusjon med
+          kontekst-forankrede kommentarer */}
+      <CollaborationSidebar
+        open={collaborationOpen}
+        onClose={() => setCollaborationOpen(false)}
+        projectId={projectIdForStudio}
+        agentKind={config.kind}
+        currentTimeSec={0 /* TODO: wire fra video-player */}
+        onJumpToTime={(sec) => {
+          console.log("[collab] jump to:", sec);
+          // V2: actually jump editor playback til denne tiden
+        }}
       />
 
       {/* B-roll Suggestion modal — Director foreslår basert på chapter+look */}
