@@ -858,24 +858,255 @@ THE END.
     }
 
     // ── 14. casting_storyboards ───────────────────────────────────────
-    const storyboards = [
-      { scene: 'scene-1', title: 'Tunnelen — Eksplosjonen (rough storyboard)' },
-      { scene: 'scene-4', title: 'Krise-møtet (blocking)' },
-      { scene: 'scene-9', title: 'Skog — forfølgelse (handheld)' },
-      { scene: 'scene-10', title: 'Hytten — fars hemmelighet (intimate)' },
+    // Seed ~16 storyboard-frames (1–3 per scene) med faktiske stick-figure
+    // strokes så artisten ser hvordan rough → blocking-fasen ser ut.
+    // Hver stroke er { points: [{x,y}], color, width } — enkle horisont-
+    // linjer + stick-figurer som markerer komposisjon/blocking.
+    //
+    // Helper-bygger: lager linje fra (x1,y1) til (x2,y2).
+    const line = (x1: number, y1: number, x2: number, y2: number, color = '#cccccc', width = 3) => ({
+      id: `s-${Math.random().toString(36).slice(2, 8)}`,
+      points: [
+        { x: x1, y: y1, pressure: 1 },
+        { x: x2, y: y2, pressure: 1 },
+      ],
+      color,
+      width,
+    });
+    // Stick-figur sentrert på (cx, cy) med skala s (1 = full).
+    const stick = (cx: number, cy: number, s = 1, color = '#aaaaaa') => [
+      // Hode
+      ...Array.from({ length: 24 }, (_, i) => {
+        const t = (i / 24) * Math.PI * 2;
+        const next = ((i + 1) / 24) * Math.PI * 2;
+        return line(
+          cx + Math.cos(t) * 30 * s,
+          cy - 100 * s + Math.sin(t) * 30 * s,
+          cx + Math.cos(next) * 30 * s,
+          cy - 100 * s + Math.sin(next) * 30 * s,
+          color, 2,
+        );
+      }),
+      // Kropp (vertikal)
+      line(cx, cy - 70 * s, cx, cy + 60 * s, color, 3),
+      // Armer
+      line(cx - 50 * s, cy - 20 * s, cx + 50 * s, cy - 20 * s, color, 3),
+      // Bein
+      line(cx, cy + 60 * s, cx - 35 * s, cy + 140 * s, color, 3),
+      line(cx, cy + 60 * s, cx + 35 * s, cy + 140 * s, color, 3),
+    ];
+    const horizon = (y: number) => line(0, y, 1920, y, '#888888', 2);
+
+    const storyboards: Array<{
+      scene: string;
+      title: string;
+      workflow: 'rough' | 'blocking' | 'final';
+      strokes: any[];
+    }> = [
+      // Scene 1 — Tunnelen
+      { scene: 'scene-1', title: '1A — WIDE: Tunneldybden, arbeidere borer', workflow: 'rough',
+        strokes: [
+          line(0, 540, 1920, 540, '#444', 3), // Tunnelbunn
+          line(400, 200, 400, 540, '#666', 2),  // Vegg venstre
+          line(1520, 200, 1520, 540, '#666', 2), // Vegg høyre
+          ...stick(800, 540, 0.7), ...stick(1100, 540, 0.7),
+        ]
+      },
+      { scene: 'scene-1', title: '1B — CLOSE-UP: Borets spiss treffer hulrom', workflow: 'rough',
+        strokes: [
+          line(700, 400, 1200, 540, '#aaa', 5), // Bor-arm
+          line(1200, 540, 1300, 480, '#fff', 4), // Spiss
+          ...Array.from({ length: 16 }, (_, i) => line(1300 + i * 10, 460 + i * 8, 1320 + i * 10, 500 + i * 8, '#ffcc44', 2)),
+        ]
+      },
+      // Scene 2 — Tunnel-kollapsen
+      { scene: 'scene-2', title: '2A — DUTCH ANGLE: Stein og støv ramler', workflow: 'rough',
+        strokes: [
+          line(0, 200, 1920, 700, '#666', 3), // Skrå tunnel-tak (kollaps)
+          ...stick(600, 800, 0.6), // Arbeider 1 på flukt
+        ]
+      },
+      // Scene 3 — Nora introduseres
+      { scene: 'scene-3', title: '3A — MEDIUM: Nora ved fossil-skanning', workflow: 'rough',
+        strokes: [
+          horizon(700),
+          ...stick(960, 540, 1.1, '#777'), // Nora
+          line(700, 700, 1220, 700, '#888', 3), // Bord
+        ]
+      },
+      // Scene 4 — Krise-møtet
+      { scene: 'scene-4', title: '4A — WIDE: Møterom oversikt', workflow: 'blocking',
+        strokes: [
+          horizon(720),
+          line(400, 720, 1520, 720, '#666', 4), // Møtebord
+          ...stick(600, 660, 0.7), // Nora
+          ...stick(960, 660, 0.7), // Andreas
+          ...stick(1320, 660, 0.7), // Generalen
+        ]
+      },
+      { scene: 'scene-4', title: '4B — OTS: Nora forklarer over skuldra', workflow: 'blocking',
+        strokes: [
+          ...stick(700, 600, 1.4, '#555'), // Stor over-skulder
+          ...stick(1200, 600, 0.9, '#888'), // Nora (mindre, foran)
+        ]
+      },
+      { scene: 'scene-4', title: '4C — CLOSE-UP: Generalens skeptiske blikk', workflow: 'rough',
+        strokes: [
+          // Ansiktssirkel (zoom)
+          ...Array.from({ length: 36 }, (_, i) => {
+            const t = (i / 36) * Math.PI * 2;
+            const next = ((i + 1) / 36) * Math.PI * 2;
+            return line(960 + Math.cos(t) * 350, 540 + Math.sin(t) * 350, 960 + Math.cos(next) * 350, 540 + Math.sin(next) * 350, '#666', 4);
+          }),
+        ]
+      },
+      // Scene 5 — Til Dovrefjell
+      { scene: 'scene-5', title: '5A — TRACKING: Jeep langs vei', workflow: 'rough',
+        strokes: [
+          horizon(720),
+          line(600, 720, 800, 600, '#888', 4),
+          line(800, 600, 1120, 600, '#888', 4),
+          line(1120, 600, 1320, 720, '#888', 4),
+          // Hjul
+          ...Array.from({ length: 16 }, (_, i) => {
+            const t = (i / 16) * Math.PI * 2;
+            const next = ((i + 1) / 16) * Math.PI * 2;
+            return line(800 + Math.cos(t) * 40, 700 + Math.sin(t) * 40, 800 + Math.cos(next) * 40, 700 + Math.sin(next) * 40, '#444', 3);
+          }),
+        ]
+      },
+      // Scene 6 — Bondens fortelling
+      { scene: 'scene-6', title: '6A — MEDIUM: Bonde med gammelt bilde', workflow: 'rough',
+        strokes: [
+          horizon(720),
+          ...stick(960, 540, 1.2, '#777'),
+          // Bilde-ramme i hånd
+          line(900, 540, 1020, 540, '#444', 3),
+          line(900, 540, 900, 600, '#444', 3),
+          line(1020, 540, 1020, 600, '#444', 3),
+          line(900, 600, 1020, 600, '#444', 3),
+        ]
+      },
+      // Scene 7 — Militær respons
+      { scene: 'scene-7', title: '7A — WIDE: Statsministerens situasjonsrom (skjermer)', workflow: 'rough',
+        strokes: [
+          horizon(720),
+          // Skjermer i bakgrunnen
+          line(200, 200, 600, 200, '#888', 3),
+          line(200, 400, 600, 400, '#888', 3),
+          line(200, 200, 200, 400, '#888', 3),
+          line(600, 200, 600, 400, '#888', 3),
+          line(1320, 200, 1720, 200, '#888', 3),
+          line(1320, 400, 1720, 400, '#888', 3),
+          line(1320, 200, 1320, 400, '#888', 3),
+          line(1720, 200, 1720, 400, '#888', 3),
+          // Figurer
+          ...stick(700, 600, 0.7),
+          ...stick(1100, 600, 0.7),
+        ]
+      },
+      // Scene 8 — Trollet på vandring
+      { scene: 'scene-8', title: '8A — EXTREME WIDE: Trollet over åskam', workflow: 'final',
+        strokes: [
+          horizon(800),
+          // Åskam (trekant)
+          line(0, 800, 600, 500, '#555', 5),
+          line(600, 500, 1100, 700, '#555', 5),
+          line(1100, 700, 1920, 600, '#555', 5),
+          // Troll-silhuett (stor stick)
+          ...stick(960, 500, 3.5, '#222'),
+          // Måne
+          ...Array.from({ length: 24 }, (_, i) => {
+            const t = (i / 24) * Math.PI * 2;
+            const next = ((i + 1) / 24) * Math.PI * 2;
+            return line(1500 + Math.cos(t) * 60, 180 + Math.sin(t) * 60, 1500 + Math.cos(next) * 60, 180 + Math.sin(next) * 60, '#ccc', 3);
+          }),
+        ]
+      },
+      { scene: 'scene-8', title: '8B — LOW ANGLE: Trollets fot tråkker forbi', workflow: 'rough',
+        strokes: [
+          // Stor fot (sirkel + sko-form)
+          ...Array.from({ length: 24 }, (_, i) => {
+            const t = (i / 24) * Math.PI;
+            const next = ((i + 1) / 24) * Math.PI;
+            return line(960 + Math.cos(t) * 600, 700 + Math.sin(t) * 200, 960 + Math.cos(next) * 600, 700 + Math.sin(next) * 200, '#333', 6);
+          }),
+          line(360, 700, 1560, 700, '#222', 8),
+        ]
+      },
+      // Scene 9 — Forfølgelse
+      { scene: 'scene-9', title: '9A — AERIAL: Drone over skog', workflow: 'rough',
+        strokes: [
+          // Trær (mange korte vertikaler)
+          ...Array.from({ length: 40 }, (_, i) => line(50 + i * 47, 540, 50 + i * 47, 640, '#5a7', 2)),
+          // To små stick-figurer
+          ...stick(900, 700, 0.4, '#444'),
+          ...stick(1020, 700, 0.4, '#444'),
+        ]
+      },
+      { scene: 'scene-9', title: '9B — TRACKING: Følger Nora og Andreas i full sprint', workflow: 'blocking',
+        strokes: [
+          horizon(800),
+          ...stick(700, 550, 1.2, '#555'),
+          ...stick(1100, 550, 1.2, '#555'),
+          // Bevegelsesstreker
+          line(450, 500, 600, 540, '#888', 3),
+          line(450, 600, 600, 620, '#888', 3),
+        ]
+      },
+      // Scene 10 — Fars hemmelighet
+      { scene: 'scene-10', title: '10A — WIDE: Hytten med peisens lys', workflow: 'rough',
+        strokes: [
+          horizon(780),
+          // Hytte-rektangel
+          line(600, 400, 1320, 400, '#666', 4),
+          line(600, 780, 1320, 780, '#666', 4),
+          line(600, 400, 600, 780, '#666', 4),
+          line(1320, 400, 1320, 780, '#666', 4),
+          // Peis (firkant innenfor)
+          line(900, 600, 1020, 600, '#a44', 4),
+          line(900, 780, 1020, 780, '#a44', 4),
+          line(900, 600, 900, 780, '#a44', 4),
+          line(1020, 600, 1020, 780, '#a44', 4),
+          ...stick(800, 720, 0.6, '#777'),
+        ]
+      },
+      { scene: 'scene-10', title: '10B — CLOSE-UP: Tobias forteller — emosjonelt øyeblikk', workflow: 'final',
+        strokes: [
+          // Stort ansiktsovalt
+          ...Array.from({ length: 36 }, (_, i) => {
+            const t = (i / 36) * Math.PI * 2;
+            const next = ((i + 1) / 36) * Math.PI * 2;
+            return line(960 + Math.cos(t) * 400, 540 + Math.sin(t) * 480, 960 + Math.cos(next) * 400, 540 + Math.sin(next) * 480, '#777', 4);
+          }),
+          // Øyne
+          ...Array.from({ length: 16 }, (_, i) => {
+            const t = (i / 16) * Math.PI * 2;
+            const next = ((i + 1) / 16) * Math.PI * 2;
+            return line(850 + Math.cos(t) * 35, 460 + Math.sin(t) * 20, 850 + Math.cos(next) * 35, 460 + Math.sin(next) * 20, '#222', 3);
+          }),
+          ...Array.from({ length: 16 }, (_, i) => {
+            const t = (i / 16) * Math.PI * 2;
+            const next = ((i + 1) / 16) * Math.PI * 2;
+            return line(1070 + Math.cos(t) * 35, 460 + Math.sin(t) * 20, 1070 + Math.cos(next) * 35, 460 + Math.sin(next) * 20, '#222', 3);
+          }),
+        ]
+      },
     ];
     for (const sb of storyboards) {
       await client.query(
         `INSERT INTO casting_storyboards
            (project_id, scene_id, title, strokes, width, height, workflow_level,
             metadata, created_by, created_at, updated_at)
-         VALUES ($1, $2, $3, '[]'::jsonb, 1920, 1080, 'rough', $4::jsonb, $5,
+         VALUES ($1, $2, $3, $4::jsonb, 1920, 1080, $5, $6::jsonb, $7,
                  NOW(), NOW())`,
         [
           TROLL_PROJECT_ID,
           eid(sb.scene),
           sb.title,
-          JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
+          JSON.stringify(sb.strokes),
+          sb.workflow,
+          JSON.stringify({ source: 'troll_seed_v2', isDemo: true, sceneRef: sb.scene }),
           ownerUserId,
         ],
       );
