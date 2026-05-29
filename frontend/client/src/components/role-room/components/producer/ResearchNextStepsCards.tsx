@@ -28,6 +28,7 @@ import {
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
+import authSessionService from '../../services/authSessionService';
 
 interface ChecklistItem {
   label: string;
@@ -79,7 +80,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
     const competitors = result.competitorAnalysis?.competitors?.length ?? 0;
     const url = `/api/role-room/agent/research/cost-estimate?profileFields=${profileFields}&competitors=${competitors}`;
     let cancelled = false;
-    fetch(url, { credentials: 'include' })
+    fetch(url, { headers: authSessionService.getAuthHeadersSync() })
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (cancelled || !data || !data.success) return;

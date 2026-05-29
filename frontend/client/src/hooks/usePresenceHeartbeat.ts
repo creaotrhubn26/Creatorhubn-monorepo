@@ -41,6 +41,7 @@ export function usePresenceHeartbeat(enabled = true): void {
       const token = getAuthToken();
       if (!token) return;
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
       const isIdle = Date.now() - lastInputRef.current > IDLE_THRESHOLD_MS;
       const route = typeof window !== 'undefined'

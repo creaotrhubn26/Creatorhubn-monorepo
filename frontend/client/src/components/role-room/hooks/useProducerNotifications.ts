@@ -68,6 +68,10 @@ export function useProducerNotifications(projectId?: string, pollIntervalMs = 30
     }
 
     const intervalId = window.setInterval(() => {
+      // Spar batteri + båndbredde + konsoll-støy når enheten er offline.
+      // Polling tar seg opp igjen automatisk på neste tick når
+      // navigator.onLine snur tilbake til true.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       void load();
     }, pollIntervalMs);
     return () => window.clearInterval(intervalId);
