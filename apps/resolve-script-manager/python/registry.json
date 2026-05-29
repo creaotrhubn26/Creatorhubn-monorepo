@@ -2112,6 +2112,49 @@
       "requiresTimeline": false
     },
     {
+      "id": "find_standout_moments",
+      "name": "Find Standout Moments",
+      "category": "social",
+      "scriptPath": "scripts/social/find_standout_moments.py",
+      "description": "Analyser Whisper-transkript og finn de mest social-clipable momenter for repurpose-cuts. Heuristikk-basert scoring (substansiell lengde, spørsmål, exclamations, strong-words, personlig narrativ, posisjon). Returnerer topp-N non-overlapping cuts med startSec/endSec/score/text/reason.",
+      "requiredInputs": [
+        { "key": "transcript", "label": "Whisper transcript-objekt", "type": "json", "required": true },
+        { "key": "targetDurationSec", "label": "Mål-varighet sek (default 30)", "type": "number", "required": false },
+        { "key": "minDurationSec", "label": "Min-varighet (default 15)", "type": "number", "required": false },
+        { "key": "maxDurationSec", "label": "Max-varighet (default 60)", "type": "number", "required": false },
+        { "key": "topN", "label": "Antall cuts å returnere (default 6)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_social_cut",
+      "name": "Extract Social Cut",
+      "category": "social",
+      "scriptPath": "scripts/social/extract_social_cut.py",
+      "description": "Render én social-cut med face-aware vertical crop (9:16/1:1/4:5/16:9), optional burnt-in captions fra transkript-segmenter, og thumbnail. Brukes av SocialCutsStudio som finalizing-step per cut.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "startSec", "label": "Start-tid sek", "type": "number", "required": true },
+        { "key": "endSec", "label": "Slutt-tid sek", "type": "number", "required": true },
+        { "key": "aspectRatio", "label": "Aspect (default 9:16)", "type": "text", "required": false },
+        { "key": "burnCaptions", "label": "Brenn captions inn", "type": "boolean", "required": false },
+        { "key": "transcriptSegments", "label": "Whisper-segments-array", "type": "json", "required": false },
+        { "key": "faceAware", "label": "Face-aware crop", "type": "boolean", "required": false },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "analyze_broll_clip",
       "name": "Analyze B-roll Clip (Claude vision)",
       "category": "social",

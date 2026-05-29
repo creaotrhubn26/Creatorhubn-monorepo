@@ -28,6 +28,7 @@ import { MusicLibrary } from "./MusicLibrary";
 import { MusicSuggestionModal } from "./MusicSuggestionModal";
 import { VoiceDuckingDialog } from "./VoiceDuckingDialog";
 import { MulticamSyncStudio } from "./MulticamSyncStudio";
+import { SocialCutsStudio } from "./SocialCutsStudio";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import GraphicEqIcon2 from "@mui/icons-material/GraphicEq";
@@ -104,12 +105,22 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [duckingDialogOpen, setDuckingDialogOpen] = useState(false);
   const [duckingMusicPath, setDuckingMusicPath] = useState("");
   const [multicamOpen, setMulticamOpen] = useState(false);
+  const [socialCutsOpen, setSocialCutsOpen] = useState(false);
 
   // Hvilke agenter har naturlig multi-cam-konvensjon
   const showMulticamButton = (
     config.kind === "wedding" || config.kind === "event"
     || config.kind === "podcast" || config.kind === "documentary"
     || config.kind === "short_film" || config.kind === "music_video"
+  );
+
+  // Repurpose-engine: long-form → sosial-cuts. Mest verdi for Podcast/
+  // Event/Documentary, men også Music Video (artist-clips) og Corporate
+  // (CEO/keynote-clips)
+  const showSocialCutsButton = (
+    config.kind === "podcast" || config.kind === "event"
+    || config.kind === "documentary" || config.kind === "music_video"
+    || config.kind === "corporate"
   );
 
   const requestMusicSuggestions = () => {
@@ -456,6 +467,19 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                       display: "inline-flex", alignItems: "center", gap: 5,
                     }}>
               <VideocamIcon sx={{ fontSize: 14 }} /> Multi-cam
+            </button>
+          )}
+          {showSocialCutsButton && (
+            <button onClick={() => setSocialCutsOpen(true)}
+                    title="Repurpose long-form til 30s/60s sosial-cuts med transkript-drevet auto-pick"
+                    style={{
+                      background: "rgba(160,48,192,0.15)",
+                      border: "1px solid rgba(160,48,192,0.4)",
+                      color: "#fff", padding: "5px 12px", fontSize: 11,
+                      borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                    }}>
+              <ContentCutIcon sx={{ fontSize: 14 }} /> Social cuts
             </button>
           )}
           <button onClick={requestBrollSuggestions}
@@ -1241,6 +1265,17 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
           open={multicamOpen}
           onClose={() => setMulticamOpen(false)}
           projectId={projectIdForStudio}
+          agentKind={config.kind}
+        />
+      )}
+
+      {/* Social Cuts Studio — repurpose long-form til sosial */}
+      {showSocialCutsButton && (
+        <SocialCutsStudio
+          open={socialCutsOpen}
+          onClose={() => setSocialCutsOpen(false)}
+          projectId={projectIdForStudio}
+          sourceVideoPath={sourcePath}
           agentKind={config.kind}
         />
       )}

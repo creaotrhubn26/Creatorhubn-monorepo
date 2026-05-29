@@ -56,6 +56,7 @@ import { registerRoleRoomCaptionsRoutes } from "./role-room-captions-routes.js";
 import { registerRoleRoomBrollRoutes } from "./role-room-broll-routes.js";
 import { registerRoleRoomMusicRoutes } from "./role-room-music-routes.js";
 import { registerRoleRoomMulticamRoutes } from "./role-room-multicam-routes.js";
+import { registerRoleRoomSocialCutsRoutes } from "./role-room-social-cuts-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -612,6 +613,7 @@ import { setupAdminSeoTrendsRoutes } from "./admin-seo-trends-routes";
 import { setupTwoFaRoutes } from "./twofa-routes";
 import { setupCouplesRoutes } from "./couples-routes";
 import { setupAdminProvisioningRoutes } from "./admin-provisioning-routes";
+import { setupResendAdminRoutes } from "./resend-admin-routes";
 import { setupEmailsRoutes } from "./emails-routes";
 import { setupTelemetryRoutes } from "./telemetry-routes";
 import { setupVideoSyncRoutes } from "./video-sync-routes";
@@ -1760,6 +1762,7 @@ registerRoleRoomCaptionsRoutes(app, { pool, activeSessions });
 registerRoleRoomBrollRoutes(app, { pool, activeSessions });
 registerRoleRoomMusicRoutes(app, { pool, activeSessions });
 registerRoleRoomMulticamRoutes(app, { pool, activeSessions });
+registerRoleRoomSocialCutsRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
@@ -67435,6 +67438,7 @@ setupCouplesRoutes({
 // requests dups var interleaved og slettet i samme commit (live versions
 // ved 54093+ er uendret).
 setupAdminProvisioningRoutes({ app, pool, requireAdminSession });
+setupResendAdminRoutes({ app, pool, requireAdminSession });
 
 // /api/emails/* — 5 endpoints (CustomerInquiryCenter henter submissions
 // som email-meldinger: recent, stats, contacts, PATCH star, PATCH read).
