@@ -3252,7 +3252,17 @@ type RoleRoomProjectWorkspaceState = {
       if (cancelled || !stored) {
         return;
       }
-      persistedWorkspaceStateRef.current = stored;
+      // URL-seedet ref (?project=<id>) skal overstyre stored=null. Uten
+      // dette mister deep-links sin prosjekt-ID når hydrate-effekten kjører
+      // ETTER seed-effekten og overskriver lastRealProjectId med null fra
+      // siste lagrede tom-state. Daniels TROLL-deep-link havnet i tom-state
+      // selv om URL var korrekt og DB hadde 8 roller/8 kandidater klar.
+      const existing = persistedWorkspaceStateRef.current;
+      persistedWorkspaceStateRef.current = {
+        ...stored,
+        lastRealProjectId: stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
+        projectId: stored.projectId ?? existing?.projectId ?? null,
+      };
       setStoryArcView(stored.storyArcView);
       setStoryArcFocus(stored.storyArcFocus ?? null);
       setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
