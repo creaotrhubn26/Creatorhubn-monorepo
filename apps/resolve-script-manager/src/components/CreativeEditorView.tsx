@@ -4353,8 +4353,11 @@ ${ctxLines.join("\n")}`;
           inputs={{
             sourceVideo: payload.sourceVideo,
             picksCount: filteredPicks.length,
+            picks: filteredPicks,
             targetDurationSec: projectTargetMin * 60 || 240,
             clientWishes,
+            lookPack: lookPack === "none" ? undefined : lookPack,
+            resolveConnected: resolveSync.resolveState?.connected ?? false,
           }}
         />
       )}

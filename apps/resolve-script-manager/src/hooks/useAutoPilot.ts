@@ -21,6 +21,8 @@ export type AutoPilotStepId =
   | "preflight"
   | "claude_scene_analysis"
   | "quality_filter"
+  | "color_match"
+  | "resolve_color_nodes"
   | "claude_music_per_chapter"
   | "claude_pacing_decision"
   | "build_highlight"
@@ -33,13 +35,15 @@ export interface AutoPilotStep {
 }
 
 export const AUTO_PILOT_STEPS: AutoPilotStep[] = [
-  { id: "preflight",                 label: "Sjekker Resolve + source",       estSec: 5 },
-  { id: "claude_scene_analysis",     label: "Claude analyserer scener",       estSec: 30 },
-  { id: "quality_filter",            label: "Fjerner underexponerte/uskarpe", estSec: 20 },
-  { id: "claude_music_per_chapter",  label: "Claude foreslår musikk pr scene", estSec: 25 },
-  { id: "claude_pacing_decision",    label: "Claude vurderer pacing + climax", estSec: 20 },
-  { id: "build_highlight",           label: "Bygger highlight med ffmpeg",     estSec: 180 },
-  { id: "qc_pass",                   label: "Final QC + sync-sjekk",          estSec: 15 },
+  { id: "preflight",                 label: "Sjekker Resolve + source",         estSec: 5 },
+  { id: "claude_scene_analysis",     label: "Claude analyserer scener",         estSec: 30 },
+  { id: "quality_filter",            label: "Fjerner underexponerte/uskarpe",   estSec: 20 },
+  { id: "color_match",               label: "Eksponeringsbalanse pr shot",      estSec: 40 },
+  { id: "resolve_color_nodes",       label: "Bygger color node-tre i Resolve",  estSec: 25 },
+  { id: "claude_music_per_chapter",  label: "Claude foreslår musikk pr scene",  estSec: 25 },
+  { id: "claude_pacing_decision",    label: "Claude vurderer pacing + climax",  estSec: 20 },
+  { id: "build_highlight",           label: "Bygger highlight med ffmpeg",      estSec: 180 },
+  { id: "qc_pass",                   label: "Final QC + sync-sjekk",            estSec: 15 },
 ];
 
 // Witty "brewing"-meldinger som rolleres mens build_highlight kjører.
@@ -111,10 +115,16 @@ export interface AutoPilotState {
 export interface AutoPilotInputs {
   sourceVideo: string;
   picksCount: number;
+  /** Picks-array som sendes til color-match + render-stegene. */
+  picks?: Array<{ index: number; startSec: number; endSec: number; durationSec: number; chapter?: string }>;
   /** Sekunder targetert highlight-lengde (default 240). */
   targetDurationSec?: number;
   /** Bruker-instruks som sendes til Claude som ekstra kontekst. */
   clientWishes?: string;
+  /** LookPack-preferanse — påvirker Resolve-noder + LUT-valg. */
+  lookPack?: "norwedfilm" | "warm" | "cinematic" | "documentary" | "none";
+  /** Er Resolve åpen + tilkoblet? Resolve-spesifikke steg hoppes over hvis ikke. */
+  resolveConnected?: boolean;
 }
 
 interface UseAutoPilotResult {
@@ -355,6 +365,12 @@ async function runStep(
     case "quality_filter":
       await stepQualityFilter(inputs, ctx);
       return;
+    case "color_match":
+      await stepColorMatch(inputs, ctx);
+      return;
+    case "resolve_color_nodes":
+      await stepResolveColorNodes(inputs, ctx);
+      return;
     case "claude_music_per_chapter":
       await stepClaudeMusicPerChapter(inputs, ctx);
       return;
@@ -367,6 +383,66 @@ async function runStep(
     case "qc_pass":
       await stepQcPass(inputs, ctx);
       return;
+  }
+}
+
+async function stepColorMatch(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.picks || inputs.picks.length === 0) {
+    ctx.log({ step: "color_match", level: "warn",
+      message: "Hopper over — ingen picks tilgjengelig" });
+    return;
+  }
+  ctx.log({ step: "color_match", level: "info",
+    message: `Måler eksponering på ${inputs.picks.length} picks (~${inputs.picks.length * 2}s) …` });
+  try {
+    const summary = await executeScript("auto_color_match_shots", {
+      picks: inputs.picks,
+      sourceVideo: inputs.sourceVideo,
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      targetY?: number; baselineSpread?: number;
+      adjustments?: Array<{ pickIndex: number; deltaY: number }>;
+    } | undefined;
+    if (v) {
+      const adjusted = (v.adjustments ?? []).filter((a) => Math.abs(a.deltaY) > 5).length;
+      ctx.log({ step: "color_match", level: "success",
+        message: `Eksponering balansert — ${adjusted}/${inputs.picks.length} shots fikk justering (spread ${v.baselineSpread?.toFixed(0)} → target Y ${v.targetY?.toFixed(0)})` });
+    }
+  } catch (err) {
+    ctx.log({ step: "color_match", level: "warn",
+      message: `Color-match hoppet over: ${(err as Error).message}` });
+  }
+}
+
+async function stepResolveColorNodes(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.resolveConnected) {
+    ctx.log({ step: "resolve_color_nodes", level: "info",
+      message: "Resolve ikke åpen — hopper over node-setup (Bjarne kan kjøre manuelt senere)" });
+    return;
+  }
+  ctx.log({ step: "resolve_color_nodes", level: "info",
+    message: "Bygger standard node-tre: Primary → LUT → Skin Protect → Vignette" });
+  try {
+    const summary = await executeScript("setup_resolve_color_nodes", {
+      lookPack: inputs.lookPack ?? "norwedfilm",
+      applyToAllClips: true,
+      protectSkinTones: true,
+      addVignette: true,
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      clipsProcessed?: number; nodesAdded?: number; lutApplied?: boolean;
+      errorCount?: number;
+    } | undefined;
+    if (v) {
+      const lutNote = v.lutApplied ? `LUT ${inputs.lookPack} aktiv` : "uten LUT";
+      ctx.log({ step: "resolve_color_nodes", level: "success",
+        message: `${v.clipsProcessed} clips fikk ${v.nodesAdded} noder · ${lutNote}${v.errorCount ? ` · ${v.errorCount} clips feilet` : ""}` });
+    }
+  } catch (err) {
+    ctx.log({ step: "resolve_color_nodes", level: "warn",
+      message: `Node-setup feilet: ${(err as Error).message}` });
   }
 }
 

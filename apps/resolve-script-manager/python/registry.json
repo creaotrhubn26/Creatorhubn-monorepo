@@ -826,6 +826,42 @@
       "requiresTimeline": true
     },
     {
+      "id": "auto_color_match_shots",
+      "name": "Auto Color Match Shots",
+      "category": "color",
+      "scriptPath": "scripts/color/auto_color_match_shots.py",
+      "description": "Beregner per-pick brightness/contrast/gamma-justering så alle shots lander på samme target Y-mean (median). Eliminerer eksponerings-flicker i xfades. Output kan brukes av assemble_highlight_with_music via filter_complex eq=.",
+      "requiredInputs": [
+        { "key": "picks", "label": "Picks-array", "type": "json", "required": true },
+        { "key": "sourceVideo", "label": "Source video path", "type": "text", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "setup_resolve_color_nodes",
+      "name": "Setup Resolve Color Nodes",
+      "category": "color",
+      "scriptPath": "scripts/color/setup_resolve_color_nodes.py",
+      "description": "Bygger standard wedding-grade node-tre på alle clips i aktiv Resolve-timeline: Primary Correction → LUT → Skin Tone Protection → Vignette. Etter dette stadiet kan Bjarne åpne color page og bare finjustere.",
+      "requiredInputs": [
+        { "key": "lookPack", "label": "LUT-preset (norwedfilm/warm/cinematic/documentary/none)", "type": "text", "required": false },
+        { "key": "applyToAllClips", "label": "Anvend på alle clips", "type": "boolean", "required": false },
+        { "key": "protectSkinTones", "label": "Legg til skin-tone-qualifier", "type": "boolean", "required": false },
+        { "key": "addVignette", "label": "Legg til vignette-node", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "flag_underexposed_clips",
       "name": "Flag Underexposed Clips",
       "category": "color",
