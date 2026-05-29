@@ -1903,6 +1903,24 @@
       "requiresTimeline": false
     },
     {
+      "id": "setup_fairlight_audio",
+      "name": "Setup Fairlight Audio",
+      "category": "audio",
+      "scriptPath": "scripts/audio/setup_fairlight_audio.py",
+      "description": "Bygger Claude's audio-direction direkte inn i Resolve's Fairlight-page: markører ved ducking-punkter, clip-colors per chapter, clip-volume gain. RESPEKTERER eksisterende track-layout — endrer ikke Bjarnes manuelle arbeid.",
+      "requiredInputs": [
+        { "key": "perChapter", "label": "Claude's per-chapter direction", "type": "json", "required": true },
+        { "key": "pickChapters", "label": "Picks med chapter-mapping", "type": "json", "required": false },
+        { "key": "overallLufsTarget", "label": "LUFS target", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": "Fairlight",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "apply_audio_polish",
       "name": "Apply Audio Polish",
       "category": "audio",

@@ -29,6 +29,7 @@ export type AutoPilotStepId =
   | "claude_audio_direction"
   | "build_highlight"
   | "audio_polish"
+  | "fairlight_setup"
   | "qc_pass";
 
 export interface AutoPilotStep {
@@ -49,6 +50,7 @@ export const AUTO_PILOT_STEPS: AutoPilotStep[] = [
   { id: "claude_audio_direction",    label: "Claude vurderer audio-polish pr scene", estSec: 15 },
   { id: "build_highlight",           label: "Bygger highlight med ffmpeg",      estSec: 180 },
   { id: "audio_polish",              label: "LUFS + ducking + de-essing",       estSec: 45 },
+  { id: "fairlight_setup",           label: "Fairlight markører + clip-routing",   estSec: 15 },
   { id: "qc_pass",                   label: "Final QC + sync-sjekk",            estSec: 15 },
 ];
 
@@ -448,6 +450,9 @@ async function runStep(
     case "audio_polish":
       await stepAudioPolish(inputs, ctx);
       return;
+    case "fairlight_setup":
+      await stepFairlightSetup(inputs, ctx);
+      return;
     case "qc_pass":
       await stepQcPass(inputs, ctx);
       return;
@@ -843,6 +848,54 @@ async function stepBuildHighlight(inputs: AutoPilotInputs, ctx: StepCtx): Promis
     throw new Error(`Render feilet: ${(err as Error).message}`);
   } finally {
     clearInterval(brewInterval);
+  }
+}
+
+async function stepFairlightSetup(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.resolveConnected) {
+    ctx.log({ step: "fairlight_setup", level: "info",
+      message: "Resolve ikke åpen — hopper over Fairlight-setup" });
+    return;
+  }
+  const perChapter = ctx.sharedState.audioDirectionPerChapter as
+    | Record<string, unknown> | undefined;
+  if (!perChapter || Object.keys(perChapter).length === 0) {
+    ctx.log({ step: "fairlight_setup", level: "info",
+      message: "Ingen audio-direction å sette i Fairlight" });
+    return;
+  }
+
+  const lufs = (ctx.sharedState.audioLufsTarget as number | undefined) ?? -14;
+  const pickChapters = (inputs.picks ?? []).map(p => ({
+    pickIndex: p.index,
+    chapter: p.chapter,
+    startSec: p.startSec,
+    endSec: p.endSec,
+  }));
+
+  ctx.log({ step: "fairlight_setup", level: "info",
+    message: "Bygger Claude's audio-direction inn i Fairlight — respekterer eksisterende tracks" });
+
+  try {
+    const summary = await executeScript("setup_fairlight_audio", {
+      perChapter,
+      pickChapters,
+      overallLufsTarget: lufs,
+      respectExistingWork: true,
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      duckMarkersAdded?: number;
+      clipsAdjusted?: number;
+      existingAudioTracks?: number;
+    } | undefined;
+    if (v) {
+      ctx.log({ step: "fairlight_setup", level: "success",
+        message: `${v.duckMarkersAdded ?? 0} duck-markører + ${v.clipsAdjusted ?? 0} clips tagget · Fairlight har nå dine direction synlig` });
+    }
+  } catch (err) {
+    ctx.log({ step: "fairlight_setup", level: "warn",
+      message: `Fairlight-setup hoppet over: ${(err as Error).message}` });
   }
 }
 
