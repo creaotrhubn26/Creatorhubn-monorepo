@@ -1961,6 +1961,25 @@
       "requiresTimeline": false
     },
     {
+      "id": "render_lower_thirds",
+      "name": "Render Lower Thirds (transparent PNG)",
+      "category": "social",
+      "scriptPath": "scripts/social/render_lower_thirds.py",
+      "description": "Rendrer hver lower-third-item som transparent 1920×1080 PNG med alpha-kanal, klar for import som titles i DaVinci Resolve. Tar items-array fra LowerThirdsStudio og produserer én PNG per item på riktig posisjon.",
+      "requiredInputs": [
+        { "key": "items", "label": "Lower-third items-array", "type": "json", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false },
+        { "key": "width", "label": "Render-bredde (default 1920)", "type": "number", "required": false },
+        { "key": "height", "label": "Render-høyde (default 1080)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "setup_platform_timeline",
       "name": "Setup Platform Timeline",
       "category": "timeline",

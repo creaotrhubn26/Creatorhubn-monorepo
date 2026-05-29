@@ -20,6 +20,8 @@
 import { useState } from "react";
 import { ThumbnailCreator } from "./ThumbnailCreator";
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
+import { LowerThirdsStudio } from "./LowerThirdsStudio";
+import SubtitlesIcon from "@mui/icons-material/Subtitles";
 import type { AgentConfig, ChapterDef, LookPackDef } from "../agents/types";
 import { executeScript } from "../api";
 import { claudeProxyService } from "../services/claudeProxyService";
@@ -27,7 +29,6 @@ import type { ClaudeMessage } from "../services/claudeProxyService";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import EventIcon from "@mui/icons-material/Event";
-import MovieIcon from "@mui/icons-material/Movie";
 import ChurchIcon from "@mui/icons-material/Church";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import PodcastsIcon from "@mui/icons-material/Podcasts";
@@ -77,6 +78,17 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [genre, setGenre] = useState<string>("");
   const [clientWishes, setClientWishes] = useState<string>("");
   const [thumbnailOpen, setThumbnailOpen] = useState(false);
+  const [lowerThirdsOpen, setLowerThirdsOpen] = useState(false);
+  // Project-id for persistence av lower-thirds. Hentes via tilstand
+  // som settes når user åpner agent fra HomeView; for nå fallback til
+  // hardkodet test-id slik at button funker uten Role Room-context.
+  const projectIdForStudio = "test-project-default";
+  // Hvilke agenter har lower-thirds som naturlig konvensjon
+  const showLowerThirdsButton = (
+    config.kind === "event" || config.kind === "podcast"
+    || config.kind === "documentary" || config.kind === "corporate"
+    || config.kind === "short_film"
+  );
   const [beatAnalyzing, setBeatAnalyzing] = useState(false);
   const [beatAnalysis, setBeatAnalysis] = useState<{
     bpm: number; confidence: number; method: string;
@@ -248,6 +260,18 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         </div>
 
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {showLowerThirdsButton && (
+            <button onClick={() => setLowerThirdsOpen(true)}
+                    style={{
+                      background: "rgba(160,48,192,0.15)",
+                      border: "1px solid rgba(160,48,192,0.4)",
+                      color: "#fff", padding: "5px 12px", fontSize: 11,
+                      borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                    }}>
+              <SubtitlesIcon sx={{ fontSize: 14 }} /> Lower Thirds
+            </button>
+          )}
           <button onClick={() => setThumbnailOpen(true)}
                   style={{
                     background: "rgba(160,48,192,0.15)",
@@ -774,6 +798,17 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         onClose={() => setThumbnailOpen(false)}
         sourceVideoPath={sourcePath}
       />
+
+      {/* Lower Thirds Studio — Role Room-brandet */}
+      {showLowerThirdsButton && (
+        <LowerThirdsStudio
+          open={lowerThirdsOpen}
+          onClose={() => setLowerThirdsOpen(false)}
+          projectId={projectIdForStudio}
+          agentKind={config.kind}
+          videoDurationSec={songLengthSec}
+        />
+      )}
     </div>
   );
 }
