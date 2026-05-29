@@ -33,6 +33,7 @@ import Stripe from "stripe";
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -1706,13 +1707,15 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 
 // Role Room member profile (separat fra Creatorhub-profil) — central solution
 // for alle Role Room-medlemmer. Inkluderer onboarding-state + R2-image-upload.
+// Bruker statiske imports av aws-sdk (toppen av filen) — `require()` her
+// før genererte esbuild-bundle som kastet `Dynamic require of @aws-sdk/client-s3`
+// ved boot på Render, så hele backend feilet å starte og alle deploys
+// siden 2026-05-28 18:16 var "update_failed".
 {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const s3sdk = require("@aws-sdk/client-s3") as typeof import("@aws-sdk/client-s3");
   const r2cfg = buildCmsR2Config();
   let uploadImage: ((buf: Buffer, mime: string, key: string) => Promise<string>) | undefined;
   if (r2cfg.enabled && r2cfg.endpoint && r2cfg.accessKeyId && r2cfg.secretAccessKey && r2cfg.bucket) {
-    const client = new s3sdk.S3Client({
+    const client = new S3Client({
       region: "auto",
       endpoint: r2cfg.endpoint,
       credentials: {
@@ -1723,7 +1726,7 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
     const bucket = r2cfg.bucket;
     const publicBase = r2cfg.publicUrlBase?.replace(/\/+$/, "");
     uploadImage = async (buffer, mimeType, key) => {
-      await client.send(new s3sdk.PutObjectCommand({
+      await client.send(new PutObjectCommand({
         Bucket: bucket, Key: key, Body: buffer,
         ContentType: mimeType,
         CacheControl: "public, max-age=31536000, immutable",
