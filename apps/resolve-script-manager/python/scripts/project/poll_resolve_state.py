@@ -62,6 +62,20 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         try: project_name = conn.project.GetName() or ""
         except Exception: pass
 
+        # Detect Studio vs Free — påvirker hvilke auto-pilot-features som er
+        # tilgjengelige (VST/AU-plugins, LUT-applikasjon, Fairlight-automation)
+        is_studio = False
+        product_name = None
+        try:
+            if hasattr(conn.resolve, "GetProductName"):
+                product_name = conn.resolve.GetProductName() or ""
+                is_studio = "studio" in product_name.lower()
+            if not is_studio and os.path.isdir("/Applications/DaVinci Resolve Studio.app"):
+                is_studio = True
+                product_name = product_name or "DaVinci Resolve Studio"
+        except Exception:
+            pass
+
         timeline = conn.project.GetCurrentTimeline()
         if not timeline:
             bridge.result({
@@ -135,6 +149,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "timelineDurationFrames": duration_frames,
             "markers": sorted(markers, key=lambda m: m["frame"]),
             "clipCount": clip_count,
+            "isStudio": is_studio,
+            "productName": product_name,
             "sampledAt": sampled_at,
         })
 

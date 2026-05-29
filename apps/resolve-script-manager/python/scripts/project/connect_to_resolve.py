@@ -24,11 +24,35 @@ def run(params: dict, dry_run: bool) -> None:
         "projectName": None,
         "timelineCount": 0,
         "currentTimeline": None,
+        "isStudio": False,
+        "productName": None,
+        "version": None,
     }
     try:
         info["currentPage"] = conn.resolve.GetCurrentPage()
     except Exception as exc:
         bridge.warn(f"Could not read current page: {exc}")
+
+    # Detect Resolve Studio vs Free
+    try:
+        # GetProductName returnerer "DaVinci Resolve Studio" eller "DaVinci Resolve"
+        if hasattr(conn.resolve, "GetProductName"):
+            product = conn.resolve.GetProductName() or ""
+            info["productName"] = product
+            info["isStudio"] = "studio" in product.lower()
+        # Fallback: sjekk app path hvis Studio-spesifikk lib var lastet
+        if not info["isStudio"]:
+            for lib_path in ("/Applications/DaVinci Resolve Studio.app",):
+                if os.path.isdir(lib_path):
+                    info["isStudio"] = True
+                    if not info["productName"]:
+                        info["productName"] = "DaVinci Resolve Studio (detected via path)"
+                    break
+        if hasattr(conn.resolve, "GetVersionString"):
+            info["version"] = conn.resolve.GetVersionString()
+    except Exception as exc:
+        bridge.warn(f"Studio-detection failed: {exc}")
+
     if conn.project:
         try:
             info["projectName"] = conn.project.GetName()

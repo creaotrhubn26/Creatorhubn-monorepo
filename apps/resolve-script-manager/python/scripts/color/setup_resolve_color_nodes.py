@@ -57,6 +57,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # Når True (default), hopper vi over clips som ALLEREDE har mer enn 1 node
     # (Resolve gir 1 default-node, så >1 = bruker har lagt opp manuelt).
     respect_existing = bool(params.get("respectExistingWork", True))
+    # Studio-features: SetLUT på noder + Qualifier-node for skin-tone-detection.
+    # Free Resolve har AddNode("Corrector") men ikke AddNode("Qualifier"). Med
+    # is_studio=True bruker vi den mer presise node-typen.
+    is_studio = bool(params.get("isStudio", False))
 
     if dry_run:
         node_tree = ["Node 1: Primary Correction (exposure + WB)"]
@@ -178,13 +182,25 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                         errors.append(f"clip{idx} LUT: {exc}")
 
                 # Skin Tone Protection (etter creative LUT så skin beskyttes
-                # mot LUT-overshoot)
+                # mot LUT-overshoot). Studio: bruk Qualifier-node for ekte
+                # skin-tone-keying. Free: bruk Corrector-node + log instruksjon.
                 if protect_skin:
                     try:
-                        item.AddNode("Corrector", "AP: Skin Protect")
-                        nodes_added += 1
+                        if is_studio:
+                            # Qualifier-node er Studio-only — gjør faktisk
+                            # skin-key på Hue (skin-tone-range 0-25°)
+                            item.AddNode("Qualifier", "AP: Skin Qualifier")
+                            nodes_added += 1
+                        else:
+                            item.AddNode("Corrector", "AP: Skin Protect (manual)")
+                            nodes_added += 1
                     except Exception as exc:
-                        errors.append(f"clip{idx} SkinProtect: {exc}")
+                        # Hvis Qualifier feilet (eldre Studio?), fallback til Corrector
+                        try:
+                            item.AddNode("Corrector", "AP: Skin Protect (fallback)")
+                            nodes_added += 1
+                        except Exception:
+                            errors.append(f"clip{idx} SkinProtect: {exc}")
 
                 # Vignette + Grain (siste)
                 if add_vignette:

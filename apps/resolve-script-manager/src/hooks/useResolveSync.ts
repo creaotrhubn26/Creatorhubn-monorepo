@@ -33,6 +33,11 @@ export interface ResolveState {
   timelineDurationFrames: number;
   markers: ResolveMarker[];
   clipCount: number;
+  /** Resolve Studio (true) vs free (false). Påvirker hvilke auto-pilot-
+   *  features som er tilgjengelige (VST/AU-plugins, LUT-applikasjon,
+   *  Fairlight-automation, etc.). */
+  isStudio?: boolean;
+  productName?: string | null;
   reason?: string;
   sampledAt: number;
 }

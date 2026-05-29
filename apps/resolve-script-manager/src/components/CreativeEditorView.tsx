@@ -2512,6 +2512,27 @@ ${ctxLines.join("\n")}`;
               🧠 {creatorProfile.editCount} learnings
             </span>
           )}
+          {/* Studio-detection-pill: viser at vi har Studio-features tilgjengelig */}
+          {resolveSync.resolveState?.connected && (
+            <span
+              title={resolveSync.resolveState.isStudio
+                ? `${resolveSync.resolveState.productName ?? "Resolve Studio"} — alle auto-pilot-features (VST/AU, LUT-applikasjon, Fairlight-automation) tilgjengelig`
+                : "Resolve Free — noen Studio-features (VST/AU-plugins, LUT på SetLUT) er ikke tilgjengelig"}
+              style={{
+                fontSize: 10.5,
+                color: resolveSync.resolveState.isStudio ? "#f0a500" : "rgba(255,255,255,0.55)",
+                background: resolveSync.resolveState.isStudio
+                  ? "rgba(240,165,0,0.10)"
+                  : "rgba(255,255,255,0.04)",
+                border: `1px solid ${resolveSync.resolveState.isStudio
+                  ? "rgba(240,165,0,0.40)"
+                  : "rgba(255,255,255,0.10)"}`,
+                padding: "3px 8px", borderRadius: 999, marginRight: 6,
+                fontWeight: 600, cursor: "default",
+              }}>
+              {resolveSync.resolveState.isStudio ? "⭐ Studio" : "Free"}
+            </span>
+          )}
           {/* Resolve sync-pill + push-knapp */}
           {(() => {
             const s = resolveSync.status;
@@ -4358,6 +4379,7 @@ ${ctxLines.join("\n")}`;
             clientWishes,
             lookPack: lookPack === "none" ? undefined : lookPack,
             resolveConnected: resolveSync.resolveState?.connected ?? false,
+            studioConnected: resolveSync.resolveState?.isStudio ?? false,
             projectKind: projectKind ?? undefined,
             // Send eksisterende cultural look-packs så Claude sjekker dem
             // før den foreslår nye. Voksende katalog som spares per bruker.

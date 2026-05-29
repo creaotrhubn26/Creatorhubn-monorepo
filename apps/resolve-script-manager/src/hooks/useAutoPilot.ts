@@ -145,6 +145,11 @@ export interface AutoPilotInputs {
   lookPack?: "norwedfilm" | "warm" | "cinematic" | "documentary" | "none";
   /** Er Resolve åpen + tilkoblet? Resolve-spesifikke steg hoppes over hvis ikke. */
   resolveConnected?: boolean;
+  /** Resolve Studio (true) vs Free. Påvirker hvilke steg som kan utføre
+   *  Studio-only operasjoner (VST/AU-plugins, LUT-applikasjon på noder,
+   *  Fairlight-automation). Steg-implementasjoner faller tilbake til
+   *  Free-kompatible operasjoner ved studioConnected=false. */
+  studioConnected?: boolean;
   /** Prosjekt-type fra onboarding (wedding, corporate, music, event). */
   projectKind?: string;
   /** Kulturell kontekst — viktig for color (Sikh wedding, norsk standard,
@@ -684,9 +689,10 @@ async function stepResolveColorNodes(inputs: AutoPilotInputs, ctx: StepCtx): Pro
 
   const logLut = ctx.sharedState.logToRec709Lut as string | undefined;
   const logNote = logLut ? ` · LOG-correction: ${logLut}` : "";
+  const studioNote = inputs.studioConnected ? " · Studio (LUT på SetLUT + Qualifier)" : " · Free (kun Corrector-noder)";
 
   ctx.log({ step: "resolve_color_nodes", level: "info",
-    message: `Bygger node-tre · LUT: ${lookPack}${!inputs.lookPack && claudeLut ? " (Claude-anbefalt)" : ""}${logNote}` });
+    message: `Bygger node-tre · LUT: ${lookPack}${!inputs.lookPack && claudeLut ? " (Claude-anbefalt)" : ""}${logNote}${studioNote}` });
   try {
     const summary = await executeScript("setup_resolve_color_nodes", {
       lookPack,
@@ -695,6 +701,7 @@ async function stepResolveColorNodes(inputs: AutoPilotInputs, ctx: StepCtx): Pro
       addVignette: true,
       requiresLogConversion: !!logLut,
       logToRec709Lut: logLut,
+      isStudio: inputs.studioConnected ?? false,
     }, false);
     const result = summary.events.find((e) => e.type === "result");
     const v = result?.value as {
@@ -873,8 +880,12 @@ async function stepFairlightSetup(inputs: AutoPilotInputs, ctx: StepCtx): Promis
     endSec: p.endSec,
   }));
 
+  const studioMsg = inputs.studioConnected
+    ? " · Studio (plugins + automation)"
+    : " · Free (kun markører + clip-tags)";
+
   ctx.log({ step: "fairlight_setup", level: "info",
-    message: "Bygger Claude's audio-direction inn i Fairlight — respekterer eksisterende tracks" });
+    message: `Bygger Claude's audio-direction inn i Fairlight${studioMsg}` });
 
   try {
     const summary = await executeScript("setup_fairlight_audio", {
@@ -882,6 +893,7 @@ async function stepFairlightSetup(inputs: AutoPilotInputs, ctx: StepCtx): Promis
       pickChapters,
       overallLufsTarget: lufs,
       respectExistingWork: true,
+      isStudio: inputs.studioConnected ?? false,
     }, false);
     const result = summary.events.find((e) => e.type === "result");
     const v = result?.value as {
