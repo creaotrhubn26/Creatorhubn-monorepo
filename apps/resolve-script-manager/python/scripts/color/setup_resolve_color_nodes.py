@@ -50,17 +50,26 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     apply_to_all = bool(params.get("applyToAllClips", True))
     protect_skin = bool(params.get("protectSkinTones", True))
     add_vignette = bool(params.get("addVignette", True))
+    # NY: log-conversion-LUT settes på Node 2 før creative LUT
+    log_to_rec709_lut = (params.get("logToRec709Lut") or "").strip()
+    requires_log_conversion = bool(params.get("requiresLogConversion", False)) or bool(log_to_rec709_lut)
 
     if dry_run:
+        node_tree = ["Node 1: Primary Correction (exposure + WB)"]
+        if requires_log_conversion:
+            node_tree.append(f"Node 2: LOG → REC.709 ({log_to_rec709_lut or 'auto'})")
+            node_tree.append(f"Node 3: Creative LUT — {look_pack}")
+            if protect_skin: node_tree.append("Node 4: Skin Tone Protection")
+            if add_vignette: node_tree.append("Node 5: Vignette + Grain")
+        else:
+            node_tree.append(f"Node 2: Creative LUT — {look_pack}")
+            if protect_skin: node_tree.append("Node 3: Skin Tone Protection")
+            if add_vignette: node_tree.append("Node 4: Vignette + Grain")
         bridge.result({
             "wouldSetup": True,
-            "nodeTree": [
-                "Node 1: Primary Correction (exposure + WB)",
-                f"Node 2: LUT — {look_pack}",
-                "Node 3: Skin Tone Protection (Cr qualifier)" if protect_skin else None,
-                "Node 4: Vignette + Grain" if add_vignette else None,
-            ],
+            "nodeTree": node_tree,
             "lookPack": look_pack,
+            "logCorrection": log_to_rec709_lut if requires_log_conversion else None,
         })
         return
 
@@ -118,18 +127,30 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 except Exception as exc:
                     errors.append(f"clip{idx} Primary: {exc}")
 
-                # Node 2: LUT — settes på Primary-noden via SetLUT (Studio)
+                # Node 2: LOG → REC.709 (kun hvis log-encoded)
+                creative_lut_node_idx = 2  # default når ingen log-conversion
+                if requires_log_conversion and log_to_rec709_lut:
+                    try:
+                        item.AddNode("Corrector", "Log → Rec.709")
+                        nodes_added += 1
+                        if hasattr(item, "SetLUT"):
+                            item.SetLUT(2, log_to_rec709_lut)
+                        creative_lut_node_idx = 3  # creative LUT på node 3
+                    except Exception as exc:
+                        errors.append(f"clip{idx} LogConv: {exc}")
+
+                # Node 2 (eller 3): Creative LUT
                 if look_pack != "none":
                     try:
                         lut_path = LUT_PATHS.get(look_pack, "")
                         if lut_path and hasattr(item, "SetLUT"):
-                            # Node-index 1 = primary
-                            item.SetLUT(1, lut_path)
+                            item.SetLUT(creative_lut_node_idx, lut_path)
                             lut_applied = True
                     except Exception as exc:
                         errors.append(f"clip{idx} LUT: {exc}")
 
-                # Node 3: Skin Tone Protection (Studio)
+                # Skin Tone Protection (etter creative LUT så skin beskyttes
+                # mot LUT-overshoot)
                 if protect_skin:
                     try:
                         item.AddNode("Corrector", "Skin Protect")
@@ -137,7 +158,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                     except Exception as exc:
                         errors.append(f"clip{idx} SkinProtect: {exc}")
 
-                # Node 4: Vignette + Grain (Studio)
+                # Vignette + Grain (siste)
                 if add_vignette:
                     try:
                         item.AddNode("Corrector", "Vignette")

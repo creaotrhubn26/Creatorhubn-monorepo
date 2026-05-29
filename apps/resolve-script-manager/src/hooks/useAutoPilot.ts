@@ -133,6 +133,20 @@ export interface AutoPilotInputs {
    *  pakistansk-norsk, jødisk, kinesisk, etc.). Claude bruker dette til
    *  å justere warmth/saturation forventninger per chapter. */
   culturalContext?: string;
+  /** Tidligere lærte kulturelle look-packs. Claude sjekker disse før
+   *  den foreslår nye — slik unngår vi duplikater på tvers av prosjekter. */
+  existingCulturalLooks?: Array<{
+    name: string;
+    culturalTag: string;
+    warmth: number;
+    saturation: number;
+    contrast: number;
+    skinToneProtection: string;
+    description: string;
+  }>;
+  /** Log-gamma-info fra detect_log_gamma (isLog: bool, type: string).
+   *  Claude bruker dette til å sette LOG → REC.709-correction-LUT først. */
+  logGammaInfo?: { isLog?: boolean; type?: string; suggestedLut?: string };
 }
 
 interface UseAutoPilotResult {
@@ -439,6 +453,8 @@ async function stepClaudeColorDirection(inputs: AutoPilotInputs, ctx: StepCtx): 
       culturalContext: inputs.culturalContext ?? "",
       targetDurationSec: inputs.targetDurationSec ?? 240,
       clientWishes: inputs.clientWishes ?? "",
+      existingCulturalLooks: inputs.existingCulturalLooks ?? [],
+      logGammaInfo: inputs.logGammaInfo ?? {},
     }, false);
     const result = summary.events.find((e) => e.type === "result");
     const v = result?.value as {
@@ -449,6 +465,25 @@ async function stepClaudeColorDirection(inputs: AutoPilotInputs, ctx: StepCtx): 
     if (v?.perChapter) {
       ctx.sharedState.perChapterDirection = v.perChapter;
       ctx.sharedState.recommendedLut = v.overallLutChoice;
+      // Lagre look-pack-beslutning + log-correction-LUT for resolve_color_nodes
+      const decision = (result?.value as { lookPackDecision?: {
+        action: string; lookPackName: string;
+        requiresLogConversion?: boolean; logToRec709Lut?: string;
+      } }).lookPackDecision;
+      if (decision) {
+        ctx.sharedState.lookPackDecision = decision;
+        if (decision.requiresLogConversion && decision.logToRec709Lut) {
+          ctx.sharedState.logToRec709Lut = decision.logToRec709Lut;
+          ctx.log({ step: "claude_color_direction", level: "action",
+            message: `LOG-correction kreves: ${decision.logToRec709Lut} → Rec.709 først` });
+        }
+      }
+      // Hvis Claude foreslår NY look-pack, save den til shared state så CE
+      // kan vise dialog "Lagre ny cultural look-pack?" etter auto-pilot
+      const newLook = (result?.value as { newLookPackSpec?: unknown }).newLookPackSpec;
+      if (newLook) {
+        ctx.sharedState.proposedNewLookPack = newLook;
+      }
       const sample = Object.entries(v.perChapter).slice(0, 3)
         .map(([ch, d]) => `${ch}: Y${d.targetY.toFixed(0)} w${d.warmth >= 0 ? "+" : ""}${d.warmth}`)
         .join(" · ");
@@ -513,14 +548,19 @@ async function stepResolveColorNodes(inputs: AutoPilotInputs, ctx: StepCtx): Pro
   const claudeLut = ctx.sharedState.recommendedLut as string | undefined;
   const lookPack = inputs.lookPack ?? claudeLut ?? "norwedfilm";
 
+  const logLut = ctx.sharedState.logToRec709Lut as string | undefined;
+  const logNote = logLut ? ` · LOG-correction: ${logLut}` : "";
+
   ctx.log({ step: "resolve_color_nodes", level: "info",
-    message: `Bygger node-tre · LUT: ${lookPack}${!inputs.lookPack && claudeLut ? " (Claude-anbefalt)" : ""}` });
+    message: `Bygger node-tre · LUT: ${lookPack}${!inputs.lookPack && claudeLut ? " (Claude-anbefalt)" : ""}${logNote}` });
   try {
     const summary = await executeScript("setup_resolve_color_nodes", {
       lookPack,
       applyToAllClips: true,
       protectSkinTones: true,
       addVignette: true,
+      requiresLogConversion: !!logLut,
+      logToRec709Lut: logLut,
     }, false);
     const result = summary.events.find((e) => e.type === "result");
     const v = result?.value as {
