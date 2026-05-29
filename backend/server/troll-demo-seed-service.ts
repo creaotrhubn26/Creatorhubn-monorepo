@@ -77,6 +77,7 @@ export async function seedTrollDemo(
       'casting_storyboards',
       'casting_candidate_videos',
       'casting_scenes',
+      'casting_acts',
       'casting_manuscripts',
       'casting_props',
       'casting_locations',
@@ -260,7 +261,173 @@ export async function seedTrollDemo(
     }
 
     // ── 8. casting_manuscripts ────────────────────────────────────────
+    // Mer utfyllende screenplay-content: tre-akts-struktur + scene-headings +
+    // utdrag av faktisk dialog så Story Writer/Story Logic/Scener viser
+    // realistisk arbeidsmateriale, ikke bare en placeholder-tittel.
     const manuscriptId = eid('manuscript-troll-v1');
+    const manuscriptContent = `# ${projectName}
+
+Norsk eventyrfilm. Skrevet av Espen Aukan og Roar Uthaug.
+
+FINAL DRAFT — 2025-11-01
+
+================================================================
+AKT I — OPPDAGELSEN (scene 1–4)
+================================================================
+
+INT. LÆRDALSTUNNELEN — NATT
+
+Mørke. Boremaskinens drønn. ARBEIDER 1 (40-tallet) og ARBEIDER 2 (50-tallet) jobber i halv-mørke ved tunnelens innerste seksjon.
+
+ARBEIDER 1
+Hvor langt inn er vi?
+
+ARBEIDER 2
+Tre meter til. Hold ut.
+
+Borets spiss treffer noe annet enn fjell. Et HULLLT brak — sten ramler.
+
+ARBEIDER 1
+Hva i…
+
+Bakgrunnen kollapser. Lys flimrer.
+
+────────────────────────────────────────────────────────────────
+
+INT. LÆRDALSTUNNELEN — NATT (forts.)
+
+Støv fyller luften. ARBEIDER 1 prøver å klatre ut. Et enormt RØD ØYE åpner seg i mørket.
+
+ARBEIDER 2 (skrikende)
+LØP! LØP!!
+
+────────────────────────────────────────────────────────────────
+
+INT. NATURHISTORISK MUSEUM — DAG
+
+NORA TIDEMANN (35, paleontolog, presis, skeptisk) studerer en fossil-skanning. Telefonen ringer. Hun ser på den. Ukjent nummer.
+
+NORA
+Tidemann.
+
+STATSRÅDEN (V.O.)
+Vi trenger deg. Nå.
+
+────────────────────────────────────────────────────────────────
+
+INT. STATSMINISTERENS KONTOR — DAG
+
+NORA, ANDREAS (40, hennes ekskjæreste, sikkerhetstjenestens analytiker) og GENERAL ELVENES (60, militær, korthugget) rundt et bord. Skjermbilder fra tunnelen.
+
+NORA
+Det er ikke et jordskjelv. Se på rystelsesmønsteret — det er FOTSTEG.
+
+GENERAL ELVENES
+Det er absurd.
+
+ANDREAS
+Nora. Si det.
+
+NORA (med tyngde)
+Det er et troll.
+
+================================================================
+AKT II — KONFRONTASJONEN (scene 5–8)
+================================================================
+
+EXT. DOVRE — VEI — SKUMRING
+
+NORA og ANDREAS i jeep, kjører mot fjellet. Stillhet. Snø-flak begynner å falle.
+
+ANDREAS
+Det er rart å være tilbake i bil sammen.
+
+NORA
+La oss ikke gjøre dette nå.
+
+ANDREAS
+Aldri en gang så vi solnedgangen.
+
+NORA (smiler så vidt)
+Du husker det.
+
+────────────────────────────────────────────────────────────────
+
+EXT. ØSTERDALEN GÅRD — DAG
+
+BONDEN (70, vær-slitt, klare øyne) viser et gammelt familiebilde.
+
+BONDEN
+Bestefar tegnet dette i 1929. Han så det da han var sju.
+
+På bildet: et trollformet skygge over fjellet.
+
+BONDEN (forts.)
+Vi sa ingenting. Det skader ingen så lenge man holdt seg fra dets stier.
+
+────────────────────────────────────────────────────────────────
+
+INT. STATSMINISTERENS KONTOR — NATT
+
+STATSMINISTEREN, GENERAL ELVENES, NORA via videolink. Skjermer viser ødelagte hytter.
+
+STATSMINISTEREN
+Vi må handle.
+
+NORA
+Skyt det ikke. Ikke ennå. Hvis det er ekte — det betyr noe i vår historie.
+
+GENERAL ELVENES
+Hvis det er ekte er det ALLEREDE for sent.
+
+────────────────────────────────────────────────────────────────
+
+EXT. DOVREFJELL — NATT
+
+TROLLET (40m høyt) tar lange skritt over en åskam. Det er ikke aggressivt. Det er sørgmodig.
+
+================================================================
+AKT III — OPPLØSNINGEN (scene 9–10)
+================================================================
+
+EXT. SKOG VED DOVRE — DAGGRY
+
+NORA og ANDREAS løper. Helikopterlys fra over. Granater eksploderer i avstanden.
+
+NORA
+Vi må stoppe dem!
+
+ANDREAS
+Jeg vet hvor han vil!
+
+────────────────────────────────────────────────────────────────
+
+INT. TOBIAS HYTTE — DAG
+
+TOBIAS (75, Noras far, livslang-troll-jeger som forsvant for 20 år siden) ved peisen.
+
+NORA
+Pappa…
+
+TOBIAS
+Du fant meg.
+
+NORA
+Hvorfor forlot du oss?
+
+TOBIAS
+Fordi du måtte tro at det ikke eksisterte. Slik kunne du leve som et normalt menneske.
+
+NORA
+Det går ikke. Ikke nå.
+
+TOBIAS
+Da er det din tur, min datter.
+
+FADE OUT.
+
+THE END.
+`;
     await client.query(
       `INSERT INTO casting_manuscripts
          (id, project_id, title, format, content, version, status, metadata, created_at, updated_at)
@@ -269,31 +436,85 @@ export async function seedTrollDemo(
         manuscriptId,
         TROLL_PROJECT_ID,
         `${projectName} — Manuskript v1`,
-        `# ${projectName}\n\nNorsk eventyrfilm. Skrevet av Espen Aukan og Roar Uthaug.\n\nFINAL DRAFT — 2025-11-01`,
-        JSON.stringify({ author: 'Espen Aukan & Roar Uthaug', draftNumber: 7 }),
+        manuscriptContent,
+        JSON.stringify({
+          author: 'Espen Aukan & Roar Uthaug',
+          draftNumber: 7,
+          actCount: 3,
+          totalScenes: 10,
+          genre: 'eventyr/thriller',
+          logline: 'En paleontolog oppdager at de norske trolleventyrene var sanne — og må stoppe staten fra å drepe en utdøende art.',
+        }),
       ],
     );
 
     // ── 9. casting_scenes ─────────────────────────────────────────────
+    // Hver scene har nå en utfyllende `description` som forteller hva som
+    // skjer i scenen — viktig for Story Writer / Story Logic der breakdown-
+    // og continuity-arbeidet skjer.
     const scenes = [
-      { id: 'scene-1', num: 1, title: 'Tunnelen — Eksplosjonen', setting: 'Lærdalstunnelen', tod: 'NIGHT', int_ext: 'INT', characters: ['role-arbeider1', 'role-arbeider2'] },
-      { id: 'scene-2', num: 2, title: 'Tunnel-kollapsen', setting: 'Lærdalstunnelen', tod: 'NIGHT', int_ext: 'INT', characters: ['role-arbeider1', 'role-arbeider2'] },
-      { id: 'scene-3', num: 3, title: 'Nora introduseres', setting: 'Naturhistorisk museum', tod: 'DAY', int_ext: 'INT', characters: ['role-nora'] },
-      { id: 'scene-4', num: 4, title: 'Krise-møtet', setting: 'Statsministerens kontor', tod: 'DAY', int_ext: 'INT', characters: ['role-nora', 'role-andreas', 'role-general'] },
-      { id: 'scene-5', num: 5, title: 'Til Dovrefjell', setting: 'Dovre — vei', tod: 'DUSK', int_ext: 'EXT', characters: ['role-nora', 'role-andreas'] },
-      { id: 'scene-6', num: 6, title: 'Bondens fortelling', setting: 'Østerdalen gård', tod: 'DAY', int_ext: 'EXT', characters: ['role-bonde'] },
-      { id: 'scene-7', num: 7, title: 'Militær respons', setting: 'Statsministerens kontor', tod: 'NIGHT', int_ext: 'INT', characters: ['role-statsminister', 'role-general', 'role-nora'] },
-      { id: 'scene-8', num: 8, title: 'Trollet på vandring', setting: 'Dovrefjell — natt', tod: 'NIGHT', int_ext: 'EXT', characters: [] },
-      { id: 'scene-9', num: 9, title: 'Nora og Andreas — forfølgelse', setting: 'Skog ved Dovre', tod: 'DAWN', int_ext: 'EXT', characters: ['role-nora', 'role-andreas'] },
-      { id: 'scene-10', num: 10, title: 'Fars hemmelighet', setting: 'Tobias hytte', tod: 'DAY', int_ext: 'INT', characters: ['role-nora', 'role-andreas', 'role-tobias'] },
+      { id: 'scene-1', num: 1, title: 'Tunnelen — Eksplosjonen', setting: 'Lærdalstunnelen', tod: 'NIGHT', int_ext: 'INT',
+        description: 'Arbeider 1 og Arbeider 2 borer i tunnelen. Boret treffer noe annet enn fjell. Det de avdekker er ikke en geologisk anomali — det er et øye.',
+        characters: ['role-arbeider1', 'role-arbeider2'] },
+      { id: 'scene-2', num: 2, title: 'Tunnel-kollapsen', setting: 'Lærdalstunnelen', tod: 'NIGHT', int_ext: 'INT',
+        description: 'Etter trolleten våkner og tunnelen kollapser. Arbeider 1 unnslipper så vidt. Vi får et glimt av kreaturet før alt blir mørkt.',
+        characters: ['role-arbeider1', 'role-arbeider2'] },
+      { id: 'scene-3', num: 3, title: 'Nora introduseres', setting: 'Naturhistorisk museum', tod: 'DAY', int_ext: 'INT',
+        description: 'Nora Tidemann studerer en fossil-skanning. Hun blir kontaktet av regjeringen — Statsråden trenger henne på saken.',
+        characters: ['role-nora'] },
+      { id: 'scene-4', num: 4, title: 'Krise-møtet', setting: 'Statsministerens kontor', tod: 'DAY', int_ext: 'INT',
+        description: 'Nora gjenforenes med eksen Andreas. Sammen med general Elvenes ser de tunnel-opptakene. Nora konkluderer det utenkelige: det er et troll. Tre-akts-struktur sceneskift: setting up the world.',
+        characters: ['role-nora', 'role-andreas', 'role-general'] },
+      { id: 'scene-5', num: 5, title: 'Til Dovrefjell', setting: 'Dovre — vei', tod: 'DUSK', int_ext: 'EXT',
+        description: 'Nora og Andreas kjører mot fjellet. Personlig fortid blandes med oppdraget. Snøen begynner å falle.',
+        characters: ['role-nora', 'role-andreas'] },
+      { id: 'scene-6', num: 6, title: 'Bondens fortelling', setting: 'Østerdalen gård', tod: 'DAY', int_ext: 'EXT',
+        description: 'Den gamle bonden viser dem et 1929-bilde av en trollformet skygge. Han forteller at folk har holdt det skjult i generasjoner — det skader ingen så lenge man holder seg fra dets stier.',
+        characters: ['role-bonde'] },
+      { id: 'scene-7', num: 7, title: 'Militær respons', setting: 'Statsministerens kontor', tod: 'NIGHT', int_ext: 'INT',
+        description: 'Statsministeren gir grønt lys for militær aksjon. Nora ber dem vente. Generalen er imot. Spenningen topper seg.',
+        characters: ['role-statsminister', 'role-general', 'role-nora'] },
+      { id: 'scene-8', num: 8, title: 'Trollet på vandring', setting: 'Dovrefjell — natt', tod: 'NIGHT', int_ext: 'EXT',
+        description: 'Vi ser trollet selv — 40 meter høyt, sørgmodig, vandrer over en åskam. Ingen dialog. Score-driven scene.',
+        characters: [] },
+      { id: 'scene-9', num: 9, title: 'Nora og Andreas — forfølgelse', setting: 'Skog ved Dovre', tod: 'DAWN', int_ext: 'EXT',
+        description: 'Nora og Andreas løper for å komme før militæret. Drone-skudd over skog, granater i bakgrunnen. Andreas vet hvor trollet vil — opp mot Tobias gamle hytte.',
+        characters: ['role-nora', 'role-andreas'] },
+      { id: 'scene-10', num: 10, title: 'Fars hemmelighet', setting: 'Tobias hytte', tod: 'DAY', int_ext: 'INT',
+        description: 'Nora gjenforenes med faren Tobias som forsvant for 20 år siden. Han forteller at han forlot dem for å beskytte henne — og at det er hennes tur nå.',
+        characters: ['role-nora', 'role-andreas', 'role-tobias'] },
     ];
     for (const s of scenes) {
       await client.query(
         `INSERT INTO casting_scenes
-           (id, project_id, manuscript_id, scene_number, title, setting, time_of_day, int_ext, characters, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW(), NOW())`,
-        [eid(s.id), TROLL_PROJECT_ID, manuscriptId, s.num, s.title, s.setting, s.tod, s.int_ext,
+           (id, project_id, manuscript_id, scene_number, title, description, setting, time_of_day, int_ext, characters, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, NOW(), NOW())`,
+        [eid(s.id), TROLL_PROJECT_ID, manuscriptId, s.num, s.title, s.description, s.setting, s.tod, s.int_ext,
          JSON.stringify(s.characters.map(eid))],
+      );
+    }
+
+    // ── 9b. casting_acts (3-akts-struktur) ────────────────────────────
+    // Migrasjon 183 opprettet casting_acts-tabellen. Seed klassisk
+    // 3-akts-struktur så Story Logic / Story Writer kan vise akt-
+    // organisering for scenene over.
+    const acts = [
+      { id: 'act-1', num: 1, title: 'Akt I — Oppdagelsen',
+        description: 'Setup. Verden etableres. Trollet avdekkes i Lærdalstunnelen og Nora trekkes inn i mysteriet.',
+        startScene: 1, endScene: 4 },
+      { id: 'act-2', num: 2, title: 'Akt II — Konfrontasjonen',
+        description: 'Konflikt eskalerer. Nora og Andreas reiser til Dovrefjell. Statens militære respons truer en utdøende skapning.',
+        startScene: 5, endScene: 8 },
+      { id: 'act-3', num: 3, title: 'Akt III — Oppløsningen',
+        description: 'Klimaks og emosjonell oppløsning. Nora gjenforenes med faren Tobias og forstår sin egen rolle i historien.',
+        startScene: 9, endScene: 10 },
+    ];
+    for (const a of acts) {
+      await client.query(
+        `INSERT INTO casting_acts
+           (id, project_id, manuscript_id, act_number, title, description, start_scene_number, end_scene_number, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+        [eid(a.id), TROLL_PROJECT_ID, manuscriptId, a.num, a.title, a.description, a.startScene, a.endScene],
       );
     }
 

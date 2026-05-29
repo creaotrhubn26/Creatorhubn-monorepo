@@ -2350,24 +2350,29 @@ const StoryboardView: React.FC<{
         ))}
       </Box>
 
-      {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift. */}
-      {storyboardFrames.length > 1 && (
+      {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift.
+          Bruker `frames`/`activeFrameIndex`/`onSelectFrame` prop-navnene i
+          StoryboardView (parent StoryboardIntegrationView's variabler
+          `storyboardFrames`/`activeFrameIdx`/`handleFrameSelect` finnes ikke
+          her i sub-komponenten — refactor-tabbing forårsaket ReferenceError
+          som krasjet hele Storyboard-dialogen). */}
+      {frames.length > 1 && (
         <Box sx={{ mt: 2, display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }} data-testid="continuity-mount">
           <ContinuityStrip
-            frames={storyboardFrames.map((f) => ({
+            frames={frames.map((f) => ({
               id: f.id,
               imageUrl: f.imageUrl,
               thumbnailUrl: f.thumbnailUrl,
               description: f.description,
               shotNumber: f.shotNumber,
             }))}
-            activeIndex={activeFrameIdx}
-            onSelectFrame={handleFrameSelect}
+            activeIndex={activeFrameIndex}
+            onSelectFrame={onSelectFrame}
             compact
           />
           <StyleConsistencyIndicator
-            frames={storyboardFrames}
-            activeFrameId={storyboardFrames[activeFrameIdx]?.id}
+            frames={frames}
+            activeFrameId={frames[activeFrameIndex]?.id}
             targetPalette={moodBoardPalette.palette.length > 0 ? moodBoardPalette.palette : undefined}
             compact
           />
@@ -2377,10 +2382,10 @@ const StoryboardView: React.FC<{
       {/* Sprint A.7: Animatic-avspilling — spiller frame-sekvensen som
           enkel video for å teste pacing. Caption (manus-linjer) vises
           under stagen så artisten ser om dialog matcher visuelt tempo. */}
-      {storyboardFrames.length > 0 && (
+      {frames.length > 0 && (
         <Box sx={{ mt: 2 }} data-testid="animatic-mount">
           <AnimaticPlayer
-            frames={storyboardFrames.map((f) => {
+            frames={frames.map((f) => {
               let caption: string | undefined;
               if (
                 Array.isArray(f.scriptLineRange) &&

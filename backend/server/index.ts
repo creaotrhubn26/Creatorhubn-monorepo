@@ -18100,11 +18100,15 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
       // /api/casting/manuscripts?projectId=<id> tom liste selv om DB-en
       // hadde 1 manuskript + 10 scener seedet — så Story Writer / Story
       // Logic / Scener / Role Room Studio viste ingen data.
+      // casting_acts ble lagt til i migrasjon 183. SQL-rader leses og
+      // mirres til compat-store under `casting:acts:<manuscript-id>` slik
+      // at listActs (som leser fra compat-store, ikke SQL direkte) finner
+      // 3-akts-strukturen seedet av troll-demo-seed-service.
       const [manuscriptsRes, scenesRes, dialogueRes, actsRes] = await Promise.all([
         pool.query("SELECT * FROM casting_manuscripts WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
         pool.query("SELECT * FROM casting_scenes WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
         pool.query("SELECT * FROM casting_dialogue WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
-        pool.query("SELECT * FROM casting_acts WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query("SELECT * FROM casting_acts WHERE project_id = $1 ORDER BY act_number", [projectId]).catch(() => ({ rows: [] as any[] })),
       ]);
       // Mirror manuscripts. Hver manuscript får sin egen compat-store-key
       // `casting:manuscript:<id>` siden listManuscripts() leser den prefix-en.
