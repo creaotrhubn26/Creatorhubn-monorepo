@@ -38,6 +38,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
+import EventIcon from "@mui/icons-material/Event";
 import SaveIcon from "@mui/icons-material/Save";
 import FolderIcon from "@mui/icons-material/Folder";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
@@ -91,6 +92,7 @@ interface Props {
   onOpenMusicVideoAgent: () => void;
   onOpenCorporateAgent: () => void;
   onOpenScreenRecordingAgent: () => void;
+  onOpenEventAgent: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -167,6 +169,7 @@ export function HomeView({
   onOpenMusicVideoAgent,
   onOpenCorporateAgent,
   onOpenScreenRecordingAgent,
+  onOpenEventAgent,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -440,6 +443,26 @@ export function HomeView({
               click-zoom og voice-aware editing
             </div>
             <div className="home-action-tag">Screen Recording Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenEventAgent}
+          disabled={!signedIn}
+          title={signedIn ? "Konferanse, keynote, panel og highlight-reel med Event Director-AI som kjenner broadcast-konvensjoner" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef4f6f, #f0a500)" }}>
+            <EventIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Event Agent</div>
+            <div className="home-action-desc">
+              Konferanse, keynote, panel, live-show og highlight-reel med
+              broadcast-konvensjoner
+            </div>
+            <div className="home-action-tag">Event Director</div>
           </div>
           <IconArrowRight />
         </button>
