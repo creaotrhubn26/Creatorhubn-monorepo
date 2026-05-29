@@ -1903,6 +1903,25 @@
       "requiresTimeline": false
     },
     {
+      "id": "apply_voice_isolation_to_speech",
+      "name": "Apply Voice Isolation to Speech (Studio)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/apply_voice_isolation_to_speech.py",
+      "description": "Resolve Studio AI-feature: fjerner bakgrunns-støy fra speech-clips automatisk. Studio-only — exit-er tidlig på Free. Tries clip-level FX først, fallback til track-level eller prominent markører hvis API-pathen ikke er tilgjengelig.",
+      "requiredInputs": [
+        { "key": "perChapter", "label": "Audio-direction per chapter", "type": "json", "required": false },
+        { "key": "pickChapters", "label": "Picks med chapter-mapping", "type": "json", "required": true },
+        { "key": "speechChapters", "label": "Chapter-navn som er speech-tunge", "type": "json", "required": false },
+        { "key": "isStudio", "label": "Resolve Studio detected", "type": "boolean", "required": true }
+      ],
+      "resolvePageDependency": "Fairlight",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "setup_fairlight_audio",
       "name": "Setup Fairlight Audio",
       "category": "audio",

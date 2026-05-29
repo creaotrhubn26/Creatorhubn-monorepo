@@ -30,6 +30,7 @@ export type AutoPilotStepId =
   | "build_highlight"
   | "audio_polish"
   | "fairlight_setup"
+  | "voice_isolation"
   | "qc_pass";
 
 export interface AutoPilotStep {
@@ -51,6 +52,7 @@ export const AUTO_PILOT_STEPS: AutoPilotStep[] = [
   { id: "build_highlight",           label: "Bygger highlight med ffmpeg",      estSec: 180 },
   { id: "audio_polish",              label: "LUFS + ducking + de-essing",       estSec: 45 },
   { id: "fairlight_setup",           label: "Fairlight markører + clip-routing",   estSec: 15 },
+  { id: "voice_isolation",           label: "Voice Isolation på speeches (Studio)", estSec: 25 },
   { id: "qc_pass",                   label: "Final QC + sync-sjekk",            estSec: 15 },
 ];
 
@@ -457,6 +459,9 @@ async function runStep(
       return;
     case "fairlight_setup":
       await stepFairlightSetup(inputs, ctx);
+      return;
+    case "voice_isolation":
+      await stepVoiceIsolation(inputs, ctx);
       return;
     case "qc_pass":
       await stepQcPass(inputs, ctx);
@@ -908,6 +913,68 @@ async function stepFairlightSetup(inputs: AutoPilotInputs, ctx: StepCtx): Promis
   } catch (err) {
     ctx.log({ step: "fairlight_setup", level: "warn",
       message: `Fairlight-setup hoppet over: ${(err as Error).message}` });
+  }
+}
+
+async function stepVoiceIsolation(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.resolveConnected) {
+    ctx.log({ step: "voice_isolation", level: "info",
+      message: "Resolve ikke åpen — hopper over Voice Isolation" });
+    return;
+  }
+  if (!inputs.studioConnected) {
+    ctx.log({ step: "voice_isolation", level: "info",
+      message: "Krever Resolve Studio — Voice Isolation tilgjengelig kun i Studio (~$295 engang)" });
+    return;
+  }
+  if (!inputs.picks || inputs.picks.length === 0) {
+    ctx.log({ step: "voice_isolation", level: "warn",
+      message: "Hopper over — ingen picks tilgjengelig" });
+    return;
+  }
+
+  // Sjekk om vi har speech-chapters i highlighten i det hele tatt
+  const speechChapters = ["vows", "speeches", "nikkah_dua", "ceremony"];
+  const hasSpeech = inputs.picks.some(p =>
+    speechChapters.includes((p.chapter ?? "").toLowerCase())
+  );
+  if (!hasSpeech) {
+    ctx.log({ step: "voice_isolation", level: "info",
+      message: "Ingen speech-picks i highlighten — Voice Isolation ikke nødvendig" });
+    return;
+  }
+
+  const pickChapters = inputs.picks.map(p => ({
+    pickIndex: p.index,
+    chapter: p.chapter,
+    startSec: p.startSec,
+    endSec: p.endSec,
+  }));
+
+  const perChapter = ctx.sharedState.audioDirectionPerChapter ?? {};
+
+  ctx.log({ step: "voice_isolation", level: "claude",
+    message: "⭐ Studio: anvender AI Voice Isolation på speech-clips — fjerner bakgrunns-støy automatisk" });
+
+  try {
+    const summary = await executeScript("apply_voice_isolation_to_speech", {
+      perChapter,
+      pickChapters,
+      speechChapters,
+      isStudio: true,
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      applied?: number; clipLevel?: number; trackLevel?: number;
+      fallbackMarkers?: number; speechPicksFound?: number; summary?: string;
+    } | undefined;
+    if (v) {
+      ctx.log({ step: "voice_isolation", level: "success",
+        message: v.summary ?? `Voice Isolation anvendt på ${v.applied ?? 0} speech-clips` });
+    }
+  } catch (err) {
+    ctx.log({ step: "voice_isolation", level: "warn",
+      message: `Voice Isolation hoppet over: ${(err as Error).message}` });
   }
 }
 
