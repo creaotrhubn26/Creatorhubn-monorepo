@@ -112,6 +112,7 @@ import {
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
   Inbox as InboxIcon,
+  Brush as BrushIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -215,6 +216,7 @@ const EquipmentManagementPanel = lazyWithRetry(() => import('./EquipmentManageme
 const ProductionDayView = lazyWithRetry(() => import('./ProductionDayView').then(m => ({ default: m.ProductionDayView })));
 const CastingShotListPanel = lazyWithRetry(() => import('./CastingShotListPanel').then(m => ({ default: m.CastingShotListPanel })));
 const ManuscriptPanel = lazyWithRetry(() => import('./ManuscriptPanel').then(m => ({ default: m.ManuscriptPanel })));
+const StoryboardTabView = lazyWithRetry(() => import('./StoryboardTabView').then(m => ({ default: m.StoryboardTabView })));
 const StoryLogicPanel = lazyWithRetry(() => import('./screenplay/StoryLogicPanel').then(m => ({ default: m.StoryLogicPanel })));
 const RoleManagementPanel = lazyWithRetry(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
 const CandidateManagementPanel = lazyWithRetry(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
@@ -421,6 +423,7 @@ const TAB_IDS = [
   'tabpanel-producer-tidslinje',
   'tabpanel-producer-reviews',
   'tabpanel-producer-eksport',
+  'tabpanel-storyboard',
 ];
 const STORY_ARC_TAB_INDEX = 1;
 const ROLES_TAB_INDEX = 2;
@@ -439,6 +442,11 @@ const PRODUCER_ECONOMY_TAB_INDEX = 12;
 const PRODUCER_TIMELINE_TAB_INDEX = 13;
 const PRODUCER_REVIEWS_TAB_INDEX = 14;
 const PRODUCER_EXPORT_TAB_INDEX = 15;
+// Dedikert Storyboard-tab plassert etter Role Room Studio. Visuell
+// rekkefølge styres i tabValues-arrayen lenger nede; selve tab-VALUE
+// kommer etter producer-tabs så vi slipper å renummerere hele
+// systemet.
+const STORYBOARD_TAB_INDEX = 16;
 
 // Pre-prod-tabs som grupperes visuelt i sub-tab-strip-en. Ikke en endring
 // av faktisk tab-indeks-systemet — bare en kontekst-strip når en av disse
@@ -459,7 +467,8 @@ const COMMAND_PALETTE_TABS: ReadonlyArray<{
   keywords: string[];
 }> = [
   { tabIndex: 0, label: 'Oversikt', keywords: ['oversikt', 'dashboard', 'home'] },
-  { tabIndex: STORY_ARC_TAB_INDEX, label: 'Story Arc Studio', keywords: ['story', 'manus', 'storyboard', 'planner'] },
+  { tabIndex: STORY_ARC_TAB_INDEX, label: 'Story Arc Studio', keywords: ['story', 'manus', 'planner'] },
+  { tabIndex: STORYBOARD_TAB_INDEX, label: 'Storyboard', keywords: ['storyboard', 'tegne', 'frame', 'shot', 'sketch'] },
   { tabIndex: ROLES_TAB_INDEX, label: 'Roller', keywords: ['roller', 'roles'] },
   { tabIndex: CANDIDATES_TAB_INDEX, label: 'Kandidater', keywords: ['kandidater', 'candidates', 'medvirkende'] },
   { tabIndex: AUDITIONS_TAB_INDEX, label: 'Auditions', keywords: ['audition', 'casting-call'] },
@@ -1916,6 +1925,8 @@ type RoleRoomProjectWorkspaceState = {
     switch (tabIndex) {
       case STORY_ARC_TAB_INDEX:
         return isContentProducerMode ? `Planner · ${activePlannerSurfaceLabel}` : 'Role Room Studio';
+      case STORYBOARD_TAB_INDEX:
+        return 'Storyboard';
       case ROLES_TAB_INDEX:
         return branding.tokens.labels.roles;
       case CANDIDATES_TAB_INDEX:
@@ -3878,6 +3889,9 @@ type RoleRoomProjectWorkspaceState = {
   const tabConfig = useMemo(() => [
     { color: professionConfig?.color || '#8b5cf6', icon: _DashboardIcon },
     { color: '#ec4899', icon: StoryArcIcon },
+    // Storyboard-tab — egen direkte-snarvei til FrameDrawingEditor.
+    // Plassert visuelt rett etter Role Room Studio.
+    { color: '#f472b6', icon: BrushIcon },
     { color: '#f48fb1', icon: TheaterComedyIcon },
     { color: professionConfig?.color || '#10b981', icon: RecentActorsIcon },
     { color: '#ffb800', icon: _InterpreterModeIcon },
@@ -3926,6 +3940,7 @@ type RoleRoomProjectWorkspaceState = {
     return [
       0,
       STORY_ARC_TAB_INDEX,
+      STORYBOARD_TAB_INDEX,
       ROLES_TAB_INDEX,
       CANDIDATES_TAB_INDEX,
       AUDITIONS_TAB_INDEX,
@@ -9304,6 +9319,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabValues = [
               0,
               STORY_ARC_TAB_INDEX,
+              STORYBOARD_TAB_INDEX,
               ROLES_TAB_INDEX,
               CANDIDATES_TAB_INDEX,
               AUDITIONS_TAB_INDEX,
@@ -9325,7 +9341,8 @@ type RoleRoomProjectWorkspaceState = {
               return null;
             }
             const isSelected = displayedActiveTab === tabValue;
-            const isPreProductionTab = tabValue === STORY_ARC_TAB_INDEX;
+            const isPreProductionTab =
+              tabValue === STORY_ARC_TAB_INDEX || tabValue === STORYBOARD_TAB_INDEX;
             const isCastingCoreTab = tabValue >= ROLES_TAB_INDEX && tabValue <= SELECTION_TAB_INDEX;
             const isProductionPlanCoreTab = tabValue >= LOCATIONS_TAB_INDEX && tabValue <= CALENDAR_TAB_INDEX;
             const isResourcesCoreTab = tabValue >= TEAM_TAB_INDEX && tabValue <= EQUIPMENT_TAB_INDEX;
@@ -9356,6 +9373,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabLabels = [
               branding.tokens.labels.dashboard,
               isContentProducerMode ? 'Planner' : 'Role Room Studio',
+              'Storyboard',
               branding.tokens.labels.roles,
               isContentProducerMode ? 'Medvirkende' : branding.tokens.labels.candidates,
               branding.tokens.labels.auditions,
@@ -9374,6 +9392,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabIds = [
               'tab-oversikt',
               'tab-story-arc-studio',
+              'tab-storyboard',
               'tab-roller',
               'tab-kandidater',
               'tab-auditions',
@@ -9392,6 +9411,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabPanelIds = [
               'tabpanel-oversikt',
               'tabpanel-story-arc-studio',
+              'tabpanel-storyboard',
               'tabpanel-roller',
               'tabpanel-kandidater',
               'tabpanel-auditions',
@@ -12779,6 +12799,21 @@ type RoleRoomProjectWorkspaceState = {
               </Box>
             </Box>
           )}
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={STORYBOARD_TAB_INDEX}>
+          <ErrorBoundary>
+            <Suspense fallback={<PanelSkeleton variant="panel" count={3} />}>
+              <StoryboardTabView
+                key={currentProject?.id ?? 'no-project'}
+                currentProject={currentProject ?? null}
+                projectCinemaFormat={currentProject?.cinemaFormat}
+                onNavigateToStoryArc={() => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                }}
+              />
+            </Suspense>
+          </ErrorBoundary>
         </TabPanel>
 
         <TabPanel value={activeTab} index={PRODUCER_MEDIA_TAB_INDEX}>
