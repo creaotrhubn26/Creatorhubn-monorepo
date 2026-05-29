@@ -3480,17 +3480,20 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   // Inspector-state for Lighting-fanen + Camera Height. Tidligere var disse
   // hardkodede tall i UI (Camera Height value=62, Intensity 78, 3.200K 32) —
   // de gjorde ingenting når man dro i slidene. Nå er de stateful + persistes
-  // i drawingDocument.metadata ved save, så artisten kan låse en lyssetting
-  // til et frame og hente den tilbake.
-  const [cameraHeight, setCameraHeight] = useState<number>(62);
-  const [keyLightIntensity, setKeyLightIntensity] = useState<number>(78);
-  // keyLightTempPct er 0-100. Mappes til 2000K-6500K for visning ved
-  // hjelp av (2000 + (6500-2000) * pct/100). 32% → ~3.440K.
-  const [keyLightTempPct, setKeyLightTempPct] = useState<number>(32);
-  const [keyLightSoftness, setKeyLightSoftness] = useState<'hard' | 'soft'>('soft');
-  const [castsShadows, setCastsShadows] = useState<boolean>(true);
-  const [ambientOcclusion, setAmbientOcclusion] = useState<boolean>(true);
-  const [approvalStatus, setApprovalStatus] = useState<'draft' | 'approved' | 'rejected'>('draft');
+  // i drawingDocument.metadata.lighting/approvalStatus så artisten kan låse
+  // en lyssetting til et frame og hente den tilbake ved neste åpning.
+  // useState bruker lazy-init for å lese metadata KUN på første render —
+  // senere endringer i initialDocument forplanter seg via hydrate-effekten.
+  const initialLighting = initialDocument.metadata.lighting;
+  const [cameraHeight, setCameraHeight] = useState<number>(() => initialLighting?.cameraHeight ?? 62);
+  const [keyLightIntensity, setKeyLightIntensity] = useState<number>(() => initialLighting?.keyLightIntensity ?? 78);
+  // keyLightTempPct er 0-100. Mappes til 2000K-6500K for visning.
+  // 32% → ~3.440K (default).
+  const [keyLightTempPct, setKeyLightTempPct] = useState<number>(() => initialLighting?.keyLightTempPct ?? 32);
+  const [keyLightSoftness, setKeyLightSoftness] = useState<'hard' | 'soft'>(() => initialLighting?.keyLightSoftness ?? 'soft');
+  const [castsShadows, setCastsShadows] = useState<boolean>(() => initialLighting?.castsShadows ?? true);
+  const [ambientOcclusion, setAmbientOcclusion] = useState<boolean>(() => initialLighting?.ambientOcclusion ?? true);
+  const [approvalStatus, setApprovalStatus] = useState<'draft' | 'approved' | 'rejected'>(() => initialDocument.metadata.approvalStatus ?? 'draft');
   const [gridEnabled, setGridEnabled] = useState(workflowLevel === 'blocking' || workflowLevel === 'shot');
   const [boardPolishMode, setBoardPolishMode] = useState<StoryboardDocumentBoardPolishMode>(
     initialBoardPolishState?.mode ?? STUDIO_BOARD_POLISH_DEFAULTS.mode
@@ -3715,6 +3718,18 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setBoardPolishVignette(initialBoardPolishState?.vignette ?? STUDIO_BOARD_POLISH_DEFAULTS.vignette);
     setBoardPolishEffectLayerStates(createBoardPolishEffectLayerStates(initialBoardPolishState?.effectLayers ?? STUDIO_BOARD_POLISH_DEFAULTS.effectLayers));
     setBoardPolishEffectRegions(createBoardPolishEffectRegions(initialBoardPolishState?.effectRegions ?? STUDIO_BOARD_POLISH_DEFAULTS.effectRegions));
+    // Hydrer Inspector Lighting + Approval-state fra dokumentet (samme pattern
+    // som boardPolish ovenfor). Brukes når et eksisterende frame åpnes —
+    // artisten ser tilbake den lyssettingen og approval-statusen som ble
+    // lagret sist.
+    const hydratedLighting = initialDocument.metadata.lighting;
+    setCameraHeight(hydratedLighting?.cameraHeight ?? 62);
+    setKeyLightIntensity(hydratedLighting?.keyLightIntensity ?? 78);
+    setKeyLightTempPct(hydratedLighting?.keyLightTempPct ?? 32);
+    setKeyLightSoftness(hydratedLighting?.keyLightSoftness ?? 'soft');
+    setCastsShadows(hydratedLighting?.castsShadows ?? true);
+    setAmbientOcclusion(hydratedLighting?.ambientOcclusion ?? true);
+    setApprovalStatus(initialDocument.metadata.approvalStatus ?? 'draft');
     setSelectedCinematicSceneKitId(undefined);
     setTransportPlaying(false);
     setTimeLapsePlaying(false);
@@ -5615,6 +5630,41 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     },
     []
   );
+
+  // Synk Inspector-state (Lighting + Approval) inn i drawingDocument.metadata
+  // når de endres. Markerer dokumentet som unsaved så neste autosave/save
+  // persisterer verdiene. Sammenligner mot eksisterende metadata for å
+  // unngå infinite loops når initialDocument ankommer disse default-verdiene.
+  useEffect(() => {
+    const currentLighting = drawingDocumentRef.current.metadata.lighting;
+    const nextLighting = {
+      cameraHeight,
+      keyLightIntensity,
+      keyLightTempPct,
+      keyLightSoftness,
+      castsShadows,
+      ambientOcclusion,
+    };
+    const currentApproval = drawingDocumentRef.current.metadata.approvalStatus ?? 'draft';
+    const lightingChanged = !currentLighting
+      || currentLighting.cameraHeight !== nextLighting.cameraHeight
+      || currentLighting.keyLightIntensity !== nextLighting.keyLightIntensity
+      || currentLighting.keyLightTempPct !== nextLighting.keyLightTempPct
+      || currentLighting.keyLightSoftness !== nextLighting.keyLightSoftness
+      || currentLighting.castsShadows !== nextLighting.castsShadows
+      || currentLighting.ambientOcclusion !== nextLighting.ambientOcclusion;
+    const approvalChanged = currentApproval !== approvalStatus;
+    if (!lightingChanged && !approvalChanged) return;
+    commitDocumentUpdate((prev) => ({
+      ...prev,
+      metadata: {
+        ...prev.metadata,
+        lighting: nextLighting,
+        approvalStatus,
+      },
+      updatedAt: new Date().toISOString(),
+    }));
+  }, [cameraHeight, keyLightIntensity, keyLightTempPct, keyLightSoftness, castsShadows, ambientOcclusion, approvalStatus, commitDocumentUpdate]);
 
   useEffect(() => {
     const persistedBoardPolishSignature = JSON.stringify(

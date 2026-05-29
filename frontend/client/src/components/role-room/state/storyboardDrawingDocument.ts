@@ -514,6 +514,21 @@ export interface StoryboardDrawingDocument {
     shapeScaffolds?: StoryboardDocumentShapeScaffold[];
     shapeScaffoldAssemblies?: StoryboardDocumentShapeScaffoldAssembly[];
     shapeScaffoldLibrary?: StoryboardDocumentShapeScaffoldLibraryEntry[];
+    // Inspector-state (Lighting + Camera + Approval). Persisteres så
+    // artisten kan låse en lyssetting til et frame og hente den tilbake
+    // ved neste åpning. Hver felt er valgfri og defaulter til hardkodede
+    // verdier (cameraHeight 62, keyLightIntensity 78, keyLightTempPct 32,
+    // keyLightSoftness 'soft', castsShadows true, ambientOcclusion true,
+    // approvalStatus 'draft') når feltet mangler.
+    lighting?: {
+      cameraHeight?: number;
+      keyLightIntensity?: number;
+      keyLightTempPct?: number;
+      keyLightSoftness?: 'hard' | 'soft';
+      castsShadows?: boolean;
+      ambientOcclusion?: boolean;
+    };
+    approvalStatus?: 'draft' | 'approved' | 'rejected';
   };
 }
 
