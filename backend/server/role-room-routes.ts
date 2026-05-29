@@ -8193,19 +8193,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return url.toString();
   }
 
-  function buildRoleRoomClientInviteUrl(req: Request, options: {
+  function buildRoleRoomClientInviteUrl(_req: Request, options: {
     inviteToken: string;
     browserOrigin?: string | null;
   }): string {
+    // Klientportalen er host'et eksklusivt på theroleroom.com — IKKE
+    // creatorhubn.com eller andre admin-room-domener. Hvis Daniel åpnet
+    // invite-flyten via creatorhubn.com (cross-domain admin), sendte
+    // frontend tidligere browserOrigin='https://creatorhubn.com' som ble
+    // brukt direkte i magic-linken og dro klienten til feil domene.
+    // Nå ignoreres browserOrigin + request-origin helt for klient-invite-
+    // URL-en. Kun env-konfigurert origin overstyrer default, og det skal
+    // bare brukes ved spesialhosting (f.eks. partner-domene).
     const configuredOrigin = sanitizeRoleRoomBrowserOrigin(
       process.env.ROLE_ROOM_CLIENT_PORTAL_ORIGIN
       ?? process.env.ROLE_ROOM_PUBLIC_ORIGIN
       ?? process.env.ROLE_ROOM_FRONTEND_ORIGIN,
     );
-    const origin = sanitizeRoleRoomBrowserOrigin(options.browserOrigin)
-      ?? configuredOrigin
-      ?? getRoleRoomRequestOrigin(req)
-      ?? DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN;
+    void options.browserOrigin;
+    const origin = configuredOrigin ?? DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN;
     return new URL(`/api/role-room/client/invites/${encodeURIComponent(options.inviteToken)}/activate`, origin).toString();
   }
 
