@@ -8360,13 +8360,34 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           : [],
       };
     } catch (error) {
-      console.error('Role Room client invite email send error:', error);
+      // Returner detaljert reason så frontend-toast forteller Daniel
+      // hva som faktisk er galt i stedet for bare "send_failed".
+      // Vanlige Gmail-SMTP-feil:
+      //   EAUTH      — app-passord revoked eller feil format
+      //   ESOCKET    — Render kan ikke nå smtp.gmail.com (sjelden)
+      //   421/450    — rate-limit overskredet
+      //   535        — autentisering nektet (revoked / 2FA av)
+      const err = error as { code?: string; responseCode?: number; response?: string; message?: string };
+      console.error('Role Room client invite email send error:', {
+        code: err?.code,
+        responseCode: err?.responseCode,
+        response: err?.response,
+        message: err?.message,
+      });
+      const detailReason = err?.code === 'EAUTH' || err?.responseCode === 535
+        ? 'gmail_auth_failed'
+        : err?.responseCode === 421 || err?.responseCode === 450
+          ? 'gmail_rate_limited'
+          : err?.code === 'ESOCKET' || err?.code === 'ECONNECTION'
+            ? 'smtp_unreachable'
+            : 'send_failed';
       return {
         sent: false,
-        reason: 'send_failed',
+        reason: detailReason,
         provider: 'smtp',
         messageId: null,
         accepted: [] as string[],
+        errorMessage: err?.message ?? null,
       };
     }
   }
