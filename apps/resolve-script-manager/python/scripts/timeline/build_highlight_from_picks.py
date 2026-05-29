@@ -94,12 +94,17 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
     if not source_video or not os.path.isfile(source_video):
         bridge.error(f"sourceVideo '{source_video}' not found on disk")
+        sys.exit(1)
 
-    # Apply Creative Editor state: trim-overrides + reorder + filter
+    # Apply Creative Editor state: trim-overrides + reorder + filter.
+    # Det er FORVENTET at filter/reorder endrer antall picks — det er hele
+    # vitsen med editoren. Logg endringen, men ikke abort.
     picks_before = len(picks)
     picks = _apply_editor_state(picks, params)
     if len(picks) != picks_before:
         bridge.log(f"Applied editor-state: {picks_before} → {len(picks)} picks (after filter+reorder)")
+    if not picks:
+        bridge.error("Editor-state filtrerte ut alle picks — ingenting å bygge")
         sys.exit(1)
     if not timeline_name:
         timeline_name = f"{os.path.splitext(os.path.basename(source_video))[0]} — highlight reviewed"

@@ -247,11 +247,13 @@ function safeQuery(s: string): string {
   return s.replace(/[^\w\s-]/g, "").trim().slice(0, 80);
 }
 
-const SONGS_DIR = "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/source_songs";
-function songWavPath(title?: string, artist?: string): string | undefined {
-  if (!title) return undefined;
+// Songs-dir derives fra Tauri's app_data_dir RUNTIME (ikke hardkodet —
+// må fungere på andre brukere enn utvikleren). Settes via useEffect i
+// komponenten på mount.
+function buildSongWavPath(songsDir: string | null, title?: string, artist?: string): string | undefined {
+  if (!title || !songsDir) return undefined;
   const q = safeQuery(`${title} ${artist ?? ""}`);
-  return `${SONGS_DIR}/${q}.wav`;
+  return `${songsDir}/${q}.wav`;
 }
 
 // ─────────────── Component ───────────────
@@ -268,6 +270,22 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [loadError, setLoadError] = useState<string | null>(null);
   const [projectTitle, setProjectTitle] = useState<string>("");
   const [editingTitle, setEditingTitle] = useState(false);
+  // Songs-dir: Tauri's app_data_dir + /source_songs. Lastet ved mount.
+  const [songsDir, setSongsDir] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { getAppDataDir } = await import("../api");
+        const base = await getAppDataDir();
+        if (!cancelled) setSongsDir(`${base.replace(/\/$/, "")}/source_songs`);
+      } catch {
+        // Fallback: ingen songs-dir → waveform + music-flow vil graceful-degradere
+        if (!cancelled) setSongsDir(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   // Preview-høyde i px, justeres via drag-handle. Persisterer per session.
   // Default 560 — gir Resolve-lignende viewer-prioritet uten å klemme klipp-strip.
@@ -465,7 +483,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   type CustomAudio = { id: string; path: string; name: string; startSec: number; volume: number };
   const [customAudios, setCustomAudios] = useState<CustomAudio[]>([]);
 
-  type TimelineMarker = { id: string; timeSec: number; label: string; color: string; comment: string };
+  // timeSec = source-video tid (for å kunne seek tilbake)
+  // pickIndex + offsetInPickSec = posisjon på highlight-timeline (overlever
+  // reorder/trim). Tidligere bug: kun timeSec ble lagret → markører kunne ikke
+  // konsistent plasseres på highlight-timelinen siden den har egne koordinater.
+  type TimelineMarker = {
+    id: string; timeSec: number; label: string; color: string; comment: string;
+    pickIndex?: number; offsetInPickSec?: number;
+  };
   const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
 
@@ -666,7 +691,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Trigger music-analysis on song-change
   useEffect(() => {
     if (!activeSong) { setMusicFlow(null); return; }
-    const wavPath = songWavPath(activeSong.title, activeSong.artist);
+    const wavPath = buildSongWavPath(songsDir, activeSong.title, activeSong.artist);
     if (!wavPath) { setMusicFlow(null); return; }
     let cancelled = false;
     setMusicFlowBusy(true);
@@ -890,10 +915,18 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const addMarkerAtPlayhead = useCallback((label?: string) => {
     if (!focusedPick || !videoRef.current) return;
     const absTime = videoRef.current.currentTime;
+    // Beregn også relativ posisjon innen current pick — slik at markøren
+    // overlever reorder/trim på highlight-timelinen.
+    const offsetInPickSec = Math.max(0, Math.min(
+      focusedPick.durationSec,
+      absTime - focusedPick.startSec,
+    ));
     const colors = ["#a030c0", "#4ad48a", "#f0a500", "#ef4f6f", "#6e3fc7"];
     const m: TimelineMarker = {
       id: `m-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
       timeSec: absTime,
+      pickIndex: focusedPick.index,
+      offsetInPickSec,
       label: label ?? `Marker ${markers.length + 1}`,
       color: colors[markers.length % colors.length],
       comment: "",
@@ -1532,7 +1565,12 @@ Du MÅ kalle apply_couple_wishes-tool med:
       const allChapters = new Set<string>();
       payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
       const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
+      // Send editorens in-memory state inkludert PICKS-arrayen direkte.
+      // Scriptene foretrekker payload over disk-cache hvis tilgjengelig
+      // (forhindrer at en eldre cached extraction overrider editorens state).
       const editorStateParams = {
+        picks: payload.picks,
+        sourceVideo: payload.sourceVideo,
         pickOverrides,
         pickOrder: activePickOrder ?? undefined,
         excludedChapters: excluded,
@@ -1581,6 +1619,8 @@ Du MÅ kalle apply_couple_wishes-tool med:
       // Default: render MP4 via assemble_highlight_with_music
       const outputPath = `~/Desktop/${safeTitle}${suffix}.mp4`;
       const summary = await executeScript("assemble_highlight_with_music", {
+        picks: payload.picks,
+        sourceVideo: payload.sourceVideo,
         videoPath: payload.sourceVideo,
         outputPath,
         musicStrategy: "main+climax",
@@ -2754,10 +2794,32 @@ ${ctxLines.join("\n")}`;
                   {formatTime(t)}
                 </div>
               ))}
-              {/* Timeline markers */}
+              {/* Timeline markers. Vi bruker pickIndex + offsetInPickSec til
+                  å plassere markøren riktig på highlight-timelinen — den
+                  overlever reorder/trim. Fallback til legacy m.timeSec-
+                  lookup for gamle markers uten pickIndex. */}
               {markers.map(m => {
-                const arcPt = storyArcPoints.find(p => p.startSec <= m.timeSec && p.endSec >= m.timeSec) ?? storyArcPoints[0];
-                const relTime = arcPt ? (arcPt.midSec / (storyArcPhases?.totalDur || 1)) * 100 : 0;
+                let relTime = 0;
+                const totalDur = storyArcPhases?.totalDur || 1;
+                if (typeof m.pickIndex === "number") {
+                  const arcPt = storyArcPoints.find(p => p.pickIndex === m.pickIndex);
+                  if (arcPt) {
+                    const offset = m.offsetInPickSec ?? 0;
+                    relTime = ((arcPt.startSec + offset) / totalDur) * 100;
+                  }
+                } else {
+                  // Legacy fallback: gjett pick via source-tid + bruk dens midSec
+                  const pick = filteredPicks.find(p =>
+                    p.startSec <= m.timeSec && p.endSec >= m.timeSec,
+                  );
+                  if (pick) {
+                    const arcPt = storyArcPoints.find(p => p.pickIndex === pick.index);
+                    if (arcPt) {
+                      const offset = Math.max(0, Math.min(pick.durationSec, m.timeSec - pick.startSec));
+                      relTime = ((arcPt.startSec + offset) / totalDur) * 100;
+                    }
+                  }
+                }
                 return (
                   <div
                     key={m.id}
@@ -2892,7 +2954,7 @@ ${ctxLines.join("\n")}`;
             </div>
             <div className="ce-audio-wave">
               <RealWaveform
-                wavPath={songWavPath(activeSong?.title, activeSong?.artist)}
+                wavPath={buildSongWavPath(songsDir, activeSong?.title, activeSong?.artist)}
                 bars={120}
                 active={isPlaying}
               />

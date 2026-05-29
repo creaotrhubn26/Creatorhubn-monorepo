@@ -328,19 +328,35 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         bridge.error(f"Missing tools: {', '.join(missing)}")
         sys.exit(1)
 
-    if not os.path.isfile(PICKS_PATH):
-        bridge.error(f"No picks cached at {PICKS_PATH}. "
-                     "Run extract_highlight_from_film first.")
-        sys.exit(1)
+    # Picks: prioriter params (editorens in-memory state) over disk-cache.
+    # Cache er fallback for batch-kjøringer uten editor-context.
+    payload_picks = params.get("picks")
+    payload_source = (params.get("sourceVideo") or "").strip()
+    if isinstance(payload_picks, list) and payload_picks:
+        picks = list(payload_picks)
+        pick_data = {
+            "picks": picks,
+            "sourceVideo": payload_source,
+            "timelineName": (params.get("timelineName") or "").strip(),
+        }
+        bridge.log(f"Bruker {len(picks)} picks fra editor-payload (ikke cache)")
+    else:
+        if not os.path.isfile(PICKS_PATH):
+            bridge.error(f"No picks cached at {PICKS_PATH}. "
+                         "Run extract_highlight_from_film first.")
+            sys.exit(1)
+        with open(PICKS_PATH) as f: pick_data = json.load(f)
+        picks = pick_data["picks"]
+        bridge.log(f"Bruker {len(picks)} picks fra cache ({PICKS_PATH})")
+
+    # Advisor er fortsatt påkrevd (musikk-recommendations brukes til
+    # beat-sync). Hvis editor sender egen musikk-track skal et eget
+    # endepunkt brukes — denne pipelinen ER musikk-først-flowen.
     if not os.path.isfile(ADVISOR_PATH):
         bridge.error(f"No advisor cached at {ADVISOR_PATH}. "
                      "Run scan_and_recommend_music first.")
         sys.exit(1)
-
-    with open(PICKS_PATH) as f: pick_data = json.load(f)
     with open(ADVISOR_PATH) as f: advisor = json.load(f)
-
-    picks = pick_data["picks"]
 
     # Apply pickOverrides from frontend (Trim-toolbar in CreativeEditorView).
     # Format: { "<pickIndex>": { "startSec": float, "endSec": float } }
