@@ -1758,3 +1758,84 @@ export const roleRoomBillingHealthApi = {
     return jsonFetch<RoleRoomBillingHealth>('/role-room-billing-health');
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// "Hva er nytt"-oppføringer per Role Room-modus
+// ─────────────────────────────────────────────────────────
+
+export type WhatsNewKind = 'feature' | 'improvement' | 'fix';
+
+export interface WhatsNewEntry {
+  id: string;
+  mode: string;
+  kind: WhatsNewKind;
+  date: string | null;
+  title: string;
+  description: string | null;
+  published: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WhatsNewEntryInput = {
+  mode?: string;
+  kind?: WhatsNewKind;
+  date?: string | null;
+  title?: string;
+  description?: string | null;
+  published?: boolean;
+  displayOrder?: number;
+};
+
+/**
+ * Whats-new-modi matcher faktiske `ProfessionMode`-verdier (se
+ * `config/professionMode.ts`) pluss "dance" (felles for begge dance-
+ * arketyper, brukt av DanceWorkspace) og "global" (plattform-brede ting).
+ *
+ * Hver modus mappes til én feed:
+ *   • production / photographer / content_producer / content_creator —
+ *     casting-main sender selve ProfessionMode-strengen som modus.
+ *   • dance — DanceWorkspace bruker denne for både dance_studio og
+ *     dance_freelance (begge ser samme dance-feed).
+ *   • global — felles oppføringer (plattform-policy, prising, brand).
+ */
+export const WHATS_NEW_MODES: Array<{ slug: string; label: string }> = [
+  { slug: 'production', label: 'Produksjon (film/video)' },
+  { slug: 'photographer', label: 'Foto' },
+  { slug: 'content_producer', label: 'Innholdsprodusent' },
+  { slug: 'content_creator', label: 'Innholdsskaper' },
+  { slug: 'dance', label: 'Dance Studio (alle dans-arketyper)' },
+  { slug: 'global', label: 'Hele plattformen' },
+];
+
+export const WHATS_NEW_KIND_LABELS: Record<WhatsNewKind, string> = {
+  feature: 'Nytt',
+  improvement: 'Forbedret',
+  fix: 'Fikset',
+};
+
+export const whatsNewApi = {
+  listAdmin: async (mode?: string): Promise<WhatsNewEntry[]> => {
+    const path = mode ? `/whats-new?mode=${encodeURIComponent(mode)}` : '/whats-new';
+    const data = await jsonFetch<{ items: WhatsNewEntry[] }>(path);
+    return data.items;
+  },
+  create: async (input: WhatsNewEntryInput): Promise<WhatsNewEntry> => {
+    const data = await jsonFetch<{ item: WhatsNewEntry }>('/whats-new', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patch: async (id: string, input: WhatsNewEntryInput): Promise<WhatsNewEntry> => {
+    const data = await jsonFetch<{ item: WhatsNewEntry }>(`/whats-new/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/whats-new/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};

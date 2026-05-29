@@ -15,12 +15,19 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { resolveClientPortalSession } from "./role-room-client-portal.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
 
-const VALID_ANCHOR_TYPES = ["timestamp", "pick", "cut", "lower_third",
-  "caption", "broll", "music", "general"];
+const VALID_ANCHOR_TYPES = [
+  // Post Agent editor-anchors:
+  "timestamp", "pick", "cut", "lower_third",
+  "caption", "broll", "music", "general",
+  // Role Room content production-anchors:
+  "content_post", "marketing_plan_post", "feed_plan_post",
+  "gallery_image", "storyboard_frame",
+];
 const VALID_STATUSES = ["open", "in_progress", "resolved", "wontfix"];
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];
 
@@ -33,6 +40,56 @@ function getUserIdFromRequest(
     const token = auth.slice(7).trim();
     const session = activeSessions.get(token);
     if (session?.userId) return { userId: session.userId, email: session.email };
+  }
+  return null;
+}
+
+/** Resolve actor — støtter både Bearer-token (Bjarne/team) og
+ * client-portal-session-token (klient via magic-link).
+ * Klient-token kommer som ?clientToken=… eller X-Client-Portal-Token
+ * header. */
+async function resolveActor(
+  pool: Pool,
+  req: Request,
+  activeSessions: Map<string, SessionData>,
+): Promise<{
+  userId: string;
+  email: string | undefined;
+  displayName: string | undefined;
+  isClient: boolean;
+  /** Hvis klient: prosjekt-id token tilhører. Tom for team. */
+  clientProjectId: string | null;
+} | null> {
+  const bearer = getUserIdFromRequest(req, activeSessions);
+  if (bearer) {
+    return {
+      userId: bearer.userId,
+      email: bearer.email,
+      displayName: undefined,
+      isClient: false,
+      clientProjectId: null,
+    };
+  }
+  // Client-portal-token: query, body eller header
+  const clientToken = (
+    typeof req.query.clientToken === "string" ? req.query.clientToken
+    : typeof (req.body as { clientToken?: unknown })?.clientToken === "string"
+      ? (req.body as { clientToken: string }).clientToken
+    : req.headers["x-client-portal-token"]
+      ? String(req.headers["x-client-portal-token"])
+    : ""
+  ).trim();
+  if (clientToken) {
+    const session = await resolveClientPortalSession(pool, clientToken);
+    if (session) {
+      return {
+        userId: `client:${session.id}`,
+        email: session.clientEmail ?? undefined,
+        displayName: session.clientName ?? undefined,
+        isClient: true,
+        clientProjectId: session.projectId,
+      };
+    }
   }
   return null;
 }
@@ -102,19 +159,32 @@ export function registerRoleRoomEditorCommentsRoutes(
 ): void {
   const { pool, activeSessions } = deps;
 
+  // Anchors som klient kan se/skrive (content production-side)
+  const CLIENT_VISIBLE_ANCHORS = new Set([
+    "content_post", "marketing_plan_post", "feed_plan_post",
+    "gallery_image", "storyboard_frame",
+  ]);
+
   // GET comments — støtter ?since for polling-delta
   app.get("/api/role-room/editor-comments",
     async (req: Request, res: Response) => {
-      const auth = getUserIdFromRequest(req, activeSessions);
-      if (!auth) { res.status(401).json({ error: "krever_innlogging" }); return; }
+      const actor = await resolveActor(pool, req, activeSessions);
+      if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
       const projectId = String(req.query.projectId ?? "").trim();
       const since = String(req.query.since ?? "").trim();
       if (!projectId) {
         res.status(400).json({ error: "mangler_project_id" }); return;
       }
       try {
-        if (!await viewerCanAccessProject(pool, projectId, auth.userId)) {
-          res.status(403).json({ error: "ingen_tilgang" }); return;
+        // Klient kan kun se kommentarer på SITT prosjekt
+        if (actor.isClient) {
+          if (actor.clientProjectId !== projectId) {
+            res.status(403).json({ error: "ingen_tilgang" }); return;
+          }
+        } else {
+          if (!await viewerCanAccessProject(pool, projectId, actor.userId)) {
+            res.status(403).json({ error: "ingen_tilgang" }); return;
+          }
         }
         const sinceClause = since ? "AND updated_at > $2" : "";
         const params = since ? [projectId, since] : [projectId];
@@ -140,28 +210,34 @@ export function registerRoleRoomEditorCommentsRoutes(
         for (const r of countRows) {
           replyCounts.set(r.parent_id, parseInt(r.count, 10));
         }
+        // Klient: filtrer til kun content-anchors (skal ikke se Bjarne's
+        // interne timestamp/pick/cut-kommentarer)
+        const mapped = rows.map(r => ({
+          id: r.id,
+          projectId: r.project_id,
+          anchorType: r.anchor_type,
+          anchorRef: r.anchor_ref,
+          timestampSec: r.timestamp_sec
+            ? parseFloat(r.timestamp_sec) : null,
+          agentKind: r.agent_kind,
+          commentText: r.comment_text,
+          parentId: r.parent_id,
+          status: r.status,
+          assignedTo: r.assigned_to,
+          priority: r.priority,
+          authorId: r.author_id,
+          authorDisplayName: r.author_display_name,
+          resolvedBy: r.resolved_by,
+          resolvedAt: r.resolved_at,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          replyCount: replyCounts.get(r.id) || 0,
+        }));
+        const filtered = actor.isClient
+          ? mapped.filter(c => CLIENT_VISIBLE_ANCHORS.has(c.anchorType))
+          : mapped;
         res.json({
-          comments: rows.map(r => ({
-            id: r.id,
-            projectId: r.project_id,
-            anchorType: r.anchor_type,
-            anchorRef: r.anchor_ref,
-            timestampSec: r.timestamp_sec
-              ? parseFloat(r.timestamp_sec) : null,
-            agentKind: r.agent_kind,
-            commentText: r.comment_text,
-            parentId: r.parent_id,
-            status: r.status,
-            assignedTo: r.assigned_to,
-            priority: r.priority,
-            authorId: r.author_id,
-            authorDisplayName: r.author_display_name,
-            resolvedBy: r.resolved_by,
-            resolvedAt: r.resolved_at,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at,
-            replyCount: replyCounts.get(r.id) || 0,
-          })),
+          comments: filtered,
           serverTime: new Date().toISOString(),
         });
       } catch (err) {
@@ -174,8 +250,8 @@ export function registerRoleRoomEditorCommentsRoutes(
   // POST create comment
   app.post("/api/role-room/editor-comments",
     async (req: Request, res: Response) => {
-      const auth = getUserIdFromRequest(req, activeSessions);
-      if (!auth) { res.status(401).json({ error: "krever_innlogging" }); return; }
+      const actor = await resolveActor(pool, req, activeSessions);
+      if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
       const body = req.body as {
         projectId?: unknown; anchorType?: unknown;
         anchorRef?: unknown; timestampSec?: unknown;
@@ -196,15 +272,26 @@ export function registerRoleRoomEditorCommentsRoutes(
         res.status(400).json({ error: "ugyldig_anchor_type" }); return;
       }
       try {
-        if (!await viewerCanAccessProject(pool, projectId, auth.userId)) {
-          res.status(403).json({ error: "ingen_tilgang" }); return;
+        if (actor.isClient) {
+          if (actor.clientProjectId !== projectId) {
+            res.status(403).json({ error: "ingen_tilgang" }); return;
+          }
+          if (!CLIENT_VISIBLE_ANCHORS.has(anchorType)) {
+            res.status(403).json({ error: "klient_kan_ikke_kommentere_paa_denne" }); return;
+          }
+        } else {
+          if (!await viewerCanAccessProject(pool, projectId, actor.userId)) {
+            res.status(403).json({ error: "ingen_tilgang" }); return;
+          }
         }
         const priority = typeof body?.priority === "string"
           && VALID_PRIORITIES.includes(body.priority)
           ? body.priority : "normal";
         const displayName = typeof body?.authorDisplayName === "string"
           ? body.authorDisplayName.slice(0, 200)
-          : (auth.email || auth.userId.slice(0, 200));
+          : (actor.displayName
+              || actor.email
+              || actor.userId.slice(0, 200));
         const { rows } = await pool.query(
           `INSERT INTO role_room_editor_comments
              (project_id, anchor_type, anchor_ref, timestamp_sec,
@@ -224,14 +311,15 @@ export function registerRoleRoomEditorCommentsRoutes(
             priority,
             typeof body?.assignedTo === "string"
               ? body.assignedTo.slice(0, 200) : null,
-            auth.userId, displayName,
+            actor.userId, displayName,
           ],
         );
-        // Parse @mentions + persistere
-        const mentions = parseMentions(commentText);
+        // Parse @mentions + persistere — kun for ikke-klient (klient
+        // kan ikke ping interne team-medlemmer fra utsiden)
+        const mentions = actor.isClient ? [] : parseMentions(commentText);
         if (mentions.length > 0) {
           await persistMentions(pool, rows[0].id, projectId,
-                                 mentions, auth.userId);
+                                 mentions, actor.userId);
         }
         res.json({
           ok: true,

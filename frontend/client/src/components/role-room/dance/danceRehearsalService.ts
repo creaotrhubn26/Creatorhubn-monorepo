@@ -9,6 +9,7 @@
  */
 
 import type { Rehearsal, RehearsalSegmentReview } from './rehearsalTypes';
+import { danceAuthHeaders } from './danceAuthHeaders';
 
 export type RehearsalStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -80,13 +81,13 @@ export async function listRehearsals(query: ListRehearsalsQuery = {}): Promise<R
   if (query.status) params.set('status', query.status);
   if (typeof query.limit === 'number') params.set('limit', String(query.limit));
   const qs = params.toString();
-  const res = await fetch(qs ? `${BASE}?${qs}` : BASE, { credentials: 'include' });
+  const res = await fetch(qs ? `${BASE}?${qs}` : BASE, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: RehearsalRecord[] }>(res);
   return body.data;
 }
 
 export async function getRehearsal(id: string): Promise<RehearsalRecord | null> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, { credentials: 'include' });
+  const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, { headers: danceAuthHeaders(), credentials: 'include' });
   if (res.status === 404) return null;
   const body = await readJson<{ success: boolean; data: RehearsalRecord }>(res);
   return body.data;
@@ -95,7 +96,7 @@ export async function getRehearsal(id: string): Promise<RehearsalRecord | null> 
 export async function createRehearsal(input: RehearsalInput): Promise<RehearsalRecord> {
   const res = await fetch(BASE, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(input),
   });
@@ -106,7 +107,7 @@ export async function createRehearsal(input: RehearsalInput): Promise<RehearsalR
 export async function patchRehearsal(id: string, patch: RehearsalPatch): Promise<RehearsalRecord> {
   const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(patch),
   });
@@ -117,6 +118,7 @@ export async function patchRehearsal(id: string, patch: RehearsalPatch): Promise
 export async function deleteRehearsal(id: string): Promise<void> {
   const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {

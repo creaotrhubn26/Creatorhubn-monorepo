@@ -2,6 +2,8 @@
  * Frontend client for /api/dance/addons.
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 const BASE = '/api/dance/addons';
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -13,10 +15,7 @@ async function readJson<T>(res: Response): Promise<T> {
 }
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) h.Authorization = `Bearer ${token}`;
-  return h;
+  return danceAuthHeaders({ 'Content-Type': 'application/json' });
 }
 
 export type AddonPersona = 'dance_freelance' | 'dance_studio';

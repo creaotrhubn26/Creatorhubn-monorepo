@@ -5,6 +5,7 @@
  */
 
 import type { Formation, DancerPosition } from './formationTypes';
+import { danceAuthHeaders } from './danceAuthHeaders';
 
 export interface FormationRecord {
   id: string;
@@ -62,7 +63,7 @@ export async function listFormations(projectId?: string): Promise<FormationRecor
   const url = typeof projectId === 'string' && projectId.length > 0
     ? `${BASE}?projectId=${encodeURIComponent(projectId)}`
     : BASE;
-  const res = await fetch(url, { credentials: 'include' });
+  const res = await fetch(url, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: FormationRecord[] }>(res);
   return body.data;
 }
@@ -70,7 +71,7 @@ export async function listFormations(projectId?: string): Promise<FormationRecor
 export async function createFormation(input: FormationInput): Promise<FormationRecord> {
   const res = await fetch(BASE, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(input),
   });
@@ -81,7 +82,7 @@ export async function createFormation(input: FormationInput): Promise<FormationR
 export async function patchFormation(id: string, patch: FormationPatch): Promise<FormationRecord> {
   const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(patch),
   });
@@ -92,6 +93,7 @@ export async function patchFormation(id: string, patch: FormationPatch): Promise
 export async function deleteFormation(id: string): Promise<void> {
   const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {
@@ -124,7 +126,7 @@ export async function replaceFormations(input: {
 }): Promise<FormationRecord[]> {
   const res = await fetch(BASE, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(input),
   });

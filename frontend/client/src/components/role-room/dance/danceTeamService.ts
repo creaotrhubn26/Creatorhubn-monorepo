@@ -5,6 +5,8 @@
  * Hold dem i sync når nye keys legges til. Ukjente keys ignoreres av begge sider.
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 const TEAMS_BASE = '/api/dance/teams';
 const INVITES_BASE = '/api/dance/invites';
 
@@ -17,10 +19,7 @@ async function readJson<T>(res: Response): Promise<T> {
 }
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) h.Authorization = `Bearer ${token}`;
-  return h;
+  return danceAuthHeaders({ 'Content-Type': 'application/json' });
 }
 
 // ─── Capability-katalog (mirror av backend) ─────────────────────────────

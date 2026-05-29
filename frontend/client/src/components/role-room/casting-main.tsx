@@ -482,7 +482,7 @@ function CastingStandaloneRuntimeContent() {
                 window.location.href = url.toString();
               }}
               supportEmail="support@theroleroom.com"
-              whatsNewMode="casting"
+              whatsNewMode={getActiveProfessionMode()}
               whatsNewTitle="Hva er nytt i The Role Room"
               tourSteps={
                 shouldRenderTalentPortal

@@ -4,8 +4,12 @@
  */
 
 export type AnchorType =
+  // Post Agent editor-anchors:
   | "timestamp" | "pick" | "cut" | "lower_third"
-  | "caption" | "broll" | "music" | "general";
+  | "caption" | "broll" | "music" | "general"
+  // Role Room content production-anchors:
+  | "content_post" | "marketing_plan_post" | "feed_plan_post"
+  | "gallery_image" | "storyboard_frame";
 
 export type CommentStatus = "open" | "in_progress" | "resolved" | "wontfix";
 

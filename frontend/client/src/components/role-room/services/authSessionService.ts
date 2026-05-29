@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { isRoleRoomStandaloneRuntime } from '../utils/runtime';
 
 export type AdminUser = {

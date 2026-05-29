@@ -2,6 +2,8 @@
  * Frontend client for /api/dance/billing.
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 const BASE = '/api/dance/billing';
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -92,20 +94,20 @@ export interface AdminSetting {
 // ─── Plans ──────────────────────────────────────────────────────────────
 
 export async function listPlans(): Promise<DancePlan[]> {
-  const res = await fetch(`${BASE}/plans`, { credentials: 'include' });
+  const res = await fetch(`${BASE}/plans`, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: DancePlan[] }>(res);
   return body.data;
 }
 
 export async function listPlansAdmin(): Promise<DancePlan[]> {
-  const res = await fetch(`${BASE}/admin/plans`, { credentials: 'include' });
+  const res = await fetch(`${BASE}/admin/plans`, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: DancePlan[] }>(res);
   return body.data;
 }
 
 export async function createPlan(input: Partial<DancePlan> & { slug: string; name: string }): Promise<DancePlan> {
   const res = await fetch(`${BASE}/admin/plans`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(input),
   });
   const body = await readJson<{ success: boolean; data: DancePlan }>(res);
@@ -114,7 +116,7 @@ export async function createPlan(input: Partial<DancePlan> & { slug: string; nam
 
 export async function patchPlan(slug: string, patch: Partial<DancePlan>): Promise<DancePlan> {
   const res = await fetch(`${BASE}/admin/plans/${encodeURIComponent(slug)}`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(patch),
   });
   const body = await readJson<{ success: boolean; data: DancePlan }>(res);
@@ -123,7 +125,7 @@ export async function patchPlan(slug: string, patch: Partial<DancePlan>): Promis
 
 export async function deletePlan(slug: string): Promise<void> {
   const res = await fetch(`${BASE}/admin/plans/${encodeURIComponent(slug)}`, {
-    method: 'DELETE', credentials: 'include',
+    method: 'DELETE', headers: danceAuthHeaders(), credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -134,13 +136,13 @@ export async function deletePlan(slug: string): Promise<void> {
 // ─── Subscription ───────────────────────────────────────────────────────
 
 export async function getSubscription(): Promise<DanceSubscription | null> {
-  const res = await fetch(`${BASE}/subscription`, { credentials: 'include' });
+  const res = await fetch(`${BASE}/subscription`, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: DanceSubscription | null }>(res);
   return body.data;
 }
 
 export async function listAllSubscriptions(): Promise<DanceSubscription[]> {
-  const res = await fetch(`${BASE}/admin/subscriptions`, { credentials: 'include' });
+  const res = await fetch(`${BASE}/admin/subscriptions`, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: DanceSubscription[] }>(res);
   return body.data;
 }
@@ -152,7 +154,7 @@ export async function grantCompSubscription(input: {
   notes?: string | null;
 }): Promise<DanceSubscription> {
   const res = await fetch(`${BASE}/admin/subscriptions/comp`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(input),
   });
   const body = await readJson<{ success: boolean; data: DanceSubscription }>(res);
@@ -168,7 +170,7 @@ export async function startCheckout(input: {
   cancelUrl: string;
 }): Promise<{ sessionUrl: string }> {
   const res = await fetch(`${BASE}/checkout-session`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(input),
   });
   const body = await readJson<{ success: boolean; data: { sessionUrl: string } }>(res);
@@ -177,7 +179,7 @@ export async function startCheckout(input: {
 
 export async function openCustomerPortal(returnUrl: string): Promise<{ portalUrl: string }> {
   const res = await fetch(`${BASE}/customer-portal`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify({ returnUrl }),
   });
   const body = await readJson<{ success: boolean; data: { portalUrl: string } }>(res);
@@ -187,7 +189,7 @@ export async function openCustomerPortal(returnUrl: string): Promise<{ portalUrl
 // ─── Tester invites ─────────────────────────────────────────────────────
 
 export async function listTesterInvites(): Promise<TesterInvite[]> {
-  const res = await fetch(`${BASE}/admin/tester-invites`, { credentials: 'include' });
+  const res = await fetch(`${BASE}/admin/tester-invites`, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: TesterInvite[] }>(res);
   return body.data;
 }
@@ -202,7 +204,7 @@ export async function createTesterInvite(input: {
   notes?: string | null;
 }): Promise<TesterInvite> {
   const res = await fetch(`${BASE}/admin/tester-invites`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(input),
   });
   const body = await readJson<{ success: boolean; data: TesterInvite }>(res);
@@ -211,7 +213,7 @@ export async function createTesterInvite(input: {
 
 export async function patchTesterInvite(token: string, patch: Partial<TesterInvite>): Promise<TesterInvite> {
   const res = await fetch(`${BASE}/admin/tester-invites/${encodeURIComponent(token)}`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(patch),
   });
   const body = await readJson<{ success: boolean; data: TesterInvite }>(res);
@@ -220,7 +222,7 @@ export async function patchTesterInvite(token: string, patch: Partial<TesterInvi
 
 export async function deleteTesterInvite(token: string): Promise<void> {
   const res = await fetch(`${BASE}/admin/tester-invites/${encodeURIComponent(token)}`, {
-    method: 'DELETE', credentials: 'include',
+    method: 'DELETE', headers: danceAuthHeaders(), credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -237,7 +239,7 @@ export async function getPublicInvite(token: string): Promise<PublicTesterInvite
 
 export async function acceptInvite(token: string): Promise<DanceSubscription> {
   const res = await fetch(`${BASE}/tester-invites/${encodeURIComponent(token)}/accept`, {
-    method: 'POST', credentials: 'include',
+    method: 'POST', headers: danceAuthHeaders(), credentials: 'include',
   });
   const body = await readJson<{ success: boolean; data: DanceSubscription }>(res);
   return body.data;
@@ -246,7 +248,7 @@ export async function acceptInvite(token: string): Promise<DanceSubscription> {
 // ─── Admin settings ─────────────────────────────────────────────────────
 
 export async function listAdminSettings(): Promise<AdminSetting[]> {
-  const res = await fetch(`${BASE}/admin/settings`, { credentials: 'include' });
+  const res = await fetch(`${BASE}/admin/settings`, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: AdminSetting[] }>(res);
   return body.data;
 }
@@ -257,7 +259,7 @@ export async function setAdminSetting(
   description?: string | null,
 ): Promise<AdminSetting> {
   const res = await fetch(`${BASE}/admin/settings/${encodeURIComponent(key)}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    method: 'PUT', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify({ value, description }),
   });
   const body = await readJson<{ success: boolean; data: AdminSetting }>(res);

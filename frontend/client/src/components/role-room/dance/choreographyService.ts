@@ -14,6 +14,7 @@ import type {
   Segment,
   SegmentKind,
 } from './choreographyTypes';
+import { danceAuthHeaders } from './danceAuthHeaders';
 
 export interface ChoreographyHeader {
   id: string;
@@ -105,7 +106,7 @@ export async function listChoreographies(projectId?: string): Promise<Choreograp
     typeof projectId === 'string' && projectId.length > 0
       ? `/api/dance/choreography?projectId=${encodeURIComponent(projectId)}`
       : '/api/dance/choreography';
-  const res = await fetch(url, { credentials: 'include' });
+  const res = await fetch(url, { credentials: 'include', headers: danceAuthHeaders() });
   const body = await json<{ success: boolean; data: ChoreographyHeader[] }>(res);
   return body.data;
 }
@@ -121,7 +122,7 @@ export async function createChoreography(input: {
 }): Promise<Choreography> {
   const res = await fetch('/api/dance/choreography', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(input),
   });
@@ -132,6 +133,7 @@ export async function createChoreography(input: {
 export async function getChoreography(id: string): Promise<Choreography> {
   const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}`, {
     credentials: 'include',
+    headers: danceAuthHeaders(),
   });
   const body = await json<{ success: boolean; data: RawChoreography }>(res);
   return toClient(body.data);
@@ -153,7 +155,7 @@ export async function updateChoreographyHeader(
 ): Promise<Choreography> {
   const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(patch),
   });
@@ -186,7 +188,7 @@ export async function replaceSegments(
   };
   const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}/segments`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(payload),
   });
@@ -207,6 +209,7 @@ export async function uploadChoreographyMusic(
   form.append('file', file, file.name);
   const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}/music`, {
     method: 'POST',
+    headers: danceAuthHeaders(),
     credentials: 'include',
     body: form,
   });
@@ -217,6 +220,7 @@ export async function uploadChoreographyMusic(
 export async function deleteChoreography(id: string): Promise<void> {
   const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (!res.ok) {
