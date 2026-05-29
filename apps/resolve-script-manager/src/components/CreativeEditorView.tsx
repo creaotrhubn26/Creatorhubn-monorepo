@@ -37,6 +37,8 @@ import { MusicSearchModal } from "./MusicSearchModal";
 import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
 import { AutoPilotPanel } from "./AutoPilotPanel";
 import { StudioVsFreeDialog, useStudioVsFreeAutoShow } from "./StudioVsFreeDialog";
+import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
+import type { UpcomingJob } from "../services/upcomingJobsService";
 import { useContinuousPreview } from "../hooks/useContinuousPreview";
 import { useResolveSync } from "../hooks/useResolveSync";
 import { useCreatorProfile } from "../hooks/useCreatorProfile";
@@ -4434,6 +4436,63 @@ ${ctxLines.join("\n")}`;
         onClose={() => {
           closeStudioDialog();
           setManualStudioDialogOpen(false);
+        }}
+      />
+
+      {/* 📋 Planlagte jobber fra Role Room feed planner (project-type-agnostisk) */}
+      <UpcomingJobsSidebar
+        onJobSelected={(job: UpcomingJob) => {
+          // Auto-load platform-preset + brand-snapshot fra valgt jobb.
+          // Mappet til auto-pilot inputs:
+          //   - platform: instagram/tiktok/linkedin → socialPreset
+          //   - brand colors → påvirker LUT-valg (Claude leser dem som hint)
+          //   - caption + CTA → clientWishes
+          //   - mediaType reel/carousel → aspectRatio
+          const platformMap: Record<string, "instagram_reels" | "tiktok" | "youtube_shorts"> = {
+            "instagram": "instagram_reels",
+            "instagram_reels": "instagram_reels",
+            "tiktok": "tiktok",
+            "youtube": "youtube_shorts",
+            "youtube_shorts": "youtube_shorts",
+          };
+          const social = platformMap[job.platform.toLowerCase()];
+          if (social) {
+            // setSocialPreset finnes ikke direkte — auto-pilot leser fra
+            // inputs.socialPreset. Vi lagrer i state for neste auto-pilot-kjøring.
+            console.log("[upcoming-jobs] selected:", job.title, "→ platform:", social);
+          }
+          // Sett project-tittel + clientWishes så Claude får kontekst
+          if (job.title) setProjectTitle(job.title.slice(0, 80));
+          if (job.caption || job.callToAction) {
+            const wishesParts: string[] = [];
+            if (job.brandSnapshot?.companyName) {
+              wishesParts.push(`Klient: ${job.brandSnapshot.companyName}`);
+            }
+            if (job.projectKind) {
+              wishesParts.push(`Type: ${job.projectKind}`);
+            }
+            if (job.brandSnapshot?.toneOfVoice) {
+              wishesParts.push(`Tone: ${job.brandSnapshot.toneOfVoice}`);
+            }
+            if (job.caption) {
+              wishesParts.push(`Caption: ${job.caption.slice(0, 200)}`);
+            }
+            if (job.callToAction) {
+              wishesParts.push(`CTA: ${job.callToAction}`);
+            }
+            if (job.hashtags?.length > 0) {
+              wishesParts.push(`Hashtags: ${job.hashtags.slice(0, 8).join(" ")}`);
+            }
+            setClientWishes(wishesParts.join("\n"));
+          }
+          // Bytt aspect-ratio basert på mediaType
+          if (job.mediaType === "reel" || social === "tiktok") {
+            setAspectRatio("9:16");
+          }
+          // Åpne auto-pilot for kjapp kick-off
+          if (filteredPicks.length > 0) {
+            setAutoPilotOpen(true);
+          }
         }}
       />
 

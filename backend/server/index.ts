@@ -47,6 +47,7 @@ import { registerRoleRoomProjectMembersRoutes } from "./role-room-project-member
 import { registerRoleRoomSeatManagementRoutes } from "./role-room-seat-management-routes.js";
 import { registerRoleRoomBillingAlertsRoutes } from "./role-room-billing-alerts-routes.js";
 import { registerRoleRoomSeatReconciliationRoutes } from "./role-room-seat-reconciliation-routes.js";
+import { registerRoleRoomUpcomingJobsRoutes } from "./role-room-upcoming-jobs-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -1741,6 +1742,7 @@ registerRoleRoomProjectMembersRoutes(app, { pool, activeSessions });
 registerRoleRoomSeatManagementRoutes(app, { pool, activeSessions });
 registerRoleRoomBillingAlertsRoutes(app, { pool, requireAdminSession });
 registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
+registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
