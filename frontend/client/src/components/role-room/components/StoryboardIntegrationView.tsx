@@ -108,7 +108,7 @@ interface StoryboardIntegrationViewProps {
 }
 
 type ViewMode = 'script' | 'storyboard' | 'shotlist' | 'split';
-type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'review';
+type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'review' | 'moodboard';
 type StoryboardDetailLevel = 'idea' | 'blocking' | 'shot' | 'presentation';
 type StoryboardAssistFlag =
   | 'perspectiveGrid'
@@ -164,6 +164,7 @@ const WORKSPACE_MODE_OPTIONS: Array<{ value: StoryboardWorkspaceMode; label: str
   { value: 'thumbnail', label: 'Thumbnails' },
   { value: 'scene', label: 'Scene' },
   { value: 'review', label: 'Review' },
+  { value: 'moodboard', label: 'Mood-board' },
 ];
 
 const STORYBOARD_LANGUAGE_OPTIONS = ['Wide', 'Medium', 'Close-up', 'Insert', 'Over-shoulder', 'Top shot'] as const;
@@ -2242,6 +2243,28 @@ const StoryboardView: React.FC<{
         </Stack>
       </Paper>
 
+      {/* Mood-board-fanen: viser MoodBoardPanel full-bredde i stedet
+          for frame-grid. Lar artisten bygge visuell referanse-stack
+          før frames tegnes. */}
+      {workspaceMode === 'moodboard' && (
+        <Box sx={{ mt: 1 }}>
+          <MoodBoardPanel
+            sceneId={sceneId}
+            compact={false}
+            onUseAsReference={(image) => {
+              const targetFrame = frames[activeFrameIndex] ?? frames[0];
+              if (!targetFrame) return;
+              setPendingReferenceSrc(image.dataUrl);
+              setDrawingFrameId(targetFrame.id);
+              // Hopp tilbake til thumbnail-modus så artisten ser hvor
+              // referansen lander.
+              setWorkspaceMode('thumbnail');
+            }}
+          />
+        </Box>
+      )}
+
+      {workspaceMode !== 'moodboard' && (
       <Box
         sx={{
           display: 'grid',
@@ -2349,6 +2372,7 @@ const StoryboardView: React.FC<{
           </Box>
         ))}
       </Box>
+      )}
 
       {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift.
           Bruker `frames`/`activeFrameIndex`/`onSelectFrame` prop-navnene i
