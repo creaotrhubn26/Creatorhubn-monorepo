@@ -53,6 +53,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # NY: log-conversion-LUT settes på Node 2 før creative LUT
     log_to_rec709_lut = (params.get("logToRec709Lut") or "").strip()
     requires_log_conversion = bool(params.get("requiresLogConversion", False)) or bool(log_to_rec709_lut)
+    # SAFETY: respektér Bjarnes eksisterende color-work.
+    # Når True (default), hopper vi over clips som ALLEREDE har mer enn 1 node
+    # (Resolve gir 1 default-node, så >1 = bruker har lagt opp manuelt).
+    respect_existing = bool(params.get("respectExistingWork", True))
 
     if dry_run:
         node_tree = ["Node 1: Primary Correction (exposure + WB)"]
@@ -96,6 +100,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     nodes_added = 0
     lut_applied = False
     errors = []
+    skipped_existing = 0  # clips vi rørte ikke fordi de hadde manuelt grade
 
     # Hent alle video-clips fra timeline
     try:
@@ -113,6 +118,27 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 ok = timeline.SetCurrentClipThumbnailImage(item) if hasattr(timeline, "SetCurrentClipThumbnailImage") else False
                 _ = ok
 
+                # SAFETY: sjekk om Bjarne har gjort manuelt grade-arbeid på
+                # denne clipen. Resolve gir 1 default-node — hvis count > 1
+                # har han allerede laget eget tre, og vi RØRER IKKE.
+                if respect_existing:
+                    try:
+                        node_graph = item.GetNodeGraph() if hasattr(item, "GetNodeGraph") else None
+                        existing_node_count = 0
+                        if node_graph and hasattr(node_graph, "GetNumNodes"):
+                            existing_node_count = int(node_graph.GetNumNodes() or 0)
+                        elif hasattr(item, "GetNodeList"):
+                            nodes = item.GetNodeList() or []
+                            existing_node_count = len(nodes)
+                        if existing_node_count > 1:
+                            skipped_existing += 1
+                            continue
+                    except Exception:
+                        # Hvis vi ikke kan sjekke (eldre Resolve eller free-versjon)
+                        # → vær konservativ og hopp over for sikkerhets skyld
+                        skipped_existing += 1
+                        continue
+
                 # Bygg node-tre. Resolve's AddNode-API:
                 #   AddNode(nodeType, nodeLabel)
                 # nodeType: "Corrector" (primary), "Lut" (Studio), "Qualifier" (Studio)
@@ -121,8 +147,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 # corrector × N og merker label så Bjarne vet hva hver er for.
 
                 # Node 1: Primary Correction (alltid)
+                # Label-prefiks "AP:" gjør at Bjarne ser hvilke noder
+                # auto-pilot har lagt opp vs hans egne i color page.
                 try:
-                    item.AddNode("Corrector", "Primary")
+                    item.AddNode("Corrector", "AP: Primary")
                     nodes_added += 1
                 except Exception as exc:
                     errors.append(f"clip{idx} Primary: {exc}")
@@ -131,7 +159,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 creative_lut_node_idx = 2  # default når ingen log-conversion
                 if requires_log_conversion and log_to_rec709_lut:
                     try:
-                        item.AddNode("Corrector", "Log → Rec.709")
+                        item.AddNode("Corrector", "AP: Log → Rec.709")
                         nodes_added += 1
                         if hasattr(item, "SetLUT"):
                             item.SetLUT(2, log_to_rec709_lut)
@@ -153,7 +181,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 # mot LUT-overshoot)
                 if protect_skin:
                     try:
-                        item.AddNode("Corrector", "Skin Protect")
+                        item.AddNode("Corrector", "AP: Skin Protect")
                         nodes_added += 1
                     except Exception as exc:
                         errors.append(f"clip{idx} SkinProtect: {exc}")
@@ -161,7 +189,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 # Vignette + Grain (siste)
                 if add_vignette:
                     try:
-                        item.AddNode("Corrector", "Vignette")
+                        item.AddNode("Corrector", "AP: Vignette")
                         nodes_added += 1
                     except Exception as exc:
                         errors.append(f"clip{idx} Vignette: {exc}")
