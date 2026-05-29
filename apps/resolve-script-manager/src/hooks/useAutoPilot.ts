@@ -31,6 +31,7 @@ export type AutoPilotStepId =
   | "audio_polish"
   | "fairlight_setup"
   | "voice_isolation"
+  | "vertical_reframe"
   | "qc_pass";
 
 export interface AutoPilotStep {
@@ -53,6 +54,7 @@ export const AUTO_PILOT_STEPS: AutoPilotStep[] = [
   { id: "audio_polish",              label: "LUFS + ducking + de-essing",       estSec: 45 },
   { id: "fairlight_setup",           label: "Fairlight markører + clip-routing",   estSec: 15 },
   { id: "voice_isolation",           label: "Voice Isolation på speeches (Studio)", estSec: 25 },
+  { id: "vertical_reframe",          label: "9:16 social cut m/ Smart Reframe (Studio)", estSec: 30 },
   { id: "qc_pass",                   label: "Final QC + sync-sjekk",            estSec: 15 },
 ];
 
@@ -152,6 +154,16 @@ export interface AutoPilotInputs {
    *  Fairlight-automation). Steg-implementasjoner faller tilbake til
    *  Free-kompatible operasjoner ved studioConnected=false. */
   studioConnected?: boolean;
+  /** Skal auto-pilot levere 9:16 social-cut i tillegg til 16:9 highlight?
+   *  Krever Studio for Smart Reframe. Default true når Studio detected. */
+  buildSocialCut?: boolean;
+  /** Social-preset for 9:16-leveranse. */
+  socialPreset?: "instagram_reels" | "tiktok" | "youtube_shorts";
+  /** Auto-start render-job? Hvis false: render-job legges i Deliver-queue
+   *  for manuell start. */
+  autoStartRender?: boolean;
+  /** Tittel brukt i output-filnavn + timeline-navn. */
+  projectTitle?: string;
   /** Prosjekt-type fra onboarding (wedding, corporate, music, event). */
   projectKind?: string;
   /** Kulturell kontekst — viktig for color (Sikh wedding, norsk standard,
@@ -462,6 +474,9 @@ async function runStep(
       return;
     case "voice_isolation":
       await stepVoiceIsolation(inputs, ctx);
+      return;
+    case "vertical_reframe":
+      await stepVerticalReframe(inputs, ctx);
       return;
     case "qc_pass":
       await stepQcPass(inputs, ctx);
@@ -975,6 +990,57 @@ async function stepVoiceIsolation(inputs: AutoPilotInputs, ctx: StepCtx): Promis
   } catch (err) {
     ctx.log({ step: "voice_isolation", level: "warn",
       message: `Voice Isolation hoppet over: ${(err as Error).message}` });
+  }
+}
+
+async function stepVerticalReframe(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.resolveConnected) {
+    ctx.log({ step: "vertical_reframe", level: "info",
+      message: "Resolve ikke åpen — hopper over 9:16 social cut" });
+    return;
+  }
+  if (!inputs.studioConnected) {
+    ctx.log({ step: "vertical_reframe", level: "info",
+      message: "Krever Studio: Smart Reframe holder brud/brudgom sentrert med AI face-tracking" });
+    return;
+  }
+  if (inputs.buildSocialCut === false) {
+    ctx.log({ step: "vertical_reframe", level: "info",
+      message: "9:16 social cut skrudd av (buildSocialCut=false)" });
+    return;
+  }
+
+  const preset = inputs.socialPreset ?? "instagram_reels";
+  const title = inputs.projectTitle ?? "Highlight";
+  const autoRender = inputs.autoStartRender ?? false;
+
+  ctx.log({ step: "vertical_reframe", level: "claude",
+    message: `⭐ Studio: Smart Reframe bygger 9:16 social-cut (${preset}). Brud/brudgom holdes sentrert via AI.` });
+
+  try {
+    const summary = await executeScript("build_vertical_social_cut", {
+      socialPreset: preset,
+      projectTitle: title,
+      autoRender,
+      isStudio: true,
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      targetTimeline?: string; resolution?: string;
+      smartReframeApplied?: number; renderJobId?: string;
+      renderingStarted?: boolean; outputPath?: string;
+    } | undefined;
+    if (v) {
+      ctx.sharedState.verticalTimeline = v.targetTimeline;
+      ctx.sharedState.verticalOutputPath = v.outputPath;
+      const renderNote = v.renderingStarted ? "render startet ☕"
+        : v.renderJobId ? `render-job ${v.renderJobId} i Deliver-queue` : "manuell render i Deliver";
+      ctx.log({ step: "vertical_reframe", level: "success",
+        message: `${v.targetTimeline} (${v.resolution}) · Smart Reframe på ${v.smartReframeApplied ?? 0} clips · ${renderNote}` });
+    }
+  } catch (err) {
+    ctx.log({ step: "vertical_reframe", level: "warn",
+      message: `Vertical reframe hoppet over: ${(err as Error).message}` });
   }
 }
 

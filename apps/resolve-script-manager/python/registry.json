@@ -1903,6 +1903,27 @@
       "requiresTimeline": false
     },
     {
+      "id": "build_vertical_social_cut",
+      "name": "Build Vertical Social Cut (Studio Smart Reframe)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_vertical_social_cut.py",
+      "description": "Studio AI Smart Reframe lager 9:16-versjon parallelt med 16:9 highlight. Subject-tracking holder brud/brudgom sentrert i cropet. Auto-pilot bruker dette for å levere social-cut samtidig som hoved-highlight — én pipeline = to leveranser.",
+      "requiredInputs": [
+        { "key": "sourceTimelineName", "label": "Source 16:9 timeline-navn", "type": "text", "required": false },
+        { "key": "socialPreset", "label": "instagram_reels|tiktok|youtube_shorts", "type": "text", "required": false },
+        { "key": "projectTitle", "label": "Prosjekt-tittel", "type": "text", "required": false },
+        { "key": "autoRender", "label": "Start render umiddelbart", "type": "boolean", "required": false },
+        { "key": "outputPath", "label": "Output-path", "type": "text", "required": false },
+        { "key": "isStudio", "label": "Resolve Studio detected", "type": "boolean", "required": true }
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "apply_voice_isolation_to_speech",
       "name": "Apply Voice Isolation to Speech (Studio)",
       "category": "audio",

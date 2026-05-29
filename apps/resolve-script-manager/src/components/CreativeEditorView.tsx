@@ -4391,6 +4391,12 @@ ${ctxLines.join("\n")}`;
             lookPack: lookPack === "none" ? undefined : lookPack,
             resolveConnected: resolveSync.resolveState?.connected ?? false,
             studioConnected: resolveSync.resolveState?.isStudio ?? false,
+            // 9:16 social-cut auto-aktiv hvis vi har Studio (Smart Reframe).
+            // Bruker kan deaktivere via creator-profile preferences senere.
+            buildSocialCut: resolveSync.resolveState?.isStudio ?? false,
+            socialPreset: "instagram_reels",
+            autoStartRender: false,
+            projectTitle: projectTitle || "Highlight",
             projectKind: projectKind ?? undefined,
             // Send eksisterende cultural look-packs så Claude sjekker dem
             // før den foreslår nye. Voksende katalog som spares per bruker.
