@@ -24,7 +24,10 @@ import { LowerThirdsStudio } from "./LowerThirdsStudio";
 import { CaptionStudio } from "./CaptionStudio";
 import SubtitlesIcon from "@mui/icons-material/Subtitles";
 import ClosedCaptionIcon from "@mui/icons-material/ClosedCaption";
+import AppShortcutIcon from "@mui/icons-material/AppShortcut";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import type { WhisperTranscript } from "../lib/captionTypes";
+import { openPath } from "@tauri-apps/plugin-opener";
 import type { AgentConfig, ChapterDef, LookPackDef } from "../agents/types";
 import { executeScript } from "../api";
 import { claudeProxyService } from "../services/claudeProxyService";
@@ -85,6 +88,35 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [captionStudioOpen, setCaptionStudioOpen] = useState(false);
   // Caption Studio gir oss transcript som vi inkluderer i Director-context
   const [loadedTranscript, setLoadedTranscript] = useState<WhisperTranscript | null>(null);
+  const [multiAspectExporting, setMultiAspectExporting] = useState(false);
+  const [multiAspectResult, setMultiAspectResult] = useState<{
+    outputDir: string; renderedCount: number;
+    renders: Array<{ aspect: string; sizeMB: number;
+                       dimensions: string; path: string }>;
+  } | null>(null);
+  const [multiAspectError, setMultiAspectError] = useState<string | null>(null);
+
+  const exportMultiAspect = async () => {
+    if (!sourcePath) return;
+    setMultiAspectExporting(true);
+    setMultiAspectError(null);
+    setMultiAspectResult(null);
+    try {
+      const summary = await executeScript("export_multi_aspect", {
+        videoPath: sourcePath,
+        aspects: ["16:9", "9:16", "1:1", "4:5"],
+        fileNamePrefix: config.kind,
+        faceAware: true,
+      }, false);
+      const result = summary.events.find(e => e.type === "result");
+      const v = result?.value as typeof multiAspectResult;
+      if (v) setMultiAspectResult(v);
+    } catch (err) {
+      setMultiAspectError((err as Error).message);
+    } finally {
+      setMultiAspectExporting(false);
+    }
+  };
   // Project-id for persistence av lower-thirds. Hentes via tilstand
   // som settes når user åpner agent fra HomeView; for nå fallback til
   // hardkodet test-id slik at button funker uten Role Room-context.
@@ -291,6 +323,24 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
               </span>
             )}
           </button>
+          <button onClick={() => void exportMultiAspect()}
+                  disabled={multiAspectExporting || !sourcePath}
+                  title="Rendre 16:9 + 9:16 + 1:1 + 4:5 i én operasjon for cross-posting"
+                  style={{
+                    background: multiAspectExporting
+                      ? "rgba(160,48,192,0.10)"
+                      : "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4,
+                    cursor: multiAspectExporting ? "wait"
+                          : sourcePath ? "pointer" : "not-allowed",
+                    opacity: !sourcePath ? 0.5 : 1, fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <AppShortcutIcon sx={{ fontSize: 14 }} />
+            {multiAspectExporting ? "Renderer 4 …" : "Multi-aspect"}
+          </button>
           {showLowerThirdsButton && (
             <button onClick={() => setLowerThirdsOpen(true)}
                     style={{
@@ -324,6 +374,47 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Multi-aspect export result pill */}
+      {multiAspectResult && (
+        <div style={{
+          padding: "8px 22px",
+          background: "rgba(74,212,138,0.10)",
+          borderBottom: "1px solid rgba(74,212,138,0.20)",
+          color: "#4ad48a", fontSize: 11,
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <span style={{ fontWeight: 600 }}>
+            {multiAspectResult.renderedCount} renders ferdig:
+          </span>
+          {multiAspectResult.renders.map(r => (
+            <span key={r.aspect} style={{
+              padding: "2px 8px", borderRadius: 3,
+              background: "rgba(74,212,138,0.18)",
+              border: "1px solid rgba(74,212,138,0.30)",
+            }}>{r.aspect} · {r.dimensions} · {r.sizeMB}MB</span>
+          ))}
+          <button onClick={() => void openPath(multiAspectResult.outputDir)}
+                  style={{
+                    marginLeft: "auto",
+                    background: "rgba(74,212,138,0.18)",
+                    border: "1px solid rgba(74,212,138,0.40)",
+                    color: "#4ad48a", borderRadius: 3,
+                    padding: "3px 10px", fontSize: 10.5,
+                    cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}>
+            <FolderOpenIcon sx={{ fontSize: 12 }} /> Åpne mappe
+          </button>
+        </div>
+      )}
+      {multiAspectError && (
+        <div style={{
+          padding: "8px 22px",
+          background: "rgba(239,79,111,0.15)",
+          color: "#ef4f6f", fontSize: 11,
+        }}>Multi-aspect-eksport feilet: {multiAspectError}</div>
+      )}
 
       {/* Main area */}
       <div style={{ flex: 1, display: "grid",

@@ -1998,6 +1998,27 @@
       "requiresTimeline": false
     },
     {
+      "id": "export_multi_aspect",
+      "name": "Export Multi-Aspect",
+      "category": "social",
+      "scriptPath": "scripts/social/export_multi_aspect.py",
+      "description": "Render én ferdig video i alle 4 vanlige aspect-ratios (16:9 YouTube, 9:16 Reels/TikTok, 1:1 IG Feed, 4:5 IG Portrait) i én operasjon. Face-aware crop hvis OpenCV er installert, ellers center-crop. Foundation for cross-posting fra én master-fil.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false },
+        { "key": "aspects", "label": "Aspects å rendere (default alle 4)", "type": "json", "required": false },
+        { "key": "fileNamePrefix", "label": "Filnavn-prefix (default 'export')", "type": "text", "required": false },
+        { "key": "bitrate", "label": "Video-bitrate (default 8M)", "type": "text", "required": false },
+        { "key": "faceAware", "label": "Bruk face-detect for crop", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "render_lower_thirds",
       "name": "Render Lower Thirds (transparent PNG)",
       "category": "social",
