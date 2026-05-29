@@ -1903,6 +1903,27 @@
       "requiresTimeline": false
     },
     {
+      "id": "generate_canva_style_thumbnails",
+      "name": "Generate Canva-Style Thumbnails",
+      "category": "social",
+      "scriptPath": "scripts/social/generate_canva_style_thumbnails.py",
+      "description": "Lager 6 designede thumbnail-kandidater med brand-styling. 6 layout-templates (hero/quote/bold/split/frame/gradient), brand-color-applikasjon, logo-plassering, text-overlay med title + CTA. Output PNG til app_data_dir/thumbnails. Brukes både av auto-pilot og av ThumbnailCreator i CE.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "bestFrameSeconds", "label": "Timestamps å sample (best-face-momenter)", "type": "json", "required": false },
+        { "key": "postInfo", "label": "{title, caption, callToAction}", "type": "json", "required": false },
+        { "key": "brandSnapshot", "label": "Brand colors + logo", "type": "json", "required": false },
+        { "key": "aspectRatio", "label": "1:1 | 9:16 | 4:5 | 16:9", "type": "text", "required": false },
+        { "key": "outputDir", "label": "Output-dir", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "setup_platform_timeline",
       "name": "Setup Platform Timeline",
       "category": "timeline",

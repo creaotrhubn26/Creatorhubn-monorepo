@@ -39,6 +39,7 @@ import { AutoPilotPanel } from "./AutoPilotPanel";
 import { StudioVsFreeDialog, useStudioVsFreeAutoShow } from "./StudioVsFreeDialog";
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import type { UpcomingJob } from "../services/upcomingJobsService";
+import { ThumbnailCreator } from "./ThumbnailCreator";
 import { useContinuousPreview } from "../hooks/useContinuousPreview";
 import { useResolveSync } from "../hooks/useResolveSync";
 import { useCreatorProfile } from "../hooks/useCreatorProfile";
@@ -1133,6 +1134,16 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     resolveSync.resolveState?.isStudio,
   );
   const [manualStudioDialogOpen, setManualStudioDialogOpen] = useState(false);
+  // Thumbnail Creator — mini-Canva for å lage/edite social-thumbnails
+  const [thumbnailCreatorOpen, setThumbnailCreatorOpen] = useState(false);
+  const [thumbnailContext, setThumbnailContext] = useState<{
+    title: string; cta: string;
+    brand?: { companyName?: string | null; accentColor?: string | null;
+              backgroundColor?: string | null; textColor?: string | null;
+              logoUrl?: string | null; toneOfVoice?: string | null };
+    aspect: "1:1" | "9:16" | "4:5";
+    feedPlanContext?: { projectId: string; platform: string; postId: string };
+  }>({ title: "", cta: "", aspect: "1:1" });
   // Creator-profil — preferanser fra serveren auto-anvendes på nye prosjekter.
   // Knyttet til innlogget Role Room-bruker, ikke lokalt — Bjarne får sine
   // learnings selv om han bytter maskin.
@@ -2676,6 +2687,29 @@ ${ctxLines.join("\n")}`;
               void navigator.clipboard.writeText(info).catch(() => { /* noop */ });
             }}
           >↗ Del</button>
+          {/* 🎨 Thumbnail Creator — design social-thumbnails (Canva-stil) */}
+          <button
+            onClick={() => {
+              setThumbnailContext({
+                title: projectTitle || "",
+                cta: "",
+                aspect: aspectRatio === "9:16" ? "9:16"
+                  : aspectRatio === "1:1" ? "1:1" : "1:1",
+              });
+              setThumbnailCreatorOpen(true);
+            }}
+            disabled={!payload}
+            title="Thumbnail Creator: design social-thumbnails med brand-styling"
+            style={{
+              background: "linear-gradient(135deg, rgba(200,80,224,0.20), rgba(160,48,192,0.20))",
+              border: "1px solid rgba(200,80,224,0.4)",
+              color: "rgba(255,255,255,0.85)",
+              fontWeight: 600,
+              marginRight: 4,
+            }}
+          >
+            🎨 Thumbnails
+          </button>
           {/* ☕ Auto-pilot — la systemet bygge ferdig mens du tar pause */}
           <button
             onClick={() => setAutoPilotOpen(true)}
@@ -4439,6 +4473,20 @@ ${ctxLines.join("\n")}`;
         }}
       />
 
+      {/* 🎨 Thumbnail Creator — mini-Canva for sosial-feed-thumbnails */}
+      {thumbnailCreatorOpen && payload && (
+        <ThumbnailCreator
+          open={thumbnailCreatorOpen}
+          onClose={() => setThumbnailCreatorOpen(false)}
+          sourceVideoPath={payload.sourceVideo}
+          initialTitle={thumbnailContext.title}
+          initialCta={thumbnailContext.cta}
+          initialBrand={thumbnailContext.brand}
+          initialAspect={thumbnailContext.aspect}
+          feedPlanContext={thumbnailContext.feedPlanContext}
+        />
+      )}
+
       {/* 📋 Planlagte jobber fra Role Room feed planner (project-type-agnostisk) */}
       <UpcomingJobsSidebar
         onJobSelected={(job: UpcomingJob) => {
@@ -4489,6 +4537,25 @@ ${ctxLines.join("\n")}`;
           if (job.mediaType === "reel" || social === "tiktok") {
             setAspectRatio("9:16");
           }
+          // Sync brand-info inn i Thumbnail Creator-context så Bjarne ser
+          // klientens farger/logo direkte når han åpner Thumbnails-modulen.
+          // brand_snapshot kommer fra feed-plan på Role Room-siden —
+          // hvis klienten har oppdatert farger der, flyter de hit automatisk
+          // via upcoming-jobs-pollen (hvert 60. sek).
+          setThumbnailContext({
+            title: job.title || job.caption.slice(0, 60),
+            cta: job.callToAction || "",
+            brand: job.brandSnapshot ?? undefined,
+            aspect: social === "tiktok" || job.mediaType === "reel" ? "9:16"
+              : job.platform.toLowerCase().includes("story") ? "9:16"
+              : job.mediaType === "carousel" ? "4:5"
+              : "1:1",
+            feedPlanContext: {
+              projectId: job.projectId,
+              platform: job.platform,
+              postId: job.postId,
+            },
+          });
           // Åpne auto-pilot for kjapp kick-off
           if (filteredPicks.length > 0) {
             setAutoPilotOpen(true);
