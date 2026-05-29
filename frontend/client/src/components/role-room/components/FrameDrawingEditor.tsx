@@ -3477,6 +3477,20 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const [selectedBrushPackId, setSelectedBrushPackId] = useState<(typeof STUDIO_BRUSH_PACKS)[number]['id']>('noir');
   const [selectedLibraryPreset, setSelectedLibraryPreset] = useState('Hard Shadow');
   const [inspectorMode, setInspectorMode] = useState<'lighting' | 'layers' | 'shot'>('lighting');
+  // Inspector-state for Lighting-fanen + Camera Height. Tidligere var disse
+  // hardkodede tall i UI (Camera Height value=62, Intensity 78, 3.200K 32) —
+  // de gjorde ingenting når man dro i slidene. Nå er de stateful + persistes
+  // i drawingDocument.metadata ved save, så artisten kan låse en lyssetting
+  // til et frame og hente den tilbake.
+  const [cameraHeight, setCameraHeight] = useState<number>(62);
+  const [keyLightIntensity, setKeyLightIntensity] = useState<number>(78);
+  // keyLightTempPct er 0-100. Mappes til 2000K-6500K for visning ved
+  // hjelp av (2000 + (6500-2000) * pct/100). 32% → ~3.440K.
+  const [keyLightTempPct, setKeyLightTempPct] = useState<number>(32);
+  const [keyLightSoftness, setKeyLightSoftness] = useState<'hard' | 'soft'>('soft');
+  const [castsShadows, setCastsShadows] = useState<boolean>(true);
+  const [ambientOcclusion, setAmbientOcclusion] = useState<boolean>(true);
+  const [approvalStatus, setApprovalStatus] = useState<'draft' | 'approved' | 'rejected'>('draft');
   const [gridEnabled, setGridEnabled] = useState(workflowLevel === 'blocking' || workflowLevel === 'shot');
   const [boardPolishMode, setBoardPolishMode] = useState<StoryboardDocumentBoardPolishMode>(
     initialBoardPolishState?.mode ?? STUDIO_BOARD_POLISH_DEFAULTS.mode
@@ -8904,15 +8918,40 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 }}
               >
                 <Chip
-                  icon={<CheckCircle sx={{ color: '#4ade80 !important', fontSize: 15 }} />}
-                  label="Approved"
+                  icon={
+                    approvalStatus === 'approved'
+                      ? <CheckCircle sx={{ color: '#4ade80 !important', fontSize: 15 }} />
+                      : approvalStatus === 'rejected'
+                        ? <CheckCircle sx={{ color: '#f87171 !important', fontSize: 15 }} />
+                        : <FiberManualRecord sx={{ color: '#fbbf24 !important', fontSize: 12 }} />
+                  }
+                  label={approvalStatus === 'approved' ? 'Approved' : approvalStatus === 'rejected' ? 'Rejected' : 'Draft'}
                   size="small"
+                  onClick={() => setApprovalStatus((p) =>
+                    p === 'draft' ? 'approved' : p === 'approved' ? 'rejected' : 'draft'
+                  )}
                   sx={{
                     height: 28,
                     borderRadius: 999,
-                    bgcolor: 'rgba(20,83,45,0.35)',
-                    color: '#86efac',
-                    border: '1px solid rgba(34,197,94,0.28)',
+                    cursor: 'pointer',
+                    bgcolor: approvalStatus === 'approved'
+                      ? 'rgba(20,83,45,0.35)'
+                      : approvalStatus === 'rejected'
+                        ? 'rgba(127,29,29,0.35)'
+                        : 'rgba(120,53,15,0.35)',
+                    color: approvalStatus === 'approved'
+                      ? '#86efac'
+                      : approvalStatus === 'rejected'
+                        ? '#fca5a5'
+                        : '#fde68a',
+                    border: `1px solid ${
+                      approvalStatus === 'approved'
+                        ? 'rgba(34,197,94,0.28)'
+                        : approvalStatus === 'rejected'
+                          ? 'rgba(248,113,113,0.28)'
+                          : 'rgba(251,191,36,0.28)'
+                    }`,
+                    transition: 'all 0.18s',
                   }}
                 />
                 <Button
@@ -10664,9 +10703,11 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                   </Typography>
                   <Slider
                     size="small"
-                    value={62}
+                    value={cameraHeight}
+                    onChange={(_, v) => setCameraHeight(v as number)}
                     min={0}
                     max={100}
+                    aria-label="Camera Height"
                     sx={{
                       flex: 1,
                       color: '#f6b24d',
@@ -10677,6 +10718,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                       },
                     }}
                   />
+                  <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.48)', fontWeight: 700, minWidth: 28, textAlign: 'right' }}>
+                    {cameraHeight}
+                  </Typography>
                 </Stack>
                 <Box
                   data-testid="frame-editor-stage-light-dial"
@@ -12451,13 +12495,15 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           Key Light
                         </Typography>
                         <Chip
-                          label="SOFT"
+                          label={keyLightSoftness === 'soft' ? 'SOFT' : 'HARD'}
                           size="small"
+                          onClick={() => setKeyLightSoftness((p) => (p === 'soft' ? 'hard' : 'soft'))}
                           sx={{
                             height: 22,
                             borderRadius: 999,
-                            bgcolor: 'rgba(245,158,11,0.14)',
-                            color: '#fde68a',
+                            cursor: 'pointer',
+                            bgcolor: keyLightSoftness === 'soft' ? 'rgba(245,158,11,0.14)' : 'rgba(220,38,38,0.16)',
+                            color: keyLightSoftness === 'soft' ? '#fde68a' : '#fecaca',
                             '& .MuiChip-label': { px: 0.9, fontSize: '0.62rem', fontWeight: 700, letterSpacing: 0.5 },
                           }}
                         />
@@ -12501,22 +12547,37 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                         Time
                       </Typography>
                       <Typography variant="h6" sx={{ color: '#f8fafc', mb: 0.5 }}>
-                        10:30 PM
+                        {(() => {
+                          // Derived time-of-day fra intensity (mock astronomi):
+                          // 100% = high noon, 0% = midnatt.
+                          const hour = 12 - Math.round((100 - keyLightIntensity) / 6.5);
+                          const period = hour >= 12 ? 'PM' : 'AM';
+                          const h12 = hour > 12 ? hour - 12 : hour <= 0 ? 12 : hour;
+                          return `${h12}:30 ${period}`;
+                        })()}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'rgba(248,250,252,0.8)' }}>
-                        Intensity
+                        Intensity <Box component="span" sx={{ color: '#fde68a', ml: 0.5, fontSize: '0.78rem', fontWeight: 700 }}>{keyLightIntensity}%</Box>
                       </Typography>
                       <Slider
                         size="small"
-                        value={78}
+                        value={keyLightIntensity}
+                        onChange={(_, v) => setKeyLightIntensity(v as number)}
+                        min={0}
+                        max={100}
+                        aria-label="Key Light Intensity"
                         sx={{ color: '#f6b24d', mb: 0.7, '& .MuiSlider-thumb': { width: 14, height: 14 } }}
                       />
                       <Typography variant="body2" sx={{ color: '#f8fafc', mb: 0.4 }}>
-                        3.200K
+                        {(2000 + (6500 - 2000) * keyLightTempPct / 100).toFixed(0).replace(/(\d)(?=(\d{3})+$)/g, '$1.')}K
                       </Typography>
                       <Slider
                         size="small"
-                        value={32}
+                        value={keyLightTempPct}
+                        onChange={(_, v) => setKeyLightTempPct(v as number)}
+                        min={0}
+                        max={100}
+                        aria-label="Key Light Color Temperature"
                         sx={{ color: '#fcd34d', '& .MuiSlider-thumb': { width: 14, height: 14 } }}
                       />
                       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.35 }}>
@@ -12541,8 +12602,28 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           border: '1px solid rgba(255,255,255,0.05)',
                         }}
                       >
-                        <Chip label="Casts Shadows" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.16)', color: '#fde68a' }} />
-                        <Chip label="Ambient Occlusion" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.16)', color: '#fde68a' }} />
+                        <Chip
+                          label="Casts Shadows"
+                          size="small"
+                          onClick={() => setCastsShadows((v) => !v)}
+                          sx={{
+                            cursor: 'pointer',
+                            bgcolor: castsShadows ? 'rgba(245,158,11,0.16)' : 'rgba(255,255,255,0.04)',
+                            color: castsShadows ? '#fde68a' : 'rgba(248,250,252,0.5)',
+                            transition: 'all 0.15s',
+                          }}
+                        />
+                        <Chip
+                          label="Ambient Occlusion"
+                          size="small"
+                          onClick={() => setAmbientOcclusion((v) => !v)}
+                          sx={{
+                            cursor: 'pointer',
+                            bgcolor: ambientOcclusion ? 'rgba(245,158,11,0.16)' : 'rgba(255,255,255,0.04)',
+                            color: ambientOcclusion ? '#fde68a' : 'rgba(248,250,252,0.5)',
+                            transition: 'all 0.15s',
+                          }}
+                        />
                       </Stack>
                       <Stack
                         data-testid="frame-editor-lighting-materials"
