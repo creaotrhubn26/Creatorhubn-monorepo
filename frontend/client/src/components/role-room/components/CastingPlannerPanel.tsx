@@ -3461,7 +3461,12 @@ type RoleRoomProjectWorkspaceState = {
     if (isClientReviewerMode || isClientReviewerSession) {
       return workspaceProjects.filter((project) => !isProtectedDemoProject(project));
     }
-    if (isProducerWorkspaceSession) {
+    // VIKTIG: plannerAudience er den ekte modus-sjekken. isProducerWorkspaceSession
+    // er VILLEDENDE navngitt — den returnerer true for INNHOLDSPRODUSENT, ikke
+    // produksjonsteam (sammensatt av isContentProducerSession ||
+    // isClientReviewerSession). Tidligere brukte denne filteret den, så
+    // innholdsprodusent endte med å se TROLL og produksjonsteam så den ikke.
+    if (plannerAudience === 'production_team') {
       // Produksjonsmodus: TROLL-demo SKAL være synlig (det er den eneste modus
       // hvor "Last Troll Demo"-knappen i Nytt-prosjekt-flyt har mening).
       // Men ekskluder content-producer-demo siden den hører til vertikal #2.
@@ -3478,7 +3483,7 @@ type RoleRoomProjectWorkspaceState = {
     isClientReviewerMode,
     isClientReviewerSession,
     isContentProducerDemoProject,
-    isProducerWorkspaceSession,
+    plannerAudience,
     isProtectedDemoProject,
     isTemplateProject,
     isTrollProject,
@@ -3493,12 +3498,12 @@ type RoleRoomProjectWorkspaceState = {
   useEffect(() => {
     if (!currentProject) return;
     if (!isTrollProject(currentProject)) return;
-    if (isProducerWorkspaceSession) return;
+    if (plannerAudience === 'production_team') return;
     setCurrentProject(null);
     setCurrentProjectId(null);
   }, [
     currentProject,
-    isProducerWorkspaceSession,
+    plannerAudience,
     isTrollProject,
   ]);
 
@@ -3615,11 +3620,10 @@ type RoleRoomProjectWorkspaceState = {
       return;
     }
 
-    // TROLL skal eksklusivt kunne åpnes i produksjonsteam-modus. Tidligere
-    // var sjekken bakvendt (blokkerte i produksjonsteam i stedet for i de
-    // andre modusene) slik at innholdsprodusent/dansestudio kunne åpne
-    // TROLL.
-    if (!isProducerWorkspaceSession && isTrollProject(project)) {
+    // TROLL skal eksklusivt kunne åpnes i produksjonsteam-modus. plannerAudience
+    // er den ekte modus-sjekken; isProducerWorkspaceSession er motsatt navngitt
+    // (true for innholdsprodusent), så bruker av den fanget feil retning.
+    if (plannerAudience !== 'production_team' && isTrollProject(project)) {
       toast.showWarning('TROLL-prosjektet er kun tilgjengelig for produksjonsteam.');
       return;
     }
