@@ -82,6 +82,22 @@
       "requiresTimeline": false
     },
     {
+      "id": "push_markers_to_resolve",
+      "name": "Push Markers to Resolve",
+      "category": "markers",
+      "scriptPath": "scripts/markers/push_markers_to_resolve.py",
+      "description": "Andre halvdel av bidireksjonell sync \u2014 pusher CE-mark\u00f8rer til aktiv Resolve-timeline. Bruker customData='ce:<id>' for \u00e5 dedupe + oppdatere v\u00e5re tidligere pushes uten \u00e5 r\u00f8re Bjarnes egne mark\u00f8rer.",
+      "requiredInputs": [
+        { "key": "markers", "label": "Mark\u00f8rer-array", "type": "json", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "health_check",
       "name": "Run Health Check",
       "category": "project",

@@ -993,6 +993,26 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     setTransitionMenuFor(null);
   }, []);
 
+  // ─── Auto-push CE-markører til Resolve (debouncet 2s) ───
+  // Bare lokale markører (ikke de som kom FRA Resolve via 'rr-'-prefiks)
+  // sendes — slik unngår vi feedback-løkker.
+  const markersForPushRef = useRef<string>("");
+  useEffect(() => {
+    if (!resolveSyncEnabled) return;
+    if (!resolveSync.resolveState?.connected) return;
+    const localMarkers = markers.filter(m => !m.id.startsWith("rr-"));
+    if (localMarkers.length === 0) return;
+    const signature = JSON.stringify(
+      localMarkers.map(m => [m.id, m.timeSec.toFixed(2), m.label, m.color, m.comment])
+    );
+    if (signature === markersForPushRef.current) return;
+    markersForPushRef.current = signature;
+    const handle = setTimeout(() => {
+      void resolveSync.pushMarkers({ markers: localMarkers });
+    }, 2000);
+    return () => clearTimeout(handle);
+  }, [markers, resolveSyncEnabled, resolveSync]);
+
   // ─── Sync nye markører fra Resolve inn i CE timeline ───
   // Når Bjarne legger til en markør i Resolve via "M"-tasten, dukker den
   // opp her som ekstra markør med "Resolve"-tag.
@@ -1097,6 +1117,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Resolve-sync: bidireksjonell sync med DaVinci Resolve. Når aktiv polles
   // Resolve hvert 5. sek + nye markører fra timeline merges inn i CE.
   const [resolveSyncEnabled, setResolveSyncEnabled] = useState(true);
+  const [pushingFullEdit, setPushingFullEdit] = useState(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
   const resolveSync = useResolveSync({ enabled: resolveSyncEnabled });
   const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
     const newAudio: CustomAudio = {
@@ -2428,7 +2450,7 @@ ${ctxLines.join("\n")}`;
           )}
         </div>
         <div className="ce-actions">
-          {/* Resolve sync-pill. Klikk toggler polling av/på. */}
+          {/* Resolve sync-pill + push-knapp */}
           {(() => {
             const s = resolveSync.status;
             const conn = resolveSync.resolveState?.connected;
@@ -2451,20 +2473,71 @@ ${ctxLines.join("\n")}`;
               s === "disconnected" ? "Resolve lukket" :
               s === "error" ? "Sync feilet" : "Klar";
             return (
-              <button
-                onClick={() => setResolveSyncEnabled(v => !v)}
-                title={resolveSyncEnabled
-                  ? `Live sync med ${resolveSync.resolveState?.projectName ?? "Resolve"} · markører oppdateres automatisk`
-                  : "Klikk for å aktivere live sync med Resolve"}
-                style={{
-                  background: bg, color: fg, border: `1px solid ${border}`,
-                  borderRadius: 999, padding: "4px 10px", fontSize: 10.5,
-                  fontWeight: 600, cursor: "pointer", marginRight: 8,
-                  display: "inline-flex", alignItems: "center", gap: 5,
-                }}
-              >
-                {label}
-              </button>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginRight: 8 }}>
+                <button
+                  onClick={() => setResolveSyncEnabled(v => !v)}
+                  title={resolveSyncEnabled
+                    ? `Live sync med ${resolveSync.resolveState?.projectName ?? "Resolve"} · markører flyter automatisk`
+                    : "Klikk for å aktivere live sync med Resolve"}
+                  style={{
+                    background: bg, color: fg, border: `1px solid ${border}`,
+                    borderRadius: 999, padding: "4px 10px", fontSize: 10.5,
+                    fontWeight: 600, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}
+                >
+                  {label}
+                </button>
+                {/* Push-knapp: kun synlig når Resolve er åpen */}
+                {resolveSyncEnabled && conn && payload && filteredPicks.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      if (pushingFullEdit) return;
+                      setPushingFullEdit(true);
+                      setPushResult(null);
+                      try {
+                        const allChapters = new Set<string>();
+                        payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
+                        const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
+                        const r = await resolveSync.pushFullEdit({
+                          picks: payload.picks,
+                          sourceVideo: payload.sourceVideo,
+                          pickOverrides,
+                          pickOrder: activePickOrder,
+                          excludedChapters: excluded,
+                          timelineName: `${projectTitle || "Highlight"} — CE Sync`,
+                        });
+                        setPushResult(r.ok
+                          ? "✓ Pushet til Resolve"
+                          : `⚠ ${r.error ?? "Feilet"}`);
+                        setTimeout(() => setPushResult(null), 4000);
+                      } finally {
+                        setPushingFullEdit(false);
+                      }
+                    }}
+                    disabled={pushingFullEdit}
+                    title="Build ny Resolve-timeline fra current edit-state (eksisterende Resolve-timeline forblir urørt)"
+                    style={{
+                      background: pushingFullEdit
+                        ? "rgba(160,48,192,0.15)" : "rgba(160,48,192,0.10)",
+                      color: "#c850e0",
+                      border: "1px solid rgba(160,48,192,0.35)",
+                      borderRadius: 999, padding: "4px 8px", fontSize: 10.5,
+                      fontWeight: 600, cursor: pushingFullEdit ? "wait" : "pointer",
+                    }}
+                  >
+                    {pushingFullEdit ? "⟳ Pusher …" : "↑ Push edit"}
+                  </button>
+                )}
+                {pushResult && (
+                  <span style={{
+                    fontSize: 10.5, color: pushResult.startsWith("✓") ? "#4ad48a" : "#ef4f6f",
+                    marginLeft: 4,
+                  }}>
+                    {pushResult}
+                  </span>
+                )}
+              </div>
             );
           })()}
           <button

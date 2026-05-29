@@ -69,8 +69,35 @@ function diffMarkers(prev: ResolveMarker[], next: ResolveMarker[]): ResolveMarke
   return next.filter((m) => !prevFrames.has(m.frame));
 }
 
+export interface PushMarkersInput {
+  markers: Array<{
+    id: string;
+    timeSec: number;
+    label: string;
+    color: string;
+    comment: string;
+  }>;
+}
+
+export interface PushMarkersResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+}
+
 export function useResolveSync(options: UseResolveSyncOptions = {}): ResolveSyncState & {
   pollNow: () => Promise<void>;
+  pushMarkers: (input: PushMarkersInput) => Promise<PushMarkersResult>;
+  /** Push hele edit-staten til Resolve som timeline (build_highlight_from_picks). */
+  pushFullEdit: (input: {
+    picks: unknown[];
+    sourceVideo: string;
+    pickOverrides?: Record<number, { startSec?: number; endSec?: number }>;
+    pickOrder?: number[] | null;
+    excludedChapters?: string[];
+    timelineName?: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
 } {
   const intervalMs = options.intervalMs ?? 5000;
   const enabled = options.enabled ?? true;
@@ -190,5 +217,54 @@ export function useResolveSync(options: UseResolveSyncOptions = {}): ResolveSync
     return () => clearInterval(id);
   }, [state.lastPolledAt]);
 
-  return { ...state, pollNow: doPoll };
+  // Push markører til Resolve. Bruker customData='ce:{id}' så samme markør
+  // re-pushes uten å dupliseres. Idempotent — trygt å kalle ved hver edit.
+  const pushMarkers = useCallback(async (input: PushMarkersInput): Promise<PushMarkersResult> => {
+    const summary = await executeScript("push_markers_to_resolve", {
+      markers: input.markers.map((m) => ({
+        id: m.id,
+        sec: m.timeSec,
+        label: m.label,
+        color: m.color,
+        comment: m.comment,
+      })),
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const r = (result?.value as PushMarkersResult | undefined) ?? {
+      added: 0, updated: 0, skipped: 0, failed: 0,
+    };
+    // Trigger immediate re-poll så CE ser den nye state
+    void doPoll();
+    return r;
+  }, [doPoll]);
+
+  const pushFullEdit = useCallback(async (input: {
+    picks: unknown[];
+    sourceVideo: string;
+    pickOverrides?: Record<number, { startSec?: number; endSec?: number }>;
+    pickOrder?: number[] | null;
+    excludedChapters?: string[];
+    timelineName?: string;
+  }): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const summary = await executeScript("build_highlight_from_picks", {
+        sourceVideo: input.sourceVideo,
+        picks: input.picks,
+        pickOverrides: input.pickOverrides ?? {},
+        pickOrder: input.pickOrder ?? undefined,
+        excludedChapters: input.excludedChapters ?? [],
+        timelineName: input.timelineName ?? `CE Sync — ${new Date().toLocaleTimeString("nb-NO")}`,
+      }, false);
+      const errEvent = summary.events.find((e) => e.type === "error");
+      if (errEvent) {
+        return { ok: false, error: (errEvent.value as { message?: string })?.message ?? "Push feilet" };
+      }
+      void doPoll();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  }, [doPoll]);
+
+  return { ...state, pollNow: doPoll, pushMarkers, pushFullEdit };
 }
