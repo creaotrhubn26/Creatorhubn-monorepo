@@ -2897,7 +2897,7 @@ export const castingService = {
     assertPayloadProjectScope(projectId, payload, 'startLiveSetSession');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sessions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -3023,7 +3023,9 @@ export const castingService = {
       query.set('lon', payload.lon.toString());
     }
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/weather${suffix}`);
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/weather${suffix}`, {
+      headers: getRoleRoomAuthHeaders(),
+    });
     let data: {
       success?: boolean;
       current?: Record<string, unknown>;

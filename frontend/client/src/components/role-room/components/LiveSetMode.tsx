@@ -92,6 +92,7 @@ import {
   OpenInNew as ExternalLinkIcon,
   SwapHoriz as LayoutSwapIcon,
 } from '@mui/icons-material';
+import authSessionService from '../services/authSessionService';
 import { useLiveSet, type LiveSetCameraMetadata, type LiveSetNote, type LiveSetTake } from '../hooks/useLiveSet';
 import { useLiveSetContext, type ShotOption, type StoryboardTile } from '../hooks/useLiveSetContext';
 import { useLiveWeather, type LiveWeatherRiskLevel, type LiveWeatherState } from '../hooks/useLiveWeather';
@@ -2686,7 +2687,10 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
     let cancelled = false;
     const fetchStatus = async () => {
       try {
-        const res = await fetch(`/api/dit/projects/${projectId}/take-status`, { credentials: 'same-origin' });
+        const res = await fetch(`/api/dit/projects/${projectId}/take-status`, {
+          credentials: 'same-origin',
+          headers: authSessionService.getAuthHeadersSync(),
+        });
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
