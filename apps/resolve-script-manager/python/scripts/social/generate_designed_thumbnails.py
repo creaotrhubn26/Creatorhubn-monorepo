@@ -78,27 +78,168 @@ def _hex_to_rgb(h: str) -> tuple[int, int, int]:
         return (128, 128, 128)
 
 
+def _download_logo(logo_url: str, cache_dir: str) -> str | None:
+    """Last ned logo fra URL eller data:URL. Returnerer lokal sti, eller
+    None ved feil. Caches per-URL via SHA-hash."""
+    if not logo_url:
+        return None
+    try:
+        import hashlib, urllib.request
+        h = hashlib.sha256(logo_url.encode()).hexdigest()[:16]
+        cached = os.path.join(cache_dir, f"logo_{h}.png")
+        if os.path.isfile(cached):
+            return cached
+        if logo_url.startswith("data:image"):
+            import base64
+            # data:image/png;base64,XXXXX
+            header, encoded = logo_url.split(",", 1)
+            with open(cached, "wb") as f:
+                f.write(base64.b64decode(encoded))
+            return cached
+        if logo_url.startswith(("http://", "https://")):
+            urllib.request.urlretrieve(logo_url, cached)
+            return cached
+        # Lokal filsti
+        if os.path.isfile(logo_url):
+            return logo_url
+    except Exception as exc:
+        bridge.warn(f"Logo-download feilet: {exc}")
+    return None
+
+
+def _paste_logo(
+    canvas: "Image.Image", logo_path: str,
+    placement: str, canvas_w: int, canvas_h: int,
+    size_pct: float = 0.12,
+) -> None:
+    """Limer logo inn på canvas i valgt hjørne. size_pct = prosent av
+    canvas-bredden. Beholder aspect-ratio. Padding = 4 % av min(w,h)."""
+    try:
+        from PIL import Image
+        logo = Image.open(logo_path).convert("RGBA")
+        target_w = int(canvas_w * size_pct)
+        scale = target_w / logo.width
+        target_h = int(logo.height * scale)
+        logo = logo.resize((target_w, target_h), Image.LANCZOS)
+        pad = int(min(canvas_w, canvas_h) * 0.04)
+
+        if placement == "top-left":
+            pos = (pad, pad)
+        elif placement == "top-right":
+            pos = (canvas_w - target_w - pad, pad)
+        elif placement == "bottom-left":
+            pos = (pad, canvas_h - target_h - pad)
+        elif placement == "bottom-right":
+            pos = (canvas_w - target_w - pad, canvas_h - target_h - pad)
+        elif placement == "center":
+            pos = ((canvas_w - target_w) // 2, (canvas_h - target_h) // 2)
+        else:
+            return  # ukjent placement = ingen logo
+
+        canvas.paste(logo, pos, logo)
+    except Exception as exc:
+        bridge.warn(f"Logo-paste feilet: {exc}")
+
+
+def _detect_face_center(image_path: str) -> tuple[float, float] | None:
+    """Returner ansikt-senter som (x_frac, y_frac) i 0–1. Bruker OpenCV
+    haar-cascade hvis tilgjengelig. None = ikke funnet → fall tilbake
+    til center-crop."""
+    try:
+        import cv2  # type: ignore
+        img = cv2.imread(image_path)
+        if img is None:
+            return None
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        cascade = cv2.CascadeClassifier(cascade_path)
+        faces = cascade.detectMultiScale(gray, 1.2, 5, minSize=(80, 80))
+        if len(faces) == 0:
+            return None
+        # Velg største ansikt (mest sannsynlig hovedmotiv)
+        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+        cx = (x + w / 2) / img.shape[1]
+        cy = (y + h / 2) / img.shape[0]
+        return (cx, cy)
+    except ImportError:
+        # OpenCV ikke installert — fall tilbake stille
+        return None
+    except Exception as exc:
+        bridge.warn(f"Face-detect feilet: {exc}")
+        return None
+
+
 def _extract_frame(ffmpeg: str, video_path: str, ts_sec: float,
                    out_path: str, width: int, height: int) -> bool:
-    """Extract en frame ved gitt timestamp via ffmpeg, cropped/scaled
-    til target-aspect."""
-    aspect = width / height
-    cmd = [
-        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-        "-ss", str(ts_sec), "-i", video_path,
-        "-vframes", "1",
-        "-vf",
-        # Scale + center-crop til ønsket aspect (face-aware-crop ville
-        # vært ideelt, men det krever Detect People som Studio-feature)
-        f"scale=if(gt(iw/ih\\,{aspect:.4f})\\,-1\\,{width})"
-        f":if(gt(iw/ih\\,{aspect:.4f})\\,{height}\\,-1),"
-        f"crop={width}:{height}:(iw-{width})/2:(ih-{height})/2",
-        out_path,
-    ]
+    """Extract en frame ved gitt timestamp via ffmpeg.
+
+    1. Hent full frame (uten crop)
+    2. Detect face-senter via OpenCV (hvis tilgjengelig)
+    3. Crop rundt face-senteret, eller center-crop som fallback
+    """
+    # 1. Full frame til en temp-fil
+    tmp_full = out_path + ".full.png"
     try:
+        cmd = [
+            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+            "-ss", str(ts_sec), "-i", video_path,
+            "-vframes", "1", tmp_full,
+        ]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-        return r.returncode == 0 and os.path.isfile(out_path)
+        if r.returncode != 0 or not os.path.isfile(tmp_full):
+            return False
+
+        # 2. Face-aware crop
+        try:
+            from PIL import Image
+            full = Image.open(tmp_full).convert("RGB")
+        except ImportError:
+            os.rename(tmp_full, out_path)
+            return True
+
+        face_center = _detect_face_center(tmp_full)
+        src_w, src_h = full.size
+        src_aspect = src_w / src_h
+        tgt_aspect = width / height
+
+        # Beregn crop-rektangel
+        if src_aspect > tgt_aspect:
+            # Source er bredere — crop horisontalt
+            crop_h = src_h
+            crop_w = int(src_h * tgt_aspect)
+            if face_center:
+                face_x = int(face_center[0] * src_w)
+                left = max(0, min(src_w - crop_w, face_x - crop_w // 2))
+            else:
+                left = (src_w - crop_w) // 2
+            top = 0
+        else:
+            # Source er smalere/likt — crop vertikalt
+            crop_w = src_w
+            crop_h = int(src_w / tgt_aspect)
+            if face_center:
+                face_y = int(face_center[1] * src_h)
+                # Plasser ansiktet litt over midten (rule of thirds-ish)
+                target_face_y_in_crop = int(crop_h * 0.4)
+                top = max(0, min(src_h - crop_h, face_y - target_face_y_in_crop))
+            else:
+                top = (src_h - crop_h) // 2
+            left = 0
+
+        cropped = full.crop((left, top, left + crop_w, top + crop_h))
+        cropped = cropped.resize((width, height), Image.LANCZOS)
+        cropped.save(out_path, "PNG")
+        try: os.unlink(tmp_full)
+        except OSError: pass
+        return True
     except subprocess.TimeoutExpired:
+        try: os.unlink(tmp_full)
+        except OSError: pass
+        return False
+    except Exception as exc:
+        bridge.warn(f"Frame-extract feilet: {exc}")
+        try: os.unlink(tmp_full)
+        except OSError: pass
         return False
 
 
@@ -130,6 +271,9 @@ def _generate_thumbnail(
     bg_rgb: tuple[int, int, int],
     width: int, height: int,
     output_path: str,
+    logo_path: str | None = None,
+    logo_placement: str = "top-right",
+    logo_size_pct: float = 0.12,
 ) -> bool:
     """Lag en designet thumbnail via PIL med valgt layout-template."""
     try:
@@ -320,6 +464,11 @@ def _generate_thumbnail(
                 draw.text((tx, y_pos), line, font=title_font, fill=(255, 255, 255))
                 y_pos += 80
 
+        # Logo-overlay (etter alt annet så den ligger på toppen)
+        if logo_path:
+            _paste_logo(canvas, logo_path, logo_placement, width, height,
+                        size_pct=logo_size_pct)
+
         canvas.save(output_path, "PNG", optimize=True)
         return True
 
@@ -359,6 +508,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     accent_rgb = _hex_to_rgb(brand_snapshot.get("accentColor") or DEFAULT_ACCENT)
     bg_rgb = _hex_to_rgb(brand_snapshot.get("backgroundColor") or DEFAULT_BG)
     text_rgb = _hex_to_rgb(brand_snapshot.get("textColor") or DEFAULT_TEXT)
+
+    # Logo-håndtering: download fra brand_snapshot.logoUrl, cache i output_dir
+    logo_url = str(brand_snapshot.get("logoUrl") or "").strip()
+    logo_placement = str(brand_snapshot.get("logoPlacement") or "top-right").strip()
+    logo_size_pct = float(brand_snapshot.get("logoSizePct") or 0.12)
+    logo_path = _download_logo(logo_url, output_dir) if logo_url else None
 
     if dry_run:
         bridge.result({
@@ -402,6 +557,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 title, cta, brand_name,
                 accent_rgb, text_rgb, bg_rgb,
                 width, height, out_path,
+                logo_path=logo_path,
+                logo_placement=logo_placement,
+                logo_size_pct=logo_size_pct,
             )
             if ok:
                 generated.append({

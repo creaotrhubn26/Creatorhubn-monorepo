@@ -50,6 +50,11 @@ interface BrandSnapshot {
   toneOfVoice?: string | null;
 }
 
+export type LogoPlacement =
+  | "top-left" | "top-right"
+  | "bottom-left" | "bottom-right"
+  | "center" | "none";
+
 interface ThumbnailCandidate {
   layout: LayoutTemplate;
   path: string;
@@ -106,6 +111,9 @@ export function ThumbnailCreator({
   const [accentColor, setAccentColor] = useState(initialBrand?.accentColor ?? "#a030c0");
   const [textColor, setTextColor] = useState(initialBrand?.textColor ?? "#ffffff");
   const [backgroundColor, setBackgroundColor] = useState(initialBrand?.backgroundColor ?? "#0a0518");
+  const [logoUrl, setLogoUrl] = useState(initialBrand?.logoUrl ?? "");
+  const [logoPlacement, setLogoPlacement] = useState<LogoPlacement>("top-right");
+  const [logoSizePct, setLogoSizePct] = useState(0.12);
   const [frameSec, setFrameSec] = useState(5);
   const [layout, setLayout] = useState<LayoutTemplate>("hero");
   const [candidates, setCandidates] = useState<ThumbnailCandidate[]>([]);
@@ -139,7 +147,12 @@ export function ThumbnailCreator({
         videoPath: sourceVideoPath,
         bestFrameSeconds: [frameSec, frameSec + 7, frameSec + 14, frameSec + 21, frameSec + 28, frameSec + 35],
         postInfo: { title, caption: title, callToAction: cta },
-        brandSnapshot: { companyName, accentColor, backgroundColor, textColor },
+        brandSnapshot: {
+          companyName, accentColor, backgroundColor, textColor,
+          logoUrl: logoUrl || null,
+          logoPlacement: logoPlacement === "none" ? null : logoPlacement,
+          logoSizePct,
+        },
         aspectRatio: aspect,
       }, false);
       const result = summary.events.find(e => e.type === "result");
@@ -343,6 +356,9 @@ export function ThumbnailCreator({
                 backgroundColor={backgroundColor}
                 videoSrc={videoSrc}
                 frameSec={frameSec}
+                logoUrl={logoUrl}
+                logoPlacement={logoPlacement}
+                logoSizePct={logoSizePct}
               />
             </PhoneMockup>
           </div>
@@ -444,6 +460,50 @@ export function ThumbnailCreator({
           <ColorRow label="Bakgrunn" value={backgroundColor} onChange={setBackgroundColor} />
           <ColorRow label="Tekst" value={textColor} onChange={setTextColor} />
 
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 8,
+                          color: "var(--text-2)" }}>
+            LOGO
+          </div>
+          <input value={logoUrl}
+                 onChange={(e) => setLogoUrl(e.target.value)}
+                 placeholder="Logo-URL (https:// eller data:image/…)"
+                 style={inputStyle} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                          gap: 4, marginTop: 6 }}>
+            {([
+              { v: "top-left", l: "↖" },
+              { v: "top-right", l: "↗" },
+              { v: "none", l: "—" },
+              { v: "bottom-left", l: "↙" },
+              { v: "bottom-right", l: "↘" },
+              { v: "center", l: "•" },
+            ] as Array<{ v: LogoPlacement; l: string }>).map(o => (
+              <button key={o.v}
+                      onClick={() => setLogoPlacement(o.v)}
+                      title={o.v}
+                      style={{
+                        background: logoPlacement === o.v
+                          ? accentColor : "rgba(255,255,255,0.04)",
+                        color: logoPlacement === o.v ? "#fff" : "var(--text-1)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 4, padding: "6px 0",
+                        fontSize: 14, cursor: "pointer",
+                      }}>{o.l}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6,
+                          marginTop: 8, fontSize: 10.5,
+                          color: "var(--text-2)" }}>
+            <span style={{ minWidth: 40 }}>Størrelse</span>
+            <input type="range" min={0.06} max={0.30} step={0.01}
+                   value={logoSizePct}
+                   onChange={e => setLogoSizePct(parseFloat(e.target.value))}
+                   style={{ flex: 1 }} />
+            <span style={{ minWidth: 30, textAlign: "right" }}>
+              {(logoSizePct * 100).toFixed(0)}%
+            </span>
+          </div>
+
           {error && (
             <div style={{ marginTop: 12, padding: 8, borderRadius: 4,
                             background: "rgba(239,79,111,0.10)", color: "#ef4f6f",
@@ -487,11 +547,13 @@ function ThumbnailDesignOverlay({
   layout, title, cta, companyName,
   accentColor, textColor, backgroundColor,
   videoSrc, frameSec,
+  logoUrl, logoPlacement, logoSizePct,
 }: {
   layout: LayoutTemplate;
   title: string; cta: string; companyName: string;
   accentColor: string; textColor: string; backgroundColor: string;
   videoSrc: string; frameSec: number;
+  logoUrl: string; logoPlacement: LogoPlacement; logoSizePct: number;
 }) {
   const bg = layout === "bold" ? accentColor : backgroundColor;
   return (
@@ -644,8 +706,38 @@ function ThumbnailDesignOverlay({
           </div>
         </>
       )}
+      {/* Logo-overlay — rendres på toppen av alt annet */}
+      {logoUrl && logoPlacement !== "none" && (
+        <LogoOverlay url={logoUrl} placement={logoPlacement} sizePct={logoSizePct} />
+      )}
     </div>
   );
+}
+
+function LogoOverlay({ url, placement, sizePct }: {
+  url: string; placement: LogoPlacement; sizePct: number;
+}) {
+  // 4 % padding fra hjørnet (matches PIL-versjonen)
+  const pad = "4%";
+  const w = `${sizePct * 100}%`;
+  const base: React.CSSProperties = {
+    position: "absolute", width: w, height: "auto",
+    pointerEvents: "none",
+    // drop-shadow så logoer på lyse bakgrunner fortsatt har kontrast
+    filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.35))",
+  };
+  let pos: React.CSSProperties;
+  switch (placement) {
+    case "top-left":     pos = { top: pad, left: pad }; break;
+    case "top-right":    pos = { top: pad, right: pad }; break;
+    case "bottom-left":  pos = { bottom: pad, left: pad }; break;
+    case "bottom-right": pos = { bottom: pad, right: pad }; break;
+    case "center":
+      pos = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+      break;
+    default: return null;
+  }
+  return <img src={url} alt="" style={{ ...base, ...pos }} />;
 }
 
 function ColorRow({ label, value, onChange }: {
