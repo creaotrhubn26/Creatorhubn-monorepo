@@ -89,6 +89,15 @@ interface CameraInfo {
 
 export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   const [step, setStep] = useState<Step>("sources");
+  // QC-prompt: erstatter native confirm() med en in-app dialog. Promise-
+  // basert så fortsatt await-bar fra resten av wizard-flowen.
+  const [qcPrompt, setQcPrompt] = useState<{
+    warnings: string[];
+    resolve: (v: boolean) => void;
+  } | null>(null);
+  const askQcMarkers = (warnings: string[]): Promise<boolean> => {
+    return new Promise((resolve) => setQcPrompt({ warnings, resolve }));
+  };
 
   // Steg 0 (NY): Kilder + kameraer
   const [mountedCards, setMountedCards] = useState<MountedCard[]>([]);
@@ -1813,10 +1822,7 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                     label: `QC: ${qcWarnings.length} advarsler funnet`,
                     summary: qcWarnings.slice(0, 2).join("; "),
                   });
-                  const wantMarkers = confirm(
-                    `⚠️ QC-rapport før delivery:\n\n${qcWarnings.join("\n\n")}\n\n` +
-                    `Vil du at jeg legger til markers på timeline i Resolve så du kan navigere direkte til hvert problem?`
-                  );
+                  const wantMarkers = await askQcMarkers(qcWarnings);
                   recordLearning(`QC: ${qcWarnings.length} advarsler — wantMarkers=${wantMarkers}`);
 
                   if (wantMarkers) {
@@ -1873,6 +1879,33 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
           </div>
         )}
       </div>
+
+      {/* QC-prompt — erstatter native confirm(). Vises kun under delivery-flowen. */}
+      {qcPrompt && (
+        <div className="modal-backdrop" style={{ zIndex: 10000 }}
+             onClick={() => { qcPrompt.resolve(false); setQcPrompt(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}
+               style={{ width: 560, maxHeight: "80vh", overflow: "auto" }}>
+            <h3 style={{ marginTop: 0 }}>⚠️ QC-rapport før delivery</h3>
+            <div style={{ fontSize: 13, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>
+              {qcPrompt.warnings.join("\n\n")}
+            </div>
+            <p style={{ fontSize: 13, marginTop: 16 }}>
+              Vil du at jeg legger til markers på timeline i Resolve så du kan
+              navigere direkte til hvert problem?
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => { qcPrompt.resolve(false); setQcPrompt(null); }}>
+                Nei, hopp over
+              </button>
+              <button className="primary"
+                      onClick={() => { qcPrompt.resolve(true); setQcPrompt(null); }}>
+                Ja, legg til markers
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

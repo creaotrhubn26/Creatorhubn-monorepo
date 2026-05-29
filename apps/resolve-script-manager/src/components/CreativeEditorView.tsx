@@ -428,6 +428,25 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     pickOverrides: Record<number, { startSec?: number; endSec?: number }>;
     activePickOrder: number[] | null;
   };
+  const snapshotsEqual = (a: EditorSnapshot, b: EditorSnapshot): boolean => {
+    if (a.includedChapters.length !== b.includedChapters.length) return false;
+    if (a.includedChapters.some((c, i) => c !== b.includedChapters[i])) return false;
+    const ak = Object.keys(a.pickOverrides);
+    const bk = Object.keys(b.pickOverrides);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) {
+      const av = a.pickOverrides[Number(k)];
+      const bv = b.pickOverrides[Number(k)];
+      if (!bv) return false;
+      if (av.startSec !== bv.startSec || av.endSec !== bv.endSec) return false;
+    }
+    const ao = a.activePickOrder;
+    const bo = b.activePickOrder;
+    if (ao == null && bo == null) return true;
+    if (ao == null || bo == null) return false;
+    if (ao.length !== bo.length) return false;
+    return ao.every((n, i) => n === bo[i]);
+  };
   const historyRef = useRef<{ snapshots: EditorSnapshot[]; idx: number; restoringFromHistory: boolean }>({
     snapshots: [],
     idx: -1,
@@ -605,13 +624,19 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     return () => clearTimeout(handle);
   }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks]);
 
+  // Counter trigger advisor-refresh — bumpes etter scan-jobber så
+  // useEffecten re-fetcher freshe data fra disk.
+  const [advisorReloadKey, setAdvisorReloadKey] = useState(0);
   useEffect(() => {
     if (!advisorPath) return;
-    fetch(convertFileSrc(advisorPath))
+    let cancelled = false;
+    // Cache-bust path med reload-key så samme advisorPath kan refetches.
+    fetch(convertFileSrc(advisorPath) + `?v=${advisorReloadKey}`)
       .then((r) => r.json())
-      .then((d) => setAdvisor(d))
+      .then((d) => { if (!cancelled) setAdvisor(d); })
       .catch(() => { /* advisor is optional */ });
-  }, [advisorPath]);
+    return () => { cancelled = true; };
+  }, [advisorPath, advisorReloadKey]);
 
   // ─── Derived state ───
   const allPicks = useMemo(() => payload ? [...payload.picks, ...extraPicks] : [], [payload, extraPicks]);
@@ -808,9 +833,17 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   }, []);
 
   // ─── Undo/redo: snapshot editor state on changes ───
-  // Push current state as a new history snapshot. Skipped when restoring
-  // (otherwise undo/redo would itself create new snapshots).
+  // Push current state as a new history snapshot. Skipped når:
+  //   a) Payload ikke er lastet ennå (unngår tom initial-snapshot)
+  //   b) Vi nettopp restored (restoringFromHistory)
+  //   c) Snapshot er identisk med forrige (unngår dupliserte push)
+  //
+  // (c) er spesielt viktig: hvis restoreSnapshot setter 3 states og de
+  // ikke batches i en flush (pre-React 18 utenfor event handlers), kan
+  // restoringFromHistory bli clearet av effekten etter første state.
+  // Snapshot-likhet beskytter mot at de resterende states pusher duplikater.
   useEffect(() => {
+    if (!payload) return;
     if (historyRef.current.restoringFromHistory) {
       historyRef.current.restoringFromHistory = false;
       return;
@@ -821,12 +854,13 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
       activePickOrder: activePickOrder ? [...activePickOrder] : null,
     };
     const h = historyRef.current;
-    // Truncate any forward-history when new change is made
+    const last = h.snapshots[h.idx];
+    if (last && snapshotsEqual(last, snap)) return;
     h.snapshots = [...h.snapshots.slice(0, h.idx + 1), snap].slice(-50); // cap at 50
     h.idx = h.snapshots.length - 1;
     setUndoAvailable(h.idx > 0);
     setRedoAvailable(false);
-  }, [includedChapters, pickOverrides, activePickOrder]);
+  }, [includedChapters, pickOverrides, activePickOrder, payload]);
 
   const restoreSnapshot = useCallback((snap: EditorSnapshot) => {
     historyRef.current.restoringFromHistory = true;
@@ -1065,6 +1099,27 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
       outroStart: totalDur * 0.80,
     };
   }, [storyArcPoints]);
+
+  // Memoiser SVG-path-strings for story-arc-renderingen. Tidligere ble
+  // path-strengen rebuilt på hver render via IIFE inni JSX → React
+  // reconciler så ny string hver gang og diffet hele path-elementet.
+  const storyArcPathStrings = useMemo(() => {
+    if (!storyArcPhases || storyArcPoints.length < 2) return null;
+    const w = 1000, h = 60;
+    const totalDur = storyArcPhases.totalDur || 1;
+    const points = storyArcPoints.map(pt => {
+      const x = (pt.midSec / totalDur) * w;
+      const y = h - (pt.energy * h * 0.85);
+      return `${x},${y}`;
+    });
+    const joined = points.join(" L ");
+    const first = (storyArcPoints[0].midSec / totalDur) * w;
+    const last = (storyArcPoints[storyArcPoints.length - 1].midSec / totalDur) * w;
+    return {
+      stroke: `M ${joined}`,
+      fill: `M ${first},${h} L ${joined} L ${last},${h} Z`,
+    };
+  }, [storyArcPoints, storyArcPhases]);
 
   // ─── Keyboard shortcuts (NLE-standard JKL/XV/M + Cmd+Z) ───
   useEffect(() => {
@@ -1584,6 +1639,24 @@ Du MÅ kalle apply_couple_wishes-tool med:
 
       // ─── Route per export-kind ───
       if (preset.kind === "resolve") {
+        // Pre-flight: sjekk at Resolve faktisk kjører + har åpent prosjekt
+        // før vi bruker tid på extract. Tidligere falt build_highlight_from_picks
+        // gjennom med "No current Resolve project" uten klar feilmelding i UI.
+        try {
+          const { runHealthCheck } = await import("../api");
+          const health = await runHealthCheck();
+          const healthResult = health.events.find(e => e.type === "result");
+          const status = (healthResult?.value as any) || {};
+          if (!status.resolveRunning) {
+            throw new Error("DaVinci Resolve er ikke åpen. Start Resolve først, åpne prosjektet ditt, og prøv igjen.");
+          }
+          if (!status.projectOpen) {
+            throw new Error("Ingen prosjekt åpent i Resolve. Åpne prosjektet ditt og prøv igjen.");
+          }
+        } catch (err: any) {
+          if (err?.message?.includes("Resolve")) throw err;
+          // health-check feilet selv: la build forsøke, da får vi ekte feil
+        }
         const summary = await executeScript("build_highlight_from_picks", {
           sourceVideo: payload.sourceVideo,
           timelineName: `${safeTitle} — Post Agent`,
@@ -2817,38 +2890,20 @@ ${ctxLines.join("\n")}`;
                   <rect x={(storyArcPhases.outroStart / storyArcPhases.totalDur) * 1000} y="0"
                         width={((storyArcPhases.totalDur - storyArcPhases.outroStart) / storyArcPhases.totalDur) * 1000} height="60"
                         fill="rgba(74, 212, 138, 0.04)" />
-                  {/* Energy curve */}
-                  <path
-                    d={(() => {
-                      const w = 1000, h = 60;
-                      const points = storyArcPoints.map(pt => {
-                        const x = (pt.midSec / storyArcPhases.totalDur) * w;
-                        const y = h - (pt.energy * h * 0.85);
-                        return `${x},${y}`;
-                      });
-                      return `M ${points.join(" L ")}`;
-                    })()}
-                    fill="none"
-                    stroke="rgba(200, 80, 224, 0.85)"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  {/* Filled area under curve */}
-                  <path
-                    d={(() => {
-                      const w = 1000, h = 60;
-                      const points = storyArcPoints.map(pt => {
-                        const x = (pt.midSec / storyArcPhases.totalDur) * w;
-                        const y = h - (pt.energy * h * 0.85);
-                        return `${x},${y}`;
-                      });
-                      const first = storyArcPoints[0].midSec / storyArcPhases.totalDur * w;
-                      const last = storyArcPoints[storyArcPoints.length-1].midSec / storyArcPhases.totalDur * w;
-                      return `M ${first},${h} L ${points.join(" L ")} L ${last},${h} Z`;
-                    })()}
-                    fill="url(#arcGradient)"
-                  />
+                  {/* Energy curve — path-strings memoiseres i storyArcPathStrings */}
+                  {storyArcPathStrings && (
+                    <>
+                      <path
+                        d={storyArcPathStrings.stroke}
+                        fill="none"
+                        stroke="rgba(200, 80, 224, 0.85)"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path d={storyArcPathStrings.fill} fill="url(#arcGradient)" />
+                    </>
+                  )}
                   <defs>
                     <linearGradient id="arcGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="rgba(200, 80, 224, 0.40)" />
@@ -3665,13 +3720,17 @@ ${ctxLines.join("\n")}`;
                             }
                           }
                         }).catch(() => {});
-                        // 1. scan_and_recommend_music (full advisor scan)
+                        // 1. scan_and_recommend_music (full advisor scan).
+                        // Etter at scan er ferdig: bump advisorReloadKey så
+                        // useEffect re-fetcher music_advisor.json — uten det
+                        // var advisor stale frem til ny session.
                         setOnboardingScanStatus(prev => ({ ...prev, music: "running" }));
                         executeScript("scan_and_recommend_music", {
                           videoPath: payload.sourceVideo,
                           highlightLengthSec: projectTargetMin * 60,
                         }, false).then(() => {
                           setOnboardingScanStatus(prev => ({ ...prev, music: "done" }));
+                          setAdvisorReloadKey(k => k + 1);
                         }).catch(() => {
                           setOnboardingScanStatus(prev => ({ ...prev, music: "done" }));
                         });

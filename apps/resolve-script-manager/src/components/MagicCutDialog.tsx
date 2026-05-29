@@ -252,6 +252,28 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
     const generatedRunId = `magic-cut-${Date.now()}`;
     setRunId(generatedRunId);
     try {
+      // Pre-flight: auto_rough_cut bygger Resolve-timeline. Sjekk at
+      // Resolve faktisk er åpen før vi kjører den lange prosessen.
+      try {
+        const { runHealthCheck } = await import("../api");
+        const health = await runHealthCheck();
+        const healthResult = health.events.find((e) => e.type === "result");
+        const status = (healthResult?.value as any) || {};
+        if (!status.resolveRunning) {
+          throw new Error("DaVinci Resolve er ikke åpen. Start Resolve, åpne prosjektet ditt og prøv igjen.");
+        }
+        if (!status.projectOpen) {
+          throw new Error("Ingen prosjekt åpent i Resolve. Åpne prosjektet ditt og prøv igjen.");
+        }
+      } catch (err: any) {
+        if (err?.message?.includes("Resolve")) {
+          setError(err.message);
+          setRunning(false);
+          return;
+        }
+        // Helsesjekk-feil → la auto_rough_cut prøve og gi ekte feil
+      }
+
       const summary = await executeScript(
         "auto_rough_cut",
         {
