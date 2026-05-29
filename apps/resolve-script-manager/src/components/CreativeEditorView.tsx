@@ -35,6 +35,7 @@ import { executeScript, onScriptEvent } from "../api";
 import type { ScriptEvent } from "../types";
 import { MusicSearchModal } from "./MusicSearchModal";
 import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
+import { AutoPilotPanel } from "./AutoPilotPanel";
 import {
   IconPlay,
   IconMusic,
@@ -1030,6 +1031,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Post Agent (anthropic_proxy via /api/post-agent/anthropic/messages) så
   // token-bruk telles per innlogget bruker.
   const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
+  const [autoPilotOpen, setAutoPilotOpen] = useState(false);
   const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
     const newAudio: CustomAudio = {
       id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -2400,6 +2402,23 @@ ${ctxLines.join("\n")}`;
               void navigator.clipboard.writeText(info).catch(() => { /* noop */ });
             }}
           >↗ Del</button>
+          {/* ☕ Auto-pilot — la systemet bygge ferdig mens du tar pause */}
+          <button
+            onClick={() => setAutoPilotOpen(true)}
+            disabled={!payload || filteredPicks.length === 0}
+            title="Auto-pilot: AI bygger highlighten ferdig mens du tar kaffe ☕"
+            style={{
+              background: autoPilotOpen
+                ? "linear-gradient(135deg, #8b4513, #d2691e)"
+                : "linear-gradient(135deg, rgba(139,69,19,0.20), rgba(210,105,30,0.20))",
+              border: "1px solid rgba(210,105,30,0.5)",
+              color: autoPilotOpen ? "#fff" : "rgba(255,255,255,0.85)",
+              fontWeight: 600,
+              animation: autoPilotOpen ? "coffee-steam 3s ease-in-out infinite" : undefined,
+            }}
+          >
+            ☕ Coffee mode
+          </button>
           <div className="ce-export-wrap">
             <button
               className="primary"
@@ -4040,6 +4059,20 @@ ${ctxLines.join("\n")}`;
           />
         );
       })()}
+
+      {/* ☕ Auto-pilot — kaffe-modus med Claude-samarbeid */}
+      {autoPilotOpen && payload && (
+        <AutoPilotPanel
+          open={autoPilotOpen}
+          onClose={() => setAutoPilotOpen(false)}
+          inputs={{
+            sourceVideo: payload.sourceVideo,
+            picksCount: filteredPicks.length,
+            targetDurationSec: projectTargetMin * 60 || 240,
+            clientWishes,
+          }}
+        />
+      )}
 
       {/* Marker edit modal */}
       {editingMarkerId && (() => {
