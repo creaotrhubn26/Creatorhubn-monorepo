@@ -39,6 +39,9 @@ import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import EventIcon from "@mui/icons-material/Event";
+import LocalMoviesIcon from "@mui/icons-material/LocalMovies";
+import PodcastsIcon from "@mui/icons-material/Podcasts";
+import TheatersIcon from "@mui/icons-material/Theaters";
 import SaveIcon from "@mui/icons-material/Save";
 import FolderIcon from "@mui/icons-material/Folder";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
@@ -93,6 +96,9 @@ interface Props {
   onOpenCorporateAgent: () => void;
   onOpenScreenRecordingAgent: () => void;
   onOpenEventAgent: () => void;
+  onOpenDocumentaryAgent: () => void;
+  onOpenPodcastAgent: () => void;
+  onOpenShortFilmAgent: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -170,6 +176,9 @@ export function HomeView({
   onOpenCorporateAgent,
   onOpenScreenRecordingAgent,
   onOpenEventAgent,
+  onOpenDocumentaryAgent,
+  onOpenPodcastAgent,
+  onOpenShortFilmAgent,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -463,6 +472,66 @@ export function HomeView({
               broadcast-konvensjoner
             </div>
             <div className="home-action-tag">Event Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenDocumentaryAgent}
+          disabled={!signedIn}
+          title={signedIn ? "Narrativ long-form: dokumentar, mini-doc, brand-film, case-study, profil — show-don't-tell-prinsipper" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #2a4a6e, #6e3fc7)" }}>
+            <LocalMoviesIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Documentary Agent</div>
+            <div className="home-action-desc">
+              Dokumentar, brand-film, case-study, personlig profil med
+              narrativ struktur og Director-AI som kjenner show-don't-tell
+            </div>
+            <div className="home-action-tag">Documentary Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenPodcastAgent}
+          disabled={!signedIn}
+          title={signedIn ? "Multi-host podkast, video-repurpose og sosial-cutdowns med Podcast Director-AI" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #f0a500, #ef4f6f)" }}>
+            <PodcastsIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Podcast Agent</div>
+            <div className="home-action-desc">
+              Multi-host samtaler, video-podkast og 30s/60s sosial-
+              cutdowns med taler-skifte-cuts og latter-respekt
+            </div>
+            <div className="home-action-tag">Podcast Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenShortFilmAgent}
+          disabled={!signedIn}
+          title={signedIn ? "Scripted fiction-short med three-act-pacing, 180-degree-rule og motif-callbacks" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #6e3fc7, #2a4a6e)" }}>
+            <TheatersIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Short Film Agent</div>
+            <div className="home-action-desc">
+              5-20 min fiction-short med three-act-pacing, 180-degree-
+              rule, match-cuts og festival-klar finish
+            </div>
+            <div className="home-action-tag">Short Film Director</div>
           </div>
           <IconArrowRight />
         </button>

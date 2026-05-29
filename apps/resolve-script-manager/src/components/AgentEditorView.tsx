@@ -30,6 +30,9 @@ import EventIcon from "@mui/icons-material/Event";
 import MovieIcon from "@mui/icons-material/Movie";
 import ChurchIcon from "@mui/icons-material/Church";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
+import PodcastsIcon from "@mui/icons-material/Podcasts";
+import TheatersIcon from "@mui/icons-material/Theaters";
+import LocalMoviesIcon from "@mui/icons-material/LocalMovies";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 import MouseIcon from "@mui/icons-material/Mouse";
 import ContentCutIcon from "@mui/icons-material/ContentCut";
@@ -45,9 +48,11 @@ const AGENT_ICON: Record<string, typeof MusicNoteIcon> = {
   music_video: MusicNoteIcon,
   corporate: BusinessCenterIcon,
   event: EventIcon,
-  documentary: MovieIcon,
+  documentary: LocalMoviesIcon,
   wedding: ChurchIcon,
   screen_recording: ScreenShareIcon,
+  podcast: PodcastsIcon,
+  short_film: TheatersIcon,
 };
 
 interface Props {

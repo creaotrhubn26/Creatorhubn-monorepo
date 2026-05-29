@@ -42,6 +42,9 @@ import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
 import CORPORATE_AGENT_CONFIG from "./agents/corporate";
 import SCREEN_RECORDING_AGENT_CONFIG from "./agents/screen_recording";
 import EVENT_AGENT_CONFIG from "./agents/event";
+import DOCUMENTARY_AGENT_CONFIG from "./agents/documentary";
+import PODCAST_AGENT_CONFIG from "./agents/podcast";
+import SHORT_FILM_AGENT_CONFIG from "./agents/short_film";
 import type { AgentConfig } from "./agents/types";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
@@ -616,6 +619,9 @@ export default function App() {
           onOpenCorporateAgent={() => void openAgent(CORPORATE_AGENT_CONFIG)}
           onOpenScreenRecordingAgent={() => void openAgent(SCREEN_RECORDING_AGENT_CONFIG)}
           onOpenEventAgent={() => void openAgent(EVENT_AGENT_CONFIG)}
+          onOpenDocumentaryAgent={() => void openAgent(DOCUMENTARY_AGENT_CONFIG)}
+          onOpenPodcastAgent={() => void openAgent(PODCAST_AGENT_CONFIG)}
+          onOpenShortFilmAgent={() => void openAgent(SHORT_FILM_AGENT_CONFIG)}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={authStatus === "ok"}

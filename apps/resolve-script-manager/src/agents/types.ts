@@ -12,7 +12,8 @@
 
 export type AgentKind =
   | "wedding" | "music_video" | "corporate"
-  | "event" | "documentary" | "screen_recording";
+  | "event" | "documentary" | "screen_recording"
+  | "podcast" | "short_film";
 
 /** Chapter = en navngitt seksjon i prosjektet (vielse, chorus, keynote …). */
 export interface ChapterDef {
