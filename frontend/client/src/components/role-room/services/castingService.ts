@@ -1831,7 +1831,14 @@ export const castingService = {
       }
 
       try {
-        const response = await fetch(`/api/casting/projects/${id}`, {
+        // cache: 'no-store' + cache-buster querystring tvinger fersk respons.
+        // Uten denne returnerte browser-cachen en stale 404 fra FØR Last demo
+        // hadde seedet prosjektet, så getProject() returnerte localProject
+        // (skall fra saveProjectsToStorage) i stedet for det fullstendige
+        // seede prosjektet med 8 roller / 8 kandidater / 6 crew. Resultat:
+        // currentProject.roles var undefined og dashboardet viste 0/0/0/0.
+        const response = await fetch(`/api/casting/projects/${id}?fresh=${Date.now()}`, {
+          cache: 'no-store',
           headers: getRoleRoomAuthHeaders(),
         });
         if (!response.ok) {
