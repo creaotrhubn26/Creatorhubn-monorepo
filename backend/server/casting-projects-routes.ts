@@ -522,13 +522,27 @@ export function setupCastingProjectsRoutes(
       ...mergedPayload,
       id,
       ownerId,
+      owner_id: ownerId,
       ownerEmail,
+      owner_email: ownerEmail,
       ownerLabel,
+      owner_label: ownerLabel,
       createdBy,
+      // GET /api/casting/projects/:id sjekker project.created_by (snake_case)
+      // i owner-isolation. Hvis vi bare lagret createdBy (camelCase), endte
+      // GET med null → 'forbidden' → verification-flowen i frontend feilet
+      // 5 ganger. Lagre BEGGE for å match begge lesere.
+      created_by: createdBy,
       createdByEmail,
+      created_by_email: createdByEmail,
       createdByLabel,
+      created_by_label: createdByLabel,
       createdAt: (existing as Record<string, unknown>).createdAt || now,
+      created_at: (existing as Record<string, unknown>).created_at
+        || (existing as Record<string, unknown>).createdAt
+        || now,
       updatedAt: now,
+      updated_at: now,
     };
     const hadExisting = legacyCastingProjects.has(id);
     const previousProject = legacyCastingProjects.get(id);
@@ -660,18 +674,29 @@ export function setupCastingProjectsRoutes(
       existingRecord.created_by_label,
       ownerLabel,
     );
+    const updatedAtIso = new Date().toISOString();
     const updated = {
       ...existing,
       ...req.body,
       id,
       ownerId,
+      owner_id: ownerId,
       ownerEmail,
+      owner_email: ownerEmail,
       ownerLabel,
+      owner_label: ownerLabel,
       createdBy,
+      // Lagre BÅDE camelCase og snake_case for å match GET-routens
+      // owner-sjekk (project.created_by). Samme rasjonal som POST.
+      created_by: createdBy,
       createdByEmail,
+      created_by_email: createdByEmail,
       createdByLabel,
-      createdAt: existing.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      created_by_label: createdByLabel,
+      createdAt: existing.createdAt || existing.created_at || updatedAtIso,
+      created_at: existing.created_at || existing.createdAt || updatedAtIso,
+      updatedAt: updatedAtIso,
+      updated_at: updatedAtIso,
     };
     const hadExisting = legacyCastingProjects.has(id);
     const previousProject = legacyCastingProjects.get(id);

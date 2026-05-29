@@ -69,6 +69,28 @@ function rowToEntry(row: Record<string, unknown>) {
 export function setupWhatsNewRoutes(deps: AdminRoomRoutesDeps): void {
   const { app, pool, requireAdminRoomAccess, logAdminActivity } = deps;
 
+  // Idempotent tabell-init: hindrer 500 fra GET /api/whats-new når
+  // migration 192 ikke har kjørt på en gitt instans (Render bygger uten å
+  // kjøre migrations automatisk). Trygt å re-kjøre — IF NOT EXISTS dropper
+  // forsøket hvis tabellen finnes fra før.
+  void pool.query(
+    `CREATE TABLE IF NOT EXISTS whats_new_entries (
+      id text PRIMARY KEY DEFAULT (lower(replace(gen_random_uuid()::text, '-', ''))),
+      mode text NOT NULL,
+      kind text NOT NULL DEFAULT 'feature',
+      entry_date date,
+      title text NOT NULL,
+      description text,
+      published boolean NOT NULL DEFAULT true,
+      display_order integer NOT NULL DEFAULT 0,
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_whats_new_mode_published
+      ON whats_new_entries(mode, published, display_order DESC, entry_date DESC);`,
+  ).catch((err) => console.warn('[whats-new-routes] table ensure failed:', err));
+
   // ─── PUBLIC: hentes av HelpButton i hver workspace ───────────────────────
   // ?mode=production           → returnerer production-feed
   // ?mode=production,global    → merger production + global
