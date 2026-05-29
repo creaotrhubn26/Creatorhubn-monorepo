@@ -36,6 +36,7 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import PersonIcon from "@mui/icons-material/Person";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import SaveIcon from "@mui/icons-material/Save";
 import FolderIcon from "@mui/icons-material/Folder";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
@@ -87,6 +88,7 @@ interface Props {
   onNewProjectFromFile: () => void;
   onOpenWeddingWizard: () => void;
   onOpenMusicVideoAgent: () => void;
+  onOpenCorporateAgent: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -161,6 +163,7 @@ export function HomeView({
   onNewProjectFromFile,
   onOpenWeddingWizard,
   onOpenMusicVideoAgent,
+  onOpenCorporateAgent,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -394,6 +397,26 @@ export function HomeView({
               genre-look-packs
             </div>
             <div className="home-action-tag">Music Video Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenCorporateAgent}
+          disabled={!signedIn}
+          title={signedIn ? "B2B-promo med hook → problem → løsning → bevis → CTA-struktur og Corporate Director-AI" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #4a90e2, #6e3fc7)" }}>
+            <BusinessCenterIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Corporate Agent</div>
+            <div className="home-action-desc">
+              Hook → problem → løsning → bevis → CTA-flyt for B2B-promo,
+              case og produkt-video
+            </div>
+            <div className="home-action-tag">Corporate Director</div>
           </div>
           <IconArrowRight />
         </button>

@@ -1,36 +1,34 @@
 /**
- * MusicVideoEditorView — egen editor for Music Video Agent.
+ * AgentEditorView — generisk editor som driver alle nye agenter
+ * (Music Video, Corporate, Event, Documentary, …) basert på AgentConfig
+ * som beskriver chapters, signal-vekter, look-packs og Claude-persona.
  *
- * Skiller seg fra CreativeEditorView ved at den er bygget rundt
- * sang-strukturen (intro/verse/chorus/bridge/outro/drop), beat-grid,
- * og genre-aware look-packs. Wedding-prompts er borte; Music Video
- * Director-personaen er ansvarlig for forslag.
+ * Wedding Agent har sin egen CreativeEditorView (CE) som forblir
+ * uendret — dette er den nye, config-drevne editor-en alle ikke-
+ * wedding agenter rendres gjennom.
  *
- * V1-scope:
- *   - Chapter-strip basert på sang-struktur fra MUSIC_VIDEO_CHAPTERS
- *   - Look-pack-velger med genre-tags
- *   - BPM-input (manuell V1, auto-detect senere)
- *   - Claude-panel med Music Video Director-persona
- *   - Sjef-/Bjarne-view delt: chapters venstre, preview senter,
- *     director-panel høyre
+ * Funksjoner:
+ *   - Chapter-strip fra config.chapters med pacingPct + priorityHint
+ *   - Look-pack-grid med genre-tags + color-direction-detaljer
+ *   - BPM-input + auto-detect (kun for music_video-kind)
+ *   - Chat med config.primaryAgent (egen Claude-persona pr agent)
  *   - Thumbnail Creator + asset-bibliotek + upcoming jobs gjenbrukes
  *
- * Ikke i V1 (kommer senere):
- *   - Automatisk beat-detection via librosa/aubio
- *   - Lip-sync detection
- *   - BPM-bevisst auto-pilot
- *   - Genre-auto-detection
+ * Auto-pilot er disabled i V1 — kommer per-agent i V2.
  */
 
 import { useState } from "react";
 import { ThumbnailCreator } from "./ThumbnailCreator";
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
-import MUSIC_VIDEO_AGENT_CONFIG from "../agents/music_video";
-import type { ChapterDef, LookPackDef } from "../agents/types";
+import type { AgentConfig, ChapterDef, LookPackDef } from "../agents/types";
 import { executeScript } from "../api";
 import { claudeProxyService } from "../services/claudeProxyService";
 import type { ClaudeMessage } from "../services/claudeProxyService";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
+import EventIcon from "@mui/icons-material/Event";
+import MovieIcon from "@mui/icons-material/Movie";
+import ChurchIcon from "@mui/icons-material/Church";
 import GraphicEqIcon from "@mui/icons-material/GraphicEq";
 import BrushIcon from "@mui/icons-material/Brush";
 import CloseIcon from "@mui/icons-material/Close";
@@ -39,15 +37,27 @@ import ColorLensIcon from "@mui/icons-material/ColorLens";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import SendIcon from "@mui/icons-material/Send";
 
+const AGENT_ICON: Record<string, typeof MusicNoteIcon> = {
+  music_video: MusicNoteIcon,
+  corporate: BusinessCenterIcon,
+  event: EventIcon,
+  documentary: MovieIcon,
+  wedding: ChurchIcon,
+};
+
 interface Props {
-  /** Sti til source-video (hovedlydspor + B-roll-mappe). */
+  /** Sti til source-video. */
   sourcePath: string;
   onClose: () => void;
+  /** Hvilken agent som skal kjøre denne editor-instansen. */
+  config: AgentConfig;
 }
 
-const CFG = MUSIC_VIDEO_AGENT_CONFIG;
-
-export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
+export function AgentEditorView({ sourcePath, onClose, config }: Props) {
+  const CFG = config;
+  const AgentIcon = AGENT_ICON[config.kind] ?? MusicNoteIcon;
+  // Music-video viser BPM-grid; Corporate/Event har det ikke som primær-modus
+  const showBpmGrid = config.kind === "music_video";
   const [selectedChapter, setSelectedChapter] = useState<string>(CFG.chapters[0].id);
   const [bpm, setBpm] = useState<number>(120);
   const [songLengthSec, setSongLengthSec] = useState<number>(CFG.defaultDurationSec);
@@ -62,7 +72,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
     totalDurationSec: number;
   } | null>(null);
   const [beatError, setBeatError] = useState<string | null>(null);
-  // Claude chat-state — historikken med Music Video Director
+  // Claude chat-state — historikken med config.primaryAgent (Director)
   const [chatMessages, setChatMessages] = useState<ClaudeMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatThinking, setChatThinking] = useState(false);
@@ -170,7 +180,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             color: "#fff",
           }}>
-            <MusicNoteIcon fontSize="small" />
+            <AgentIcon fontSize="small" />
           </div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700 }}>
@@ -216,7 +226,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
                         padding: 16, overflowY: "auto" }}>
           <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8,
                           color: "var(--text-2, #c8bcd8)" }}>
-            SANG-STRUKTUR
+            {showBpmGrid ? "SANG-STRUKTUR" : "STORY-STRUKTUR"}
           </div>
           {CFG.chapters.map(ch => (
             <ChapterRow key={ch.id}
@@ -225,75 +235,98 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
                         onSelect={() => setSelectedChapter(ch.id)} />
           ))}
 
-          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 8,
-                          color: "var(--text-2, #c8bcd8)" }}>
-            BEAT-GRID
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8,
-                          marginBottom: 6, fontSize: 11 }}>
-            <span style={{ minWidth: 36 }}>BPM</span>
-            <input type="number" min={60} max={220}
-                   value={bpm}
-                   onChange={e => setBpm(parseInt(e.target.value) || 120)}
-                   style={inputStyle} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8,
-                          marginBottom: 6, fontSize: 11 }}>
-            <span style={{ minWidth: 36 }}>Lengde</span>
-            <input type="number" min={30} max={600}
-                   value={songLengthSec}
-                   onChange={e => setSongLengthSec(parseInt(e.target.value) || 210)}
-                   style={inputStyle} />
-            <span style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>sek</span>
-          </div>
-          <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.4 }}>
-            {totalBars} bars · {totalBeats} beats · {beatDurationSec.toFixed(3)}s pr beat
-          </div>
+          {showBpmGrid && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 8,
+                              color: "var(--text-2, #c8bcd8)" }}>
+                BEAT-GRID
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8,
+                              marginBottom: 6, fontSize: 11 }}>
+                <span style={{ minWidth: 36 }}>BPM</span>
+                <input type="number" min={60} max={220}
+                       value={bpm}
+                       onChange={e => setBpm(parseInt(e.target.value) || 120)}
+                       style={inputStyle} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8,
+                              marginBottom: 6, fontSize: 11 }}>
+                <span style={{ minWidth: 36 }}>Lengde</span>
+                <input type="number" min={30} max={600}
+                       value={songLengthSec}
+                       onChange={e => setSongLengthSec(parseInt(e.target.value) || 210)}
+                       style={inputStyle} />
+                <span style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>sek</span>
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.4 }}>
+                {totalBars} bars · {totalBeats} beats · {beatDurationSec.toFixed(3)}s pr beat
+              </div>
 
-          <button onClick={() => void analyzeBeats()}
-                  disabled={!sourcePath || beatAnalyzing}
-                  style={{
-                    marginTop: 10, width: "100%",
-                    background: beatAnalyzing
-                      ? "rgba(110,63,199,0.20)"
-                      : "linear-gradient(135deg, #6e3fc7, #a030c0)",
-                    border: 0, color: "#fff",
-                    padding: "7px 10px", borderRadius: 4,
-                    fontSize: 11, fontWeight: 600,
-                    cursor: beatAnalyzing ? "wait"
-                          : sourcePath ? "pointer" : "not-allowed",
-                    opacity: !sourcePath ? 0.5 : 1,
-                    display: "inline-flex", alignItems: "center",
-                    justifyContent: "center", gap: 6,
-                  }}>
-            <AutoFixHighIcon sx={{ fontSize: 14 }} />
-            {beatAnalyzing ? "Analyserer …" : "Auto-detect BPM"}
-          </button>
+              <button onClick={() => void analyzeBeats()}
+                      disabled={!sourcePath || beatAnalyzing}
+                      style={{
+                        marginTop: 10, width: "100%",
+                        background: beatAnalyzing
+                          ? "rgba(110,63,199,0.20)"
+                          : "linear-gradient(135deg, #6e3fc7, #a030c0)",
+                        border: 0, color: "#fff",
+                        padding: "7px 10px", borderRadius: 4,
+                        fontSize: 11, fontWeight: 600,
+                        cursor: beatAnalyzing ? "wait"
+                              : sourcePath ? "pointer" : "not-allowed",
+                        opacity: !sourcePath ? 0.5 : 1,
+                        display: "inline-flex", alignItems: "center",
+                        justifyContent: "center", gap: 6,
+                      }}>
+                <AutoFixHighIcon sx={{ fontSize: 14 }} />
+                {beatAnalyzing ? "Analyserer …" : "Auto-detect BPM"}
+              </button>
 
-          {beatAnalysis && (
-            <div style={{
-              marginTop: 8, padding: 8, borderRadius: 4,
-              background: "rgba(160,48,192,0.12)",
-              border: "1px solid rgba(160,48,192,0.30)",
-              fontSize: 10, lineHeight: 1.5,
-              color: "var(--text-2, #c8bcd8)",
-            }}>
-              Detekteret: <strong>{beatAnalysis.bpm} BPM</strong>
-              {" "}({(beatAnalysis.confidence * 100).toFixed(0)}% sikkerhet)
-              {" · "}<code style={{ opacity: 0.7 }}>{beatAnalysis.method}</code>
-              {beatAnalysis.confidence < 0.5 && (
-                <div style={{ marginTop: 4, color: "#f0a500" }}>
-                  Lav sikkerhet — verifiser BPM manuelt.
+              {beatAnalysis && (
+                <div style={{
+                  marginTop: 8, padding: 8, borderRadius: 4,
+                  background: "rgba(160,48,192,0.12)",
+                  border: "1px solid rgba(160,48,192,0.30)",
+                  fontSize: 10, lineHeight: 1.5,
+                  color: "var(--text-2, #c8bcd8)",
+                }}>
+                  Detekteret: <strong>{beatAnalysis.bpm} BPM</strong>
+                  {" "}({(beatAnalysis.confidence * 100).toFixed(0)}% sikkerhet)
+                  {" · "}<code style={{ opacity: 0.7 }}>{beatAnalysis.method}</code>
+                  {beatAnalysis.confidence < 0.5 && (
+                    <div style={{ marginTop: 4, color: "#f0a500" }}>
+                      Lav sikkerhet — verifiser BPM manuelt.
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+              {beatError && (
+                <div style={{
+                  marginTop: 8, padding: 6, borderRadius: 4,
+                  background: "rgba(239,79,111,0.10)",
+                  color: "#ef4f6f", fontSize: 10,
+                }}>{beatError}</div>
+              )}
+            </>
           )}
-          {beatError && (
-            <div style={{
-              marginTop: 8, padding: 6, borderRadius: 4,
-              background: "rgba(239,79,111,0.10)",
-              color: "#ef4f6f", fontSize: 10,
-            }}>{beatError}</div>
+          {!showBpmGrid && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 8,
+                              color: "var(--text-2, #c8bcd8)" }}>
+                LEVERINGS-LENGDE
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8,
+                              marginBottom: 6, fontSize: 11 }}>
+                <span style={{ minWidth: 36 }}>Sek</span>
+                <input type="number" min={15} max={1800}
+                       value={songLengthSec}
+                       onChange={e => setSongLengthSec(parseInt(e.target.value) || CFG.defaultDurationSec)}
+                       style={inputStyle} />
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.4 }}>
+                {Math.floor(songLengthSec / 60)}:{String(songLengthSec % 60).padStart(2, "0")} ferdig-leveranse
+              </div>
+            </>
           )}
         </div>
 
@@ -332,8 +365,8 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
             </div>
           </div>
 
-          {/* Beat-grid visualization */}
-          <div>
+          {/* Beat-grid visualization — kun for music_video */}
+          {showBpmGrid && <div>
             <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6,
                             color: "var(--text-2, #c8bcd8)" }}>
               BEAT-GRID FOR {chapter.label.toUpperCase()}
@@ -349,7 +382,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
               {chapter.priorityHint === "atmospheric"
                 && " Behold cuts langsommere — hver 4. beat eller halv-bar."}
             </div>
-          </div>
+          </div>}
 
           {/* Look-pack picker */}
           <div>
@@ -357,11 +390,13 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
                             color: "var(--text-2, #c8bcd8)",
                             display: "flex", alignItems: "center", gap: 6 }}>
               <ColorLensIcon sx={{ fontSize: 13 }} />
-              GENRE / LOOK
+              {showBpmGrid ? "GENRE / LOOK" : "VAREMERKE / LOOK"}
             </div>
             <input value={genre}
                    onChange={e => setGenre(e.target.value)}
-                   placeholder="Genre (f.eks. hip-hop, hyperpop, indie-rock …)"
+                   placeholder={showBpmGrid
+                     ? "Genre (f.eks. hip-hop, hyperpop, indie-rock …)"
+                     : "Varemerke / industri (f.eks. SaaS, fintech, helsetech …)"}
                    style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
             <div style={{ display: "grid",
                             gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
@@ -403,7 +438,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
           </div>
         </div>
 
-        {/* RIGHT: Music Video Director panel */}
+        {/* RIGHT: Director-panel (agent's primary persona) */}
         <div style={{ background: "rgba(255,255,255,0.02)",
                         borderLeft: "1px solid rgba(255,255,255,0.06)",
                         padding: 16, overflowY: "auto",
@@ -428,7 +463,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
 
           <div style={{ fontSize: 11, fontWeight: 700,
                           color: "var(--text-2, #c8bcd8)" }}>
-            ARTIST/LABEL WISHES
+            {showBpmGrid ? "ARTIST / LABEL WISHES" : "KLIENT WISHES"}
           </div>
           <textarea value={clientWishes}
                     onChange={e => setClientWishes(e.target.value)}
@@ -453,7 +488,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
             ))}
           </div>
 
-          {/* Chat med Music Video Director */}
+          {/* Chat med Director */}
           <div style={{ fontSize: 11, fontWeight: 700,
                           color: "var(--text-2, #c8bcd8)",
                           display: "flex", alignItems: "center",
@@ -479,10 +514,10 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
             {chatMessages.length === 0 && !chatThinking && (
               <div style={{ color: "var(--text-3, #a89cb8)",
                               fontSize: 10.5, lineHeight: 1.5 }}>
-                Spør Music Video Director om pacing, beat-sync,
-                hook-emphasis, look-valg, eller andre kreative valg.
-                Konteksten (BPM, kapittel, look, wishes) sendes
-                automatisk med første melding.
+                Spør {CFG.primaryAgent.name} om pacing, struktur,
+                look-valg, eller andre kreative valg. Konteksten
+                ({showBpmGrid ? "BPM, " : ""}kapittel, look, wishes)
+                sendes automatisk med første melding.
               </div>
             )}
             {chatMessages.map((m, i) => (
@@ -505,7 +540,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
                 {m.role === "assistant" && (
                   <div style={{ fontSize: 9, fontWeight: 600,
                                   color: "#a08dd8", marginBottom: 2 }}>
-                    MUSIC VIDEO DIRECTOR
+                    {CFG.primaryAgent.name.toUpperCase()}
                   </div>
                 )}
                 {m.content}
@@ -553,7 +588,7 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
             </button>
           </div>
 
-          <button onClick={() => alert("Auto-pilot for Music Video Agent kommer i V2 (BPM-aware cuts + beat-grid render)")}
+          <button onClick={() => alert(`Auto-pilot for ${CFG.name} kommer i V2`)}
                   disabled
                   style={{
                     padding: "9px 12px",
@@ -721,4 +756,4 @@ function priorityColor(p: ChapterDef["priorityHint"]): string {
   }
 }
 
-export default MusicVideoEditorView;
+export default AgentEditorView;

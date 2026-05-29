@@ -37,7 +37,10 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
-import { MusicVideoEditorView } from "./components/MusicVideoEditorView";
+import { AgentEditorView } from "./components/AgentEditorView";
+import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
+import CORPORATE_AGENT_CONFIG from "./agents/corporate";
+import type { AgentConfig } from "./agents/types";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
@@ -76,25 +79,25 @@ export default function App() {
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
-  const [musicVideoEditorOpen, setMusicVideoEditorOpen] = useState(false);
-  const [musicVideoSourcePath, setMusicVideoSourcePath] = useState<string>("");
+  const [agentEditorConfig, setAgentEditorConfig] = useState<AgentConfig | null>(null);
+  const [agentSourcePath, setAgentSourcePath] = useState<string>("");
 
-  const openMusicVideoAgent = useCallback(async () => {
+  const openAgent = useCallback(async (config: AgentConfig) => {
     try {
       const picked = await openFileDialog({
         multiple: false,
-        title: "Velg music-video-kilde (video + lyd)",
+        title: `Velg kilde for ${config.name}`,
         filters: [
           { name: "Video", extensions: ["mp4", "mov", "mkv", "m4v", "avi"] },
           { name: "Audio", extensions: ["wav", "mp3", "flac", "aif", "aiff", "m4a"] },
         ],
       });
       if (typeof picked === "string" && picked.length > 0) {
-        setMusicVideoSourcePath(picked);
-        setMusicVideoEditorOpen(true);
+        setAgentSourcePath(picked);
+        setAgentEditorConfig(config);
       }
     } catch (err) {
-      console.error("[music-video] file pick failed:", err);
+      console.error(`[${config.kind}] file pick failed:`, err);
     }
   }, []);
   const [showNewProject, setShowNewProject] = useState(false);
@@ -607,7 +610,8 @@ export default function App() {
           }}
           onNewProjectFromFile={() => setShowNewProject(true)}
           onOpenWeddingWizard={() => setShowWeddingWizard(true)}
-          onOpenMusicVideoAgent={() => void openMusicVideoAgent()}
+          onOpenMusicVideoAgent={() => void openAgent(MUSIC_VIDEO_AGENT_CONFIG)}
+          onOpenCorporateAgent={() => void openAgent(CORPORATE_AGENT_CONFIG)}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={authStatus === "ok"}
@@ -852,12 +856,13 @@ export default function App() {
         />
       )}
 
-      {musicVideoEditorOpen && (
-        <MusicVideoEditorView
-          sourcePath={musicVideoSourcePath}
+      {agentEditorConfig && (
+        <AgentEditorView
+          sourcePath={agentSourcePath}
+          config={agentEditorConfig}
           onClose={() => {
-            setMusicVideoEditorOpen(false);
-            setMusicVideoSourcePath("");
+            setAgentEditorConfig(null);
+            setAgentSourcePath("");
           }}
         />
       )}
