@@ -490,9 +490,29 @@ export function setupCastingProjectsRoutes(
       existingRecord.created_by_label,
       ownerLabel,
     );
+    // Bevar existing nested arrays når payload sender en tom array. Frontends
+    // saveProject etter "Last demo" sender skall-payload med crew:[] som
+    // ellers ville wipet 6 crew fra seed-prosessen. Andre nested fields
+    // (roles, candidates, schedules, locations, props, shotLists, scenes)
+    // er ikke i payload så de bevares av shallow merge uansett — denne
+    // sjekken dekker EXPLICIT tomme arrays.
+    const nestedArrayKeys = [
+      "roles", "candidates", "crew", "schedules", "locations",
+      "props", "shotLists", "scenes", "productionDays",
+      "sceneBreakdowns", "userRoles", "equipment", "manuscripts",
+      "consents",
+    ] as const;
+    const mergedPayload = { ...payload } as Record<string, unknown>;
+    for (const key of nestedArrayKeys) {
+      const incoming = (payload as Record<string, unknown>)[key];
+      const existingArr = (existing as Record<string, unknown>)[key];
+      if (Array.isArray(incoming) && incoming.length === 0 && Array.isArray(existingArr) && existingArr.length > 0) {
+        delete mergedPayload[key];
+      }
+    }
     const project = {
       ...(existing as Record<string, unknown>),
-      ...payload,
+      ...mergedPayload,
       id,
       ownerId,
       ownerEmail,
