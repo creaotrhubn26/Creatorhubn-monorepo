@@ -16,6 +16,9 @@
 import { useState } from "react";
 import { useUpcomingJobs } from "../hooks/useUpcomingJobs";
 import type { UpcomingJob } from "../services/upcomingJobsService";
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import RemoveIcon from "@mui/icons-material/Remove";
 
 interface Props {
   onJobSelected: (job: UpcomingJob) => void;
@@ -156,7 +159,7 @@ export function UpcomingJobsSidebar({ onJobSelected }: Props) {
           display: "flex", alignItems: "center", gap: 6,
         }}
       >
-        📋 {totalJobs} jobber
+        <AssignmentIcon sx={{ fontSize: 14 }} /> {totalJobs} jobber
         {overdueCount > 0 && (
           <span style={{ color: "#ef4f6f", fontSize: 10 }}>· {overdueCount} forsinket</span>
         )}
@@ -181,7 +184,10 @@ export function UpcomingJobsSidebar({ onJobSelected }: Props) {
       <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)",
                       display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>📋 Planlagte jobber</div>
+          <div style={{ fontSize: 13, fontWeight: 700,
+                          display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <AssignmentIcon sx={{ fontSize: 14 }} /> Planlagte jobber
+          </div>
           <div style={{ fontSize: 10, color: "var(--text-3)" }}>
             {totalJobs} kommende
             {overdueCount > 0 && (
@@ -209,11 +215,17 @@ export function UpcomingJobsSidebar({ onJobSelected }: Props) {
           <button onClick={() => void refresh()} title="Oppdater"
                   style={{ background: "transparent", border: 0,
                             color: "var(--text-2)", cursor: "pointer",
-                            fontSize: 14, padding: 2 }}>⟳</button>
+                            padding: 2,
+                            display: "inline-flex", alignItems: "center" }}>
+            <RefreshIcon sx={{ fontSize: 16 }} />
+          </button>
           <button onClick={() => setCollapsed(true)} title="Minimer"
                   style={{ background: "transparent", border: 0,
                             color: "var(--text-2)", cursor: "pointer",
-                            fontSize: 16, padding: 2 }}>−</button>
+                            padding: 2,
+                            display: "inline-flex", alignItems: "center" }}>
+            <RemoveIcon sx={{ fontSize: 16 }} />
+          </button>
         </div>
       </div>
 

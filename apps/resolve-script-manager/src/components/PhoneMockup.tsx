@@ -15,6 +15,22 @@
 import type { CSSProperties, ReactNode } from "react";
 import { DEVICES, PLATFORMS, fitDeviceInContainer } from "../lib/devicePresets";
 import type { DeviceId, PlatformId } from "../lib/devicePresets";
+import type { SvgIconComponent } from "@mui/icons-material";
+import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import SendIcon from "@mui/icons-material/Send";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import ThumbUpOutlinedIcon from "@mui/icons-material/ThumbUpOutlined";
+import ThumbDownOutlinedIcon from "@mui/icons-material/ThumbDownOutlined";
+import SearchIcon from "@mui/icons-material/Search";
+
+const ICON_SX = (px: number, color: string): React.CSSProperties => ({
+  fontSize: px, color,
+  filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.6))",
+});
 
 interface Props {
   deviceId: DeviceId;
@@ -284,15 +300,23 @@ function PlatformUIOverlay({
             color: t, fontSize: 9 * scale, fontWeight: 600,
             pointerEvents: "none",
           }}>
-            {["♡", "💬", "↗", "⋯"].map((g, i) => (
-              <div key={i} style={{
-                display: "flex", flexDirection: "column", alignItems: "center",
-                textShadow: "0 1px 3px rgba(0,0,0,0.6)",
-              }}>
-                <div style={{ fontSize: 22 * scale }}>{g}</div>
-                <div>{["12k", "234", "Del", ""][i]}</div>
-              </div>
-            ))}
+            {[
+              { I: FavoriteBorderIcon, label: "12k" },
+              { I: ChatBubbleOutlineIcon, label: "234" },
+              { I: SendIcon, label: "Del" },
+              { I: MoreHorizIcon, label: "" },
+            ].map((o, i) => {
+              const Icon = o.I as SvgIconComponent;
+              return (
+                <div key={i} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                }}>
+                  <Icon style={ICON_SX(22 * scale, t)} />
+                  <div>{o.label}</div>
+                </div>
+              );
+            })}
           </div>
           {/* Bottom: caption + nav */}
           <div style={{
@@ -308,7 +332,10 @@ function PlatformUIOverlay({
             <div style={{ marginBottom: 4 * scale }}>
               Caption … <span style={{ opacity: 0.7 }}>se mer</span>
             </div>
-            <div style={{ opacity: 0.8, fontSize: 9 * scale }}>♪ Original lyd · brukernavn</div>
+            <div style={{ opacity: 0.8, fontSize: 9 * scale,
+                            display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <MusicNoteIcon sx={{ fontSize: 9 * scale }} /> Original lyd · brukernavn
+            </div>
           </div>
         </>
       );
@@ -339,12 +366,10 @@ function PlatformUIOverlay({
               width: 36 * scale, height: 36 * scale, borderRadius: "50%",
               background: "#fe2c55", border: `2px solid ${t}`,
             }} />
-            {["♥", "💬", "🔖", "↗"].map((g, i) => (
-              <div key={i} style={{
-                textShadow: "0 1px 3px rgba(0,0,0,0.6)",
-                fontSize: 22 * scale,
-              }}>{g}</div>
-            ))}
+            {([FavoriteIcon, ChatBubbleOutlineIcon, BookmarkBorderIcon, SendIcon] as SvgIconComponent[])
+              .map((Icon, i) => (
+                <Icon key={i} style={ICON_SX(22 * scale, t)} />
+              ))}
           </div>
           <div style={{
             position: "absolute", left: contentX, bottom: -contentY,
@@ -358,7 +383,10 @@ function PlatformUIOverlay({
             <div style={{ fontWeight: 700 }}>@brukernavn</div>
             <div style={{ marginTop: 2 * scale }}>Caption-tekst …</div>
             <div style={{ marginTop: 6 * scale, opacity: 0.85, fontSize: 9 * scale }}>
-              ♪ trending sound · brukernavn
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <MusicNoteIcon sx={{ fontSize: 9 * scale }} />
+                trending sound · brukernavn
+              </span>
             </div>
           </div>
         </>
@@ -404,8 +432,8 @@ function PlatformUIOverlay({
               display: "flex", alignItems: "center",
               fontSize: 10 * scale, opacity: 0.85,
             }}>Send melding</div>
-            <div style={{ color: t, fontSize: 20 * scale }}>♡</div>
-            <div style={{ color: t, fontSize: 20 * scale }}>↗</div>
+            <FavoriteBorderIcon style={ICON_SX(20 * scale, t)} />
+            <SendIcon style={ICON_SX(20 * scale, t)} />
           </div>
         </>
       );
@@ -422,7 +450,10 @@ function PlatformUIOverlay({
             pointerEvents: "none",
           }}>
             <span>Shorts</span>
-            <span style={{ fontSize: 14 * scale }}>🔍 ⋯</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <SearchIcon style={ICON_SX(14 * scale, t)} />
+              <MoreHorizIcon style={ICON_SX(14 * scale, t)} />
+            </span>
           </div>
           <div style={{
             position: "absolute", right: contentX, top: contentY + contentH * 0.35,
@@ -432,11 +463,9 @@ function PlatformUIOverlay({
             color: t, fontSize: 9 * scale, fontWeight: 600,
             pointerEvents: "none",
           }}>
-            {["👍", "👎", "💬", "↗"].map((g, i) => (
-              <div key={i} style={{
-                fontSize: 18 * scale,
-                textShadow: "0 1px 3px rgba(0,0,0,0.6)",
-              }}>{g}</div>
+            {([ThumbUpOutlinedIcon, ThumbDownOutlinedIcon,
+               ChatBubbleOutlineIcon, SendIcon] as SvgIconComponent[]).map((Icon, i) => (
+              <Icon key={i} style={ICON_SX(18 * scale, t)} />
             ))}
           </div>
           <div style={{
@@ -461,12 +490,12 @@ function PlatformUIOverlay({
 
 function FeedCardUIOverlay({
   platformId, contentX, contentY, contentW, contentH,
-  screenW, screenH, scale,
+  screenH, scale,
 }: {
   platformId: PlatformId;
   contentX: number; contentY: number;
   contentW: number; contentH: number;
-  screenW: number; screenH: number;
+  screenW?: number; screenH: number;
   scale: number;
 }) {
   // Feed-card: viser plattform-skall rundt content med navn over og UI under
@@ -518,7 +547,7 @@ function FeedCardUIOverlay({
           background: "linear-gradient(45deg, #f09433, #cc2366)",
         }} />
         <span style={{ marginLeft: 6 * scale }}>brukernavn</span>
-        <span style={{ marginLeft: "auto", opacity: 0.5 }}>⋯</span>
+        <MoreHorizIcon sx={{ marginLeft: "auto", opacity: 0.5, fontSize: 14 }} />
       </div>
       <div style={{
         position: "absolute",
@@ -528,8 +557,10 @@ function FeedCardUIOverlay({
         fontSize: 11 * scale, lineHeight: 1.3,
         pointerEvents: "none",
       }}>
-        <div style={{ display: "flex", gap: 10 * scale, fontSize: 18 * scale }}>
-          ♡ 💬 ↗
+        <div style={{ display: "flex", gap: 10 * scale, alignItems: "center" }}>
+          <FavoriteBorderIcon sx={{ fontSize: 18 * scale }} />
+          <ChatBubbleOutlineIcon sx={{ fontSize: 18 * scale }} />
+          <SendIcon sx={{ fontSize: 18 * scale }} />
         </div>
         <div style={{ marginTop: 4 * scale, fontSize: 10 * scale }}>
           234 likerklikk · <span style={{ opacity: 0.6 }}>brukernavn</span> caption…

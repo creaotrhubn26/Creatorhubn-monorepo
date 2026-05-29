@@ -263,6 +263,90 @@ def _wrap_text(text: str, max_chars: int) -> list[str]:
     return lines
 
 
+def _render_free_element(
+    canvas: "Image.Image", draw: "ImageDraw.ImageDraw",
+    el: dict[str, Any], canvas_w: int, canvas_h: int,
+    asset_cache_dir: str,
+    get_font: Any,
+) -> None:
+    """Render et fri-form element (tekst eller bilde) på canvas.
+    xPct/yPct er sentrum-koordinater i prosent (0–100)."""
+    from PIL import Image
+    try:
+        el_type = str(el.get("type", "text"))
+        x_pct = float(el.get("xPct", 50))
+        y_pct = float(el.get("yPct", 50))
+        width_pct = float(el.get("widthPct", 50))
+
+        if el_type == "text":
+            text = str(el.get("text", "")).strip()
+            if not text: return
+            size_pct = float(el.get("sizePct", 6))
+            color_hex = str(el.get("color", "#ffffff"))
+            weight = int(el.get("weight", 700))
+            align = str(el.get("align", "center"))
+            shadow = bool(el.get("shadow", True))
+
+            color_rgb = _hex_to_rgb(color_hex)
+            font_px = int(canvas_h * (size_pct / 100))
+            font = get_font(font_px, bold=(weight >= 700))
+
+            # Wrap til widthPct av canvas-bredden
+            max_w_px = int(canvas_w * (width_pct / 100))
+            # Estimer chars-per-line basert på font-størrelse
+            approx_char_w = font_px * 0.55
+            chars_per_line = max(8, int(max_w_px / approx_char_w))
+            lines = _wrap_text(text, chars_per_line)
+
+            # Sentrum-x i px, total høyde
+            cx = int(canvas_w * (x_pct / 100))
+            cy = int(canvas_h * (y_pct / 100))
+            line_h = int(font_px * 1.15)
+            total_h = line_h * len(lines)
+            start_y = cy - total_h // 2
+
+            for i, line in enumerate(lines):
+                bbox = draw.textbbox((0, 0), line, font=font)
+                line_w = bbox[2] - bbox[0]
+                if align == "left":
+                    tx = cx - max_w_px // 2
+                elif align == "right":
+                    tx = cx + max_w_px // 2 - line_w
+                else:  # center
+                    tx = cx - line_w // 2
+                ty = start_y + i * line_h
+                if shadow:
+                    # Subtil shadow + tynt stroke for kontrast
+                    for dx, dy in [(-1, 1), (1, 1), (0, 2)]:
+                        draw.text((tx + dx, ty + dy), line, font=font,
+                                  fill=(0, 0, 0, 160))
+                draw.text((tx, ty), line, font=font, fill=color_rgb)
+
+        elif el_type == "image":
+            src = str(el.get("src", "")).strip()
+            if not src: return
+            opacity = float(el.get("opacity", 1.0))
+            img_path = _download_logo(src, asset_cache_dir)
+            if not img_path: return
+            img = Image.open(img_path).convert("RGBA")
+            target_w = int(canvas_w * (width_pct / 100))
+            scale = target_w / img.width
+            target_h = int(img.height * scale)
+            img = img.resize((target_w, target_h), Image.LANCZOS)
+            if opacity < 1.0:
+                a = img.split()[-1]
+                from PIL import ImageEnhance
+                a = ImageEnhance.Brightness(a).enhance(opacity)
+                img.putalpha(a)
+            cx = int(canvas_w * (x_pct / 100))
+            cy = int(canvas_h * (y_pct / 100))
+            paste_x = cx - target_w // 2
+            paste_y = cy - target_h // 2
+            canvas.paste(img, (paste_x, paste_y), img)
+    except Exception as exc:
+        bridge.warn(f"Free-element render feilet: {exc}")
+
+
 def _generate_thumbnail(
     base_frame_path: str, layout: str,
     title: str, cta: str, brand_name: str,
@@ -274,6 +358,9 @@ def _generate_thumbnail(
     logo_path: str | None = None,
     logo_placement: str = "top-right",
     logo_size_pct: float = 0.12,
+    background_image_path: str | None = None,
+    free_elements: list[dict[str, Any]] | None = None,
+    asset_cache_dir: str = "",
 ) -> bool:
     """Lag en designet thumbnail via PIL med valgt layout-template."""
     try:
@@ -283,10 +370,30 @@ def _generate_thumbnail(
         return False
 
     try:
-        # Last frame
-        frame = Image.open(base_frame_path).convert("RGB")
-        canvas = Image.new("RGB", (width, height), bg_rgb)
-        draw = ImageDraw.Draw(canvas, "RGBA")
+        # Last frame — bruk custom background image hvis satt, ellers video-frame
+        frame_source = background_image_path or base_frame_path
+        frame = Image.open(frame_source).convert("RGB")
+        # I "free"-modus rendres ingen template-bakgrunn — bare bilde + frie element
+        if layout == "free":
+            canvas = Image.new("RGB", (width, height), bg_rgb)
+            # Strekk bakgrunn til hele canvas (cover-fit)
+            src_w, src_h = frame.size
+            src_aspect = src_w / src_h
+            tgt_aspect = width / height
+            if src_aspect > tgt_aspect:
+                new_h = height
+                new_w = int(height * src_aspect)
+            else:
+                new_w = width
+                new_h = int(width / src_aspect)
+            frame_resized = frame.resize((new_w, new_h), Image.LANCZOS)
+            paste_x = (width - new_w) // 2
+            paste_y = (height - new_h) // 2
+            canvas.paste(frame_resized, (paste_x, paste_y))
+            draw = ImageDraw.Draw(canvas, "RGBA")
+        else:
+            canvas = Image.new("RGB", (width, height), bg_rgb)
+            draw = ImageDraw.Draw(canvas, "RGBA")
 
         # Få font — prøv system-fonts, fallback til default
         def get_font(size: int, bold: bool = False) -> Any:
@@ -464,7 +571,17 @@ def _generate_thumbnail(
                 draw.text((tx, y_pos), line, font=title_font, fill=(255, 255, 255))
                 y_pos += 80
 
-        # Logo-overlay (etter alt annet så den ligger på toppen)
+        # Frie tekst/bilde-element (render i array-rekkefølge så z-order
+        # styres fra UI). Disse legger seg over layout-template, før logo.
+        if free_elements:
+            for el in free_elements:
+                if isinstance(el, dict):
+                    _render_free_element(
+                        canvas, draw, el, width, height,
+                        asset_cache_dir, get_font,
+                    )
+
+        # Logo-overlay (på toppen av frie element så brand-mark alltid synlig)
         if logo_path:
             _paste_logo(canvas, logo_path, logo_placement, width, height,
                         size_pct=logo_size_pct)
@@ -515,6 +632,17 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     logo_size_pct = float(brand_snapshot.get("logoSizePct") or 0.12)
     logo_path = _download_logo(logo_url, output_dir) if logo_url else None
 
+    # Custom background image (overstyrer video-frame hvis satt)
+    bg_image_url = str(params.get("backgroundImageUrl") or "").strip()
+    bg_image_path = _download_logo(bg_image_url, output_dir) if bg_image_url else None
+
+    # Fri-form tekst/bilde-elementer (rendres over template + bakgrunn)
+    free_elements_raw = params.get("freeformElements") or []
+    free_elements: list[dict[str, Any]] = (
+        [e for e in free_elements_raw if isinstance(e, dict)]
+        if isinstance(free_elements_raw, list) else []
+    )
+
     if dry_run:
         bridge.result({
             "wouldGenerate": 6,
@@ -545,8 +673,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             bridge.error("Kunne ikke hente frames")
             sys.exit(1)
 
-        # 2. Generer 6 layouts (én per frame, rotert)
-        layouts = ["hero", "quote", "bold", "split", "frame", "gradient"]
+        # 2. Generer 7 layouts (én per frame, rotert).
+        # "free" = ren bakgrunn + free-elements (uten template-overlays)
+        layouts = ["free", "hero", "quote", "bold", "split", "frame", "gradient"]
         generated = []
         for i, layout in enumerate(layouts):
             frame_idx = i % len(frame_paths)
@@ -560,6 +689,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 logo_path=logo_path,
                 logo_placement=logo_placement,
                 logo_size_pct=logo_size_pct,
+                background_image_path=bg_image_path,
+                free_elements=free_elements,
+                asset_cache_dir=output_dir,
             )
             if ok:
                 generated.append({

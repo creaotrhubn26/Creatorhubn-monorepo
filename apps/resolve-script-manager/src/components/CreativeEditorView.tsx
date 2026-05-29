@@ -40,6 +40,7 @@ import { StudioVsFreeDialog, useStudioVsFreeAutoShow } from "./StudioVsFreeDialo
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import type { UpcomingJob } from "../services/upcomingJobsService";
 import { ThumbnailCreator } from "./ThumbnailCreator";
+import BrushIcon from "@mui/icons-material/Brush";
 import { useContinuousPreview } from "../hooks/useContinuousPreview";
 import { useResolveSync } from "../hooks/useResolveSync";
 import { useCreatorProfile } from "../hooks/useCreatorProfile";
@@ -2708,7 +2709,9 @@ ${ctxLines.join("\n")}`;
               marginRight: 4,
             }}
           >
-            🎨 Thumbnails
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <BrushIcon sx={{ fontSize: 14 }} /> Thumbnails
+            </span>
           </button>
           {/* ☕ Auto-pilot — la systemet bygge ferdig mens du tar pause */}
           <button

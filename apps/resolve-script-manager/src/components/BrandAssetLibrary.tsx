@@ -14,6 +14,9 @@ import {
   brandAssetsService, fileToDataUrl,
 } from "../services/brandAssetsService";
 import type { BrandAsset, BrandAssetKind } from "../services/brandAssetsService";
+import CloseIcon from "@mui/icons-material/Close";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import AddIcon from "@mui/icons-material/Add";
 
 interface Props {
   open: boolean;
@@ -142,7 +145,11 @@ export function BrandAssetLibrary({
           </div>
           <button onClick={onClose}
                   style={{ background: "transparent", border: 0, color: "var(--text-2)",
-                            cursor: "pointer", fontSize: 22, padding: 4 }}>✕</button>
+                            cursor: "pointer", padding: 4,
+                            display: "inline-flex", alignItems: "center",
+                            justifyContent: "center" }}>
+            <CloseIcon fontSize="small" />
+          </button>
         </div>
 
         {/* Toolbar */}
@@ -165,7 +172,11 @@ export function BrandAssetLibrary({
                     padding: "7px 14px", fontSize: 12, fontWeight: 600,
                     cursor: uploading ? "wait" : "pointer",
                   }}>
-            {uploading ? "Laster opp…" : "+ Last opp"}
+            {uploading ? "Laster opp…" : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <AddIcon sx={{ fontSize: 14 }} /> Last opp
+              </span>
+            )}
           </button>
           <span style={{ fontSize: 11, color: "var(--text-3)" }}>
             PNG / JPG / SVG / WebP · max 1 MB
@@ -247,8 +258,11 @@ export function BrandAssetLibrary({
                       style={{
                         background: "transparent", border: 0,
                         color: "var(--text-3)", cursor: "pointer",
-                        fontSize: 14, padding: 0, lineHeight: 1,
-                      }}>🗑</button>
+                        padding: 0, lineHeight: 1,
+                        display: "inline-flex", alignItems: "center",
+                      }}>
+                      <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                    </button>
                   </div>
                   {a.widthPx && a.heightPx && (
                     <div style={{ position: "absolute", top: 4, right: 4,
