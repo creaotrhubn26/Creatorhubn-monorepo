@@ -36,6 +36,7 @@ import type { ScriptEvent } from "../types";
 import { MusicSearchModal } from "./MusicSearchModal";
 import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
 import { AutoPilotPanel } from "./AutoPilotPanel";
+import { useContinuousPreview } from "../hooks/useContinuousPreview";
 import {
   IconPlay,
   IconMusic,
@@ -754,6 +755,31 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   }, [musicFlow]);
 
   const videoSrc = useMemo(() => payload ? convertFileSrc(payload.sourceVideo) : "", [payload]);
+
+  // Continuous preview: når livePreviewMode er PÅ auto-renderes ferdig
+  // output (480p) hver gang editor-state endrer seg (3.5s debounce).
+  const continuousPreviewInputs = useMemo(() => {
+    if (!payload || !livePreviewMode) return null;
+    const allChapters = new Set<string>();
+    payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
+    const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
+    return {
+      picks: payload.picks,
+      sourceVideo: payload.sourceVideo,
+      pickOverrides,
+      pickOrder: activePickOrder,
+      excludedChapters: excluded,
+    };
+  }, [payload, livePreviewMode, includedChapters, pickOverrides, activePickOrder]);
+
+  const livePreview = useContinuousPreview(continuousPreviewInputs);
+  // Switch video-src til preview når den er ferdig + livePreviewMode aktiv
+  const effectiveVideoSrc = useMemo(() => {
+    if (livePreviewMode && livePreview.previewPath) {
+      return convertFileSrc(livePreview.previewPath);
+    }
+    return videoSrc;
+  }, [livePreviewMode, livePreview.previewPath, videoSrc]);
   // When hover is active, play that segment; else play focused
   const activePick = (hoveredPickIdx != null && filteredPicks[hoveredPickIdx]) || filteredPicks[focusedPickIdx];
   const focusedPick = activePick;
@@ -1032,6 +1058,9 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // token-bruk telles per innlogget bruker.
   const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
   const [autoPilotOpen, setAutoPilotOpen] = useState(false);
+  // Live preview-toggle: når aktiv viser preview-vinduet ferdig output
+  // istedet for source-video. Auto-renders ved hver endring (3.5s debounce).
+  const [livePreviewMode, setLivePreviewMode] = useState(false);
   const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
     const newAudio: CustomAudio = {
       id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -2603,7 +2632,7 @@ ${ctxLines.join("\n")}`;
           >
             <video
               ref={videoRef}
-              src={videoSrc}
+              src={effectiveVideoSrc}
               className="ce-preview-video"
               style={{
                 filter: mood.filter + lookFilter,
@@ -2618,6 +2647,51 @@ ${ctxLines.join("\n")}`;
               <div className="ce-preview-tag">
                 <span className="ce-live-dot" /> Live preview
               </div>
+              {/* Live preview-toggle + status. Klikk veksler mellom source-
+                  preview og continuous auto-render av ferdig output. */}
+              <button
+                onClick={() => {
+                  setLivePreviewMode(v => !v);
+                  if (!livePreviewMode) livePreview.setEnabled(true);
+                }}
+                style={{
+                  marginLeft: 8,
+                  background: livePreviewMode
+                    ? "rgba(74, 212, 138, 0.20)" : "rgba(0,0,0,0.40)",
+                  border: `1px solid ${livePreviewMode ? "rgba(74,212,138,0.55)" : "rgba(255,255,255,0.18)"}`,
+                  color: livePreviewMode ? "#4ad48a" : "rgba(255,255,255,0.85)",
+                  fontSize: 10.5,
+                  padding: "3px 8px",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                title={livePreviewMode
+                  ? "Auto-rendret ferdig output (klikk for å bytte til source)"
+                  : "Vis source-video (klikk for å bytte til live ferdig-render)"}
+              >
+                {livePreviewMode ? (
+                  livePreview.status === "rendering" ? (
+                    <><span className="anim-pulse-dot" style={{
+                      display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                      background: "#4ad48a",
+                    }} /> Renderer …</>
+                  ) : livePreview.status === "queued" ? (
+                    <>⏱ I kø …</>
+                  ) : livePreview.status === "ready" ? (
+                    <>✓ Live · {livePreview.ageSec}s</>
+                  ) : livePreview.status === "error" ? (
+                    <>⚠ Feil</>
+                  ) : (
+                    <>● Live</>
+                  )
+                ) : (
+                  <>○ Source</>
+                )}
+              </button>
             </div>
             <div
               className="ce-mood-tag"
