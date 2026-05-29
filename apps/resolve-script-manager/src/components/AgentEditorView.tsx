@@ -22,8 +22,11 @@ import { ThumbnailCreator } from "./ThumbnailCreator";
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import { LowerThirdsStudio } from "./LowerThirdsStudio";
 import { CaptionStudio } from "./CaptionStudio";
+import { BrollLibrary } from "./BrollLibrary";
+import { BrollSuggestionModal } from "./BrollSuggestionModal";
 import SubtitlesIcon from "@mui/icons-material/Subtitles";
 import ClosedCaptionIcon from "@mui/icons-material/ClosedCaption";
+import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
 import AppShortcutIcon from "@mui/icons-material/AppShortcut";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import LaunchIcon from "@mui/icons-material/Launch";
@@ -88,8 +91,29 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [thumbnailOpen, setThumbnailOpen] = useState(false);
   const [lowerThirdsOpen, setLowerThirdsOpen] = useState(false);
   const [captionStudioOpen, setCaptionStudioOpen] = useState(false);
+  const [brollLibraryOpen, setBrollLibraryOpen] = useState(false);
+  // B-roll suggestion-modal — kan trigges av Director-chat eller manuelt
+  const [brollSuggestionOpen, setBrollSuggestionOpen] = useState(false);
+  const [brollSuggestionContext, setBrollSuggestionContext] = useState<{
+    contextTags: string[]; description: string;
+  } | null>(null);
   // Caption Studio gir oss transcript som vi inkluderer i Director-context
   const [loadedTranscript, setLoadedTranscript] = useState<WhisperTranscript | null>(null);
+
+  // Foreslå B-roll basert på nåværende chapter (manuell trigger).
+  // Tags hentes fra chapter + look-pack.
+  const requestBrollSuggestions = () => {
+    const tags = [
+      chapter.id,
+      chapter.priorityHint,
+      ...(look.tags || []).slice(0, 3),
+    ].filter(Boolean);
+    setBrollSuggestionContext({
+      contextTags: tags,
+      description: `Director foreslår B-roll for ${chapter.label} (${chapter.priorityHint}) i ${look.label}-look`,
+    });
+    setBrollSuggestionOpen(true);
+  };
   const [multiAspectExporting, setMultiAspectExporting] = useState(false);
   const [multiAspectResult, setMultiAspectResult] = useState<{
     outputDir: string; renderedCount: number;
@@ -348,6 +372,27 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         </div>
 
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => setBrollLibraryOpen(true)}
+                  style={{
+                    background: "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <VideoLibraryIcon sx={{ fontSize: 14 }} /> B-roll
+          </button>
+          <button onClick={requestBrollSuggestions}
+                  title="Få Director-forslag til B-roll basert på nåværende kapittel + look"
+                  style={{
+                    background: "rgba(74,212,138,0.15)",
+                    border: "1px solid rgba(74,212,138,0.40)",
+                    color: "#4ad48a", padding: "5px 10px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <AutoFixHighIcon sx={{ fontSize: 14 }} /> Foreslå B-roll
+          </button>
           <button onClick={() => setCaptionStudioOpen(true)}
                   style={{
                     background: "rgba(160,48,192,0.15)",
@@ -1051,6 +1096,30 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         videoDurationSec={songLengthSec}
         onTranscriptLoaded={setLoadedTranscript}
       />
+
+      {/* B-roll Library — per-prosjekt vision-AI-tagget */}
+      <BrollLibrary
+        open={brollLibraryOpen}
+        onClose={() => setBrollLibraryOpen(false)}
+        projectId={projectIdForStudio}
+      />
+
+      {/* B-roll Suggestion modal — Director foreslår basert på chapter+look */}
+      {brollSuggestionContext && (
+        <BrollSuggestionModal
+          open={brollSuggestionOpen}
+          onClose={() => setBrollSuggestionOpen(false)}
+          projectId={projectIdForStudio}
+          agentKind={config.kind}
+          chapterId={chapter.id}
+          contextTags={brollSuggestionContext.contextTags}
+          contextDescription={brollSuggestionContext.description}
+          onApprove={(clipId, clipPath) => {
+            console.log("[broll] approved:", clipId, clipPath);
+            // V2: auto-add som timeline-clip i agent-state
+          }}
+        />
+      )}
     </div>
   );
 }

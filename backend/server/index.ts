@@ -53,6 +53,7 @@ import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-rout
 import { registerRoleRoomThumbnailTemplatesRoutes } from "./role-room-thumbnail-templates-routes.js";
 import { registerRoleRoomLowerThirdsRoutes } from "./role-room-lower-thirds-routes.js";
 import { registerRoleRoomCaptionsRoutes } from "./role-room-captions-routes.js";
+import { registerRoleRoomBrollRoutes } from "./role-room-broll-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -378,6 +379,7 @@ import {
 } from "./meta-conversions-api";
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
+import { setupWhatsNewRoutes } from "./whats-new-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
@@ -1753,6 +1755,7 @@ registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomThumbnailTemplatesRoutes(app, { pool, activeSessions });
 registerRoleRoomLowerThirdsRoutes(app, { pool, activeSessions });
 registerRoleRoomCaptionsRoutes(app, { pool, activeSessions });
+registerRoleRoomBrollRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
@@ -17847,6 +17850,15 @@ setupAdminFundingRoutes({
 
 // ── Investor contacts — endpoints flyttet til ./admin-room-investors-routes.ts
 setupAdminInvestorsRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── "Hva er nytt" per Role Room-modus — public GET + admin CRUD
+setupWhatsNewRoutes({
   app,
   pool,
   getActiveSessionFromRequest,

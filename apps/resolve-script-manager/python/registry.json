@@ -2020,6 +2020,43 @@
       "requiresTimeline": false
     },
     {
+      "id": "analyze_broll_clip",
+      "name": "Analyze B-roll Clip (Claude vision)",
+      "category": "social",
+      "scriptPath": "scripts/social/analyze_broll_clip.py",
+      "description": "Bruk Claude vision-AI for å analysere et B-roll-klipp og produsere rik strukturert metadata: objekter, mennesker, scene, location, time-of-day, lighting, mood, motion, shot-type, color-palette, audio-context, suggested-for, dominerende tags. Foundation for B-roll Library og autopilot context-matching.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "B-roll-klipp", "type": "text", "required": true },
+        { "key": "postAgentBaseUrl", "label": "Post Agent base URL", "type": "text", "required": true },
+        { "key": "bearerToken", "label": "Bearer token", "type": "text", "required": true },
+        { "key": "model", "label": "Claude-model (default sonnet-4-6)", "type": "text", "required": false },
+        { "key": "frameCount", "label": "Antall keyframes å analysere (default 4)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_broll_preview",
+      "name": "Extract B-roll Preview",
+      "category": "social",
+      "scriptPath": "scripts/social/extract_broll_preview.py",
+      "description": "Generér kort MP4-preview (3 sek, 480px) + thumbnail-PNG for hover-preview i B-roll Library-UI. Cache'es per klipp-hash.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "B-roll-klipp", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "export_multi_aspect",
       "name": "Export Multi-Aspect",
       "category": "social",
