@@ -25,7 +25,10 @@ import { CaptionStudio } from "./CaptionStudio";
 import { BrollLibrary } from "./BrollLibrary";
 import { BrollSuggestionModal } from "./BrollSuggestionModal";
 import { MusicLibrary } from "./MusicLibrary";
+import { MusicSuggestionModal } from "./MusicSuggestionModal";
+import { VoiceDuckingDialog } from "./VoiceDuckingDialog";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
+import GraphicEqIcon2 from "@mui/icons-material/GraphicEq";
 import SubtitlesIcon from "@mui/icons-material/Subtitles";
 import ClosedCaptionIcon from "@mui/icons-material/ClosedCaption";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
@@ -95,6 +98,13 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [captionStudioOpen, setCaptionStudioOpen] = useState(false);
   const [brollLibraryOpen, setBrollLibraryOpen] = useState(false);
   const [musicLibraryOpen, setMusicLibraryOpen] = useState(false);
+  const [musicSuggestOpen, setMusicSuggestOpen] = useState(false);
+  const [duckingDialogOpen, setDuckingDialogOpen] = useState(false);
+  const [duckingMusicPath, setDuckingMusicPath] = useState("");
+
+  const requestMusicSuggestions = () => {
+    setMusicSuggestOpen(true);
+  };
   // B-roll suggestion-modal — kan trigges av Director-chat eller manuelt
   const [brollSuggestionOpen, setBrollSuggestionOpen] = useState(false);
   const [brollSuggestionContext, setBrollSuggestionContext] = useState<{
@@ -225,6 +235,14 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
 
   const chapter = CFG.chapters.find(c => c.id === selectedChapter) ?? CFG.chapters[0];
   const look = CFG.lookPacks.find(l => l.id === selectedLook) ?? CFG.lookPacks[0];
+
+  // BPM-range fra chapter priority-hint (for music-suggestion-matching)
+  const targetBpmRange: [number, number] | undefined =
+    chapter.priorityHint === "high-energy" ? [120, 160]
+    : chapter.priorityHint === "emotional-peak" ? [70, 110]
+    : chapter.priorityHint === "atmospheric" ? [60, 100]
+    : chapter.priorityHint === "transitional" ? [90, 120]
+    : undefined;
 
   // Beat-grid: bars × beats per bar (4/4 default). Vises som markører
   // på chapter-strip-en så Bjarne ser hvor downbeats faller.
@@ -394,6 +412,28 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                     display: "inline-flex", alignItems: "center", gap: 5,
                   }}>
             <LibraryMusicIcon sx={{ fontSize: 14 }} /> Music
+          </button>
+          <button onClick={requestMusicSuggestions}
+                  title="Director foreslår musikk for nåværende kapittel"
+                  style={{
+                    background: "rgba(74,212,138,0.15)",
+                    border: "1px solid rgba(74,212,138,0.40)",
+                    color: "#4ad48a", padding: "5px 10px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <AutoFixHighIcon sx={{ fontSize: 14 }} /> Foreslå musikk
+          </button>
+          <button onClick={() => setDuckingDialogOpen(true)}
+                  title="Mikse voice + music med sidechain-compress voice-ducking"
+                  style={{
+                    background: "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <GraphicEqIcon2 sx={{ fontSize: 14 }} /> Ducking
           </button>
           <button onClick={requestBrollSuggestions}
                   title="Få Director-forslag til B-roll basert på nåværende kapittel + look"
@@ -1122,6 +1162,33 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         open={musicLibraryOpen}
         onClose={() => setMusicLibraryOpen(false)}
         projectId={projectIdForStudio}
+      />
+
+      {/* Music Suggestion Modal — Director-forslag rangert med BPM-boost */}
+      <MusicSuggestionModal
+        open={musicSuggestOpen}
+        onClose={() => setMusicSuggestOpen(false)}
+        projectId={projectIdForStudio}
+        agentKind={config.kind}
+        chapterId={chapter.id}
+        contextTags={[
+          chapter.id, chapter.priorityHint,
+          ...(look.tags || []).slice(0, 3),
+        ].filter(Boolean)}
+        targetBpmRange={targetBpmRange}
+        contextDescription={`Director foreslår musikk for ${chapter.label} (${chapter.priorityHint}) i ${look.label}-look`}
+        onApprove={(_trackId, trackPath) => {
+          // Pre-fyll Ducking-dialogen med valgt music
+          setDuckingMusicPath(trackPath);
+        }}
+      />
+
+      {/* Voice Ducking Dialog — sidechain-compress voice + music */}
+      <VoiceDuckingDialog
+        open={duckingDialogOpen}
+        onClose={() => setDuckingDialogOpen(false)}
+        initialVoicePath={sourcePath}
+        initialMusicPath={duckingMusicPath}
       />
 
       {/* B-roll Suggestion modal — Director foreslår basert på chapter+look */}
