@@ -1884,6 +1884,44 @@
       "requiresTimeline": false
     },
     {
+      "id": "claude_audio_direction",
+      "name": "Claude Audio Direction",
+      "category": "audio",
+      "scriptPath": "scripts/audio/claude_audio_direction.py",
+      "description": "AI lyd-direktørens øre. Claude gir per-chapter audio-polish-direction: ducking-dB, de-ess-level, voice-boost, music/ambient-volum, platform-spesifikk LUFS-target. Kjøres i auto-pilot før apply_audio_polish.",
+      "requiredInputs": [
+        { "key": "chaptersInfo", "label": "Chapters med picks-count + duration", "type": "json", "required": true },
+        { "key": "deliveryPlatform", "label": "youtube|spotify|tiktok|instagram|vimeo|theatrical", "type": "text", "required": false },
+        { "key": "projectKind", "label": "Project kind", "type": "text", "required": false },
+        { "key": "culturalContext", "label": "Kulturell kontekst", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "apply_audio_polish",
+      "name": "Apply Audio Polish",
+      "category": "audio",
+      "scriptPath": "scripts/audio/apply_audio_polish.py",
+      "description": "Anvender Claude's audio-direction på ferdig-rendert highlight: highpass + de-ess + voice-boost + LUFS-normalisering. Output er platform-klar.",
+      "requiredInputs": [
+        { "key": "inputPath", "label": "Rendert MP4", "type": "text", "required": true },
+        { "key": "outputPath", "label": "Output-path (optional)", "type": "text", "required": false },
+        { "key": "perChapter", "label": "Claude's per-chapter direction", "type": "json", "required": false },
+        { "key": "overallLufsTarget", "label": "LUFS target", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "claude_music_suggestions",
       "name": "Claude Music Suggestions",
       "category": "audio",

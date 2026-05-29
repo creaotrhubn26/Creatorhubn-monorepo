@@ -26,7 +26,9 @@ export type AutoPilotStepId =
   | "resolve_color_nodes"
   | "claude_music_per_chapter"
   | "claude_pacing_decision"
+  | "claude_audio_direction"
   | "build_highlight"
+  | "audio_polish"
   | "qc_pass";
 
 export interface AutoPilotStep {
@@ -44,7 +46,9 @@ export const AUTO_PILOT_STEPS: AutoPilotStep[] = [
   { id: "resolve_color_nodes",       label: "Bygger color node-tre i Resolve",  estSec: 25 },
   { id: "claude_music_per_chapter",  label: "Claude foreslår musikk pr scene",  estSec: 25 },
   { id: "claude_pacing_decision",    label: "Claude vurderer pacing + climax",  estSec: 20 },
+  { id: "claude_audio_direction",    label: "Claude vurderer audio-polish pr scene", estSec: 15 },
   { id: "build_highlight",           label: "Bygger highlight med ffmpeg",      estSec: 180 },
+  { id: "audio_polish",              label: "LUFS + ducking + de-essing",       estSec: 45 },
   { id: "qc_pass",                   label: "Final QC + sync-sjekk",            estSec: 15 },
 ];
 
@@ -159,6 +163,9 @@ export interface AutoPilotInputs {
   /** Log-gamma-info fra detect_log_gamma (isLog: bool, type: string).
    *  Claude bruker dette til å sette LOG → REC.709-correction-LUT først. */
   logGammaInfo?: { isLog?: boolean; type?: string; suggestedLut?: string };
+  /** Hvor highlighten skal leveres — påvirker LUFS-target (-14 for YT,
+   *  -10 for TikTok/IG Reels, -23 cinema). */
+  deliveryPlatform?: "youtube" | "spotify" | "tiktok" | "instagram" | "vimeo" | "theatrical";
 }
 
 interface UseAutoPilotResult {
@@ -432,12 +439,109 @@ async function runStep(
     case "claude_pacing_decision":
       await stepClaudePacingDecision(inputs, ctx);
       return;
+    case "claude_audio_direction":
+      await stepClaudeAudioDirection(inputs, ctx);
+      return;
     case "build_highlight":
       await stepBuildHighlight(inputs, ctx);
+      return;
+    case "audio_polish":
+      await stepAudioPolish(inputs, ctx);
       return;
     case "qc_pass":
       await stepQcPass(inputs, ctx);
       return;
+  }
+}
+
+async function stepClaudeAudioDirection(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.picks || inputs.picks.length === 0) {
+    ctx.log({ step: "claude_audio_direction", level: "warn",
+      message: "Hopper over — ingen picks tilgjengelig" });
+    return;
+  }
+  // Grupper picks pr chapter
+  const chaptersInfo: Record<string, { picksCount: number; totalDurationSec: number }> = {};
+  for (const p of inputs.picks) {
+    const ch = (p.chapter ?? "details").toLowerCase();
+    if (!chaptersInfo[ch]) chaptersInfo[ch] = { picksCount: 0, totalDurationSec: 0 };
+    chaptersInfo[ch].picksCount += 1;
+    chaptersInfo[ch].totalDurationSec += p.durationSec;
+  }
+
+  const platform = inputs.deliveryPlatform ?? "youtube";
+  ctx.log({ step: "claude_audio_direction", level: "claude",
+    message: `Spør Claude om audio-polish for ${Object.keys(chaptersInfo).length} chapters (platform: ${platform})` });
+
+  try {
+    const summary = await executeScript("claude_audio_direction", {
+      chaptersInfo,
+      deliveryPlatform: platform,
+      projectKind: inputs.projectKind ?? "wedding",
+      culturalContext: inputs.culturalContext ?? "",
+      targetDurationSec: inputs.targetDurationSec ?? 240,
+      clientWishes: inputs.clientWishes ?? "",
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      perChapter?: Record<string, unknown>;
+      overallLufsTarget?: number;
+      overallReasoning?: string;
+      needsRoomTone?: boolean;
+    } | undefined;
+    if (v?.perChapter) {
+      ctx.sharedState.audioDirectionPerChapter = v.perChapter;
+      ctx.sharedState.audioLufsTarget = v.overallLufsTarget;
+      const sample = Object.entries(v.perChapter).slice(0, 3)
+        .map(([ch, d]) => `${ch}: duck ${(d as { duckingDb: number }).duckingDb}dB`)
+        .join(" · ");
+      ctx.log({ step: "claude_audio_direction", level: "success",
+        message: `Direction for ${Object.keys(v.perChapter).length} chapters · ${sample}` });
+      if (v.overallReasoning) {
+        ctx.log({ step: "claude_audio_direction", level: "claude",
+          message: `Claude: "${v.overallReasoning}"` });
+      }
+      ctx.log({ step: "claude_audio_direction", level: "action",
+        message: `LUFS-target: ${v.overallLufsTarget?.toFixed(1)} (${platform})` });
+    }
+  } catch (err) {
+    ctx.log({ step: "claude_audio_direction", level: "warn",
+      message: `Audio-direction hoppet over: ${(err as Error).message}` });
+  }
+}
+
+async function stepAudioPolish(_: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  // Henter rendered output fra build_highlight's shared state
+  const renderedPath = ctx.sharedState.renderedHighlightPath as string | undefined;
+  if (!renderedPath) {
+    ctx.log({ step: "audio_polish", level: "warn",
+      message: "Hopper over — ingen rendert highlight tilgjengelig" });
+    return;
+  }
+  const perChapter = ctx.sharedState.audioDirectionPerChapter ?? {};
+  const lufs = (ctx.sharedState.audioLufsTarget as number | undefined) ?? -14;
+
+  ctx.log({ step: "audio_polish", level: "info",
+    message: `Anvender LUFS-norm (${lufs} LUFS) + ducking + de-essing …` });
+
+  try {
+    const summary = await executeScript("apply_audio_polish", {
+      inputPath: renderedPath,
+      perChapter,
+      overallLufsTarget: lufs,
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      outputPath?: string; sizeMb?: number; settingsApplied?: unknown;
+    } | undefined;
+    if (v?.outputPath) {
+      ctx.sharedState.polishedHighlightPath = v.outputPath;
+      ctx.log({ step: "audio_polish", level: "success",
+        message: `Polert: ${v.outputPath.split("/").pop()} (${v.sizeMb?.toFixed(1)} MB)` });
+    }
+  } catch (err) {
+    ctx.log({ step: "audio_polish", level: "warn",
+      message: `Audio-polish hoppet over: ${(err as Error).message}` });
   }
 }
 
@@ -730,6 +834,9 @@ async function stepBuildHighlight(inputs: AutoPilotInputs, ctx: StepCtx): Promis
     }, false);
     const result = summary.events.find((e) => e.type === "result");
     const out = (result?.value as { outputPath?: string; sizeMb?: number })?.outputPath;
+    // Lagre path til audio-polish-stepet
+    if (out) ctx.sharedState.renderedHighlightPath = out;
+    else ctx.sharedState.renderedHighlightPath = outputPath;
     ctx.log({ step: "build_highlight", level: "success",
       message: `🎉 Highlight ferdig brygget: ${out ?? outputPath}` });
   } catch (err) {
