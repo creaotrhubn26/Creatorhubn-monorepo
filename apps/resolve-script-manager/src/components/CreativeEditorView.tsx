@@ -36,6 +36,7 @@ import type { ScriptEvent } from "../types";
 import { MusicSearchModal } from "./MusicSearchModal";
 import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
 import { AutoPilotPanel } from "./AutoPilotPanel";
+import { StudioVsFreeDialog, useStudioVsFreeAutoShow } from "./StudioVsFreeDialog";
 import { useContinuousPreview } from "../hooks/useContinuousPreview";
 import { useResolveSync } from "../hooks/useResolveSync";
 import { useCreatorProfile } from "../hooks/useCreatorProfile";
@@ -1123,6 +1124,13 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [pushingFullEdit, setPushingFullEdit] = useState(false);
   const [pushResult, setPushResult] = useState<string | null>(null);
   const resolveSync = useResolveSync({ enabled: resolveSyncEnabled });
+  // Auto-vis Studio-vs-Free-dialog når vi detekterer Free (etter 2s delay,
+  // og bare hvis brukeren ikke nettopp dismisset den).
+  const [studioDialogOpen, closeStudioDialog] = useStudioVsFreeAutoShow(
+    resolveSync.resolveState?.connected ?? false,
+    resolveSync.resolveState?.isStudio,
+  );
+  const [manualStudioDialogOpen, setManualStudioDialogOpen] = useState(false);
   // Creator-profil — preferanser fra serveren auto-anvendes på nye prosjekter.
   // Knyttet til innlogget Role Room-bruker, ikke lokalt — Bjarne får sine
   // learnings selv om han bytter maskin.
@@ -2512,12 +2520,14 @@ ${ctxLines.join("\n")}`;
               🧠 {creatorProfile.editCount} learnings
             </span>
           )}
-          {/* Studio-detection-pill: viser at vi har Studio-features tilgjengelig */}
+          {/* Studio-detection-pill: viser om Studio-features er tilgjengelig.
+              Klikk på Free-pillen åpner sammenligningsdialog. */}
           {resolveSync.resolveState?.connected && (
-            <span
+            <button
+              onClick={() => !resolveSync.resolveState!.isStudio && setManualStudioDialogOpen(true)}
               title={resolveSync.resolveState.isStudio
-                ? `${resolveSync.resolveState.productName ?? "Resolve Studio"} — alle auto-pilot-features (VST/AU, LUT-applikasjon, Fairlight-automation) tilgjengelig`
-                : "Resolve Free — noen Studio-features (VST/AU-plugins, LUT på SetLUT) er ikke tilgjengelig"}
+                ? `${resolveSync.resolveState.productName ?? "Resolve Studio"} — alle auto-pilot-features tilgjengelig`
+                : "Klikk for å se hva Studio låser opp"}
               style={{
                 fontSize: 10.5,
                 color: resolveSync.resolveState.isStudio ? "#f0a500" : "rgba(255,255,255,0.55)",
@@ -2528,10 +2538,11 @@ ${ctxLines.join("\n")}`;
                   ? "rgba(240,165,0,0.40)"
                   : "rgba(255,255,255,0.10)"}`,
                 padding: "3px 8px", borderRadius: 999, marginRight: 6,
-                fontWeight: 600, cursor: "default",
+                fontWeight: 600,
+                cursor: resolveSync.resolveState.isStudio ? "default" : "pointer",
               }}>
-              {resolveSync.resolveState.isStudio ? "⭐ Studio" : "Free"}
-            </span>
+              {resolveSync.resolveState.isStudio ? "⭐ Studio" : "Free · vis fordeler"}
+            </button>
           )}
           {/* Resolve sync-pill + push-knapp */}
           {(() => {
@@ -4409,6 +4420,16 @@ ${ctxLines.join("\n")}`;
           }}
         />
       )}
+
+      {/* Studio vs Free comparison-dialog */}
+      <StudioVsFreeDialog
+        open={studioDialogOpen || manualStudioDialogOpen}
+        productName={resolveSync.resolveState?.productName}
+        onClose={() => {
+          closeStudioDialog();
+          setManualStudioDialogOpen(false);
+        }}
+      />
 
       {/* Marker edit modal */}
       {editingMarkerId && (() => {
