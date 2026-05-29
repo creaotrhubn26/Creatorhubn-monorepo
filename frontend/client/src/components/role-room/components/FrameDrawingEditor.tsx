@@ -3958,6 +3958,21 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         : 264;
   const initialToolsPanelCollapsed = isThumbnailWorkflow ? true : isDesktopCanvasPriority;
   const currentBrushPack = STUDIO_BRUSH_PACKS.find((pack) => pack.id === selectedBrushPackId) || STUDIO_BRUSH_PACKS[0];
+  // Synk brush color til pakkens mørkeste swatch (siste i arrayet — typisk
+  // pakkens "main ink"-tone). Slik blir Noir Lighting Pack default til kull-
+  // grått, Commercial High-Key til varm rosa-ink, Action Crosshatch til
+  // svart, Soft Drama Wash til mahogny. Artisten kan fortsatt overstyre
+  // via Color-picker. Forhindrer overstyring av aktive pågående pencil-
+  // strokes ved å bare oppdatere når brush-pack-id endrer seg.
+  useEffect(() => {
+    const primaryInkColor = currentBrushPack.swatches[currentBrushPack.swatches.length - 1]
+      ?? currentBrushPack.swatches[0]
+      ?? '#000000';
+    setBrushSettings((prev) => (
+      prev.color === primaryInkColor ? prev : { ...prev, color: primaryInkColor }
+    ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBrushPackId]);
   const displaySceneLabel = sceneId ? `Scene ${sceneId}` : 'Scene 15';
   const displayShotLabel = frameId
     ? frameId.replace(/^frame[-_]?/i, '').replace(/[-_]/g, ' ').trim().toUpperCase() || 'Shot 5B'
