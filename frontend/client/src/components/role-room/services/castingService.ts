@@ -5251,3 +5251,49 @@ export const castingService = {
     return template;
   },
 };
+
+// DEBUG: ekspoenere castingService til window slik at konsoll kan kalle
+// window.__rrCS.getProject('troll-XXX') for å se eksakt hva getProject
+// returnerer i Daniels session. Fjernes etter root-cause er funnet.
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__rrCS = castingService;
+  // Wrap apiRequest så vi får logget hva GET /api/casting/projects/:id
+  // faktisk returnerer.
+  const origGetProject = castingService.getProject.bind(castingService);
+  (window as unknown as Record<string, unknown>).__rrGetProjectRaw = async (id: string) => {
+    const r = await fetch(`/api/casting/projects/${id}?fresh=${Date.now()}`, {
+      cache: 'no-store',
+      headers: authSessionService.getAuthHeadersSync(),
+    });
+    const ok = r.ok;
+    const status = r.status;
+    const body = await r.text();
+    let parsed: unknown = null;
+    try { parsed = body ? JSON.parse(body) : null; } catch { parsed = null; }
+    const p = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    return {
+      ok, status,
+      hasBody: body.length,
+      id: p?.id,
+      rolesType: typeof p?.roles,
+      rolesIsArray: Array.isArray(p?.roles),
+      rolesLen: Array.isArray(p?.roles) ? p.roles.length : null,
+      candsLen: Array.isArray(p?.candidates) ? p.candidates.length : null,
+      crewLen: Array.isArray(p?.crew) ? p.crew.length : null,
+    };
+  };
+  (window as unknown as Record<string, unknown>).__rrGetProjectViaService = async (id: string) => {
+    const p = await origGetProject(id);
+    return {
+      hasProject: !!p,
+      id: p?.id,
+      name: p?.name,
+      rolesType: typeof p?.roles,
+      rolesIsArray: Array.isArray(p?.roles),
+      rolesLen: Array.isArray(p?.roles) ? p.roles.length : null,
+      candsLen: Array.isArray(p?.candidates) ? p.candidates.length : null,
+      crewLen: Array.isArray(p?.crew) ? p.crew.length : null,
+      keys: p ? Object.keys(p).sort() : [],
+    };
+  };
+}
