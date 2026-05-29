@@ -21,6 +21,7 @@ export type AutoPilotStepId =
   | "preflight"
   | "claude_scene_analysis"
   | "quality_filter"
+  | "claude_color_direction"
   | "color_match"
   | "resolve_color_nodes"
   | "claude_music_per_chapter"
@@ -38,7 +39,8 @@ export const AUTO_PILOT_STEPS: AutoPilotStep[] = [
   { id: "preflight",                 label: "Sjekker Resolve + source",         estSec: 5 },
   { id: "claude_scene_analysis",     label: "Claude analyserer scener",         estSec: 30 },
   { id: "quality_filter",            label: "Fjerner underexponerte/uskarpe",   estSec: 20 },
-  { id: "color_match",               label: "Eksponeringsbalanse pr shot",      estSec: 40 },
+  { id: "claude_color_direction",    label: "Claude gir color-direction pr scene", estSec: 15 },
+  { id: "color_match",               label: "Eksponeringsbalanse + warmth/sat",    estSec: 40 },
   { id: "resolve_color_nodes",       label: "Bygger color node-tre i Resolve",  estSec: 25 },
   { id: "claude_music_per_chapter",  label: "Claude foreslår musikk pr scene",  estSec: 25 },
   { id: "claude_pacing_decision",    label: "Claude vurderer pacing + climax",  estSec: 20 },
@@ -125,6 +127,12 @@ export interface AutoPilotInputs {
   lookPack?: "norwedfilm" | "warm" | "cinematic" | "documentary" | "none";
   /** Er Resolve åpen + tilkoblet? Resolve-spesifikke steg hoppes over hvis ikke. */
   resolveConnected?: boolean;
+  /** Prosjekt-type fra onboarding (wedding, corporate, music, event). */
+  projectKind?: string;
+  /** Kulturell kontekst — viktig for color (Sikh wedding, norsk standard,
+   *  pakistansk-norsk, jødisk, kinesisk, etc.). Claude bruker dette til
+   *  å justere warmth/saturation forventninger per chapter. */
+  culturalContext?: string;
 }
 
 interface UseAutoPilotResult {
@@ -233,6 +241,7 @@ export function useAutoPilot(): UseAutoPilotResult {
       cancelledRef.current = false;
       pausedRef.current = false;
       const startTs = Date.now();
+      const sharedState: Record<string, unknown> = {};
       setState({
         status: "running",
         currentStepIdx: 0,
@@ -270,6 +279,7 @@ export function useAutoPilot(): UseAutoPilotResult {
               log,
               awaitDecision,
               waitWhilePaused,
+              sharedState,
             });
             setStepStatus(step.id, "done");
           } catch (err) {
@@ -348,6 +358,9 @@ interface StepCtx {
   log: (act: Omit<AutoPilotActivity, "id" | "ts">) => void;
   awaitDecision: (d: AutoPilotDecision) => Promise<string>;
   waitWhilePaused: () => Promise<void>;
+  /** Mutbar tilstand som steg kan dele seg imellom. F.eks. claude_color_direction
+   *  skriver perChapter-direction som color_match leser. */
+  sharedState: Record<string, unknown>;
 }
 
 async function runStep(
@@ -364,6 +377,9 @@ async function runStep(
       return;
     case "quality_filter":
       await stepQualityFilter(inputs, ctx);
+      return;
+    case "claude_color_direction":
+      await stepClaudeColorDirection(inputs, ctx);
       return;
     case "color_match":
       await stepColorMatch(inputs, ctx);
@@ -386,32 +402,104 @@ async function runStep(
   }
 }
 
+async function stepClaudeColorDirection(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+  if (!inputs.picks || inputs.picks.length === 0) {
+    ctx.log({ step: "claude_color_direction", level: "warn",
+      message: "Hopper over — ingen picks tilgjengelig" });
+    return;
+  }
+
+  // Grupper picks pr chapter med grov Y-estimat (faktisk måling skjer i
+  // color_match-stepet). Vi sender bare chapter-distribusjon + kulturell
+  // kontekst slik at Claude kan gi kreativ retning før vi måler hver shot.
+  const byChapter: Record<string, { shotsCount: number; totalDuration: number }> = {};
+  for (const p of inputs.picks) {
+    const ch = (p.chapter ?? "details").toLowerCase();
+    if (!byChapter[ch]) byChapter[ch] = { shotsCount: 0, totalDuration: 0 };
+    byChapter[ch].shotsCount += 1;
+    byChapter[ch].totalDuration += p.durationSec;
+  }
+  // Estimat-måling — placeholder yMean så Claude kan tenke på chapter-nivå.
+  // color_match overskriver med ekte Y-mean per pick etterpå.
+  const measurementsPerChapter: Record<string, { yMean: number; yMin: number; yMax: number; shotsCount: number }> = {};
+  for (const [ch, info] of Object.entries(byChapter)) {
+    measurementsPerChapter[ch] = {
+      yMean: 128, yMin: 90, yMax: 170,  // estimat — color_match korrigerer
+      shotsCount: info.shotsCount,
+    };
+  }
+
+  ctx.log({ step: "claude_color_direction", level: "claude",
+    message: `Spør Claude om color-direction for ${Object.keys(byChapter).length} chapters${inputs.culturalContext ? ` (kontekst: ${inputs.culturalContext})` : ""}` });
+
+  try {
+    const summary = await executeScript("claude_color_direction", {
+      measurementsPerChapter,
+      projectKind: inputs.projectKind ?? "wedding",
+      culturalContext: inputs.culturalContext ?? "",
+      targetDurationSec: inputs.targetDurationSec ?? 240,
+      clientWishes: inputs.clientWishes ?? "",
+    }, false);
+    const result = summary.events.find((e) => e.type === "result");
+    const v = result?.value as {
+      perChapter?: Record<string, { targetY: number; warmth: number; saturation: number; reasoning: string }>;
+      overallLutChoice?: string;
+      overallReasoning?: string;
+    } | undefined;
+    if (v?.perChapter) {
+      ctx.sharedState.perChapterDirection = v.perChapter;
+      ctx.sharedState.recommendedLut = v.overallLutChoice;
+      const sample = Object.entries(v.perChapter).slice(0, 3)
+        .map(([ch, d]) => `${ch}: Y${d.targetY.toFixed(0)} w${d.warmth >= 0 ? "+" : ""}${d.warmth}`)
+        .join(" · ");
+      ctx.log({ step: "claude_color_direction", level: "success",
+        message: `Direction satt for ${Object.keys(v.perChapter).length} chapters · ${sample}` });
+      if (v.overallReasoning) {
+        ctx.log({ step: "claude_color_direction", level: "claude",
+          message: `Claude: "${v.overallReasoning}"` });
+      }
+      if (v.overallLutChoice) {
+        ctx.log({ step: "claude_color_direction", level: "action",
+          message: `Anbefalt LUT: ${v.overallLutChoice}` });
+      }
+    }
+  } catch (err) {
+    ctx.log({ step: "claude_color_direction", level: "warn",
+      message: `Color-direction hoppet over: ${(err as Error).message}` });
+  }
+}
+
 async function stepColorMatch(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
   if (!inputs.picks || inputs.picks.length === 0) {
     ctx.log({ step: "color_match", level: "warn",
       message: "Hopper over — ingen picks tilgjengelig" });
     return;
   }
+  const direction = ctx.sharedState.perChapterDirection as
+    | Record<string, { targetY: number; warmth: number; saturation: number }>
+    | undefined;
+
   ctx.log({ step: "color_match", level: "info",
-    message: `Måler eksponering på ${inputs.picks.length} picks (~${inputs.picks.length * 2}s) …` });
+    message: `Måler Y-mean på ${inputs.picks.length} picks${direction ? " (Claude-guidet pr chapter)" : " (global median)"} …` });
   try {
     const summary = await executeScript("auto_color_match_shots", {
       picks: inputs.picks,
       sourceVideo: inputs.sourceVideo,
+      perChapterDirection: direction,
     }, false);
     const result = summary.events.find((e) => e.type === "result");
     const v = result?.value as {
-      targetY?: number; baselineSpread?: number;
-      adjustments?: Array<{ pickIndex: number; deltaY: number }>;
+      targetY?: number; baselineSpread?: number; claudeGuided?: boolean;
+      adjustments?: Array<{ pickIndex: number; deltaY: number; chapter?: string }>;
     } | undefined;
     if (v) {
       const adjusted = (v.adjustments ?? []).filter((a) => Math.abs(a.deltaY) > 5).length;
       ctx.log({ step: "color_match", level: "success",
-        message: `Eksponering balansert — ${adjusted}/${inputs.picks.length} shots fikk justering (spread ${v.baselineSpread?.toFixed(0)} → target Y ${v.targetY?.toFixed(0)})` });
+        message: `${adjusted}/${inputs.picks.length} shots fikk justering · ${v.claudeGuided ? "Claude-guidet" : "global median"} · spread ${v.baselineSpread?.toFixed(0)}` });
     }
   } catch (err) {
     ctx.log({ step: "color_match", level: "warn",
-      message: `Color-match hoppet over: ${(err as Error).message}` });
+      message: `Color-match feilet: ${(err as Error).message}` });
   }
 }
 
@@ -421,11 +509,15 @@ async function stepResolveColorNodes(inputs: AutoPilotInputs, ctx: StepCtx): Pro
       message: "Resolve ikke åpen — hopper over node-setup (Bjarne kan kjøre manuelt senere)" });
     return;
   }
+  // Prioritet: bruker-valgt LUT i CE → Claude's anbefaling → default norwedfilm
+  const claudeLut = ctx.sharedState.recommendedLut as string | undefined;
+  const lookPack = inputs.lookPack ?? claudeLut ?? "norwedfilm";
+
   ctx.log({ step: "resolve_color_nodes", level: "info",
-    message: "Bygger standard node-tre: Primary → LUT → Skin Protect → Vignette" });
+    message: `Bygger node-tre · LUT: ${lookPack}${!inputs.lookPack && claudeLut ? " (Claude-anbefalt)" : ""}` });
   try {
     const summary = await executeScript("setup_resolve_color_nodes", {
-      lookPack: inputs.lookPack ?? "norwedfilm",
+      lookPack,
       applyToAllClips: true,
       protectSkinTones: true,
       addVignette: true,
