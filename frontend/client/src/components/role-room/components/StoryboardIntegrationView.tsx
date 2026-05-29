@@ -168,6 +168,84 @@ const WORKSPACE_MODE_OPTIONS: Array<{ value: StoryboardWorkspaceMode; label: str
   { value: 'moodboard', label: 'Mood-board' },
 ];
 
+// Stil-presets for tegne-systemet og AI-bilde-generering. Hver preset
+// definerer børste-default, palett og AI-prompt-tilegg slik at artisten
+// kan låse hele framet til en visuell stil med ett valg.
+type StylePresetId = 'storyboard' | 'noir' | 'watercolor' | 'liveAction' | 'anime' | 'sciFi';
+
+interface StylePreset {
+  id: StylePresetId;
+  label: string;
+  description: string;
+  brush: {
+    type: 'pen' | 'marker' | 'brush' | 'highlighter';
+    color: string;
+    size: number;
+  };
+  palette: string[];
+  aiPromptSuffix: string;
+  canvasTint: string;
+}
+
+const STYLE_PRESETS: Record<StylePresetId, StylePreset> = {
+  storyboard: {
+    id: 'storyboard',
+    label: 'Storyboard rough',
+    description: 'Klassisk svart-hvit blyantskisse for rapid sketching.',
+    brush: { type: 'pen', color: '#1a1a1a', size: 4 },
+    palette: ['#1a1a1a', '#555555', '#999999', '#cccccc'],
+    aiPromptSuffix: 'black-and-white pencil/charcoal storyboard sketch with loose strokes, clear silhouettes, no text, no captions',
+    canvasTint: '#fafaf8',
+  },
+  noir: {
+    id: 'noir',
+    label: 'Film noir',
+    description: 'Høy-kontrast svart-hvit med chiaroscuro. Klassisk 40-talls noir / Sin City-stil.',
+    brush: { type: 'brush', color: '#000000', size: 6 },
+    palette: ['#000000', '#1a1a1a', '#444444', '#888888', '#ffffff'],
+    aiPromptSuffix: 'high contrast black-and-white film noir, deep shadows, low-key lighting, chiaroscuro, hard rim light, smoke/fog atmosphere, dramatic silhouettes, 1940s detective film, Sin City graphic novel style',
+    canvasTint: '#0a0a0a',
+  },
+  watercolor: {
+    id: 'watercolor',
+    label: 'Watercolor concept',
+    description: 'Soft akvarell-stil for mood-pieces og early concept-art.',
+    brush: { type: 'brush', color: '#5b7da8', size: 12 },
+    palette: ['#1e2a3a', '#5b7da8', '#a8b8c4', '#d9c5a0', '#e8d4b8', '#8b6f47'],
+    aiPromptSuffix: 'watercolor concept art, soft washes of color, atmospheric perspective, painterly, loose impressionistic style, no harsh lines',
+    canvasTint: '#f8f4ed',
+  },
+  liveAction: {
+    id: 'liveAction',
+    label: 'Live-action ref',
+    description: 'Fotorealistisk konsept som en ekte set/lokasjon. Bruk som over-paint-referanse.',
+    brush: { type: 'pen', color: '#2a2a2a', size: 3 },
+    palette: ['#2a2a2a', '#6b5a4a', '#8b7355', '#a89880', '#c4b59a', '#d4c5a8'],
+    aiPromptSuffix: 'photorealistic cinematic concept frame, naturalistic lighting, real-world location reference, 35mm film grain, anamorphic widescreen',
+    canvasTint: '#ffffff',
+  },
+  anime: {
+    id: 'anime',
+    label: 'Anime / Manga',
+    description: 'Skarp linjeføring, flate fyllinger, anime-/manga-inspirert.',
+    brush: { type: 'pen', color: '#1a1a1a', size: 3 },
+    palette: ['#1a1a1a', '#ff5252', '#2196f3', '#4caf50', '#ffeb3b', '#ffffff'],
+    aiPromptSuffix: 'anime storyboard, manga style, sharp clean ink lines, flat color fills, dramatic action lines, screentone shading, dynamic perspective',
+    canvasTint: '#ffffff',
+  },
+  sciFi: {
+    id: 'sciFi',
+    label: 'Sci-fi neon',
+    description: 'Mørk neon-stil for cyberpunk og futuristisk sci-fi.',
+    brush: { type: 'marker', color: '#00d4ff', size: 5 },
+    palette: ['#00d4ff', '#ff00ff', '#ffff00', '#00ff00', '#9c27b0', '#000020'],
+    aiPromptSuffix: 'cyberpunk sci-fi concept art, neon-lit, holographic interfaces, dark atmospheric environment, rim light from magenta and cyan sources, futuristic architecture',
+    canvasTint: '#0a0a1f',
+  },
+};
+
+const STYLE_PRESET_OPTIONS = Object.values(STYLE_PRESETS);
+
 const STORYBOARD_LANGUAGE_OPTIONS = ['Wide', 'Medium', 'Close-up', 'Insert', 'Over-shoulder', 'Top shot'] as const;
 const SCREEN_DIRECTION_OPTIONS: ScreenDirection[] = ['left-to-right', 'right-to-left', 'static'];
 
@@ -1392,6 +1470,12 @@ const StoryboardView: React.FC<{
   // route med scene-context + valgt frames metadata. Resultat-bilde lagres
   // som backgroundImage på framet via patchFrame, så tegneren kan tegne over.
   const [aiGenerating, setAiGenerating] = useState(false);
+  // Stil-preset for hele frame-grupperingen. Påvirker (1) AI-prompt-tilegg
+  // som sendes til DALL-E, (2) default-børste + palett i FrameDrawingEditor
+  // gjennom initialBrushSettings, og (3) canvas-tint i preview-thumbnails.
+  // Default: 'storyboard' (klassisk svart-hvit blyantskisse).
+  const [stylePresetId, setStylePresetId] = useState<StylePresetId>('storyboard');
+  const stylePreset = STYLE_PRESETS[stylePresetId];
   const handleGenerateAIImage = useCallback(async () => {
     if (!activeFrame || !projectId) return;
     setAiGenerating(true);
@@ -1416,7 +1500,10 @@ const StoryboardView: React.FC<{
         locationName: scene.locationName ?? scene.location,
         shotType: activeFrame.shotType ?? activeFrame.cameraAngle,
         cinematicFormat: projectCinemaFormat,
-        styleNote: activeFrame.notes ?? undefined,
+        // Stil-preset overstyrer styleNote når den er valgt. AI-prompten
+        // får hele preset.aiPromptSuffix lagt på enden — slik blokkerer
+        // valg av Noir-preset hele framet til chiaroscuro-estetikk.
+        styleNote: [stylePreset.aiPromptSuffix, activeFrame.notes].filter(Boolean).join('. ') || undefined,
         quality: 'standard',
         aspectRatio: '1792x1024',
       });
@@ -2138,6 +2225,33 @@ const StoryboardView: React.FC<{
               )}
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
+              {/* Stil-preset-velger. Påvirker både AI-prompt (Noir → film-
+                  noir-chiaroscuro) og standardene i FrameDrawingEditor. */}
+              <Tooltip title={stylePreset.description}>
+                <TextField
+                  select
+                  size="small"
+                  value={stylePresetId}
+                  onChange={(e) => setStylePresetId(e.target.value as StylePresetId)}
+                  sx={{ minWidth: 170 }}
+                  SelectProps={{ native: false }}
+                  label="Stil-preset"
+                >
+                  {STYLE_PRESET_OPTIONS.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Box sx={{
+                          width: 14, height: 14, borderRadius: '3px',
+                          background: p.canvasTint,
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          flexShrink: 0,
+                        }} />
+                        <span>{p.label}</span>
+                      </Stack>
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Tooltip>
               <Button
                 startIcon={<AutoFixHighIcon />}
                 variant="contained"
