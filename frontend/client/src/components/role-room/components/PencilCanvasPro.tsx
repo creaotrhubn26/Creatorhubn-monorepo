@@ -152,6 +152,10 @@ import {
   stampSegment,
   resetCtxAfterStamp,
 } from './stampEngine';
+import {
+  WatercolorFluidSim,
+  type SplatInput as WatercolorSplatInput,
+} from './watercolorFluidSim';
 
 // =============================================================================
 // Types
@@ -1466,6 +1470,11 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   const gridCanvasRef = useRef<HTMLCanvasElement>(null);
   const symmetryCanvasRef = useRef<HTMLCanvasElement>(null);
   const onionCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Watercolor fluid-sim overlay (kun aktiv når brushSettings.type === 'watercolor').
+  const watercolorCanvasRef = useRef<HTMLCanvasElement>(null);
+  const watercolorSimRef = useRef<WatercolorFluidSim | null>(null);
+  const watercolorActiveRef = useRef<boolean>(false);
+  const watercolorLastPointRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const previewLastPointRef = useRef<PencilPoint | null>(null);
@@ -2352,6 +2361,15 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       // Reset stamp-engine carry — alle armer starter fra null på ny stroke
       stampCarryRef.current = [0, 0, 0, 0, 0, 0, 0, 0];
       brushEngineRef.current?.startStroke(adjustedPoint);
+      // Watercolor fluid-sim: første splat på ny stroke (uten velocity-vektor).
+      if (brushSettings.type === 'watercolor') {
+        watercolorLastPointRef.current = {
+          x: adjustedPoint.x,
+          y: adjustedPoint.y,
+          t: adjustedPoint.timestamp || performance.now(),
+        };
+        enqueueWatercolorSplat(adjustedPoint, null);
+      }
     },
     
     onStrokeMove: (point: PencilPoint, inputType: InputType) => {
@@ -2406,14 +2424,42 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         stampCarryRef.current[0] = nextCarry;
       }
       previewLastPointRef.current = adjustedPoint;
+      // Watercolor fluid-sim: injectere ny splat per pointer-move.
+      // splat-throttle (60 Hz) ligger i fluid-sim selv.
+      if (brushSettings.type === 'watercolor') {
+        const prev = watercolorLastPointRef.current;
+        const prevPoint = prev
+          ? ({ x: prev.x, y: prev.y, pressure: adjustedPoint.pressure, tiltX: 0, tiltY: 0, timestamp: prev.t } as PencilPoint)
+          : null;
+        enqueueWatercolorSplat(adjustedPoint, prevPoint);
+        watercolorLastPointRef.current = {
+          x: adjustedPoint.x,
+          y: adjustedPoint.y,
+          t: adjustedPoint.timestamp || performance.now(),
+        };
+      }
     },
-    
+
     onStrokeEnd: (stroke: PencilStroke, inputType: InputType) => {
       setLastInputType((prev) => (prev === inputType ? prev : inputType));
       setHoverPosition(null);
       previewLastPointRef.current = null;
       stampCarryRef.current = [0, 0, 0, 0, 0, 0, 0, 0];
       brushEngineRef.current?.endStroke();
+      // Watercolor: bake fluid-dye-feltet ned i hoved-canvasen som persistent
+      // bilde-stroke, og nullstill simulator-state. Vektor-stroke-arrayet
+      // beholdes uendret (vi har ingen nyttig vektor-representasjon av
+      // pixel-presisjon fluid-resultat), men selve bildet er nå "lagret".
+      if (brushSettings.type === 'watercolor') {
+        // Liten delay for å la siste splat advektere før vi snapper.
+        // Vi gjør det synkront her — det er ett ekstra frame, men robust.
+        try {
+          bakeWatercolorSnapshot();
+        } catch (err) {
+          console.warn('[PencilCanvasPro] watercolor bake failed', err);
+        }
+        watercolorLastPointRef.current = null;
+      }
       if (!canDrawStroke) {
         const previewCtx = previewCanvasRef.current?.getContext('2d');
         if (previewCtx) {
@@ -2565,6 +2611,125 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       }
     }
   }, [brushSettings]);
+
+  // -----------------------------------------------------------------
+  // Watercolor fluid-sim lifecycle.
+  //
+  // Strategi: WebGL2-canvas opprettes lazy første gang watercolor blir
+  // valgt. Sim-loop kjører kun mens watercolor er aktiv brush. Ved
+  // bytte til annen brush stoppes loopen og overlay-canvasen skjules
+  // (dye-feltet beholdes slik at brukeren ikke mister state om de
+  // bytter tilbake). Ved unmount disposes WebGL-konteksten helt.
+  // Hvis WebGL2/EXT_color_buffer_float mangler faller vi tilbake til
+  // stamp-engine-watercolor (allerede default-koden i stampSegment).
+  // -----------------------------------------------------------------
+  useEffect(() => {
+    const isWatercolor = brushSettings.type === 'watercolor';
+    const canvasEl = watercolorCanvasRef.current;
+    watercolorActiveRef.current = isWatercolor;
+    if (!isWatercolor) {
+      // Pause loopen ved bytte til annen brush. Vi disposer ikke her —
+      // sim-state og dye-felt bevares hvis brukeren bytter tilbake.
+      watercolorSimRef.current?.stopLoop();
+      return;
+    }
+    if (!canvasEl) return;
+    if (!WatercolorFluidSim.isSupported()) {
+      // Fallback: stamp-engine-watercolor håndteres allerede av
+      // drawLivePreviewSegment / stampSegment. Logg en gang.
+      if (!(window as any).__watercolorFluidWarned) {
+        console.warn(
+          '[PencilCanvasPro] WebGL2 not available — using stamp-engine watercolor fallback'
+        );
+        (window as any).__watercolorFluidWarned = true;
+      }
+      return;
+    }
+    try {
+      if (!watercolorSimRef.current) {
+        watercolorSimRef.current = new WatercolorFluidSim(canvasEl, {
+          simResolution: 256,
+          pressureIterations: 24,
+        });
+      }
+      watercolorSimRef.current.resize(width, height);
+      watercolorSimRef.current.startLoop();
+    } catch (err) {
+      console.warn('[PencilCanvasPro] watercolor fluid-sim init failed, falling back', err);
+      watercolorSimRef.current?.dispose();
+      watercolorSimRef.current = null;
+    }
+    return () => {
+      watercolorSimRef.current?.stopLoop();
+    };
+  }, [brushSettings.type, width, height]);
+
+  // Engangs cleanup ved unmount.
+  useEffect(() => {
+    return () => {
+      watercolorSimRef.current?.dispose();
+      watercolorSimRef.current = null;
+    };
+  }, []);
+
+  // Hjelper: konverter et pointer-sample til en SplatInput og legg
+  // det i kø på fluid-simmen. Splat-throttle håndteres internt.
+  const enqueueWatercolorSplat = useCallback((
+    current: PencilPoint,
+    previous: PencilPoint | null
+  ) => {
+    const sim = watercolorSimRef.current;
+    if (!sim || !watercolorActiveRef.current) return;
+    if (width <= 0 || height <= 0) return;
+    const nx = clamp(current.x / width, 0, 1);
+    const ny = clamp(current.y / height, 0, 1);
+    let dxNorm = 0;
+    let dyNorm = 0;
+    if (previous) {
+      dxNorm = (current.x - previous.x) / width;
+      dyNorm = (current.y - previous.y) / height;
+    }
+    // Skalér velocity-kraft slik at trygge brush-hastigheter gir synlig
+    // strømning uten å sprenge fluid-simmen. 6000 er empirisk balanse.
+    const velScale = 6000;
+    const brush = brushSettings;
+    // Radius som fraction av canvas; brush.size er piksler.
+    const radiusFrac = clamp((brush.size || 12) / Math.max(width, height) * 0.45, 0.004, 0.06);
+    const splat: WatercolorSplatInput = {
+      x: nx,
+      y: ny,
+      dx: dxNorm * velScale,
+      dy: dyNorm * velScale,
+      pressure: clamp(current.pressure || 0.5, 0, 1),
+      color: brush.color || '#3b82f6',
+      wetness: clamp((brush.wetness ?? 0.5), 0, 1),
+      radius: radiusFrac,
+    };
+    sim.enqueueSplat(splat);
+  }, [brushSettings, width, height]);
+
+  // Bake fluid-sim-resultatet inn i hoved-canvasen som persistent
+  // bilde-stroke. Ringes når stroke-end skjer på watercolor-brush.
+  // Vi tegner dye-snapshot øverst i mainCanvas — strokes-arrayet
+  // utvides ikke (vi bevarer eksisterende vektor-strokes for andre
+  // brushes), men resultatet blir pikselholdig persistert.
+  const bakeWatercolorSnapshot = useCallback(() => {
+    const sim = watercolorSimRef.current;
+    if (!sim) return;
+    const mainCanvas = mainCanvasRef.current;
+    if (!mainCanvas) return;
+    const ctx = mainCanvas.getContext('2d');
+    if (!ctx) return;
+    const snap = sim.snapshot();
+    if (!snap) return;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(snap, 0, 0, mainCanvas.width, mainCanvas.height);
+    ctx.restore();
+    // Tøm fluid-felt slik at neste watercolor-økt starter rent.
+    sim.clear();
+  }, []);
   
   useEffect(() => {
     if (!initialBrushSettings) return;
@@ -3525,7 +3690,24 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           height={height}
           style={{ pointerEvents: 'none' }}
         />
-        
+
+        {/* Watercolor WebGL2 fluid-sim overlay.
+            Synlig kun mens watercolor-brushen er aktiv. Når brukeren
+            bytter brush eller slipper pencil bakes resultatet ned i
+            mainCanvas av onStrokeEnd, og denne layeren går "blank"
+            til neste watercolor-økt. */}
+        <CanvasLayer
+          ref={watercolorCanvasRef}
+          width={width}
+          height={height}
+          data-testid="pencil-canvas-watercolor-fluid"
+          style={{
+            pointerEvents: 'none',
+            display: brushSettings.type === 'watercolor' ? 'block' : 'none',
+            mixBlendMode: 'multiply',
+          }}
+        />
+
         {/* Grid overlay */}
         <GridOverlay
           ref={gridCanvasRef}
