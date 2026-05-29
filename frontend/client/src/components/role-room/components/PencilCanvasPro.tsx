@@ -146,6 +146,12 @@ import {
 } from './drawing/ExportOptions';
 import { calculateAspectRatio, drawGuides, getFrameDimensions } from './drawing/StoryboardTemplates';
 import type { DrawingLayer } from './drawing/LayersPanel';
+import {
+  getStampConfigForBrush,
+  shouldUseStampPreview,
+  stampSegment,
+  resetCtxAfterStamp,
+} from './stampEngine';
 
 // =============================================================================
 // Types
@@ -388,7 +394,11 @@ function isProBrushType(value: string): value is ProBrushType {
   return (PRO_BRUSH_TYPES as readonly string[]).includes(value);
 }
 
-function drawLivePreviewSegment(
+/**
+ * Polyline-fallback for highlighter + eraser (bredt jevnt strøk passer ikke
+ * stamp-engine). Brukes også som siste fallback hvis stamp-config mangler.
+ */
+function drawPolylinePreviewSegment(
   ctx: CanvasRenderingContext2D,
   from: PencilPoint,
   to: PencilPoint,
@@ -422,6 +432,39 @@ function drawLivePreviewSegment(
   ctx.lineTo(to.x, to.y);
   ctx.stroke();
   ctx.restore();
+}
+
+/**
+ * Live preview-segment-dispatcher. Velger stamp-engine for pencil/ink/marker/
+ * brush/watercolor/pen/graphite/charcoal/conte og polyline for highlighter/
+ * eraser. Caller må holde carry-distance mellom segmenter for jevn dab-rytme.
+ *
+ * Returnerer ny carry-distance (kun relevant for stamp-modus, alltid 0 for
+ * polyline).
+ */
+function drawLivePreviewSegment(
+  ctx: CanvasRenderingContext2D,
+  from: PencilPoint,
+  to: PencilPoint,
+  brush: ProBrushSettings,
+  carryDistance: number = 0,
+): number {
+  // Highlighter + eraser holder seg på polyline — stamp-engine passer ikke
+  // for brede jevne strøk eller destination-out-blending.
+  if (brush.type === 'highlighter' || brush.type === 'eraser') {
+    drawPolylinePreviewSegment(ctx, from, to, brush);
+    return 0;
+  }
+
+  const stampConfig = getStampConfigForBrush(brush.type);
+  if (!stampConfig || !shouldUseStampPreview(brush.type)) {
+    drawPolylinePreviewSegment(ctx, from, to, brush);
+    return 0;
+  }
+
+  const nextCarry = stampSegment(ctx, from, to, brush, stampConfig, carryDistance);
+  resetCtxAfterStamp(ctx);
+  return nextCarry;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -1427,6 +1470,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const previewLastPointRef = useRef<PencilPoint | null>(null);
   const liveStrokeBrushRef = useRef<ProBrushSettings>({ ...DEFAULT_BRUSH_SETTINGS });
+  // stamp-engine carry-distance per symmetri-arm (idx 0 = primær) — jevner
+  // ut dab-rytmen på tvers av segmenter slik at vi ikke får dobbel-dab i
+  // join-punktene.
+  const stampCarryRef = useRef<number[]>([0]);
   const brushSizeMemoryRef = useRef<Record<ProBrushType, number>>({
     watercolor: DEFAULT_BRUSH_SETTINGS.size,
     pencil: DEFAULT_BRUSH_SETTINGS.size,
@@ -2302,6 +2349,8 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         )
       );
       previewLastPointRef.current = adjustedPoint;
+      // Reset stamp-engine carry — alle armer starter fra null på ny stroke
+      stampCarryRef.current = [0, 0, 0, 0, 0, 0, 0, 0];
       brushEngineRef.current?.startStroke(adjustedPoint);
     },
     
@@ -2332,23 +2381,29 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           width,
           height
         );
-        mirroredPointSets.forEach((points) => {
+        mirroredPointSets.forEach((points, armIndex) => {
           if (points.length >= 2) {
-            drawLivePreviewSegment(
+            const prevCarry = stampCarryRef.current[armIndex] ?? 0;
+            const nextCarry = drawLivePreviewSegment(
               ctx,
               mapLayerPointToCanvasPoint(points[0]),
               mapLayerPointToCanvasPoint(points[1]),
               liveBrush,
+              prevCarry,
             );
+            stampCarryRef.current[armIndex] = nextCarry;
           }
         });
       } else {
-        drawLivePreviewSegment(
+        const prevCarry = stampCarryRef.current[0] ?? 0;
+        const nextCarry = drawLivePreviewSegment(
           ctx,
           mapLayerPointToCanvasPoint(previousPoint),
           mapLayerPointToCanvasPoint(adjustedPoint),
           liveBrush,
+          prevCarry,
         );
+        stampCarryRef.current[0] = nextCarry;
       }
       previewLastPointRef.current = adjustedPoint;
     },
@@ -2357,6 +2412,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       setLastInputType((prev) => (prev === inputType ? prev : inputType));
       setHoverPosition(null);
       previewLastPointRef.current = null;
+      stampCarryRef.current = [0, 0, 0, 0, 0, 0, 0, 0];
       brushEngineRef.current?.endStroke();
       if (!canDrawStroke) {
         const previewCtx = previewCanvasRef.current?.getContext('2d');

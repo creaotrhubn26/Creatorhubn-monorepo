@@ -192,26 +192,50 @@ export const useApplePencil = (
     const handlePointerMove = (event: PointerEvent) => {
       if (!state.current.isDrawing && shouldIgnorePointerEvent(event)) return;
       event.preventDefault();
-      const point = createPoint(event, element);
       const inputType = getInputType(event);
       const minPressure = configRef.current.minPressure ?? 0;
-      point.pressure = inputType === 'pen'
-        ? Math.max(minPressure, point.pressure)
-        : point.pressure;
-      point.pressure = getSmoothedPressure(point.pressure);
+
+      // Coalesced events — Apple Pencil + Chrome/Safari/Firefox-baserte
+      // pointer-stacks samler opp samples mellom rAF-tikk og leverer dem her.
+      // Vi looper alle samples slik at strokes ikke får hopp ved rask
+      // bevegelse. Hover-grenen bruker fortsatt bare det siste eventet.
+      let samples: PointerEvent[] = [event];
+      if (state.current.isDrawing && typeof event.getCoalescedEvents === 'function') {
+        try {
+          const coalesced = event.getCoalescedEvents();
+          if (coalesced && coalesced.length > 0) {
+            samples = coalesced;
+          }
+        } catch {
+          // Noen miljøer kaster på getCoalescedEvents — fall back til main event.
+          samples = [event];
+        }
+      }
 
       if (state.current.isDrawing && currentStroke.current) {
-        currentStroke.current.points.push(point);
-        state.current.currentPressure = point.pressure;
-        callbacksRef.current.onStrokeMove?.(point, inputType);
+        for (const sampleEvent of samples) {
+          const samplePoint = createPoint(sampleEvent, element);
+          samplePoint.pressure = inputType === 'pen'
+            ? Math.max(minPressure, samplePoint.pressure)
+            : samplePoint.pressure;
+          samplePoint.pressure = getSmoothedPressure(samplePoint.pressure);
+          currentStroke.current.points.push(samplePoint);
+          state.current.currentPressure = samplePoint.pressure;
+          callbacksRef.current.onStrokeMove?.(samplePoint, inputType);
+        }
       } else {
-        // Hover (Pencil 2 feature)
+        // Hover (Pencil 2 feature) — bare aktuell event er nødvendig.
+        const hoverPoint = createPoint(event, element);
+        hoverPoint.pressure = inputType === 'pen'
+          ? Math.max(minPressure, hoverPoint.pressure)
+          : hoverPoint.pressure;
+        hoverPoint.pressure = getSmoothedPressure(hoverPoint.pressure);
         if ((configRef.current.enableHover ?? true) && inputType === 'pen' && !state.current.isDrawing) {
           if (!state.current.isHovering) {
             state.current.isHovering = true;
-            callbacksRef.current.onHoverStart?.(point);
+            callbacksRef.current.onHoverStart?.(hoverPoint);
           } else {
-            callbacksRef.current.onHoverMove?.(point);
+            callbacksRef.current.onHoverMove?.(hoverPoint);
           }
         }
       }
