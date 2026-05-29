@@ -314,6 +314,26 @@ export async function recordManagementFee(
  * that has been live (active/paused/ended) and carries an external id. Used by
  * runAdsAttributionSweep across all users.
  */
+/**
+ * Active campaigns for one project — used by auto-pause to find what to stop
+ * when the period hits the cap. Returns rows with an external_campaign_id so
+ * the dispatcher can address the platform.
+ */
+export async function listActiveCampaignsForProject(
+  pool: Pool,
+  projectId: string,
+): Promise<AdsCampaignRow[]> {
+  const result = await pool.query(
+    `SELECT * FROM ads_campaigns
+       WHERE project_id = $1
+         AND status = 'active'
+         AND external_campaign_id IS NOT NULL
+       ORDER BY updated_at DESC`,
+    [projectId],
+  );
+  return result.rows.map(rowToCampaign);
+}
+
 export async function listCampaignsForSync(
   pool: Pool,
   options?: { platform?: AdsPlatform },

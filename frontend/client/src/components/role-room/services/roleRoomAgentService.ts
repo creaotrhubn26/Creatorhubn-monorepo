@@ -1001,6 +1001,8 @@ export interface RoleRoomBudgetResult {
   period: string;
   status: RoleRoomBudgetStatus;
   pacing?: RoleRoomBudgetPacing;
+  /** Lag 3b: kunden har slått på automatisk pause når taket nås. */
+  autoPauseOnCap?: boolean;
   canEdit: boolean;
 }
 
@@ -1706,6 +1708,16 @@ export const roleRoomAgentService = {
       method: 'PUT',
       headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, maxSpendNok, ...(period ? { period } : {}) }),
+    });
+    return response.ok;
+  },
+
+  /** Lag 3b: kunden slår automatisk pause av kampanjer ved tak på/av. */
+  async setAdsBudgetAutoPause(projectId: string, enabled: boolean, period?: string): Promise<boolean> {
+    const response = await fetch('/api/role-room/ads/budget/auto-pause', {
+      method: 'PUT',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, enabled, ...(period ? { period } : {}) }),
     });
     return response.ok;
   },
