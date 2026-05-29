@@ -38,6 +38,7 @@ import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { MusicVideoEditorView } from "./components/MusicVideoEditorView";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
 import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
@@ -76,6 +77,26 @@ export default function App() {
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
   const [musicVideoEditorOpen, setMusicVideoEditorOpen] = useState(false);
+  const [musicVideoSourcePath, setMusicVideoSourcePath] = useState<string>("");
+
+  const openMusicVideoAgent = useCallback(async () => {
+    try {
+      const picked = await openFileDialog({
+        multiple: false,
+        title: "Velg music-video-kilde (video + lyd)",
+        filters: [
+          { name: "Video", extensions: ["mp4", "mov", "mkv", "m4v", "avi"] },
+          { name: "Audio", extensions: ["wav", "mp3", "flac", "aif", "aiff", "m4a"] },
+        ],
+      });
+      if (typeof picked === "string" && picked.length > 0) {
+        setMusicVideoSourcePath(picked);
+        setMusicVideoEditorOpen(true);
+      }
+    } catch (err) {
+      console.error("[music-video] file pick failed:", err);
+    }
+  }, []);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showWeddingWizard, setShowWeddingWizard] = useState(false);
   const [showQcVideo, setShowQcVideo] = useState(false);
@@ -586,7 +607,7 @@ export default function App() {
           }}
           onNewProjectFromFile={() => setShowNewProject(true)}
           onOpenWeddingWizard={() => setShowWeddingWizard(true)}
-          onOpenMusicVideoAgent={() => setMusicVideoEditorOpen(true)}
+          onOpenMusicVideoAgent={() => void openMusicVideoAgent()}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={authStatus === "ok"}
@@ -833,8 +854,11 @@ export default function App() {
 
       {musicVideoEditorOpen && (
         <MusicVideoEditorView
-          sourcePath={creativeEditorPath ?? ""}
-          onClose={() => setMusicVideoEditorOpen(false)}
+          sourcePath={musicVideoSourcePath}
+          onClose={() => {
+            setMusicVideoEditorOpen(false);
+            setMusicVideoSourcePath("");
+          }}
         />
       )}
 

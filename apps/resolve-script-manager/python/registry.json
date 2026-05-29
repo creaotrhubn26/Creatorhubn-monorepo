@@ -1924,6 +1924,24 @@
       "requiresTimeline": false
     },
     {
+      "id": "analyze_audio_beats",
+      "name": "Analyze Audio Beats",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_audio_beats.py",
+      "description": "Detect BPM, beat-tider og downbeat-tider fra audio/video. Tre-lags fallback: librosa (anbefalt) → aubio → ffmpeg-energy-fallback. Brukes av Music Video Agent for å fylle beat-grid automatisk.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "startSec", "label": "Hopp over første N sek (optional)", "type": "number", "required": false },
+        { "key": "durationSec", "label": "Analyser maks N sek (optional)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "setup_platform_timeline",
       "name": "Setup Platform Timeline",
       "category": "timeline",

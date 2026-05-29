@@ -27,12 +27,17 @@ import { ThumbnailCreator } from "./ThumbnailCreator";
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import MUSIC_VIDEO_AGENT_CONFIG from "../agents/music_video";
 import type { ChapterDef, LookPackDef } from "../agents/types";
+import { executeScript } from "../api";
+import { claudeProxyService } from "../services/claudeProxyService";
+import type { ClaudeMessage } from "../services/claudeProxyService";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import GraphicEqIcon from "@mui/icons-material/GraphicEq";
 import BrushIcon from "@mui/icons-material/Brush";
 import CloseIcon from "@mui/icons-material/Close";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import ColorLensIcon from "@mui/icons-material/ColorLens";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
+import SendIcon from "@mui/icons-material/Send";
 
 interface Props {
   /** Sti til source-video (hovedlydspor + B-roll-mappe). */
@@ -50,6 +55,18 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
   const [genre, setGenre] = useState<string>("");
   const [clientWishes, setClientWishes] = useState<string>("");
   const [thumbnailOpen, setThumbnailOpen] = useState(false);
+  const [beatAnalyzing, setBeatAnalyzing] = useState(false);
+  const [beatAnalysis, setBeatAnalysis] = useState<{
+    bpm: number; confidence: number; method: string;
+    downbeatTimes: number[]; totalBars: number;
+    totalDurationSec: number;
+  } | null>(null);
+  const [beatError, setBeatError] = useState<string | null>(null);
+  // Claude chat-state — historikken med Music Video Director
+  const [chatMessages, setChatMessages] = useState<ClaudeMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatThinking, setChatThinking] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   const chapter = CFG.chapters.find(c => c.id === selectedChapter) ?? CFG.chapters[0];
   const look = CFG.lookPacks.find(l => l.id === selectedLook) ?? CFG.lookPacks[0];
@@ -60,6 +77,75 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
   const beatDurationSec = 60 / bpm;
   const totalBeats = Math.floor(songLengthSec / beatDurationSec);
   const totalBars = Math.floor(totalBeats / beatsPerBar);
+
+  const buildContextPrimer = (): string => {
+    const lines: string[] = [];
+    lines.push(`Nåværende prosjekt-kontekst:`);
+    lines.push(`- BPM: ${bpm} (${beatAnalysis ? `auto-detect via ${beatAnalysis.method}, ${(beatAnalysis.confidence * 100).toFixed(0)}% sikkerhet` : "manuelt satt"})`);
+    lines.push(`- Sang-lengde: ${songLengthSec}s (${totalBars} bars total)`);
+    lines.push(`- Aktivt kapittel: ${chapter.label} (priority: ${chapter.priorityHint}, ~${chapter.pacingPct}% av total)`);
+    lines.push(`- Valgt look-pack: ${look.label} (${look.tags.join(", ")})`);
+    if (genre) lines.push(`- Genre: ${genre}`);
+    if (clientWishes) lines.push(`- Artist/label wishes: ${clientWishes}`);
+    return lines.join("\n");
+  };
+
+  const sendChat = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setChatInput("");
+    setChatError(null);
+    const userMsg: ClaudeMessage = { role: "user", content: trimmed };
+    // For første melding: inkluder kontekst-primer i user-meldingen
+    const isFirstMessage = chatMessages.length === 0;
+    const userMsgWithContext: ClaudeMessage = isFirstMessage
+      ? { role: "user", content: `${buildContextPrimer()}\n\n---\n\n${trimmed}` }
+      : userMsg;
+    const nextHistory = [...chatMessages, userMsgWithContext];
+    setChatMessages([...chatMessages, userMsg]);
+    setChatThinking(true);
+    try {
+      const reply = await claudeProxyService.send({
+        systemPrompt: CFG.primaryAgent.systemPrompt,
+        messages: nextHistory,
+        maxTokens: 800,
+      });
+      setChatMessages(prev => [...prev, userMsg, { role: "assistant", content: reply }]);
+    } catch (err) {
+      setChatError((err as Error).message);
+      setChatMessages(prev => prev.slice(0, -1)); // rull tilbake user-melding
+      setChatInput(trimmed);
+    } finally {
+      setChatThinking(false);
+    }
+  };
+
+  const analyzeBeats = async () => {
+    if (!sourcePath) return;
+    setBeatAnalyzing(true);
+    setBeatError(null);
+    try {
+      const summary = await executeScript("analyze_audio_beats", {
+        audioPath: sourcePath,
+      }, false);
+      const result = summary.events.find(e => e.type === "result");
+      const v = result?.value as {
+        bpm: number; confidence: number; method: string;
+        downbeatTimes: number[]; totalBars: number;
+        totalDurationSec: number;
+      } | undefined;
+      if (!v) throw new Error("Ingen analyse-output");
+      setBeatAnalysis(v);
+      setBpm(Math.round(v.bpm));
+      if (v.totalDurationSec > 0) {
+        setSongLengthSec(Math.round(v.totalDurationSec));
+      }
+    } catch (err) {
+      setBeatError((err as Error).message);
+    } finally {
+      setBeatAnalyzing(false);
+    }
+  };
 
   return (
     <div style={{
@@ -163,6 +249,52 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
           <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.4 }}>
             {totalBars} bars · {totalBeats} beats · {beatDurationSec.toFixed(3)}s pr beat
           </div>
+
+          <button onClick={() => void analyzeBeats()}
+                  disabled={!sourcePath || beatAnalyzing}
+                  style={{
+                    marginTop: 10, width: "100%",
+                    background: beatAnalyzing
+                      ? "rgba(110,63,199,0.20)"
+                      : "linear-gradient(135deg, #6e3fc7, #a030c0)",
+                    border: 0, color: "#fff",
+                    padding: "7px 10px", borderRadius: 4,
+                    fontSize: 11, fontWeight: 600,
+                    cursor: beatAnalyzing ? "wait"
+                          : sourcePath ? "pointer" : "not-allowed",
+                    opacity: !sourcePath ? 0.5 : 1,
+                    display: "inline-flex", alignItems: "center",
+                    justifyContent: "center", gap: 6,
+                  }}>
+            <AutoFixHighIcon sx={{ fontSize: 14 }} />
+            {beatAnalyzing ? "Analyserer …" : "Auto-detect BPM"}
+          </button>
+
+          {beatAnalysis && (
+            <div style={{
+              marginTop: 8, padding: 8, borderRadius: 4,
+              background: "rgba(160,48,192,0.12)",
+              border: "1px solid rgba(160,48,192,0.30)",
+              fontSize: 10, lineHeight: 1.5,
+              color: "var(--text-2, #c8bcd8)",
+            }}>
+              Detekteret: <strong>{beatAnalysis.bpm} BPM</strong>
+              {" "}({(beatAnalysis.confidence * 100).toFixed(0)}% sikkerhet)
+              {" · "}<code style={{ opacity: 0.7 }}>{beatAnalysis.method}</code>
+              {beatAnalysis.confidence < 0.5 && (
+                <div style={{ marginTop: 4, color: "#f0a500" }}>
+                  Lav sikkerhet — verifiser BPM manuelt.
+                </div>
+              )}
+            </div>
+          )}
+          {beatError && (
+            <div style={{
+              marginTop: 8, padding: 6, borderRadius: 4,
+              background: "rgba(239,79,111,0.10)",
+              color: "#ef4f6f", fontSize: 10,
+            }}>{beatError}</div>
+          )}
         </div>
 
         {/* CENTER: preview + beat-strip */}
@@ -300,9 +432,9 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
           </div>
           <textarea value={clientWishes}
                     onChange={e => setClientWishes(e.target.value)}
-                    rows={3}
-                    placeholder={CFG.clientWishesExamples.join(" · ")}
-                    style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
+                    rows={2}
+                    placeholder={CFG.clientWishesExamples.slice(0, 3).join(" · ")}
+                    style={{ ...inputStyle, minHeight: 44, resize: "vertical" }} />
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {CFG.clientWishesExamples.slice(0, 4).map(ex => (
@@ -321,41 +453,119 @@ export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
             ))}
           </div>
 
-          {/* Signal-vekter (read-only innsikt) */}
+          {/* Chat med Music Video Director */}
           <div style={{ fontSize: 11, fontWeight: 700,
-                          color: "var(--text-2, #c8bcd8)" }}>
-            SIGNAL-PRIORITERING
+                          color: "var(--text-2, #c8bcd8)",
+                          display: "flex", alignItems: "center",
+                          justifyContent: "space-between" }}>
+            <span>CHAT MED DIRECTOR</span>
+            {chatMessages.length > 0 && (
+              <button onClick={() => { setChatMessages([]); setChatError(null); }}
+                      style={{
+                        background: "transparent", border: 0,
+                        color: "var(--text-3, #a89cb8)",
+                        fontSize: 9.5, cursor: "pointer",
+                      }}>Nullstill</button>
+            )}
           </div>
-          <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.5 }}>
-            Music Video Agent prioriterer rhythm-sync (95%), performance-energy
-            (85%), lip-sync (80%), visual-atmosphere (70%). Wedding-signaler er
-            deaktivert.
+          <div style={{
+            flex: 1, minHeight: 140, maxHeight: 280,
+            display: "flex", flexDirection: "column", gap: 6,
+            background: "rgba(0,0,0,0.3)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 4, padding: 8, overflowY: "auto",
+            fontSize: 11.5, lineHeight: 1.5,
+          }}>
+            {chatMessages.length === 0 && !chatThinking && (
+              <div style={{ color: "var(--text-3, #a89cb8)",
+                              fontSize: 10.5, lineHeight: 1.5 }}>
+                Spør Music Video Director om pacing, beat-sync,
+                hook-emphasis, look-valg, eller andre kreative valg.
+                Konteksten (BPM, kapittel, look, wishes) sendes
+                automatisk med første melding.
+              </div>
+            )}
+            {chatMessages.map((m, i) => (
+              <div key={i} style={{
+                padding: "6px 8px", borderRadius: 4,
+                background: m.role === "user"
+                  ? "rgba(160,48,192,0.10)"
+                  : "rgba(110,63,199,0.06)",
+                border: m.role === "user"
+                  ? "1px solid rgba(160,48,192,0.20)"
+                  : "1px solid rgba(110,63,199,0.20)",
+                whiteSpace: "pre-wrap", wordBreak: "break-word",
+                color: m.role === "user"
+                  ? "var(--text-1, #e8e0f0)" : "var(--text-2, #c8bcd8)",
+              }}>
+                {m.role === "user" && (
+                  <div style={{ fontSize: 9, fontWeight: 600,
+                                  color: "#c08ff0", marginBottom: 2 }}>DU</div>
+                )}
+                {m.role === "assistant" && (
+                  <div style={{ fontSize: 9, fontWeight: 600,
+                                  color: "#a08dd8", marginBottom: 2 }}>
+                    MUSIC VIDEO DIRECTOR
+                  </div>
+                )}
+                {m.content}
+              </div>
+            ))}
+            {chatThinking && (
+              <div style={{ padding: "6px 8px", color: "var(--text-3, #a89cb8)",
+                              fontStyle: "italic", fontSize: 10 }}>
+                Tenker …
+              </div>
+            )}
+          </div>
+          {chatError && (
+            <div style={{ padding: 6, borderRadius: 4,
+                            background: "rgba(239,79,111,0.10)",
+                            color: "#ef4f6f", fontSize: 10 }}>
+              {chatError}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 4 }}>
+            <input value={chatInput}
+                   onChange={e => setChatInput(e.target.value)}
+                   onKeyDown={e => {
+                     if (e.key === "Enter" && !e.shiftKey) {
+                       e.preventDefault();
+                       void sendChat(chatInput);
+                     }
+                   }}
+                   placeholder="Spør Director …"
+                   disabled={chatThinking}
+                   style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={() => void sendChat(chatInput)}
+                    disabled={chatThinking || !chatInput.trim()}
+                    title="Send"
+                    style={{
+                      background: chatThinking || !chatInput.trim()
+                        ? "rgba(110,63,199,0.20)"
+                        : "linear-gradient(135deg, #6e3fc7, #a030c0)",
+                      border: 0, color: "#fff",
+                      padding: "0 10px", borderRadius: 4,
+                      cursor: chatThinking || !chatInput.trim() ? "not-allowed" : "pointer",
+                      display: "inline-flex", alignItems: "center",
+                    }}>
+              <SendIcon sx={{ fontSize: 14 }} />
+            </button>
           </div>
 
-          <div style={{ marginTop: "auto",
-                          padding: 10, borderRadius: 6,
-                          background: "rgba(110,63,199,0.10)",
-                          border: "1px solid rgba(110,63,199,0.30)",
-                          fontSize: 10.5, color: "var(--text-2, #c8bcd8)",
-                          lineHeight: 1.5 }}>
-            <strong>V1-MVP-status:</strong> Agent-config + UI er ferdig.
-            Auto-pilot, claude-integrasjon, beat-detect, lip-sync og render
-            kobles på i V2.
-          </div>
-
-          <button onClick={() => alert("Auto-pilot for Music Video Agent kommer i V2 (krever beat-detect-backend)")}
+          <button onClick={() => alert("Auto-pilot for Music Video Agent kommer i V2 (BPM-aware cuts + beat-grid render)")}
                   disabled
                   style={{
-                    padding: "10px 12px",
+                    padding: "9px 12px",
                     background: "rgba(110,63,199,0.20)",
                     border: "1px solid rgba(110,63,199,0.40)",
                     color: "#fff", borderRadius: 6,
-                    cursor: "not-allowed", fontSize: 12, fontWeight: 600,
+                    cursor: "not-allowed", fontSize: 11.5, fontWeight: 600,
                     opacity: 0.7,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     gap: 6,
                   }}>
-            <PlayArrowIcon sx={{ fontSize: 16 }} />
+            <PlayArrowIcon sx={{ fontSize: 14 }} />
             Start Auto-pilot (V2)
           </button>
         </div>
