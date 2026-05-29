@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { executeScript } from "../api";
+import { feedPlanThumbnailService } from "../services/feedPlanThumbnailService";
 
 export type LayoutTemplate = "hero" | "quote" | "bold" | "split" | "frame" | "gradient";
 export type ThumbAspect = "1:1" | "9:16" | "4:5";
@@ -130,13 +131,34 @@ export function ThumbnailCreator({
     }
   };
 
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const pickCandidate = async (cand: ThumbnailCandidate) => {
-    // Hvis vi har feed-plan-context: push valgt path til Role Room
-    if (feedPlanContext) {
-      // TODO: POST til /api/role-room/feed-plan/:projectId/:platform/post/:postId/thumbnail
-      console.log("[thumbnail-creator] selected:", cand.path, "→ feed-plan:", feedPlanContext);
+    setUploadError(null);
+    // Uten feed-plan-context: bare lukk (Bjarne brukte CE standalone)
+    if (!feedPlanContext) {
+      onClose();
+      return;
     }
-    onClose();
+    // Push valgt PNG til Role Room feed-plan-post som customImageUrl
+    setUploading(cand.path);
+    try {
+      await feedPlanThumbnailService.upload({
+        projectId: feedPlanContext.projectId,
+        platform: feedPlanContext.platform,
+        postId: feedPlanContext.postId,
+        filePath: cand.path,
+        fileName: cand.fileName,
+        sourceLayout: cand.layout,
+        sourceFrameSec: cand.sourceFrameSec,
+      });
+      onClose();
+    } catch (err) {
+      setUploadError((err as Error).message);
+    } finally {
+      setUploading(null);
+    }
   };
 
   if (!open) return null;
@@ -430,19 +452,41 @@ export function ThumbnailCreator({
                 {candidates.map((c, i) => (
                   <button key={i}
                           onClick={() => void pickCandidate(c)}
-                          title={`${c.layout} · frame ${c.sourceFrameSec}s`}
+                          disabled={uploading !== null}
+                          title={feedPlanContext
+                            ? `${c.layout} · frame ${c.sourceFrameSec}s — klikk for å pushe til feed-post`
+                            : `${c.layout} · frame ${c.sourceFrameSec}s`}
                           style={{
                             aspectRatio: dims.cssAspect,
                             background: "var(--bg-2)",
-                            border: "1px solid var(--border)",
+                            border: uploading === c.path
+                              ? `2px solid ${accentColor}`
+                              : "1px solid var(--border)",
                             borderRadius: 4, overflow: "hidden",
-                            cursor: "pointer", padding: 0,
+                            cursor: uploading ? "wait" : "pointer", padding: 0,
+                            opacity: uploading && uploading !== c.path ? 0.4 : 1,
+                            position: "relative",
                           }}>
                     <img src={convertFileSrc(c.path)}
                          style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    {uploading === c.path && (
+                      <div style={{
+                        position: "absolute", inset: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "rgba(0,0,0,0.55)", color: "#fff",
+                        fontSize: 10, fontWeight: 600,
+                      }}>Sender…</div>
+                    )}
                   </button>
                 ))}
               </div>
+              {uploadError && (
+                <div style={{ marginTop: 8, padding: 8, borderRadius: 4,
+                                background: "rgba(239,79,111,0.10)",
+                                color: "#ef4f6f", fontSize: 11 }}>
+                  Kunne ikke pushe til feed-plan: {uploadError}
+                </div>
+              )}
             </div>
           )}
         </div>

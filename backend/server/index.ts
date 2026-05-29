@@ -48,6 +48,7 @@ import { registerRoleRoomSeatManagementRoutes } from "./role-room-seat-managemen
 import { registerRoleRoomBillingAlertsRoutes } from "./role-room-billing-alerts-routes.js";
 import { registerRoleRoomSeatReconciliationRoutes } from "./role-room-seat-reconciliation-routes.js";
 import { registerRoleRoomUpcomingJobsRoutes } from "./role-room-upcoming-jobs-routes.js";
+import { registerRoleRoomFeedPlanThumbnailRoutes } from "./role-room-feed-plan-thumbnail-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -1743,6 +1744,7 @@ registerRoleRoomSeatManagementRoutes(app, { pool, activeSessions });
 registerRoleRoomBillingAlertsRoutes(app, { pool, requireAdminSession });
 registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
 registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
+registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
@@ -18149,8 +18151,33 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
           sceneHeading: s.title,
           intExt: s.int_ext,
           timeOfDay: s.time_of_day,
+          // ProductionManuscriptView leser scene.locationName for
+          // Production Breakdown sin Location-kolonne. Vi har lagret
+          // lokasjonsnavnet i `setting`-feltet (string), så vi mirrorer
+          // det til både `locationName` og `location` for kompatibilitet.
+          locationName: s.setting,
+          location: s.setting,
           createdAt: s.created_at,
           updatedAt: s.updated_at,
+        })));
+      }
+      // Mirror revisions per manuscript så Script Revisjoner & Diff Viewer
+      // viser v1/v2/v3 med change-summary.
+      const revisionsRes = await pool
+        .query("SELECT * FROM casting_revisions WHERE project_id = $1 ORDER BY created_at", [projectId])
+        .catch(() => ({ rows: [] as any[] }));
+      const revisionsByManuscript = groupByManuscript(revisionsRes.rows as any[]);
+      for (const [mid, rows] of revisionsByManuscript) {
+        await compatStoreSet(`casting:revisions:${mid}`, rows.map((r: any) => ({
+          ...r,
+          projectId: r.project_id ?? projectId,
+          manuscriptId: r.manuscript_id ?? mid,
+          changeSummary: r.change_summary,
+          changesSummary: r.change_summary,
+          revisionNotes: r.revision_notes,
+          createdBy: r.created_by,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
         })));
       }
       const dialogueByManuscript = groupByManuscript(dialogueRes.rows as any[]);
