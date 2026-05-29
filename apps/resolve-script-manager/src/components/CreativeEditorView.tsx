@@ -41,6 +41,30 @@ import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import type { UpcomingJob } from "../services/upcomingJobsService";
 import { ThumbnailCreator } from "./ThumbnailCreator";
 import BrushIcon from "@mui/icons-material/Brush";
+import CoffeeIcon from "@mui/icons-material/Coffee";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import MovieIcon from "@mui/icons-material/Movie";
+import ChurchIcon from "@mui/icons-material/Church";
+import CelebrationIcon from "@mui/icons-material/Celebration";
+import DiamondIcon from "@mui/icons-material/Diamond";
+import StarIcon from "@mui/icons-material/Star";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import LocalBarIcon from "@mui/icons-material/LocalBar";
+import PaletteIcon from "@mui/icons-material/Palette";
+import FaceRetouchingNaturalIcon from "@mui/icons-material/FaceRetouchingNatural";
+import LocalFloristIcon from "@mui/icons-material/LocalFlorist";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import MicIcon from "@mui/icons-material/Mic";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import FamilyRestroomIcon from "@mui/icons-material/FamilyRestroom";
+import BoltIcon from "@mui/icons-material/Bolt";
+import ContentCutIcon from "@mui/icons-material/ContentCut";
+import SettingsIcon from "@mui/icons-material/Settings";
+import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
+import CropIcon from "@mui/icons-material/Crop";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import RemoveRedEyeIcon from "@mui/icons-material/RemoveRedEye";
+import type { SvgIconComponent } from "@mui/icons-material";
 import { useContinuousPreview } from "../hooks/useContinuousPreview";
 import { useResolveSync } from "../hooks/useResolveSync";
 import { useCreatorProfile } from "../hooks/useCreatorProfile";
@@ -90,21 +114,21 @@ interface MusicAdvisor {
 }
 
 // ─────────────── chapter → segment-display mapping ───────────────
-const CHAPTER_DISPLAY: Record<string, { label: string; emoji: string }> = {
-  forberedelser: { label: "Forberedelser", emoji: "💄" },
-  mehndi:        { label: "Mehndi",        emoji: "🌸" },
-  haldi:         { label: "Haldi",         emoji: "🌼" },
-  sangeet:       { label: "Sangeet",       emoji: "🎵" },
-  nikkah:        { label: "Vielse",        emoji: "💒" },
-  ceremony:      { label: "Vielse",        emoji: "💒" },
-  vows:          { label: "Vielse",        emoji: "💒" },
-  reception:     { label: "Reception",     emoji: "🥂" },
-  walima:        { label: "Walima",        emoji: "🥂" },
-  dance:         { label: "Dans",          emoji: "💃" },
-  speeches:      { label: "Taler",         emoji: "🎤" },
-  portraits:     { label: "Portretter",    emoji: "📸" },
-  family:        { label: "Familie",       emoji: "👨‍👩‍👧" },
-  details:       { label: "Detaljer",      emoji: "💍" },
+const CHAPTER_DISPLAY: Record<string, { label: string; Icon: SvgIconComponent }> = {
+  forberedelser: { label: "Forberedelser", Icon: FaceRetouchingNaturalIcon },
+  mehndi:        { label: "Mehndi",        Icon: LocalFloristIcon },
+  haldi:         { label: "Haldi",         Icon: LocalFloristIcon },
+  sangeet:       { label: "Sangeet",       Icon: MusicNoteIcon },
+  nikkah:        { label: "Vielse",        Icon: ChurchIcon },
+  ceremony:      { label: "Vielse",        Icon: ChurchIcon },
+  vows:          { label: "Vielse",        Icon: ChurchIcon },
+  reception:     { label: "Reception",     Icon: LocalBarIcon },
+  walima:        { label: "Walima",        Icon: LocalBarIcon },
+  dance:         { label: "Dans",          Icon: CelebrationIcon },
+  speeches:      { label: "Taler",         Icon: MicIcon },
+  portraits:     { label: "Portretter",    Icon: PhotoCameraIcon },
+  family:        { label: "Familie",       Icon: FamilyRestroomIcon },
+  details:       { label: "Detaljer",      Icon: DiamondIcon },
 };
 
 // ─────────────── Historiebalanse weighting from signals ───────────────
@@ -155,7 +179,7 @@ function computeHistorybalance(picks: Pick[]) {
 function groupBySegments(picks: Pick[]) {
   const groups: Array<{
     chapter: string;
-    display: { label: string; emoji: string };
+    display: { label: string; Icon: SvgIconComponent };
     picks: Pick[];
     startSec: number;
     endSec: number;
@@ -171,7 +195,7 @@ function groupBySegments(picks: Pick[]) {
     } else {
       groups.push({
         chapter: ch,
-        display: CHAPTER_DISPLAY[ch] ?? { label: ch, emoji: "🎬" },
+        display: CHAPTER_DISPLAY[ch] ?? { label: ch, Icon: MovieIcon },
         picks: [p],
         startSec: p.startSec,
         endSec: p.endSec,
@@ -2234,7 +2258,7 @@ ${ctxLines.join("\n")}`;
         </div>
         <div className="ce-meta">
           <button className="ce-aspect" onClick={() => setAspectMenuOpen(v => !v)}>
-            <span>📐</span> {aspectRatio}
+            <CropIcon sx={{ fontSize: 14 }} /> {aspectRatio}
             <span>▾</span>
           </button>
           {aspectMenuOpen && (
@@ -2264,7 +2288,7 @@ ${ctxLines.join("\n")}`;
           )}
           <div style={{ position: "relative" }}>
             <button className="ce-aspect" onClick={() => setLookMenuOpen(v => !v)}>
-              <span>🎨</span> {lookPack === "none" ? "Look" : lookPack}
+              <PaletteIcon sx={{ fontSize: 14 }} /> {lookPack === "none" ? "Look" : lookPack}
               <span>▾</span>
             </button>
             {lookMenuOpen && (
@@ -2555,7 +2579,11 @@ ${ctxLines.join("\n")}`;
                 fontWeight: 600,
                 cursor: resolveSync.resolveState.isStudio ? "default" : "pointer",
               }}>
-              {resolveSync.resolveState.isStudio ? "⭐ Studio" : "Free · vis fordeler"}
+              {resolveSync.resolveState.isStudio ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <StarIcon sx={{ fontSize: 12 }} /> Studio
+                </span>
+              ) : "Free · vis fordeler"}
             </button>
           )}
           {/* Resolve sync-pill + push-knapp */}
@@ -2688,7 +2716,7 @@ ${ctxLines.join("\n")}`;
               void navigator.clipboard.writeText(info).catch(() => { /* noop */ });
             }}
           >↗ Del</button>
-          {/* 🎨 Thumbnail Creator — design branded social-thumbnails */}
+          {/* Thumbnail Creator — design branded social-thumbnails */}
           <button
             onClick={() => {
               setThumbnailContext({
@@ -2713,11 +2741,11 @@ ${ctxLines.join("\n")}`;
               <BrushIcon sx={{ fontSize: 14 }} /> Thumbnails
             </span>
           </button>
-          {/* ☕ Auto-pilot — la systemet bygge ferdig mens du tar pause */}
+          {/* Auto-pilot — la systemet bygge ferdig mens du tar pause */}
           <button
             onClick={() => setAutoPilotOpen(true)}
             disabled={!payload || filteredPicks.length === 0}
-            title="Auto-pilot: AI bygger highlighten ferdig mens du tar kaffe ☕"
+            title="Auto-pilot: AI bygger highlighten ferdig mens du tar kaffe"
             style={{
               background: autoPilotOpen
                 ? "linear-gradient(135deg, #8b4513, #d2691e)"
@@ -2728,7 +2756,9 @@ ${ctxLines.join("\n")}`;
               animation: autoPilotOpen ? "coffee-steam 3s ease-in-out infinite" : undefined,
             }}
           >
-            ☕ Coffee mode
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <CoffeeIcon sx={{ fontSize: 14 }} /> Coffee mode
+            </span>
           </button>
           <div className="ce-export-wrap">
             <button
@@ -2844,7 +2874,9 @@ ${ctxLines.join("\n")}`;
                   <div className="ce-segment-thumb">
                     {firstPick.thumbnailPath
                       ? <img src={convertFileSrc(firstPick.thumbnailPath)} alt="" />
-                      : <div className="ce-segment-thumb-placeholder">{seg.display.emoji}</div>}
+                      : <div className="ce-segment-thumb-placeholder">
+                          <seg.display.Icon sx={{ fontSize: 28, opacity: 0.7 }} />
+                        </div>}
                   </div>
                   <div className="ce-segment-info">
                     <div className="ce-segment-label">{seg.display.label}</div>
@@ -2871,11 +2903,11 @@ ${ctxLines.join("\n")}`;
               <span className="ce-balance-tag">Bra balanse!</span>
             </div>
             <div className="ce-balance-bars">
-              <BalanceRow color="#ef4f6f" icon="❤️" label="Romantikk" pct={balance.romantikk} />
-              <BalanceRow color="#f0a500" icon="👨‍👩‍👧" label="Familie" pct={balance.familie} />
-              <BalanceRow color="#a030c0" icon="💍" label="Detaljer" pct={balance.detaljer} />
-              <BalanceRow color="#6e3fc7" icon="✨" label="Emosjon" pct={balance.emosjon} />
-              <BalanceRow color="#4ad48a" icon="⚡" label="Energi" pct={balance.energi} />
+              <BalanceRow color="#ef4f6f" Icon={FavoriteIcon} label="Romantikk" pct={balance.romantikk} />
+              <BalanceRow color="#f0a500" Icon={FamilyRestroomIcon} label="Familie" pct={balance.familie} />
+              <BalanceRow color="#a030c0" Icon={DiamondIcon} label="Detaljer" pct={balance.detaljer} />
+              <BalanceRow color="#6e3fc7" Icon={AutoAwesomeIcon} label="Emosjon" pct={balance.emosjon} />
+              <BalanceRow color="#4ad48a" Icon={BoltIcon} label="Energi" pct={balance.energi} />
             </div>
           </div>
 
@@ -3132,7 +3164,17 @@ ${ctxLines.join("\n")}`;
               onClick={fetchSuggestions}
               disabled={suggBusy}
             >
-              {suggBusy ? "✨ Henter …" : <>✨ {suggestions.length > 0 ? "Oppdater" : "Hent"} forslag {suggestions.length > 0 && <span className="ce-badge">{suggestions.length}</span>}</>}
+              {suggBusy ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} /> Henter …
+                </span>
+              ) : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} />
+                  {suggestions.length > 0 ? "Oppdater" : "Hent"} forslag
+                  {suggestions.length > 0 && <span className="ce-badge">{suggestions.length}</span>}
+                </span>
+              )}
             </button>
           </div>
 
@@ -3482,7 +3524,7 @@ ${ctxLines.join("\n")}`;
 
           {/* Audio waveform — Phase 4 will compute real waveform from song WAV */}
           <div className="ce-audio">
-            <div className="ce-audio-icon">🎵</div>
+            <div className="ce-audio-icon"><MusicNoteIcon sx={{ fontSize: 16 }} /></div>
             <div className="ce-audio-title">
               {activeSong ? `${activeSong.title} – ${activeSong.artist}` : "(Ingen sang valgt)"}
             </div>
@@ -3502,7 +3544,11 @@ ${ctxLines.join("\n")}`;
               className="ce-audio-add-btn"
               onClick={() => setMusicSearchOpen(true)}
               title="Søk fra leverandør (Jamendo/Soundstripe/Artlist)"
-            >🎵 Søk</button>
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <MusicNoteIcon sx={{ fontSize: 13 }} /> Søk
+              </span>
+            </button>
             <button
               className="ce-audio-add-btn"
               onClick={() => setAiSuggestionsOpen(true)}
@@ -3510,7 +3556,11 @@ ${ctxLines.join("\n")}`;
               title={focusedPick
                 ? `Claude foreslår musikk for ${focusedPick.chapter ?? "denne scenen"}`
                 : "Velg en pick først"}
-            >✨ AI-forslag</button>
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <AutoAwesomeIcon sx={{ fontSize: 13 }} /> AI-forslag
+              </span>
+            </button>
             <button
               className="ce-audio-add-btn"
               onClick={() => addMarkerAtPlayhead()}
@@ -3521,7 +3571,7 @@ ${ctxLines.join("\n")}`;
           {/* Custom audio tracks */}
           {customAudios.map((audio) => (
             <div key={audio.id} className="ce-audio ce-audio-custom">
-              <div className="ce-audio-icon">🎙</div>
+              <div className="ce-audio-icon"><MicIcon sx={{ fontSize: 16 }} /></div>
               <div className="ce-audio-title">{audio.name}</div>
               <div className="ce-audio-wave">
                 <RealWaveform wavPath={audio.path} bars={120} active={isPlaying} />
@@ -3549,19 +3599,19 @@ ${ctxLines.join("\n")}`;
 
           {/* Toolbar */}
           <div className="ce-toolbar">
-            <ToolButton icon="✂" label="Trim" active={trimMode} onClick={() => setTrimMode(v => !v)} />
-            <ToolButton icon="⚙" label="Juster" active={adjustPanelOpen}
+            <ToolButton Icon={ContentCutIcon} label="Trim" active={trimMode} onClick={() => setTrimMode(v => !v)} />
+            <ToolButton Icon={SettingsIcon} label="Juster" active={adjustPanelOpen}
                         onClick={() => setAdjustPanelOpen(v => !v)} />
-            <ToolButton icon="◇" label="Overganger"
+            <ToolButton Icon={CompareArrowsIcon} label="Overganger"
                         onClick={() => {
                           // Toggle transition-menu for nåværende boundary
                           if (focusedPickIdx <= 0) return;
                           const key = `${focusedPickIdx - 1}-${focusedPickIdx}`;
                           setTransitionMenuFor(transitionMenuFor === key ? null : key);
                         }} />
-            <ToolButton icon="🎨" label="Farge" active={lookMenuOpen}
+            <ToolButton Icon={PaletteIcon} label="Farge" active={lookMenuOpen}
                         onClick={() => setLookMenuOpen(v => !v)} />
-            <ToolButton icon="📐" label="Stabilisering"
+            <ToolButton Icon={CropIcon} label="Stabilisering"
                         onClick={async () => {
                           if (!focusedPick || stabilizingPick) return;
                           setStabilizingPick(true);
@@ -3577,7 +3627,7 @@ ${ctxLines.join("\n")}`;
                             setStabilizingPick(false);
                           }
                         }} active={stabilizingPick} />
-            <ToolButton icon="…" label="Mer" onClick={() => setShortcutsOpen(true)} />
+            <ToolButton Icon={MoreHorizIcon} label="Mer" onClick={() => setShortcutsOpen(true)} />
           </div>
 
           {/* Juster-panel: brightness + saturation per pick */}
@@ -3727,7 +3777,9 @@ ${ctxLines.join("\n")}`;
           {/* Agent-specific action panels */}
           {agentRole === "audio" && (
             <div className="ce-agent-actions">
-              <div className="ce-agent-actions-title">🎙 Audio-tools</div>
+              <div className="ce-agent-actions-title" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <MicIcon sx={{ fontSize: 13 }} /> Audio-tools
+              </div>
               {([
                 { id: "isolate_vocals", icon: "🎤", label: "Isoler vocals (Demucs)" },
                 { id: "duck_music", icon: "🔉", label: "Auto-duck musikk" },
@@ -3752,7 +3804,9 @@ ${ctxLines.join("\n")}`;
           )}
           {agentRole === "vision" && (
             <div className="ce-agent-actions">
-              <div className="ce-agent-actions-title">👁 Vision-tools</div>
+              <div className="ce-agent-actions-title" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <RemoveRedEyeIcon sx={{ fontSize: 13 }} /> Vision-tools
+              </div>
               <button
                 className="ce-agent-action-btn"
                 disabled={qualityBusy}
@@ -3793,7 +3847,10 @@ ${ctxLines.join("\n")}`;
               onClick={applyWishes}
               disabled={wishesBusy || !clientWishes.trim() || filteredPicks.length === 0}
             >
-              {wishesBusy ? "🎬 Anvender ønsker…" : "🎬 Anvend ønsker"}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <MovieIcon sx={{ fontSize: 13 }} />
+                {wishesBusy ? "Anvender ønsker…" : "Anvend ønsker"}
+              </span>
             </button>
             {wishesResult && (
               <div className="ce-wishes-result">
@@ -3824,7 +3881,15 @@ ${ctxLines.join("\n")}`;
               onClick={() => setAltMenuOpen((v) => !v)}
               disabled={altBusy !== null}
             >
-              {altBusy ? <>✨ Genererer {altBusy}-versjon…</> : <>✨ Generate Alternate Edit ▾</>}
+              {altBusy ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} /> Genererer {altBusy}-versjon…
+                </span>
+              ) : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} /> Generate Alternate Edit ▾
+                </span>
+              )}
             </button>
             {altMenuOpen && (
               <div className="ce-claude-alt-menu">
@@ -4013,7 +4078,7 @@ ${ctxLines.join("\n")}`;
             {onboardingStep === 1 && (
               <div className="ce-onboarding-step">
                 <div className="ce-onboarding-msg">
-                  Perfekt 🎯<br /><br />
+                  Perfekt.<br /><br />
                   Hva er formålet med redigeringen?
                 </div>
                 <div className="ce-onboarding-choices">
@@ -4053,7 +4118,7 @@ ${ctxLines.join("\n")}`;
             {onboardingStep === 2 && (
               <div className="ce-onboarding-step">
                 <div className="ce-onboarding-msg">
-                  Bra valg ✨<br /><br />
+                  Bra valg.<br /><br />
                   Hvor lang skal final-versjon være?
                 </div>
                 <div className="ce-onboarding-length">
@@ -4416,7 +4481,7 @@ ${ctxLines.join("\n")}`;
         );
       })()}
 
-      {/* ☕ Auto-pilot — kaffe-modus med Claude-samarbeid */}
+      {/* Auto-pilot — kaffe-modus med Claude-samarbeid */}
       {autoPilotOpen && payload && (
         <AutoPilotPanel
           open={autoPilotOpen}
@@ -4476,7 +4541,7 @@ ${ctxLines.join("\n")}`;
         }}
       />
 
-      {/* 🎨 Thumbnail Creator — designede sosial-feed-thumbnails */}
+      {/* Thumbnail Creator — designede sosial-feed-thumbnails */}
       {thumbnailCreatorOpen && payload && (
         <ThumbnailCreator
           open={thumbnailCreatorOpen}
@@ -4717,10 +4782,12 @@ ${ctxLines.join("\n")}`;
 }
 
 // ─────────────── Sub-components ───────────────
-function BalanceRow({ color, icon, label, pct }: { color: string; icon: string; label: string; pct: number }) {
+function BalanceRow({ color, Icon, label, pct }: { color: string; Icon: SvgIconComponent; label: string; pct: number }) {
   return (
     <div className="ce-balance-row">
-      <span className="ce-balance-icon" style={{ color }}>{icon}</span>
+      <span className="ce-balance-icon" style={{ color, display: "inline-flex" }}>
+        <Icon sx={{ fontSize: 14 }} />
+      </span>
       <span className="ce-balance-label">{label}</span>
       <div className="ce-balance-track">
         <div className="ce-balance-fill" style={{ width: `${pct}%`, background: color }} />
@@ -4730,12 +4797,14 @@ function BalanceRow({ color, icon, label, pct }: { color: string; icon: string; 
   );
 }
 
-function ToolButton({ icon, label, active = false, onClick }: {
-  icon: string; label: string; active?: boolean; onClick?: () => void;
+function ToolButton({ Icon, label, active = false, onClick }: {
+  Icon: SvgIconComponent; label: string; active?: boolean; onClick?: () => void;
 }) {
   return (
     <button className={`ce-tool ${active ? "active" : ""}`} onClick={onClick}>
-      <span className="ce-tool-icon">{icon}</span>
+      <span className="ce-tool-icon">
+        <Icon sx={{ fontSize: 14 }} />
+      </span>
       <span className="ce-tool-label">{label}</span>
     </button>
   );
