@@ -31,21 +31,61 @@ interface Props {
   open: boolean;
   onClose: () => void;
   projectId: string;
+  /** Når åpnet fra en agent: brukes til auto-rangering + match-badge */
+  agentContext?: {
+    agentKind: string;
+    agentName: string;
+    chapterId: string;
+    chapterLabel: string;
+    contextTags: string[];
+    targetBpmRange?: [number, number];
+  };
 }
 
-type SortMode = "relevance" | "date" | "usage" | "bpm";
+type SortMode = "relevance" | "context" | "date" | "usage" | "bpm";
 
-export function MusicLibrary({ open, onClose, projectId }: Props) {
+export function MusicLibrary({ open, onClose, projectId, agentContext }: Props) {
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<MusicTrack | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("relevance");
-  const [bpmFilter, setBpmFilter] = useState<[number, number] | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>(
+    agentContext ? "context" : "relevance",
+  );
+  // Default BPM-filter til agent's targetBpmRange hvis tilgjengelig
+  const [bpmFilter, setBpmFilter] = useState<[number, number] | null>(
+    agentContext?.targetBpmRange ?? null,
+  );
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+
+  // Context-tags set
+  const contextTagSet = new Set(
+    (agentContext?.contextTags ?? []).map(t => t.toLowerCase()),
+  );
+
+  /** Match-score for track mot agent-context — kombinerer tag-overlap
+   * + BPM-match. */
+  const matchScore = (track: MusicTrack): number => {
+    if (!agentContext) return 0;
+    let score = 0;
+    const trackTags = (track.tags || []).map(t => t.toLowerCase());
+    if (trackTags.length > 0 && contextTagSet.size > 0) {
+      const overlap = trackTags.filter(t => contextTagSet.has(t)).length;
+      score = overlap / Math.max(contextTagSet.size, trackTags.length);
+    }
+    // BPM-boost
+    const bpm = track.audioAnalysis?.bpm;
+    if (bpm && agentContext.targetBpmRange) {
+      const [minBpm, maxBpm] = agentContext.targetBpmRange;
+      if (bpm >= minBpm && bpm <= maxBpm) {
+        score = score * 1.4; // 40% boost
+      }
+    }
+    return Math.min(1, score);
+  };
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -189,6 +229,9 @@ export function MusicLibrary({ open, onClose, projectId }: Props) {
     })
     .sort((a, b) => {
       switch (sortMode) {
+        case "context":
+          return matchScore(b) - matchScore(a)
+            || (b.approvalCount - a.approvalCount);
         case "date":
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         case "usage":
@@ -204,6 +247,9 @@ export function MusicLibrary({ open, onClose, projectId }: Props) {
             - (a.approvalCount - a.rejectionCount);
       }
     });
+
+  const matchingTrackCount = agentContext
+    ? tracks.filter(t => matchScore(t) > 0.3).length : 0;
 
   if (!open) return null;
 
@@ -280,6 +326,48 @@ export function MusicLibrary({ open, onClose, projectId }: Props) {
                        color: "#ef4f6f", fontSize: 11 }}>{error}</div>
       )}
 
+      {/* Agent-context banner */}
+      {agentContext && (
+        <div onClick={e => e.stopPropagation()}
+             style={{
+               padding: "8px 22px",
+               background: "rgba(160,48,192,0.10)",
+               borderBottom: "1px solid rgba(160,48,192,0.20)",
+               display: "flex", alignItems: "center", gap: 10,
+               fontSize: 11, flexWrap: "wrap",
+             }}>
+          <span style={{ color: ROLE_ROOM_BRAND.textTertiary,
+                            fontWeight: 600 }}>For:</span>
+          <span style={{
+            padding: "2px 8px", borderRadius: 999,
+            background: ROLE_ROOM_BRAND.signatureGradient, color: "#fff",
+            fontWeight: 600,
+          }}>{agentContext.agentName}</span>
+          <span style={{
+            padding: "2px 8px", borderRadius: 999,
+            background: "rgba(160,48,192,0.20)",
+            border: "1px solid rgba(160,48,192,0.30)",
+            color: ROLE_ROOM_BRAND.textPrimary,
+          }}>{agentContext.chapterLabel}</span>
+          {agentContext.targetBpmRange && (
+            <span style={{
+              padding: "2px 8px", borderRadius: 999,
+              background: "rgba(74,212,138,0.18)",
+              border: "1px solid rgba(74,212,138,0.30)",
+              color: "#4ad48a", fontWeight: 600,
+            }}>BPM {agentContext.targetBpmRange[0]}-{agentContext.targetBpmRange[1]}</span>
+          )}
+          <span style={{ marginLeft: "auto",
+                            color: matchingTrackCount > 0
+                              ? "#4ad48a" : ROLE_ROOM_BRAND.textTertiary,
+                            fontWeight: 600 }}>
+            {matchingTrackCount > 0
+              ? `${matchingTrackCount} av ${tracks.length} matcher`
+              : "Ingen tracks matcher konteksten"}
+          </span>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div onClick={e => e.stopPropagation()}
            style={{ padding: "10px 22px",
@@ -333,7 +421,10 @@ export function MusicLibrary({ open, onClose, projectId }: Props) {
 
         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <SortIcon sx={{ fontSize: 14, color: ROLE_ROOM_BRAND.textTertiary }} />
-          {(["relevance", "date", "usage", "bpm"] as SortMode[]).map(m => (
+          {([
+            ...(agentContext ? ["context"] : []),
+            "relevance", "date", "usage", "bpm",
+          ] as SortMode[]).map(m => (
             <button key={m}
                     onClick={() => setSortMode(m)}
                     style={{
@@ -346,7 +437,8 @@ export function MusicLibrary({ open, onClose, projectId }: Props) {
                       padding: "4px 10px", borderRadius: 3,
                       fontSize: 10.5, cursor: "pointer",
                     }}>
-              {m === "relevance" ? "Relevans"
+              {m === "context" ? `For ${agentContext?.chapterLabel ?? ""}`
+                : m === "relevance" ? "Relevans"
                 : m === "date" ? "Dato"
                 : m === "usage" ? "Bruk" : "BPM"}
             </button>
@@ -376,7 +468,8 @@ export function MusicLibrary({ open, onClose, projectId }: Props) {
                          playing={playingId === track.id}
                          onTogglePlay={() => togglePlay(track)}
                          onClick={() => setSelectedTrack(track)}
-                         onDelete={() => void handleDelete(track)} />
+                         onDelete={() => void handleDelete(track)}
+                         contextMatchScore={agentContext ? matchScore(track) : undefined} />
             ))}
           </div>
         )}
@@ -390,12 +483,13 @@ export function MusicLibrary({ open, onClose, projectId }: Props) {
   );
 }
 
-function TrackRow({ track, playing, onTogglePlay, onClick, onDelete }: {
+function TrackRow({ track, playing, onTogglePlay, onClick, onDelete, contextMatchScore }: {
   track: MusicTrack;
   playing: boolean;
   onTogglePlay: () => void;
   onClick: () => void;
   onDelete: () => void;
+  contextMatchScore?: number;
 }) {
   const wave = track.waveformImagePath
     ? convertFileSrc(track.waveformImagePath) : null;
@@ -441,6 +535,16 @@ function TrackRow({ track, playing, onTogglePlay, onClick, onDelete }: {
                           whiteSpace: "nowrap", flex: 1 }}>
             {track.filePath.split("/").pop()}
           </div>
+          {contextMatchScore !== undefined && contextMatchScore > 0.3 && (
+            <span style={{
+              padding: "1px 6px", borderRadius: 3, fontSize: 9,
+              fontWeight: 700,
+              background: contextMatchScore > 0.6
+                ? "rgba(74,212,138,0.85)"
+                : "rgba(160,48,192,0.85)",
+              color: "#fff",
+            }}>match {Math.round(contextMatchScore * 100)}%</span>
+          )}
           <div style={{ fontSize: 9, padding: "1px 6px",
                           borderRadius: 3,
                           background: "rgba(0,0,0,0.4)",

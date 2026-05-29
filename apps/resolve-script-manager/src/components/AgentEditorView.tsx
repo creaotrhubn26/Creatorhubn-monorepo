@@ -1150,18 +1150,39 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         onTranscriptLoaded={setLoadedTranscript}
       />
 
-      {/* B-roll Library — per-prosjekt vision-AI-tagget */}
+      {/* B-roll Library — per-prosjekt vision-AI-tagget, agent-aware */}
       <BrollLibrary
         open={brollLibraryOpen}
         onClose={() => setBrollLibraryOpen(false)}
         projectId={projectIdForStudio}
+        agentContext={{
+          agentKind: config.kind,
+          agentName: config.name,
+          chapterId: chapter.id,
+          chapterLabel: chapter.label,
+          contextTags: [
+            chapter.id, chapter.priorityHint,
+            ...(look.tags || []).slice(0, 3),
+          ].filter(Boolean),
+        }}
       />
 
-      {/* Music Library — librosa-analyse + universal læring */}
+      {/* Music Library — librosa-analyse, agent-aware */}
       <MusicLibrary
         open={musicLibraryOpen}
         onClose={() => setMusicLibraryOpen(false)}
         projectId={projectIdForStudio}
+        agentContext={{
+          agentKind: config.kind,
+          agentName: config.name,
+          chapterId: chapter.id,
+          chapterLabel: chapter.label,
+          contextTags: [
+            chapter.id, chapter.priorityHint,
+            ...(look.tags || []).slice(0, 3),
+          ].filter(Boolean),
+          targetBpmRange,
+        }}
       />
 
       {/* Music Suggestion Modal — Director-forslag rangert med BPM-boost */}

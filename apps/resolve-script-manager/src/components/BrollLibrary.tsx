@@ -30,20 +30,48 @@ interface Props {
   open: boolean;
   onClose: () => void;
   projectId: string;
+  /** Hvis åpnet fra en agent: bruk konteksten for å rangere klipp +
+   * vise match-badges. Tom = generisk library-view. */
+  agentContext?: {
+    agentKind: string;
+    agentName: string;       // f.eks. "Event Agent"
+    chapterId: string;
+    chapterLabel: string;    // f.eks. "Keynote"
+    contextTags: string[];   // chapter.id + priorityHint + look.tags
+  };
 }
 
-type SortMode = "relevance" | "date" | "usage";
+type SortMode = "relevance" | "context" | "date" | "usage";
 
-export function BrollLibrary({ open, onClose, projectId }: Props) {
+export function BrollLibrary({ open, onClose, projectId, agentContext }: Props) {
   const [clips, setClips] = useState<BrollClip[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<BrollClip | null>(null);
   const [hoveredClipId, setHoveredClipId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("relevance");
+  // Default sort = "context" hvis vi har agent-context, ellers "relevance"
+  const [sortMode, setSortMode] = useState<SortMode>(
+    agentContext ? "context" : "relevance",
+  );
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+
+  // Bygg context-tags-set for kjapp lookup
+  const contextTagSet = new Set(
+    (agentContext?.contextTags ?? []).map(t => t.toLowerCase()),
+  );
+
+  /** Beregne match-score for ett klipp mot agent-context.
+   * Samme formel som backend /suggest, men uten universal-læring
+   * (det er server-side). 0-1 score. */
+  const matchScore = (clip: BrollClip): number => {
+    if (!agentContext || contextTagSet.size === 0) return 0;
+    const clipTags = (clip.tags || []).map(t => t.toLowerCase());
+    if (clipTags.length === 0) return 0;
+    const overlap = clipTags.filter(t => contextTagSet.has(t)).length;
+    return overlap / Math.max(contextTagSet.size, clipTags.length);
+  };
 
   useEffect(() => {
     if (!open || !projectId) return;
@@ -229,12 +257,19 @@ export function BrollLibrary({ open, onClose, projectId }: Props) {
         case "usage":
           return (b.usageCount - a.usageCount)
             || (b.approvalCount - a.approvalCount);
+        case "context":
+          return matchScore(b) - matchScore(a)
+            || (b.approvalCount - a.approvalCount);
         case "relevance":
         default:
           return (b.approvalCount - b.rejectionCount)
             - (a.approvalCount - a.rejectionCount);
       }
     });
+
+  // For agent-context: tell antall klipp som matcher
+  const matchingClipsCount = agentContext
+    ? clips.filter(c => matchScore(c) > 0.3).length : 0;
 
   if (!open) return null;
 
@@ -310,6 +345,49 @@ export function BrollLibrary({ open, onClose, projectId }: Props) {
              }}>{error}</div>
       )}
 
+      {/* Agent-context banner */}
+      {agentContext && (
+        <div onClick={e => e.stopPropagation()}
+             style={{
+               padding: "8px 22px",
+               background: "rgba(160,48,192,0.10)",
+               borderBottom: "1px solid rgba(160,48,192,0.20)",
+               display: "flex", alignItems: "center", gap: 10,
+               fontSize: 11,
+             }}>
+          <span style={{ color: ROLE_ROOM_BRAND.textTertiary,
+                            fontWeight: 600 }}>For:</span>
+          <span style={{
+            padding: "2px 8px", borderRadius: 999,
+            background: ROLE_ROOM_BRAND.signatureGradient, color: "#fff",
+            fontWeight: 600,
+          }}>{agentContext.agentName}</span>
+          <span style={{ color: ROLE_ROOM_BRAND.textTertiary }}>·</span>
+          <span style={{
+            padding: "2px 8px", borderRadius: 999,
+            background: "rgba(160,48,192,0.20)",
+            border: "1px solid rgba(160,48,192,0.30)",
+            color: ROLE_ROOM_BRAND.textPrimary,
+          }}>{agentContext.chapterLabel}</span>
+          <span style={{ color: ROLE_ROOM_BRAND.textTertiary }}>·</span>
+          {agentContext.contextTags.slice(0, 5).map(t => (
+            <span key={t} style={{
+              fontSize: 10, padding: "2px 6px", borderRadius: 999,
+              background: "rgba(255,255,255,0.04)",
+              color: ROLE_ROOM_BRAND.textSecondary,
+            }}>{t}</span>
+          ))}
+          <span style={{ marginLeft: "auto",
+                            color: matchingClipsCount > 0
+                              ? "#4ad48a" : ROLE_ROOM_BRAND.textTertiary,
+                            fontWeight: 600 }}>
+            {matchingClipsCount > 0
+              ? `${matchingClipsCount} av ${clips.length} matcher`
+              : "Ingen klipp matcher konteksten"}
+          </span>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div onClick={e => e.stopPropagation()}
            style={{ padding: "10px 22px",
@@ -335,7 +413,10 @@ export function BrollLibrary({ open, onClose, projectId }: Props) {
         </div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <SortIcon sx={{ fontSize: 14, color: ROLE_ROOM_BRAND.textTertiary }} />
-          {(["relevance", "date", "usage"] as SortMode[]).map(m => (
+          {([
+            ...(agentContext ? ["context"] : []),
+            "relevance", "date", "usage",
+          ] as SortMode[]).map(m => (
             <button key={m}
                     onClick={() => setSortMode(m)}
                     style={{
@@ -348,7 +429,8 @@ export function BrollLibrary({ open, onClose, projectId }: Props) {
                       padding: "4px 10px", borderRadius: 3,
                       fontSize: 10.5, cursor: "pointer",
                     }}>
-              {m === "relevance" ? "Relevans"
+              {m === "context" ? `For ${agentContext?.chapterLabel ?? ""}`
+                : m === "relevance" ? "Relevans"
                 : m === "date" ? "Dato" : "Bruk"}
             </button>
           ))}
@@ -382,7 +464,8 @@ export function BrollLibrary({ open, onClose, projectId }: Props) {
                         onHover={() => setHoveredClipId(c.id)}
                         onLeave={() => setHoveredClipId(null)}
                         onClick={() => setSelectedClip(c)}
-                        onDelete={() => void handleDelete(c)} />
+                        onDelete={() => void handleDelete(c)}
+                        contextMatchScore={agentContext ? matchScore(c) : undefined} />
             ))}
           </div>
         )}
@@ -400,13 +483,14 @@ export function BrollLibrary({ open, onClose, projectId }: Props) {
   );
 }
 
-function ClipCard({ clip, hovered, onHover, onLeave, onClick, onDelete }: {
+function ClipCard({ clip, hovered, onHover, onLeave, onClick, onDelete, contextMatchScore }: {
   clip: BrollClip;
   hovered: boolean;
   onHover: () => void;
   onLeave: () => void;
   onClick: () => void;
   onDelete: () => void;
+  contextMatchScore?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const thumbSrc = clip.previewThumbnailPath
@@ -468,6 +552,18 @@ function ClipCard({ clip, hovered, onHover, onLeave, onClick, onDelete }: {
           color: statusColor,
           textTransform: "uppercase",
         }}>{status}</div>
+        {/* Context-match badge (når åpnet fra agent) */}
+        {contextMatchScore !== undefined && contextMatchScore > 0.3 && (
+          <div style={{
+            position: "absolute", top: 6, left: 70,
+            padding: "2px 6px", borderRadius: 3, fontSize: 9,
+            fontWeight: 700,
+            background: contextMatchScore > 0.6
+              ? "rgba(74,212,138,0.85)"
+              : "rgba(160,48,192,0.85)",
+            color: "#fff",
+          }}>match {Math.round(contextMatchScore * 100)}%</div>
+        )}
         {/* Duration */}
         {clip.durationSec > 0 && (
           <div style={{
