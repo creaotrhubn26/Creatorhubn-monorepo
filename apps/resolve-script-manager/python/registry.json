@@ -1998,6 +1998,28 @@
       "requiresTimeline": false
     },
     {
+      "id": "export_resolve_handoff",
+      "name": "Export Resolve Handoff (FCP7 XML + EDL)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/export_resolve_handoff.py",
+      "description": "Eksporter agent-state som DaVinci Resolve-kompatibel timeline. Genererer FCP7 XML (med chapter-markers, lower-third-markers og caption-titles) + EDL fallback. Importeres via Resolve File → Import Timeline.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false },
+        { "key": "projectName", "label": "Project name (default 'Post Agent Handoff')", "type": "text", "required": false },
+        { "key": "chapters", "label": "Chapters-array", "type": "json", "required": false },
+        { "key": "captions", "label": "WhisperTranscript", "type": "json", "required": false },
+        { "key": "lowerThirds", "label": "Lower-thirds items", "type": "json", "required": false },
+        { "key": "framerate", "label": "Framerate override", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "export_multi_aspect",
       "name": "Export Multi-Aspect",
       "category": "social",

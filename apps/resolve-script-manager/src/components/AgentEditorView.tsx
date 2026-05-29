@@ -26,8 +26,10 @@ import SubtitlesIcon from "@mui/icons-material/Subtitles";
 import ClosedCaptionIcon from "@mui/icons-material/ClosedCaption";
 import AppShortcutIcon from "@mui/icons-material/AppShortcut";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import LaunchIcon from "@mui/icons-material/Launch";
 import type { WhisperTranscript } from "../lib/captionTypes";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { lowerThirdsService } from "../services/lowerThirdsService";
 import type { AgentConfig, ChapterDef, LookPackDef } from "../agents/types";
 import { executeScript } from "../api";
 import { claudeProxyService } from "../services/claudeProxyService";
@@ -95,6 +97,44 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                        dimensions: string; path: string }>;
   } | null>(null);
   const [multiAspectError, setMultiAspectError] = useState<string | null>(null);
+  const [handoffExporting, setHandoffExporting] = useState(false);
+  const [handoffResult, setHandoffResult] = useState<{
+    xmlPath: string; edlPath: string; outputDir: string;
+    chapterMarkers: number; captionSubtitles: number;
+    lowerThirdMarkers: number;
+  } | null>(null);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
+
+  const exportResolveHandoff = async () => {
+    if (!sourcePath) return;
+    setHandoffExporting(true);
+    setHandoffError(null);
+    setHandoffResult(null);
+    try {
+      // Hent lower-thirds for prosjektet (hvis Bjarne har laget noen)
+      let lowerThirdsItems: unknown[] = [];
+      try {
+        const cols = await lowerThirdsService.list(projectIdForStudio);
+        const def = cols.find(c => c.collectionName === "Default");
+        if (def) lowerThirdsItems = def.items;
+      } catch { /* ikke kritisk */ }
+
+      const summary = await executeScript("export_resolve_handoff", {
+        videoPath: sourcePath,
+        projectName: `${CFG.name} — ${new Date().toISOString().slice(0, 10)}`,
+        chapters: CFG.chapters,
+        captions: loadedTranscript,
+        lowerThirds: lowerThirdsItems,
+      }, false);
+      const result = summary.events.find(e => e.type === "result");
+      const v = result?.value as typeof handoffResult;
+      if (v) setHandoffResult(v);
+    } catch (err) {
+      setHandoffError((err as Error).message);
+    } finally {
+      setHandoffExporting(false);
+    }
+  };
 
   const exportMultiAspect = async () => {
     if (!sourcePath) return;
@@ -323,6 +363,24 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
               </span>
             )}
           </button>
+          <button onClick={() => void exportResolveHandoff()}
+                  disabled={handoffExporting || !sourcePath}
+                  title="Eksporter agent-state som FCP7 XML + EDL for import i DaVinci Resolve"
+                  style={{
+                    background: handoffExporting
+                      ? "rgba(160,48,192,0.10)"
+                      : "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4,
+                    cursor: handoffExporting ? "wait"
+                          : sourcePath ? "pointer" : "not-allowed",
+                    opacity: !sourcePath ? 0.5 : 1, fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <LaunchIcon sx={{ fontSize: 14 }} />
+            {handoffExporting ? "Eksporterer …" : "Resolve handoff"}
+          </button>
           <button onClick={() => void exportMultiAspect()}
                   disabled={multiAspectExporting || !sourcePath}
                   title="Rendre 16:9 + 9:16 + 1:1 + 4:5 i én operasjon for cross-posting"
@@ -414,6 +472,58 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
           background: "rgba(239,79,111,0.15)",
           color: "#ef4f6f", fontSize: 11,
         }}>Multi-aspect-eksport feilet: {multiAspectError}</div>
+      )}
+
+      {/* Resolve handoff result pill */}
+      {handoffResult && (
+        <div style={{
+          padding: "8px 22px",
+          background: "rgba(74,212,138,0.10)",
+          borderBottom: "1px solid rgba(74,212,138,0.20)",
+          color: "#4ad48a", fontSize: 11,
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <span style={{ fontWeight: 600 }}>
+            Resolve handoff klar:
+          </span>
+          <span style={{
+            padding: "2px 8px", borderRadius: 3,
+            background: "rgba(74,212,138,0.18)",
+            border: "1px solid rgba(74,212,138,0.30)",
+          }}>{handoffResult.chapterMarkers} chapters</span>
+          <span style={{
+            padding: "2px 8px", borderRadius: 3,
+            background: "rgba(74,212,138,0.18)",
+            border: "1px solid rgba(74,212,138,0.30)",
+          }}>{handoffResult.captionSubtitles} captions</span>
+          <span style={{
+            padding: "2px 8px", borderRadius: 3,
+            background: "rgba(74,212,138,0.18)",
+            border: "1px solid rgba(74,212,138,0.30)",
+          }}>{handoffResult.lowerThirdMarkers} lower-thirds</span>
+          <span style={{ opacity: 0.7 }}>
+            → File → Import Timeline → velg .xml
+          </span>
+          <button onClick={() => void openPath(handoffResult.outputDir)}
+                  style={{
+                    marginLeft: "auto",
+                    background: "rgba(74,212,138,0.18)",
+                    border: "1px solid rgba(74,212,138,0.40)",
+                    color: "#4ad48a", borderRadius: 3,
+                    padding: "3px 10px", fontSize: 10.5,
+                    cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}>
+            <FolderOpenIcon sx={{ fontSize: 12 }} /> Åpne mappe
+          </button>
+        </div>
+      )}
+      {handoffError && (
+        <div style={{
+          padding: "8px 22px",
+          background: "rgba(239,79,111,0.15)",
+          color: "#ef4f6f", fontSize: 11,
+        }}>Resolve handoff feilet: {handoffError}</div>
       )}
 
       {/* Main area */}
