@@ -14,6 +14,7 @@ import MarketingPageRouter from '@/components/admin/content-marketing/MarketingP
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
 import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
+import { useAriaHiddenFocusFix } from '@/hooks/useAriaHiddenFocusFix';
 import { detectLocale } from './cms/useLocale';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
@@ -164,6 +165,11 @@ function CastingStandaloneRuntimeContent() {
 
   // Presence-heartbeat: pinger /api/presence/heartbeat hvert 30s mens innlogget
   usePresenceHeartbeat(isAuthenticated);
+  // Global aria-hidden-fokus-fiks for MUI v6.1-modaler — fjerner konsoll-
+  // warningen "Blocked aria-hidden on an element because its descendant
+  // retained focus" ved å blur-e fokuserte elementer som ender under et
+  // aria-hidden-tre.
+  useAriaHiddenFocusFix(true);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
   const [processingClientInviteLogin, setProcessingClientInviteLogin] = useState(false);
   const handledGoogleTransferRef = useRef<string | null>(null);
@@ -476,7 +482,8 @@ function CastingStandaloneRuntimeContent() {
                 window.location.href = url.toString();
               }}
               supportEmail="support@theroleroom.com"
-              changelogUrl="https://creatorhubn.com/news"
+              whatsNewMode="casting"
+              whatsNewTitle="Hva er nytt i The Role Room"
               tourSteps={
                 shouldRenderTalentPortal
                   ? [
