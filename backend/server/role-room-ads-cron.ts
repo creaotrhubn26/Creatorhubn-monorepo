@@ -31,14 +31,27 @@ import {
   type MeterEmitter,
   type SweepSummary,
 } from "./role-room-ads-sync.js";
-import { getGoogleAdsConnectorFromEnv } from "./role-room-google-ads.js";
-import { getLinkedInAdsConnectorFromEnv } from "./role-room-linkedin-ads.js";
+import {
+  getGoogleAdsConnectorFromEnv,
+  setGoogleCampaignStatus,
+} from "./role-room-google-ads.js";
+import {
+  getLinkedInAdsConnectorFromEnv,
+  setLinkedInCampaignStatus,
+} from "./role-room-linkedin-ads.js";
+import { pauseCampaign as pauseMetaCampaign } from "./role-room-meta-ads.js";
 import {
   listInstagramConnections,
   ensureFreshConnection,
 } from "./role-room-instagram-oauth.js";
 import { resolveAdsAccessToken } from "./role-room-ads-oauth.js";
 import type { AdsPlatform } from "./role-room-ads-shared.js";
+import {
+  runAdsAutoPauseSweep,
+  type AutoPauseSweepSummary,
+  type PausePlatformDispatchers,
+} from "./role-room-ads-auto-pause.js";
+import { listActiveCampaignsForProject } from "./role-room-ads-db.js";
 
 /** Build the connector registry from the modules + env configuration. */
 export function buildAdsConnectorRegistry(): Partial<Record<AdsPlatform, PlatformConnector>> {
@@ -83,6 +96,47 @@ export async function runAdsAttributionSweepWithDefaults(
   });
 }
 
+/**
+ * Real platform-pause dispatchers (Lag 3b). The cron uses these; tests inject
+ * fakes. PAUSED is the shared status verb across Meta / Google / LinkedIn.
+ */
+export function buildPausePlatformDispatchers(): PausePlatformDispatchers {
+  return {
+    meta: async (accessToken, externalCampaignId) => {
+      await pauseMetaCampaign(accessToken, externalCampaignId);
+    },
+    google: async (accessToken, developerToken, customerId, campaignResourceName) => {
+      await setGoogleCampaignStatus(
+        { accessToken, developerToken, customerId },
+        campaignResourceName,
+        "PAUSED",
+      );
+    },
+    linkedin: async (accessToken, campaignUrn, apiVersion) => {
+      await setLinkedInCampaignStatus({ accessToken, apiVersion }, campaignUrn, "PAUSED");
+    },
+  };
+}
+
+/** Run auto-pause sweep with the cron's wiring. */
+export async function runAdsAutoPauseSweepWithDefaults(
+  pool: Pool,
+  period?: string,
+): Promise<AutoPauseSweepSummary> {
+  const periodKey = period || new Date().toISOString().slice(0, 7);
+  return runAdsAutoPauseSweep(
+    pool,
+    {
+      resolveToken: buildPlatformTokenResolver(pool),
+      listActiveCampaignsForProject,
+      dispatchers: buildPausePlatformDispatchers(),
+      googleDeveloperToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null,
+      linkedinApiVersion: process.env.LINKEDIN_API_VERSION || undefined,
+    },
+    periodKey,
+  );
+}
+
 export interface RoleRoomAdsCronDeps {
   app: express.Application;
   pool: Pool;
@@ -100,7 +154,16 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
     }
     try {
       const summary = await runAdsAttributionSweepWithDefaults(pool);
-      res.json({ ok: true, summary });
+      // Lag 3b: når spend er ferskt, sjekk auto-pause-prosjekter. Off by default
+      // — krever klient-toggle på role_room_ads_budgets.auto_pause_on_cap.
+      // Auto-pause-feil må aldri felle attribution-tick; den eier billing-data.
+      let autoPause: AutoPauseSweepSummary | null = null;
+      try {
+        autoPause = await runAdsAutoPauseSweepWithDefaults(pool);
+      } catch (error) {
+        console.error("[ads-auto-pause] sweep failed (non-fatal)", error);
+      }
+      res.json({ ok: true, summary, autoPause });
     } catch (error) {
       res.status(500).json({ error: "ads_attribution_tick_failed", detail: String(error) });
     }
@@ -111,9 +174,11 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
   if (intervalMinutes > 0) {
     setInterval(
       () => {
-        void runAdsAttributionSweepWithDefaults(pool).catch((e) =>
-          console.error("[ads-sweep] interval run failed", e),
-        );
+        void runAdsAttributionSweepWithDefaults(pool)
+          .then(() => runAdsAutoPauseSweepWithDefaults(pool).catch((e) =>
+            console.error("[ads-auto-pause] interval run failed (non-fatal)", e),
+          ))
+          .catch((e) => console.error("[ads-sweep] interval run failed", e));
       },
       intervalMinutes * 60 * 1000,
     );

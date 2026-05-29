@@ -185,6 +185,7 @@ import {
   assertWithinBudget,
   computeBudgetStatus,
   computeBudgetPacing,
+  setAutoPauseOnCap,
   BudgetExceededError,
 } from './role-room-ads-budget.js';
 import { syncMetaCampaignSpend, syncCampaignSpend } from './role-room-ads-sync.js';
@@ -22625,7 +22626,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           overageRequestedNok: budget?.overageRequestedNok ?? null,
         });
         const pacing = computeBudgetPacing({ status, period });
-        res.json({ period, status, pacing, canEdit: await isClientForProject(req, projectId) });
+        const autoPauseOnCap = budget?.autoPauseOnCap ?? false;
+        res.json({ period, status, pacing, autoPauseOnCap, canEdit: await isClientForProject(req, projectId) });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load budget', detail: String(error) });
       }
@@ -22652,6 +22654,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ budget });
       } catch (error) {
         res.status(500).json({ error: 'Failed to set budget', detail: String(error) });
+      }
+    },
+  );
+
+  // Lag 3b: klient-styrt auto-pause-toggle. Off by default; krever §2.3-skriftlig
+  // godkjenning-prinsipp respektert (kunden er den eneste som kan slå på/av).
+  router.put(
+    '/ads/budget/auto-pause',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, enabled } = req.body ?? {};
+        const period = typeof req.body?.period === 'string' && /^\d{4}-\d{2}$/.test(req.body.period)
+          ? req.body.period
+          : currentPeriod();
+        if (!projectId || typeof enabled !== 'boolean') {
+          return res.status(400).json({ error: 'invalid_input', detail: 'projectId + enabled (boolean) required' });
+        }
+        if (!(await isClientForProject(req, projectId))) {
+          return res.status(403).json({ error: 'client_only', detail: 'Bare kunden kan styre auto-pause (§2.3).' });
+        }
+        const identifiers = getUserIdentifiers(req);
+        const budget = await setAutoPauseOnCap(pool, projectId, period, enabled, identifiers[0] ?? 'klient');
+        res.json({ budget });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to set auto-pause', detail: String(error) });
       }
     },
   );

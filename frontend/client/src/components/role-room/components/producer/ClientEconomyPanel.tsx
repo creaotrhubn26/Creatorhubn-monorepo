@@ -172,6 +172,13 @@ export default function ClientEconomyPanel({
     setSavingBudget(false);
   };
 
+  const toggleAutoPause = async (enabled: boolean) => {
+    setSavingBudget(true);
+    const ok = await roleRoomAgentService.setAdsBudgetAutoPause(projectId, enabled, period);
+    if (ok) await refreshBudget();
+    setSavingBudget(false);
+  };
+
   const feeRatePct = summary?.effectiveFeeRate != null ? Math.round(summary.effectiveFeeRate * 100) : 20;
   const platformRows = summary ? Object.entries(summary.perPlatform).filter(([, v]) => Number(v) !== 0) : [];
 
@@ -385,6 +392,29 @@ export default function ClientEconomyPanel({
                 Produsenten har bedt om en økt ramme på {nok(budget.status.overageRequestedNok)}.
               </Alert>
             )}
+
+            {/* ── Auto-pause-toggle (Lag 3b) — kun kunden kan styre ── */}
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.3, pt: 0.5, borderTop: '1px solid rgba(148,163,184,0.12)' }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
+                  Pause kampanjer automatisk når taket nås
+                </Typography>
+                <Typography sx={SUBTLE}>
+                  {budget.autoPauseOnCap
+                    ? 'På — agenten pauser aktive Meta/Google/LinkedIn-kampanjer i neste daglige sjekk hvis perioden går over taket.'
+                    : 'Av — du må selv pause hvis taket nås.'}
+                </Typography>
+              </Box>
+              <Tooltip title={budget.canEdit ? '' : 'Bare kunden kan styre auto-pause (§2.3)'}>
+                <span>
+                  <Switch
+                    checked={!!budget.autoPauseOnCap}
+                    disabled={!budget.canEdit || savingBudget}
+                    onChange={(e) => toggleAutoPause(e.target.checked)}
+                  />
+                </span>
+              </Tooltip>
+            </Stack>
           </Stack>
         ) : (
           <Typography sx={SUBTLE}>

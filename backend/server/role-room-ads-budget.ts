@@ -24,6 +24,8 @@ export interface AdsBudgetRow {
   overageNote: string | null;
   setBy: string | null;
   updatedBy: string | null;
+  /** Lag 3b: kunden slår på automatisk pause når taket treffes. */
+  autoPauseOnCap: boolean;
 }
 
 export interface BudgetStatus {
@@ -181,7 +183,45 @@ function mapRow(row: Record<string, unknown>): AdsBudgetRow {
     overageNote: (row.overage_note as string | null) ?? null,
     setBy: (row.set_by as string | null) ?? null,
     updatedBy: (row.updated_by as string | null) ?? null,
+    autoPauseOnCap: Boolean(row.auto_pause_on_cap ?? false),
   };
+}
+
+/** Client toggles automatic pause when the period hits its cap (off by default). */
+export async function setAutoPauseOnCap(
+  pool: Pool,
+  projectId: string,
+  period: string,
+  enabled: boolean,
+  updatedBy: string,
+): Promise<AdsBudgetRow> {
+  // Upserter raden om den ikke finnes — så kunden kan slå på auto-pause før
+  // hun har satt et tak (vi tolererer det; auto-pause krever uansett at
+  // computeBudgetStatus.isOverBudget er sant, som ikke kan bli sant uten et tak).
+  const result = await pool.query(
+    `INSERT INTO role_room_ads_budgets (project_id, period, max_spend_nok, auto_pause_on_cap, set_by, updated_by, updated_at)
+     VALUES ($1, $2, 0, $3, $4, $4, now())
+     ON CONFLICT (project_id, period) DO UPDATE SET
+       auto_pause_on_cap = EXCLUDED.auto_pause_on_cap,
+       updated_by = EXCLUDED.updated_by,
+       updated_at = now()
+     RETURNING *`,
+    [projectId, period, enabled, updatedBy],
+  );
+  return mapRow(result.rows[0]);
+}
+
+/** List rows where the client has opted in to auto-pause for the period. */
+export async function listAutoPauseProjects(
+  pool: Pool,
+  period: string,
+): Promise<AdsBudgetRow[]> {
+  const result = await pool.query(
+    `SELECT * FROM role_room_ads_budgets
+      WHERE period = $1 AND auto_pause_on_cap = true`,
+    [period],
+  );
+  return result.rows.map(mapRow);
 }
 
 export async function getBudget(
