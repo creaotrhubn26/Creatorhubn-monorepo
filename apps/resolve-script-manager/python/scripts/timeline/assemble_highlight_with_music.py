@@ -495,10 +495,16 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     MAIN_IDX = 1
     CLIMAX_IDX = 2 if climax_path else None
 
-    # Main-song cursor (advances through picks of same song)
+    # Main-song cursor (advances through picks of same song).
+    # Tidligere bug: ordered[1] krasjet med IndexError hvis ordered har
+    # nøyaktig 1 element og det elementet ER climax. Fallback til climax-
+    # pick selv hvis det er eneste tilgjengelige.
     main_beats = main_info["beat_times"]
     main_interval = main_info["beat_interval"]
-    first_main_pick = ordered[0] if (climax_pick is None or ordered[0] != climax_pick) else ordered[1]
+    if climax_pick is not None and ordered[0] == climax_pick:
+        first_main_pick = ordered[1] if len(ordered) > 1 else climax_pick
+    else:
+        first_main_pick = ordered[0]
     main_yt_anchor = first_main_pick["startSec"] + main_sync["sync_offset"]
     main_cursor_idx = bisect.bisect_left(main_beats, main_yt_anchor)
 
@@ -537,10 +543,19 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         else:
             orig_dur = p["endSec"] - p["startSec"]
             n_beats = max(1, round(orig_dur / main_interval))
+            # Tidligere bug: når låten har færre beats igjen enn picks,
+            # kollapset alle resterende picks til 0-sek-trims → ffmpeg
+            # feilet. Beat-cursoren wrapper nå rundt + sikrer minimum
+            # varighet (én beat-interval) per pick.
+            if main_cursor_idx + n_beats >= len(main_beats):
+                # Wrap til starten av neste chorus (eller beat 0 hvis intet)
+                wrap_anchor = main_info.get("chorus_start") or 0.0
+                main_cursor_idx = bisect.bisect_left(main_beats, wrap_anchor)
+                main_cursor_idx = max(0, min(main_cursor_idx, len(main_beats) - n_beats - 1))
             new_idx = min(main_cursor_idx + n_beats, len(main_beats) - 1)
             yt_start = main_beats[main_cursor_idx]
             yt_end = main_beats[new_idx]
-            snapped = yt_end - yt_start
+            snapped = max(main_interval, yt_end - yt_start)  # garanter ≥1 beat
             main_cursor_idx = new_idx
             mid = (p["startSec"] + p["endSec"]) / 2
             specs.append({"pick": p, "is_climax": False,

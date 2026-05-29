@@ -112,6 +112,10 @@ def _build_edl(
 def run(params: dict[str, Any], dry_run: bool) -> None:
     cache_path = (params.get("cachePath") or CACHE_PATH).strip() or CACHE_PATH
     output_path = (params.get("outputPath") or "").strip()
+    # Frontend sender ofte "~/Desktop/foo.edl" — Python må expande tilde
+    # ellers lander filen i ./~/Desktop/ relativt til cwd.
+    if output_path:
+        output_path = os.path.expanduser(output_path)
     drop_frame = bool(params.get("dropFrame", False))
     title_override = (params.get("title") or "").strip()
 

@@ -144,17 +144,43 @@ def run():
     )
     text = "".join(b.text for b in msg.content if hasattr(b, "text")).strip()
 
-    # Strip evt. markdown-fence
-    if text.startswith("```"):
-        text = text.split("```", 2)[1] if "```" in text else text
-        if text.startswith("json"):
-            text = text[4:].lstrip()
-        text = text.rstrip("`").strip()
+    # Robust JSON-extract: håndter markdown-fence, prosa rundt JSON, og
+    # delvis fence (start-fence uten avsluttende). Vi prøver i synkende
+    # robusthet-orden:
+    #   1. Strip markdown fences hvis present
+    #   2. Finn første {…matchende klamme} i strengen
+    #   3. Returner error med rå respons hvis alt feiler
+    cleaned = text
+    if cleaned.startswith("```"):
+        # ```json\n{...}\n``` eller ```\n{...}\n```
+        parts = cleaned.split("```")
+        # parts[0]="" parts[1]="json\n{...}\n" parts[2]="" eller mer
+        if len(parts) >= 2:
+            inner = parts[1]
+            if inner.lstrip().startswith("json"):
+                inner = inner.lstrip()[4:]
+            cleaned = inner.strip()
 
+    parsed = None
     try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as e:
-        bridge.error(f"Kunne ikke parse Claude-respons som JSON: {e}\n\nRespons:\n{text[:500]}")
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Fallback: finn første { …matchende } } i strengen
+        start = cleaned.find("{")
+        if start >= 0:
+            depth = 0
+            for i in range(start, len(cleaned)):
+                if cleaned[i] == "{": depth += 1
+                elif cleaned[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            parsed = json.loads(cleaned[start:i+1])
+                        except json.JSONDecodeError:
+                            pass
+                        break
+    if parsed is None:
+        bridge.error(f"Kunne ikke parse Claude-respons som JSON.\n\nRespons:\n{text[:500]}")
         sys.exit(1)
 
     suggestions = parsed.get("suggestions", [])

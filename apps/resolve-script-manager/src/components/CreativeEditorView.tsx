@@ -1714,7 +1714,15 @@ Du MÅ kalle apply_couple_wishes-tool med:
       const flagged = (result?.value as any)?.flaggedClips ?? [];
       // Convert script-output to QualityFlag[] per pick
       const flags: QualityFlag[] = filteredPicks.map(p => {
-        const hit = flagged.find((f: any) => f.timeSec >= p.startSec && f.timeSec <= p.endSec);
+        // Tidligere bug: flag_underexposed_clips returnerer ikke timeSec
+        // per pick — den scoarer hele clip-fil. Sjekk flere mulige felt-
+        // navn (timeSec, frameSec, secondsIn) for kompatibilitet med
+        // ulike vision-script-outputs.
+        const hit = flagged.find((f: any) => {
+          const t = f.timeSec ?? f.frameSec ?? f.secondsIn;
+          if (typeof t !== "number") return false;
+          return t >= p.startSec && t <= p.endSec;
+        });
         if (hit) {
           return { pickIndex: p.index, severity: "warning", issues: [hit.reason || "Underexposed"] };
         }
@@ -1743,16 +1751,18 @@ Du MÅ kalle apply_couple_wishes-tool med:
     const newOverrides: typeof pickOverrides = { ...pickOverrides };
     let snappedCount = 0;
     for (const p of filteredPicks) {
+      // Tidligere bug: `original` ble lest men ikke brukt — gjenta-kjøring
+      // av snap drev varigheten lengre vekk fra original. Vi bruker nå
+      // original-pick som anker så snap er idempotent.
       const original = payload?.picks.find(x => x.index === p.index);
       if (!original) continue;
-      const currentDur = p.endSec - p.startSec;
-      const nBeats = Math.max(1, Math.round(currentDur / beatInterval));
+      const origDur = original.endSec - original.startSec;
+      const origMid = (original.startSec + original.endSec) / 2;
+      const nBeats = Math.max(1, Math.round(origDur / beatInterval));
       const newDur = nBeats * beatInterval;
-      // Center the new duration around the original midpoint
-      const mid = (p.startSec + p.endSec) / 2;
-      const newStart = mid - newDur / 2;
-      const newEnd = mid + newDur / 2;
-      if (Math.abs(newDur - currentDur) > 0.05) {
+      const newStart = origMid - newDur / 2;
+      const newEnd = origMid + newDur / 2;
+      if (Math.abs(newDur - (p.endSec - p.startSec)) > 0.05) {
         newOverrides[p.index] = { startSec: newStart, endSec: newEnd };
         snappedCount++;
       }
@@ -2379,13 +2389,27 @@ ${ctxLines.join("\n")}`;
                     if (idx >= 0) {
                       setHoveredPickIdx(idx);
                       hoverStartedPlaybackRef.current = !!videoRef.current?.paused;
-                      videoRef.current?.play().catch(() => {});
+                      // Hover-preview spilles alltid mutet — browser blokkerer
+                      // ofte autoplay med lyd uten user-gesture, og hover er
+                      // ikke ment som "hør lyden", bare "se klippet".
+                      const v = videoRef.current;
+                      if (v) {
+                        const prevMuted = v.muted;
+                        v.muted = true;
+                        v.play().catch(() => { v.muted = prevMuted; });
+                        // Behold hover-mute så lenge musa er over — restoring
+                        // skjer i onMouseLeave.
+                      }
                     }
                   }}
                   onMouseLeave={() => {
                     setHoveredPickIdx(null);
                     if (hoverStartedPlaybackRef.current && videoRef.current) {
                       videoRef.current.pause();
+                    }
+                    // Restorer user's mute-preferanse (hover satte mute=true)
+                    if (videoRef.current) {
+                      videoRef.current.muted = previewMuted;
                     }
                     hoverStartedPlaybackRef.current = false;
                   }}
@@ -3629,8 +3653,15 @@ ${ctxLines.join("\n")}`;
                             const info = r.value as any;
                             setLogGammaInfo(info);
                             // Auto-apply suggested LUT KUN hvis video er log
-                            if (info?.isLog && info?.suggestedLut && info.suggestedLut !== "none") {
-                              setLookPack(info.suggestedLut as LookPack);
+                            // og forslaget faktisk er et kjent LookPack-navn
+                            // (Python kan returnere "slog3" eller andre log-
+                            // varianter — vi mapper kun kjente til LookPack).
+                            if (info?.isLog && info?.suggestedLut) {
+                              const valid: LookPack[] = ["none", "norwedfilm", "warm", "cinematic", "documentary"];
+                              const suggested = String(info.suggestedLut);
+                              if ((valid as string[]).includes(suggested) && suggested !== "none") {
+                                setLookPack(suggested as LookPack);
+                              }
                             }
                           }
                         }).catch(() => {});
@@ -3653,7 +3684,15 @@ ${ctxLines.join("\n")}`;
                           if (result) {
                             const flagged = (result.value as any)?.flaggedClips ?? [];
                             const flags = filteredPicks.map(p => {
-                              const hit = flagged.find((f: any) => f.timeSec >= p.startSec && f.timeSec <= p.endSec);
+                              // Tidligere bug: flag_underexposed_clips returnerer ikke timeSec
+        // per pick — den scoarer hele clip-fil. Sjekk flere mulige felt-
+        // navn (timeSec, frameSec, secondsIn) for kompatibilitet med
+        // ulike vision-script-outputs.
+        const hit = flagged.find((f: any) => {
+          const t = f.timeSec ?? f.frameSec ?? f.secondsIn;
+          if (typeof t !== "number") return false;
+          return t >= p.startSec && t <= p.endSec;
+        });
                               return hit
                                 ? { pickIndex: p.index, severity: "warning" as const, issues: [hit.reason || "Underexposed"] }
                                 : { pickIndex: p.index, severity: "ok" as const, issues: [] };
@@ -4291,15 +4330,29 @@ function FakeWaveform({ bars, active }: { bars: number; active: boolean }) {
 /**
  * RealWaveform — loads the song WAV via fetch + WebAudio API, decodes it,
  * and reduces to N peak-amplitude bars. Phase 2: real waveform render.
+ *
+ * Cache: vi memoiserer dekodede peaks per (wavPath, bars). Forrige bug:
+ * hver gang man byttet sang dekoder vi 5MB WAV på main-thread → ~500ms
+ * jank. Cache gjør re-bytte til samme sang gratis.
  */
+const WAVEFORM_CACHE = new Map<string, number[]>();
+
 function RealWaveform({ wavPath, bars, active }: {
   wavPath?: string; bars: number; active: boolean;
 }) {
-  const [peaks, setPeaks] = useState<number[] | null>(null);
+  const cacheKey = wavPath ? `${wavPath}::${bars}` : null;
+  const [peaks, setPeaks] = useState<number[] | null>(
+    cacheKey ? (WAVEFORM_CACHE.get(cacheKey) ?? null) : null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!wavPath) return;
+    if (!wavPath || !cacheKey) return;
+    const cached = WAVEFORM_CACHE.get(cacheKey);
+    if (cached) {
+      setPeaks(cached);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -4323,8 +4376,8 @@ function RealWaveform({ wavPath, bars, active }: {
           arr.push(m);
           if (m > maxPeak) maxPeak = m;
         }
-        // Normalize to 0..1
         const normalized = maxPeak > 0 ? arr.map(v => v / maxPeak) : arr;
+        WAVEFORM_CACHE.set(cacheKey, normalized);
         if (!cancelled) setPeaks(normalized);
         try { ctx.close(); } catch { /* noop */ }
       } catch (e: any) {
@@ -4332,7 +4385,7 @@ function RealWaveform({ wavPath, bars, active }: {
       }
     })();
     return () => { cancelled = true; };
-  }, [wavPath, bars]);
+  }, [wavPath, bars, cacheKey]);
 
   if (error || !peaks) {
     return <FakeWaveform bars={bars} active={active} />;
