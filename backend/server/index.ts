@@ -18090,6 +18090,63 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
         };
         await compatStoreSet(`casting:project:${projectId}`, compatProject);
       }
+
+      // Mirror manuskripter + scener + shotLists + dialogue + acts til
+      // egne compat-store-prefiks slik at listManuscripts/listScenes
+      // m.fl. (som leser fra `casting:manuscript:` / `casting:scenes:` osv,
+      // ikke SQL-tabellene) faktisk finner dem. Uten dette returnerte
+      // /api/casting/manuscripts?projectId=<id> tom liste selv om DB-en
+      // hadde 1 manuskript + 10 scener seedet — så Story Writer / Story
+      // Logic / Scener / Role Room Studio viste ingen data.
+      const [manuscriptsRes, scenesRes, dialogueRes, actsRes] = await Promise.all([
+        pool.query("SELECT * FROM casting_manuscripts WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query("SELECT * FROM casting_scenes WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query("SELECT * FROM casting_dialogue WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query("SELECT * FROM casting_acts WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      // Mirror manuscripts. Hver manuscript får sin egen compat-store-key
+      // `casting:manuscript:<id>` siden listManuscripts() leser den prefix-en.
+      for (const m of manuscriptsRes.rows as any[]) {
+        const mid = typeof m?.id === "string" ? m.id : "";
+        if (!mid) continue;
+        await compatStoreSet(`casting:manuscript:${mid}`, {
+          ...m,
+          projectId: m.project_id ?? projectId,
+        });
+      }
+      // Scenes/dialogue/acts er keyet på MANUSCRIPT-id (ikke project), se
+      // dbLegacyScenesKey i casting-manuscripts-service. Grupper per
+      // manuscript_id og skriv én blob per manuscript.
+      const groupByManuscript = <T extends { manuscript_id?: string }>(rows: T[]) => {
+        const map = new Map<string, T[]>();
+        for (const row of rows) {
+          const mid = typeof row.manuscript_id === "string" ? row.manuscript_id : "";
+          if (!mid) continue;
+          const list = map.get(mid) ?? [];
+          list.push(row);
+          map.set(mid, list);
+        }
+        return map;
+      };
+      const scenesByManuscript = groupByManuscript(scenesRes.rows as any[]);
+      for (const [mid, rows] of scenesByManuscript) {
+        await compatStoreSet(`casting:scenes:${mid}`, rows.map((s: any) => ({
+          ...s,
+          projectId: s.project_id ?? projectId,
+        })));
+      }
+      const dialogueByManuscript = groupByManuscript(dialogueRes.rows as any[]);
+      for (const [mid, rows] of dialogueByManuscript) {
+        await compatStoreSet(`casting:dialogue:${mid}`, rows);
+      }
+      const actsByManuscript = groupByManuscript(actsRes.rows as any[]);
+      for (const [mid, rows] of actsByManuscript) {
+        await compatStoreSet(`casting:acts:${mid}`, rows);
+      }
+      // ShotLists er per project i compat-store-konvensjonen.
+      if (shotListsRes.rows.length > 0) {
+        await compatStoreSet(`casting:shot-lists:${projectId}`, shotListsRes.rows);
+      }
     } catch (mirrorErr) {
       console.warn("[troll-demo] compat-store-mirror failed (non-fatal)", mirrorErr);
     }
