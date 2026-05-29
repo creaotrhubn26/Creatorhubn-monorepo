@@ -68,6 +68,20 @@
       "requiresTimeline": false
     },
     {
+      "id": "poll_resolve_state",
+      "name": "Poll Resolve State",
+      "category": "project",
+      "scriptPath": "scripts/project/poll_resolve_state.py",
+      "description": "Lett-vekt status-snapshot av Resolve's aktive prosjekt + timeline + markers. Brukes av Creative Editor's bidireksjonelle sync-loop (kj\u00f8res hvert 5. sek). Returnerer alltid suksess med connected=false hvis Resolve ikke kj\u00f8rer.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": false,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "health_check",
       "name": "Run Health Check",
       "category": "project",

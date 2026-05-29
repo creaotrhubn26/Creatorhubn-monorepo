@@ -37,6 +37,7 @@ import { MusicSearchModal } from "./MusicSearchModal";
 import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
 import { AutoPilotPanel } from "./AutoPilotPanel";
 import { useContinuousPreview } from "../hooks/useContinuousPreview";
+import { useResolveSync } from "../hooks/useResolveSync";
 import {
   IconPlay,
   IconMusic,
@@ -992,6 +993,38 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     setTransitionMenuFor(null);
   }, []);
 
+  // ─── Sync nye markører fra Resolve inn i CE timeline ───
+  // Når Bjarne legger til en markør i Resolve via "M"-tasten, dukker den
+  // opp her som ekstra markør med "Resolve"-tag.
+  useEffect(() => {
+    if (resolveSync.newMarkers.length === 0) return;
+    setMarkers(prev => {
+      const existingFrames = new Set(
+        prev.filter(m => m.id.startsWith("rr-"))
+            .map(m => m.id.replace("rr-", "")),
+      );
+      const next = [...prev];
+      for (const rm of resolveSync.newMarkers) {
+        if (existingFrames.has(String(rm.frame))) continue;
+        // Resolve-color → CE-color mapping
+        const colorMap: Record<string, string> = {
+          Red: "#ef4f6f", Pink: "#ef4f6f", Green: "#4ad48a", Yellow: "#f0a500",
+          Blue: "#4a8de0", Cyan: "#4adde0", Purple: "#a030c0", Fuchsia: "#c850e0",
+          Rose: "#ef9fc0", Lavender: "#c5a3e0", Sky: "#7ec4ff", Mint: "#9fefb6",
+          Lemon: "#f0e500", Sand: "#d4a056", Cream: "#e8d4a0", Cocoa: "#8b5a3c",
+        };
+        next.push({
+          id: `rr-${rm.frame}`,
+          timeSec: rm.sec,
+          label: rm.name || `Resolve marker`,
+          color: colorMap[rm.color] ?? "#8674a8",
+          comment: rm.note ? `Fra Resolve: ${rm.note}` : "Fra Resolve",
+        });
+      }
+      return next;
+    });
+  }, [resolveSync.newMarkers]);
+
   // ─── Markers ───
   const addMarkerAtPlayhead = useCallback((label?: string) => {
     if (!focusedPick || !videoRef.current) return;
@@ -1061,6 +1094,10 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Live preview-toggle: når aktiv viser preview-vinduet ferdig output
   // istedet for source-video. Auto-renders ved hver endring (3.5s debounce).
   const [livePreviewMode, setLivePreviewMode] = useState(false);
+  // Resolve-sync: bidireksjonell sync med DaVinci Resolve. Når aktiv polles
+  // Resolve hvert 5. sek + nye markører fra timeline merges inn i CE.
+  const [resolveSyncEnabled, setResolveSyncEnabled] = useState(true);
+  const resolveSync = useResolveSync({ enabled: resolveSyncEnabled });
   const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
     const newAudio: CustomAudio = {
       id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -2391,6 +2428,45 @@ ${ctxLines.join("\n")}`;
           )}
         </div>
         <div className="ce-actions">
+          {/* Resolve sync-pill. Klikk toggler polling av/på. */}
+          {(() => {
+            const s = resolveSync.status;
+            const conn = resolveSync.resolveState?.connected;
+            const bg =
+              s === "in_sync" ? "rgba(74,212,138,0.12)" :
+              s === "polling" || s === "connecting" ? "rgba(160,48,192,0.12)" :
+              s === "disconnected" ? "rgba(240,165,0,0.10)" :
+              s === "error" ? "rgba(239,79,111,0.12)" : "rgba(255,255,255,0.04)";
+            const fg =
+              s === "in_sync" ? "#4ad48a" :
+              s === "polling" || s === "connecting" ? "#c850e0" :
+              s === "disconnected" ? "#f0a500" :
+              s === "error" ? "#ef4f6f" : "rgba(255,255,255,0.55)";
+            const border = fg + "55";
+            const label =
+              !resolveSyncEnabled ? "Sync av" :
+              s === "in_sync" && conn ? `✓ Resolve · ${resolveSync.staleSec}s` :
+              s === "polling" ? "⟳ Synker …" :
+              s === "connecting" ? "⟳ Kobler til …" :
+              s === "disconnected" ? "Resolve lukket" :
+              s === "error" ? "Sync feilet" : "Klar";
+            return (
+              <button
+                onClick={() => setResolveSyncEnabled(v => !v)}
+                title={resolveSyncEnabled
+                  ? `Live sync med ${resolveSync.resolveState?.projectName ?? "Resolve"} · markører oppdateres automatisk`
+                  : "Klikk for å aktivere live sync med Resolve"}
+                style={{
+                  background: bg, color: fg, border: `1px solid ${border}`,
+                  borderRadius: 999, padding: "4px 10px", fontSize: 10.5,
+                  fontWeight: 600, cursor: "pointer", marginRight: 8,
+                  display: "inline-flex", alignItems: "center", gap: 5,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })()}
           <button
             className="ce-icon-mini"
             onClick={undo}
