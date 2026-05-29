@@ -1524,7 +1524,7 @@ const StoryboardView: React.FC<{
     } finally {
       setAiGenerating(false);
     }
-  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, patchFrame, showSuccess, showError]);
+  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, stylePreset, patchFrame, showSuccess, showError]);
   const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
   const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
   const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;

@@ -164,8 +164,12 @@ export function createStoryboardRouter(
     };
 
     // Komponer en cinematic-storyboard-prompt fra scene-context + user-prompt.
-    // Tving frem skisse-stil (charcoal / pencil rough) så outputen funker som
-    // referanse-lag under tegnerens egne strøk.
+    // styleNote kommer fra valgt stil-preset i frontend (noir / watercolor /
+    // live action / anime / sci-fi). Når brukeren har valgt en eksplisitt
+    // stil skal DEN være siste-ords-instruks til DALL·E — ikke den default
+    // pencil/charcoal-fallbacken, som tidligere overstyrte Noir-prompten
+    // ("Sin City graphic novel") med motsigende "pencil sketch"-instruks.
+    const defaultStyleSuffix = 'Render as black-and-white pencil/charcoal storyboard sketch with loose strokes, clear silhouettes, no text, no captions, no logos, focus on composition and lighting.';
     const parts: string[] = [
       'Cinematic storyboard concept frame',
       sb.title ? `Shot: ${sb.title}` : null,
@@ -173,9 +177,10 @@ export function createStoryboardRouter(
       body.intExt && body.timeOfDay ? `${body.intExt}. ${body.timeOfDay}` : null,
       body.locationName ? `Location: ${body.locationName}` : null,
       body.sceneDescription ? `Scene action: ${body.sceneDescription}` : null,
-      body.styleNote ? `Style note: ${body.styleNote}` : null,
       body.prompt ? `Director note: ${body.prompt}` : null,
-      'Render as black-and-white pencil/charcoal storyboard sketch with loose strokes, clear silhouettes, no text, no captions, no logos, focus on composition and lighting.',
+      // Stil-instruks SIST så DALL·E gir den størst vekt. Bruker preset
+      // hvis satt, ellers default pencil/charcoal-fallback.
+      body.styleNote ? `Style: ${body.styleNote}. No text, no captions, no logos.` : defaultStyleSuffix,
     ];
     const composedPrompt = parts.filter(Boolean).join('. ');
 
