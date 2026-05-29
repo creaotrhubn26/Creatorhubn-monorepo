@@ -1,0 +1,514 @@
+/**
+ * MusicVideoEditorView — egen editor for Music Video Agent.
+ *
+ * Skiller seg fra CreativeEditorView ved at den er bygget rundt
+ * sang-strukturen (intro/verse/chorus/bridge/outro/drop), beat-grid,
+ * og genre-aware look-packs. Wedding-prompts er borte; Music Video
+ * Director-personaen er ansvarlig for forslag.
+ *
+ * V1-scope:
+ *   - Chapter-strip basert på sang-struktur fra MUSIC_VIDEO_CHAPTERS
+ *   - Look-pack-velger med genre-tags
+ *   - BPM-input (manuell V1, auto-detect senere)
+ *   - Claude-panel med Music Video Director-persona
+ *   - Sjef-/Bjarne-view delt: chapters venstre, preview senter,
+ *     director-panel høyre
+ *   - Thumbnail Creator + asset-bibliotek + upcoming jobs gjenbrukes
+ *
+ * Ikke i V1 (kommer senere):
+ *   - Automatisk beat-detection via librosa/aubio
+ *   - Lip-sync detection
+ *   - BPM-bevisst auto-pilot
+ *   - Genre-auto-detection
+ */
+
+import { useState } from "react";
+import { ThumbnailCreator } from "./ThumbnailCreator";
+import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
+import MUSIC_VIDEO_AGENT_CONFIG from "../agents/music_video";
+import type { ChapterDef, LookPackDef } from "../agents/types";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import GraphicEqIcon from "@mui/icons-material/GraphicEq";
+import BrushIcon from "@mui/icons-material/Brush";
+import CloseIcon from "@mui/icons-material/Close";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import ColorLensIcon from "@mui/icons-material/ColorLens";
+
+interface Props {
+  /** Sti til source-video (hovedlydspor + B-roll-mappe). */
+  sourcePath: string;
+  onClose: () => void;
+}
+
+const CFG = MUSIC_VIDEO_AGENT_CONFIG;
+
+export function MusicVideoEditorView({ sourcePath, onClose }: Props) {
+  const [selectedChapter, setSelectedChapter] = useState<string>(CFG.chapters[0].id);
+  const [bpm, setBpm] = useState<number>(120);
+  const [songLengthSec, setSongLengthSec] = useState<number>(CFG.defaultDurationSec);
+  const [selectedLook, setSelectedLook] = useState<string>(CFG.lookPacks[0].id);
+  const [genre, setGenre] = useState<string>("");
+  const [clientWishes, setClientWishes] = useState<string>("");
+  const [thumbnailOpen, setThumbnailOpen] = useState(false);
+
+  const chapter = CFG.chapters.find(c => c.id === selectedChapter) ?? CFG.chapters[0];
+  const look = CFG.lookPacks.find(l => l.id === selectedLook) ?? CFG.lookPacks[0];
+
+  // Beat-grid: bars × beats per bar (4/4 default). Vises som markører
+  // på chapter-strip-en så Bjarne ser hvor downbeats faller.
+  const beatsPerBar = 4;
+  const beatDurationSec = 60 / bpm;
+  const totalBeats = Math.floor(songLengthSec / beatDurationSec);
+  const totalBars = Math.floor(totalBeats / beatsPerBar);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 2000,
+      background: "linear-gradient(180deg, #0a0518 0%, #14081f 100%)",
+      color: "var(--text-1, #e8e0f0)",
+      display: "flex", flexDirection: "column",
+      fontFamily: "system-ui, -apple-system, sans-serif",
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: "10px 20px",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg, rgba(20,12,40,0.95), rgba(10,5,24,0.95))",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 12,
+      }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 6,
+            background: "linear-gradient(135deg, #6e3fc7, #a030c0)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            color: "#fff",
+          }}>
+            <MusicNoteIcon fontSize="small" />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>
+              {CFG.name}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>
+              {CFG.tagline}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => setThumbnailOpen(true)}
+                  style={{
+                    background: "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <BrushIcon sx={{ fontSize: 14 }} /> Thumbnails
+          </button>
+          <button onClick={onClose}
+                  title="Lukk"
+                  style={{
+                    background: "transparent", border: 0, color: "var(--text-2, #ccc)",
+                    cursor: "pointer", padding: 4,
+                    display: "inline-flex", alignItems: "center",
+                  }}>
+            <CloseIcon />
+          </button>
+        </div>
+      </div>
+
+      {/* Main area */}
+      <div style={{ flex: 1, display: "grid",
+                      gridTemplateColumns: "260px 1fr 320px",
+                      overflow: "hidden" }}>
+
+        {/* LEFT: chapters + BPM */}
+        <div style={{ background: "rgba(255,255,255,0.02)",
+                        borderRight: "1px solid rgba(255,255,255,0.06)",
+                        padding: 16, overflowY: "auto" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8,
+                          color: "var(--text-2, #c8bcd8)" }}>
+            SANG-STRUKTUR
+          </div>
+          {CFG.chapters.map(ch => (
+            <ChapterRow key={ch.id}
+                        chapter={ch}
+                        selected={ch.id === selectedChapter}
+                        onSelect={() => setSelectedChapter(ch.id)} />
+          ))}
+
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 8,
+                          color: "var(--text-2, #c8bcd8)" }}>
+            BEAT-GRID
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8,
+                          marginBottom: 6, fontSize: 11 }}>
+            <span style={{ minWidth: 36 }}>BPM</span>
+            <input type="number" min={60} max={220}
+                   value={bpm}
+                   onChange={e => setBpm(parseInt(e.target.value) || 120)}
+                   style={inputStyle} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8,
+                          marginBottom: 6, fontSize: 11 }}>
+            <span style={{ minWidth: 36 }}>Lengde</span>
+            <input type="number" min={30} max={600}
+                   value={songLengthSec}
+                   onChange={e => setSongLengthSec(parseInt(e.target.value) || 210)}
+                   style={inputStyle} />
+            <span style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>sek</span>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.4 }}>
+            {totalBars} bars · {totalBeats} beats · {beatDurationSec.toFixed(3)}s pr beat
+          </div>
+        </div>
+
+        {/* CENTER: preview + beat-strip */}
+        <div style={{ background: "rgba(0,0,0,0.4)", padding: 24,
+                        display: "flex", flexDirection: "column", gap: 16,
+                        overflow: "hidden" }}>
+          {/* Source-video info */}
+          <div style={{ fontSize: 11, color: "var(--text-3, #a89cb8)" }}>
+            Kilde: {sourcePath || "(ingen video valgt)"}
+          </div>
+
+          {/* Selected chapter info */}
+          <div style={{
+            background: "rgba(160,48,192,0.10)",
+            border: "1px solid rgba(160,48,192,0.30)",
+            borderRadius: 6, padding: 14,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8,
+                            marginBottom: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>{chapter.label}</span>
+              <span style={{ fontSize: 10,
+                              padding: "2px 8px", borderRadius: 999,
+                              background: priorityBg(chapter.priorityHint),
+                              color: "#fff", fontWeight: 600 }}>
+                {chapter.priorityHint}
+              </span>
+              <span style={{ fontSize: 10, color: "var(--text-3, #a89cb8)",
+                              marginLeft: "auto" }}>
+                ~{chapter.pacingPct}% av total
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-2, #c8bcd8)",
+                            lineHeight: 1.5 }}>
+              {chapter.description}
+            </div>
+          </div>
+
+          {/* Beat-grid visualization */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6,
+                            color: "var(--text-2, #c8bcd8)" }}>
+              BEAT-GRID FOR {chapter.label.toUpperCase()}
+            </div>
+            <BeatGridStrip bpm={bpm} chapter={chapter}
+                           songLengthSec={songLengthSec}
+                           beatsPerBar={beatsPerBar} />
+            <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)",
+                            marginTop: 6, lineHeight: 1.4 }}>
+              Lyse linjer = downbeats (bar-start). Snare-treff på beat 2 og 4.
+              {chapter.priorityHint === "high-energy"
+                && " Sikt på cut hver 2. beat eller raskere i chorus."}
+              {chapter.priorityHint === "atmospheric"
+                && " Behold cuts langsommere — hver 4. beat eller halv-bar."}
+            </div>
+          </div>
+
+          {/* Look-pack picker */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8,
+                            color: "var(--text-2, #c8bcd8)",
+                            display: "flex", alignItems: "center", gap: 6 }}>
+              <ColorLensIcon sx={{ fontSize: 13 }} />
+              GENRE / LOOK
+            </div>
+            <input value={genre}
+                   onChange={e => setGenre(e.target.value)}
+                   placeholder="Genre (f.eks. hip-hop, hyperpop, indie-rock …)"
+                   style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+            <div style={{ display: "grid",
+                            gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+                            gap: 6 }}>
+              {CFG.lookPacks.map(lp => (
+                <LookPackCard key={lp.id}
+                              pack={lp}
+                              selected={lp.id === selectedLook}
+                              onSelect={() => setSelectedLook(lp.id)} />
+              ))}
+            </div>
+          </div>
+
+          {/* Selected look details */}
+          <div style={{
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 6, padding: 10, fontSize: 11,
+            color: "var(--text-2, #c8bcd8)",
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              {look.label}
+            </div>
+            <div style={{ marginBottom: 4 }}>{look.description}</div>
+            <div style={{ display: "flex", gap: 12, color: "var(--text-3, #a89cb8)",
+                            fontSize: 10, flexWrap: "wrap" }}>
+              <span>Kontrast: {look.colorDirection.contrast}</span>
+              <span>Sat: {look.colorDirection.saturation}</span>
+              <span>Temp: {look.colorDirection.temperature}</span>
+              <span>Black: {look.colorDirection.blackPoint}</span>
+              <span>Grain: {look.colorDirection.grain}</span>
+              {look.colorDirection.specials && look.colorDirection.specials.map(s => (
+                <span key={s} style={{ background: "rgba(160,48,192,0.20)",
+                                         padding: "1px 6px", borderRadius: 3 }}>
+                  {s}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: Music Video Director panel */}
+        <div style={{ background: "rgba(255,255,255,0.02)",
+                        borderLeft: "1px solid rgba(255,255,255,0.06)",
+                        padding: 16, overflowY: "auto",
+                        display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 14,
+              background: "linear-gradient(135deg, #6e3fc7, #a030c0)",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <GraphicEqIcon sx={{ fontSize: 16, color: "#fff" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>
+                {CFG.primaryAgent.name}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>
+                {CFG.primaryAgent.tagline}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 11, fontWeight: 700,
+                          color: "var(--text-2, #c8bcd8)" }}>
+            ARTIST/LABEL WISHES
+          </div>
+          <textarea value={clientWishes}
+                    onChange={e => setClientWishes(e.target.value)}
+                    rows={3}
+                    placeholder={CFG.clientWishesExamples.join(" · ")}
+                    style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {CFG.clientWishesExamples.slice(0, 4).map(ex => (
+              <button key={ex}
+                      onClick={() => setClientWishes(prev =>
+                        prev ? `${prev}, ${ex}` : ex)}
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        color: "var(--text-2, #c8bcd8)",
+                        fontSize: 10, padding: "3px 8px",
+                        borderRadius: 999, cursor: "pointer",
+                      }}>
+                {ex}
+              </button>
+            ))}
+          </div>
+
+          {/* Signal-vekter (read-only innsikt) */}
+          <div style={{ fontSize: 11, fontWeight: 700,
+                          color: "var(--text-2, #c8bcd8)" }}>
+            SIGNAL-PRIORITERING
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.5 }}>
+            Music Video Agent prioriterer rhythm-sync (95%), performance-energy
+            (85%), lip-sync (80%), visual-atmosphere (70%). Wedding-signaler er
+            deaktivert.
+          </div>
+
+          <div style={{ marginTop: "auto",
+                          padding: 10, borderRadius: 6,
+                          background: "rgba(110,63,199,0.10)",
+                          border: "1px solid rgba(110,63,199,0.30)",
+                          fontSize: 10.5, color: "var(--text-2, #c8bcd8)",
+                          lineHeight: 1.5 }}>
+            <strong>V1-MVP-status:</strong> Agent-config + UI er ferdig.
+            Auto-pilot, claude-integrasjon, beat-detect, lip-sync og render
+            kobles på i V2.
+          </div>
+
+          <button onClick={() => alert("Auto-pilot for Music Video Agent kommer i V2 (krever beat-detect-backend)")}
+                  disabled
+                  style={{
+                    padding: "10px 12px",
+                    background: "rgba(110,63,199,0.20)",
+                    border: "1px solid rgba(110,63,199,0.40)",
+                    color: "#fff", borderRadius: 6,
+                    cursor: "not-allowed", fontSize: 12, fontWeight: 600,
+                    opacity: 0.7,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    gap: 6,
+                  }}>
+            <PlayArrowIcon sx={{ fontSize: 16 }} />
+            Start Auto-pilot (V2)
+          </button>
+        </div>
+      </div>
+
+      {/* Floating: upcoming jobs */}
+      <UpcomingJobsSidebar onJobSelected={() => {}} />
+
+      {/* Thumbnail Creator */}
+      <ThumbnailCreator
+        open={thumbnailOpen}
+        onClose={() => setThumbnailOpen(false)}
+        sourceVideoPath={sourcePath}
+      />
+    </div>
+  );
+}
+
+function ChapterRow({ chapter, selected, onSelect }: {
+  chapter: ChapterDef;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button onClick={onSelect}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "stretch",
+              width: "100%", textAlign: "left",
+              background: selected ? "rgba(160,48,192,0.18)"
+                                    : "rgba(255,255,255,0.04)",
+              border: selected ? "1px solid rgba(160,48,192,0.4)"
+                                : "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 4, padding: "6px 10px", marginBottom: 4,
+              cursor: "pointer", color: "inherit",
+            }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                      alignItems: "center" }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600 }}>
+          {chapter.label}
+        </span>
+        <span style={{ fontSize: 9, color: "var(--text-3, #a89cb8)" }}>
+          {chapter.pacingPct}%
+        </span>
+      </div>
+      <div style={{ fontSize: 9.5,
+                      color: priorityColor(chapter.priorityHint),
+                      marginTop: 2, fontWeight: 500 }}>
+        {chapter.priorityHint}
+      </div>
+    </button>
+  );
+}
+
+function LookPackCard({ pack, selected, onSelect }: {
+  pack: LookPackDef;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button onClick={onSelect}
+            title={pack.description}
+            style={{
+              background: selected ? "rgba(160,48,192,0.18)"
+                                    : "rgba(255,255,255,0.04)",
+              border: selected ? "1px solid rgba(160,48,192,0.5)"
+                                : "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 4, padding: "6px 8px",
+              cursor: "pointer", color: "inherit", textAlign: "left",
+              display: "flex", flexDirection: "column", gap: 3,
+            }}>
+      <span style={{ fontSize: 11, fontWeight: 600 }}>{pack.label}</span>
+      <span style={{ fontSize: 9, color: "var(--text-3, #a89cb8)",
+                       lineHeight: 1.3 }}>
+        {pack.tags.slice(0, 3).join(" · ")}
+      </span>
+    </button>
+  );
+}
+
+function BeatGridStrip({ bpm, chapter, songLengthSec, beatsPerBar }: {
+  bpm: number; chapter: ChapterDef;
+  songLengthSec: number; beatsPerBar: number;
+}) {
+  const beatDur = 60 / bpm;
+  const chapterDuration = (songLengthSec * (chapter.pacingPct ?? 10)) / 100;
+  const beats = Math.floor(chapterDuration / beatDur);
+  const bars = Math.max(1, Math.floor(beats / beatsPerBar));
+  const visBars = Math.min(bars, 32);
+
+  return (
+    <div style={{
+      display: "flex",
+      gap: 2,
+      background: "rgba(0,0,0,0.4)",
+      padding: 6, borderRadius: 4,
+      overflowX: "auto",
+    }}>
+      {Array.from({ length: visBars }).map((_, barIdx) => (
+        <div key={barIdx} style={{
+          display: "flex", gap: 1,
+          padding: "0 2px",
+          borderRight: barIdx < visBars - 1
+            ? "1px solid rgba(255,255,255,0.10)" : undefined,
+        }}>
+          {Array.from({ length: beatsPerBar }).map((__, beatIdx) => (
+            <div key={beatIdx} style={{
+              width: 12, height: 18,
+              background: beatIdx === 0
+                ? "rgba(160,48,192,0.6)"
+                : beatIdx === 2
+                  ? "rgba(110,63,199,0.4)"
+                  : "rgba(255,255,255,0.10)",
+              borderRadius: 1,
+            }} />
+          ))}
+        </div>
+      ))}
+      {bars > visBars && (
+        <span style={{ alignSelf: "center", marginLeft: 6,
+                         fontSize: 9, color: "var(--text-3, #a89cb8)" }}>
+          +{bars - visBars} bars …
+        </span>
+      )}
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 4, padding: "5px 8px",
+  color: "var(--text-1, #e8e0f0)", fontSize: 11,
+  flex: 1, minWidth: 0,
+};
+
+function priorityBg(p: ChapterDef["priorityHint"]): string {
+  switch (p) {
+    case "high-energy": return "#a030c0";
+    case "emotional-peak": return "#6e3fc7";
+    case "atmospheric": return "#4a8db8";
+    case "informational": return "#5c9d6e";
+    case "transitional": return "#a37a3a";
+  }
+}
+
+function priorityColor(p: ChapterDef["priorityHint"]): string {
+  switch (p) {
+    case "high-energy": return "#e88dc8";
+    case "emotional-peak": return "#a08dd8";
+    case "atmospheric": return "#8db8d8";
+    case "informational": return "#8dd8a0";
+    case "transitional": return "#d8b88d";
+  }
+}
+
+export default MusicVideoEditorView;

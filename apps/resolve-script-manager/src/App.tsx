@@ -37,6 +37,7 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
+import { MusicVideoEditorView } from "./components/MusicVideoEditorView";
 import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
 import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
@@ -74,6 +75,7 @@ export default function App() {
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
+  const [musicVideoEditorOpen, setMusicVideoEditorOpen] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showWeddingWizard, setShowWeddingWizard] = useState(false);
   const [showQcVideo, setShowQcVideo] = useState(false);
@@ -584,6 +586,7 @@ export default function App() {
           }}
           onNewProjectFromFile={() => setShowNewProject(true)}
           onOpenWeddingWizard={() => setShowWeddingWizard(true)}
+          onOpenMusicVideoAgent={() => setMusicVideoEditorOpen(true)}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={authStatus === "ok"}
@@ -825,6 +828,13 @@ export default function App() {
             setShowNewProject(false);
             setCreativeEditorPath(picksPath);
           }}
+        />
+      )}
+
+      {musicVideoEditorOpen && (
+        <MusicVideoEditorView
+          sourcePath={creativeEditorPath ?? ""}
+          onClose={() => setMusicVideoEditorOpen(false)}
         />
       )}
 

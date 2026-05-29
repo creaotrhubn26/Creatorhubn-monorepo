@@ -86,6 +86,7 @@ interface Props {
   onOpenAdvanced: () => void;
   onNewProjectFromFile: () => void;
   onOpenWeddingWizard: () => void;
+  onOpenMusicVideoAgent: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -159,6 +160,7 @@ export function HomeView({
   onOpenAdvanced,
   onNewProjectFromFile,
   onOpenWeddingWizard,
+  onOpenMusicVideoAgent,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -372,6 +374,26 @@ export function HomeView({
               Rask flyt: ferdig video → AI scanner picks → editor åpner
             </div>
             <div className="home-action-tag">~30 min</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenMusicVideoAgent}
+          disabled={!signedIn}
+          title={signedIn ? "Beat-synkronisert redigering med sang-struktur, genre-aware look-packs og Music Video Director-AI" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #a030c0, #6e3fc7)" }}>
+            <MusicNoteIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Music Video Agent</div>
+            <div className="home-action-desc">
+              Sang-struktur (intro/verse/chorus/bridge/outro), BPM-grid,
+              genre-look-packs
+            </div>
+            <div className="home-action-tag">Music Video Director</div>
           </div>
           <IconArrowRight />
         </button>
