@@ -1979,6 +1979,41 @@
       "requiresTimeline": false
     },
     {
+      "id": "sync_multicam_audio",
+      "name": "Sync Multicam Audio",
+      "category": "audio",
+      "scriptPath": "scripts/audio/sync_multicam_audio.py",
+      "description": "Audio-waveform cross-correlation for multi-camera sync. Tar 2+ video-paths, ekstraherer audio fra hver, kjører scipy/numpy.correlate for å finne tidsoffset per kamera relativ til referanse. Brukes av MulticamSyncStudio for å auto-syncronisere bryllup/event/podcast/dokumentar-opptak.",
+      "requiredInputs": [
+        { "key": "clipPaths", "label": "Array av klipp-stier (2+)", "type": "json", "required": true },
+        { "key": "referenceIndex", "label": "Indeks for referanse-klipp (default: lengste)", "type": "number", "required": false },
+        { "key": "analysisDurationSec", "label": "Sek å bruke til correlation (default 30)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_audio_waveform_data",
+      "name": "Extract Audio Waveform Data",
+      "category": "audio",
+      "scriptPath": "scripts/audio/extract_audio_waveform_data.py",
+      "description": "Returner peak-amplitude per bucket for waveform-visualisering i UI. Brukes av MulticamSyncStudio for interaktive timeline-strips.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "bucketCount", "label": "Antall buckets (default 200)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "transcribe_whisper",
       "name": "Transcribe Whisper",
       "category": "audio",

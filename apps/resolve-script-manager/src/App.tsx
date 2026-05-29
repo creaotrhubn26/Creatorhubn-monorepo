@@ -478,13 +478,16 @@ export default function App() {
         setAuthMemberProfile(null);
       }
     } catch {
-      setAuthStatus((prev) => prev === "ok" ? "ok" : "expired");
-      if (!authUserEmail) {
-        setAuthUserEmail(null);
-        setAuthMemberProfile(null);
-      }
+      // Nettverksfeil — IKKE downgrade auth-status. Vi vet ikke om
+      // tokenet er ugyldig eller om serveren bare er uoppnåelig.
+      // Tidligere satte vi her "expired", som forårsaket en bug der
+      // re-login fra dialogen ikke registrerte: nytt token ble lagret,
+      // silentAuthCheck kjørte, men hvis fetchen feilet (eller var
+      // litt sen), så ble status overskrevet til "expired" igjen.
+      // Beholde nåværende status er trygt — neste auto-check eller
+      // focus-trigger vil prøve igjen.
     }
-  }, [authUserEmail]);
+  }, []);
 
   // Auto-refresh health + auth: ved fokus + hvert 30. sekund + på auth-change-event
   useEffect(() => {
