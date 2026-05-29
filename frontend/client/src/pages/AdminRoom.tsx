@@ -86,6 +86,8 @@ import {
 } from '../services/adminRoomApi';
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
+import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
+import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
 import { ContentMarketingTab } from '../components/admin/content-marketing/ContentMarketingTab';
 import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
 import { OperatingSystemTab } from '../components/admin/content-marketing/OperatingSystemTab';
@@ -104,7 +106,7 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4356,6 +4358,8 @@ export default function AdminRoom() {
   else if (tab === 'role-room-economy') content = <RoleRoomEconomyTab />;
   else if (tab === 'newsletter-studio') content = <NewsletterStudioTab />;
   else if (tab === 'ai-citation') content = <AiCitationTab />;
+  else if (tab === 'whats-new') content = <WhatsNewTab />;
+  else if (tab === 'resend') content = <ResendStatusTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4405,6 +4409,8 @@ export default function AdminRoom() {
           <Tab value="role-room-economy" label="RR Økonomi" />
           <Tab value="newsletter-studio" label="Newsletter Studio" />
           <Tab value="ai-citation" label="🤖 GEO-effekt" />
+          <Tab value="whats-new" label="Hva er nytt" />
+          <Tab value="resend" label="E-post (Resend)" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>
