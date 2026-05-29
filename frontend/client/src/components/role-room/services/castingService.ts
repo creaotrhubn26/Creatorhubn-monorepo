@@ -1,8 +1,9 @@
 // @ts-nocheck
-import type { 
-  CastingProject, 
-  Role, 
-  Candidate, 
+import type {
+  CastingProject,
+  Role,
+  Candidate,
+  ContactInfo,
   Schedule,
   CrewMember,
   CrewAssignment,
@@ -1256,16 +1257,50 @@ function normalizeProject(project: CastingProject): { project: CastingProject; c
     changed = true;
   }
 
+  // Garanter at hver candidate har `contactInfo`. Backend serverer
+  // kandidater med flat `email`/`phone` (snake_case rader fra
+  // casting_candidates), men KanbanPanel + ConsentContractDialog + andre
+  // konsumenter forventer `candidate.contactInfo.email`. Mismatchen krasjet
+  // hele dashboardet med "Cannot read properties of undefined (reading
+  // 'email')" så snart TROLL-demo lastet med 8 kandidater.
+  const sourceCandidates = Array.isArray((project as Record<string, unknown>).candidates)
+    ? ((project as Record<string, unknown>).candidates as Candidate[])
+    : null;
+  const normalizedCandidates = sourceCandidates
+    ? sourceCandidates.map((candidate) => {
+        const flat = candidate as Record<string, unknown>;
+        const nestedInfo = (flat.contactInfo ?? flat.contact_info) as ContactInfo | undefined;
+        const email = nestedInfo?.email ?? (typeof flat.email === 'string' ? flat.email : undefined);
+        const phone = nestedInfo?.phone ?? (typeof flat.phone === 'string' ? flat.phone : undefined);
+        const next: Candidate = {
+          ...candidate,
+          contactInfo: { ...(nestedInfo ?? {}), email, phone },
+        };
+        if (
+          (candidate as Record<string, unknown>).contactInfo !== next.contactInfo
+          || (nestedInfo?.email ?? undefined) !== email
+          || (nestedInfo?.phone ?? undefined) !== phone
+        ) {
+          changed = true;
+        }
+        return next;
+      })
+    : null;
+
   if (!changed) {
     return { project, changed: false };
   }
 
+  const out: CastingProject = {
+    ...project,
+    crew: normalizedCrew,
+    userRoles: normalizedUserRoles,
+  };
+  if (normalizedCandidates !== null) {
+    out.candidates = normalizedCandidates;
+  }
   return {
-    project: {
-      ...project,
-      crew: normalizedCrew,
-      userRoles: normalizedUserRoles,
-    },
+    project: out,
     changed: true,
   };
 }
