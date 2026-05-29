@@ -25,6 +25,11 @@ import { PhoneMockup } from "./PhoneMockup";
 import { DEVICES, PLATFORMS, platformsForAspect } from "../lib/devicePresets";
 import type { DeviceId, PlatformId } from "../lib/devicePresets";
 import { BrandAssetLibrary } from "./BrandAssetLibrary";
+import { thumbnailTemplatesService } from "../services/thumbnailTemplatesService";
+import type { ThumbnailTemplate, ThumbnailDesign } from "../services/thumbnailTemplatesService";
+import SaveIcon from "@mui/icons-material/Save";
+import BookmarkIcon from "@mui/icons-material/Bookmark";
+import AppShortcutIcon from "@mui/icons-material/AppShortcut";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
@@ -260,6 +265,119 @@ export function ThumbnailCreator({
   const [uploading, setUploading] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  // Templates V2
+  const [templates, setTemplates] = useState<ThumbnailTemplate[]>([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [multiAspectBatching, setMultiAspectBatching] = useState(false);
+  const [multiAspectResults, setMultiAspectResults] = useState<Array<{
+    aspect: ThumbAspect; candidates: ThumbnailCandidate[];
+  }>>([]);
+
+  const buildDesignSnapshot = (): ThumbnailDesign => ({
+    layout, platform, device,
+    title, cta, companyName,
+    accentColor, backgroundColor, textColor,
+    logoUrl, logoPlacement, logoSizePct,
+    backgroundSource, backgroundImageUrl,
+    freeElements,
+  });
+
+  const applyDesign = (d: ThumbnailDesign) => {
+    setLayout(d.layout as LayoutTemplate);
+    if (d.platform) setPlatform(d.platform as PlatformId);
+    if (d.device) setDevice(d.device as DeviceId);
+    setTitle(d.title ?? "");
+    setCta(d.cta ?? "");
+    setCompanyName(d.companyName ?? "");
+    setAccentColor(d.accentColor ?? "#a030c0");
+    setBackgroundColor(d.backgroundColor ?? "#0a0518");
+    setTextColor(d.textColor ?? "#ffffff");
+    setLogoUrl(d.logoUrl ?? "");
+    setLogoPlacement((d.logoPlacement as LogoPlacement) ?? "top-right");
+    setLogoSizePct(d.logoSizePct ?? 0.12);
+    setBackgroundSource((d.backgroundSource as BackgroundSource) ?? "video-frame");
+    setBackgroundImageUrl(d.backgroundImageUrl ?? "");
+    setFreeElements((d.freeElements as FreeElement[]) ?? []);
+  };
+
+  const saveAsTemplate = async () => {
+    if (!feedPlanContext?.projectId) return;
+    const name = window.prompt(
+      "Lagre design som template — gi den et navn:",
+      title.slice(0, 40) || "Min template",
+    );
+    if (!name?.trim()) return;
+    setSavingTemplate(true);
+    try {
+      await thumbnailTemplatesService.save({
+        projectId: feedPlanContext.projectId,
+        name: name.trim(),
+        design: buildDesignSnapshot(),
+        tags: [layout, PLATFORMS[platform].id],
+      });
+      // Refresh listen
+      const list = await thumbnailTemplatesService.list(feedPlanContext.projectId);
+      setTemplates(list);
+    } catch (err) {
+      alert(`Kunne ikke lagre template: ${(err as Error).message}`);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const loadTemplate = async (tmpl: ThumbnailTemplate) => {
+    applyDesign(tmpl.design);
+    setTemplatesOpen(false);
+    void thumbnailTemplatesService.markUsed(tmpl.id);
+  };
+
+  // Generer for ALLE plattformer som passer denne aspect-en på én gang.
+  // Brukes når Bjarne vil ha et design eksportert til IG Feed + Reels +
+  // TikTok + Story uten å bytte plattform manuelt.
+  const generateMultiAspect = async () => {
+    if (!sourceVideoPath) return;
+    setMultiAspectBatching(true);
+    setError(null);
+    setMultiAspectResults([]);
+    const allAspects: ThumbAspect[] = ["1:1", "9:16", "4:5", "16:9"];
+    const results: Array<{ aspect: ThumbAspect; candidates: ThumbnailCandidate[] }> = [];
+    try {
+      for (const a of allAspects) {
+        const summary = await executeScript("generate_designed_thumbnails", {
+          videoPath: sourceVideoPath,
+          bestFrameSeconds: [frameSec, frameSec + 7, frameSec + 14, frameSec + 21],
+          postInfo: { title, caption: title, callToAction: cta },
+          brandSnapshot: {
+            companyName, accentColor, backgroundColor, textColor,
+            logoUrl: logoUrl || null,
+            logoPlacement: logoPlacement === "none" ? null : logoPlacement,
+            logoSizePct,
+          },
+          aspectRatio: a,
+          backgroundImageUrl: backgroundSource === "image" && backgroundImageUrl
+            ? backgroundImageUrl : null,
+          freeformElements: freeElements,
+        }, false);
+        const result = summary.events.find(e => e.type === "result");
+        const v = result?.value as { candidates?: ThumbnailCandidate[] } | undefined;
+        results.push({ aspect: a, candidates: v?.candidates ?? [] });
+        setMultiAspectResults([...results]);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setMultiAspectBatching(false);
+    }
+  };
+
+  // Last templates ved åpning
+  useEffect(() => {
+    if (!open || !feedPlanContext?.projectId) return;
+    void thumbnailTemplatesService.list(feedPlanContext.projectId)
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, [open, feedPlanContext?.projectId]);
 
   const pickCandidate = async (cand: ThumbnailCandidate) => {
     setUploadError(null);
@@ -320,13 +438,48 @@ export function ThumbnailCreator({
               : "Lag og rediger thumbnails for sosial feed"}
           </div>
         </div>
-        <button onClick={onClose}
-                style={{ background: "transparent", border: 0, color: "var(--text-2)",
-                          cursor: "pointer", padding: 4,
-                          display: "inline-flex", alignItems: "center",
-                          justifyContent: "center" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {feedPlanContext && (
+            <>
+              <button onClick={() => setTemplatesOpen(o => !o)}
+                      title={`${templates.length} lagrede templates`}
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        color: "var(--text-1)", borderRadius: 4,
+                        padding: "5px 10px", fontSize: 11, fontWeight: 600,
+                        cursor: "pointer",
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                      }}>
+                <BookmarkIcon sx={{ fontSize: 13 }} />
+                Templates ({templates.length})
+              </button>
+              <button onClick={() => void saveAsTemplate()}
+                      disabled={savingTemplate}
+                      title="Lagre nåværende design som gjenbrukbar template"
+                      style={{
+                        background: savingTemplate
+                          ? "rgba(110,63,199,0.20)"
+                          : "rgba(110,63,199,0.30)",
+                        border: "1px solid rgba(110,63,199,0.40)",
+                        color: "#fff", borderRadius: 4,
+                        padding: "5px 10px", fontSize: 11, fontWeight: 600,
+                        cursor: savingTemplate ? "wait" : "pointer",
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                      }}>
+                <SaveIcon sx={{ fontSize: 13 }} />
+                {savingTemplate ? "Lagrer…" : "Lagre design"}
+              </button>
+            </>
+          )}
+          <button onClick={onClose}
+                  style={{ background: "transparent", border: 0, color: "var(--text-2)",
+                            cursor: "pointer", padding: 4,
+                            display: "inline-flex", alignItems: "center",
+                            justifyContent: "center" }}>
             <CloseIcon fontSize="medium" />
           </button>
+        </div>
       </div>
 
       {/* Main area: 3 columns */}
@@ -877,6 +1030,38 @@ export function ThumbnailCreator({
                           textAlign: "center" }}>
             Lager design med alle 6 layout-templates + samplede frames
           </div>
+
+          {/* Multi-aspect batch — eksporter alle 4 aspects på én gang */}
+          <button onClick={() => void generateMultiAspect()}
+                  disabled={multiAspectBatching || !sourceVideoPath}
+                  title="Generer batch for alle 4 aspect-ratios (1:1, 9:16, 4:5, 16:9) — perfekt for cross-posting"
+                  style={{
+                    marginTop: 12, width: "100%",
+                    background: multiAspectBatching
+                      ? "rgba(110,63,199,0.20)"
+                      : "transparent",
+                    border: `1px solid ${accentColor}`,
+                    color: "#fff", borderRadius: 4,
+                    padding: "8px 12px", fontSize: 11, fontWeight: 600,
+                    cursor: multiAspectBatching ? "wait" : "pointer",
+                    display: "inline-flex", alignItems: "center",
+                    justifyContent: "center", gap: 6,
+                  }}>
+            <AppShortcutIcon sx={{ fontSize: 14 }} />
+            {multiAspectBatching ? "Batcher 4 aspects …" : "Eksporter alle 4 aspects"}
+          </button>
+          {multiAspectResults.length > 0 && (
+            <div style={{ marginTop: 8, padding: 8, borderRadius: 4,
+                            background: "rgba(160,48,192,0.08)",
+                            border: "1px solid rgba(160,48,192,0.20)",
+                            fontSize: 10, color: "var(--text-2)" }}>
+              {multiAspectResults.map(r => (
+                <div key={r.aspect}>
+                  {r.aspect}: {r.candidates.length} kandidater
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -891,6 +1076,103 @@ export function ThumbnailCreator({
           onPick={(asset) => setLogoUrl(asset.dataUrl)}
         />
       )}
+      {/* Templates-drawer — vises som side-panel når åpnet */}
+      {templatesOpen && feedPlanContext && (
+        <div onClick={() => setTemplatesOpen(false)}
+             style={{
+               position: "fixed", inset: 0, zIndex: 6000,
+               background: "rgba(8,4,20,0.65)", backdropFilter: "blur(6px)",
+             }}>
+          <div onClick={e => e.stopPropagation()}
+               style={{
+                 position: "fixed", right: 0, top: 0, bottom: 0,
+                 width: "min(420px, 90vw)",
+                 background: "linear-gradient(180deg, #1a0d45 0%, #0a0518 100%)",
+                 borderLeft: "1px solid var(--border)",
+                 display: "flex", flexDirection: "column",
+                 color: "var(--text-1)", padding: 16,
+               }}>
+            <div style={{ display: "flex", justifyContent: "space-between",
+                            alignItems: "center", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>Mine templates</div>
+                <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+                  {templates.length} lagrede design for dette prosjektet
+                </div>
+              </div>
+              <button onClick={() => setTemplatesOpen(false)}
+                      style={{ background: "transparent", border: 0,
+                                color: "var(--text-2)", cursor: "pointer", padding: 4 }}>
+                <CloseIcon fontSize="small" />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", display: "flex",
+                            flexDirection: "column", gap: 6 }}>
+              {templates.length === 0 && (
+                <div style={{ textAlign: "center", padding: 30, fontSize: 11.5,
+                                color: "var(--text-3)", lineHeight: 1.6 }}>
+                  Ingen lagrede templates enda. Lag et design, klikk
+                  "Lagre design" så vises det her.
+                </div>
+              )}
+              {templates.map(tmpl => (
+                <div key={tmpl.id}
+                     style={{
+                       padding: 10, borderRadius: 4,
+                       background: "rgba(255,255,255,0.04)",
+                       border: "1px solid rgba(255,255,255,0.08)",
+                       display: "flex", alignItems: "center", gap: 10,
+                     }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: 4,
+                    background: tmpl.previewDataUrl
+                      ? `url(${tmpl.previewDataUrl}) center/cover`
+                      : "rgba(160,48,192,0.20)",
+                    flex: "0 0 auto",
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600,
+                                    overflow: "hidden", textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap" }}>
+                      {tmpl.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-3)" }}>
+                      {tmpl.tags.slice(0, 3).join(" · ")} · brukt {tmpl.useCount}×
+                    </div>
+                  </div>
+                  <button onClick={() => void loadTemplate(tmpl)}
+                          style={{
+                            background: accentColor, color: "#fff",
+                            border: 0, borderRadius: 4,
+                            padding: "5px 10px", fontSize: 11, fontWeight: 600,
+                            cursor: "pointer",
+                          }}>
+                    Bruk
+                  </button>
+                  <button onClick={async () => {
+                            if (!confirm(`Slett "${tmpl.name}"?`)) return;
+                            try {
+                              await thumbnailTemplatesService.delete(tmpl.id);
+                              setTemplates(prev => prev.filter(t => t.id !== tmpl.id));
+                            } catch (e) {
+                              alert(`Feil: ${(e as Error).message}`);
+                            }
+                          }}
+                          title="Slett"
+                          style={{
+                            background: "transparent", border: 0,
+                            color: "var(--text-3)", cursor: "pointer", padding: 4,
+                            display: "inline-flex", alignItems: "center",
+                          }}>
+                    <CloseIcon sx={{ fontSize: 14 }} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Brand asset-bibliotek for bakgrunns-bilder (template-bg-kind) */}
       {feedPlanContext && (
         <BrandAssetLibrary
