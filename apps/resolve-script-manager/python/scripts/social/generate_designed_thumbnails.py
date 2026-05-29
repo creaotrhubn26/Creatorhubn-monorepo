@@ -1,8 +1,8 @@
-"""Generate Canva-Style Thumbnails — designede thumbnails for sosial feed.
+"""Generate Designed Thumbnails — branded thumbnails for sosial feed.
 
 I motsetning til "best face moment" (rå frame), genererer dette designede
 thumbnails som en post i en feed: branded med klient-farger, text-overlay
-med hook/CTA, logo i hjørnet — slik man ville designet i Canva.
+med hook/CTA, logo i hjørnet.
 
 6 layout-templates rotert per kall:
   1. Hero (stort bilde + caption-overlay bottom)

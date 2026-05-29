@@ -1,6 +1,5 @@
 /**
- * ThumbnailCreator — mini-Canva inni Creative Editor for å lage/edite
- * thumbnails til sosial feed.
+ * ThumbnailCreator — design + rediger thumbnails for sosial feed.
  *
  * Funksjoner:
  *   - Pick frame fra source-video som bakgrunn (timeline-scrubber)
@@ -9,9 +8,9 @@
  *   - Brand colors fra valgt jobb eller manuelt
  *   - Logo-plassering (top/bottom × left/right/center)
  *   - Aspect-ratio toggle (1:1 / 9:16 / 4:5)
- *   - Auto-generate via Python (claude-style designed batch)
- *   - Manual-edit via HTML/CSS-canvas
- *   - Export PNG via canvas.toDataURL → save lokalt + push til Role Room
+ *   - Auto-generate via Python-batch
+ *   - Manual-edit via HTML/CSS-overlay
+ *   - Export PNG → save lokalt + push til Role Room
  *
  * Auto-pilot bruker også samme Python-script under panseret slik at
  * thumbnails auto-genereres etter render. Bjarne kan deretter åpne dem
@@ -114,7 +113,7 @@ export function ThumbnailCreator({
     setGenerating(true);
     setError(null);
     try {
-      const summary = await executeScript("generate_canva_style_thumbnails", {
+      const summary = await executeScript("generate_designed_thumbnails", {
         videoPath: sourceVideoPath,
         bestFrameSeconds: [frameSec, frameSec + 7, frameSec + 14, frameSec + 21, frameSec + 28, frameSec + 35],
         postInfo: { title, caption: title, callToAction: cta },

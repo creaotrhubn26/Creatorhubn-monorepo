@@ -1903,10 +1903,10 @@
       "requiresTimeline": false
     },
     {
-      "id": "generate_canva_style_thumbnails",
-      "name": "Generate Canva-Style Thumbnails",
+      "id": "generate_designed_thumbnails",
+      "name": "Generate Designed Thumbnails",
       "category": "social",
-      "scriptPath": "scripts/social/generate_canva_style_thumbnails.py",
+      "scriptPath": "scripts/social/generate_designed_thumbnails.py",
       "description": "Lager 6 designede thumbnail-kandidater med brand-styling. 6 layout-templates (hero/quote/bold/split/frame/gradient), brand-color-applikasjon, logo-plassering, text-overlay med title + CTA. Output PNG til app_data_dir/thumbnails. Brukes både av auto-pilot og av ThumbnailCreator i CE.",
       "requiredInputs": [
         { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },

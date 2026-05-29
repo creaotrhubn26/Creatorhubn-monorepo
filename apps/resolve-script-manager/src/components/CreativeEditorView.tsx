@@ -1134,7 +1134,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     resolveSync.resolveState?.isStudio,
   );
   const [manualStudioDialogOpen, setManualStudioDialogOpen] = useState(false);
-  // Thumbnail Creator — mini-Canva for å lage/edite social-thumbnails
+  // Thumbnail Creator — designede social-thumbnails med brand-styling
   const [thumbnailCreatorOpen, setThumbnailCreatorOpen] = useState(false);
   const [thumbnailContext, setThumbnailContext] = useState<{
     title: string; cta: string;
@@ -2687,7 +2687,7 @@ ${ctxLines.join("\n")}`;
               void navigator.clipboard.writeText(info).catch(() => { /* noop */ });
             }}
           >↗ Del</button>
-          {/* 🎨 Thumbnail Creator — design social-thumbnails (Canva-stil) */}
+          {/* 🎨 Thumbnail Creator — design branded social-thumbnails */}
           <button
             onClick={() => {
               setThumbnailContext({
@@ -4473,7 +4473,7 @@ ${ctxLines.join("\n")}`;
         }}
       />
 
-      {/* 🎨 Thumbnail Creator — mini-Canva for sosial-feed-thumbnails */}
+      {/* 🎨 Thumbnail Creator — designede sosial-feed-thumbnails */}
       {thumbnailCreatorOpen && payload && (
         <ThumbnailCreator
           open={thumbnailCreatorOpen}
