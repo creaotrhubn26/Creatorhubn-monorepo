@@ -3958,6 +3958,19 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         : 264;
   const initialToolsPanelCollapsed = isThumbnailWorkflow ? true : isDesktopCanvasPriority;
   const currentBrushPack = STUDIO_BRUSH_PACKS.find((pack) => pack.id === selectedBrushPackId) || STUDIO_BRUSH_PACKS[0];
+  // Derivert RGB for key light basert på fargetemperatur — varm orange ved
+  // 0 % (2000 K), kjølig blå-hvit ved 100 % (6500 K). Brukes til å tinte
+  // lighting-overlay over canvas.
+  const keyLightColor = useMemo(() => {
+    const t = Math.max(0, Math.min(1, keyLightTempPct / 100));
+    const warm = { r: 255, g: 179, b: 102 };
+    const cool = { r: 204, g: 228, b: 255 };
+    const r = Math.round(warm.r + (cool.r - warm.r) * t);
+    const g = Math.round(warm.g + (cool.g - warm.g) * t);
+    const b = Math.round(warm.b + (cool.b - warm.b) * t);
+    return `rgb(${r}, ${g}, ${b})`;
+  }, [keyLightTempPct]);
+  const keyLightKelvin = Math.round(2000 + (6500 - 2000) * keyLightTempPct / 100);
   // Synk brush color til pakkens mørkeste swatch (siste i arrayet — typisk
   // pakkens "main ink"-tone). Slik blir Noir Lighting Pack default til kull-
   // grått, Commercial High-Key til varm rosa-ink, Action Crosshatch til
@@ -11013,6 +11026,121 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                             opacity: 0.38,
                           }}
                         />
+                        {/* Lighting + camera-overlay — Inspector-sliders blir
+                            faktisk visuell tilstand på workspace-en. */}
+                        <Box
+                          data-testid="frame-editor-lighting-overlay"
+                          sx={{
+                            position: 'absolute',
+                            inset: 18,
+                            pointerEvents: 'none',
+                            overflow: 'hidden',
+                            borderRadius: 1,
+                          }}
+                        >
+                          {/* Key light radial fra øvre-venstre — temp tinter
+                              fargen, intensity styrer opacity, softness styrer
+                              blur-radius. */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              inset: 0,
+                              background: `radial-gradient(ellipse 70% 60% at 18% 26%, ${keyLightColor} 0%, transparent 62%)`,
+                              opacity: keyLightIntensity / 220,
+                              filter: keyLightSoftness === 'soft' ? 'blur(32px)' : 'blur(2px)',
+                              mixBlendMode: 'screen',
+                            }}
+                          />
+                          {/* Casts-shadows: motsvarende skygge fra høyre. */}
+                          {castsShadows && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                inset: 0,
+                                background:
+                                  'radial-gradient(ellipse 60% 70% at 82% 68%, rgba(0,0,0,0.55) 0%, transparent 55%)',
+                                opacity: keyLightIntensity / 260,
+                                filter: keyLightSoftness === 'soft' ? 'blur(24px)' : 'blur(2px)',
+                                mixBlendMode: 'multiply',
+                              }}
+                            />
+                          )}
+                          {/* Ambient occlusion: vignett inn fra hjørnene. */}
+                          {ambientOcclusion && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                inset: 0,
+                                background:
+                                  'radial-gradient(circle at center, transparent 52%, rgba(0,0,0,0.42) 100%)',
+                                mixBlendMode: 'multiply',
+                                opacity: 0.6,
+                              }}
+                            />
+                          )}
+                          {/* Camera-height-horisontlinje — 0 = bakkenivå
+                              (linje nede), 100 = fugleperspektiv (linje øverst).
+                              Invertert mapping så slideren beveger seg som
+                              kameraet stiger. */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: 4,
+                              right: 4,
+                              top: `${100 - cameraHeight}%`,
+                              borderTop: '1px dashed rgba(246,178,77,0.5)',
+                              transform: 'translateY(-0.5px)',
+                              transition: 'top 180ms ease',
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                position: 'absolute',
+                                right: 2,
+                                top: -14,
+                                fontSize: 9,
+                                letterSpacing: 1.6,
+                                fontWeight: 700,
+                                color: 'rgba(246,178,77,0.78)',
+                                bgcolor: 'rgba(8,12,22,0.62)',
+                                px: 0.6,
+                                borderRadius: 0.5,
+                              }}
+                            >
+                              CAM {cameraHeight}
+                            </Typography>
+                          </Box>
+                          {/* Lighting-state-badge nederst-høyre. */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              bottom: 4,
+                              right: 4,
+                              px: 0.9,
+                              py: 0.4,
+                              borderRadius: 0.6,
+                              background: 'rgba(8,12,22,0.82)',
+                              border: '1px solid rgba(246,178,77,0.34)',
+                              fontSize: 9,
+                              letterSpacing: 1.4,
+                              fontWeight: 700,
+                              color: 'rgba(248,250,252,0.88)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.6,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            <span>KEY {keyLightIntensity}%</span>
+                            <span style={{ opacity: 0.4 }}>·</span>
+                            <span>{keyLightKelvin}K</span>
+                            <span style={{ opacity: 0.4 }}>·</span>
+                            <span>{keyLightSoftness}</span>
+                            {castsShadows && (<><span style={{ opacity: 0.4 }}>·</span><span>SH</span></>)}
+                            {ambientOcclusion && (<><span style={{ opacity: 0.4 }}>·</span><span>AO</span></>)}
+                          </Box>
+                        </Box>
                       </Box>
                     )}
                     {boardPolishPresentationActive && (
