@@ -308,9 +308,9 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [lookMenuOpen, setLookMenuOpen] = useState(false);
 
   // Brightness / exposure adjustment (uavhengig av LUT)
-  const [brightnessAdjust, _setBrightnessAdjust] = useState<number>(0);  // -50 til +50
-  // setBrightnessAdjust er reservert for UI-slider som kommer i neste iterasjon
-  void _setBrightnessAdjust;
+  const [brightnessAdjust, setBrightnessAdjust] = useState<number>(0);  // -50 til +50
+  const [adjustPanelOpen, setAdjustPanelOpen] = useState(false);
+  const [stabilizingPick, setStabilizingPick] = useState(false);
 
   // Audio Agent smart-actions — wire eksisterende audio-scripts
   type AudioAction = "isolate_vocals" | "duck_music" | "transcribe" | "normalize_loudness";
@@ -357,6 +357,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [previewMuted, setPreviewMuted] = useState(false);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const [playRate, setPlayRate] = useState(1);
   // Loop within focused pick (default) vs play full source continuously
   const [loopMode, setLoopMode] = useState<"pick" | "full">("pick");
@@ -752,7 +754,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     if (!videoRef.current || !focusedPick) return;
     const v = videoRef.current;
     const onTime = () => {
-      setCurrentTime(v.currentTime - focusedPick.startSec);
+      // I pick-mode måles tid relativt til pick-start. I full-mode kan
+      // playhead være BAK fokusert pick (negativ tid forvirret tidligere)
+      // — clamp til 0 i full-mode så scrubber-display alltid er ikke-negativt.
+      const rel = v.currentTime - focusedPick.startSec;
+      setCurrentTime(loopMode === "full" ? Math.max(0, rel) : rel);
       // Bare loop hvis vi er i pick-mode
       if (loopMode === "pick" && v.currentTime >= focusedPick.endSec) {
         v.currentTime = focusedPick.startSec;
@@ -2276,7 +2282,18 @@ ${ctxLines.join("\n")}`;
             title="Hurtigtaster (?)"
             style={{ fontWeight: 700, fontSize: 13 }}
           >?</button>
-          <button>↗ Del</button>
+          <button
+            title="Kopier prosjekt-info til utklippstavle"
+            onClick={() => {
+              const info = [
+                `Post Agent — ${projectTitle || "Highlight"}`,
+                `Picks: ${filteredPicks.length}`,
+                payload?.sourceVideo ? `Source: ${payload.sourceVideo}` : null,
+                activeSong ? `Musikk: ${activeSong.title} — ${activeSong.artist}` : null,
+              ].filter(Boolean).join("\n");
+              void navigator.clipboard.writeText(info).catch(() => { /* noop */ });
+            }}
+          >↗ Del</button>
           <div className="ce-export-wrap">
             <button
               className="primary"
@@ -2429,6 +2446,7 @@ ${ctxLines.join("\n")}`;
           {/* Live preview — height styres av brukerens drag-handle nedenfor.
               For 9:16/1:1: lock aspect for å unngå ekstreme portrait/square. */}
           <div
+            ref={previewContainerRef}
             className="ce-preview-wrap"
             style={{
               height: aspectRatio === "16:9" ? previewHeight : undefined,
@@ -2455,7 +2473,7 @@ ${ctxLines.join("\n")}`;
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               playsInline
-              muted={false}
+              muted={previewMuted}
             />
             <div className="ce-preview-overlay">
               <div className="ce-preview-tag">
@@ -2474,7 +2492,28 @@ ${ctxLines.join("\n")}`;
               {mood.label}
             </div>
             <div className="ce-preview-controls">
-              <div className="ce-preview-scrubber" />
+              {/* Interaktiv scrubber: viser playhead-progress innen fokusert
+                  pick + lar bruker klikke for å seek. Tidligere kun en CSS-
+                  gradient. */}
+              <div
+                className="ce-preview-scrubber"
+                style={{ cursor: focusedPick ? "pointer" : "default" }}
+                onClick={(e) => {
+                  if (!focusedPick || !videoRef.current) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  videoRef.current.currentTime = focusedPick.startSec + ratio * focusedPick.durationSec;
+                }}
+              >
+                <div
+                  className="ce-preview-scrubber-fill"
+                  style={{
+                    width: focusedPick && focusedPick.durationSec > 0
+                      ? `${Math.max(0, Math.min(100, (currentTime / focusedPick.durationSec) * 100))}%`
+                      : "0%",
+                  }}
+                />
+              </div>
               <div className="ce-preview-row">
                 <button className="ce-icon-btn" onClick={togglePlay}>
                   {isPlaying ? "⏸" : <IconPlay size={16} />}
@@ -2485,7 +2524,11 @@ ${ctxLines.join("\n")}`;
                 <button className="ce-icon-btn" onClick={() => focusedPickIdx < filteredPicks.length - 1 && setFocusedPickIdx(focusedPickIdx + 1)}>
                   ▷
                 </button>
-                <button className="ce-icon-btn">🔊</button>
+                <button className="ce-icon-btn"
+                        onClick={() => setPreviewMuted(m => !m)}
+                        title={previewMuted ? "Slå på lyd" : "Demp lyd"}>
+                  {previewMuted ? "🔇" : "🔊"}
+                </button>
                 <div className="ce-preview-time">
                   {formatTime(currentTime)} / {focusedPick ? formatTime(focusedPick.durationSec) : "00:00"}
                 </div>
@@ -2506,7 +2549,18 @@ ${ctxLines.join("\n")}`;
                   {loopMode === "pick" ? "🔁 Loop" : "▶ Hele"}
                 </button>
                 <button className="ce-icon-btn" onClick={cyclePlayRate}>{playRate}x</button>
-                <button className="ce-icon-btn">⛶</button>
+                <button className="ce-icon-btn"
+                        onClick={() => {
+                          // Toggle fullscreen på preview-containeren
+                          const el = previewContainerRef.current;
+                          if (!el) return;
+                          if (document.fullscreenElement) {
+                            void document.exitFullscreen();
+                          } else {
+                            void el.requestFullscreen().catch(() => {/* noop */});
+                          }
+                        }}
+                        title="Fullskjerm">⛶</button>
               </div>
             </div>
           </div>
@@ -2833,8 +2887,11 @@ ${ctxLines.join("\n")}`;
                 );
               })}
             </div>
-            <div className="ce-timeline-strip">
-              {filteredPicks.slice(0, 12).map((p, i) => {
+            <div className="ce-timeline-strip" style={{ overflowX: "auto", overflowY: "hidden" }}>
+              {/* Tidligere bug: slice(0, 12) skjulte picks 13+ og brøt reorder
+                  for de — overflow-x="auto" lar nå hele timelinen scrolles
+                  horisontalt og alle picks blir interagerbare. */}
+              {filteredPicks.map((p, i) => {
                 const segIdx = segments.findIndex(s => s.picks.some(x => x.index === p.index));
                 const flowEval = flowEvals.find(f => f.pickIndex === p.index);
                 const transKey = i > 0 ? `${i-1}-${i}` : null;
@@ -3016,12 +3073,55 @@ ${ctxLines.join("\n")}`;
           {/* Toolbar */}
           <div className="ce-toolbar">
             <ToolButton icon="✂" label="Trim" active={trimMode} onClick={() => setTrimMode(v => !v)} />
-            <ToolButton icon="⚙" label="Juster" />
-            <ToolButton icon="◇" label="Overganger" />
-            <ToolButton icon="🎨" label="Farge" />
-            <ToolButton icon="📐" label="Stabilisering" />
-            <ToolButton icon="…" label="Mer" />
+            <ToolButton icon="⚙" label="Juster" active={adjustPanelOpen}
+                        onClick={() => setAdjustPanelOpen(v => !v)} />
+            <ToolButton icon="◇" label="Overganger"
+                        onClick={() => {
+                          // Toggle transition-menu for nåværende boundary
+                          if (focusedPickIdx <= 0) return;
+                          const key = `${focusedPickIdx - 1}-${focusedPickIdx}`;
+                          setTransitionMenuFor(transitionMenuFor === key ? null : key);
+                        }} />
+            <ToolButton icon="🎨" label="Farge" active={lookMenuOpen}
+                        onClick={() => setLookMenuOpen(v => !v)} />
+            <ToolButton icon="📐" label="Stabilisering"
+                        onClick={async () => {
+                          if (!focusedPick || stabilizingPick) return;
+                          setStabilizingPick(true);
+                          try {
+                            await executeScript("stabilize_clip", {
+                              videoPath: payload?.sourceVideo,
+                              startSec: focusedPick.startSec,
+                              endSec: focusedPick.endSec,
+                            }, false);
+                          } catch (e) {
+                            console.warn("Stabilization failed:", e);
+                          } finally {
+                            setStabilizingPick(false);
+                          }
+                        }} active={stabilizingPick} />
+            <ToolButton icon="…" label="Mer" onClick={() => setShortcutsOpen(true)} />
           </div>
+
+          {/* Juster-panel: brightness + saturation per pick */}
+          {adjustPanelOpen && (
+            <div className="ce-trim-panel">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 12 }}>Lysstyrke</strong>
+                <input type="range" min={-50} max={50} step={1}
+                       value={brightnessAdjust}
+                       onChange={(e) => setBrightnessAdjust(parseInt(e.target.value, 10))}
+                       style={{ flex: 1, minWidth: 200 }} />
+                <span style={{ fontSize: 11, minWidth: 30, textAlign: "right" }}>
+                  {brightnessAdjust > 0 ? "+" : ""}{brightnessAdjust}
+                </span>
+                <button onClick={() => setBrightnessAdjust(0)}
+                        style={{ fontSize: 11, padding: "4px 8px" }}>
+                  Tilbakestill
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Trim panel — appears below toolbar when Trim is active */}
           {trimMode && focusedPick && (

@@ -10,7 +10,7 @@
  * via onSelect-callback.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { executeScript } from "../api";
 import { MusicProvidersSettings } from "./MusicProvidersSettings";
 import { loadSettings } from "./SettingsModal";
@@ -50,6 +50,36 @@ interface Props {
 
 export function MusicSearchModal({ sourceVideo, onClose, onSelect, initialQuery, initialProvider }: Props) {
   const [query, setQuery] = useState(initialQuery ?? "");
+  // Én delt audio-instans: klikk på ▶ på en annen track stopper den
+  // forrige. Cleanup på unmount slik at modal-lukk ikke etterlater
+  // background-audio.
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
+  useEffect(() => () => {
+    const a = previewAudioRef.current;
+    if (a) {
+      a.pause();
+      a.src = "";
+      previewAudioRef.current = null;
+    }
+  }, []);
+  const togglePreview = (url: string) => {
+    const existing = previewAudioRef.current;
+    if (existing && previewingUrl === url) {
+      existing.pause();
+      setPreviewingUrl(null);
+      return;
+    }
+    if (existing) {
+      existing.pause();
+      existing.src = "";
+    }
+    const a = new Audio(url);
+    a.addEventListener("ended", () => setPreviewingUrl(null));
+    a.play().catch(() => { setPreviewingUrl(null); });
+    previewAudioRef.current = a;
+    setPreviewingUrl(url);
+  };
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string>("");
   const [results, setResults] = useState<TrackResult[]>([]);
@@ -302,12 +332,10 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect, initialQuery,
                   </div>
                 </div>
                 {r.previewUrl && (
-                  <button title="Forhåndslytte"
-                          onClick={() => {
-                    const a = new Audio(r.previewUrl!);
-                    a.play().catch(() => { /* noop */ });
-                  }} style={{ fontSize: 11, padding: "4px 8px" }}>
-                    ▶
+                  <button title={previewingUrl === r.previewUrl ? "Stopp" : "Forhåndslytte"}
+                          onClick={() => togglePreview(r.previewUrl!)}
+                          style={{ fontSize: 11, padding: "4px 8px" }}>
+                    {previewingUrl === r.previewUrl ? "■" : "▶"}
                   </button>
                 )}
                 {r.licenseUrl && r.provider === "artlist" && (

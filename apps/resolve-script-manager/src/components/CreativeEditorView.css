@@ -680,13 +680,16 @@
   cursor: pointer;
   position: relative;
 }
-.ce-preview-scrubber::after {
-  content: "";
+/* Tidligere ::after med hardkodet 35% — bytt til child-div bundet til
+   currentTime/durationSec så scrubberen faktisk reflekterer avspilling. */
+.ce-preview-scrubber-fill {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 35%;
+  width: 0%;
   background: linear-gradient(to right, #a030c0, #c850e0);
   border-radius: 2px;
+  transition: width 0.05s linear;
+  pointer-events: none;
 }
 .ce-preview-row {
   display: flex;
