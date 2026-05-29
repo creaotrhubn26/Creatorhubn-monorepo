@@ -22,10 +22,23 @@ import {
   type AutoPilotStepStatus,
 } from "../hooks/useAutoPilot";
 
+interface ProposedLookPackSpec {
+  name: string;
+  culturalTag: string;
+  warmth: number;
+  saturation: number;
+  contrast: number;
+  skinToneProtection: "soft" | "medium" | "strong";
+  description: string;
+}
+
 interface Props {
   open: boolean;
   inputs: AutoPilotInputs | null;
   onClose: () => void;
+  /** Kalt når Claude har foreslått en ny look-pack — UI kan spørre bruker
+   *  om å lagre den i creator-profile. */
+  onProposedLookPack?: (spec: ProposedLookPackSpec) => Promise<void> | void;
 }
 
 const STATUS_COLOR: Record<AutoPilotStepStatus, string> = {
@@ -59,7 +72,7 @@ function formatHms(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function AutoPilotPanel({ open, inputs, onClose }: Props) {
+export function AutoPilotPanel({ open, inputs, onClose, onProposedLookPack }: Props) {
   const { state, start, pause, resume, cancel, resolveDecision } = useAutoPilot();
   const logRef = useRef<HTMLDivElement | null>(null);
 
@@ -80,6 +93,16 @@ export function AutoPilotPanel({ open, inputs, onClose }: Props) {
     hasStartedRef.current = true;
     void start(inputs);
   }, [open, inputs, state.status, start]);
+
+  // Trigger callback ved completion hvis Claude foreslo ny look-pack
+  const proposedHandledRef = useRef(false);
+  useEffect(() => {
+    if (state.status !== "completed") { proposedHandledRef.current = false; return; }
+    if (proposedHandledRef.current) return;
+    if (!state.proposedLookPack || !onProposedLookPack) return;
+    proposedHandledRef.current = true;
+    void onProposedLookPack(state.proposedLookPack);
+  }, [state.status, state.proposedLookPack, onProposedLookPack]);
 
   if (!open) return null;
 

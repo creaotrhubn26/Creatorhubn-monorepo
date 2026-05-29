@@ -101,6 +101,16 @@ export interface AutoPilotDecision {
   autoAcceptAfterSec?: number;
 }
 
+export interface ProposedLookPackSpec {
+  name: string;
+  culturalTag: string;
+  warmth: number;
+  saturation: number;
+  contrast: number;
+  skinToneProtection: "soft" | "medium" | "strong";
+  description: string;
+}
+
 export interface AutoPilotState {
   status: "idle" | "running" | "paused" | "completed" | "cancelled" | "error";
   currentStepIdx: number;
@@ -112,6 +122,8 @@ export interface AutoPilotState {
   /** Estimert gjenstående sekunder basert på AUTO_PILOT_STEPS. */
   remainingSec: number;
   errorMessage: string | null;
+  /** Hvis Claude foreslo en ny cultural look-pack under color_direction-steget. */
+  proposedLookPack: ProposedLookPackSpec | null;
 }
 
 export interface AutoPilotInputs {
@@ -177,6 +189,7 @@ export function useAutoPilot(): UseAutoPilotResult {
     elapsedSec: 0,
     remainingSec: AUTO_PILOT_STEPS.reduce((s, x) => s + x.estSec, 0),
     errorMessage: null,
+    proposedLookPack: null,
   });
 
   // Decision-resolver ref slik at orchestrator kan await-e bruker-input
@@ -265,6 +278,7 @@ export function useAutoPilot(): UseAutoPilotResult {
         elapsedSec: 0,
         remainingSec: AUTO_PILOT_STEPS.reduce((s, x) => s + x.estSec, 0),
         errorMessage: null,
+        proposedLookPack: null,
       });
       log({ step: "preflight", level: "info",
         message: "☕ Auto-pilot starter — kaffekoppen er klar" });
@@ -322,8 +336,19 @@ export function useAutoPilot(): UseAutoPilotResult {
         }
         clearInterval(elapsedTimer);
         if (!cancelledRef.current) {
-          setState((prev) => ({ ...prev, status: "completed" }));
+          // Flush shared state til React state slik at UI ser proposed
+          // look-pack og kan vise "lagre?"-dialog
+          const proposed = sharedState.proposedNewLookPack as ProposedLookPackSpec | undefined;
+          setState((prev) => ({
+            ...prev,
+            status: "completed",
+            proposedLookPack: proposed ?? null,
+          }));
           log({ step: "qc_pass", level: "success", message: "Auto-pilot ferdig ✓" });
+          if (proposed) {
+            log({ step: "claude_color_direction", level: "claude",
+              message: `Foreslo ny look-pack: "${proposed.name}"` });
+          }
         }
       } catch (err) {
         clearInterval(elapsedTimer);

@@ -4358,6 +4358,32 @@ ${ctxLines.join("\n")}`;
             clientWishes,
             lookPack: lookPack === "none" ? undefined : lookPack,
             resolveConnected: resolveSync.resolveState?.connected ?? false,
+            projectKind: projectKind ?? undefined,
+            // Send eksisterende cultural look-packs så Claude sjekker dem
+            // før den foreslår nye. Voksende katalog som spares per bruker.
+            existingCulturalLooks: creatorProfile.profile.culturalLookPacks ?? [],
+            // Log-detection-info — sendes til Claude for å avgjøre om
+            // LOG → REC.709-correction trengs som Node 2
+            logGammaInfo: logGammaInfo ? {
+              isLog: logGammaInfo.isLog,
+              type: logGammaInfo.profile,
+              suggestedLut: logGammaInfo.suggestedLut,
+            } : undefined,
+          }}
+          onProposedLookPack={async (spec) => {
+            // Claude foreslo en NY cultural look-pack. Spør bruker om å lagre.
+            const ok = confirm(
+              `Claude foreslår ny look-pack:\n\n` +
+              `"${spec.name}"\n` +
+              `Cultural tag: ${spec.culturalTag}\n` +
+              `Warmth: ${spec.warmth > 0 ? "+" : ""}${spec.warmth}, ` +
+              `sat ${spec.saturation}, skin protect: ${spec.skinToneProtection}\n\n` +
+              `${spec.description}\n\n` +
+              `Lagre i din katalog så den kan gjenbrukes senere?`,
+            );
+            if (ok) {
+              await creatorProfile.addCulturalLookPack(spec);
+            }
           }}
         />
       )}

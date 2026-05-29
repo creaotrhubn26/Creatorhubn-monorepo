@@ -26,6 +26,11 @@ export interface CreatorProfile {
   autoPilotAutoStart?: boolean;         // auto-trigger på prosjekt-load
   autoPilotConfirmTimeout?: number;     // sekunder før Claude's anbefaling auto-aksepteres
 
+  // Cultural look-packs Claude har laget for denne brukeren.
+  // Vokser over tid — Claude sjekker disse før den lager nye så vi
+  // unngår duplikater og gjenbruker tested-and-approved looks.
+  culturalLookPacks?: Array<CulturalLookPack>;
+
   // Aggregerte counters fra learnings
   counters?: Record<string, number>;
 
@@ -35,6 +40,20 @@ export interface CreatorProfile {
     kind: string;
     [key: string]: unknown;
   }>;
+}
+
+export interface CulturalLookPack {
+  name: string;                 // f.eks. "Sikh Golden Ceremony"
+  culturalTag: string;          // f.eks. "sikh-punjabi"
+  warmth: number;               // -20 til +20
+  saturation: number;           // 0.6-1.4
+  contrast: number;             // 0.9-1.2
+  skinToneProtection: "soft" | "medium" | "strong";
+  description: string;
+  createdAt: number;            // unix ms
+  usageCount: number;           // teller hvor mange ganger den er brukt
+  /** Project-IDer denne look-packen ble laget for (for context). */
+  bornFromProjects?: string[];
 }
 
 export interface CreatorProfileState {

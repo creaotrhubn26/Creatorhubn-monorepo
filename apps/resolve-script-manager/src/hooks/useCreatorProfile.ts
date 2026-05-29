@@ -16,6 +16,7 @@ import {
   creatorProfileService,
   type CreatorProfile,
   type CreatorProfileState,
+  type CulturalLookPack,
 } from "../services/creatorProfileService";
 
 export type CreatorProfileLoadStatus = "loading" | "unauthenticated" | "ready" | "error";
@@ -32,6 +33,10 @@ interface UseCreatorProfileResult {
   update: (patch: Partial<CreatorProfile>) => Promise<void>;
   /** Logg en læring uten å mutere primær-profil. */
   logLearning: (kind: string, data?: Record<string, unknown>) => Promise<void>;
+  /** Add ny cultural look-pack — dedup på navn. */
+  addCulturalLookPack: (spec: Omit<CulturalLookPack, "createdAt" | "usageCount">) => Promise<void>;
+  /** Inkrementer usage-counter (kalles når Claude bruker en eksisterende look). */
+  incrementLookPackUsage: (name: string) => Promise<void>;
 }
 
 export function useCreatorProfile(): UseCreatorProfileResult {
@@ -110,6 +115,36 @@ export function useCreatorProfile(): UseCreatorProfileResult {
     void flushLearnings();
   }, [flushLearnings]);
 
+  const addCulturalLookPack = useCallback(async (
+    spec: Omit<CulturalLookPack, "createdAt" | "usageCount">,
+  ) => {
+    const existing = state.profile.culturalLookPacks ?? [];
+    // Dedup: hvis navn finnes, oppdater i stedet for å duplisere
+    const matchIdx = existing.findIndex((p) => p.name.toLowerCase() === spec.name.toLowerCase());
+    let next: CulturalLookPack[];
+    if (matchIdx >= 0) {
+      next = [...existing];
+      next[matchIdx] = { ...existing[matchIdx], ...spec, usageCount: existing[matchIdx].usageCount + 1 };
+    } else {
+      const newPack: CulturalLookPack = {
+        ...spec,
+        createdAt: Date.now(),
+        usageCount: 1,
+      };
+      next = [...existing, newPack];
+    }
+    await update({ culturalLookPacks: next });
+  }, [state.profile.culturalLookPacks, update]);
+
+  const incrementLookPackUsage = useCallback(async (name: string) => {
+    const existing = state.profile.culturalLookPacks ?? [];
+    const idx = existing.findIndex((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (idx < 0) return;
+    const next = [...existing];
+    next[idx] = { ...next[idx], usageCount: next[idx].usageCount + 1 };
+    await update({ culturalLookPacks: next });
+  }, [state.profile.culturalLookPacks, update]);
+
   return {
     status,
     profile: state.profile,
@@ -119,5 +154,7 @@ export function useCreatorProfile(): UseCreatorProfileResult {
     refresh,
     update,
     logLearning,
+    addCulturalLookPack,
+    incrementLookPackUsage,
   };
 }
