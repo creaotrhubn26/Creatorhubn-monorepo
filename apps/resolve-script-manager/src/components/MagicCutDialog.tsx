@@ -114,8 +114,22 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
         }
       } else if ((event.type as string) === "clip_decision") {
         // Per-clip event from cull_folder.py — feeds CullTheater live grid.
-        const c = event as unknown as ClipDecisionEvent;
-        setClipDecisions((prev) => [...prev, c]);
+        // Tidligere swallowed Tauri-side eventer som ikke matchet union-type
+        // uten log; nå validerer vi shape før vi pusher slik at en delvis
+        // implementert backend-event ikke korruptér state.
+        const candidate = event as unknown as Partial<ClipDecisionEvent>;
+        const validDecisions = ["keep", "reject", "maybe", "pending"];
+        if (
+          candidate
+          && typeof candidate.clipPath === "string"
+          && typeof candidate.clipName === "string"
+          && typeof candidate.decision === "string"
+          && validDecisions.includes(candidate.decision)
+        ) {
+          setClipDecisions((prev) => [...prev, candidate as ClipDecisionEvent]);
+        } else {
+          console.warn("[magic-cut] clip_decision event missing required fields:", event);
+        }
       }
     }).then((u) => {
       unlisten = u;

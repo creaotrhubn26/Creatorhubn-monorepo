@@ -631,15 +631,29 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         )
         filter_complex = filter_complex + ";" + ";".join(audio_inputs_filter)
 
-    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning",
-           *inputs, "-filter_complex", filter_complex,
-           "-map", "[outv]", "-map", "[outa]",
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-           "-c:a", "aac", "-b:a", "192k", output_path]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
-    if r.returncode != 0:
-        bridge.error(f"ffmpeg failed: {(r.stderr or '')[-1500:]}")
-        sys.exit(1)
+    # Skriv filter_complex til en temp-fil og bruk -filter_complex_script.
+    # Med 50+ picks blir filter-streng > 30kB; inline-argument trunkeres i
+    # ffmpeg's error-log slik at det blir umulig å feilsøke. Fil-form
+    # preserverer hele kjeden og lar oss inkludere den i feilmelding.
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False,
+                                     encoding="utf-8") as fc_file:
+        fc_file.write(filter_complex)
+        fc_path = fc_file.name
+    try:
+        cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning",
+               *inputs, "-filter_complex_script", fc_path,
+               "-map", "[outv]", "-map", "[outa]",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+               "-c:a", "aac", "-b:a", "192k", output_path]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+        if r.returncode != 0:
+            err_tail = (r.stderr or "")[-2000:]
+            bridge.log(f"filter_complex skrevet til: {fc_path} ({len(filter_complex)} bytes)")
+            bridge.error(f"ffmpeg failed: {err_tail}")
+            sys.exit(1)
+    finally:
+        try: os.unlink(fc_path)
+        except OSError: pass
 
     size_mb = os.path.getsize(output_path) / (1024*1024)
     bridge.progress(100, 100, "Ferdig")

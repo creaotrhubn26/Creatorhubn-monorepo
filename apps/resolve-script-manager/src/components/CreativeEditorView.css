@@ -964,6 +964,10 @@
 }
 
 /* Timeline markers (vertical lines + flags) */
+/* Designvalg: den stiplede VERTIKALE-linjen er kun visuell — vi vil ikke
+   at den skal stjele klikk fra picks i timeline-stripen som ligger bak.
+   Selve FLAGGET (.ce-timeline-marker-flag) er klikkbart via pointer-events:
+   auto under, så marker-edit-modalen åpner via flagget. */
 .ce-timeline-marker {
   position: absolute;
   top: -4px;

@@ -490,6 +490,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     quality: "pending" | "running" | "done" | "skip";
     flow: "pending" | "running" | "done" | "skip";
   }>({ music: "pending", quality: "pending", flow: "pending" });
+  // Auto-marker flow som ferdig så snart musicFlow blir tilgjengelig
+  // (kjøres ifht song-change av en annen effect)
 
   // Log-gamma detection (auto-LUT-forslag)
   const [logGammaInfo, setLogGammaInfo] = useState<{
@@ -620,7 +622,10 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
       } catch (e) {
         console.warn("Could not save creative-editor state:", e);
       }
-    }, 500);
+      // Debounce økt til 1500ms (var 500ms) for å unngå at typing i
+      // clientWishes-feltet stringifies + writer 10kB JSON × 4-5 ganger
+      // per sekund. Save fortsatt rask nok til at restart-bevaring funker.
+    }, 1500);
     return () => clearTimeout(handle);
   }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks]);
 
@@ -737,6 +742,15 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     })();
     return () => { cancelled = true; };
   }, [activeSong?.title, activeSong?.artist]);
+
+  // Auto-marker onboarding-scan-status "flow" som ferdig så snart musicFlow
+  // er tilgjengelig. Tidligere ble status capturet ved klikk-tid og oppdaterte
+  // aldri, så indikatoren sto stuck på "running".
+  useEffect(() => {
+    setOnboardingScanStatus(prev =>
+      prev.flow === "running" && musicFlow ? { ...prev, flow: "done" } : prev,
+    );
+  }, [musicFlow]);
 
   const videoSrc = useMemo(() => payload ? convertFileSrc(payload.sourceVideo) : "", [payload]);
   // When hover is active, play that segment; else play focused
@@ -1125,7 +1139,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
+      // Skip når brukeren skriver i et input/textarea/contentEditable, eller
+      // når en åpen modal/dialog har focus (open Dialog setter focus inni).
+      // Tidligere kunne f.eks. 'm' i et nested input legge til marker uplog.
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (t && t.closest('[role="dialog"], .modal, .ce-shortcuts-modal')) return;
       const isMeta = e.metaKey || e.ctrlKey;
       if (isMeta && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (isMeta && e.shiftKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); redo(); return; }
@@ -2159,14 +2177,19 @@ ${ctxLines.join("\n")}`;
                       </div>
                     </div>
                     <button
+                      disabled={!origKey}
                       onClick={(e) => {
                         e.stopPropagation();
+                        // origKey er "" hvis advisor-lookup miser (race ved
+                        // reload). Da har vi ikke et target å skrive til, så
+                        // disable knappen helt — modalen åpnet seg tom før.
+                        if (!origKey) return;
                         setEditingSongKey(origKey);
                         setEditTitle(s.title);
                         setEditArtist(s.artist);
                         setEditNote(s._note ?? "");
                       }}
-                      title="Korrigér navn"
+                      title={origKey ? "Korrigér navn" : "Vent på advisor-data …"}
                       style={{ padding: "4px 8px", fontSize: 11,
                                background: "transparent",
                                border: "1px solid rgba(160,48,192,0.30)",
@@ -3762,8 +3785,12 @@ ${ctxLines.join("\n")}`;
                         }).catch(() => {
                           setOnboardingScanStatus(prev => ({ ...prev, quality: "done" }));
                         });
-                        // 3. Music flow analysis kjøres allerede automatisk når song endrer seg
-                        setOnboardingScanStatus(prev => ({ ...prev, flow: musicFlow ? "done" : "running" }));
+                        // 3. Music-flow kjøres automatisk når song endrer seg.
+                        // Tidligere bug: musicFlow ble fanget ved klikk-tid og
+                        // status-update kjørte aldri på nytt → stuck på
+                        // "running" for alltid. useEffect under følger med
+                        // musicFlow og oppdaterer status til "done" når data er der.
+                        setOnboardingScanStatus(prev => ({ ...prev, flow: "running" }));
                       }
                       setOnboardingStep(4);
                     }}

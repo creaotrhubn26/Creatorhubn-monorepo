@@ -1857,12 +1857,14 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
           </div>
         )}
 
-        {/* Catch-all (skulle aldri trigge) */}
-        {!["material","audio","music","persons","style","live","color"].includes(step) && (
+        {/* Catch-all (skulle aldri trigge). Tidligere kunne det krasje
+            hvis step="done" (eller annen ukjent) fordi STEPS[currentStepN-1]
+            fallbacker til STEPS[0]. Guarder mot at index er utenfor. */}
+        {!["sources","material","audio","music","persons","style","live","color"].includes(step) && (
           <div style={{ padding: 32, textAlign: "center", opacity: 0.7 }}>
             <div style={{ marginBottom: 12 }}><ConstructionIcon sx={{ fontSize: 48 }} /></div>
             <div style={{ fontSize: 15, marginBottom: 6 }}>
-              <strong>Steg {currentStepN}: {STEPS[currentStepN - 1].label}</strong>
+              <strong>Steg {currentStepN}: {STEPS[currentStepN - 1]?.label ?? "Ukjent"}</strong>
             </div>
             <div style={{ fontSize: 12, opacity: 0.7, maxWidth: 420, margin: "0 auto 20px" }}>
               Dette steget bygges i neste iterasjon. For nå hopper vi videre.
