@@ -37,6 +37,7 @@ import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import PersonIcon from "@mui/icons-material/Person";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
+import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import SaveIcon from "@mui/icons-material/Save";
 import FolderIcon from "@mui/icons-material/Folder";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
@@ -89,6 +90,7 @@ interface Props {
   onOpenWeddingWizard: () => void;
   onOpenMusicVideoAgent: () => void;
   onOpenCorporateAgent: () => void;
+  onOpenScreenRecordingAgent: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -164,6 +166,7 @@ export function HomeView({
   onOpenWeddingWizard,
   onOpenMusicVideoAgent,
   onOpenCorporateAgent,
+  onOpenScreenRecordingAgent,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -417,6 +420,26 @@ export function HomeView({
               case og produkt-video
             </div>
             <div className="home-action-tag">Corporate Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenScreenRecordingAgent}
+          disabled={!signedIn}
+          title={signedIn ? "Tutorials og dev-screencasts med auto-trim av silenser, click-zoom og voice-aware editing" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #4ad48a, #4a90e2)" }}>
+            <ScreenShareIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Screen Recording Agent</div>
+            <div className="home-action-desc">
+              Tutorials, walkthroughs, dev-screencasts med auto-trim,
+              click-zoom og voice-aware editing
+            </div>
+            <div className="home-action-tag">Screen Recording Director</div>
           </div>
           <IconArrowRight />
         </button>

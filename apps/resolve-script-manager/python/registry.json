@@ -1942,6 +1942,25 @@
       "requiresTimeline": false
     },
     {
+      "id": "analyze_screen_recording",
+      "name": "Analyze Screen Recording",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_screen_recording.py",
+      "description": "Detect silence-gaps, klikk-momenter og narration-segmenter fra screen-capture-video. Output silenser med varighet (for auto-trim), klikk-kandidater (for click-zoom-keyframer), speech-segmenter og trim-savings. Brukes av Screen Recording Agent.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "silenceMinDurSec", "label": "Min silens-varighet å trimme (sek)", "type": "number", "required": false },
+        { "key": "silenceNoiseDb", "label": "Stille-terskel (dB, default -30)", "type": "number", "required": false },
+        { "key": "clickEnergyThreshold", "label": "Klikk-energi-terskel (default 1.8)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "setup_platform_timeline",
       "name": "Setup Platform Timeline",
       "category": "timeline",

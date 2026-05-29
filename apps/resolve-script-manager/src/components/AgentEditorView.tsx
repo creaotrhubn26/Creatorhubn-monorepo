@@ -29,6 +29,10 @@ import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import EventIcon from "@mui/icons-material/Event";
 import MovieIcon from "@mui/icons-material/Movie";
 import ChurchIcon from "@mui/icons-material/Church";
+import ScreenShareIcon from "@mui/icons-material/ScreenShare";
+import VolumeOffIcon from "@mui/icons-material/VolumeOff";
+import MouseIcon from "@mui/icons-material/Mouse";
+import ContentCutIcon from "@mui/icons-material/ContentCut";
 import GraphicEqIcon from "@mui/icons-material/GraphicEq";
 import BrushIcon from "@mui/icons-material/Brush";
 import CloseIcon from "@mui/icons-material/Close";
@@ -43,6 +47,7 @@ const AGENT_ICON: Record<string, typeof MusicNoteIcon> = {
   event: EventIcon,
   documentary: MovieIcon,
   wedding: ChurchIcon,
+  screen_recording: ScreenShareIcon,
 };
 
 interface Props {
@@ -58,6 +63,8 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const AgentIcon = AGENT_ICON[config.kind] ?? MusicNoteIcon;
   // Music-video viser BPM-grid; Corporate/Event har det ikke som primær-modus
   const showBpmGrid = config.kind === "music_video";
+  // Screen-recording har sin egen Analyze-modus i venstre kolonne
+  const showScreenAnalysis = config.kind === "screen_recording";
   const [selectedChapter, setSelectedChapter] = useState<string>(CFG.chapters[0].id);
   const [bpm, setBpm] = useState<number>(120);
   const [songLengthSec, setSongLengthSec] = useState<number>(CFG.defaultDurationSec);
@@ -72,6 +79,22 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
     totalDurationSec: number;
   } | null>(null);
   const [beatError, setBeatError] = useState<string | null>(null);
+  // Screen-recording analyse-state (silenser, klikk, speech-segmenter)
+  const [scanAnalyzing, setScanAnalyzing] = useState(false);
+  const [scanAnalysis, setScanAnalysis] = useState<{
+    totalDurationSec: number;
+    silenceCount: number;
+    clickCount: number;
+    totalSilenceSec: number;
+    trimSavingsSec: number;
+    estimatedAfterTrimSec: number;
+    silenceGaps: Array<{ startSec: number; endSec: number; durationSec: number }>;
+    clickCandidates: Array<{ atSec: number; confidence: number }>;
+  } | null>(null);
+  const [autoTrimSilence, setAutoTrimSilence] = useState(true);
+  const [zoomOnClicks, setZoomOnClicks] = useState(true);
+  const [zoomStrength, setZoomStrength] = useState(1.3);
+  const [scanError, setScanError] = useState<string | null>(null);
   // Claude chat-state — historikken med config.primaryAgent (Director)
   const [chatMessages, setChatMessages] = useState<ClaudeMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -91,12 +114,20 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const buildContextPrimer = (): string => {
     const lines: string[] = [];
     lines.push(`Nåværende prosjekt-kontekst:`);
-    lines.push(`- BPM: ${bpm} (${beatAnalysis ? `auto-detect via ${beatAnalysis.method}, ${(beatAnalysis.confidence * 100).toFixed(0)}% sikkerhet` : "manuelt satt"})`);
-    lines.push(`- Sang-lengde: ${songLengthSec}s (${totalBars} bars total)`);
+    if (showBpmGrid) {
+      lines.push(`- BPM: ${bpm} (${beatAnalysis ? `auto-detect via ${beatAnalysis.method}, ${(beatAnalysis.confidence * 100).toFixed(0)}% sikkerhet` : "manuelt satt"})`);
+      lines.push(`- Sang-lengde: ${songLengthSec}s (${totalBars} bars total)`);
+    } else {
+      lines.push(`- Leverings-lengde: ${songLengthSec}s`);
+    }
+    if (showScreenAnalysis && scanAnalysis) {
+      lines.push(`- Screen-analyse: ${scanAnalysis.silenceCount} silens-gaps (${scanAnalysis.totalSilenceSec}s totalt), ${scanAnalysis.clickCount} klikk-kandidater, trim-savings ${scanAnalysis.trimSavingsSec}s`);
+      lines.push(`- Auto-trim silenser: ${autoTrimSilence ? "PÅ" : "AV"}, zoom på klikk: ${zoomOnClicks ? `${zoomStrength}x` : "AV"}`);
+    }
     lines.push(`- Aktivt kapittel: ${chapter.label} (priority: ${chapter.priorityHint}, ~${chapter.pacingPct}% av total)`);
     lines.push(`- Valgt look-pack: ${look.label} (${look.tags.join(", ")})`);
-    if (genre) lines.push(`- Genre: ${genre}`);
-    if (clientWishes) lines.push(`- Artist/label wishes: ${clientWishes}`);
+    if (genre) lines.push(`- ${showBpmGrid ? "Genre" : "Varemerke/industri"}: ${genre}`);
+    if (clientWishes) lines.push(`- Klient wishes: ${clientWishes}`);
     return lines.join("\n");
   };
 
@@ -127,6 +158,25 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       setChatInput(trimmed);
     } finally {
       setChatThinking(false);
+    }
+  };
+
+  const analyzeScreenRecording = async () => {
+    if (!sourcePath) return;
+    setScanAnalyzing(true);
+    setScanError(null);
+    try {
+      const summary = await executeScript("analyze_screen_recording", {
+        audioPath: sourcePath,
+      }, false);
+      const result = summary.events.find(e => e.type === "result");
+      const v = result?.value as typeof scanAnalysis;
+      if (!v) throw new Error("Ingen analyse-output");
+      setScanAnalysis(v);
+    } catch (err) {
+      setScanError((err as Error).message);
+    } finally {
+      setScanAnalyzing(false);
     }
   };
 
@@ -326,6 +376,110 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
               <div style={{ fontSize: 10, color: "var(--text-3, #a89cb8)", lineHeight: 1.4 }}>
                 {Math.floor(songLengthSec / 60)}:{String(songLengthSec % 60).padStart(2, "0")} ferdig-leveranse
               </div>
+            </>
+          )}
+
+          {showScreenAnalysis && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 8,
+                              color: "var(--text-2, #c8bcd8)",
+                              display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <ScreenShareIcon sx={{ fontSize: 13 }} />
+                SCREEN-ANALYSE
+              </div>
+
+              <button onClick={() => void analyzeScreenRecording()}
+                      disabled={!sourcePath || scanAnalyzing}
+                      style={{
+                        width: "100%", marginBottom: 8,
+                        background: scanAnalyzing
+                          ? "rgba(110,63,199,0.20)"
+                          : "linear-gradient(135deg, #4a90e2, #6e3fc7)",
+                        border: 0, color: "#fff",
+                        padding: "7px 10px", borderRadius: 4,
+                        fontSize: 11, fontWeight: 600,
+                        cursor: scanAnalyzing ? "wait"
+                              : sourcePath ? "pointer" : "not-allowed",
+                        opacity: !sourcePath ? 0.5 : 1,
+                        display: "inline-flex", alignItems: "center",
+                        justifyContent: "center", gap: 6,
+                      }}>
+                <AutoFixHighIcon sx={{ fontSize: 14 }} />
+                {scanAnalyzing ? "Analyserer …" : "Detect klikk + silenser"}
+              </button>
+
+              {scanAnalysis && (
+                <div style={{
+                  padding: 8, borderRadius: 4,
+                  background: "rgba(74,144,226,0.10)",
+                  border: "1px solid rgba(74,144,226,0.30)",
+                  fontSize: 10, lineHeight: 1.6,
+                  color: "var(--text-2, #c8bcd8)",
+                  marginBottom: 8,
+                }}>
+                  <div>Total: <strong>{Math.floor(scanAnalysis.totalDurationSec / 60)}:{String(Math.floor(scanAnalysis.totalDurationSec % 60)).padStart(2, "0")}</strong></div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <VolumeOffIcon sx={{ fontSize: 11 }} />
+                    {scanAnalysis.silenceCount} silenser ({scanAnalysis.totalSilenceSec}s)
+                  </div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <MouseIcon sx={{ fontSize: 11 }} />
+                    {scanAnalysis.clickCount} klikk-kandidater
+                  </div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 4,
+                                  marginTop: 4, color: "#4ad48a" }}>
+                    <ContentCutIcon sx={{ fontSize: 11 }} />
+                    Trim-savings: <strong>{scanAnalysis.trimSavingsSec}s</strong> → {Math.floor(scanAnalysis.estimatedAfterTrimSec / 60)}:{String(Math.floor(scanAnalysis.estimatedAfterTrimSec % 60)).padStart(2, "0")}
+                  </div>
+                </div>
+              )}
+              {scanError && (
+                <div style={{
+                  marginBottom: 8, padding: 6, borderRadius: 4,
+                  background: "rgba(239,79,111,0.10)",
+                  color: "#ef4f6f", fontSize: 10,
+                }}>{scanError}</div>
+              )}
+
+              <label style={{ display: "flex", alignItems: "center", gap: 6,
+                                fontSize: 11, color: "var(--text-2, #c8bcd8)",
+                                marginBottom: 4, cursor: "pointer" }}>
+                <input type="checkbox" checked={autoTrimSilence}
+                       onChange={e => setAutoTrimSilence(e.target.checked)} />
+                Auto-trim silenser
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6,
+                                fontSize: 11, color: "var(--text-2, #c8bcd8)",
+                                marginBottom: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={zoomOnClicks}
+                       onChange={e => setZoomOnClicks(e.target.checked)} />
+                Zoom inn på klikk
+              </label>
+              {zoomOnClicks && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6,
+                                fontSize: 10.5, color: "var(--text-2, #c8bcd8)" }}>
+                  <span style={{ minWidth: 50 }}>Zoom-styrke</span>
+                  <input type="range" min={1.05} max={2.0} step={0.05}
+                         value={zoomStrength}
+                         onChange={e => setZoomStrength(parseFloat(e.target.value))}
+                         style={{ flex: 1 }} />
+                  <span style={{ minWidth: 32, textAlign: "right" }}>
+                    {zoomStrength.toFixed(2)}x
+                  </span>
+                </div>
+              )}
+
+              {scanAnalysis && scanAnalysis.clickCount > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600,
+                                  color: "var(--text-3, #a89cb8)",
+                                  marginBottom: 4 }}>
+                    KLIKK-TIDLINJE
+                  </div>
+                  <ClickTimeline clicks={scanAnalysis.clickCandidates}
+                                 totalDur={scanAnalysis.totalDurationSec} />
+                </div>
+              )}
             </>
           )}
         </div>
@@ -677,6 +831,39 @@ function LookPackCard({ pack, selected, onSelect }: {
         {pack.tags.slice(0, 3).join(" · ")}
       </span>
     </button>
+  );
+}
+
+function ClickTimeline({ clicks, totalDur }: {
+  clicks: Array<{ atSec: number; confidence: number }>;
+  totalDur: number;
+}) {
+  return (
+    <div style={{
+      position: "relative",
+      height: 18,
+      background: "rgba(0,0,0,0.4)",
+      border: "1px solid rgba(74,144,226,0.20)",
+      borderRadius: 2,
+    }}>
+      {clicks.map((c, i) => {
+        const leftPct = (c.atSec / totalDur) * 100;
+        const opacity = 0.4 + c.confidence * 0.6;
+        return (
+          <div key={i}
+               title={`Klikk ved ${c.atSec.toFixed(1)}s (${(c.confidence * 100).toFixed(0)}% sikkerhet)`}
+               style={{
+                 position: "absolute",
+                 left: `${leftPct}%`,
+                 top: 2, bottom: 2,
+                 width: 2,
+                 background: "#4ad48a",
+                 opacity,
+                 borderRadius: 1,
+               }} />
+        );
+      })}
+    </div>
   );
 }
 

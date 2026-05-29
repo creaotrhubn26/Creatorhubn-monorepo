@@ -10,7 +10,9 @@
  * Video) bor i agents/<kind>/ og rendres via egen Editor-view.
  */
 
-export type AgentKind = "wedding" | "music_video" | "corporate" | "event" | "documentary";
+export type AgentKind =
+  | "wedding" | "music_video" | "corporate"
+  | "event" | "documentary" | "screen_recording";
 
 /** Chapter = en navngitt seksjon i prosjektet (vielse, chorus, keynote …). */
 export interface ChapterDef {
