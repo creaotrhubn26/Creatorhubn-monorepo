@@ -27,7 +27,9 @@ import { BrollSuggestionModal } from "./BrollSuggestionModal";
 import { MusicLibrary } from "./MusicLibrary";
 import { MusicSuggestionModal } from "./MusicSuggestionModal";
 import { VoiceDuckingDialog } from "./VoiceDuckingDialog";
+import { MulticamSyncStudio } from "./MulticamSyncStudio";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
+import VideocamIcon from "@mui/icons-material/Videocam";
 import GraphicEqIcon2 from "@mui/icons-material/GraphicEq";
 import SubtitlesIcon from "@mui/icons-material/Subtitles";
 import ClosedCaptionIcon from "@mui/icons-material/ClosedCaption";
@@ -101,6 +103,14 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [musicSuggestOpen, setMusicSuggestOpen] = useState(false);
   const [duckingDialogOpen, setDuckingDialogOpen] = useState(false);
   const [duckingMusicPath, setDuckingMusicPath] = useState("");
+  const [multicamOpen, setMulticamOpen] = useState(false);
+
+  // Hvilke agenter har naturlig multi-cam-konvensjon
+  const showMulticamButton = (
+    config.kind === "wedding" || config.kind === "event"
+    || config.kind === "podcast" || config.kind === "documentary"
+    || config.kind === "short_film" || config.kind === "music_video"
+  );
 
   const requestMusicSuggestions = () => {
     setMusicSuggestOpen(true);
@@ -435,6 +445,19 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                   }}>
             <GraphicEqIcon2 sx={{ fontSize: 14 }} /> Ducking
           </button>
+          {showMulticamButton && (
+            <button onClick={() => setMulticamOpen(true)}
+                    title="Synk 2+ kamera-opptak via audio cross-correlation"
+                    style={{
+                      background: "rgba(160,48,192,0.15)",
+                      border: "1px solid rgba(160,48,192,0.4)",
+                      color: "#fff", padding: "5px 12px", fontSize: 11,
+                      borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                    }}>
+              <VideocamIcon sx={{ fontSize: 14 }} /> Multi-cam
+            </button>
+          )}
           <button onClick={requestBrollSuggestions}
                   title="Få Director-forslag til B-roll basert på nåværende kapittel + look"
                   style={{
@@ -1211,6 +1234,16 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         initialVoicePath={sourcePath}
         initialMusicPath={duckingMusicPath}
       />
+
+      {/* Multi-cam Sync Studio — audio-waveform-korrelasjon */}
+      {showMulticamButton && (
+        <MulticamSyncStudio
+          open={multicamOpen}
+          onClose={() => setMulticamOpen(false)}
+          projectId={projectIdForStudio}
+          agentKind={config.kind}
+        />
+      )}
 
       {/* B-roll Suggestion modal — Director foreslår basert på chapter+look */}
       {brollSuggestionContext && (
