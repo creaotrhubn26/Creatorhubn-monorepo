@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_deep_link::DeepLinkExt;
 use uuid::Uuid;
 
 use card_watcher::{CardWatcherState, MountedCard};
@@ -576,6 +577,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(CardWatcherState::default())
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
@@ -597,6 +599,25 @@ pub fn run() {
                 let event_name = format!("menu://{}", id.trim_start_matches("menu_"));
                 if let Err(err) = app_handle.emit(&event_name, ()) {
                     eprintln!("Failed to emit menu event {}: {}", event_name, err);
+                }
+            });
+            // Deep-link handler: når /link-siden i web åpner postagent://focus
+            // (etter vellykket pairing) skal vi bringe hovedvinduet til front.
+            // Plugin håndterer OS-registreringen automatisk basert på
+            // plugins.deep-link.desktop.schemes i tauri.conf.json.
+            let deep_handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
+                eprintln!("Deep link received: {:?}", urls);
+                if let Some(window) = deep_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+                // Forward til frontend så den kan reagere (f.eks. polle
+                // pairing umiddelbart hvis kode er i URL-en).
+                if let Err(err) = deep_handle.emit("deep-link://received", urls) {
+                    eprintln!("Failed to emit deep-link event: {}", err);
                 }
             });
             if let Err(err) = card_watcher::spawn_watcher(handle) {
