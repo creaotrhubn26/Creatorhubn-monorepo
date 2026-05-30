@@ -60,9 +60,13 @@ function getInitialTab(): TabValue {
   return TABS.some((t) => t.value === tab) ? (tab as TabValue) : 'economy';
 }
 
-export default function ClientWorkspaceShell() {
+export default function ClientWorkspaceShell({
+  projectId: projectIdProp,
+}: { projectId?: string } = {}) {
+  // Wouter-rute (App.tsx) passer projectId via useParams. casting-main.tsx
+  // (theroleroom.com sin path-parser-shell) sender den som prop. Begge støttes.
   const params = useParams<{ projectId: string }>();
-  const projectId = params.projectId ?? '';
+  const projectId = projectIdProp ?? params.projectId ?? '';
   const [, setLocation] = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
