@@ -8,6 +8,7 @@ import { CastingLandingPage } from './components/CastingLandingPage';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
+import TalentsApp, { parseTalentsAppPage } from './talents-app/TalentsApp';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
@@ -453,8 +454,10 @@ function CastingStandaloneRuntimeContent() {
   const sessionAdminUser = authSessionService.getSessionSync().adminUser;
   const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
   const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
-  const shouldRenderAgencyPortal = !guestMode && normalizedRole === 'agency';
-  const shouldRenderTalentPortal = !guestMode && !shouldRenderAgencyPortal && (
+  const talentsAppPage = useMemo(() => parseTalentsAppPage(), []);
+  const shouldRenderTalentsApp = !guestMode && talentsAppPage !== null;
+  const shouldRenderAgencyPortal = !guestMode && !shouldRenderTalentsApp && normalizedRole === 'agency';
+  const shouldRenderTalentPortal = !guestMode && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
     Boolean(talentPortalIntent)
     || normalizedRole === 'talent'
     || normalizedRequestedRole === 'talent'
@@ -486,6 +489,10 @@ function CastingStandaloneRuntimeContent() {
         </Box>
       ) : !isAuthenticated ? (
           <CastingLandingPage onEnter={handleEnter} />
+        ) : shouldRenderTalentsApp ? (
+          <ToastProvider position="bottom-right">
+            <TalentsApp initialPage={talentsAppPage ?? undefined} />
+          </ToastProvider>
         ) : (
           <ToastProvider position="bottom-right">
             <RoleRoomUXLayer
