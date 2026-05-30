@@ -198,7 +198,9 @@ import { fetchActiveMarketingPlan } from './role-room-marketing-plan.js';
 import {
   buildAdsConnectorRegistry,
   buildPlatformTokenResolver,
+  runAdsRecommendationsForProject,
 } from './role-room-ads-cron.js';
+import { fetchAdRecommendations } from './role-room-ads-db.js';
 import {
   buildAdsAuthUrl,
   exchangeAdsCodeForToken,
@@ -22498,6 +22500,67 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ period, ...results });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Lag 2: AI-anbefalinger (kunden + produsenten ser hva agenten foreslår) ──
+  router.get(
+    '/ads/recommendations',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        const period =
+          typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
+            ? req.query.period
+            : new Date().toISOString().slice(0, 7);
+        const persisted = await fetchAdRecommendations(pool, projectId, period);
+        if (!persisted) {
+          return res.json({ period, recommendations: [], overallNote: null, generatedAt: null, generatedWithModel: null });
+        }
+        const data = persisted.recommendations as { recommendations?: unknown[]; overallNote?: string | null } | null;
+        res.json({
+          period,
+          recommendations: Array.isArray(data?.recommendations) ? data!.recommendations : [],
+          overallNote: data?.overallNote ?? null,
+          generatedAt: persisted.generatedAt,
+          generatedWithModel: persisted.generatedWithModel,
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load recommendations', detail: String(error) });
+      }
+    },
+  );
+
+  // Manuell trigger — nyttig for å se anbefalinger UTEN å vente på neste cron.
+  // Entitlement-gated (samme kvote som marketing-plan / ad-creatives).
+  router.post(
+    '/ads/recommendations/generate',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { projectId } = req.body ?? {};
+        const period =
+          typeof req.body?.period === 'string' && /^\d{4}-\d{2}$/.test(req.body.period)
+            ? req.body.period
+            : new Date().toISOString().slice(0, 7);
+        if (!projectId || typeof projectId !== 'string') {
+          return res.status(400).json({ error: 'projectId_required' });
+        }
+        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        if (!entitlement.allowed) {
+          return res.status(402).json({ error: 'entitlement_required', entitlement });
+        }
+        const summary = await runAdsRecommendationsForProject(pool, projectId, period);
+        if (!summary) {
+          return res.status(503).json({ error: 'generator_unavailable', detail: 'AI-generatoren er utilgjengelig. Prøv igjen.' });
+        }
+        res.json({ period, ...summary });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to generate recommendations', detail: String(error) });
       }
     },
   );

@@ -5,15 +5,18 @@
  * marketing-plan-oversikt med fremdrift, pillars, neste handlinger og
  * hele 30-dagers planen. Autentisering = token-i-URL (magic-link).
  *
- * Ingen redigering i denne iterasjonen — dashbordet er rent innsyn.
- * Kommentarer, godkjenninger og status-endringer kan legges til
- * senere uten å flytte rundt på denne siden.
+ * Klienten kan kommentere direkte på hver post (PostCommentLayer)
+ * via magic-link-sessionToken. Kommentarene lagres i samme tabell
+ * (role_room_editor_comments) som Bjarne ser i Post Agent's
+ * CollaborationSidebar — én delt strøm, to UI-er.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'wouter';
 import ClientPortalRequestsSection from '@/components/role-room/client-portal/ClientPortalRequestsSection';
 import ClientPortalRegisterCard from '@/components/role-room/client-portal/ClientPortalRegisterCard';
+import PostCommentLayer from '@/components/role-room/components/PostCommentLayer';
+import PostVideoPreview from '@/components/role-room/components/PostVideoPreview';
 import {
   Alert,
   Box,
@@ -37,6 +40,12 @@ interface DashboardPost {
   crossPostPlan: Array<{ platform: string; delayDays: number }>;
   status: 'proposed' | 'scheduled' | 'published' | 'skipped';
   scheduledFor: string | null;
+  // Preview-video — Stream primær (HLS-playback), R2 fallback (mp4).
+  previewStreamPlaybackUrl?: string | null;
+  previewStreamThumbnailUrl?: string | null;
+  previewStreamReady?: boolean;
+  previewStreamDurationSec?: number | null;
+  previewVideoR2Url?: string | null;
 }
 
 interface DashboardPillar {
@@ -201,10 +210,10 @@ export default function ClientPortalMarketingPage() {
           {/* Forespørsler øverst — viser kun seksjonen hvis det finnes noen */}
           <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
           <ProgressSection progress={data.progress!} plan={data.plan!} />
-          <UpcomingSection upcoming={data.upcoming!} />
+          <UpcomingSection upcoming={data.upcoming!} projectId={data.project?.id ?? null} clientToken={token} />
           <StrategyCard plan={data.plan!} />
           <PillarsCard pillars={data.plan!.pillars} />
-          <AllPostsCard posts={data.posts!} pillars={data.plan!.pillars} />
+          <AllPostsCard posts={data.posts!} pillars={data.plan!.pillars} projectId={data.project?.id ?? null} clientToken={token} />
         </Stack>
       </Container>
       <Typography
@@ -314,7 +323,11 @@ function StatChip({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function UpcomingSection({ upcoming }: { upcoming: DashboardPost[] }) {
+function UpcomingSection({ upcoming, projectId, clientToken }: {
+  upcoming: DashboardPost[];
+  projectId: string | null;
+  clientToken: string;
+}) {
   if (upcoming.length === 0) return null;
   return (
     <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.24)' }}>
@@ -323,7 +336,7 @@ function UpcomingSection({ upcoming }: { upcoming: DashboardPost[] }) {
       </Typography>
       <Stack spacing={1}>
         {upcoming.map((post) => (
-          <PostRow key={post.id} post={post} compact />
+          <PostRow key={post.id} post={post} compact projectId={projectId} clientToken={clientToken} />
         ))}
       </Stack>
     </Box>
@@ -436,7 +449,12 @@ function PillarsCard({ pillars }: { pillars: DashboardPillar[] }) {
   );
 }
 
-function AllPostsCard({ posts, pillars }: { posts: DashboardPost[]; pillars: DashboardPillar[] }) {
+function AllPostsCard({ posts, pillars, projectId, clientToken }: {
+  posts: DashboardPost[];
+  pillars: DashboardPillar[];
+  projectId: string | null;
+  clientToken: string;
+}) {
   const grouped = useMemo(() => {
     const byPillar = new Map<string | null, DashboardPost[]>();
     for (const p of posts) {
@@ -469,7 +487,7 @@ function AllPostsCard({ posts, pillars }: { posts: DashboardPost[]; pillars: Das
             </Typography>
             <Stack spacing={0.8}>
               {group.posts.map((post) => (
-                <PostRow key={post.id} post={post} />
+                <PostRow key={post.id} post={post} projectId={projectId} clientToken={clientToken} />
               ))}
             </Stack>
           </Box>
@@ -479,7 +497,12 @@ function AllPostsCard({ posts, pillars }: { posts: DashboardPost[]; pillars: Das
   );
 }
 
-function PostRow({ post, compact }: { post: DashboardPost; compact?: boolean }) {
+function PostRow({ post, compact, projectId, clientToken }: {
+  post: DashboardPost;
+  compact?: boolean;
+  projectId: string | null;
+  clientToken: string;
+}) {
   const statusColor = post.status === 'published'
     ? '#22c55e'
     : post.status === 'scheduled'
@@ -502,43 +525,62 @@ function PostRow({ post, compact }: { post: DashboardPost; compact?: boolean }) 
         bgcolor: 'rgba(15,23,42,0.7)',
         border: '1px solid rgba(148,163,184,0.14)',
         display: 'flex',
+        flexDirection: 'column',
         gap: 1,
-        alignItems: 'flex-start',
       }}
     >
-      <Box
-        sx={{
-          width: 44, minHeight: 44,
-          borderRadius: 1.4,
-          bgcolor: 'rgba(34,211,238,0.12)',
-          color: '#a5f3fc',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          px: 1,
-          flexShrink: 0,
-        }}
-      >
-        <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em' }}>DAG</Typography>
-        <Typography sx={{ fontSize: '1rem', fontWeight: 800 }}>
-          {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
-        </Typography>
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mb: 0.4 }}>
-          <Chip size="small" label={FORMAT_LABEL[post.format]} sx={{ bgcolor: `${FORMAT_COLOR[post.format]}33`, color: '#fff', fontWeight: 700, fontSize: '0.7rem' }} />
-          <Chip size="small" label={statusLabel} sx={{ bgcolor: `${statusColor}1f`, color: statusColor, fontWeight: 700, fontSize: '0.7rem' }} />
-          {post.primaryPlatform ? (
-            <Chip size="small" label={post.primaryPlatform} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.3)', fontSize: '0.7rem' }} />
-          ) : null}
-        </Stack>
-        <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: compact ? '0.88rem' : '0.94rem', lineHeight: 1.4 }}>
-          {post.hook}
-        </Typography>
-        {!compact && post.callToAction ? (
-          <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', mt: 0.4 }}>
-            <strong style={{ color: '#86efac' }}>CTA:</strong> {post.callToAction}
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+        <Box
+          sx={{
+            width: 44, minHeight: 44,
+            borderRadius: 1.4,
+            bgcolor: 'rgba(34,211,238,0.12)',
+            color: '#a5f3fc',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            px: 1,
+            flexShrink: 0,
+          }}
+        >
+          <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em' }}>DAG</Typography>
+          <Typography sx={{ fontSize: '1rem', fontWeight: 800 }}>
+            {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
           </Typography>
-        ) : null}
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mb: 0.4 }}>
+            <Chip size="small" label={FORMAT_LABEL[post.format]} sx={{ bgcolor: `${FORMAT_COLOR[post.format]}33`, color: '#fff', fontWeight: 700, fontSize: '0.7rem' }} />
+            <Chip size="small" label={statusLabel} sx={{ bgcolor: `${statusColor}1f`, color: statusColor, fontWeight: 700, fontSize: '0.7rem' }} />
+            {post.primaryPlatform ? (
+              <Chip size="small" label={post.primaryPlatform} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.3)', fontSize: '0.7rem' }} />
+            ) : null}
+          </Stack>
+          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: compact ? '0.88rem' : '0.94rem', lineHeight: 1.4 }}>
+            {post.hook}
+          </Typography>
+          {!compact && post.callToAction ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', mt: 0.4 }}>
+              <strong style={{ color: '#86efac' }}>CTA:</strong> {post.callToAction}
+            </Typography>
+          ) : null}
+        </Box>
       </Box>
+      {!compact && (post.previewStreamPlaybackUrl || post.previewVideoR2Url) ? (
+        <PostVideoPreview
+          streamPlaybackUrl={post.previewStreamPlaybackUrl}
+          streamThumbnailUrl={post.previewStreamThumbnailUrl}
+          streamReady={post.previewStreamReady}
+          r2VideoUrl={post.previewVideoR2Url}
+          durationSec={post.previewStreamDurationSec}
+        />
+      ) : null}
+      {!compact && projectId ? (
+        <PostCommentLayer
+          projectId={projectId}
+          anchorType="marketing_plan_post"
+          anchorRef={post.id}
+          auth={{ kind: 'client-portal', sessionToken: clientToken }}
+        />
+      ) : null}
     </Box>
   );
 }

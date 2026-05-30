@@ -11,8 +11,9 @@
  * En kommentar pr (project_id, anchor_type, anchor_ref). anchor_ref
  * er typisk feed-plan-post-ID, marketing-plan-slice-ID, e.l.
  *
- * Real-time: polling 5 sek interval. Bruker eksisterende
- * Role Room-bearer-token for auth (samme som resten av web-appen).
+ * Real-time: polling 5 sek interval. Auth via `auth`-prop —
+ * Bearer-token for team (Bjarne) eller client-portal-sessionToken
+ * for klient (magic-link). Backend (resolveActor) skiller mellom dem.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -80,11 +81,10 @@ function buildAuthHeaders(auth: PostCommentAuth): Record<string, string> {
 }
 
 export function PostCommentLayer({
-  projectId, anchorType, anchorRef, authorDisplayName,
+  projectId, anchorType, anchorRef, auth, authorDisplayName,
   className, defaultVisibleCount = 3, readOnly = false,
   pollingIntervalMs = 5000,
   apiBase = '/api/role-room',
-  getAuthToken = defaultGetAuthToken,
 }: Props) {
   const [comments, setComments] = useState<PostCommentItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -98,19 +98,14 @@ export function PostCommentLayer({
   const fetchComments = useCallback(async (since?: string): Promise<{
     comments: PostCommentItem[]; serverTime: string;
   } | null> => {
-    const token = getAuthToken();
-    if (!token) {
-      setError('Ikke innlogget');
-      return null;
-    }
     try {
       const u = new URLSearchParams({ projectId });
       if (since) u.set('since', since);
       const res = await fetch(`${apiBase}/editor-comments?${u}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildAuthHeaders(auth),
       });
       if (!res.ok) {
-        if (res.status === 401) setError('Sesjon utløpt — logg inn på nytt');
+        if (res.status === 401) setError('Sesjon utløpt — last siden på nytt');
         else setError(`HTTP ${res.status}`);
         return null;
       }
@@ -119,7 +114,7 @@ export function PostCommentLayer({
       setError((e as Error).message);
       return null;
     }
-  }, [projectId, apiBase, getAuthToken]);
+  }, [projectId, apiBase, auth]);
 
   const refresh = useCallback(async () => {
     const data = await fetchComments();
@@ -165,18 +160,13 @@ export function PostCommentLayer({
   const handlePost = async () => {
     const text = draft.trim();
     if (!text) return;
-    const token = getAuthToken();
-    if (!token) {
-      setError('Ikke innlogget');
-      return;
-    }
     setPosting(true);
     setError(null);
     try {
       const res = await fetch(`${apiBase}/editor-comments`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...buildAuthHeaders(auth),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -200,13 +190,11 @@ export function PostCommentLayer({
   };
 
   const handleResolve = async (commentId: string) => {
-    const token = getAuthToken();
-    if (!token) return;
     try {
       await fetch(`${apiBase}/editor-comments/${commentId}`, {
         method: 'PATCH',
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...buildAuthHeaders(auth),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ status: 'resolved' }),

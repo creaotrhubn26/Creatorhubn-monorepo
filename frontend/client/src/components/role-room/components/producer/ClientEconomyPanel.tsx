@@ -26,6 +26,8 @@ import roleRoomAgentService, {
   type RoleRoomApprovalPolicy,
   type RoleRoomBudgetResult,
   type RoleRoomChannelResults,
+  type RoleRoomAdRecommendationsResult,
+  type RoleRoomAdRecommendationSeverity,
 } from '../../services/roleRoomAgentService';
 import GrantedAssetsCard from './GrantedAssetsCard';
 
@@ -97,7 +99,22 @@ export default function ClientEconomyPanel({
   const [budgetInput, setBudgetInput] = useState('');
   const [savingBudget, setSavingBudget] = useState(false);
   const [results, setResults] = useState<RoleRoomChannelResults | null>(null);
+  const [recommendations, setRecommendations] = useState<RoleRoomAdRecommendationsResult | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshRecommendations = async () => {
+    const r = await roleRoomAgentService.fetchAdsRecommendations(projectId, period);
+    setRecommendations(r);
+  };
+
+  const triggerRegenerate = async () => {
+    setRegenerating(true);
+    const res = await roleRoomAgentService.generateAdsRecommendations(projectId, period);
+    if (res.ok) await refreshRecommendations();
+    else setError(res.error ?? 'Generering feilet.');
+    setRegenerating(false);
+  };
 
   const refreshBudget = async () => {
     const b = await roleRoomAgentService.fetchAdsBudget(projectId, period);
@@ -111,13 +128,15 @@ export default function ClientEconomyPanel({
       setLoading(true);
       setError(null);
       try {
-        const [data, res] = await Promise.all([
+        const [data, res, recs] = await Promise.all([
           roleRoomAgentService.fetchAdsSpendSummary(period),
           roleRoomAgentService.fetchAdsResults(projectId, period),
+          roleRoomAgentService.fetchAdsRecommendations(projectId, period),
         ]);
         if (!cancelled) {
           setSummary(data);
           setResults(res);
+          setRecommendations(recs);
         }
       } catch {
         if (!cancelled) setError('Klarte ikke å hente forbruket.');

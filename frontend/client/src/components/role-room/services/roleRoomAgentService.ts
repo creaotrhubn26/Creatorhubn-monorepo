@@ -1061,6 +1061,36 @@ export interface RoleRoomLinkedInCampaignGroup {
   status: string | null;
 }
 
+// ── Lag 2: AI-anbefalinger ─────────────────────────────────────────────
+export type RoleRoomAdRecommendationType =
+  | 'reallocate_budget'
+  | 'pause_underperformer'
+  | 'scale_winner'
+  | 'refresh_creative'
+  | 'fix_tracking'
+  | 'investigate';
+export type RoleRoomAdRecommendationSeverity = 'info' | 'warning' | 'critical';
+
+export interface RoleRoomAdRecommendation {
+  id: string;
+  type: RoleRoomAdRecommendationType;
+  severity: RoleRoomAdRecommendationSeverity;
+  title: string;
+  body: string;
+  evidence: string[];
+  affectsChannels?: string[];
+  suggestedAction: { kind: 'manual'; detail?: string };
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export interface RoleRoomAdRecommendationsResult {
+  period: string;
+  recommendations: RoleRoomAdRecommendation[];
+  overallNote: string | null;
+  generatedAt: string | null;
+  generatedWithModel: string | null;
+}
+
 // ── AI-genererte annonser (Lag 1) ──────────────────────────────────────
 export interface RoleRoomAdVariant {
   headline: string;
@@ -1483,6 +1513,30 @@ export const roleRoomAgentService = {
     });
     if (!response.ok) return null;
     return (await response.json().catch(() => null)) as RoleRoomChannelResults | null;
+  },
+
+  /** Lag 2: hent siste persisterte anbefalinger for prosjektet + perioden. */
+  async fetchAdsRecommendations(projectId: string, period?: string): Promise<RoleRoomAdRecommendationsResult | null> {
+    const qs = new URLSearchParams({ projectId, ...(period ? { period } : {}) });
+    const response = await fetch(`/api/role-room/ads/recommendations?${qs.toString()}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return null;
+    return (await response.json().catch(() => null)) as RoleRoomAdRecommendationsResult | null;
+  },
+
+  /** Lag 2: manuell trigger — bygger og lagrer anbefalinger uten å vente på cron. */
+  async generateAdsRecommendations(projectId: string, period?: string): Promise<{ ok: boolean; error?: string }> {
+    const response = await fetch('/api/role-room/ads/recommendations/generate', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, ...(period ? { period } : {}) }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      return { ok: false, error: payload?.detail || payload?.error || 'Kunne ikke generere anbefalinger' };
+    }
+    return { ok: true };
   },
 
   // ── Kampanje-styring (se/opprett/pause/gjenoppta/avslutt) ──

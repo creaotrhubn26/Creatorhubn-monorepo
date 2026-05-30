@@ -50,6 +50,14 @@ export interface PersistedPlanPost extends GeneratedPlanPost {
   publishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  // Preview-video (Cloudflare Stream primær, R2 fallback)
+  previewStreamUid: string | null;
+  previewStreamReady: boolean;
+  previewStreamPlaybackUrl: string | null;
+  previewStreamThumbnailUrl: string | null;
+  previewStreamDurationSec: number | null;
+  previewVideoR2Url: string | null;
+  previewVideoUploadedAt: Date | null;
 }
 
 // ── Claude generation ───────────────────────────────────────────────────
@@ -292,6 +300,14 @@ function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
     publishedAt: (row.published_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
+    previewStreamUid: (row.preview_stream_uid as string | null) ?? null,
+    previewStreamReady: row.preview_stream_ready === true,
+    previewStreamPlaybackUrl: (row.preview_stream_playback_url as string | null) ?? null,
+    previewStreamThumbnailUrl: (row.preview_stream_thumbnail_url as string | null) ?? null,
+    previewStreamDurationSec: row.preview_stream_duration_sec != null
+      ? Number(row.preview_stream_duration_sec) : null,
+    previewVideoR2Url: (row.preview_video_url as string | null) ?? null,
+    previewVideoUploadedAt: (row.preview_video_uploaded_at as Date | null) ?? null,
     pillarIndex: 0, // unused after persistence
   } as unknown as PersistedPlanPost;
 }
@@ -478,7 +494,11 @@ export async function listPlanPosts(pool: Pool, planId: string): Promise<Persist
       `SELECT id, plan_id, pillar_id, sort_order, day_offset, hook, format,
               script, caption_draft, call_to_action, primary_platform,
               cross_post_plan, goal_kpi, status, feed_plan_post_id,
-              scheduled_for, published_at, created_at, updated_at
+              scheduled_for, published_at, created_at, updated_at,
+              preview_stream_uid, preview_stream_ready,
+              preview_stream_playback_url, preview_stream_thumbnail_url,
+              preview_stream_duration_sec, preview_video_url,
+              preview_video_uploaded_at
          FROM role_room_marketing_plan_posts
         WHERE plan_id = $1
         ORDER BY day_offset NULLS LAST, sort_order`,

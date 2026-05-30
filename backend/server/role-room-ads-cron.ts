@@ -51,7 +51,26 @@ import {
   type AutoPauseSweepSummary,
   type PausePlatformDispatchers,
 } from "./role-room-ads-auto-pause.js";
-import { listActiveCampaignsForProject } from "./role-room-ads-db.js";
+import {
+  getChannelResultRows,
+  listActiveCampaignsForProject,
+  listProjectsWithAdActivity,
+  sumSpendForProjectPeriod,
+  upsertAdRecommendations,
+} from "./role-room-ads-db.js";
+import { buildChannelResults } from "./role-room-ads-shared.js";
+import {
+  computeBudgetPacing,
+  computeBudgetStatus,
+  getBudget,
+} from "./role-room-ads-budget.js";
+import { fetchActiveMarketingPlan } from "./role-room-marketing-plan.js";
+import {
+  generateAdRecommendations,
+  type RecommendationChannelMetrics,
+  type RecommendationBudgetSnapshot,
+  type RecommendationContext,
+} from "./role-room-ads-recommendations.js";
 
 /** Build the connector registry from the modules + env configuration. */
 export function buildAdsConnectorRegistry(): Partial<Record<AdsPlatform, PlatformConnector>> {
@@ -118,6 +137,113 @@ export function buildPausePlatformDispatchers(): PausePlatformDispatchers {
   };
 }
 
+/**
+ * Lag 2: AI-anbefalinger pr prosjekt for inneværende periode.
+ * Itererer prosjekter med kampanjer; bygger en RecommendationContext fra
+ * channel-tall + budsjett-pacing + marketing-plan-strategi; lar Claude
+ * foreslå konkrete handlinger; persist-erer pr (prosjekt, periode) — neste
+ * dag overskriver. Returnerer ingen action; alt er informasjon for mennesker.
+ */
+export interface AdRecommendationsSweepSummary {
+  period: string;
+  scanned: number;
+  generated: number;
+  errors: number;
+}
+
+/** Generer + persist anbefalinger for ETT prosjekt. Returnerer null hvis
+ *  Claude/LLM ikke svarer; ellers antallet anbefalinger + modellen brukt.
+ *  Brukes både av cron-sweepen og av den manuelle POST-ruten. */
+export async function runAdsRecommendationsForProject(
+  pool: Pool,
+  projectId: string,
+  period: string,
+): Promise<{ recommendations: number; generatedWithModel: string } | null> {
+  // Channel-tall fra ads_attribution_daily JOIN ads_campaigns, samme som
+  // GET /ads/results/summary leser.
+  const rows = await getChannelResultRows(pool, projectId, period);
+  const summary = buildChannelResults(rows);
+  const channels: RecommendationChannelMetrics[] = [
+    ...summary.perChannel,
+    { ...summary.totals }, // platform: 'total'
+  ];
+
+  // Budsjett-snapshot — alltid med, selv om hasBudget=false (Claude trenger
+  // å vite at det ikke er satt et tak).
+  const b = await getBudget(pool, projectId, period);
+  const actualSpendNok = await sumSpendForProjectPeriod(pool, projectId, period);
+  const status = computeBudgetStatus({
+    hasBudget: !!b,
+    maxSpendNok: b?.maxSpendNok ?? 0,
+    approvedOverageNok: b?.approvedOverageNok ?? 0,
+    actualSpendNok,
+  });
+  const pacing = computeBudgetPacing({ status, period });
+  const budget: RecommendationBudgetSnapshot = {
+    hasBudget: status.hasBudget,
+    maxSpendNok: status.maxSpendNok,
+    actualSpendNok: status.actualSpendNok,
+    utilizationPct: status.utilizationPct,
+    daysInPeriod: pacing.daysInPeriod,
+    daysElapsed: pacing.daysElapsed,
+    daysRemaining: pacing.daysRemaining,
+    dailyRunRateNok: pacing.dailyRunRateNok,
+    projectedPeriodSpendNok: pacing.projectedPeriodSpendNok,
+    projectedOverspendNok: pacing.projectedOverspendNok,
+    recommendedDailyBudgetNok: pacing.recommendedDailyBudgetNok,
+    projectedExhaustionDate: pacing.projectedExhaustionDate,
+    pace: pacing.pace,
+  };
+
+  // Marketing-plan-kontekst gir Claude forretningsforståelse (verdiløfte +
+  // tone), ikke bare tall.
+  const plan = await fetchActiveMarketingPlan(pool, projectId).catch(() => null);
+
+  const ctx: RecommendationContext = {
+    period,
+    channels,
+    budget,
+    valueProp: plan?.strategy?.positioning?.valueProp ?? null,
+    differentiator: plan?.strategy?.positioning?.differentiator ?? null,
+    toneVoice: plan?.strategy?.toneOfVoice?.voice ?? null,
+    language: "no",
+  };
+
+  const result = await generateAdRecommendations({ context: ctx });
+  if (!result) return null;
+
+  await upsertAdRecommendations(pool, {
+    projectId,
+    period,
+    generatedWithModel: result.generatedWithModel,
+    recommendations: { recommendations: result.recommendations, overallNote: result.overallNote },
+  });
+  return { recommendations: result.recommendations.length, generatedWithModel: result.generatedWithModel };
+}
+
+export async function runAdsRecommendationsSweepWithDefaults(
+  pool: Pool,
+  period?: string,
+): Promise<AdRecommendationsSweepSummary> {
+  const periodKey = period || new Date().toISOString().slice(0, 7);
+  const projectIds = await listProjectsWithAdActivity(pool);
+  let generated = 0;
+  let errors = 0;
+
+  for (const projectId of projectIds) {
+    try {
+      const out = await runAdsRecommendationsForProject(pool, projectId, periodKey);
+      if (out) generated += 1;
+      else errors += 1;
+    } catch (error) {
+      console.error(`[ads-recommendations] project ${projectId} failed`, error);
+      errors += 1;
+    }
+  }
+
+  return { period: periodKey, scanned: projectIds.length, generated, errors };
+}
+
 /** Run auto-pause sweep with the cron's wiring. */
 export async function runAdsAutoPauseSweepWithDefaults(
   pool: Pool,
@@ -163,7 +289,15 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
       } catch (error) {
         console.error("[ads-auto-pause] sweep failed (non-fatal)", error);
       }
-      res.json({ ok: true, summary, autoPause });
+      // Lag 2: generer AI-anbefalinger pr prosjekt etter at spend + auto-pause er ferdig.
+      // Feilfritt non-fatal — manglende anbefalinger må aldri felle billing-/auto-pause-data.
+      let recommendations: AdRecommendationsSweepSummary | null = null;
+      try {
+        recommendations = await runAdsRecommendationsSweepWithDefaults(pool);
+      } catch (error) {
+        console.error("[ads-recommendations] sweep failed (non-fatal)", error);
+      }
+      res.json({ ok: true, summary, autoPause, recommendations });
     } catch (error) {
       res.status(500).json({ error: "ads_attribution_tick_failed", detail: String(error) });
     }
@@ -177,6 +311,9 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
         void runAdsAttributionSweepWithDefaults(pool)
           .then(() => runAdsAutoPauseSweepWithDefaults(pool).catch((e) =>
             console.error("[ads-auto-pause] interval run failed (non-fatal)", e),
+          ))
+          .then(() => runAdsRecommendationsSweepWithDefaults(pool).catch((e) =>
+            console.error("[ads-recommendations] interval run failed (non-fatal)", e),
           ))
           .catch((e) => console.error("[ads-sweep] interval run failed", e));
       },

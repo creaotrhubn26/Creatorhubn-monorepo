@@ -32,9 +32,11 @@ import { MulticamSyncStudio } from "./MulticamSyncStudio";
 import { SocialCutsStudio } from "./SocialCutsStudio";
 import { ReviewSessionsStudio } from "./ReviewSessionsStudio";
 import { CollaborationSidebar } from "./CollaborationSidebar";
+import { MarketingPreviewUploadDialog } from "./MarketingPreviewUploadDialog";
 import { editorCommentsService } from "../services/editorCommentsService";
 import GroupsIcon from "@mui/icons-material/Groups";
 import ForumIcon from "@mui/icons-material/Forum";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import GraphicEqIcon2 from "@mui/icons-material/GraphicEq";
@@ -114,6 +116,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [socialCutsOpen, setSocialCutsOpen] = useState(false);
   const [reviewSessionsOpen, setReviewSessionsOpen] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
+  const [marketingPreviewOpen, setMarketingPreviewOpen] = useState(false);
   // Globalt "open + in-progress"-tråd-count for header-badge
   const [activeThreadCount, setActiveThreadCount] = useState(0);
   // Unread @-mentions for header-badge
@@ -562,6 +565,17 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                 justifyContent: "center",
               }}>{unreadMentions}</span>
             )}
+          </button>
+          <button onClick={() => setMarketingPreviewOpen(true)}
+                  title="Last opp proxy-render til marketing-plan-post — klient ser direkte i client-portal"
+                  style={{
+                    background: "rgba(160,48,192,0.15)",
+                    border: "1px solid rgba(160,48,192,0.4)",
+                    color: "#fff", padding: "5px 12px", fontSize: 11,
+                    borderRadius: 4, cursor: "pointer", fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}>
+            <CloudUploadIcon sx={{ fontSize: 14 }} /> Send til klient
           </button>
           <button onClick={requestBrollSuggestions}
                   title="Få Director-forslag til B-roll basert på nåværende kapittel + look"
@@ -1382,6 +1396,14 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
           // V2: actually jump editor playback til denne tiden
         }}
       />
+
+      {/* Marketing-preview upload — send proxy-render til klient-portal */}
+      {marketingPreviewOpen && (
+        <MarketingPreviewUploadDialog
+          projectId={projectIdForStudio}
+          onClose={() => setMarketingPreviewOpen(false)}
+        />
+      )}
 
       {/* B-roll Suggestion modal — Director foreslår basert på chapter+look */}
       {brollSuggestionContext && (

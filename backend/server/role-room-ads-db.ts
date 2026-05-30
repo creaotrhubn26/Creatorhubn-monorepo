@@ -314,6 +314,71 @@ export async function recordManagementFee(
  * that has been live (active/paused/ended) and carries an external id. Used by
  * runAdsAttributionSweep across all users.
  */
+// ── Lag 2: AI-anbefalinger (persisteres per prosjekt + periode) ─────────
+
+export interface PersistedAdRecommendations {
+  projectId: string;
+  period: string;
+  generatedAt: Date;
+  generatedWithModel: string | null;
+  recommendations: unknown;
+}
+
+export async function upsertAdRecommendations(
+  pool: Pool,
+  input: {
+    projectId: string;
+    period: string;
+    generatedWithModel: string | null;
+    recommendations: unknown;
+  },
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO role_room_ads_recommendations
+       (project_id, period, generated_at, generated_with_model, recommendations)
+     VALUES ($1, $2, now(), $3, $4::jsonb)
+     ON CONFLICT (project_id, period) DO UPDATE SET
+       generated_at = EXCLUDED.generated_at,
+       generated_with_model = EXCLUDED.generated_with_model,
+       recommendations = EXCLUDED.recommendations`,
+    [input.projectId, input.period, input.generatedWithModel, JSON.stringify(input.recommendations)],
+  );
+}
+
+export async function fetchAdRecommendations(
+  pool: Pool,
+  projectId: string,
+  period: string,
+): Promise<PersistedAdRecommendations | null> {
+  const r = await pool.query(
+    `SELECT project_id, period, generated_at, generated_with_model, recommendations
+       FROM role_room_ads_recommendations
+      WHERE project_id = $1 AND period = $2
+      LIMIT 1`,
+    [projectId, period],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  return {
+    projectId: row.project_id,
+    period: row.period,
+    generatedAt: row.generated_at as Date,
+    generatedWithModel: (row.generated_with_model as string | null) ?? null,
+    recommendations: row.recommendations,
+  };
+}
+
+/** Distinct project-IDer som har annonsekampanjer registrert — uavhengig av
+ *  periode. Brukt av Lag 2-cron til å vite hvilke prosjekter som skal få
+ *  anbefalinger. For MedInnova-skala (få prosjekter) er dette en helt rimelig
+ *  iterasjon. */
+export async function listProjectsWithAdActivity(pool: Pool): Promise<string[]> {
+  const r = await pool.query(
+    `SELECT DISTINCT project_id FROM ads_campaigns WHERE project_id IS NOT NULL`,
+  );
+  return r.rows.map((row) => String(row.project_id));
+}
+
 /**
  * Active campaigns for one project — used by auto-pause to find what to stop
  * when the period hits the cap. Returns rows with an external_campaign_id so
