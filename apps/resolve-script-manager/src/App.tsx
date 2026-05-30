@@ -53,6 +53,7 @@ import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
+import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
@@ -84,6 +85,16 @@ export default function App() {
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
+  // Auto-updater dialog-state. Set når sjekk finner ny versjon; null mens
+  // ingen oppdatering venter eller mens vi laster ned. Selve download +
+  // install kalles via onDownload-prop på UpdaterDialog.
+  const [updateInfo, setUpdateInfo] = useState<{
+    version: string;
+    notes: string | null;
+    runDownload: (
+      onProgress: (fraction: number, status: "downloading" | "finished") => void,
+    ) => Promise<void>;
+  } | null>(null);
   const [agentEditorConfig, setAgentEditorConfig] = useState<AgentConfig | null>(null);
   const [agentSourcePath, setAgentSourcePath] = useState<string>("");
 
@@ -262,15 +273,18 @@ export default function App() {
       }).then((u) => unlisteners.push(u));
       listen("menu://new-workflow", () => setView("pipeline")).then((u) => unlisteners.push(u));
       // Updater-handler: brukes både av menu://check-updates og av
-      // auto-check ved oppstart. Hvis ny versjon finnes, last ned +
-      // installer + spør om restart. promptRestart=false (auto-check)
-      // gjør samme jobb men uten å nag-en hvis user nylig avviste.
-      const runUpdateCheck = async (promptRestart: boolean) => {
+      // auto-check ved oppstart. Sjekker etter ny versjon; hvis funnet
+      // setter vi updateInfo som rendrer UpdaterDialog. Selve nedlastings-
+      // + install-kallet skjer fra dialogens "Last ned"-knapp via
+      // runDownload-prop, som propagerer Tauri-download-events tilbake til
+      // dialogens progress-bar. notifyNone=true betyr "menu trigget,
+      // si fra hvis det ikke er noe nytt"; auto-check skipper det.
+      const runUpdateCheck = async (notifyNone: boolean) => {
         try {
           const updater = await import("@tauri-apps/plugin-updater");
           const update = await updater.check();
           if (!update) {
-            if (promptRestart) {
+            if (notifyNone) {
               setEvents((prev) => [
                 ...prev,
                 { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
@@ -281,19 +295,32 @@ export default function App() {
           setEvents((prev) => [
             ...prev,
             { type: "log", ts: Date.now() / 1000, runId: "n/a",
-              message: `Update available: v${update.version} — laster ned…` },
+              message: `Update available: v${update.version}` },
           ]);
-          await update.downloadAndInstall();
-          setEvents((prev) => [
-            ...prev,
-            { type: "log", ts: Date.now() / 1000, runId: "n/a",
-              message: `v${update.version} installert. Restart for å aktivere.` },
-          ]);
-          // Tauri-plugin-process er ikke installert ennå; ber bruker
-          // om manuell Cmd+Q + relaunch i stedet for relaunch().
-          window.alert(
-            `Post Agent v${update.version} er installert. Lukk appen (Cmd+Q) og åpne den på nytt for å aktivere.`,
-          );
+          // Hold update-objektet i closure til brukeren klikker "Last ned".
+          // downloadAndInstall tar en progress-callback med events:
+          //   Started(contentLength) → vis 0
+          //   Progress(chunkLength) → akkumuler bytes
+          //   Finished → 100% + skift til installed-state
+          setUpdateInfo({
+            version: update.version,
+            notes: update.body ?? null,
+            runDownload: async (onProgress) => {
+              let total = 0;
+              let downloaded = 0;
+              await update.downloadAndInstall((event) => {
+                if (event.event === "Started") {
+                  total = event.data.contentLength ?? 0;
+                  onProgress(0, "downloading");
+                } else if (event.event === "Progress") {
+                  downloaded += event.data.chunkLength;
+                  if (total > 0) onProgress(downloaded / total, "downloading");
+                } else if (event.event === "Finished") {
+                  onProgress(1, "finished");
+                }
+              });
+            },
+          });
         } catch (e) {
           // Updater not configured (no endpoint/pubkey) — silent i dev
           console.warn("[updater] not available:", e);
@@ -927,6 +954,15 @@ export default function App() {
       )}
 
       {showWatch && <WatchFolderModal onClose={() => setShowWatch(false)} />}
+
+      {updateInfo && (
+        <UpdaterDialog
+          version={updateInfo.version}
+          notes={updateInfo.notes}
+          onDownload={updateInfo.runDownload}
+          onDismiss={() => setUpdateInfo(null)}
+        />
+      )}
 
       {showMagicCut && activeTemplate && (
         <MagicCutDialog
