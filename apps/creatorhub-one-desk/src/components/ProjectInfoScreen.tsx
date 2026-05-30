@@ -18,6 +18,7 @@ import {
 import { clearHelperConfig, fetchProjectInfo, ProjectInfo, StoredConfig } from "../api";
 import MountsSection from "./MountsSection";
 import CopyProgressView from "./CopyProgressView";
+import IPadPairingSection from "./IPadPairingSection";
 
 interface Props {
   config: StoredConfig;
@@ -129,6 +130,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
 
             <CopyProgressView />
 
+            <IPadPairingSection />
+
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
@@ -176,8 +179,9 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
           }}
         >
           <Typography variant="caption">
-            F4 — copy-engine + backend-rapportering (dit_backup_jobs).
-            iPad-paring og live mirror kommer i F5–F6.
+            F5 — iPad-paring (Bonjour-discovery, manuell PIN-confirmation
+            inntil CaptureApp støtter automatisk bekreftelse). Live mirror
+            kommer i F6.
           </Typography>
         </Box>
 

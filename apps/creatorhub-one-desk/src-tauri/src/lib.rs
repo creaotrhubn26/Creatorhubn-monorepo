@@ -9,14 +9,17 @@ mod copy_engine;
 mod copy_session;
 mod dit_reporter;
 mod helper_client;
+mod ipad_pairing;
 mod mount_watcher;
 
 use std::sync::Arc;
 
 use copy_session::{CopySessionState, DestinationSpec, SessionSpec, SessionStatus};
 use helper_client::{Config, ProjectInfo};
+use ipad_pairing::{DiscoveredIpad, IpadPairingState, PairedIpad, PendingPin};
 use mount_watcher::{DetectedMount, MountWatcherState};
 use serde::Serialize;
+use tauri::Manager;
 
 #[derive(Serialize)]
 struct StoredConfig {
@@ -123,6 +126,92 @@ fn list_copy_sessions(state: tauri::State<Arc<CopySessionState>>) -> Vec<Session
     state.list()
 }
 
+#[tauri::command]
+fn list_discovered_ipads(state: tauri::State<Arc<IpadPairingState>>) -> Vec<DiscoveredIpad> {
+    state.list_discovered()
+}
+
+#[tauri::command]
+fn list_paired_ipads() -> Vec<PairedIpad> {
+    ipad_pairing::load_paired()
+}
+
+#[tauri::command]
+fn current_pairing_pin(state: tauri::State<Arc<IpadPairingState>>) -> Option<PendingPin> {
+    state.current_pin()
+}
+
+#[tauri::command]
+fn generate_pairing_pin(
+    state: tauri::State<Arc<IpadPairingState>>,
+    fullname: String,
+    device_name: String,
+) -> PendingPin {
+    state.generate_pin(&fullname, &device_name)
+}
+
+#[tauri::command]
+fn cancel_pairing_pin(state: tauri::State<Arc<IpadPairingState>>) {
+    state.clear_pin();
+}
+
+/// Manuell paring uten iPad-confirmation — for F5 (Mac-only). I F5+ vil
+/// iPad selv kalle dette endepunktet via lokal HTTP-server etter at
+/// brukeren har tastet PIN på iPad-en.
+#[tauri::command]
+fn confirm_pair_ipad(device_id: String, device_name: String) -> Result<Vec<PairedIpad>, String> {
+    if device_id.trim().is_empty() {
+        return Err("device_id mangler".into());
+    }
+    let mut list = ipad_pairing::load_paired();
+    if !list.iter().any(|p| p.device_id == device_id) {
+        list.push(PairedIpad {
+            device_id,
+            device_name,
+            paired_at_iso: chrono_now_iso(),
+        });
+        ipad_pairing::save_paired(&list)?;
+    }
+    Ok(list)
+}
+
+#[tauri::command]
+fn unpair_ipad(device_id: String) -> Result<Vec<PairedIpad>, String> {
+    let list: Vec<PairedIpad> = ipad_pairing::load_paired()
+        .into_iter()
+        .filter(|p| p.device_id != device_id)
+        .collect();
+    ipad_pairing::save_paired(&list)?;
+    Ok(list)
+}
+
+fn chrono_now_iso() -> String {
+    // Bruk samme ISO-formatter som dit_reporter, men inline her for å unngå
+    // public re-export. SystemTime → UTC, sekund-presisjon er nok.
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let total_secs = now.as_secs();
+    let secs_today = total_secs % 86400;
+    let days = total_secs / 86400;
+    let hours = secs_today / 3600;
+    let minutes = (secs_today % 3600) / 60;
+    let seconds = secs_today % 60;
+    let z = days as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hours, minutes, seconds
+    )
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -131,10 +220,15 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(MountWatcherState::default())
         .manage(Arc::new(CopySessionState::default()))
+        .manage(Arc::new(IpadPairingState::default()))
         .setup(|app| {
             let handle = app.handle().clone();
-            if let Err(err) = mount_watcher::spawn_watcher(handle) {
+            if let Err(err) = mount_watcher::spawn_watcher(handle.clone()) {
                 eprintln!("Mount-watcher kunne ikke starte: {err}");
+            }
+            let pairing_state: tauri::State<Arc<IpadPairingState>> = app.state();
+            if let Err(err) = ipad_pairing::spawn_browser(handle, pairing_state.inner().clone()) {
+                eprintln!("iPad Bonjour-browser kunne ikke starte: {err}");
             }
             Ok(())
         })
@@ -149,6 +243,13 @@ pub fn run() {
             start_copy_session,
             cancel_copy_session,
             list_copy_sessions,
+            list_discovered_ipads,
+            list_paired_ipads,
+            current_pairing_pin,
+            generate_pairing_pin,
+            cancel_pairing_pin,
+            confirm_pair_ipad,
+            unpair_ipad,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Creatorhub One Desk");

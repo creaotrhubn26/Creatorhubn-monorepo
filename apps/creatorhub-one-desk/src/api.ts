@@ -178,3 +178,67 @@ export interface CopySessionCompletedEvent {
   failed: number;
   cancelled: boolean;
 }
+
+// ─── iPad-paring (F5) ──────────────────────────────────────────
+
+export interface DiscoveredIpad {
+  fullname: string;
+  device_id: string | null;
+  device_name: string;
+  app_version: string | null;
+  addresses: string[];
+  port: number;
+}
+
+export interface PairedIpad {
+  device_id: string;
+  device_name: string;
+  paired_at_iso: string;
+}
+
+export interface PendingPin {
+  pin: string;
+  fullname: string;
+  device_name: string;
+  expires_at_unix_ms: number;
+}
+
+export async function listDiscoveredIpads(): Promise<DiscoveredIpad[]> {
+  return invoke<DiscoveredIpad[]>("list_discovered_ipads");
+}
+
+export async function listPairedIpads(): Promise<PairedIpad[]> {
+  return invoke<PairedIpad[]>("list_paired_ipads");
+}
+
+export async function currentPairingPin(): Promise<PendingPin | null> {
+  return invoke<PendingPin | null>("current_pairing_pin");
+}
+
+export async function generatePairingPin(args: {
+  fullname: string;
+  deviceName: string;
+}): Promise<PendingPin> {
+  return invoke<PendingPin>("generate_pairing_pin", {
+    fullname: args.fullname,
+    deviceName: args.deviceName,
+  });
+}
+
+export async function cancelPairingPin(): Promise<void> {
+  return invoke<void>("cancel_pairing_pin");
+}
+
+export async function confirmPairIpad(args: {
+  deviceId: string;
+  deviceName: string;
+}): Promise<PairedIpad[]> {
+  return invoke<PairedIpad[]>("confirm_pair_ipad", {
+    deviceId: args.deviceId,
+    deviceName: args.deviceName,
+  });
+}
+
+export async function unpairIpad(deviceId: string): Promise<PairedIpad[]> {
+  return invoke<PairedIpad[]>("unpair_ipad", { deviceId });
+}
