@@ -13,6 +13,7 @@ import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
 import MarketingPageRouter from '@/components/admin/content-marketing/MarketingPageRouter';
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
 import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
+import ClientWorkspaceShell from './components/client-workspace/ClientWorkspaceShell';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { useAriaHiddenFocusFix } from '@/hooks/useAriaHiddenFocusFix';
 import { detectLocale } from './cms/useLocale';
@@ -116,6 +117,14 @@ function CastingStandaloneAppContent() {
     [localeCtx.pathname],
   );
 
+  // Klient-flate: /client/workspace/:projectId — kuratert 5-tabs-shell
+  // (Økonomi, Godkjenning, Brief, Roller, Plan) for client_reviewer-rollen.
+  // Producer kan også åpne med ?preview=true for å se sin egen klient-flate.
+  const clientWorkspaceProjectId = useMemo(() => {
+    const match = localeCtx.pathname.match(/^\/client\/workspace\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [localeCtx.pathname]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -149,6 +158,10 @@ function CastingStandaloneAppContent() {
     return briefRoute.kind === 'index'
       ? <PublicBriefIndex />
       : <PublicBriefDetail slug={briefRoute.slug} />;
+  }
+
+  if (clientWorkspaceProjectId) {
+    return <ClientWorkspaceShell projectId={clientWorkspaceProjectId} />;
   }
 
   if (isEducationPath) {
