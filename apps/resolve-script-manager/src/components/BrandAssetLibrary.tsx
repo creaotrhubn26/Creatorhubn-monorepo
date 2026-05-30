@@ -15,7 +15,7 @@ import {
 } from "../services/brandAssetsService";
 import type { BrandAsset, BrandAssetKind } from "../services/brandAssetsService";
 import CloseIcon from "@mui/icons-material/Close";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import AddIcon from "@mui/icons-material/Add";
 
 interface Props {

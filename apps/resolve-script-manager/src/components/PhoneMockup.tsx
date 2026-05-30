@@ -18,7 +18,7 @@ import type { DeviceId, PlatformId } from "../lib/devicePresets";
 import type { SvgIconComponent } from "@mui/icons-material";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import FavoriteIcon from "@mui/icons-material/Favorite";
-import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import SendIcon from "@mui/icons-material/Send";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";

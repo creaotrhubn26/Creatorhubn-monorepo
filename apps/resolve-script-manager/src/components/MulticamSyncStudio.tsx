@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import SaveIcon from "@mui/icons-material/Save";
