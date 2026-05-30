@@ -14562,6 +14562,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         values,
       );
 
+      // Versjonér intake: lagre snapshot etter hver write.
+      // Best-effort — feiler ikke save-flowen hvis snapshot-en svikter.
+      try {
+        const mod = await import("./role-room-intake-versions-routes.js");
+        await mod.snapshotIntakeVersion(pool, {
+          projectId,
+          generatedByUserId: userId,
+          generatedByKind: 'user',
+        });
+      } catch (e) {
+        console.warn("[intake-save] snapshot feilet", e);
+      }
+
       if (isClientReviewerProjectRole(effectiveRoleRecord?.role)) {
         await notifyProducerTeamAboutClientBrief(
           projectId,
