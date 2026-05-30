@@ -25710,6 +25710,7 @@ setupRoleRoomAgentFeedPlanRoutes({
   pool,
   requireAdminSession,
   isCompatAdminFeatureEnabled,
+  getActiveSession: getActiveSessionFromRequest,
 });
 // ── Role Room social Meta — flyttet til ./role-room-social-meta-routes.ts
 //   16 endpoints: instagram (10) + facebook (6) inkl. OAuth, publish,
