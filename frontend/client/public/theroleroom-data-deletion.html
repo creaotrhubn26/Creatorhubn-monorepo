@@ -93,6 +93,19 @@
             <li><strong>Instagram Business</strong> — long-lived access tokens og koblede konto-ID-er</li>
             <li><strong>Facebook Pages</strong> — page-tilgangs­tokens</li>
             <li><strong>Google Workspace</strong> — refresh tokens for Drive/Gmail/Calendar</li>
+            <li><strong>Meta Marketing API</strong> — ads_management / ads_read / business_management OAuth-tokens</li>
+            <li><strong>Google Ads</strong> — adwords-scope refresh tokens (knyttet til kundens kunde-ID via MCC)</li>
+            <li><strong>LinkedIn Marketing API</strong> — r_ads / r_ads_reporting / r_organization_admin tokens</li>
+          </ul>
+        </li>
+        <li><strong>Annonse-data</strong> du har levert/koblet via Role Room:
+          <ul>
+            <li>Daglige aggregerte resultattall fra Meta/Google/LinkedIn-kampanjer
+              (lagret i <code>ads_attribution_daily</code> — visninger, klikk,
+              forbruk, konverteringer, ROAS per kampanje per dag)</li>
+            <li>Kampanje-metadata og evt. AI-genererte annonsetekster</li>
+            <li>Budsjett-konfigurasjon, godkjenningspolicy og auto-pause-innstillinger</li>
+            <li>AI-anbefalinger (Lag 2) som er generert basert på dine tall</li>
           </ul>
         </li>
         <li>AI-samtale­logger og audit-poster knyttet til din bruker-ID</li>

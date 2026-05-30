@@ -82,6 +82,14 @@ function getPrivacyBrand(): LegalBrand {
           detail: 'Brief, manus, story logikk, kundeprofil og annet innhold som brukes for å generere forslag og anbefalinger i The Role Room Agent.',
         },
         {
+          title: 'Annonse- og målings-data (førsteparts)',
+          detail: 'Når du besøker theroleroom.com kan vi sette Meta Pixel, Google Tag og LinkedIn Insight Tag for å måle effekten av annonser vi kjører for å markedsføre tjenesten. Disse sender event-data (sidevisning, klikk, registrering, hashet e-post ved konvertering) til respektive plattformer. Vi sender aldri passord, prosjekt-innhold eller AI-samtale-logger. Du kan avvise via cookie-banner, «Do Not Track» / Global Privacy Control, eller plattformens egen opt-out.',
+        },
+        {
+          title: 'Ads-data fra kunders kontoer (agency-modus)',
+          detail: 'Når en produsent administrerer ads på vegne av en kunde via Role Room (etter at kunden har gitt admin-tilgang via Business Manager / Google Ads / LinkedIn Campaign Manager), henter vi kampanje-data (visninger, klikk, forbruk, konverteringer, ROAS) via Meta Marketing API, Google Ads API og LinkedIn Marketing API. Daglig aggregerte tall lagres i ads_attribution_daily. Mutations (opprett/pause/avslutt kampanje, publiser post) skjer kun ved eksplisitt produsent-handling. Klient kan trekke tilgang når som helst.',
+        },
+        {
           title: 'Teknisk og sikkerhetsrelatert informasjon',
           detail: 'IP-adresse, nettleser, enhet, påloggingslogger, samtykker og sikkerhetshendelser.',
         },
@@ -90,6 +98,14 @@ function getPrivacyBrand(): LegalBrand {
         {
           title: 'Levere og drifte tjenesten',
           detail: 'For å opprette kontoer, lagre prosjekter, koordinere team og levere funksjonalitet i plattformen. Rettslig grunnlag: GDPR art. 6.1.b.',
+        },
+        {
+          title: 'Markedsføring og kampanje-måling (førsteparts ads)',
+          detail: 'Vi kjører annonser på Meta, Google og LinkedIn for å nå nye produsenter og produksjonsteam. Pixels og taggs på theroleroom.com måler konvertering og bygger remarketing-publikum (hashet e-post; ingen passord eller sensitive data). Rettslig grunnlag: GDPR art. 6.1.f (berettiget interesse) for generelle målings-pixels, 6.1.a (samtykke) for remarketing-cookies som krever det.',
+        },
+        {
+          title: 'Drift av annonsekampanjer på vegne av kunder (agency-modus)',
+          detail: 'For å la produsenten lese resultattall og styre kampanjer på Meta, Google og LinkedIn etter at kunden har gitt admin-tilgang. AI-anbefalinger (Lag 2) som leser tallene er kun rådgivende; klient-styrt auto-pause er off by default. Rettslig grunnlag: GDPR art. 6.1.b (databehandleravtale produsent ↔ kunde).',
         },
         {
           title: 'Samarbeid og integrasjoner',
@@ -147,6 +163,10 @@ function getPrivacyBrand(): LegalBrand {
         detail: 'Data fra Google Workspace, LinkedIn, Vitnemålsportalen, betalingssystemer og — ved bruk av AI-funksjoner — innhold sendt til Anthropic Claude (se egen seksjon under «AI-funksjoner»).',
       },
       {
+        title: 'Annonse- og målings-data',
+        detail: 'Når du besøker creatorhubn.com kan vi sette Meta Pixel, Google Tag og LinkedIn Insight Tag for å måle effekten av annonser vi kjører for å markedsføre CreatorHub. Disse sender event-data (sidevisning, klikk, registrering, hashet e-post ved konvertering) til respektive plattformer. Vi sender aldri passord, prosjekt-innhold eller AI-samtale-logger. Du kan avvise via cookie-banner, «Do Not Track» / Global Privacy Control, eller plattformens egen opt-out.',
+      },
+      {
         title: 'Teknisk og sikkerhetsrelatert informasjon',
         detail: 'IP-adresse, nettleser, enhet, påloggingslogger, samtykker og sikkerhetshendelser.',
       },
@@ -155,6 +175,10 @@ function getPrivacyBrand(): LegalBrand {
       {
         title: 'Levere og drifte tjenesten',
         detail: 'For å opprette kontoer, administrere abonnement, lagre prosjekter og levere plattformfunksjonalitet. Rettslig grunnlag: GDPR art. 6.1.b.',
+      },
+      {
+        title: 'Markedsføring og kampanje-måling',
+        detail: 'Vi kjører annonser på Meta, Google og LinkedIn for å nå nye brukere og bedrifter. Pixels og taggs på creatorhubn.com måler konvertering og bygger remarketing-publikum (hashet e-post; ingen passord eller sensitive data). Rettslig grunnlag: GDPR art. 6.1.f (berettiget interesse) for generelle målings-pixels, 6.1.a (samtykke) for remarketing-cookies som krever det.',
       },
       {
         title: 'Betaling, kundedialog og support',

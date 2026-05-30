@@ -59,9 +59,10 @@
           <li><a href="#hvorfor">2. Hvorfor</a></li>
           <li><a href="#tredjepart">3. Tredjeparts­tjenester og infrastruktur</a></li>
           <li><a href="#instagram">4. Instagram-data — detaljert</a></li>
-          <li><a href="#hvor-lenge">5. Hvor lenge</a></li>
-          <li><a href="#dine-rettigheter">6. Dine rettigheter (GDPR)</a></li>
-          <li><a href="#kontakt">7. Kontakt</a></li>
+          <li><a href="#annonser">5. Annonser og ads-data</a></li>
+          <li><a href="#hvor-lenge">6. Hvor lenge</a></li>
+          <li><a href="#dine-rettigheter">7. Dine rettigheter (GDPR)</a></li>
+          <li><a href="#kontakt">8. Kontakt</a></li>
         </ul>
       </div>
 
@@ -145,7 +146,92 @@
         </li>
       </ul>
 
-      <h2 id="hvor-lenge">5. Hvor lenge</h2>
+      <h2 id="annonser">5. Annonser og ads-data</h2>
+
+      <h3>Når vi annonserer Role Room selv</h3>
+      <p>
+        Vi kjører annonser på <strong>Meta (Facebook, Instagram)</strong>,
+        <strong>Google (Search, Display, Performance Max)</strong> og
+        <strong>LinkedIn</strong> for å markedsføre Role Room til
+        produsenter og produksjonsteam. For å måle effekten bruker vi:
+      </p>
+      <ul>
+        <li><strong>Meta Pixel</strong> på theroleroom.com — sporer
+          sidevisninger, registreringer og kjøp slik at Meta kan rapportere
+          CTR/CPC/konvertering. Bygger også remarketing-publikum
+          (tidligere besøkende vi kan vise oppfølgings-annonser til) og
+          lookalike-publikum (basert på hashet e-post fra eksisterende kunder).</li>
+        <li><strong>Google Tag (gtag.js)</strong> — samme formål for
+          Google Ads (Search + Display + Performance Max).</li>
+        <li><strong>LinkedIn Insight Tag</strong> — samme formål for
+          LinkedIn-kampanjer rettet mot beslutningstakere.</li>
+      </ul>
+      <p>
+        Data som sendes til annonse-plattformene er typisk:
+        anonymisert event-data (sidevisning, klikk, registrering),
+        hashet e-post (kun ved konvertering, brukt for matching i
+        plattformens egen audience-bygging), og en cookie- eller
+        device-ID. Vi sender <strong>aldri</strong> passord, prosjekt-
+        innhold, AI-samtale-logger eller andre kunde-data til
+        annonse-plattformer.
+      </p>
+      <p>
+        Du kan avvise sporing ved å klikke «Avvis» i cookie-banneret på
+        første besøk, eller via «Do Not Track» / «Global Privacy Control»
+        som vi respekterer automatisk. Plattform-spesifikke opt-out:
+        <a href="https://adssettings.google.com" target="_blank" rel="noreferrer">Google</a>,
+        <a href="https://www.facebook.com/adpreferences/ad_settings" target="_blank" rel="noreferrer">Meta</a>,
+        <a href="https://www.linkedin.com/psettings/advertising" target="_blank" rel="noreferrer">LinkedIn</a>.
+      </p>
+
+      <h3>Når du kobler dine egne ads-kontoer (agency-modus)</h3>
+      <p>
+        Hvis du er innholdsprodusent som bruker Role Room til å drifte
+        ads-kampanjer på vegne av dine kunder (etter at de har gitt deg
+        admin-tilgang via deres Business Manager / Google Ads /
+        LinkedIn Campaign Manager), behandler vi følgende ads-data fra
+        kundenes kontoer:
+      </p>
+      <ul>
+        <li><strong>Vi leser</strong> via Meta Marketing API, Google
+          Ads API og LinkedIn Marketing API: kampanjestruktur (navn, ID,
+          status, dagsbudsjett, mål-objektiv), daglige resultattall
+          (visninger, klikk, forbruk, CPC, CTR, konverteringer,
+          konverteringsverdi, ROAS, attribution-data), og listen over
+          Pages / IG-kontoer / ad-accounts kunden har gitt produsenten
+          admin-rolle på.</li>
+        <li><strong>Vi skriver</strong> bare når produsenten eksplisitt
+          handler: oppretter kampanjer (alltid i status PAUSET først;
+          aktiveres manuelt etter godkjenning), pauser/gjenopptar/avslutter
+          kampanjer, publiserer poster og reels kunden har godkjent.
+          Aldri uten en bruker-handling.</li>
+        <li><strong>Hvor det lagres</strong>: daglige aggregerte
+          resultattall i tabellen <code>ads_attribution_daily</code>
+          (PostgreSQL, EU-region) per kampanje per dag, så lenge
+          produsent-kunde-engasjementet er aktivt. OAuth refresh-tokens
+          kryptert med AES-256-GCM i
+          <code>role_room_ads_oauth_connections</code>; slettes ved
+          frakobling eller tilbakekalling.</li>
+        <li><strong>Klient-styrt auto-pause</strong>: hvis kunden har
+          slått på «Pause kampanjer automatisk når taket nås» i
+          Økonomi-fanen, pauses aktive kampanjer automatisk via
+          plattformens API når månedlig forbruks-tak treffes (off by
+          default; krever eksplisitt klient-handling).</li>
+        <li><strong>Tilgang trekkes</strong> via kundens egne
+          plattform-innstillinger (Meta Business Manager, Google Ads
+          admin, LinkedIn Campaign Manager). Vi oppdager tilbakekalling
+          i neste daglige sjekk; pågående handlinger fullføres ikke, og
+          lagrede tokens slettes innen 30 dager.</li>
+      </ul>
+      <p>
+        Vi deler <strong>aldri</strong> kunders ads-data med andre
+        kunder, eller med tredjeparter utenfor de plattformene dataen
+        kommer fra. AI-anbefalinger (Lag 2) som leser ads-tallene for å
+        foreslå budsjettflytting er kun rådgivende — ingen automatisk
+        handling utløses uten klient-styrt opt-in.
+      </p>
+
+      <h2 id="hvor-lenge">6. Hvor lenge</h2>
       <ul>
         <li>Konto-data: så lenge du er kunde + 90 dager etter sletting</li>
         <li>AI-samtale­logger: 90 dager (deretter anonymiseres)</li>
@@ -154,7 +240,7 @@
         <li>Instagram tokens: så lenge du er koblet til + slettes umiddelbart ved tilbakekalling</li>
       </ul>
 
-      <h2 id="dine-rettigheter">6. Dine rettigheter (GDPR)</h2>
+      <h2 id="dine-rettigheter">7. Dine rettigheter (GDPR)</h2>
       <p>Du har rett til:</p>
       <ul>
         <li><strong>Innsyn</strong> — be om kopi av all data vi har om deg</li>
@@ -164,7 +250,7 @@
         <li><strong>Klage til Datatilsynet</strong> — <a href="https://datatilsynet.no" target="_blank" rel="noreferrer">datatilsynet.no</a></li>
       </ul>
 
-      <h2 id="kontakt">7. Kontakt</h2>
+      <h2 id="kontakt">8. Kontakt</h2>
       <p>
         Personvern­spørsmål: <a href="mailto:privacy@theroleroom.com">privacy@theroleroom.com</a><br />
         Generell kontakt: <a href="mailto:hello@theroleroom.com">hello@theroleroom.com</a><br />
