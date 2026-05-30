@@ -723,6 +723,92 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   }, [payload, includedChapters, activePickOrder, pickOverrides, allPicks, extraPicks.length, segmentOrder]);
   const balance = useMemo(() => computeHistorybalance(filteredPicks), [filteredPicks]);
   const totalDuration = useMemo(() => filteredPicks.reduce((s, p) => s + p.durationSec, 0), [filteredPicks]);
+
+  // Claude AI-forslag-modal — gir scene-spesifikke musikk-stiler basert
+  // på chapter (vows, first_dance, nikkah, ...). Bruker samme proxy som
+  // Post Agent (anthropic_proxy via /api/post-agent/anthropic/messages) så
+  // token-bruk telles per innlogget bruker.
+  const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
+  const [autoPilotOpen, setAutoPilotOpen] = useState(false);
+  // Live preview-toggle: når aktiv viser preview-vinduet ferdig output
+  // istedet for source-video. Auto-renders ved hver endring (3.5s debounce).
+  const [livePreviewMode, setLivePreviewMode] = useState(false);
+  // Resolve-sync: bidireksjonell sync med DaVinci Resolve. Når aktiv polles
+  // Resolve hvert 5. sek + nye markører fra timeline merges inn i CE.
+  const [resolveSyncEnabled, setResolveSyncEnabled] = useState(true);
+  const [pushingFullEdit, setPushingFullEdit] = useState(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
+  const resolveSync = useResolveSync({ enabled: resolveSyncEnabled });
+  // Auto-vis Studio-vs-Free-dialog når vi detekterer Free (etter 2s delay,
+  // og bare hvis brukeren ikke nettopp dismisset den).
+  const [studioDialogOpen, closeStudioDialog] = useStudioVsFreeAutoShow(
+    resolveSync.resolveState?.connected ?? false,
+    resolveSync.resolveState?.isStudio,
+  );
+  const [manualStudioDialogOpen, setManualStudioDialogOpen] = useState(false);
+  // Thumbnail Creator — designede social-thumbnails med brand-styling
+  const [thumbnailCreatorOpen, setThumbnailCreatorOpen] = useState(false);
+  const [thumbnailContext, setThumbnailContext] = useState<{
+    title: string; cta: string;
+    brand?: { companyName?: string | null; accentColor?: string | null;
+              backgroundColor?: string | null; textColor?: string | null;
+              logoUrl?: string | null; toneOfVoice?: string | null };
+    aspect: "1:1" | "9:16" | "4:5";
+    feedPlanContext?: { projectId: string; platform: string; postId: string };
+  }>({ title: "", cta: "", aspect: "1:1" });
+  // Creator-profil — preferanser fra serveren auto-anvendes på nye prosjekter.
+  // Knyttet til innlogget Role Room-bruker, ikke lokalt — Bjarne får sine
+  // learnings selv om han bytter maskin.
+  const creatorProfile = useCreatorProfile();
+
+  // Auto-anvend creator-profile defaults ÉN gang per prosjekt-mount.
+  // Skjer kun hvis state er på sine "uberørte" verdier — så vi ikke
+  // overskriver en bevisst endring brukeren har gjort i denne sesjonen.
+  const profileAppliedRef = useRef(false);
+  useEffect(() => {
+    if (profileAppliedRef.current) return;
+    if (creatorProfile.status !== "ready" || !payload) return;
+    profileAppliedRef.current = true;
+    const p = creatorProfile.profile;
+    if (p.preferredLookPack && lookPack === "none") {
+      setLookPack(p.preferredLookPack);
+    }
+    if (p.preferredAspectRatio && aspectRatio === "16:9") {
+      setAspectRatio(p.preferredAspectRatio);
+    }
+    if (p.preferredHighlightMin && projectTargetMin === 0) {
+      setProjectTargetMin(p.preferredHighlightMin);
+    }
+    if (p.preferredProjectKind && !projectKind) {
+      // creator-profile bruker "wedding"|"corporate"|"music"|"event", mens
+      // den lokale ProjectKind-unionen er "wedding"|"music_video"|"documentary"|"corporate"|"other".
+      // Mapp profile-verdien til nærmeste lokale verdi.
+      const profileKindMap: Record<"wedding" | "corporate" | "music" | "event", ProjectKind> = {
+        wedding: "wedding",
+        corporate: "corporate",
+        music: "music_video",
+        event: "other",
+      };
+      setProjectKind(profileKindMap[p.preferredProjectKind]);
+    }
+  }, [creatorProfile.status, creatorProfile.profile, payload,
+      lookPack, aspectRatio, projectTargetMin, projectKind]);
+
+  // ─── Music-Driven Flow Map data (from analyze_music_for_flow.py) ───
+  type MusicFlowData = {
+    duration: number;
+    tempo: number;
+    beats: number[];
+    downbeats: number[];
+    sections: { startSec: number; endSec: number; label: string; rms: number }[];
+    rms: { t: number; value: number }[];
+    silence: { startSec: number; endSec: number }[];
+    spectralCentroid: { t: number; value: number }[];
+    drops: { t: number; intensity: number }[];
+  };
+  const [musicFlow, setMusicFlow] = useState<MusicFlowData | null>(null);
+  const [musicFlowBusy, setMusicFlowBusy] = useState(false);
+
   // Last music-overrides for dette prosjektet
   useEffect(() => {
     if (!payload?.sourceVideo) return;
@@ -1137,66 +1223,6 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [musicSearchInitialQuery, setMusicSearchInitialQuery] = useState<string>("");
   const [musicSearchInitialProvider, setMusicSearchInitialProvider] = useState<string>("");
 
-  // Claude AI-forslag-modal — gir scene-spesifikke musikk-stiler basert
-  // på chapter (vows, first_dance, nikkah, ...). Bruker samme proxy som
-  // Post Agent (anthropic_proxy via /api/post-agent/anthropic/messages) så
-  // token-bruk telles per innlogget bruker.
-  const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
-  const [autoPilotOpen, setAutoPilotOpen] = useState(false);
-  // Live preview-toggle: når aktiv viser preview-vinduet ferdig output
-  // istedet for source-video. Auto-renders ved hver endring (3.5s debounce).
-  const [livePreviewMode, setLivePreviewMode] = useState(false);
-  // Resolve-sync: bidireksjonell sync med DaVinci Resolve. Når aktiv polles
-  // Resolve hvert 5. sek + nye markører fra timeline merges inn i CE.
-  const [resolveSyncEnabled, setResolveSyncEnabled] = useState(true);
-  const [pushingFullEdit, setPushingFullEdit] = useState(false);
-  const [pushResult, setPushResult] = useState<string | null>(null);
-  const resolveSync = useResolveSync({ enabled: resolveSyncEnabled });
-  // Auto-vis Studio-vs-Free-dialog når vi detekterer Free (etter 2s delay,
-  // og bare hvis brukeren ikke nettopp dismisset den).
-  const [studioDialogOpen, closeStudioDialog] = useStudioVsFreeAutoShow(
-    resolveSync.resolveState?.connected ?? false,
-    resolveSync.resolveState?.isStudio,
-  );
-  const [manualStudioDialogOpen, setManualStudioDialogOpen] = useState(false);
-  // Thumbnail Creator — designede social-thumbnails med brand-styling
-  const [thumbnailCreatorOpen, setThumbnailCreatorOpen] = useState(false);
-  const [thumbnailContext, setThumbnailContext] = useState<{
-    title: string; cta: string;
-    brand?: { companyName?: string | null; accentColor?: string | null;
-              backgroundColor?: string | null; textColor?: string | null;
-              logoUrl?: string | null; toneOfVoice?: string | null };
-    aspect: "1:1" | "9:16" | "4:5";
-    feedPlanContext?: { projectId: string; platform: string; postId: string };
-  }>({ title: "", cta: "", aspect: "1:1" });
-  // Creator-profil — preferanser fra serveren auto-anvendes på nye prosjekter.
-  // Knyttet til innlogget Role Room-bruker, ikke lokalt — Bjarne får sine
-  // learnings selv om han bytter maskin.
-  const creatorProfile = useCreatorProfile();
-
-  // Auto-anvend creator-profile defaults ÉN gang per prosjekt-mount.
-  // Skjer kun hvis state er på sine "uberørte" verdier — så vi ikke
-  // overskriver en bevisst endring brukeren har gjort i denne sesjonen.
-  const profileAppliedRef = useRef(false);
-  useEffect(() => {
-    if (profileAppliedRef.current) return;
-    if (creatorProfile.status !== "ready" || !payload) return;
-    profileAppliedRef.current = true;
-    const p = creatorProfile.profile;
-    if (p.preferredLookPack && lookPack === "none") {
-      setLookPack(p.preferredLookPack);
-    }
-    if (p.preferredAspectRatio && aspectRatio === "16:9") {
-      setAspectRatio(p.preferredAspectRatio);
-    }
-    if (p.preferredHighlightMin && projectTargetMin === 0) {
-      setProjectTargetMin(p.preferredHighlightMin);
-    }
-    if (p.preferredProjectKind && !projectKind) {
-      setProjectKind(p.preferredProjectKind);
-    }
-  }, [creatorProfile.status, creatorProfile.profile, payload,
-      lookPack, aspectRatio, projectTargetMin, projectKind]);
   const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
     const newAudio: CustomAudio = {
       id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -1249,21 +1275,6 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   }, [filteredPicks]);
 
   const [flowMapOpen, setFlowMapOpen] = useState(false);
-
-  // ─── Music-Driven Flow Map data (from analyze_music_for_flow.py) ───
-  type MusicFlowData = {
-    duration: number;
-    tempo: number;
-    beats: number[];
-    downbeats: number[];
-    sections: { startSec: number; endSec: number; label: string; rms: number }[];
-    rms: { t: number; value: number }[];
-    silence: { startSec: number; endSec: number }[];
-    spectralCentroid: { t: number; value: number }[];
-    drops: { t: number; intensity: number }[];
-  };
-  const [musicFlow, setMusicFlow] = useState<MusicFlowData | null>(null);
-  const [musicFlowBusy, setMusicFlowBusy] = useState(false);
 
   // Story Arc phase analysis — find intro/build/peak/outro
   const storyArcPhases = useMemo(() => {
@@ -1843,7 +1854,6 @@ Du MÅ kalle apply_couple_wishes-tool med:
           // health-check feilet selv: la build forsøke, da får vi ekte feil
         }
         const summary = await executeScript("build_highlight_from_picks", {
-          sourceVideo: payload.sourceVideo,
           timelineName: `${safeTitle} — Post Agent`,
           ...editorStateParams,
         }, false);

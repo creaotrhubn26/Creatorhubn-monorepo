@@ -790,7 +790,7 @@ async function stepQualityFilter(inputs: AutoPilotInputs, ctx: StepCtx): Promise
   }
 }
 
-async function stepClaudeMusicPerChapter(inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
+async function stepClaudeMusicPerChapter(_inputs: AutoPilotInputs, ctx: StepCtx): Promise<void> {
   ctx.log({ step: "claude_music_per_chapter", level: "claude",
     message: "Claude vurderer musikk pr scene …" });
 

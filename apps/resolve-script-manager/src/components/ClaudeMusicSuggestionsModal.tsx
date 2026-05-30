@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { executeScript } from "../api";
-import { IconClose, IconSparkle } from "./Icons";
+import { IconX, IconSparkle } from "./Icons";
 
 interface Suggestion {
   title: string;
@@ -106,7 +106,7 @@ export function ClaudeMusicSuggestionsModal({
           </div>
           <button onClick={onClose}
                   style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-2)" }}>
-            <IconClose size={16} />
+            <IconX size={16} />
           </button>
         </div>
 
