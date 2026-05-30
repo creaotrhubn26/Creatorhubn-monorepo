@@ -432,6 +432,7 @@ import { setupRoleRoomAgentCoreRoutes } from "./role-room-agent-core-routes";
 import { setupRoleRoomDataSourcesRoutes } from "./role-room-data-sources-routes";
 import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-routes";
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
+import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -25710,6 +25711,13 @@ setupRoleRoomAgentFeedPlanRoutes({
   pool,
   requireAdminSession,
   isCompatAdminFeatureEnabled,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent — talent eier sin egen profil + samtykke-registry per partner.
+// Migrasjon 209 (talents) + 210 (talent_consent_registry).
+setupRoleRoomTalentsRoutes({
+  app,
+  pool,
   getActiveSession: getActiveSessionFromRequest,
 });
 // ── Role Room social Meta — flyttet til ./role-room-social-meta-routes.ts
