@@ -495,6 +495,7 @@ export const PRODUCER_WORKSPACE_SURFACE_LABELS: Record<ProducerWorkspaceSurfaceK
   accounts: 'Kontotilgang',
   delivery: 'Leveringsrutine',
   meetings: 'Møte',
+  'marketing-plan': 'Markedsplan',
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS: Record<ProducerAccountAccessPlatform, string> = {
@@ -634,6 +635,7 @@ export const PRODUCER_WORKSPACE_SURFACE_COLORS: Record<ProducerWorkspaceSurfaceK
   accounts: '#14b8a6',
   delivery: '#22c55e',
   meetings: '#f97316',
+  'marketing-plan': '#ec4899',
 };
 
 export const PRODUCER_BRAND_LOGO_PLACEMENT_LABELS: Record<ProducerBrandLogoPlacement, string> = {
