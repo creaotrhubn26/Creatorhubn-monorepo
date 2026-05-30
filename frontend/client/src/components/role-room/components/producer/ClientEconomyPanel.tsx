@@ -563,7 +563,9 @@ export default function ClientEconomyPanel({
       </Stack>
 
       {/* ── Hvilke sider/kontoer kunden har gitt admin til ── */}
-      <GrantedAssetsCard />
+      <GrantedAssetsCard
+        perspective={['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase()) ? 'client' : 'producer'}
+      />
 
       {!['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase()) && (
         <Typography sx={{ ...SUBTLE, textAlign: 'center' }}>

@@ -39,7 +39,15 @@ function platformIcon(platform: 'meta' | 'linkedin', assetType: string) {
     : <FacebookIcon sx={{ fontSize: 18, color: '#60a5fa' }} />;
 }
 
-export default function GrantedAssetsCard() {
+/**
+ * `perspective` styrer ordlyden:
+ *   'producer' (default) — produsenten ser «Din admin-tilgang fra kunden»
+ *   'client'             — klienten ser «Tilganger du har gitt produsenten»
+ * Data + visning er identisk; bare overskrift + hjelpetekst byttes.
+ */
+export default function GrantedAssetsCard({
+  perspective = 'producer',
+}: { perspective?: 'producer' | 'client' } = {}) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<RoleRoomGrantedAssets | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +79,11 @@ export default function GrantedAssetsCard() {
     <Stack spacing={1} sx={CARD_SX}>
       <Stack direction="row" alignItems="center" spacing={1}>
         <AdminIcon sx={{ fontSize: 18, color: '#86efac' }} />
-        <Typography sx={LABEL}>Din admin-tilgang fra kunden</Typography>
+        <Typography sx={LABEL}>
+          {perspective === 'client'
+            ? 'Tilganger du har gitt produsenten'
+            : 'Din admin-tilgang fra kunden'}
+        </Typography>
         {data?.hasAdminAccess && (
           <Chip
             size="small"
@@ -98,8 +110,9 @@ export default function GrantedAssetsCard() {
 
       {noConnections && (
         <Typography sx={SUBTLE}>
-          Ingen annonsekontoer er koblet ennå. Når kunden gir deg admin-tilgang til en Facebook/Instagram-side
-          eller LinkedIn-konto, vises de her.
+          {perspective === 'client'
+            ? 'Ingen annonsekontoer er koblet ennå. Når du gir produsenten admin-tilgang til en Facebook/Instagram-side eller LinkedIn-konto, vises de her.'
+            : 'Ingen annonsekontoer er koblet ennå. Når kunden gir deg admin-tilgang til en Facebook/Instagram-side eller LinkedIn-konto, vises de her.'}
         </Typography>
       )}
 
@@ -152,8 +165,9 @@ export default function GrantedAssetsCard() {
       {/* Connected but no admin anywhere — make the limitation explicit */}
       {data && !loading && (metaConnected || linkedinConnected) && data.adminAssets.length === 0 && (
         <Alert severity="warning" sx={{ '& .MuiAlert-message': { fontSize: '0.78rem' } }}>
-          Du er koblet til, men har ikke fått <strong>admin</strong>-tilgang til noen sider ennå. Be kunden gi deg
-          admin (MANAGE / ACCOUNT_MANAGER) så du kan publisere og drifte annonser.
+          {perspective === 'client'
+            ? <>Produsenten er koblet til, men har ikke <strong>admin</strong>-tilgang til noen sider ennå. Gi produsenten admin (MANAGE / ACCOUNT_MANAGER) så de kan publisere og drifte annonser på vegne av dere.</>
+            : <>Du er koblet til, men har ikke fått <strong>admin</strong>-tilgang til noen sider ennå. Be kunden gi deg admin (MANAGE / ACCOUNT_MANAGER) så du kan publisere og drifte annonser.</>}
         </Alert>
       )}
 
