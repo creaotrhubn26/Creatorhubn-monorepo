@@ -205,7 +205,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
   }
 
   return (
-    <Box sx={containerSx}>
+    <Box sx={containerSx} data-testid="marketing-plan-workspace">
       {/* ── Header ─────────────────────────────────────────────── */}
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.4}
              justifyContent="space-between" alignItems={{ md: 'flex-start' }}
@@ -269,7 +269,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
       </Stack>
 
       {/* ── KPI-tiles ───────────────────────────────────────────── */}
-      <Box sx={kpiGridSx}>
+      <Box sx={kpiGridSx} data-testid="kpi-tiles">
         <KpiTile label="Totalt posts" value={metrics.total}
                  icon={<RocketLaunchIcon />} color="#ec4899" />
         <KpiTile label="Publisert" value={metrics.by.published}
@@ -484,6 +484,7 @@ function PostRow({ post, pillar, onEdit }: {
   return (
     <TableRow hover
               onClick={onEdit}
+              data-testid={`post-row-${post.id}`}
               sx={{
                 cursor: 'pointer',
                 '& td': { color: '#e2e8f0', borderBottom: '1px solid rgba(148,163,184,0.08)' },
