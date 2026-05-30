@@ -13,12 +13,14 @@ import {
   Typography,
 } from "@mui/material";
 import Refresh from "@mui/icons-material/Refresh";
+import CloudUpload from "@mui/icons-material/CloudUpload";
 import {
   DetectedMount,
   listDetectedMounts,
   MemoryCardConfig,
   rescanMounts,
 } from "../api";
+import BackupDialog from "./BackupDialog";
 import {
   bytesToHumanGb,
   nearestStandardGb,
@@ -47,6 +49,7 @@ function matchConfig(
 export default function MountsSection({ plannedCards }: Props) {
   const [mounts, setMounts] = useState<DetectedMount[]>([]);
   const [busy, setBusy] = useState(false);
+  const [backupMount, setBackupMount] = useState<DetectedMount | null>(null);
 
   useEffect(() => {
     void listDetectedMounts().then(setMounts).catch(() => setMounts([]));
@@ -105,6 +108,16 @@ export default function MountsSection({ plannedCards }: Props) {
                   key={m.mount_path}
                   divider
                   sx={{ alignItems: "flex-start", flexDirection: "column" }}
+                  secondaryAction={
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<CloudUpload />}
+                      onClick={() => setBackupMount(m)}
+                    >
+                      Start backup
+                    </Button>
+                  }
                 >
                   <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 0.5 }}>
                     <Chip
@@ -150,6 +163,14 @@ export default function MountsSection({ plannedCards }: Props) {
           </List>
         )}
       </CardContent>
+      <BackupDialog
+        open={backupMount !== null}
+        mount={backupMount}
+        onClose={() => setBackupMount(null)}
+        onStarted={() => {
+          /* CopyProgressView lytter via event-API */
+        }}
+      />
     </Card>
   );
 }

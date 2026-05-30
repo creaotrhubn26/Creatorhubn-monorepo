@@ -99,3 +99,80 @@ export async function listDetectedMounts(): Promise<DetectedMount[]> {
 export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
+
+export interface DestinationSpec {
+  id: string;
+  label: string;
+  path: string;
+}
+
+export interface SessionStatus {
+  session_id: string;
+  mount_path: string;
+  volume_label: string;
+  state: "running" | "completed" | "cancelled" | "failed";
+  file_count: number;
+  total_bytes: number;
+  succeeded: number;
+  failed: number;
+  started_at_ms: number;
+}
+
+export async function startCopySession(args: {
+  mountPath: string;
+  volumeLabel: string;
+  destinations: DestinationSpec[];
+}): Promise<string> {
+  return invoke<string>("start_copy_session", {
+    mountPath: args.mountPath,
+    volumeLabel: args.volumeLabel,
+    destinations: args.destinations,
+  });
+}
+
+export async function cancelCopySession(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("cancel_copy_session", { sessionId });
+}
+
+export async function listCopySessions(): Promise<SessionStatus[]> {
+  return invoke<SessionStatus[]>("list_copy_sessions");
+}
+
+// Copy-event payloads from Rust
+export interface CopySessionStartedEvent {
+  session_id: string;
+  mount_path: string;
+  file_count: number;
+  total_bytes: number;
+}
+
+export interface CopyFileStartedEvent {
+  session_id: string;
+  source_path: string;
+  size: number;
+}
+
+export interface CopyFileProgressEvent {
+  session_id: string;
+  source_path: string;
+  dest_id: string;
+  bytes_copied: number;
+  bytes_total: number;
+}
+
+export interface CopyFileCompletedEvent {
+  session_id: string;
+  source_path: string;
+  dest_id: string;
+  success: boolean;
+  hash: string | null;
+  error: string | null;
+  skipped: boolean;
+}
+
+export interface CopySessionCompletedEvent {
+  session_id: string;
+  succeeded: number;
+  failed: number;
+  cancelled: boolean;
+}

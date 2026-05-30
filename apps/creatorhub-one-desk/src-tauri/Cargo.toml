@@ -26,3 +26,6 @@ urlencoding = "2"
 notify = "6"
 walkdir = "2"
 libc = "0.2"
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+futures = "0.3"
+uuid = { version = "1", features = ["v4", "serde"] }

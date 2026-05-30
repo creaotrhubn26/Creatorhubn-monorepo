@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import { clearHelperConfig, fetchProjectInfo, ProjectInfo, StoredConfig } from "../api";
 import MountsSection from "./MountsSection";
+import CopyProgressView from "./CopyProgressView";
 
 interface Props {
   config: StoredConfig;
@@ -123,6 +124,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
 
             <MountsSection plannedCards={info.memory_card_configs} />
 
+            <CopyProgressView />
+
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
@@ -170,8 +173,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
           }}
         >
           <Typography variant="caption">
-            F2 — mount-deteksjon. Copy-engine, backend-rapportering, iPad-paring
-            og live mirror kommer i F3–F6.
+            F3 — copy-engine med xxHash64-verifisering. Backend-rapportering
+            (DIT-jobs), iPad-paring og live mirror kommer i F4–F6.
           </Typography>
         </Box>
 

@@ -22,11 +22,11 @@ use walkdir::WalkDir;
 
 const VOLUMES_PATH: &str = "/Volumes";
 
-const VIDEO_EXTS: &[&str] = &[
+pub const VIDEO_EXTS: &[&str] = &[
     "mov", "mp4", "m4v", "mxf", "avi", "mkv", "braw", "r3d", "arri", "ari",
 ];
 
-const PHOTO_EXTS: &[&str] = &[
+pub const PHOTO_EXTS: &[&str] = &[
     "jpg", "jpeg", "heic", "heif", "png", "tiff", "tif",
     "cr2", "cr3", "crw", // Canon
     "nef", "nrw",        // Nikon
@@ -37,6 +37,11 @@ const PHOTO_EXTS: &[&str] = &[
     "dng",               // Adobe / generic
     "raw",
 ];
+
+/// Returnerer true hvis filens extension er foto eller video (lowercase forventet).
+pub fn is_media_extension(ext: &str) -> bool {
+    PHOTO_EXTS.contains(&ext) || VIDEO_EXTS.contains(&ext)
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DetectedMount {
