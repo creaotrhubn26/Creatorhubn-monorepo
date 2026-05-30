@@ -58,6 +58,9 @@ export interface PersistedPlanPost extends GeneratedPlanPost {
   previewStreamDurationSec: number | null;
   previewVideoR2Url: string | null;
   previewVideoUploadedAt: Date | null;
+  clientReviewStatus: 'pending' | 'approved' | 'changes_requested';
+  clientReviewAt: Date | null;
+  clientReviewNote: string | null;
 }
 
 // ── Claude generation ───────────────────────────────────────────────────
@@ -308,6 +311,9 @@ function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
       ? Number(row.preview_stream_duration_sec) : null,
     previewVideoR2Url: (row.preview_video_url as string | null) ?? null,
     previewVideoUploadedAt: (row.preview_video_uploaded_at as Date | null) ?? null,
+    clientReviewStatus: (row.client_review_status as PersistedPlanPost['clientReviewStatus']) ?? 'pending',
+    clientReviewAt: (row.client_review_at as Date | null) ?? null,
+    clientReviewNote: (row.client_review_note as string | null) ?? null,
     pillarIndex: 0, // unused after persistence
   } as unknown as PersistedPlanPost;
 }
@@ -498,7 +504,8 @@ export async function listPlanPosts(pool: Pool, planId: string): Promise<Persist
               preview_stream_uid, preview_stream_ready,
               preview_stream_playback_url, preview_stream_thumbnail_url,
               preview_stream_duration_sec, preview_video_url,
-              preview_video_uploaded_at
+              preview_video_uploaded_at,
+              client_review_status, client_review_at, client_review_note
          FROM role_room_marketing_plan_posts
         WHERE plan_id = $1
         ORDER BY day_offset NULLS LAST, sort_order`,

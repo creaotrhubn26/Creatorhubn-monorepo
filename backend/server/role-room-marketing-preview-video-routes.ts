@@ -33,6 +33,7 @@ import {
   getStreamVideoStatus,
   deleteStreamVideo,
 } from "./cloudflare-stream-service.js";
+import { notifyClientsOfNewPreview } from "./marketing-preview-email-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -214,6 +215,9 @@ export function registerRoleRoomMarketingPreviewVideoRoutes(
               file.mimetype, file.size, postId,
             ],
           );
+          // Email-notify klient(er) i bakgrunnen — best-effort.
+          void notifyClientsOfNewPreview({ pool, projectId, postId });
+
           res.status(200).json({
             ok: true,
             pipeline: "cloudflare-stream",
@@ -272,6 +276,9 @@ export function registerRoleRoomMarketingPreviewVideoRoutes(
           WHERE id = $5`,
         [key, signedUrl, file.mimetype, file.size, postId],
       );
+
+      // Email-notify klient(er) i bakgrunnen — best-effort.
+      void notifyClientsOfNewPreview({ pool, projectId, postId });
 
       res.status(200).json({
         ok: true,

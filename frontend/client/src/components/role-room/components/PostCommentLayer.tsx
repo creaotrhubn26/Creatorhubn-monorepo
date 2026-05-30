@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type CommentAnchorType =
   | 'content_post' | 'marketing_plan_post' | 'feed_plan_post'
-  | 'gallery_image' | 'storyboard_frame';
+  | 'gallery_image' | 'storyboard_frame' | 'timestamp';
 
 export type CommentStatus = 'open' | 'in_progress' | 'resolved' | 'wontfix';
 export type CommentPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -30,6 +30,7 @@ export interface PostCommentItem {
   projectId: string;
   anchorType: CommentAnchorType | string;
   anchorRef: string | null;
+  timestampSec?: number | null;
   commentText: string;
   parentId: string | null;
   status: CommentStatus;
@@ -71,6 +72,15 @@ interface Props {
   pollingIntervalMs?: number;
   /** Base-URL for API (default /api/role-room). */
   apiBase?: string;
+  /** Når en video er aktiv: nåværende avspillingstid (sekund).
+   *  Composer får da en "Knytt til 0:32"-toggle som lagrer comment
+   *  som timestamp-anchor i stedet for post-anchor. */
+  currentTimeSec?: number | null;
+  /** Når satt — timestamp-comment-badges blir klikkbare. */
+  onSeek?: (sec: number) => void;
+  /** Ved endring av timestamp-comments som rendres — for å vise
+   *  markører på video-timeline. Liste sorteres etter sec. */
+  onTimestampCommentsChanged?: (markers: Array<{ sec: number; label: string }>) => void;
 }
 
 function buildAuthHeaders(auth: PostCommentAuth): Record<string, string> {
@@ -85,7 +95,9 @@ export function PostCommentLayer({
   className, defaultVisibleCount = 3, readOnly = false,
   pollingIntervalMs = 5000,
   apiBase = '/api/role-room',
+  currentTimeSec, onSeek, onTimestampCommentsChanged,
 }: Props) {
+  const [attachToTimestamp, setAttachToTimestamp] = useState(false);
   const [comments, setComments] = useState<PostCommentItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,16 +128,19 @@ export function PostCommentLayer({
     }
   }, [projectId, apiBase, auth]);
 
+  const belongsToThisPost = useCallback((c: PostCommentItem) => {
+    if (c.anchorRef !== anchorRef) return false;
+    return c.anchorType === anchorType || c.anchorType === 'timestamp';
+  }, [anchorType, anchorRef]);
+
   const refresh = useCallback(async () => {
     const data = await fetchComments();
     if (!data) return;
-    // Filter til kun denne post-anchor-en
-    const forThis = data.comments.filter(c =>
-      c.anchorType === anchorType && c.anchorRef === anchorRef);
+    const forThis = data.comments.filter(belongsToThisPost);
     setComments(forThis);
     lastServerTimeRef.current = data.serverTime;
     setLoaded(true);
-  }, [fetchComments, anchorType, anchorRef]);
+  }, [fetchComments, belongsToThisPost]);
 
   const poll = useCallback(async () => {
     const since = lastServerTimeRef.current;
@@ -137,7 +152,7 @@ export function PostCommentLayer({
     setComments(prev => {
       const map = new Map(prev.map(c => [c.id, c]));
       for (const c of data.comments) {
-        if (c.anchorType === anchorType && c.anchorRef === anchorRef) {
+        if (belongsToThisPost(c)) {
           map.set(c.id, c);
         }
       }
@@ -145,7 +160,20 @@ export function PostCommentLayer({
         (a, b) => a.createdAt.localeCompare(b.createdAt),
       );
     });
-  }, [fetchComments, anchorType, anchorRef]);
+  }, [fetchComments, belongsToThisPost]);
+
+  // Rapporter timestamp-markører til parent (PostVideoPreview)
+  useEffect(() => {
+    if (!onTimestampCommentsChanged) return;
+    const markers = comments
+      .filter(c => c.anchorType === 'timestamp' && typeof c.timestampSec === 'number')
+      .map(c => ({
+        sec: c.timestampSec as number,
+        label: c.commentText.slice(0, 60),
+      }))
+      .sort((a, b) => a.sec - b.sec);
+    onTimestampCommentsChanged(markers);
+  }, [comments, onTimestampCommentsChanged]);
 
   useEffect(() => {
     void refresh();
@@ -162,6 +190,9 @@ export function PostCommentLayer({
     if (!text) return;
     setPosting(true);
     setError(null);
+    const useTimestamp = attachToTimestamp
+      && typeof currentTimeSec === 'number'
+      && currentTimeSec > 0;
     try {
       const res = await fetch(`${apiBase}/editor-comments`, {
         method: 'POST',
@@ -171,8 +202,9 @@ export function PostCommentLayer({
         },
         body: JSON.stringify({
           projectId,
-          anchorType,
+          anchorType: useTimestamp ? 'timestamp' : anchorType,
           anchorRef,
+          timestampSec: useTimestamp ? currentTimeSec : undefined,
           commentText: text,
           authorDisplayName: draftAuthor || undefined,
           priority: text.includes('!urgent') ? 'urgent'
@@ -181,6 +213,7 @@ export function PostCommentLayer({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setDraft('');
+      setAttachToTimestamp(false);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -233,7 +266,8 @@ export function PostCommentLayer({
         <div style={listSx}>
           {visibleComments.map(c => (
             <CommentRow key={c.id} comment={c}
-                          onResolve={() => void handleResolve(c.id)} />
+                          onResolve={() => void handleResolve(c.id)}
+                          onSeek={onSeek} />
           ))}
           {hiddenCount > 0 && !expandedView && (
             <button onClick={() => setExpandedView(true)} style={expandBtnSx}>
@@ -264,8 +298,21 @@ export function PostCommentLayer({
                       }
                     }}
                     rows={2}
-                    placeholder="Skriv kommentar …"
+                    placeholder={attachToTimestamp
+                      ? `Skriv kommentar (knyttes til ${formatTime(currentTimeSec ?? 0)}) …`
+                      : 'Skriv kommentar …'}
                     style={{ ...inputSx, minHeight: 50, resize: 'vertical' }} />
+          {typeof currentTimeSec === 'number' && currentTimeSec > 0 && (
+            <label style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 10.5, color: 'rgba(200,188,216,0.85)',
+              cursor: 'pointer', marginTop: 2, marginBottom: 4,
+            }}>
+              <input type="checkbox" checked={attachToTimestamp}
+                     onChange={(e) => setAttachToTimestamp(e.target.checked)} />
+              Knytt til {formatTime(currentTimeSec)} i videoen
+            </label>
+          )}
           <div style={composerActionsSx}>
             <span style={hintSx}>
               ⌘↵ for å sende · !urgent / !high for prioritet
@@ -286,10 +333,13 @@ export function PostCommentLayer({
   );
 }
 
-function CommentRow({ comment, onResolve }: {
+function CommentRow({ comment, onResolve, onSeek }: {
   comment: PostCommentItem; onResolve: () => void;
+  onSeek?: (sec: number) => void;
 }) {
   const isResolved = comment.status === 'resolved' || comment.status === 'wontfix';
+  const isTimestamp = comment.anchorType === 'timestamp'
+    && typeof comment.timestampSec === 'number';
   return (
     <div style={{
       ...rowSx,
@@ -298,6 +348,21 @@ function CommentRow({ comment, onResolve }: {
     }}>
       <div style={rowHeaderSx}>
         <span style={authorSx}>{comment.authorDisplayName}</span>
+        {isTimestamp && (
+          <button onClick={() => onSeek?.(comment.timestampSec as number)}
+                  disabled={!onSeek}
+                  title={onSeek ? `Hopp til ${formatTime(comment.timestampSec as number)}` : undefined}
+                  style={{
+                    background: 'rgba(160,48,192,0.22)',
+                    border: '1px solid rgba(160,48,192,0.42)',
+                    color: '#c8a8e8',
+                    padding: '1px 6px', borderRadius: 3,
+                    fontSize: 10, fontWeight: 700,
+                    cursor: onSeek ? 'pointer' : 'default',
+                  }}>
+            ⏱ {formatTime(comment.timestampSec as number)}
+          </button>
+        )}
         <span style={timeSx}>
           {new Date(comment.createdAt).toLocaleString('nb', {
             day: '2-digit', month: 'short',
@@ -451,6 +516,12 @@ const errorSx: React.CSSProperties = {
   color: '#ef4f6f', fontSize: 10.5,
   marginBottom: 6,
 };
+
+function formatTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 function priorityBg(p: CommentPriority): string {
   switch (p) {

@@ -20,11 +20,18 @@ interface Props {
   r2VideoUrl?: string | null;
   durationSec?: number | null;
   className?: string;
+  /** Rapporterer currentTime hvert ~250ms — for tidskode-kommentarer. */
+  onCurrentTime?: (sec: number) => void;
+  /** Settes med video-elementet når det monteres — for å kunne seek(). */
+  onVideoEl?: (el: HTMLVideoElement | null) => void;
+  /** Markører som rendres på timeline (én pr timestamp-kommentar). */
+  timestampMarkers?: Array<{ sec: number; label?: string }>;
 }
 
 export function PostVideoPreview({
   streamPlaybackUrl, streamThumbnailUrl, streamReady,
   r2VideoUrl, durationSec, className,
+  onCurrentTime, onVideoEl, timestampMarkers,
 }: Props) {
   // Ingen video tilgjengelig — vis ingenting (PostRow viser
   // bare tekst-content).
@@ -53,11 +60,27 @@ export function PostVideoPreview({
         <HlsPlayer
           src={streamPlaybackUrl!}
           poster={streamThumbnailUrl ?? undefined}
+          onCurrentTime={onCurrentTime}
+          onVideoEl={onVideoEl}
         />
       ) : (
-        <video controls preload="metadata"
-               style={videoSx}
-               src={r2VideoUrl!} />
+        <Mp4Player
+          src={r2VideoUrl!}
+          onCurrentTime={onCurrentTime}
+          onVideoEl={onVideoEl}
+        />
+      )}
+      {durationSec && timestampMarkers && timestampMarkers.length > 0 && (
+        <TimestampMarkers
+          markers={timestampMarkers}
+          durationSec={durationSec}
+          onSeek={(sec) => {
+            // Vi har ikke direkte tilgang til video-el her, men onVideoEl-
+            // parent kan håndtere seek via sin ref. La parent gjøre det.
+            // Forenklet: parent kan også seek-e via onVideoEl-ref.
+            onCurrentTime?.(sec);
+          }}
+        />
       )}
       {durationSec && (
         <div style={metaSx}>{formatDuration(durationSec)}</div>
@@ -66,9 +89,70 @@ export function PostVideoPreview({
   );
 }
 
-function HlsPlayer({ src, poster }: { src: string; poster?: string }) {
+function Mp4Player({ src, onCurrentTime, onVideoEl }: {
+  src: string;
+  onCurrentTime?: (sec: number) => void;
+  onVideoEl?: (el: HTMLVideoElement | null) => void;
+}) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    onVideoEl?.(ref.current);
+    return () => onVideoEl?.(null);
+  }, [onVideoEl]);
+  return (
+    <video ref={ref} controls preload="metadata"
+           style={videoSx}
+           src={src}
+           onTimeUpdate={(e) => onCurrentTime?.(e.currentTarget.currentTime)} />
+  );
+}
+
+function TimestampMarkers({ markers, durationSec, onSeek }: {
+  markers: Array<{ sec: number; label?: string }>;
+  durationSec: number;
+  onSeek: (sec: number) => void;
+}) {
+  return (
+    <div style={{
+      position: 'absolute', left: 0, right: 0, bottom: 32,
+      height: 8, pointerEvents: 'none',
+    }}>
+      {markers.map((m, i) => {
+        const pct = Math.max(0, Math.min(100, (m.sec / durationSec) * 100));
+        return (
+          <button key={i}
+                  onClick={() => onSeek(m.sec)}
+                  title={m.label ?? `${formatDuration(m.sec)}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${pct}%`,
+                    transform: 'translateX(-50%)',
+                    width: 10, height: 10,
+                    borderRadius: 5,
+                    background: '#a030c0',
+                    border: '2px solid #fff',
+                    cursor: 'pointer',
+                    pointerEvents: 'auto',
+                    padding: 0,
+                  }} />
+        );
+      })}
+    </div>
+  );
+}
+
+function HlsPlayer({ src, poster, onCurrentTime, onVideoEl }: {
+  src: string; poster?: string;
+  onCurrentTime?: (sec: number) => void;
+  onVideoEl?: (el: HTMLVideoElement | null) => void;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [hlsLoadError, setHlsLoadError] = useState(false);
+
+  useEffect(() => {
+    onVideoEl?.(videoRef.current);
+    return () => onVideoEl?.(null);
+  }, [onVideoEl]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -118,6 +202,7 @@ function HlsPlayer({ src, poster }: { src: string; poster?: string }) {
            controls
            preload="metadata"
            poster={poster}
+           onTimeUpdate={(e) => onCurrentTime?.(e.currentTarget.currentTime)}
            style={videoSx} />
   );
 }

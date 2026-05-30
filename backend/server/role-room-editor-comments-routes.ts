@@ -159,10 +159,15 @@ export function registerRoleRoomEditorCommentsRoutes(
 ): void {
   const { pool, activeSessions } = deps;
 
-  // Anchors som klient kan se/skrive (content production-side)
+  // Anchors som klient kan se/skrive (content production-side).
+  // 'timestamp' er inkludert slik at klient kan kommentere på et
+  // bestemt sekund i preview-videoen — anchor_ref MÅ peke på en
+  // marketing_plan_post som tilhører klientens prosjekt (sjekkes i
+  // POST-handleren).
   const CLIENT_VISIBLE_ANCHORS = new Set([
     "content_post", "marketing_plan_post", "feed_plan_post",
     "gallery_image", "storyboard_frame",
+    "timestamp",
   ]);
 
   // GET comments — støtter ?since for polling-delta
@@ -279,6 +284,26 @@ export function registerRoleRoomEditorCommentsRoutes(
           if (!CLIENT_VISIBLE_ANCHORS.has(anchorType)) {
             res.status(403).json({ error: "klient_kan_ikke_kommentere_paa_denne" }); return;
           }
+          // Timestamp-comments fra klient MÅ peke på en marketing_plan_
+          // post i klientens prosjekt — ellers kan en klient skrive
+          // timestamp-comments på andre prosjekter via vilkårlig
+          // anchor_ref.
+          if (anchorType === "timestamp") {
+            const ref = typeof body?.anchorRef === "string" ? body.anchorRef : "";
+            if (!ref) {
+              res.status(400).json({ error: "timestamp_krever_anchor_ref" }); return;
+            }
+            const { rows: ck } = await pool.query<{ projectId: string }>(
+              `SELECT mp.project_id AS "projectId"
+                 FROM role_room_marketing_plan_posts p
+                 JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
+                WHERE p.id = $1`,
+              [ref],
+            );
+            if (ck[0]?.projectId !== projectId) {
+              res.status(403).json({ error: "timestamp_post_ikke_i_prosjekt" }); return;
+            }
+          }
         } else {
           if (!await viewerCanAccessProject(pool, projectId, actor.userId)) {
             res.status(403).json({ error: "ingen_tilgang" }); return;
@@ -320,6 +345,23 @@ export function registerRoleRoomEditorCommentsRoutes(
         if (mentions.length > 0) {
           await persistMentions(pool, rows[0].id, projectId,
                                  mentions, actor.userId);
+        }
+        // Email-notify producer når klient kommenterer på en
+        // marketing_plan_post — best-effort, ikke blokkerende.
+        if (actor.isClient && anchorType === "marketing_plan_post"
+            && typeof body?.anchorRef === "string") {
+          const anchorRef = body.anchorRef;
+          void (async () => {
+            try {
+              const mod = await import("./marketing-preview-email-service.js");
+              await mod.notifyProducerOfClientComment({
+                pool, projectId, postId: anchorRef,
+                commentText, clientName: displayName,
+              });
+            } catch (e) {
+              console.warn("[editor-comments] producer-email feilet", e);
+            }
+          })();
         }
         res.json({
           ok: true,
