@@ -50,8 +50,10 @@
  *     revisions-POST.
  *
  * **Ikke endret (samme oppførsel som før):**
- *   - ID-generering ved `${prefix}-${Date.now()}` (TODO: kollisjonssikker UUID)
- *   - Ingen optimistic concurrency control (TODO: If-Match + version-felt)
+ *   - ID-generering: bruker newEntityId() fra _shared-ids (crypto.randomUUID
+ *     under panseret — gammel `${prefix}-${Date.now()}`-bug ryddet 2026-05).
+ *   - Ingen optimistic concurrency control (mulig forbedring: If-Match +
+ *     version-felt for å forhindre concurrent overwrites).
  *   - DELETE-cascade for manuscripts er ikke atomisk på DB-nivå
  *     (compatStore-laget støtter ikke transaksjoner ennå)
  *   - Status-codes: 200 ved oppdatering, 201 ved opprettelse (bevart)
