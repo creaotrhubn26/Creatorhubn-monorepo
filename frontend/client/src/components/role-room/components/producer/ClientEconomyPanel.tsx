@@ -123,6 +123,12 @@ export default function ClientEconomyPanel({
   };
 
   useEffect(() => {
+    // Samme guard som approval-policy-effect — uten projectId fyrer
+    // dependent API-er med tom string og console fylles med 400'er.
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -150,6 +156,10 @@ export default function ClientEconomyPanel({
   }, [period, projectId]);
 
   useEffect(() => {
+    // Hopp over hvis projectId enda ikke er resolvert — ellers fyrer fetch med
+    // tom string, backend svarer 400, og console viser feilmelding på første
+    // render selv om alt egentlig fungerer.
+    if (!projectId) return;
     let cancelled = false;
     (async () => {
       const p = await roleRoomAgentService.fetchApprovalPolicy(projectId);
