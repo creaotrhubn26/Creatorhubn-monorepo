@@ -117,11 +117,9 @@ export default function PostAgentLinkPage(): JSX.Element {
             <button
               type="button"
               onClick={() => {
-                // Prøv å åpne Post Agent via custom protokoll. URL-handler
-                // er IKKE registrert i Tauri-appen ennå (tauri-plugin-
-                // deep-link kreves), så for nå feiler dette stille. Selv
-                // uten URL-handler tar Mac-appens 2-sek pairing-poll
-                // brukeren videre automatisk når appen er åpen.
+                // postagent:// URL-protokoll registreres av Tauri-appen
+                // (tauri-plugin-deep-link) fra Post Agent v0.2.4+. OS
+                // ruter klikket til appen som brings vinduet til front.
                 window.location.href = 'postagent://focus';
               }}
               style={{
@@ -136,10 +134,10 @@ export default function PostAgentLinkPage(): JSX.Element {
                 cursor: 'pointer',
               }}
             >
-              Åpne Post Agent (eksperimentelt)
+              Åpne Post Agent
             </button>
             <div style={{ fontSize: 12, color: 'rgba(74,212,138,0.7)', marginTop: 8 }}>
-              Hvis ingenting skjer: bytt til Post Agent manuelt — appen henter pairing automatisk.
+              Krever Post Agent v0.2.4+ installert. Eldre versjoner: bytt til appen manuelt — den henter pairing automatisk.
             </div>
           </div>
         ) : status === 'unauthorized' ? (
