@@ -70,7 +70,12 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
     setError(null);
     try {
       const res = await fetch(`${base}/pairing/start`, { method: "POST" });
-      if (!res.ok) throw new Error(`pairing/start: HTTP ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error("For mange innloggings-forsøk. Vent 30 sekunder og prøv på nytt.");
+        }
+        throw new Error(`pairing/start: HTTP ${res.status}`);
+      }
       const data = (await res.json()) as PairingStart;
       setPairing(data);
       setStage("awaiting");

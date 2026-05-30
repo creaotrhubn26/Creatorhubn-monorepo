@@ -187,7 +187,10 @@ export function createPostAgentRouter(
 
   router.post(
     '/pairing/start',
-    aiRateLimit({ windowMs: 60_000, max: 10, label: 'post-agent-pairing-start' }),
+    // 30/min per IP. Hvis Daniel restartet Post Agent et par ganger eller
+    // klikket "Prøv på nytt" gjentatte ganger, slo den gamle 10/min-grensen
+    // inn umiddelbart med rå HTTP 429 og blokkerte legitim innlogging.
+    aiRateLimit({ windowMs: 60_000, max: 30, label: 'post-agent-pairing-start' }),
     async (_req: Request, res: Response) => {
       void prunePairingCodes(pool);
       let code = generatePairingCode();
