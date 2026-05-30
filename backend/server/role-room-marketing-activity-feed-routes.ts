@@ -261,10 +261,28 @@ export function registerRoleRoomMarketingActivityFeedRoutes(
         }
       } catch (e) { console.warn("[activity-feed] last-edited feilet", e); }
 
-      // Sortér nyest først
+      // Sortér nyest først + paginer via ?before=<iso> + ?limit
       events.sort((a, b) => b.at.localeCompare(a.at));
 
-      res.status(200).json({ ok: true, events: events.slice(0, 200) });
+      const before = typeof req.query.before === "string" ? req.query.before : null;
+      const limit = Math.max(1, Math.min(200,
+        parseInt(String(req.query.limit ?? "50"), 10) || 50));
+
+      let filtered = events;
+      if (before) {
+        filtered = events.filter(e => e.at < before);
+      }
+      const page = filtered.slice(0, limit);
+      const hasMore = filtered.length > limit;
+      const nextCursor = hasMore && page.length > 0
+        ? page[page.length - 1].at : null;
+
+      res.status(200).json({
+        ok: true,
+        events: page,
+        hasMore,
+        nextCursor,
+      });
     },
   );
 }

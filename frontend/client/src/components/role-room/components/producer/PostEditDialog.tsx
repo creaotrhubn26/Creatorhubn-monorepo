@@ -87,7 +87,7 @@ export function PostEditDialog({ post, onClose, onSaved }: Props) {
         primaryPlatform,
         dayOffset: dayNumber !== null && Number.isFinite(dayNumber) ? dayNumber : null,
         status,
-      });
+      }, post.updatedAt);
       onSaved(updated);
       onClose();
     } catch (e) {

@@ -14,7 +14,7 @@
  * MarketingPlanPanel-modalen for å unngå duplisert form-logikk.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Stack, Typography, Button, CircularProgress, Chip,
   Table, TableBody, TableCell, TableHead, TableRow, TableContainer,
@@ -40,6 +40,7 @@ import roleRoomAgentService, {
 import VersionPicker, { type VersionItem } from './VersionPicker';
 import PostEditDialog from './PostEditDialog';
 import MarketingPlanActivityFeed from './MarketingPlanActivityFeed';
+import MarketingPlanCalendarView from './MarketingPlanCalendarView';
 
 interface Props {
   projectId: string;
@@ -83,6 +84,10 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
   const [planVersions, setPlanVersions] = useState<PlanVersion[]>([]);
   const [editingPost, setEditingPost] = useState<MarketingPlanPost | null>(null);
   const [activityNonce, setActivityNonce] = useState(0);
+  const [generatingPosts, setGeneratingPosts] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
+  const lastServerTimeRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,6 +114,40 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
   }, [projectId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Real-time polling — sjekker etter endrede posts hvert 7. sek slik
+  // at klient + team ser hverandres redigeringer live. Etter en run
+  // setter vi lastServerTimeRef til responsens serverTime så neste
+  // run bare henter delta.
+  useEffect(() => {
+    if (!plan?.id) return;
+    lastServerTimeRef.current = lastServerTimeRef.current ?? new Date().toISOString();
+    const tick = async () => {
+      if (!plan?.id) return;
+      try {
+        const { posts: changed, serverTime } = await roleRoomAgentService.pollMarketingPlanPosts(
+          plan.id, lastServerTimeRef.current,
+        );
+        lastServerTimeRef.current = serverTime;
+        if (changed.length === 0) return;
+        // Merge: oppdater eksisterende, legg til nye
+        setPosts(prev => {
+          const next = [...prev];
+          for (const c of changed) {
+            const idx = next.findIndex(p => p.id === c.id);
+            if (idx >= 0) next[idx] = c;
+            else next.push(c);
+          }
+          return next.sort((a, b) =>
+            (a.dayOffset ?? 999) - (b.dayOffset ?? 999) || a.sortOrder - b.sortOrder);
+        });
+        // Bumpe activity-feed siden noe har endret seg
+        setActivityNonce(n => n + 1);
+      } catch { /* polling-feil — neste tick prøver igjen */ }
+    };
+    const id = window.setInterval(tick, 7000);
+    return () => clearInterval(id);
+  }, [plan?.id]);
 
   // ── Aggregate metrics ────────────────────────────────────────────
   const metrics = useMemo(() => {
@@ -354,7 +393,31 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
           <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1rem' }}>
             Posts ({filteredPosts.length}{filteredPosts.length !== posts.length ? ` av ${posts.length}` : ''})
           </Typography>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" sx={{
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: 1.2,
+              overflow: 'hidden',
+            }}>
+              <Button size="small"
+                      onClick={() => setViewMode('table')}
+                      sx={{
+                        textTransform: 'none', fontWeight: 700,
+                        bgcolor: viewMode === 'table' ? 'rgba(236,72,153,0.18)' : 'transparent',
+                        color: viewMode === 'table' ? '#ec4899' : 'rgba(226,232,240,0.7)',
+                        borderRadius: 0, px: 1.5,
+                        '&:hover': { bgcolor: 'rgba(236,72,153,0.10)' },
+                      }}>Tabell</Button>
+              <Button size="small"
+                      onClick={() => setViewMode('calendar')}
+                      sx={{
+                        textTransform: 'none', fontWeight: 700,
+                        bgcolor: viewMode === 'calendar' ? 'rgba(236,72,153,0.18)' : 'transparent',
+                        color: viewMode === 'calendar' ? '#ec4899' : 'rgba(226,232,240,0.7)',
+                        borderRadius: 0, px: 1.5,
+                        '&:hover': { bgcolor: 'rgba(236,72,153,0.10)' },
+                      }}>Kalender</Button>
+            </Stack>
             <TextField select size="small" value={statusFilter}
                        onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
                        sx={selectSx}>
@@ -377,15 +440,70 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
 
         {posts.length === 0 ? (
           <Box sx={{ py: 4, textAlign: 'center' }}>
-            <Typography sx={mutedSx}>
-              Ingen posts generert ennå. Bruk "Endre plan" for å generere 30 posts basert på pillars.
+            <RocketLaunchIcon sx={{ fontSize: 36, color: 'rgba(236,72,153,0.45)' }} />
+            <Typography sx={{ ...mutedSx, mt: 1 }}>
+              Ingen posts generert ennå. {plan.pillars.length} pillars er klare.
             </Typography>
+            {!readOnly && plan.pillars.length > 0 && (
+              <Button
+                onClick={async () => {
+                  setGeneratingPosts(true);
+                  setGenerateError(null);
+                  try {
+                    await roleRoomAgentService.generateMarketingPlanPosts({
+                      planId: plan.id, projectId,
+                    });
+                    await load();
+                  } catch (e) {
+                    setGenerateError((e as Error).message);
+                  } finally {
+                    setGeneratingPosts(false);
+                  }
+                }}
+                disabled={generatingPosts}
+                variant="contained"
+                startIcon={<AutoAwesomeIcon />}
+                sx={{
+                  mt: 2, bgcolor: '#ec4899',
+                  '&:hover': { bgcolor: '#db2777' },
+                  fontWeight: 700,
+                }}>
+                {generatingPosts ? 'Genererer posts …' : 'Generer 30 posts nå'}
+              </Button>
+            )}
+            {generateError && (
+              <Typography sx={{ color: '#ef4f6f', fontSize: '0.84rem', mt: 1.4 }}>
+                {generateError}
+              </Typography>
+            )}
           </Box>
+        ) : viewMode === 'calendar' ? (
+          <MarketingPlanCalendarView
+            posts={filteredPosts}
+            startDate={plan.startDate}
+            horizonDays={metrics.horizon}
+            readOnly={readOnly}
+            onClickPost={readOnly ? undefined : (p) => setEditingPost(p)}
+            onMovePost={async (postId, newDayOffset) => {
+              try {
+                const post = posts.find(p => p.id === postId);
+                if (!post || post.dayOffset === newDayOffset) return;
+                const updated = await roleRoomAgentService.updateMarketingPlanPost(postId, {
+                  dayOffset: newDayOffset,
+                }, post.updatedAt);
+                setPosts(prev => prev.map(p => p.id === updated.id ? updated : p));
+                setActivityNonce(n => n + 1);
+              } catch (e) {
+                console.warn("[marketing-plan-workspace] move-post feilet", e);
+              }
+            }}
+          />
         ) : (
           <TableContainer sx={{ maxHeight: 480 }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow>
+                  <TableCell sx={{ ...thSx, width: 56 }}></TableCell>
                   <TableCell sx={thSx}>Dag</TableCell>
                   <TableCell sx={thSx}>Format</TableCell>
                   <TableCell sx={thSx}>Hook</TableCell>
@@ -494,6 +612,9 @@ function PostRow({ post, pillar, onEdit }: {
                 '& td': { color: '#e2e8f0', borderBottom: '1px solid rgba(148,163,184,0.08)' },
                 '&:hover': onEdit ? { bgcolor: 'rgba(236,72,153,0.08)' } : undefined,
               }}>
+      <TableCell sx={{ width: 56, py: 0.6 }}>
+        <PostThumbnail post={post} />
+      </TableCell>
       <TableCell sx={{ fontWeight: 700 }}>
         {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
       </TableCell>
@@ -555,6 +676,44 @@ function PostRow({ post, pillar, onEdit }: {
     </TableRow>
   );
 }
+
+function PostThumbnail({ post }: { post: MarketingPlanPost }) {
+  const thumb = (post as MarketingPlanPost & { previewStreamThumbnailUrl?: string | null })
+    .previewStreamThumbnailUrl;
+  const Icon = STATUS_COLORS[post.status].icon;
+  if (thumb) {
+    return (
+      <Box sx={{
+        width: 44, height: 44, borderRadius: 1.2,
+        backgroundImage: `url(${thumb})`,
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        border: '1px solid rgba(148,163,184,0.18)',
+      }} />
+    );
+  }
+  // Fallback: format-farget plassholder med ikon
+  const formatColor = FORMAT_COLOR_FALLBACK[post.format] ?? '#94a3b8';
+  return (
+    <Box sx={{
+      width: 44, height: 44, borderRadius: 1.2,
+      bgcolor: `${formatColor}22`,
+      border: `1px solid ${formatColor}44`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <Icon sx={{ color: formatColor, fontSize: 18 }} />
+    </Box>
+  );
+}
+
+const FORMAT_COLOR_FALLBACK: Record<MarketingPlanPost['format'], string> = {
+  reel: '#DD2A7B',
+  carousel: '#f58529',
+  image: '#22d3ee',
+  story: '#a855f7',
+  tiktok: '#ec4899',
+  linkedin_post: '#3b82f6',
+  youtube_short: '#ef4444',
+};
 
 function formatTimeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();

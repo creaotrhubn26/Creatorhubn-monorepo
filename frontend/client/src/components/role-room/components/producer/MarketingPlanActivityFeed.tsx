@@ -6,8 +6,8 @@
  * Hektes inn under posts-tabellen i MarketingPlanWorkspace.
  */
 
-import { useEffect, useState } from 'react';
-import { Box, Stack, Typography, CircularProgress, Chip } from '@mui/material';
+import { useCallback, useEffect, useState } from 'react';
+import { Box, Stack, Typography, CircularProgress, Chip, Button } from '@mui/material';
 import {
   History as HistoryIcon,
   ChatBubbleOutline as CommentIcon,
@@ -65,7 +65,10 @@ const EVENT_VISUALS: Record<ActivityEventKind, {
 export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,8 +76,13 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
     setError(null);
     (async () => {
       try {
-        const e = await roleRoomAgentService.getMarketingActivityFeed(projectId);
-        if (!cancelled) setEvents(e);
+        const { events, hasMore, nextCursor } =
+          await roleRoomAgentService.getMarketingActivityFeed(projectId, { limit: 50 });
+        if (!cancelled) {
+          setEvents(events);
+          setHasMore(hasMore);
+          setNextCursor(nextCursor);
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -83,6 +91,23 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
     })();
     return () => { cancelled = true; };
   }, [projectId, refreshNonce]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await roleRoomAgentService.getMarketingActivityFeed(
+        projectId, { before: nextCursor, limit: 50 },
+      );
+      setEvents(prev => [...prev, ...result.events]);
+      setHasMore(result.hasMore);
+      setNextCursor(result.nextCursor);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [projectId, nextCursor, loadingMore]);
 
   return (
     <Box sx={cardSx}>
@@ -120,6 +145,22 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
           <EventRow key={`${event.at}-${idx}`} event={event} />
         ))}
       </Stack>
+
+      {hasMore && (
+        <Stack alignItems="center" sx={{ mt: 1.4 }}>
+          <Button onClick={() => void loadMore()}
+                  disabled={loadingMore}
+                  variant="text"
+                  size="small"
+                  sx={{
+                    color: '#a855f7',
+                    textTransform: 'none',
+                    fontWeight: 700,
+                  }}>
+            {loadingMore ? 'Laster …' : 'Vis flere hendelser'}
+          </Button>
+        </Stack>
+      )}
     </Box>
   );
 }

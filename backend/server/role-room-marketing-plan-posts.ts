@@ -502,8 +502,14 @@ export async function acceptPlanPostIntoFeedPlanner(
   };
 }
 
-export async function listPlanPosts(pool: Pool, planId: string): Promise<PersistedPlanPost[]> {
+export async function listPlanPosts(
+  pool: Pool,
+  planId: string,
+  since: string | null = null,
+): Promise<PersistedPlanPost[]> {
   try {
+    const sinceFilter = since ? `AND p.updated_at > $2` : ``;
+    const params: unknown[] = since ? [planId, since] : [planId];
     const result = await pool.query(
       `SELECT p.id, p.plan_id, p.pillar_id, p.sort_order, p.day_offset, p.hook, p.format,
               p.script, p.caption_draft, p.call_to_action, p.primary_platform,
@@ -520,8 +526,9 @@ export async function listPlanPosts(pool: Pool, planId: string): Promise<Persist
          FROM role_room_marketing_plan_posts p
          LEFT JOIN users u ON u.id = p.last_edited_by_user_id
         WHERE p.plan_id = $1
+          ${sinceFilter}
         ORDER BY p.day_offset NULLS LAST, p.sort_order`,
-      [planId],
+      params,
     );
     return result.rows.map(mapPostRow);
   } catch (error) {

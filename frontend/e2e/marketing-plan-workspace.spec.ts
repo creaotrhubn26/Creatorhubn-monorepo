@@ -219,8 +219,13 @@ test.describe('MarketingPlanWorkspace — Power BI-dashboard', () => {
   });
 
   test('activity-feed rendrer events i kronologisk rekkefølge', async ({ page }) => {
+    // Activity-feed mocker pagination-respons-shape
+    await page.route(`**/api/role-room/marketing-plan/${PROJECT_ID}/activity-feed*`, async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, events: MOCK_ACTIVITY, hasMore: false, nextCursor: null }) });
+    });
     await page.goto(HARNESS_URL);
-    await expect(page.getByText('Aktivitet', { exact: false })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText('Aktivitet', { exact: true })).toBeVisible({ timeout: 8000 });
     // De fire mocked events
     await expect(page.getByText('Post redigert i dashboard')).toBeVisible();
     await expect(page.getByText('Klient godkjente post')).toBeVisible();

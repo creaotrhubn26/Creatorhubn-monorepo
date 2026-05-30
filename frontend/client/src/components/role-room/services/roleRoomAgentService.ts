@@ -2452,6 +2452,27 @@ export const roleRoomAgentService = {
     return Array.isArray(payload?.posts) ? payload!.posts! : [];
   },
 
+  /**
+   * Polling-variant — returnerer kun posts endret etter `since`, pluss
+   * serverTime som kallieren kan bruke som since på neste tick.
+   */
+  async pollMarketingPlanPosts(planId: string, since: string | null): Promise<{
+    posts: MarketingPlanPost[]; serverTime: string;
+  }> {
+    const u = new URL(`/api/role-room/marketing-plan/${encodeURIComponent(planId)}/posts`,
+      window.location.origin);
+    if (since) u.searchParams.set('since', since);
+    const response = await fetch(u.pathname + u.search, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { posts?: MarketingPlanPost[]; serverTime?: string } | null;
+    return {
+      posts: payload?.posts ?? [],
+      serverTime: payload?.serverTime ?? new Date().toISOString(),
+    };
+  },
+
   async generateMarketingPlanPosts(input: {
     planId: string;
     projectId: string;
@@ -3190,17 +3211,25 @@ export const roleRoomAgentService = {
     primaryPlatform?: MarketingPlanPost['primaryPlatform'];
     dayOffset?: number | null;
     status?: MarketingPlanPost['status'];
-  }): Promise<MarketingPlanPost> {
+  }, ifMatchUpdatedAt?: string): Promise<MarketingPlanPost> {
+    const headers: Record<string, string> = {
+      ...readRoleRoomAgentHeaders(),
+      'Content-Type': 'application/json',
+    };
+    if (ifMatchUpdatedAt) headers['If-Match'] = ifMatchUpdatedAt;
     const response = await fetch(
       `/api/role-room/marketing-plan/posts/${encodeURIComponent(postId)}`,
-      {
-        method: 'PATCH',
-        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      },
+      { method: 'PATCH', headers, body: JSON.stringify(patch) },
     );
     const payload = (await response.json().catch(() => null)) as
-      | { success?: boolean; post?: MarketingPlanPost; error?: string } | null;
+      | { success?: boolean; post?: MarketingPlanPost; error?: string;
+          currentUpdatedAt?: string } | null;
+    if (response.status === 409) {
+      throw Object.assign(
+        new Error('Posten ble endret av noen andre mens du redigerte. Last inn på nytt.'),
+        { conflict: true, currentUpdatedAt: payload?.currentUpdatedAt },
+      );
+    }
     if (!response.ok || !payload?.post) {
       throw new Error(payload?.error || `Kunne ikke oppdatere posten (HTTP ${response.status})`);
     }
@@ -3275,14 +3304,25 @@ export const roleRoomAgentService = {
     if (!response.ok) throw new Error(`Label-oppdatering feilet (HTTP ${response.status})`);
   },
 
-  async getMarketingActivityFeed(projectId: string): Promise<ActivityEvent[]> {
-    const response = await fetch(
+  async getMarketingActivityFeed(projectId: string, opts: {
+    before?: string | null; limit?: number;
+  } = {}): Promise<{ events: ActivityEvent[]; hasMore: boolean; nextCursor: string | null }> {
+    const u = new URL(
       `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/activity-feed`,
-      { headers: readRoleRoomAgentHeaders() },
-    );
+      window.location.origin);
+    if (opts.before) u.searchParams.set('before', opts.before);
+    if (opts.limit) u.searchParams.set('limit', String(opts.limit));
+    const response = await fetch(u.pathname + u.search, {
+      headers: readRoleRoomAgentHeaders(),
+    });
     const payload = (await response.json().catch(() => null)) as
-      | { ok?: boolean; events?: ActivityEvent[] } | null;
-    return payload?.events ?? [];
+      | { ok?: boolean; events?: ActivityEvent[];
+          hasMore?: boolean; nextCursor?: string | null } | null;
+    return {
+      events: payload?.events ?? [],
+      hasMore: payload?.hasMore === true,
+      nextCursor: payload?.nextCursor ?? null,
+    };
   },
 };
 

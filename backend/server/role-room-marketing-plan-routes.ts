@@ -259,8 +259,14 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!planId) {
       return res.status(400).json({ success: false, error: "planId er påkrevd." });
     }
-    const posts = await listPlanPosts(pool, planId);
-    return res.json({ success: true, posts });
+    // ?since=ISO returnerer kun rader med updated_at > since.
+    // Brukes av polling-loopen i MarketingPlanWorkspace for delta-
+    // fetch. serverTime returneres så frontend kan bruke det som
+    // since på neste tick.
+    const since = typeof req.query.since === "string" ? req.query.since : null;
+    const posts = await listPlanPosts(pool, planId, since);
+    const serverTime = new Date().toISOString();
+    return res.json({ success: true, posts, serverTime });
   });
 
   app.post("/api/role-room/marketing-plan/:planId/generate-posts", async (req, res) => {
@@ -1511,6 +1517,24 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     if (!editor.canEdit) {
       return res.status(403).json({ success: false, error: "Du har ikke tilgang til denne posten." });
     }
+    // Optimistic-lock: hvis klient sender If-Match med forventet
+    // updated_at, sjekker vi at posten ikke har endret seg siden de
+    // lastet den. Returnerer 409 så frontend kan re-hente + varsle.
+    const ifMatch = req.header("If-Match") ?? null;
+    if (ifMatch) {
+      const { rows: chk } = await pool.query<{ updatedAt: Date }>(
+        `SELECT updated_at AS "updatedAt"
+           FROM role_room_marketing_plan_posts WHERE id = $1`,
+        [postId],
+      );
+      const currentIso = chk[0]?.updatedAt?.toISOString();
+      if (currentIso && currentIso !== ifMatch) {
+        return res.status(409).json({
+          success: false, error: "stale_post",
+          currentUpdatedAt: currentIso,
+        });
+      }
+    }
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
     const updates: string[] = [];
     const params: unknown[] = [];
@@ -1579,6 +1603,34 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke posten." });
       triggerPlanSnapshot(r.rows[0].plan_id, session.userId);
+      // Klient-edit varsler produsent — samme pattern som
+      // klient-kommentar i editor-comments-routes.
+      if (editor.editorKind === 'client') {
+        void (async () => {
+          try {
+            const { rows: pj } = await pool.query<{ projectId: string; userName: string | null }>(
+              `SELECT mp.project_id AS "projectId", u.email AS "userName"
+                 FROM role_room_marketing_plans mp
+                 LEFT JOIN users u ON u.id = $1
+                WHERE mp.id = $2`,
+              [session.userId, r.rows[0].plan_id],
+            );
+            if (pj[0]?.projectId) {
+              const mod = await import("./marketing-preview-email-service.js");
+              const editedFields = updates
+                .filter(u => !u.startsWith("updated_at") && !u.startsWith("last_edited"))
+                .map(u => u.split("=")[0].trim());
+              await mod.notifyProducerOfClientComment({
+                pool, projectId: pj[0].projectId, postId,
+                commentText: `Klient redigerte post "${r.rows[0].hook?.slice(0, 50) ?? postId}": ${editedFields.join(", ")}`,
+                clientName: pj[0].userName?.split("@")[0] ?? null,
+              });
+            }
+          } catch (e) {
+            console.warn("[marketing-plan-routes] klient-edit-email feilet", e);
+          }
+        })();
+      }
       return res.json({ success: true, post: r.rows[0] });
     } catch (error) {
       console.error("[marketing-plan-routes] post-update failed", error);
