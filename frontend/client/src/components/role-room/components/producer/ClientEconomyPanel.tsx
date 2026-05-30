@@ -30,6 +30,7 @@ import roleRoomAgentService, {
   type RoleRoomAdRecommendationSeverity,
 } from '../../services/roleRoomAgentService';
 import GrantedAssetsCard from './GrantedAssetsCard';
+import ClientConnectWizard from '../client-workspace/ClientConnectWizard';
 
 /**
  * Client-facing economy hub (MedInnova-avtalen §5.3): the simplest possible view
@@ -563,9 +564,11 @@ export default function ClientEconomyPanel({
       </Stack>
 
       {/* ── Hvilke sider/kontoer kunden har gitt admin til ── */}
-      <GrantedAssetsCard
-        perspective={['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase()) ? 'client' : 'producer'}
-      />
+      {/* For klient: vis onboarding-wizard med plattform-velger + logoer.
+          For produsent: vis original Granted Assets-liste. */}
+      {['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase())
+        ? <ClientConnectWizard />
+        : <GrantedAssetsCard perspective="producer" />}
 
       {!['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase()) && (
         <Typography sx={{ ...SUBTLE, textAlign: 'center' }}>
