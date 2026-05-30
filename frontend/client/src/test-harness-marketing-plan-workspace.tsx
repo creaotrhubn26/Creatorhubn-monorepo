@@ -21,6 +21,9 @@ const theme = createTheme({
 
 function TestHarness(): React.ReactElement {
   const [advancedEditorOpens, setAdvancedEditorOpens] = useState(0);
+  // ?readOnly=true → klient-modus-render. Brukt av E2E for å verifisere
+  // at edit-affordanser er skjult.
+  const readOnly = new URLSearchParams(window.location.search).get('readOnly') === 'true';
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -35,6 +38,7 @@ function TestHarness(): React.ReactElement {
         </Typography>
         <MarketingPlanWorkspace
           projectId="test-project-001"
+          readOnly={readOnly}
           onOpenAdvancedEditor={() => setAdvancedEditorOpens(n => n + 1)}
         />
       </Box>

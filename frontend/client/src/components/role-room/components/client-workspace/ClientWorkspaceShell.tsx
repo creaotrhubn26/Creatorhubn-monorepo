@@ -34,6 +34,7 @@ import {
   Assignment as BriefIcon,
   People as RolesIcon,
   CalendarMonth as PlanIcon,
+  RocketLaunch as MarketingPlanIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 
@@ -43,8 +44,9 @@ const ClientApprovalView = lazy(() => import('./ClientApprovalView'));
 const ClientBriefView = lazy(() => import('./ClientBriefView'));
 const ClientRolesView = lazy(() => import('./ClientRolesView'));
 const ClientPlanView = lazy(() => import('./ClientPlanView'));
+const ClientMarketingPlanView = lazy(() => import('./ClientMarketingPlanView'));
 
-type TabValue = 'economy' | 'approval' | 'brief' | 'roles' | 'plan';
+type TabValue = 'economy' | 'approval' | 'brief' | 'roles' | 'plan' | 'marketing-plan';
 
 const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> = [
   { value: 'economy', label: 'Økonomi', icon: <EconomyIcon /> },
@@ -52,6 +54,7 @@ const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> 
   { value: 'brief', label: 'Brief', icon: <BriefIcon /> },
   { value: 'roles', label: 'Roller', icon: <RolesIcon /> },
   { value: 'plan', label: 'Plan', icon: <PlanIcon /> },
+  { value: 'marketing-plan', label: 'Markedsplan', icon: <MarketingPlanIcon /> },
 ];
 
 function getInitialTab(): TabValue {
@@ -207,6 +210,7 @@ export default function ClientWorkspaceShell({
           {activeTab === 'brief' && <ClientBriefView projectId={projectId} />}
           {activeTab === 'roles' && <ClientRolesView projectId={projectId} />}
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
+          {activeTab === 'marketing-plan' && <ClientMarketingPlanView projectId={projectId} />}
         </Suspense>
       </Container>
     </Box>

@@ -230,4 +230,18 @@ test.describe('MarketingPlanWorkspace — Power BI-dashboard', () => {
     await page.getByRole('button', { name: 'Endre plan' }).click();
     await expect(page.getByTestId('advanced-editor-opens')).toContainText('1');
   });
+
+  test('readOnly-modus skjuler "Endre plan", VersionPicker og post-edit-klikk', async ({ page }) => {
+    await page.goto(`${HARNESS_URL}?readOnly=true`);
+    await expect(page.getByTestId('marketing-plan-workspace')).toBeVisible({ timeout: 8000 });
+    // Edit-knappen skal ikke finnes
+    await expect(page.getByRole('button', { name: 'Endre plan' })).toHaveCount(0);
+    // VersionPicker-knappen skal ikke finnes
+    await expect(page.getByRole('button', { name: /v2.*Etter klient-justering/ })).toHaveCount(0);
+    // Posts-tabellen rendres fortsatt
+    await expect(page.getByTestId('post-row-post-1').getByText('Slik lager vi surdeigen på 48 timer')).toBeVisible();
+    // Klikk på rad åpner IKKE dialog
+    await page.getByTestId('post-row-post-1').click();
+    await expect(page.getByText('Redigér post', { exact: false })).toHaveCount(0);
+  });
 });

@@ -45,6 +45,8 @@ interface Props {
   projectId: string;
   /** Klikk → åpne avansert plan-editor (MarketingPlanPanel-modal). */
   onOpenAdvancedEditor?: () => void;
+  /** Klient-modus: skjul "Endre plan", VersionPicker og PostEditDialog. */
+  readOnly?: boolean;
 }
 
 const STATUS_LABELS: Record<MarketingPlanPost['status'], string> = {
@@ -71,7 +73,7 @@ const FORMAT_LABELS: Record<MarketingPlanPost['format'], string> = {
   youtube_short: 'YT Short',
 };
 
-export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Props) {
+export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOnly = false }: Props) {
   const [plan, setPlan] = useState<MarketingPlan | null>(null);
   const [posts, setPosts] = useState<MarketingPlanPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -232,40 +234,42 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
               : 'ikke satt'}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1.2}>
-          <VersionPicker
-            title="Plan-versjoner"
-            versions={planVersions.map(v => ({
-              id: v.id, versionNumber: v.versionNumber,
-              label: v.label, isActive: v.isActive,
-              generatedByKind: v.generatedByKind,
-              generatedByName: v.generatedByName,
-              createdAt: v.createdAt,
-              previewText: v.valueProp,
-              counts: [
-                { label: 'pillars', value: v.pillarCount },
-                { label: 'posts', value: v.postCount },
-              ],
-            } as VersionItem))}
-            onActivate={(versionId) => roleRoomAgentService.activatePlanVersion(projectId, versionId)}
-            onAfterActivate={() => {
-              void load();
-              setActivityNonce(n => n + 1);
-            }}
-          />
-          {onOpenAdvancedEditor && (
-            <Button variant="outlined"
-                    onClick={onOpenAdvancedEditor}
-                    startIcon={<EditIcon />}
-                    sx={{
-                      borderColor: 'rgba(236,72,153,0.4)',
-                      color: '#ec4899',
-                      '&:hover': { borderColor: '#ec4899', bgcolor: 'rgba(236,72,153,0.08)' },
-                    }}>
-              Endre plan
-            </Button>
-          )}
-        </Stack>
+        {!readOnly && (
+          <Stack direction="row" spacing={1.2}>
+            <VersionPicker
+              title="Plan-versjoner"
+              versions={planVersions.map(v => ({
+                id: v.id, versionNumber: v.versionNumber,
+                label: v.label, isActive: v.isActive,
+                generatedByKind: v.generatedByKind,
+                generatedByName: v.generatedByName,
+                createdAt: v.createdAt,
+                previewText: v.valueProp,
+                counts: [
+                  { label: 'pillars', value: v.pillarCount },
+                  { label: 'posts', value: v.postCount },
+                ],
+              } as VersionItem))}
+              onActivate={(versionId) => roleRoomAgentService.activatePlanVersion(projectId, versionId)}
+              onAfterActivate={() => {
+                void load();
+                setActivityNonce(n => n + 1);
+              }}
+            />
+            {onOpenAdvancedEditor && (
+              <Button variant="outlined"
+                      onClick={onOpenAdvancedEditor}
+                      startIcon={<EditIcon />}
+                      sx={{
+                        borderColor: 'rgba(236,72,153,0.4)',
+                        color: '#ec4899',
+                        '&:hover': { borderColor: '#ec4899', bgcolor: 'rgba(236,72,153,0.08)' },
+                      }}>
+                Endre plan
+              </Button>
+            )}
+          </Stack>
+        )}
       </Stack>
 
       {/* ── KPI-tiles ───────────────────────────────────────────── */}
@@ -395,7 +399,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
                   const pillar = plan.pillars.find(p => p.id === post.pillarId);
                   return (
                     <PostRow key={post.id} post={post} pillar={pillar ?? null}
-                              onEdit={() => setEditingPost(post)} />
+                              onEdit={readOnly ? undefined : () => setEditingPost(post)} />
                   );
                 })}
               </TableBody>
@@ -477,7 +481,7 @@ function PillarBar({ name, count, pct }: { name: string; count: number; pct: num
 function PostRow({ post, pillar, onEdit }: {
   post: MarketingPlanPost;
   pillar: MarketingPlanPillar | null;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   const statusCfg = STATUS_COLORS[post.status];
   const StatusIcon = statusCfg.icon;
@@ -486,9 +490,9 @@ function PostRow({ post, pillar, onEdit }: {
               onClick={onEdit}
               data-testid={`post-row-${post.id}`}
               sx={{
-                cursor: 'pointer',
+                cursor: onEdit ? 'pointer' : 'default',
                 '& td': { color: '#e2e8f0', borderBottom: '1px solid rgba(148,163,184,0.08)' },
-                '&:hover': { bgcolor: 'rgba(236,72,153,0.08)' },
+                '&:hover': onEdit ? { bgcolor: 'rgba(236,72,153,0.08)' } : undefined,
               }}>
       <TableCell sx={{ fontWeight: 700 }}>
         {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
