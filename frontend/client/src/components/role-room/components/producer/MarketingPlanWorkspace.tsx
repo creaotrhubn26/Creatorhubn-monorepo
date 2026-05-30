@@ -35,7 +35,10 @@ import roleRoomAgentService, {
   type MarketingPlan,
   type MarketingPlanPost,
   type MarketingPlanPillar,
+  type PlanVersion,
 } from '../../services/roleRoomAgentService';
+import VersionPicker, { type VersionItem } from './VersionPicker';
+import PostEditDialog from './PostEditDialog';
 
 interface Props {
   projectId: string;
@@ -74,6 +77,8 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | MarketingPlanPost['status']>('all');
   const [pillarFilter, setPillarFilter] = useState<string>('all');
+  const [planVersions, setPlanVersions] = useState<PlanVersion[]>([]);
+  const [editingPost, setEditingPost] = useState<MarketingPlanPost | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,10 +87,15 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
       const p = await roleRoomAgentService.getMarketingPlan(projectId);
       setPlan(p);
       if (p?.id) {
-        const ps = await roleRoomAgentService.listMarketingPlanPosts(p.id);
+        const [ps, vs] = await Promise.all([
+          roleRoomAgentService.listMarketingPlanPosts(p.id),
+          roleRoomAgentService.listPlanVersions(projectId).catch(() => []),
+        ]);
         setPosts(ps);
+        setPlanVersions(vs);
       } else {
         setPosts([]);
+        setPlanVersions([]);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -220,18 +230,35 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
               : 'ikke satt'}
           </Typography>
         </Box>
-        {onOpenAdvancedEditor && (
-          <Button variant="outlined"
-                  onClick={onOpenAdvancedEditor}
-                  startIcon={<EditIcon />}
-                  sx={{
-                    borderColor: 'rgba(236,72,153,0.4)',
-                    color: '#ec4899',
-                    '&:hover': { borderColor: '#ec4899', bgcolor: 'rgba(236,72,153,0.08)' },
-                  }}>
-            Endre plan
-          </Button>
-        )}
+        <Stack direction="row" spacing={1.2}>
+          <VersionPicker
+            title="Plan-versjoner"
+            versions={planVersions.map(v => ({
+              id: v.id, versionNumber: v.versionNumber,
+              label: v.label, isActive: v.isActive,
+              generatedByKind: v.generatedByKind, createdAt: v.createdAt,
+              previewText: v.valueProp,
+              counts: [
+                { label: 'pillars', value: v.pillarCount },
+                { label: 'posts', value: v.postCount },
+              ],
+            } as VersionItem))}
+            onActivate={(versionId) => roleRoomAgentService.activatePlanVersion(projectId, versionId)}
+            onAfterActivate={() => void load()}
+          />
+          {onOpenAdvancedEditor && (
+            <Button variant="outlined"
+                    onClick={onOpenAdvancedEditor}
+                    startIcon={<EditIcon />}
+                    sx={{
+                      borderColor: 'rgba(236,72,153,0.4)',
+                      color: '#ec4899',
+                      '&:hover': { borderColor: '#ec4899', bgcolor: 'rgba(236,72,153,0.08)' },
+                    }}>
+              Endre plan
+            </Button>
+          )}
+        </Stack>
       </Stack>
 
       {/* ── KPI-tiles ───────────────────────────────────────────── */}
@@ -300,6 +327,15 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
         </ChartCard>
       </Box>
 
+      <PostEditDialog
+        post={editingPost}
+        onClose={() => setEditingPost(null)}
+        onSaved={(updated) => {
+          setPosts(prev => prev.map(p => p.id === updated.id ? updated : p));
+          setEditingPost(null);
+        }}
+      />
+
       {/* ── Posts-tabell ────────────────────────────────────────── */}
       <Box sx={tableCardSx}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.2 }}>
@@ -350,7 +386,8 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
                 {filteredPosts.map(post => {
                   const pillar = plan.pillars.find(p => p.id === post.pillarId);
                   return (
-                    <PostRow key={post.id} post={post} pillar={pillar ?? null} />
+                    <PostRow key={post.id} post={post} pillar={pillar ?? null}
+                              onEdit={() => setEditingPost(post)} />
                   );
                 })}
               </TableBody>
@@ -427,11 +464,21 @@ function PillarBar({ name, count, pct }: { name: string; count: number; pct: num
   );
 }
 
-function PostRow({ post, pillar }: { post: MarketingPlanPost; pillar: MarketingPlanPillar | null }) {
+function PostRow({ post, pillar, onEdit }: {
+  post: MarketingPlanPost;
+  pillar: MarketingPlanPillar | null;
+  onEdit: () => void;
+}) {
   const statusCfg = STATUS_COLORS[post.status];
   const StatusIcon = statusCfg.icon;
   return (
-    <TableRow hover sx={{ '& td': { color: '#e2e8f0', borderBottom: '1px solid rgba(148,163,184,0.08)' } }}>
+    <TableRow hover
+              onClick={onEdit}
+              sx={{
+                cursor: 'pointer',
+                '& td': { color: '#e2e8f0', borderBottom: '1px solid rgba(148,163,184,0.08)' },
+                '&:hover': { bgcolor: 'rgba(236,72,153,0.08)' },
+              }}>
       <TableCell sx={{ fontWeight: 700 }}>
         {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
       </TableCell>

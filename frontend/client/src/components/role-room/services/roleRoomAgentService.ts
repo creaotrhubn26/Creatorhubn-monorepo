@@ -3179,7 +3179,126 @@ export const roleRoomAgentService = {
     if (!response.ok) throw new Error(payload?.error || 'Kunne ikke aktivere planen.');
     return payload?.plan ?? null;
   },
+
+  // ── Post-redigering (inline edit i dashboard) ────────────────────
+  async updateMarketingPlanPost(postId: string, patch: {
+    hook?: string;
+    script?: string;
+    captionDraft?: string;
+    callToAction?: string;
+    format?: MarketingPlanPost['format'];
+    primaryPlatform?: MarketingPlanPost['primaryPlatform'];
+    dayOffset?: number | null;
+    status?: MarketingPlanPost['status'];
+  }): Promise<MarketingPlanPost> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/posts/${encodeURIComponent(postId)}`,
+      {
+        method: 'PATCH',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; post?: MarketingPlanPost; error?: string } | null;
+    if (!response.ok || !payload?.post) {
+      throw new Error(payload?.error || `Kunne ikke oppdatere posten (HTTP ${response.status})`);
+    }
+    return payload.post;
+  },
+
+  // ── Versjonering: research/intake ────────────────────────────────
+  async listIntakeVersions(projectId: string): Promise<IntakeVersion[]> {
+    const response = await fetch(
+      `/api/role-room/research/${encodeURIComponent(projectId)}/versions`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; versions?: IntakeVersion[] } | null;
+    return payload?.versions ?? [];
+  },
+
+  async activateIntakeVersion(projectId: string, versionId: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/research/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/activate`,
+      { method: 'POST', headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || `Aktivering feilet (HTTP ${response.status})`);
+    }
+  },
+
+  async labelIntakeVersion(projectId: string, versionId: string, label: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/research/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/label`,
+      {
+        method: 'POST',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      },
+    );
+    if (!response.ok) throw new Error(`Label-oppdatering feilet (HTTP ${response.status})`);
+  },
+
+  // ── Versjonering: markedsplan ───────────────────────────────────
+  async listPlanVersions(projectId: string): Promise<PlanVersion[]> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/versions`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; versions?: PlanVersion[] } | null;
+    return payload?.versions ?? [];
+  },
+
+  async activatePlanVersion(projectId: string, versionId: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/activate`,
+      { method: 'POST', headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || `Aktivering feilet (HTTP ${response.status})`);
+    }
+  },
+
+  async labelPlanVersion(projectId: string, versionId: string, label: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/label`,
+      {
+        method: 'POST',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      },
+    );
+    if (!response.ok) throw new Error(`Label-oppdatering feilet (HTTP ${response.status})`);
+  },
 };
+
+export interface IntakeVersion {
+  id: string;
+  versionNumber: number;
+  label: string | null;
+  generatedByKind: 'user' | 'agent';
+  generatedByUserId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  goalPreview: string | null;
+}
+
+export interface PlanVersion {
+  id: string;
+  versionNumber: number;
+  label: string | null;
+  generatedByKind: 'user' | 'agent';
+  generatedByUserId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  valueProp: string | null;
+  pillarCount: number;
+  postCount: number;
+}
 
 // ── Marketing plan types ─────────────────────────────────────────────────
 

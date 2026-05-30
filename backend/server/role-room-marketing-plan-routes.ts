@@ -1353,6 +1353,21 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     }
   };
 
+  const verifyPostOwnership = async (postId: string, userId: string): Promise<boolean> => {
+    try {
+      const r = await pool.query<{ owner_user_id: string }>(
+        `SELECT p.owner_user_id
+           FROM role_room_marketing_plan_posts pp
+           JOIN role_room_marketing_plans p ON p.id = pp.plan_id
+          WHERE pp.id = $1`,
+        [postId],
+      );
+      return r.rows[0]?.owner_user_id === userId;
+    } catch {
+      return false;
+    }
+  };
+
   app.patch("/api/role-room/marketing-plan/pillars/:pillarId", async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
@@ -1400,6 +1415,87 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     } catch (error) {
       console.error("[marketing-plan-routes] pillar-update failed", error);
       return res.status(500).json({ success: false, error: "Kunne ikke oppdatere pillaren." });
+    }
+  });
+
+  // Inline-redigering av en post i Markedsplan-dashboardet. Tillater
+  // editering av kjernefelt uten å regenerere posten. For full
+  // regenerering via Claude finnes /posts/:postId/regenerate separat.
+  app.patch("/api/role-room/marketing-plan/posts/:postId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const postId = String(req.params.postId || "").trim();
+    if (!postId) {
+      return res.status(400).json({ success: false, error: "postId er påkrevd." });
+    }
+    if (!(await verifyPostOwnership(postId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du eier ikke denne posten." });
+    }
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    if (typeof body.hook === "string") {
+      updates.push(`hook = $${i++}`);
+      params.push(body.hook.trim().slice(0, 1000));
+    }
+    if (typeof body.script === "string") {
+      updates.push(`script = $${i++}`);
+      params.push(body.script.trim().slice(0, 5000));
+    }
+    if (typeof body.captionDraft === "string") {
+      updates.push(`caption_draft = $${i++}`);
+      params.push(body.captionDraft.trim().slice(0, 5000));
+    }
+    if (typeof body.callToAction === "string") {
+      updates.push(`call_to_action = $${i++}`);
+      params.push(body.callToAction.trim().slice(0, 500));
+    }
+    if (typeof body.format === "string"
+        && ['reel','carousel','image','story','tiktok','linkedin_post','youtube_short'].includes(body.format)) {
+      updates.push(`format = $${i++}`);
+      params.push(body.format);
+    }
+    if (typeof body.primaryPlatform === "string"
+        && ['instagram','tiktok','linkedin','youtube','facebook'].includes(body.primaryPlatform)) {
+      updates.push(`primary_platform = $${i++}`);
+      params.push(body.primaryPlatform);
+    } else if (body.primaryPlatform === null) {
+      updates.push(`primary_platform = NULL`);
+    }
+    if (typeof body.dayOffset === "number" && Number.isFinite(body.dayOffset)) {
+      updates.push(`day_offset = $${i++}`);
+      params.push(Math.max(0, Math.floor(body.dayOffset)));
+    } else if (body.dayOffset === null) {
+      updates.push(`day_offset = NULL`);
+    }
+    if (typeof body.status === "string"
+        && ['proposed','scheduled','published','skipped'].includes(body.status)) {
+      updates.push(`status = $${i++}`);
+      params.push(body.status);
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: "Ingen felter å oppdatere." });
+    }
+    updates.push(`updated_at = now()`);
+    params.push(postId);
+    try {
+      const r = await pool.query(
+        `UPDATE role_room_marketing_plan_posts
+            SET ${updates.join(", ")}
+          WHERE id = $${i}
+          RETURNING id, plan_id, pillar_id, sort_order, day_offset, hook,
+                    format, script, caption_draft, call_to_action,
+                    primary_platform, cross_post_plan, goal_kpi, status,
+                    feed_plan_post_id, scheduled_for, published_at,
+                    created_at, updated_at`,
+        params,
+      );
+      if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke posten." });
+      return res.json({ success: true, post: r.rows[0] });
+    } catch (error) {
+      console.error("[marketing-plan-routes] post-update failed", error);
+      return res.status(500).json({ success: false, error: "Kunne ikke oppdatere posten." });
     }
   });
 
