@@ -78,3 +78,24 @@ export async function clearHelperConfig(): Promise<void> {
 export async function fetchProjectInfo(): Promise<ProjectInfo> {
   return invoke<ProjectInfo>("fetch_project_info");
 }
+
+export interface DetectedMount {
+  mount_path: string;
+  volume_label: string;
+  camera_guess: string | null;
+  total_bytes_capacity: number | null;
+  total_bytes_free: number | null;
+  photo_count: number;
+  video_count: number;
+  photo_bytes: number;
+  video_bytes: number;
+  layout_signals: string[];
+}
+
+export async function listDetectedMounts(): Promise<DetectedMount[]> {
+  return invoke<DetectedMount[]>("list_detected_mounts");
+}
+
+export async function rescanMounts(): Promise<DetectedMount[]> {
+  return invoke<DetectedMount[]>("rescan_mounts");
+}

@@ -1,11 +1,14 @@
 //! Creatorhub One Desk — Tauri backend.
 //!
-//! F1: helper-token-auth + project-info-fetch. F2+ legger til
-//! mount-deteksjon, copy-engine, iPad-paring, live mirror.
+//! F1: helper-token-auth + project-info-fetch.
+//! F2: mount-deteksjon + emit av `mounts-changed`-event.
+//! F3+ legger til copy-engine, iPad-paring, live mirror.
 
 mod helper_client;
+mod mount_watcher;
 
 use helper_client::{Config, ProjectInfo};
+use mount_watcher::{DetectedMount, MountWatcherState};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -70,13 +73,22 @@ fn clear_helper_config() -> Result<(), String> {
     helper_client::clear_config()
 }
 
-/// Henter prosjekt-info fra backend ved hjelp av lagret token. Returnerer
-/// 401-feilmelding hvis token er ugyldig/utløpt, så UI kan vise "logg ut".
+/// Henter prosjekt-info fra backend ved hjelp av lagret token.
 #[tauri::command]
 async fn fetch_project_info() -> Result<ProjectInfo, String> {
     let cfg = helper_client::load_config()?
         .ok_or_else(|| "Ingen lagret config — paste token først".to_string())?;
     helper_client::get_project_info(&cfg).await
+}
+
+#[tauri::command]
+fn list_detected_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
+    mount_watcher::list_mounts(&state)
+}
+
+#[tauri::command]
+fn rescan_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
+    mount_watcher::rescan(&state)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -85,12 +97,22 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(MountWatcherState::default())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            if let Err(err) = mount_watcher::spawn_watcher(handle) {
+                eprintln!("Mount-watcher kunne ikke starte: {err}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             default_api_base,
             load_stored_config,
             save_helper_config,
             clear_helper_config,
             fetch_project_info,
+            list_detected_mounts,
+            rescan_mounts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Creatorhub One Desk");

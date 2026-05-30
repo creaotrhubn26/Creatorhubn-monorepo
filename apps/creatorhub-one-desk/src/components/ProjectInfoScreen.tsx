@@ -16,6 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { clearHelperConfig, fetchProjectInfo, ProjectInfo, StoredConfig } from "../api";
+import MountsSection from "./MountsSection";
 
 interface Props {
   config: StoredConfig;
@@ -120,6 +121,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
               </CardContent>
             </Card>
 
+            <MountsSection plannedCards={info.memory_card_configs} />
+
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
@@ -167,8 +170,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
           }}
         >
           <Typography variant="caption">
-            F1 — auth + projects. Mount-deteksjon, copy-engine, backend-rapportering,
-            iPad-paring og live mirror kommer i F2–F6.
+            F2 — mount-deteksjon. Copy-engine, backend-rapportering, iPad-paring
+            og live mirror kommer i F3–F6.
           </Typography>
         </Box>
 
