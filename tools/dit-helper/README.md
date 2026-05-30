@@ -2,6 +2,12 @@
 
 Native CLI for DIT-backup-tracking på The Role Room-produksjoner.
 
+> **Bruker du foto/video for vendor-oppdrag (ikke film-DIT)?** Vurder
+> [Creatorhub One Desk](../../apps/creatorhub-one-desk/) i stedet — samme
+> backend-flow, men med GUI for å pare iPad CaptureApp, velge destinasjoner
+> visuelt, og se progress-bars i sanntid. CLI-en her er fortsatt rett verktøy
+> for headless film-DIT-stations (cinema-formater, scriptbar pipeline).
+
 ## Hva den gjør
 
 1. **Watcher kamera-kort-mounts** (eller andre konfigurerte stier)
@@ -109,6 +115,31 @@ Fallback til SHA-256 hvis xxhash-wasm ikke kan lastes.
 - **Filmmaterialet lagres aldri lokalt** utenfor de konfigurerte destinasjonene
 - All metadata sendes til vår egen backend (dataene eies av prosjektet)
 - Sjekksum-verifisering hindrer korrupt-data-deploy
+
+## Endringslogg
+
+### 0.1.1 (2026-05-30)
+- Bytt fra `GET /api/dit/projects/:id/destinations` (admin-gated) til
+  `GET /api/dit/projects/:id/info` (helper-token-gated). Den gamle URL-en
+  ga 401/403 fordi tokenet ikke har admin-rolle. Fix er backward-kompatibel
+  — samme destinasjons-data, helper-token virker nå
+- `dit-helper test` viser også prosjekt-navn nå (i tillegg til
+  destinasjons-liste)
+
+### 0.1.0 (2026-05-22)
+- Første release: init, test, watch, status
+
+## Publisering
+
+Daniels valg — ikke gjort automatisk. For å pushe ny versjon til npm:
+
+```bash
+cd tools/dit-helper
+npm publish --access public
+```
+
+Krever at du er logget inn på npm under en konto som har skrive-tilgang
+til `@theroleroom/dit-helper`-pakken.
 
 ## Lisens
 

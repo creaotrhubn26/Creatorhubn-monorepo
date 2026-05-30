@@ -329,10 +329,15 @@ program
     }
     console.log(`Tester mot ${config.api_base} med token ${config.token.slice(0, 12)}...`);
     try {
-      const result = await apiCall<{ destinations: Destination[] }>(
-        config, 'GET', `/api/dit/projects/${config.project_id}/destinations`,
-      );
-      console.log(`✓ Token gyldig. ${result.destinations.length} destinasjoner konfigurert:`);
+      // /info-endepunktet er helper-token-gated (det gamle /destinations
+      // krever admin-session). /info returnerer destinasjoner + prosjekt-
+      // metadata i én call.
+      const result = await apiCall<{
+        project: { id: string; name: string };
+        destinations: Destination[];
+      }>(config, 'GET', `/api/dit/projects/${config.project_id}/info`);
+      console.log(`✓ Token gyldig for prosjekt "${result.project.name}".`);
+      console.log(`✓ ${result.destinations.length} destinasjoner konfigurert:`);
       for (const d of result.destinations) {
         console.log(`   - [${d.destination_type}] ${d.label} → ${d.path ?? '(in-place)'}`);
       }
@@ -355,9 +360,10 @@ program
     console.log(`📂 Patterns: ${config.file_patterns.join(', ')}`);
     console.log(`🌐 Backend:  ${config.api_base}\n`);
 
-    // Last destinasjoner
+    // Last destinasjoner via /info (helper-token-gated, mottar både
+    // prosjekt-metadata og destinasjoner i én call)
     const { destinations } = await apiCall<{ destinations: Destination[] }>(
-      config, 'GET', `/api/dit/projects/${config.project_id}/destinations`,
+      config, 'GET', `/api/dit/projects/${config.project_id}/info`,
     );
     console.log(`📍 ${destinations.length} destinasjoner aktive:`);
     for (const d of destinations) {
