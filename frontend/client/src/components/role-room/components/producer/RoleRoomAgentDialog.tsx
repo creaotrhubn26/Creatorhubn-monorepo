@@ -53,6 +53,7 @@ import roleRoomAgentService, {
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
+import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
 
 type RoleRoomAgentDialogProps = {
@@ -828,6 +829,11 @@ export default function RoleRoomAgentDialog({
         <Stack spacing={1.4}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {notice ? <Alert severity="success">{notice}</Alert> : null}
+
+          <Stack direction="row" justifyContent="flex-end">
+            <ResearchVersionsPickerInline projectId={projectId} />
+          </Stack>
+
 
           <Box
             sx={{

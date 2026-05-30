@@ -1368,6 +1368,30 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     }
   };
 
+  // Trigger snapshot av plan-versjon etter en redigering. Best-effort,
+  // ikke-blokkerende. Brukes etter post-PATCH og pillar-mutasjoner.
+  const triggerPlanSnapshot = (planId: string, userId: string): void => {
+    void (async () => {
+      try {
+        const { rows } = await pool.query<{ projectId: string }>(
+          `SELECT project_id AS "projectId" FROM role_room_marketing_plans
+            WHERE id = $1`,
+          [planId],
+        );
+        if (rows[0]?.projectId) {
+          const mod = await import("./role-room-plan-versions-routes.js");
+          await mod.snapshotPlanVersion(pool, {
+            projectId: rows[0].projectId,
+            generatedByUserId: userId,
+            generatedByKind: 'user',
+          });
+        }
+      } catch (e) {
+        console.warn("[marketing-plan-routes] triggerPlanSnapshot feilet", e);
+      }
+    })();
+  };
+
   app.patch("/api/role-room/marketing-plan/pillars/:pillarId", async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
@@ -1411,6 +1435,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
         params,
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke pillaren." });
+      triggerPlanSnapshot(r.rows[0].plan_id, session.userId);
       return res.json({ success: true, pillar: r.rows[0] });
     } catch (error) {
       console.error("[marketing-plan-routes] pillar-update failed", error);
@@ -1492,6 +1517,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
         params,
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke posten." });
+      triggerPlanSnapshot(r.rows[0].plan_id, session.userId);
       return res.json({ success: true, post: r.rows[0] });
     } catch (error) {
       console.error("[marketing-plan-routes] post-update failed", error);
@@ -1536,6 +1562,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
          RETURNING id, plan_id, name, description, rationale, target_kpi, sort_order, is_active, is_custom`,
         [planId, name, description, rationale, sortOrder],
       );
+      triggerPlanSnapshot(planId, session.userId);
       return res.json({ success: true, pillar: r.rows[0] });
     } catch (error) {
       console.error("[marketing-plan-routes] custom-pillar insert failed", error);
@@ -1558,7 +1585,8 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
              AND role_room_marketing_plan_pillars.id = $1
              AND p.owner_user_id = $2
              AND role_room_marketing_plan_pillars.is_custom = TRUE
-         RETURNING role_room_marketing_plan_pillars.id`,
+         RETURNING role_room_marketing_plan_pillars.id AS id,
+                   role_room_marketing_plan_pillars.plan_id AS plan_id`,
         [pillarId, session.userId],
       );
       if (!r.rows[0]) {
@@ -1567,6 +1595,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
           error: "Fant ikke pillaren — eller den er AI-generert (bruk toggle is_active i stedet for slett).",
         });
       }
+      triggerPlanSnapshot(r.rows[0].plan_id, session.userId);
       return res.json({ success: true, deletedId: r.rows[0].id });
     } catch (error) {
       console.error("[marketing-plan-routes] pillar-delete failed", error);
