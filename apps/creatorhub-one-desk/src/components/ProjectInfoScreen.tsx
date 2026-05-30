@@ -133,7 +133,7 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
 
             <IPadPairingSection />
 
-            <CaptureMirrorSection />
+            <CaptureMirrorSection plannedDestinations={info.destinations} />
 
             <Card variant="outlined">
               <CardContent>
@@ -182,9 +182,9 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
           }}
         >
           <Typography variant="caption">
-            F6a — live WebSocket-subscriber mot iPad capture-sessions
-            (events vises i log). F6b legger til asset-download + mirror
-            til lokal RAID.
+            F6b — live WebSocket-subscriber + asset-mirror. Når mirror-toggle
+            er PÅ, lastes hver nye iPad-asset ned via signed R2-URL og
+            kopieres til backend-tracked destinasjoner med xxHash64-verify.
           </Typography>
         </Box>
 

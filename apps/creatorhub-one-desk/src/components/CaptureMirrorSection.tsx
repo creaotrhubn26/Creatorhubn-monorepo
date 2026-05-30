@@ -7,21 +7,28 @@ import {
   Card,
   CardContent,
   Chip,
+  FormControlLabel,
   IconButton,
   List,
   ListItem,
-  ListItemText,
   Stack,
+  Switch,
   Typography,
 } from "@mui/material";
 import PlayArrow from "@mui/icons-material/PlayArrow";
 import Stop from "@mui/icons-material/Stop";
 import Refresh from "@mui/icons-material/Refresh";
 import CameraAlt from "@mui/icons-material/CameraAlt";
+import CloudSync from "@mui/icons-material/CloudSync";
 import {
   CaptureEventPayload,
+  CaptureMirrorEvent,
   CaptureSessionSummary,
   CaptureSubscriberStateEvent,
+  disableMirrorForSession,
+  DitDestination,
+  enableMirrorForSession,
+  enabledMirrorSessions,
   listActiveCaptureSubscriptions,
   listCaptureSessions,
   startCaptureSubscription,
@@ -35,10 +42,16 @@ interface LogLine {
 
 const MAX_LOG_LINES = 50;
 
-export default function CaptureMirrorSection() {
+interface Props {
+  plannedDestinations: DitDestination[];
+}
+
+export default function CaptureMirrorSection({ plannedDestinations }: Props) {
   const [sessions, setSessions] = useState<CaptureSessionSummary[]>([]);
   const [active, setActive] = useState<Set<string>>(new Set());
+  const [mirrorEnabled, setMirrorEnabled] = useState<Set<string>>(new Set());
   const [subState, setSubState] = useState<Record<string, string>>({});
+  const [mirroredCounts, setMirroredCounts] = useState<Record<string, number>>({});
   const [log, setLog] = useState<LogLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,12 +60,14 @@ export default function CaptureMirrorSection() {
     setLoading(true);
     setError(null);
     try {
-      const [s, a] = await Promise.all([
+      const [s, a, m] = await Promise.all([
         listCaptureSessions(),
         listActiveCaptureSubscriptions(),
+        enabledMirrorSessions(),
       ]);
       setSessions(s);
       setActive(new Set(a));
+      setMirrorEnabled(new Set(m));
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
     } finally {
@@ -91,6 +106,27 @@ export default function CaptureMirrorSection() {
       );
     }).then((un) => unlisteners.push(un));
 
+    listen<CaptureMirrorEvent>("capture-mirror-event", (e) => {
+      const label = e.payload.filename || e.payload.asset_id.slice(0, 8);
+      setLog((prev) =>
+        [
+          {
+            ts: Date.now(),
+            text: `[mirror ${e.payload.session_id.slice(0, 8)}] ${e.payload.state} ${label}${
+              e.payload.error ? ` — ${e.payload.error}` : ""
+            }`,
+          },
+          ...prev,
+        ].slice(0, MAX_LOG_LINES),
+      );
+      if (e.payload.state === "done") {
+        setMirroredCounts((prev) => ({
+          ...prev,
+          [e.payload.session_id]: (prev[e.payload.session_id] ?? 0) + 1,
+        }));
+      }
+    }).then((un) => unlisteners.push(un));
+
     return () => {
       for (const un of unlisteners) un();
     };
@@ -113,6 +149,35 @@ export default function CaptureMirrorSection() {
         next.delete(sessionId);
         return next;
       });
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  };
+
+  const mirrorReady = plannedDestinations.filter(
+    (d) => d.path && d.destination_type !== "original",
+  );
+
+  const handleToggleMirror = async (sessionId: string, on: boolean) => {
+    try {
+      if (on) {
+        await enableMirrorForSession({
+          sessionId,
+          destinations: mirrorReady.map((d) => ({
+            id: d.id,
+            label: d.label,
+            path: d.path!,
+          })),
+        });
+        setMirrorEnabled((prev) => new Set(prev).add(sessionId));
+      } else {
+        await disableMirrorForSession(sessionId);
+        setMirrorEnabled((prev) => {
+          const next = new Set(prev);
+          next.delete(sessionId);
+          return next;
+        });
+      }
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
     }
@@ -141,8 +206,10 @@ export default function CaptureMirrorSection() {
         )}
 
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-          Subscriber til iPad-sessionens WebSocket-strøm. F6a viser bare
-          live-events; F6b kopierer assets til lokal RAID når de uploades.
+          Subscriber til iPad-sessionens WebSocket-strøm. Når mirror er PÅ,
+          lastes hver nye asset ned via signed R2-URL og kopieres til{" "}
+          {mirrorReady.length} backend-tracked destinasjon
+          {mirrorReady.length === 1 ? "" : "er"} med xxHash64-verify.
         </Typography>
 
         {sessions.length === 0 ? (
@@ -153,12 +220,46 @@ export default function CaptureMirrorSection() {
           <List dense>
             {sessions.map((s) => {
               const isActive = active.has(s.id);
+              const isMirrorOn = mirrorEnabled.has(s.id);
               const state = subState[s.id];
+              const mirrored = mirroredCounts[s.id] ?? 0;
               return (
                 <ListItem
                   key={s.id}
-                  secondaryAction={
-                    isActive ? (
+                  sx={{ flexDirection: "column", alignItems: "flex-start" }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ alignItems: "center", width: "100%", mb: 0.5 }}
+                  >
+                    <Typography variant="body2" sx={{ fontWeight: 500, flexGrow: 1 }}>
+                      {s.name || s.id.slice(0, 8)}
+                    </Typography>
+                    {s.is_active && <Chip size="small" color="success" label="aktiv" />}
+                    {state && (
+                      <Chip
+                        size="small"
+                        label={state}
+                        color={
+                          state === "connected"
+                            ? "success"
+                            : state === "error"
+                            ? "error"
+                            : "default"
+                        }
+                      />
+                    )}
+                    {mirrored > 0 && (
+                      <Chip
+                        size="small"
+                        icon={<CloudSync sx={{ fontSize: 14 }} />}
+                        label={`${mirrored} mirrored`}
+                        color="primary"
+                        variant="outlined"
+                      />
+                    )}
+                    {isActive ? (
                       <Button
                         size="small"
                         color="error"
@@ -176,37 +277,34 @@ export default function CaptureMirrorSection() {
                       >
                         Lytt
                       </Button>
-                    )
-                  }
-                >
-                  <ListItemText
-                    primary={
-                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {s.name || s.id.slice(0, 8)}
-                        </Typography>
-                        {s.is_active && <Chip size="small" color="success" label="aktiv" />}
-                        {state && (
-                          <Chip
-                            size="small"
-                            label={state}
-                            color={
-                              state === "connected"
-                                ? "success"
-                                : state === "error"
-                                ? "error"
-                                : "default"
-                            }
-                          />
-                        )}
-                      </Stack>
-                    }
-                    secondary={
-                      s.starts_at
+                    )}
+                  </Stack>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ alignItems: "center", width: "100%", pl: 0.5 }}
+                  >
+                    <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
+                      {s.starts_at
                         ? `Startet ${new Date(s.starts_at).toLocaleString("nb-NO")}`
-                        : "Ikke startet"
-                    }
-                  />
+                        : "Ikke startet"}
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={isMirrorOn}
+                          onChange={(e) => handleToggleMirror(s.id, e.target.checked)}
+                          disabled={mirrorReady.length === 0}
+                        />
+                      }
+                      label={
+                        <Typography variant="caption">
+                          Mirror til {mirrorReady.length} dest
+                        </Typography>
+                      }
+                    />
+                  </Stack>
                 </ListItem>
               );
             })}

@@ -26,6 +26,7 @@
 import type express from 'express';
 import type { Pool } from 'pg';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { signAssetReadUrl } from './capture-upload-service.js';
 
 interface AdminSession {
   userId: string;
@@ -486,6 +487,69 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   // Returnerer prosjekt-navn + memory-card-configs fra wizard +
   // destinasjoner i én call. Read-only.
   // ═══════════════════════════════════════════════════════════
+
+  // Returnerer signed download-URL for et capture-asset (Creatorhub One Desk
+  // F6b mirror). Helper-token-gated; verifiserer at asset's session.project_id
+  // matcher token.project_id. Foretrekker fullKey, faller tilbake til
+  // previewKey hvis full ikke finnes.
+  app.get('/api/dit/assets/:assetId/download-url', async (req, res) => {
+    const auth = await verifyHelperToken(pool, req);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'Ugyldig eller utløpt helper-token' });
+    }
+    const assetId = String(req.params.assetId || '').trim();
+    if (!assetId) {
+      return res.status(400).json({ success: false, error: 'assetId påkrevd' });
+    }
+    try {
+      const row = await pool.query<{
+        id: string;
+        original_filename: string;
+        preview_key: string | null;
+        full_key: string | null;
+        size_bytes: string | null;
+        mime: string;
+        project_id: string | null;
+      }>(
+        `SELECT a.id, a.original_filename, a.preview_key, a.full_key,
+                a.size_bytes, a.mime, s.project_id
+         FROM capture_assets a
+         JOIN capture_sessions s ON s.id = a.session_id
+         WHERE a.id = $1
+         LIMIT 1`,
+        [assetId],
+      );
+      if (row.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Asset ikke funnet' });
+      }
+      const asset = row.rows[0];
+      if (asset.project_id !== auth.project_id) {
+        return res.status(403).json({ success: false, error: 'Token gjelder annet prosjekt' });
+      }
+      const key = asset.full_key ?? asset.preview_key;
+      if (!key) {
+        return res.status(409).json({
+          success: false,
+          error: 'Asset har verken full_key eller preview_key (kanskje ikke uploaded ennå)',
+        });
+      }
+      const url = await signAssetReadUrl(key);
+      if (!url) {
+        return res.status(500).json({ success: false, error: 'Kunne ikke signere download-URL' });
+      }
+      return res.json({
+        success: true,
+        url,
+        filename: asset.original_filename,
+        size_bytes: asset.size_bytes ? Number(asset.size_bytes) : null,
+        mime: asset.mime,
+        is_full: asset.full_key !== null,
+      });
+    } catch (error) {
+      console.error('[dit] asset download-url failed:', error);
+      return res.status(500).json({ success: false, error: 'Kunne ikke hente download-URL' });
+    }
+  });
 
   // Lister capture-sessions (iPad CaptureApp) for dette prosjektet. Brukes
   // av Creatorhub One Desk for å vise hvilke sessions Desk kan mirror.

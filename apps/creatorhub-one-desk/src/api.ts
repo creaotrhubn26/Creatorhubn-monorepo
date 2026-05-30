@@ -281,3 +281,35 @@ export async function stopCaptureSubscription(sessionId: string): Promise<boolea
 export async function listActiveCaptureSubscriptions(): Promise<string[]> {
   return invoke<string[]>("list_active_capture_subscriptions");
 }
+
+export interface MirrorDestination {
+  id: string;
+  label: string;
+  path: string;
+}
+
+export interface CaptureMirrorEvent {
+  session_id: string;
+  asset_id: string;
+  state: "queued" | "downloading" | "copying" | "done" | "failed";
+  filename: string | null;
+  error: string | null;
+}
+
+export async function enableMirrorForSession(args: {
+  sessionId: string;
+  destinations: MirrorDestination[];
+}): Promise<void> {
+  return invoke<void>("enable_mirror_for_session", {
+    sessionId: args.sessionId,
+    destinations: args.destinations,
+  });
+}
+
+export async function disableMirrorForSession(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("disable_mirror_for_session", { sessionId });
+}
+
+export async function enabledMirrorSessions(): Promise<string[]> {
+  return invoke<string[]>("enabled_mirror_sessions");
+}

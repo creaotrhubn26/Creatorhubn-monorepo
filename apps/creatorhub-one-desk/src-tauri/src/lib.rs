@@ -5,6 +5,7 @@
 //! F3: copy-engine (xxHash64 + parallell kopi til N destinasjoner).
 //! F4+ legger til backend-rapportering, iPad-paring, live mirror.
 
+mod capture_mirror;
 mod capture_subscriber;
 mod copy_engine;
 mod copy_session;
@@ -15,6 +16,7 @@ mod mount_watcher;
 
 use std::sync::Arc;
 
+use capture_mirror::{MirrorDestination, MirrorState};
 use capture_subscriber::CaptureSubscriberState;
 use copy_session::{CopySessionState, DestinationSpec, SessionSpec, SessionStatus};
 use helper_client::{CaptureSessionSummary, Config, ProjectInfo};
@@ -188,6 +190,7 @@ async fn list_capture_sessions() -> Result<Vec<CaptureSessionSummary>, String> {
 fn start_capture_subscription(
     app: tauri::AppHandle,
     state: tauri::State<Arc<CaptureSubscriberState>>,
+    mirror_state: tauri::State<Arc<MirrorState>>,
     session_id: String,
 ) -> Result<(), String> {
     let cfg = helper_client::load_config()?
@@ -195,10 +198,33 @@ fn start_capture_subscription(
     capture_subscriber::start_subscription(
         app,
         state.inner().clone(),
+        mirror_state.inner().clone(),
         cfg.api_base,
         cfg.token,
         session_id,
     )
+}
+
+#[tauri::command]
+fn enable_mirror_for_session(
+    state: tauri::State<Arc<MirrorState>>,
+    session_id: String,
+    destinations: Vec<MirrorDestination>,
+) {
+    state.enable(session_id, destinations);
+}
+
+#[tauri::command]
+fn disable_mirror_for_session(
+    state: tauri::State<Arc<MirrorState>>,
+    session_id: String,
+) -> bool {
+    state.disable(&session_id)
+}
+
+#[tauri::command]
+fn enabled_mirror_sessions(state: tauri::State<Arc<MirrorState>>) -> Vec<String> {
+    state.enabled_sessions()
 }
 
 #[tauri::command]
@@ -263,6 +289,7 @@ pub fn run() {
         .manage(Arc::new(CopySessionState::default()))
         .manage(Arc::new(IpadPairingState::default()))
         .manage(Arc::new(CaptureSubscriberState::default()))
+        .manage(Arc::new(MirrorState::default()))
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(err) = mount_watcher::spawn_watcher(handle.clone()) {
@@ -296,6 +323,9 @@ pub fn run() {
             start_capture_subscription,
             stop_capture_subscription,
             list_active_capture_subscriptions,
+            enable_mirror_for_session,
+            disable_mirror_for_session,
+            enabled_mirror_sessions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Creatorhub One Desk");

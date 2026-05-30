@@ -26,6 +26,8 @@ use tauri::{AppHandle, Emitter};
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 
+use crate::capture_mirror::{self, MirrorState};
+
 #[derive(Default)]
 pub struct CaptureSubscriberState {
     active: Mutex<HashMap<String, Arc<AtomicBool>>>,
@@ -94,6 +96,7 @@ fn build_ws_url(api_base: &str, session_id: &str, token: &str) -> Result<String,
 pub fn start_subscription(
     app: AppHandle,
     state: Arc<CaptureSubscriberState>,
+    mirror_state: Arc<MirrorState>,
     api_base: String,
     token: String,
     session_id: String,
@@ -107,9 +110,18 @@ pub fn start_subscription(
 
     let app_clone = app.clone();
     let state_clone = state.clone();
+    let mirror_state_clone = mirror_state.clone();
     let session_id_clone = session_id.clone();
     tokio::spawn(async move {
-        run_subscription(app_clone, state_clone, session_id_clone, url, cancel).await;
+        run_subscription(
+            app_clone,
+            state_clone,
+            mirror_state_clone,
+            session_id_clone,
+            url,
+            cancel,
+        )
+        .await;
     });
 
     Ok(())
@@ -118,6 +130,7 @@ pub fn start_subscription(
 async fn run_subscription(
     app: AppHandle,
     state: Arc<CaptureSubscriberState>,
+    mirror_state: Arc<MirrorState>,
     session_id: String,
     url: String,
     cancel: Arc<AtomicBool>,
@@ -157,6 +170,20 @@ async fn run_subscription(
                     match msg {
                         Ok(Message::Text(text)) => {
                             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                                // Trigger mirror hvis aktivert + assetId finnes i payloaden
+                                let asset_id = value
+                                    .get("payload")
+                                    .and_then(|p| p.get("assetId"))
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                if let Some(asset_id) = asset_id {
+                                    capture_mirror::maybe_mirror_asset(
+                                        app.clone(),
+                                        mirror_state.clone(),
+                                        session_id.clone(),
+                                        asset_id,
+                                    );
+                                }
                                 let _ = app.emit(
                                     "capture-event",
                                     CaptureEventPayload {
