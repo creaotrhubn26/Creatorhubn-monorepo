@@ -7,6 +7,7 @@ import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
+import AgencyPortalView from './components/AgencyPortalView';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
@@ -452,7 +453,8 @@ function CastingStandaloneRuntimeContent() {
   const sessionAdminUser = authSessionService.getSessionSync().adminUser;
   const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
   const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
-  const shouldRenderTalentPortal = !guestMode && (
+  const shouldRenderAgencyPortal = !guestMode && normalizedRole === 'agency';
+  const shouldRenderTalentPortal = !guestMode && !shouldRenderAgencyPortal && (
     Boolean(talentPortalIntent)
     || normalizedRole === 'talent'
     || normalizedRequestedRole === 'talent'
@@ -487,7 +489,13 @@ function CastingStandaloneRuntimeContent() {
         ) : (
           <ToastProvider position="bottom-right">
             <RoleRoomUXLayer
-              workspaceId={shouldRenderTalentPortal ? 'talent-portal-v1' : 'casting-planner-v1'}
+              workspaceId={
+                shouldRenderAgencyPortal
+                  ? 'agency-portal-v1'
+                  : shouldRenderTalentPortal
+                    ? 'talent-portal-v1'
+                    : 'casting-planner-v1'
+              }
               mode={getActiveProfessionMode()}
               onSwitchMode={(newMode) => {
                 const url = new URL(window.location.href);
@@ -535,7 +543,13 @@ function CastingStandaloneRuntimeContent() {
                     ]
               }
             >
-              {shouldRenderTalentPortal ? (
+              {shouldRenderAgencyPortal ? (
+                <AgencyPortalView
+                  onClose={() => {
+                    void handleReturnToLanding();
+                  }}
+                />
+              ) : shouldRenderTalentPortal ? (
                 <TalentPortalView
                   intent={talentPortalIntent}
                   onClose={() => {

@@ -273,6 +273,38 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
     }
   });
 
+  // ── GET /me/access-audit — hvem har sett profilen min ───────────────
+  app.get("/api/role-room/talents/me/access-audit", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const talent = await fetchTalentForUser(pool, session.userId);
+      if (!talent) return res.json({ audit: [] });
+      // Aggreger per partner-day for å unngå overveldende støy.
+      const r = await pool.query(
+        `SELECT
+            partner_type,
+            partner_ref,
+            (SELECT name FROM agency_orgs WHERE id::text = partner_ref LIMIT 1) AS partner_name,
+            date_trunc('day', accessed_at) AS day,
+            count(*) AS access_count,
+            max(accessed_at) AS last_accessed,
+            array_agg(DISTINCT scope) AS scopes_seen
+          FROM talent_access_audit
+          WHERE talent_id = $1
+            AND accessed_at > now() - interval '90 days'
+          GROUP BY partner_type, partner_ref, day
+          ORDER BY day DESC, last_accessed DESC
+          LIMIT 200`,
+        [talent.id],
+      );
+      return res.json({ audit: r.rows });
+    } catch (err) {
+      console.error("[talents/me/access-audit] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente audit-logg" });
+    }
+  });
+
   // ── DELETE /me/consents/:id — trekk en tilgang ──────────────────────
   app.delete("/api/role-room/talents/me/consents/:id", async (req, res) => {
     const session = getActiveSession(req);
