@@ -44,11 +44,36 @@ Output: `src-tauri/target/release/bundle/macos/Creatorhub One Desk.app`
 
 Usignert i v0.1.x — brukerne må right-click → Open første gang.
 
-## Distribusjon
+## Distribusjon + auto-updater (F7)
 
-Tag-trigget GitHub Actions: `creatorhub-one-desk-v*` → bygger `.app.tar.gz` for både aarch64 og x86_64, uploader til en GitHub Release. Auto-updater leser fra release-artifactene.
+Tag-trigget GitHub Actions: `creatorhub-one-desk-v*` → bygger `.app.tar.gz` for både aarch64 og x86_64, signerer med minisign, uploader til en GitHub Release med `latest.json`-manifest. Tauri-updater-plugin'en sjekker manifestet og prompt'er brukeren ved oppstart.
 
-Beta-kanal: opt-in via egen distribusjonslenke (kommer i F7).
+### Minisign-nøkler
+- **Lokalt:** `~/.tauri/one-desk` (privat) + `~/.tauri/one-desk.pub` (offentlig)
+- **Public key:** embedded i `tauri.conf.json` under `plugins.updater.pubkey`
+- **HELT SEPARAT** fra Post Agent's nøkler — de to appene kan aldri utilsiktet bytte signing-identitet
+
+### GitHub secrets som må settes for release-workflowen
+- `TAURI_SIGNING_PRIVATE_KEY_ONE_DESK` — innholdet av `~/.tauri/one-desk` (base64-blob)
+- `TAURI_SIGNING_PRIVATE_KEY_ONE_DESK_PASSWORD` — tom string (passordløs dev-nøkkel)
+
+Sett dem via `Settings → Secrets and variables → Actions` på GitHub-repoet.
+
+### Slik lager du en release
+```bash
+git tag creatorhub-one-desk-v0.1.1
+git push origin creatorhub-one-desk-v0.1.1
+# Watch: .github/workflows/release-creatorhub-one-desk.yml
+```
+
+Workflowen lager en GitHub Release med:
+- `creatorhub-one-desk-darwin-aarch64.app.tar.gz` (+ `.sig`)
+- `creatorhub-one-desk-darwin-x86_64.app.tar.gz` (+ `.sig`)
+- `creatorhub-one-desk-darwin-{arch}.json` (manifest auto-updater leser)
+
+Brukere som allerede har Desk installert vil få oppdaterings-prompt ved neste oppstart.
+
+Beta-kanal: opt-in via egen distribusjonslenke (kommer senere — F7 dekker bare hoved-kanalen).
 
 ## Arkitektur
 
