@@ -480,4 +480,51 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
       return res.status(500).json({ success: false, error: 'Kunne ikke laste status', take_status: [] });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════
+  // PROJECT INFO — helper-token-gated (Creatorhub One Desk)
+  // Returnerer prosjekt-navn + memory-card-configs fra wizard +
+  // destinasjoner i én call. Read-only.
+  // ═══════════════════════════════════════════════════════════
+
+  app.get('/api/dit/projects/:projectId/info', async (req, res) => {
+    const auth = await verifyHelperToken(pool, req);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'Ugyldig eller utløpt helper-token' });
+    }
+    const projectId = String(req.params.projectId || '').trim();
+    if (auth.project_id !== projectId) {
+      return res.status(403).json({ success: false, error: 'Token gjelder annet prosjekt' });
+    }
+    try {
+      const [projectRes, destRes] = await Promise.all([
+        pool.query<{ id: string; name: string | null; title: string | null; metadata: Record<string, unknown> | null }>(
+          'SELECT id, name, title, metadata FROM legacy.projects WHERE id = $1 LIMIT 1',
+          [projectId],
+        ),
+        pool.query<DitDestinationRow>(
+          'SELECT * FROM dit_destinations WHERE project_id = $1 ORDER BY priority ASC, label ASC',
+          [projectId],
+        ),
+      ]);
+      if (projectRes.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      }
+      const project = projectRes.rows[0];
+      const metadata = (project.metadata ?? {}) as Record<string, unknown>;
+      return res.json({
+        success: true,
+        project: {
+          id: project.id,
+          name: project.name || project.title || '',
+        },
+        memory_card_configs: Array.isArray(metadata.memoryCardConfigs) ? metadata.memoryCardConfigs : [],
+        selected_memory_cards: Array.isArray(metadata.selectedMemoryCards) ? metadata.selectedMemoryCards : [],
+        destinations: destRes.rows.map(serializeDestination),
+      });
+    } catch (error) {
+      console.error('[dit] project info failed:', error);
+      return res.status(500).json({ success: false, error: 'Kunne ikke laste prosjekt-info' });
+    }
+  });
 }
