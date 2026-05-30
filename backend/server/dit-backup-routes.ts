@@ -487,6 +487,52 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   // destinasjoner i én call. Read-only.
   // ═══════════════════════════════════════════════════════════
 
+  // Lister capture-sessions (iPad CaptureApp) for dette prosjektet. Brukes
+  // av Creatorhub One Desk for å vise hvilke sessions Desk kan mirror.
+  // Helper-token-gated; samme project_id-isolasjon som /info.
+  app.get('/api/dit/projects/:projectId/capture-sessions', async (req, res) => {
+    const auth = await verifyHelperToken(pool, req);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'Ugyldig eller utløpt helper-token' });
+    }
+    const projectId = String(req.params.projectId || '').trim();
+    if (auth.project_id !== projectId) {
+      return res.status(403).json({ success: false, error: 'Token gjelder annet prosjekt' });
+    }
+    try {
+      const result = await pool.query<{
+        id: string;
+        name: string;
+        starts_at: Date;
+        ends_at: Date | null;
+        status: string;
+        owner_user_id: string;
+      }>(
+        `SELECT id, name, starts_at, ends_at, status, owner_user_id
+         FROM capture_sessions
+         WHERE project_id = $1
+         ORDER BY starts_at DESC
+         LIMIT 50`,
+        [projectId],
+      );
+      return res.json({
+        success: true,
+        sessions: result.rows.map((r) => ({
+          id: r.id,
+          name: r.name ?? '',
+          starts_at: r.starts_at ? r.starts_at.toISOString() : null,
+          ends_at: r.ends_at ? r.ends_at.toISOString() : null,
+          status: r.status,
+          owner_user_id: r.owner_user_id,
+          is_active: r.ends_at === null && r.status === 'active',
+        })),
+      });
+    } catch (error) {
+      console.error('[dit] capture-sessions list failed:', error);
+      return res.status(500).json({ success: false, error: 'Kunne ikke laste capture-sessions', sessions: [] });
+    }
+  });
+
   app.get('/api/dit/projects/:projectId/info', async (req, res) => {
     const auth = await verifyHelperToken(pool, req);
     if (!auth) {

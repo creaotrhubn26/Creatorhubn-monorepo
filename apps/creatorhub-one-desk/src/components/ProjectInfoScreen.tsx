@@ -19,6 +19,7 @@ import { clearHelperConfig, fetchProjectInfo, ProjectInfo, StoredConfig } from "
 import MountsSection from "./MountsSection";
 import CopyProgressView from "./CopyProgressView";
 import IPadPairingSection from "./IPadPairingSection";
+import CaptureMirrorSection from "./CaptureMirrorSection";
 
 interface Props {
   config: StoredConfig;
@@ -132,6 +133,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
 
             <IPadPairingSection />
 
+            <CaptureMirrorSection />
+
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
@@ -179,9 +182,9 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
           }}
         >
           <Typography variant="caption">
-            F5 — iPad-paring (Bonjour-discovery, manuell PIN-confirmation
-            inntil CaptureApp støtter automatisk bekreftelse). Live mirror
-            kommer i F6.
+            F6a — live WebSocket-subscriber mot iPad capture-sessions
+            (events vises i log). F6b legger til asset-download + mirror
+            til lokal RAID.
           </Typography>
         </Box>
 

@@ -85,6 +85,57 @@ pub fn default_api_base() -> &'static str {
     DEFAULT_API_BASE
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureSessionSummary {
+    pub id: String,
+    pub name: String,
+    pub starts_at: Option<String>,
+    pub ends_at: Option<String>,
+    pub status: String,
+    pub owner_user_id: String,
+    pub is_active: bool,
+}
+
+pub async fn list_capture_sessions(cfg: &Config) -> Result<Vec<CaptureSessionSummary>, String> {
+    let base = cfg.api_base.trim_end_matches('/');
+    let url = format!(
+        "{}/api/dit/projects/{}/capture-sessions",
+        base,
+        urlencoding::encode(&cfg.project_id)
+    );
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", cfg.token))
+        .header("User-Agent", concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")))
+        .send()
+        .await
+        .map_err(|e| format!("Backend-request feilet: {}", e))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        let snippet = body.chars().take(300).collect::<String>();
+        return Err(format!("Backend svarte {}: {}", status.as_u16(), snippet));
+    }
+
+    let raw: serde_json::Value = resp.json().await.map_err(|e| format!("Parse-feil: {}", e))?;
+    if raw.get("success").and_then(|v| v.as_bool()) != Some(true) {
+        let err = raw.get("error").and_then(|v| v.as_str()).unwrap_or("Ukjent feil");
+        return Err(err.to_string());
+    }
+    let sessions = raw
+        .get("sessions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let out: Vec<CaptureSessionSummary> = sessions
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect();
+    Ok(out)
+}
+
 pub async fn get_project_info(cfg: &Config) -> Result<ProjectInfo, String> {
     let base = cfg.api_base.trim_end_matches('/');
     let url = format!("{}/api/dit/projects/{}/info", base, urlencoding::encode(&cfg.project_id));

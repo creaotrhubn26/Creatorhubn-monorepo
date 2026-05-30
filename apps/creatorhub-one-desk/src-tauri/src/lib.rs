@@ -5,6 +5,7 @@
 //! F3: copy-engine (xxHash64 + parallell kopi til N destinasjoner).
 //! F4+ legger til backend-rapportering, iPad-paring, live mirror.
 
+mod capture_subscriber;
 mod copy_engine;
 mod copy_session;
 mod dit_reporter;
@@ -14,8 +15,9 @@ mod mount_watcher;
 
 use std::sync::Arc;
 
+use capture_subscriber::CaptureSubscriberState;
 use copy_session::{CopySessionState, DestinationSpec, SessionSpec, SessionStatus};
-use helper_client::{Config, ProjectInfo};
+use helper_client::{CaptureSessionSummary, Config, ProjectInfo};
 use ipad_pairing::{DiscoveredIpad, IpadPairingState, PairedIpad, PendingPin};
 use mount_watcher::{DetectedMount, MountWatcherState};
 use serde::Serialize;
@@ -176,6 +178,45 @@ fn confirm_pair_ipad(device_id: String, device_name: String) -> Result<Vec<Paire
 }
 
 #[tauri::command]
+async fn list_capture_sessions() -> Result<Vec<CaptureSessionSummary>, String> {
+    let cfg = helper_client::load_config()?
+        .ok_or_else(|| "Ingen lagret config".to_string())?;
+    helper_client::list_capture_sessions(&cfg).await
+}
+
+#[tauri::command]
+fn start_capture_subscription(
+    app: tauri::AppHandle,
+    state: tauri::State<Arc<CaptureSubscriberState>>,
+    session_id: String,
+) -> Result<(), String> {
+    let cfg = helper_client::load_config()?
+        .ok_or_else(|| "Ingen lagret config — paste token først".to_string())?;
+    capture_subscriber::start_subscription(
+        app,
+        state.inner().clone(),
+        cfg.api_base,
+        cfg.token,
+        session_id,
+    )
+}
+
+#[tauri::command]
+fn stop_capture_subscription(
+    state: tauri::State<Arc<CaptureSubscriberState>>,
+    session_id: String,
+) -> bool {
+    state.stop(&session_id)
+}
+
+#[tauri::command]
+fn list_active_capture_subscriptions(
+    state: tauri::State<Arc<CaptureSubscriberState>>,
+) -> Vec<String> {
+    state.list_active()
+}
+
+#[tauri::command]
 fn unpair_ipad(device_id: String) -> Result<Vec<PairedIpad>, String> {
     let list: Vec<PairedIpad> = ipad_pairing::load_paired()
         .into_iter()
@@ -221,6 +262,7 @@ pub fn run() {
         .manage(MountWatcherState::default())
         .manage(Arc::new(CopySessionState::default()))
         .manage(Arc::new(IpadPairingState::default()))
+        .manage(Arc::new(CaptureSubscriberState::default()))
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(err) = mount_watcher::spawn_watcher(handle.clone()) {
@@ -250,6 +292,10 @@ pub fn run() {
             cancel_pairing_pin,
             confirm_pair_ipad,
             unpair_ipad,
+            list_capture_sessions,
+            start_capture_subscription,
+            stop_capture_subscription,
+            list_active_capture_subscriptions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Creatorhub One Desk");

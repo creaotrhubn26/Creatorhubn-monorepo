@@ -242,3 +242,42 @@ export async function confirmPairIpad(args: {
 export async function unpairIpad(deviceId: string): Promise<PairedIpad[]> {
   return invoke<PairedIpad[]>("unpair_ipad", { deviceId });
 }
+
+// ─── Capture sessions + WebSocket subscriber (F6a) ──────────────
+
+export interface CaptureSessionSummary {
+  id: string;
+  name: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  status: string;
+  owner_user_id: string;
+  is_active: boolean;
+}
+
+export interface CaptureSubscriberStateEvent {
+  session_id: string;
+  state: "connecting" | "connected" | "disconnected" | "stopped" | "error";
+  message: string | null;
+}
+
+export interface CaptureEventPayload {
+  session_id: string;
+  raw: unknown;
+}
+
+export async function listCaptureSessions(): Promise<CaptureSessionSummary[]> {
+  return invoke<CaptureSessionSummary[]>("list_capture_sessions");
+}
+
+export async function startCaptureSubscription(sessionId: string): Promise<void> {
+  return invoke<void>("start_capture_subscription", { sessionId });
+}
+
+export async function stopCaptureSubscription(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("stop_capture_subscription", { sessionId });
+}
+
+export async function listActiveCaptureSubscriptions(): Promise<string[]> {
+  return invoke<string[]>("list_active_capture_subscriptions");
+}
