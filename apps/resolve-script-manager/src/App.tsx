@@ -261,27 +261,50 @@ export default function App() {
         await runScript(script, {}, false);
       }).then((u) => unlisteners.push(u));
       listen("menu://new-workflow", () => setView("pipeline")).then((u) => unlisteners.push(u));
-      listen("menu://check-updates", async () => {
+      // Updater-handler: brukes både av menu://check-updates og av
+      // auto-check ved oppstart. Hvis ny versjon finnes, last ned +
+      // installer + spør om restart. promptRestart=false (auto-check)
+      // gjør samme jobb men uten å nag-en hvis user nylig avviste.
+      const runUpdateCheck = async (promptRestart: boolean) => {
         try {
-          const { check } = await import("@tauri-apps/plugin-updater");
-          const update = await check();
-          if (update) {
-            setEvents((prev) => [
-              ...prev,
-              { type: "log", ts: Date.now() / 1000, runId: "n/a",
-                message: `Update available: v${update.version} — ${update.body ?? ""}` },
-            ]);
-          } else {
-            setEvents((prev) => [
-              ...prev,
-              { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
-            ]);
+          const updater = await import("@tauri-apps/plugin-updater");
+          const update = await updater.check();
+          if (!update) {
+            if (promptRestart) {
+              setEvents((prev) => [
+                ...prev,
+                { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
+              ]);
+            }
+            return;
           }
+          setEvents((prev) => [
+            ...prev,
+            { type: "log", ts: Date.now() / 1000, runId: "n/a",
+              message: `Update available: v${update.version} — laster ned…` },
+          ]);
+          await update.downloadAndInstall();
+          setEvents((prev) => [
+            ...prev,
+            { type: "log", ts: Date.now() / 1000, runId: "n/a",
+              message: `v${update.version} installert. Restart for å aktivere.` },
+          ]);
+          // Tauri-plugin-process er ikke installert ennå; ber bruker
+          // om manuell Cmd+Q + relaunch i stedet for relaunch().
+          window.alert(
+            `Post Agent v${update.version} er installert. Lukk appen (Cmd+Q) og åpne den på nytt for å aktivere.`,
+          );
         } catch (e) {
-          // Updater not configured (no endpoint/pubkey) — silent in dev
+          // Updater not configured (no endpoint/pubkey) — silent i dev
           console.warn("[updater] not available:", e);
         }
-      }).then((u) => unlisteners.push(u));
+      };
+      listen("menu://check-updates", () => void runUpdateCheck(true))
+        .then((u) => unlisteners.push(u));
+      // Auto-check ved oppstart (én gang, 4 sek etter mount slik at
+      // hovedflyten ikke blir blokket av en tung GitHub-fetch).
+      const autoCheckTimer = window.setTimeout(() => void runUpdateCheck(false), 4000);
+      unlisteners.push(() => window.clearTimeout(autoCheckTimer));
     });
     return () => { cancelled = true; unlisteners.forEach((u) => u?.()); };
   // runs + scriptsById intentionally NOT in deps — we always read latest via closure ref
