@@ -39,6 +39,7 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 import VersionPicker, { type VersionItem } from './VersionPicker';
 import PostEditDialog from './PostEditDialog';
+import MarketingPlanActivityFeed from './MarketingPlanActivityFeed';
 
 interface Props {
   projectId: string;
@@ -79,6 +80,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
   const [pillarFilter, setPillarFilter] = useState<string>('all');
   const [planVersions, setPlanVersions] = useState<PlanVersion[]>([]);
   const [editingPost, setEditingPost] = useState<MarketingPlanPost | null>(null);
+  const [activityNonce, setActivityNonce] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -246,7 +248,10 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
               ],
             } as VersionItem))}
             onActivate={(versionId) => roleRoomAgentService.activatePlanVersion(projectId, versionId)}
-            onAfterActivate={() => void load()}
+            onAfterActivate={() => {
+              void load();
+              setActivityNonce(n => n + 1);
+            }}
           />
           {onOpenAdvancedEditor && (
             <Button variant="outlined"
@@ -335,6 +340,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
         onSaved={(updated) => {
           setPosts(prev => prev.map(p => p.id === updated.id ? updated : p));
           setEditingPost(null);
+          setActivityNonce(n => n + 1);
         }}
       />
 
@@ -397,6 +403,8 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
           </TableContainer>
         )}
       </Box>
+
+      <MarketingPlanActivityFeed projectId={projectId} refreshNonce={activityNonce} />
     </Box>
   );
 }

@@ -62,6 +62,7 @@ import { registerRoleRoomEditorCommentsRoutes } from "./role-room-editor-comment
 import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketing-preview-video-routes.js";
 import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
 import { registerRoleRoomPlanVersionsRoutes } from "./role-room-plan-versions-routes.js";
+import { registerRoleRoomMarketingActivityFeedRoutes } from "./role-room-marketing-activity-feed-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -1773,6 +1774,7 @@ registerRoleRoomEditorCommentsRoutes(app, { pool, activeSessions });
 registerRoleRoomMarketingPreviewVideoRoutes(app, { pool, activeSessions });
 registerRoleRoomIntakeVersionsRoutes(app, { pool, activeSessions });
 registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
+registerRoleRoomMarketingActivityFeedRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());

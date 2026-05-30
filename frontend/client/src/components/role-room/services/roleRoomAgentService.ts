@@ -3274,7 +3274,36 @@ export const roleRoomAgentService = {
     );
     if (!response.ok) throw new Error(`Label-oppdatering feilet (HTTP ${response.status})`);
   },
+
+  async getMarketingActivityFeed(projectId: string): Promise<ActivityEvent[]> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/activity-feed`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; events?: ActivityEvent[] } | null;
+    return payload?.events ?? [];
+  },
 };
+
+export type ActivityEventKind =
+  | 'plan_version'
+  | 'client_comment'
+  | 'team_comment'
+  | 'client_review_approved'
+  | 'client_review_changes_requested'
+  | 'preview_uploaded'
+  | 'post_edited';
+
+export interface ActivityEvent {
+  kind: ActivityEventKind;
+  at: string;
+  actor: { kind: 'user' | 'agent' | 'client'; name: string | null };
+  title: string;
+  detail?: string | null;
+  postId?: string | null;
+  postHook?: string | null;
+}
 
 export interface IntakeVersion {
   id: string;
