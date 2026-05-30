@@ -1425,13 +1425,17 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     if (updates.length === 0) {
       return res.status(400).json({ success: false, error: "Ingen felter å oppdatere." });
     }
+    updates.push(`last_edited_at = now()`);
+    updates.push(`last_edited_by_user_id = $${i++}`);
+    params.push(session.userId);
     params.push(pillarId);
     try {
       const r = await pool.query(
         `UPDATE role_room_marketing_plan_pillars
             SET ${updates.join(", ")}
           WHERE id = $${i}
-          RETURNING id, plan_id, name, description, rationale, target_kpi, sort_order, is_active, is_custom`,
+          RETURNING id, plan_id, name, description, rationale, target_kpi, sort_order, is_active, is_custom,
+                    last_edited_at, last_edited_by_user_id`,
         params,
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke pillaren." });
@@ -1503,6 +1507,9 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
       return res.status(400).json({ success: false, error: "Ingen felter å oppdatere." });
     }
     updates.push(`updated_at = now()`);
+    updates.push(`last_edited_at = now()`);
+    updates.push(`last_edited_by_user_id = $${i++}`);
+    params.push(session.userId);
     params.push(postId);
     try {
       const r = await pool.query(
@@ -1513,6 +1520,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
                     format, script, caption_draft, call_to_action,
                     primary_platform, cross_post_plan, goal_kpi, status,
                     feed_plan_post_id, scheduled_for, published_at,
+                    last_edited_at, last_edited_by_user_id,
                     created_at, updated_at`,
         params,
       );
@@ -1557,10 +1565,12 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
       const sortOrder = Number(maxOrderRow.rows[0]?.max ?? 0) + 1;
       const r = await pool.query(
         `INSERT INTO role_room_marketing_plan_pillars
-           (plan_id, name, description, rationale, sort_order, is_active, is_custom)
-         VALUES ($1, $2, $3, $4, $5, TRUE, TRUE)
-         RETURNING id, plan_id, name, description, rationale, target_kpi, sort_order, is_active, is_custom`,
-        [planId, name, description, rationale, sortOrder],
+           (plan_id, name, description, rationale, sort_order, is_active, is_custom,
+            last_edited_at, last_edited_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, now(), $6)
+         RETURNING id, plan_id, name, description, rationale, target_kpi, sort_order, is_active, is_custom,
+                   last_edited_at, last_edited_by_user_id`,
+        [planId, name, description, rationale, sortOrder, session.userId],
       );
       triggerPlanSnapshot(planId, session.userId);
       return res.json({ success: true, pillar: r.rows[0] });

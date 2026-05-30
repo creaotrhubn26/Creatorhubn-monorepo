@@ -61,6 +61,9 @@ export interface PersistedPlanPost extends GeneratedPlanPost {
   clientReviewStatus: 'pending' | 'approved' | 'changes_requested';
   clientReviewAt: Date | null;
   clientReviewNote: string | null;
+  lastEditedAt: Date | null;
+  lastEditedByUserId: string | null;
+  lastEditedByName: string | null;
 }
 
 // ── Claude generation ───────────────────────────────────────────────────
@@ -314,6 +317,9 @@ function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
     clientReviewStatus: (row.client_review_status as PersistedPlanPost['clientReviewStatus']) ?? 'pending',
     clientReviewAt: (row.client_review_at as Date | null) ?? null,
     clientReviewNote: (row.client_review_note as string | null) ?? null,
+    lastEditedAt: (row.last_edited_at as Date | null) ?? null,
+    lastEditedByUserId: (row.last_edited_by_user_id as string | null) ?? null,
+    lastEditedByName: (row.last_edited_by_name as string | null) ?? null,
     pillarIndex: 0, // unused after persistence
   } as unknown as PersistedPlanPost;
 }
@@ -497,18 +503,21 @@ export async function acceptPlanPostIntoFeedPlanner(
 export async function listPlanPosts(pool: Pool, planId: string): Promise<PersistedPlanPost[]> {
   try {
     const result = await pool.query(
-      `SELECT id, plan_id, pillar_id, sort_order, day_offset, hook, format,
-              script, caption_draft, call_to_action, primary_platform,
-              cross_post_plan, goal_kpi, status, feed_plan_post_id,
-              scheduled_for, published_at, created_at, updated_at,
-              preview_stream_uid, preview_stream_ready,
-              preview_stream_playback_url, preview_stream_thumbnail_url,
-              preview_stream_duration_sec, preview_video_url,
-              preview_video_uploaded_at,
-              client_review_status, client_review_at, client_review_note
-         FROM role_room_marketing_plan_posts
-        WHERE plan_id = $1
-        ORDER BY day_offset NULLS LAST, sort_order`,
+      `SELECT p.id, p.plan_id, p.pillar_id, p.sort_order, p.day_offset, p.hook, p.format,
+              p.script, p.caption_draft, p.call_to_action, p.primary_platform,
+              p.cross_post_plan, p.goal_kpi, p.status, p.feed_plan_post_id,
+              p.scheduled_for, p.published_at, p.created_at, p.updated_at,
+              p.preview_stream_uid, p.preview_stream_ready,
+              p.preview_stream_playback_url, p.preview_stream_thumbnail_url,
+              p.preview_stream_duration_sec, p.preview_video_url,
+              p.preview_video_uploaded_at,
+              p.client_review_status, p.client_review_at, p.client_review_note,
+              p.last_edited_at, p.last_edited_by_user_id,
+              u.email AS last_edited_by_name
+         FROM role_room_marketing_plan_posts p
+         LEFT JOIN users u ON u.id = p.last_edited_by_user_id
+        WHERE p.plan_id = $1
+        ORDER BY p.day_offset NULLS LAST, p.sort_order`,
       [planId],
     );
     return result.rows.map(mapPostRow);

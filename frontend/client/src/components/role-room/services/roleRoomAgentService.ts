@@ -3282,6 +3282,7 @@ export interface IntakeVersion {
   label: string | null;
   generatedByKind: 'user' | 'agent';
   generatedByUserId: string | null;
+  generatedByName: string | null;
   isActive: boolean;
   createdAt: string;
   goalPreview: string | null;
@@ -3293,6 +3294,7 @@ export interface PlanVersion {
   label: string | null;
   generatedByKind: 'user' | 'agent';
   generatedByUserId: string | null;
+  generatedByName: string | null;
   isActive: boolean;
   createdAt: string;
   valueProp: string | null;
@@ -3393,6 +3395,10 @@ export interface MarketingPlanPost {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Audit — settes ved hver inline-edit (PATCH /posts/:postId). */
+  lastEditedAt?: string | null;
+  lastEditedByUserId?: string | null;
+  lastEditedByName?: string | null;
 }
 
 export default roleRoomAgentService;

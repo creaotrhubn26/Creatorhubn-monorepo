@@ -158,23 +158,26 @@ export function registerRoleRoomPlanVersionsRoutes(
       const { rows } = await pool.query<{
         id: string; versionNumber: number; label: string | null;
         generatedByKind: string; generatedByUserId: string | null;
+        generatedByName: string | null;
         isActive: boolean; createdAt: Date;
         valueProp: string | null; pillarCount: number; postCount: number;
       }>(
-        `SELECT id::text,
-                version_number    AS "versionNumber",
-                label,
-                generated_by_kind AS "generatedByKind",
-                generated_by_user_id::text AS "generatedByUserId",
-                is_active         AS "isActive",
-                created_at        AS "createdAt",
-                snapshot->'plan'->'strategy'->'positioning'->>'valueProp'
+        `SELECT v.id::text,
+                v.version_number    AS "versionNumber",
+                v.label,
+                v.generated_by_kind AS "generatedByKind",
+                v.generated_by_user_id::text AS "generatedByUserId",
+                u.email             AS "generatedByName",
+                v.is_active         AS "isActive",
+                v.created_at        AS "createdAt",
+                v.snapshot->'plan'->'strategy'->'positioning'->>'valueProp'
                                                 AS "valueProp",
-                jsonb_array_length(snapshot->'pillars') AS "pillarCount",
-                jsonb_array_length(snapshot->'posts')   AS "postCount"
-           FROM role_room_marketing_plans_versions
-          WHERE project_id = $1
-          ORDER BY version_number DESC
+                jsonb_array_length(v.snapshot->'pillars') AS "pillarCount",
+                jsonb_array_length(v.snapshot->'posts')   AS "postCount"
+           FROM role_room_marketing_plans_versions v
+           LEFT JOIN users u ON u.id = v.generated_by_user_id
+          WHERE v.project_id = $1
+          ORDER BY v.version_number DESC
           LIMIT 50`,
         [projectId],
       );

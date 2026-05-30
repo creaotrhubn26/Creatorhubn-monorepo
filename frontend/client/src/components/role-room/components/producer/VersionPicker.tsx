@@ -24,6 +24,8 @@ export interface VersionItem {
   versionNumber: number;
   label: string | null;
   generatedByKind: 'user' | 'agent';
+  /** Navn (eller email-fallback) på personen som genererte versjonen. */
+  generatedByName?: string | null;
   isActive: boolean;
   createdAt: string;
   /** Valgfri ekstra-tekst per type — for research: goal-preview, for plan: valueProp. */
@@ -144,7 +146,9 @@ export function VersionPicker({
                       icon={v.generatedByKind === 'agent'
                         ? <AgentIcon sx={{ fontSize: 11 }} />
                         : <PersonIcon sx={{ fontSize: 11 }} />}
-                      label={v.generatedByKind === 'agent' ? 'Agent' : 'Bruker'}
+                      label={v.generatedByKind === 'agent'
+                        ? 'Agent'
+                        : (v.generatedByName?.split('@')[0] ?? 'Bruker')}
                       sx={{
                         height: 18,
                         fontSize: '0.62rem',

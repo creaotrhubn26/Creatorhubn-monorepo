@@ -44,6 +44,7 @@ export function ResearchVersionsPickerInline({
     label: v.label,
     isActive: v.isActive,
     generatedByKind: v.generatedByKind,
+    generatedByName: v.generatedByName,
     createdAt: v.createdAt,
     previewText: v.goalPreview,
   }));

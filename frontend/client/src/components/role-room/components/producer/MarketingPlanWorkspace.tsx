@@ -236,7 +236,9 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor }: Prop
             versions={planVersions.map(v => ({
               id: v.id, versionNumber: v.versionNumber,
               label: v.label, isActive: v.isActive,
-              generatedByKind: v.generatedByKind, createdAt: v.createdAt,
+              generatedByKind: v.generatedByKind,
+              generatedByName: v.generatedByName,
+              createdAt: v.createdAt,
               previewText: v.valueProp,
               counts: [
                 { label: 'pillars', value: v.pillarCount },
@@ -492,6 +494,14 @@ function PostRow({ post, pillar, onEdit }: {
             {post.hook}
           </Typography>
         </Tooltip>
+        {post.lastEditedAt && (
+          <Typography sx={{ fontSize: '0.66rem', color: 'rgba(226,232,240,0.5)', mt: 0.15 }}>
+            Sist endret {post.lastEditedByName
+              ? `av ${post.lastEditedByName.split('@')[0]} `
+              : ''}
+            · {formatTimeAgo(post.lastEditedAt)}
+          </Typography>
+        )}
       </TableCell>
       <TableCell>
         <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.78)' }}>
@@ -515,6 +525,18 @@ function PostRow({ post, pillar, onEdit }: {
       </TableCell>
     </TableRow>
   );
+}
+
+function formatTimeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'akkurat nå';
+  if (min < 60) return `${min} min siden`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}t siden`;
+  const day = Math.floor(hour / 24);
+  if (day < 7) return `${day}d siden`;
+  return new Date(iso).toLocaleDateString('nb', { day: '2-digit', month: 'short' });
 }
 
 // ──────────────────── Styling ────────────────────

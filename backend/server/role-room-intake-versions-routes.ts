@@ -144,21 +144,23 @@ export function registerRoleRoomIntakeVersionsRoutes(
       const { rows } = await pool.query<{
         id: string; versionNumber: number; label: string | null;
         generatedByKind: string; generatedByUserId: string | null;
+        generatedByName: string | null;
         isActive: boolean; createdAt: Date;
-        // Et lite preview-snippet av snapshotet, ikke hele
         goalPreview: string | null;
       }>(
-        `SELECT id::text,
-                version_number    AS "versionNumber",
-                label,
-                generated_by_kind AS "generatedByKind",
-                generated_by_user_id::text AS "generatedByUserId",
-                is_active         AS "isActive",
-                created_at        AS "createdAt",
-                LEFT(snapshot->>'project_goal', 120) AS "goalPreview"
-           FROM role_room_client_intake_versions
-          WHERE project_id = $1
-          ORDER BY version_number DESC
+        `SELECT v.id::text,
+                v.version_number    AS "versionNumber",
+                v.label,
+                v.generated_by_kind AS "generatedByKind",
+                v.generated_by_user_id::text AS "generatedByUserId",
+                u.email             AS "generatedByName",
+                v.is_active         AS "isActive",
+                v.created_at        AS "createdAt",
+                LEFT(v.snapshot->>'project_goal', 120) AS "goalPreview"
+           FROM role_room_client_intake_versions v
+           LEFT JOIN users u ON u.id = v.generated_by_user_id
+          WHERE v.project_id = $1
+          ORDER BY v.version_number DESC
           LIMIT 50`,
         [projectId],
       );
