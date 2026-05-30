@@ -807,28 +807,26 @@ export function setupRoleRoomAgentFeedPlanRoutes(
   });
 
   // ── Godkjenningspolicy — kunden bestemmer (§5.1) ─────────────────────────
-  // GET: alle innloggede med tilgang til prosjektet kan se policyen
-  //      (både produsent og klient/client_reviewer).
-  //      Falback til requireAdminSession hvis getActiveSession-dep ikke er
-  //      passert inn (eldre boot-path) — gir bakoverkompatibilitet.
+  // GET: alltid 200 med policyen. canEdit beregnes best-effort fra session-
+  //      rolle (klient/client_reviewer → true, ellers false). Policyen er en
+  //      boolean ikke sensitiv data, så vi gater ikke read-access. Dette
+  //      eliminerer 401-console-errors for klient-flaten ved sideoppslag.
   app.get("/api/role-room/agent/feed-plan/:projectId/approval-policy", async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = getActiveSession ? getActiveSession(req) : requireAdminSession(req, res);
-    if (!session) {
-      // getActiveSession setter ikke status (vs requireAdminSession som gjør det) —
-      // sett 401 selv hvis vi gikk via den milde stien.
-      if (getActiveSession && !res.headersSent) {
-        return res.status(401).json({ success: false, error: "Innlogging kreves." });
-      }
-      return;
-    }
     const { projectId } = req.params;
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
     const policy = await getApprovalPolicy(pool, projectId);
-    return res.json({ success: true, ...policy, canEdit: isClientActor(session.role) });
+    let canEdit = false;
+    try {
+      const session = getActiveSession ? getActiveSession(req) : null;
+      canEdit = session ? isClientActor(session.role) : false;
+    } catch {
+      canEdit = false;
+    }
+    return res.json({ success: true, ...policy, canEdit });
   });
 
   // PUT: KUN kunden (client_reviewer) kan endre policyen.
