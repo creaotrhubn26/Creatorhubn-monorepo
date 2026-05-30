@@ -104,6 +104,8 @@ export interface DestinationSpec {
   id: string;
   label: string;
   path: string;
+  /** Hvis satt: dit_destinations.id — kopier blir registrert som dit_backup_jobs i backend. */
+  backend_id?: string | null;
 }
 
 export interface SessionStatus {

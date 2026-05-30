@@ -1,14 +1,17 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
+  FormControlLabel,
   IconButton,
   List,
   ListItem,
@@ -18,16 +21,22 @@ import {
 } from "@mui/material";
 import Add from "@mui/icons-material/Add";
 import Delete from "@mui/icons-material/Delete";
-import { DestinationSpec, DetectedMount, startCopySession } from "../api";
+import {
+  DestinationSpec,
+  DetectedMount,
+  DitDestination,
+  startCopySession,
+} from "../api";
 
 interface Props {
   open: boolean;
   mount: DetectedMount | null;
+  plannedDestinations: DitDestination[];
   onClose: () => void;
   onStarted: (sessionId: string) => void;
 }
 
-interface PendingDest {
+interface PendingLocalDest {
   id: string;
   label: string;
   path: string;
@@ -35,13 +44,32 @@ interface PendingDest {
 
 let destCounter = 0;
 
-export default function BackupDialog({ open: isOpen, mount, onClose, onStarted }: Props) {
-  const [destinations, setDestinations] = useState<PendingDest[]>([]);
+export default function BackupDialog({
+  open: isOpen,
+  mount,
+  plannedDestinations,
+  onClose,
+  onStarted,
+}: Props) {
+  const [checkedPlanned, setCheckedPlanned] = useState<Set<string>>(new Set());
+  const [localDests, setLocalDests] = useState<PendingLocalDest[]>([]);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Pre-velg alle planlagte destinasjoner med en path satt (in-place "original"
+  // destinasjoner uten path er ikke relevante for Desk)
+  useEffect(() => {
+    if (isOpen) {
+      const initial = new Set(
+        plannedDestinations.filter((d) => d.path && d.destination_type !== "original").map((d) => d.id),
+      );
+      setCheckedPlanned(initial);
+    }
+  }, [isOpen, plannedDestinations]);
+
   const reset = () => {
-    setDestinations([]);
+    setLocalDests([]);
+    setCheckedPlanned(new Set());
     setStarting(false);
     setError(null);
   };
@@ -63,30 +91,52 @@ export default function BackupDialog({ open: isOpen, mount, onClose, onStarted }
     destCounter += 1;
     const segments = path.split("/").filter(Boolean);
     const label = segments[segments.length - 1] || path;
-    setDestinations((prev) => [
+    setLocalDests((prev) => [
       ...prev,
       { id: `local_${destCounter}`, label, path },
     ]);
   };
 
-  const handleRemove = (id: string) => {
-    setDestinations((prev) => prev.filter((d) => d.id !== id));
+  const togglePlanned = (id: string, checked: boolean) => {
+    setCheckedPlanned((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   };
 
+  const removeLocal = (id: string) => {
+    setLocalDests((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const finalSpecs: DestinationSpec[] = useMemo(() => {
+    const planned: DestinationSpec[] = plannedDestinations
+      .filter((d) => checkedPlanned.has(d.id) && d.path)
+      .map((d) => ({
+        id: `backend_${d.id}`,
+        label: d.label,
+        path: d.path!,
+        backend_id: d.id,
+      }));
+    const local: DestinationSpec[] = localDests.map((d) => ({
+      id: d.id,
+      label: d.label,
+      path: d.path,
+      backend_id: null,
+    }));
+    return [...planned, ...local];
+  }, [plannedDestinations, checkedPlanned, localDests]);
+
   const handleStart = async () => {
-    if (!mount || destinations.length === 0) return;
+    if (!mount || finalSpecs.length === 0) return;
     setStarting(true);
     setError(null);
     try {
-      const specs: DestinationSpec[] = destinations.map((d) => ({
-        id: d.id,
-        label: d.label,
-        path: d.path,
-      }));
       const sessionId = await startCopySession({
         mountPath: mount.mount_path,
         volumeLabel: mount.volume_label,
-        destinations: specs,
+        destinations: finalSpecs,
       });
       onStarted(sessionId);
       reset();
@@ -96,6 +146,10 @@ export default function BackupDialog({ open: isOpen, mount, onClose, onStarted }
       setStarting(false);
     }
   };
+
+  const plannedWithPath = plannedDestinations.filter(
+    (d) => d.path && d.destination_type !== "original",
+  );
 
   return (
     <Dialog open={isOpen} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -111,53 +165,100 @@ export default function BackupDialog({ open: isOpen, mount, onClose, onStarted }
         <Stack spacing={2}>
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Velg én eller flere mapper å kopiere til. Hver fil hashes med
-              xxHash64 og verifiseres etter skriving. Kildens innhold endres
-              aldri.
+              Hver fil hashes med xxHash64 og verifiseres etter skriving.
+              Kildens innhold endres aldri. Destinasjoner med 🔗 rapporteres
+              også til CreatorHub-backend så status synes i klient-galleriet.
             </Typography>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<Add />}
-              onClick={handleAddFolder}
-              disabled={starting}
-            >
-              Legg til mappe
-            </Button>
           </Box>
 
-          {destinations.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
-              Ingen destinasjoner valgt ennå.
-            </Typography>
-          ) : (
-            <List dense>
-              {destinations.map((d) => (
-                <ListItem
-                  key={d.id}
-                  secondaryAction={
-                    <IconButton
-                      edge="end"
-                      size="small"
-                      onClick={() => handleRemove(d.id)}
-                      disabled={starting}
-                    >
-                      <Delete fontSize="small" />
-                    </IconButton>
-                  }
-                >
-                  <ListItemText
-                    primary={
+          {plannedWithPath.length > 0 && (
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                Planlagte destinasjoner (fra Admin Room)
+              </Typography>
+              <Stack spacing={0.5}>
+                {plannedWithPath.map((d) => (
+                  <FormControlLabel
+                    key={d.id}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={checkedPlanned.has(d.id)}
+                        onChange={(e) => togglePlanned(d.id, e.target.checked)}
+                        disabled={starting}
+                      />
+                    }
+                    label={
                       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                        <Chip size="small" label={d.label} />
+                        <Chip size="small" label={`🔗 ${d.destination_type}`} color="primary" />
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {d.label}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {d.path}
+                        </Typography>
                       </Stack>
                     }
-                    secondary={d.path}
                   />
-                </ListItem>
-              ))}
-            </List>
+                ))}
+              </Stack>
+            </Box>
           )}
+
+          <Divider />
+
+          <Box>
+            <Stack
+              direction="row"
+              sx={{ alignItems: "center", justifyContent: "space-between", mb: 1 }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                Ad-hoc-mapper (kun lokalt)
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Add />}
+                onClick={handleAddFolder}
+                disabled={starting}
+              >
+                Legg til mappe
+              </Button>
+            </Stack>
+
+            {localDests.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                Ingen ad-hoc-mapper valgt.
+              </Typography>
+            ) : (
+              <List dense>
+                {localDests.map((d) => (
+                  <ListItem
+                    key={d.id}
+                    secondaryAction={
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        onClick={() => removeLocal(d.id)}
+                        disabled={starting}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    }
+                  >
+                    <ListItemText
+                      primary={
+                        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                          <Chip size="small" label={d.label} />
+                        </Stack>
+                      }
+                      secondary={d.path}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Box>
 
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
@@ -169,9 +270,11 @@ export default function BackupDialog({ open: isOpen, mount, onClose, onStarted }
         <Button
           variant="contained"
           onClick={handleStart}
-          disabled={starting || destinations.length === 0 || !mount}
+          disabled={starting || finalSpecs.length === 0 || !mount}
         >
-          {starting ? "Starter…" : "Start backup"}
+          {starting
+            ? "Starter…"
+            : `Start backup (${finalSpecs.length} destinasjoner)`}
         </Button>
       </DialogActions>
     </Dialog>

@@ -122,7 +122,10 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
               </CardContent>
             </Card>
 
-            <MountsSection plannedCards={info.memory_card_configs} />
+            <MountsSection
+              plannedCards={info.memory_card_configs}
+              plannedDestinations={info.destinations}
+            />
 
             <CopyProgressView />
 
@@ -173,8 +176,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
           }}
         >
           <Typography variant="caption">
-            F3 — copy-engine med xxHash64-verifisering. Backend-rapportering
-            (DIT-jobs), iPad-paring og live mirror kommer i F4–F6.
+            F4 — copy-engine + backend-rapportering (dit_backup_jobs).
+            iPad-paring og live mirror kommer i F5–F6.
           </Typography>
         </Box>
 

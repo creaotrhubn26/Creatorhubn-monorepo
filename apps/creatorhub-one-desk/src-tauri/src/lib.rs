@@ -7,6 +7,7 @@
 
 mod copy_engine;
 mod copy_session;
+mod dit_reporter;
 mod helper_client;
 mod mount_watcher;
 

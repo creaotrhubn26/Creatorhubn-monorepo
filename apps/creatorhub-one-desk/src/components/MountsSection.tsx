@@ -16,6 +16,7 @@ import Refresh from "@mui/icons-material/Refresh";
 import CloudUpload from "@mui/icons-material/CloudUpload";
 import {
   DetectedMount,
+  DitDestination,
   listDetectedMounts,
   MemoryCardConfig,
   rescanMounts,
@@ -29,6 +30,7 @@ import {
 
 interface Props {
   plannedCards: MemoryCardConfig[];
+  plannedDestinations: DitDestination[];
 }
 
 function matchConfig(
@@ -46,7 +48,7 @@ function matchConfig(
   return null;
 }
 
-export default function MountsSection({ plannedCards }: Props) {
+export default function MountsSection({ plannedCards, plannedDestinations }: Props) {
   const [mounts, setMounts] = useState<DetectedMount[]>([]);
   const [busy, setBusy] = useState(false);
   const [backupMount, setBackupMount] = useState<DetectedMount | null>(null);
@@ -166,6 +168,7 @@ export default function MountsSection({ plannedCards }: Props) {
       <BackupDialog
         open={backupMount !== null}
         mount={backupMount}
+        plannedDestinations={plannedDestinations}
         onClose={() => setBackupMount(null)}
         onStarted={() => {
           /* CopyProgressView lytter via event-API */

@@ -8,11 +8,18 @@
 //!   - Per fil: kilde-hash beregnes EN gang, deretter kopieres til alle
 //!     destinasjoner PARALLELT (de er typisk forskjellige fysiske disker).
 //!
-//! Tauri-events emit'ed til frontend:
+//! Backend-rapportering (F4):
+//!   - Destinasjoner med `backend_id` får jobs registrert i
+//!     `dit_backup_jobs` via `dit_reporter`. Synlig i `MemoryCardBackupPanel`
+//!     i webklienten.
+//!   - Best-effort: backend-feil aborter ALDRI en pågående lokal kopi.
+//!     Vi logger til stderr og fortsetter.
+//!
+//! Tauri-events til frontend:
 //!   - `copy-session-started`   { session_id, mount_path, file_count, total_bytes }
 //!   - `copy-file-started`      { session_id, source_path, size }
 //!   - `copy-file-progress`     { session_id, source_path, dest_id, bytes_copied, bytes_total }
-//!   - `copy-file-completed`    { session_id, source_path, dest_id, success, error?, hash? }
+//!   - `copy-file-completed`    { session_id, source_path, dest_id, success, error?, hash?, skipped }
 //!   - `copy-session-completed` { session_id, succeeded, failed, cancelled }
 
 use std::collections::HashMap;
@@ -27,15 +34,25 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::copy_engine::{build_dest_path, copy_and_verify, hash_file_xxh64};
+use crate::dit_reporter;
+use crate::helper_client::{self, Config};
 use crate::mount_watcher;
 
 const PROGRESS_THROTTLE_MS: u128 = 250;
+/// Backend-progress oppdateres mye sjeldnere enn UI-progress — én patch hver
+/// 5 sekunder for å unngå å oversvømme `/api/dit/jobs/:id`.
+const BACKEND_PROGRESS_THROTTLE_MS: u128 = 5_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DestinationSpec {
     pub id: String,
     pub label: String,
     pub path: String,
+    /// Hvis Some(_): destinasjonen finnes som rad i `dit_destinations` og
+    /// kopier rapporteres som backup-jobs til backend. Hvis None: rein
+    /// lokal kopi uten backend-spor (f.eks. ad-hoc-mappe valgt i dialog).
+    #[serde(default)]
+    pub backend_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,7 +113,6 @@ impl CopySessionState {
     }
 }
 
-/// Walker mount-en og samler media-filer (foto + video) som skal kopieres.
 fn enumerate_media_files(mount: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let walker = WalkDir::new(mount)
@@ -178,7 +194,6 @@ pub async fn start_session(
     for d in &spec.destinations {
         let p = PathBuf::from(&d.path);
         if !p.exists() {
-            // Vi opprett destinasjons-rot hvis den mangler — men ikke andre nivåer.
             std::fs::create_dir_all(&p)
                 .map_err(|e| format!("Kunne ikke opprette {}: {}", p.display(), e))?;
         }
@@ -219,7 +234,6 @@ pub async fn start_session(
         },
     );
 
-    // Spawn bakgrunns-task
     let app_clone = app.clone();
     let state_clone = state.clone();
     let session_id_clone = session_id.clone();
@@ -228,6 +242,210 @@ pub async fn start_session(
     });
 
     Ok(session_id)
+}
+
+/// Per-fil per-destinasjon-workload. Idempotens-check + copy + verify +
+/// best-effort backend-rapportering hvis dest.backend_id er Some.
+#[allow(clippy::too_many_arguments)]
+async fn process_destination(
+    app: AppHandle,
+    state: Arc<CopySessionState>,
+    session_id: String,
+    src: PathBuf,
+    src_disp: String,
+    src_hash: String,
+    size: u64,
+    dest_spec: DestinationSpec,
+    dest_path: PathBuf,
+    cfg: Option<Arc<Config>>,
+    cancel: Arc<AtomicBool>,
+) {
+    // Idempotens: hvis dest finnes med samme størrelse og hash, hopp over.
+    if dest_path.exists() {
+        let same_size = std::fs::metadata(&dest_path).map(|m| m.len() == size).unwrap_or(false);
+        if same_size {
+            match hash_file_xxh64(&dest_path).await {
+                Ok(existing_hash) if existing_hash == src_hash => {
+                    // Hvis backend-tracked, prøv å markere verified i etterkant — best-effort
+                    if let (Some(backend_id), Some(cfg)) = (&dest_spec.backend_id, &cfg) {
+                        match dit_reporter::create_job(cfg, backend_id, &src_disp, size, &src_hash).await {
+                            Ok(job_id) => {
+                                if let Err(err) = dit_reporter::report_verified(
+                                    cfg,
+                                    &job_id,
+                                    &dest_path.display().to_string(),
+                                    size,
+                                    &existing_hash,
+                                )
+                                .await
+                                {
+                                    eprintln!("[dit] verified-report failed (skip-case): {}", err);
+                                }
+                            }
+                            Err(err) => eprintln!("[dit] create_job failed (skip-case): {}", err),
+                        }
+                    }
+                    state.update(&session_id, |s| s.succeeded += 1);
+                    let _ = app.emit(
+                        "copy-file-completed",
+                        FileCompletedEvent {
+                            session_id,
+                            source_path: src_disp,
+                            dest_id: dest_spec.id,
+                            success: true,
+                            hash: Some(existing_hash),
+                            error: None,
+                            skipped: true,
+                        },
+                    );
+                    return;
+                }
+                Ok(other_hash) => {
+                    state.update(&session_id, |s| s.failed += 1);
+                    let _ = app.emit(
+                        "copy-file-completed",
+                        FileCompletedEvent {
+                            session_id,
+                            source_path: src_disp,
+                            dest_id: dest_spec.id,
+                            success: false,
+                            hash: Some(other_hash.clone()),
+                            error: Some(format!(
+                                "Eksisterer med ulik hash ({} vs {}); ikke overskrevet",
+                                other_hash, src_hash
+                            )),
+                            skipped: false,
+                        },
+                    );
+                    return;
+                }
+                Err(_) => {
+                    // Kunne ikke hashe eksisterende dest — la copy_and_verify feile på create_new
+                }
+            }
+        }
+    }
+
+    // Backend-jobb opprettes FØR kopi starter, så vi kan rapportere progress
+    // underveis. Best-effort: ingen jobb betyr bare at backend-status mangler.
+    let backend_job_id: Option<String> = match (&dest_spec.backend_id, &cfg) {
+        (Some(backend_id), Some(cfg)) => match dit_reporter::create_job(
+            cfg,
+            backend_id,
+            &src_disp,
+            size,
+            &src_hash,
+        )
+        .await
+        {
+            Ok(job_id) => Some(job_id),
+            Err(err) => {
+                eprintln!("[dit] create_job failed for {}: {}", dest_spec.label, err);
+                None
+            }
+        },
+        _ => None,
+    };
+
+    // Progress-callback: emit til UI (250ms) og PATCH backend (5s)
+    let mut last_ui_emit = Instant::now();
+    let mut last_backend_emit = Instant::now();
+    let app_for_progress = app.clone();
+    let sid_for_progress = session_id.clone();
+    let dest_id_for_progress = dest_spec.id.clone();
+    let src_disp_for_progress = src_disp.clone();
+    let _cancel_check = cancel.clone();
+    let cfg_for_progress = cfg.clone();
+    let job_for_progress = backend_job_id.clone();
+
+    let result = copy_and_verify(&src, &dest_path, |copied, total| {
+        let now = Instant::now();
+        if now.duration_since(last_ui_emit).as_millis() >= PROGRESS_THROTTLE_MS {
+            last_ui_emit = now;
+            let _ = app_for_progress.emit(
+                "copy-file-progress",
+                FileProgressEvent {
+                    session_id: sid_for_progress.clone(),
+                    source_path: src_disp_for_progress.clone(),
+                    dest_id: dest_id_for_progress.clone(),
+                    bytes_copied: copied,
+                    bytes_total: total,
+                },
+            );
+        }
+        if let (Some(job_id), Some(cfg)) = (&job_for_progress, &cfg_for_progress) {
+            if now.duration_since(last_backend_emit).as_millis() >= BACKEND_PROGRESS_THROTTLE_MS {
+                last_backend_emit = now;
+                let cfg = cfg.clone();
+                let job_id = job_id.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = dit_reporter::report_progress(&cfg, &job_id, copied).await {
+                        eprintln!("[dit] progress-report failed: {}", err);
+                    }
+                });
+            }
+        }
+    })
+    .await;
+
+    match result {
+        Ok(v) => {
+            // Final backend report — verified
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                if let Err(err) = dit_reporter::report_verified(
+                    cfg,
+                    job_id,
+                    &dest_path.display().to_string(),
+                    v.bytes_copied,
+                    &v.dest_hash,
+                )
+                .await
+                {
+                    eprintln!("[dit] verified-report failed: {}", err);
+                }
+            }
+            state.update(&session_id, |s| s.succeeded += 1);
+            let _ = app.emit(
+                "copy-file-completed",
+                FileCompletedEvent {
+                    session_id,
+                    source_path: src_disp,
+                    dest_id: dest_spec.id,
+                    success: true,
+                    hash: Some(v.dest_hash),
+                    error: None,
+                    skipped: false,
+                },
+            );
+        }
+        Err(err) => {
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                let code = if err.contains("HASH MISMATCH") {
+                    "HASH_MISMATCH"
+                } else if err.contains("Opprett destinasjon") {
+                    "DEST_CREATE_FAILED"
+                } else {
+                    "COPY_FAILED"
+                };
+                if let Err(report_err) = dit_reporter::report_failed(cfg, job_id, code, &err).await {
+                    eprintln!("[dit] failed-report failed: {}", report_err);
+                }
+            }
+            state.update(&session_id, |s| s.failed += 1);
+            let _ = app.emit(
+                "copy-file-completed",
+                FileCompletedEvent {
+                    session_id,
+                    source_path: src_disp,
+                    dest_id: dest_spec.id,
+                    success: false,
+                    hash: None,
+                    error: Some(err),
+                    skipped: false,
+                },
+            );
+        }
+    }
 }
 
 async fn run_session(
@@ -240,6 +458,10 @@ async fn run_session(
 ) {
     let mount = PathBuf::from(&spec.mount_path);
     let mut cancelled = false;
+
+    // Last config én gang per session (best-effort). Hvis ingen config eller
+    // ingen destinasjoner har backend_id, vil cfg-feltet bare bli ignorert.
+    let cfg: Option<Arc<Config>> = helper_client::load_config().ok().flatten().map(Arc::new);
 
     for source in files {
         if cancel.load(Ordering::SeqCst) {
@@ -257,11 +479,9 @@ async fn run_session(
             },
         );
 
-        // Hash kilde EN gang (deles på tvers av destinasjoner)
         let source_hash = match hash_file_xxh64(&source).await {
             Ok(h) => h,
             Err(err) => {
-                // Source-hash feilet — marker alle dest som failed for denne fila
                 for d in &spec.destinations {
                     state.update(&session_id, |s| s.failed += 1);
                     let _ = app.emit(
@@ -281,7 +501,6 @@ async fn run_session(
             }
         };
 
-        // Kopier parallelt til alle destinasjoner
         let mut handles = Vec::new();
         for dest_spec in &spec.destinations {
             let dest_root = PathBuf::from(&dest_spec.path);
@@ -317,135 +536,35 @@ async fn run_session(
             let sid = session_id.clone();
             let src = source.clone();
             let src_disp = source.display().to_string();
-            let dest_id = dest_spec.id.clone();
             let src_hash = source_hash.clone();
             let state_em = state.clone();
             let cancel_em = cancel.clone();
-            let dest_path_clone = dest_path.clone();
+            let dest_spec_clone = dest_spec.clone();
+            let cfg_clone = cfg.clone();
 
             handles.push(tokio::spawn(async move {
-                // Idempotens-sjekk: hvis dest finnes med samme størrelse og hash, hopp over
-                if dest_path_clone.exists() {
-                    let same_size = std::fs::metadata(&dest_path_clone)
-                        .map(|m| m.len() == size)
-                        .unwrap_or(false);
-                    if same_size {
-                        match hash_file_xxh64(&dest_path_clone).await {
-                            Ok(existing_hash) if existing_hash == src_hash => {
-                                state_em.update(&sid, |s| s.succeeded += 1);
-                                let _ = app_em.emit(
-                                    "copy-file-completed",
-                                    FileCompletedEvent {
-                                        session_id: sid,
-                                        source_path: src_disp,
-                                        dest_id,
-                                        success: true,
-                                        hash: Some(existing_hash),
-                                        error: None,
-                                        skipped: true,
-                                    },
-                                );
-                                return;
-                            }
-                            Ok(other_hash) => {
-                                state_em.update(&sid, |s| s.failed += 1);
-                                let _ = app_em.emit(
-                                    "copy-file-completed",
-                                    FileCompletedEvent {
-                                        session_id: sid,
-                                        source_path: src_disp,
-                                        dest_id,
-                                        success: false,
-                                        hash: Some(other_hash.clone()),
-                                        error: Some(format!(
-                                            "Eksisterer med ulik hash ({} vs {}); ikke overskrevet",
-                                            other_hash, src_hash
-                                        )),
-                                        skipped: false,
-                                    },
-                                );
-                                return;
-                            }
-                            Err(_) => {
-                                // Kunne ikke hashe eksisterende dest — la copy_and_verify feile på create_new
-                            }
-                        }
-                    }
-                }
-
-                // Standard copy + verify
-                let mut last_emit = Instant::now();
-                let app_for_progress = app_em.clone();
-                let sid_for_progress = sid.clone();
-                let dest_id_for_progress = dest_id.clone();
-                let src_disp_for_progress = src_disp.clone();
-                let cancel_check = cancel_em.clone();
-                let result = copy_and_verify(&src, &dest_path_clone, |copied, total| {
-                    if cancel_check.load(Ordering::SeqCst) {
-                        // Vi kan ikke avbryte midt i copy_with_progress fra her uten å
-                        // panikkere — det er en kjent F3-begrensning. Cancel respekteres
-                        // mellom filer, ikke midt i en fil.
-                    }
-                    let now = Instant::now();
-                    if now.duration_since(last_emit).as_millis() >= PROGRESS_THROTTLE_MS {
-                        last_emit = now;
-                        let _ = app_for_progress.emit(
-                            "copy-file-progress",
-                            FileProgressEvent {
-                                session_id: sid_for_progress.clone(),
-                                source_path: src_disp_for_progress.clone(),
-                                dest_id: dest_id_for_progress.clone(),
-                                bytes_copied: copied,
-                                bytes_total: total,
-                            },
-                        );
-                    }
-                })
+                process_destination(
+                    app_em,
+                    state_em,
+                    sid,
+                    src,
+                    src_disp,
+                    src_hash,
+                    size,
+                    dest_spec_clone,
+                    dest_path,
+                    cfg_clone,
+                    cancel_em,
+                )
                 .await;
-
-                match result {
-                    Ok(v) => {
-                        state_em.update(&sid, |s| s.succeeded += 1);
-                        let _ = app_em.emit(
-                            "copy-file-completed",
-                            FileCompletedEvent {
-                                session_id: sid,
-                                source_path: src_disp,
-                                dest_id,
-                                success: true,
-                                hash: Some(v.dest_hash),
-                                error: None,
-                                skipped: false,
-                            },
-                        );
-                    }
-                    Err(err) => {
-                        state_em.update(&sid, |s| s.failed += 1);
-                        let _ = app_em.emit(
-                            "copy-file-completed",
-                            FileCompletedEvent {
-                                session_id: sid,
-                                source_path: src_disp,
-                                dest_id,
-                                success: false,
-                                hash: None,
-                                error: Some(err),
-                                skipped: false,
-                            },
-                        );
-                    }
-                }
             }));
         }
 
-        // Vent på at alle destinasjoner for denne fila er ferdige før vi går
-        // videre — dette gjør at vi ikke leser flere filer fra kortet samtidig.
         for h in handles {
             let _ = h.await;
         }
     }
 
-    // Final session-state
     let (succeeded, failed) = {
         let sessions = state.sessions.lock().unwrap();
         sessions
