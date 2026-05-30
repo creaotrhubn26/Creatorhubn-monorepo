@@ -323,6 +323,59 @@ export default function ClientEconomyPanel({
         </Stack>
       )}
 
+      {/* ── Lag 2: AI-anbefalinger (myk veiledning, ingen automatisk handling) ── */}
+      {recommendations && (recommendations.recommendations.length > 0 || recommendations.overallNote) && (
+        <Stack spacing={1.1} sx={CARD_SX}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <InsightsIcon sx={{ fontSize: 20, color: '#fbbf24' }} />
+            <Typography sx={LABEL}>AI-anbefalinger</Typography>
+            <Box sx={{ flex: 1 }} />
+            <Button
+              size="small"
+              disabled={regenerating}
+              onClick={triggerRegenerate}
+              sx={{ textTransform: 'none', color: '#fbbf24', fontWeight: 700 }}
+            >
+              {regenerating ? 'Genererer…' : 'Generer på nytt'}
+            </Button>
+          </Stack>
+          <Typography sx={SUBTLE}>
+            Agentens forslag basert på faktiske tall denne perioden. Ingen automatisk handling — du eller produsenten bestemmer.
+            {recommendations.generatedAt && (
+              <> Sist generert {new Date(recommendations.generatedAt).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.</>
+            )}
+          </Typography>
+
+          {recommendations.overallNote && (
+            <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+              «{recommendations.overallNote}»
+            </Typography>
+          )}
+
+          {recommendations.recommendations.map((r) => {
+            const sev: RoleRoomAdRecommendationSeverity = r.severity;
+            const muiSeverity: 'info' | 'warning' | 'error' = sev === 'critical' ? 'error' : sev === 'warning' ? 'warning' : 'info';
+            return (
+              <Alert
+                key={r.id}
+                severity={muiSeverity}
+                sx={{ '& .MuiAlert-message': { fontSize: '0.78rem', width: '100%' } }}
+              >
+                <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>{r.title}</Typography>
+                {r.body && (
+                  <Typography sx={{ fontSize: '0.78rem', mt: 0.3 }}>{r.body}</Typography>
+                )}
+                {r.evidence.length > 0 && (
+                  <Box component="ul" sx={{ m: '6px 0 0 0', pl: 2, '& li': { fontSize: '0.72rem', color: 'rgba(226,232,240,0.78)' } }}>
+                    {r.evidence.map((e, i) => <li key={i}>{e}</li>)}
+                  </Box>
+                )}
+              </Alert>
+            );
+          })}
+        </Stack>
+      )}
+
       {/* ── Budsjett-tak (kunden setter, §3) ── */}
       <Stack spacing={1.2} sx={CARD_SX}>
         <Stack direction="row" alignItems="center" spacing={1}>
