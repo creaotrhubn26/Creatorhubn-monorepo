@@ -64,6 +64,7 @@ export interface PersistedPlanPost extends GeneratedPlanPost {
   lastEditedAt: Date | null;
   lastEditedByUserId: string | null;
   lastEditedByName: string | null;
+  lastEditedByKind: 'team' | 'client' | null;
 }
 
 // ── Claude generation ───────────────────────────────────────────────────
@@ -320,6 +321,7 @@ function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
     lastEditedAt: (row.last_edited_at as Date | null) ?? null,
     lastEditedByUserId: (row.last_edited_by_user_id as string | null) ?? null,
     lastEditedByName: (row.last_edited_by_name as string | null) ?? null,
+    lastEditedByKind: (row.last_edited_by_kind as 'team' | 'client' | null) ?? null,
     pillarIndex: 0, // unused after persistence
   } as unknown as PersistedPlanPost;
 }
@@ -513,6 +515,7 @@ export async function listPlanPosts(pool: Pool, planId: string): Promise<Persist
               p.preview_video_uploaded_at,
               p.client_review_status, p.client_review_at, p.client_review_note,
               p.last_edited_at, p.last_edited_by_user_id,
+              p.last_edited_by_kind,
               u.email AS last_edited_by_name
          FROM role_room_marketing_plan_posts p
          LEFT JOIN users u ON u.id = p.last_edited_by_user_id

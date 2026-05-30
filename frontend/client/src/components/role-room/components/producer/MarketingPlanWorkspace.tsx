@@ -508,12 +508,28 @@ function PostRow({ post, pillar, onEdit }: {
           </Typography>
         </Tooltip>
         {post.lastEditedAt && (
-          <Typography sx={{ fontSize: '0.66rem', color: 'rgba(226,232,240,0.5)', mt: 0.15 }}>
-            Sist endret {post.lastEditedByName
-              ? `av ${post.lastEditedByName.split('@')[0]} `
-              : ''}
-            · {formatTimeAgo(post.lastEditedAt)}
-          </Typography>
+          <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.2 }}>
+            {post.lastEditedByKind && (
+              <Chip size="small"
+                    label={post.lastEditedByKind === 'client' ? 'Klient' : 'Team'}
+                    sx={{
+                      height: 14,
+                      fontSize: '0.58rem',
+                      fontWeight: 800,
+                      bgcolor: post.lastEditedByKind === 'client'
+                        ? 'rgba(34,211,238,0.18)' : 'rgba(236,72,153,0.18)',
+                      color: post.lastEditedByKind === 'client'
+                        ? '#67e8f9' : '#f9a8d4',
+                      '& .MuiChip-label': { px: 0.6 },
+                    }} />
+            )}
+            <Typography sx={{ fontSize: '0.66rem', color: 'rgba(226,232,240,0.5)' }}>
+              {post.lastEditedByName
+                ? `${post.lastEditedByName.split('@')[0]} · `
+                : ''}
+              {formatTimeAgo(post.lastEditedAt)}
+            </Typography>
+          </Stack>
         )}
       </TableCell>
       <TableCell>

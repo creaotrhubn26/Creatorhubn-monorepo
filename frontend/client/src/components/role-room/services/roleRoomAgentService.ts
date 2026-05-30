@@ -3428,6 +3428,10 @@ export interface MarketingPlanPost {
   lastEditedAt?: string | null;
   lastEditedByUserId?: string | null;
   lastEditedByName?: string | null;
+  /** 'team' = produsent/team, 'client' = klient_reviewer. Brukt for
+   *  farget badge i Markedsplan-dashboardet så det er klart hvem
+   *  som endret. */
+  lastEditedByKind?: 'team' | 'client' | null;
 }
 
 export default roleRoomAgentService;

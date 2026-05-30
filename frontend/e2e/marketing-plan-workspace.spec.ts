@@ -57,6 +57,7 @@ const MOCK_POSTS_INITIAL = [
     lastEditedAt: '2026-05-29T10:00:00Z',
     lastEditedByUserId: 'user-test',
     lastEditedByName: 'bjarne@creatorhubn.com',
+    lastEditedByKind: 'team',
   },
   {
     id: 'post-2', planId: PLAN_ID, pillarId: 'pillar-2', sortOrder: 1, dayOffset: 2,
@@ -168,11 +169,14 @@ test.describe('MarketingPlanWorkspace — Power BI-dashboard', () => {
     await expect(page.getByTestId('post-row-post-2').getByText('Møt naboen som elsker pizza')).toBeVisible();
   });
 
-  test('viser "Sist endret av" på posts som har audit-data', async ({ page }) => {
+  test('viser Team-badge + navn på posts som har audit-data', async ({ page }) => {
     await page.goto(HARNESS_URL);
     await expect(page.getByTestId('marketing-plan-workspace')).toBeVisible({ timeout: 8000 });
-    // Post 1 har lastEditedAt + lastEditedByName satt
-    await expect(page.getByText(/Sist endret av bjarne/)).toBeVisible();
+    // Post 1 har lastEditedByKind='team', lastEditedByName='bjarne@...'.
+    // Badge + navn vises som søsken i raden.
+    const row = page.getByTestId('post-row-post-1');
+    await expect(row.getByText('Team', { exact: true })).toBeVisible();
+    await expect(row.getByText(/bjarne/)).toBeVisible();
   });
 
   test('klikk på post-rad åpner PostEditDialog med pre-fylt data', async ({ page }) => {
@@ -229,6 +233,24 @@ test.describe('MarketingPlanWorkspace — Power BI-dashboard', () => {
     await expect(page.getByTestId('advanced-editor-opens')).toContainText('0');
     await page.getByRole('button', { name: 'Endre plan' }).click();
     await expect(page.getByTestId('advanced-editor-opens')).toContainText('1');
+  });
+
+  test('viser Klient-badge når lastEditedByKind=client', async ({ page }) => {
+    // Override mock — post-2 er endret av klient
+    await page.route(`**/api/role-room/marketing-plan/${PLAN_ID}/posts`, async (route) => {
+      const posts = MOCK_POSTS_INITIAL.map(p => p.id === 'post-2' ? {
+        ...p,
+        lastEditedAt: '2026-05-29T11:00:00Z',
+        lastEditedByName: 'kunde@holycrust.no',
+        lastEditedByKind: 'client',
+      } : p);
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ success: true, posts }) });
+    });
+    await page.goto(HARNESS_URL);
+    const row = page.getByTestId('post-row-post-2');
+    await expect(row.getByText('Klient', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(row.getByText(/kunde/)).toBeVisible();
   });
 
   test('readOnly-modus skjuler "Endre plan", VersionPicker og post-edit-klikk', async ({ page }) => {

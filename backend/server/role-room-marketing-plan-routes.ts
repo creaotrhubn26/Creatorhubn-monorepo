@@ -1368,6 +1368,52 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     }
   };
 
+  /**
+   * Markedsplanen er shared workspace — både produsent (eier eller
+   * team-medlem) og klient-reviewer kan redigere. Returnerer rolle-
+   * typen så frontend kan vise farget badge ("Klient"/"Team").
+   */
+  const resolvePostEditor = async (
+    postId: string, userId: string,
+  ): Promise<{ canEdit: boolean; editorKind: 'team' | 'client' | null; planId: string | null }> => {
+    try {
+      const r = await pool.query<{
+        ownerUserId: string; planId: string; projectId: string;
+      }>(
+        `SELECT p.owner_user_id AS "ownerUserId",
+                p.id AS "planId",
+                p.project_id AS "projectId"
+           FROM role_room_marketing_plan_posts pp
+           JOIN role_room_marketing_plans p ON p.id = pp.plan_id
+          WHERE pp.id = $1`,
+        [postId],
+      );
+      const row = r.rows[0];
+      if (!row) return { canEdit: false, editorKind: null, planId: null };
+      // Eier = team
+      if (row.ownerUserId === userId) {
+        return { canEdit: true, editorKind: 'team', planId: row.planId };
+      }
+      // Sjekk medlemsrolle
+      const m = await pool.query<{ role: string }>(
+        `SELECT role FROM casting_user_roles
+          WHERE project_id = $1 AND user_id = $2
+            AND deactivated_at IS NULL
+          LIMIT 1`,
+        [row.projectId, userId],
+      );
+      const role = m.rows[0]?.role;
+      if (!role) return { canEdit: false, editorKind: null, planId: row.planId };
+      if (role === 'client_reviewer') {
+        return { canEdit: true, editorKind: 'client', planId: row.planId };
+      }
+      // Andre prosjekt-roller (producer, director, content_producer, user) = team
+      return { canEdit: true, editorKind: 'team', planId: row.planId };
+    } catch {
+      return { canEdit: false, editorKind: null, planId: null };
+    }
+  };
+
   // Trigger snapshot av plan-versjon etter en redigering. Best-effort,
   // ikke-blokkerende. Brukes etter post-PATCH og pillar-mutasjoner.
   const triggerPlanSnapshot = (planId: string, userId: string): void => {
@@ -1450,6 +1496,10 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
   // Inline-redigering av en post i Markedsplan-dashboardet. Tillater
   // editering av kjernefelt uten å regenerere posten. For full
   // regenerering via Claude finnes /posts/:postId/regenerate separat.
+  //
+  // Shared workspace: både produsent og klient-reviewer kan endre.
+  // Vi sporer hvem som gjorde det via last_edited_by_kind for å vise
+  // farget badge på frontend.
   app.patch("/api/role-room/marketing-plan/posts/:postId", async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
@@ -1457,8 +1507,9 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     if (!postId) {
       return res.status(400).json({ success: false, error: "postId er påkrevd." });
     }
-    if (!(await verifyPostOwnership(postId, session.userId))) {
-      return res.status(403).json({ success: false, error: "Du eier ikke denne posten." });
+    const editor = await resolvePostEditor(postId, session.userId);
+    if (!editor.canEdit) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til denne posten." });
     }
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
     const updates: string[] = [];
@@ -1510,6 +1561,8 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     updates.push(`last_edited_at = now()`);
     updates.push(`last_edited_by_user_id = $${i++}`);
     params.push(session.userId);
+    updates.push(`last_edited_by_kind = $${i++}`);
+    params.push(editor.editorKind);
     params.push(postId);
     try {
       const r = await pool.query(
@@ -1520,7 +1573,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
                     format, script, caption_draft, call_to_action,
                     primary_platform, cross_post_plan, goal_kpi, status,
                     feed_plan_post_id, scheduled_for, published_at,
-                    last_edited_at, last_edited_by_user_id,
+                    last_edited_at, last_edited_by_user_id, last_edited_by_kind,
                     created_at, updated_at`,
         params,
       );
