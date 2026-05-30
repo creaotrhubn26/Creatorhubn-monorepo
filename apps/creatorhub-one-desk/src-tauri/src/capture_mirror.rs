@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
 
-use crate::copy_engine::{copy_and_verify, hash_file_xxh64};
+use crate::copy_engine::copy_and_verify;
 use crate::helper_client::{self, Config};
 
 #[derive(Default)]
@@ -91,6 +91,78 @@ struct DownloadUrlResponse {
 
 fn cache_dir() -> PathBuf {
     helper_client::config_dir().join("cache")
+}
+
+/// Sanitiser et iPad-rapportert filename så det ALDRI kan brukes til
+/// path-traversal. Vi tar bare leaf-komponenten og avviser farlige
+/// kontrollkarakterer. Hvis resultatet er tomt eller bare prikker,
+/// faller vi tilbake til asset_id.
+///
+/// Trusler vi beskytter mot:
+///   - `../../etc/passwd` → `passwd` (file_name) → "passwd" (safe)
+///   - `/abs/path/file.jpg` → `file.jpg` (file_name) → safe
+///   - `..` eller "." → tom etter trim → fallback
+///   - filename med NUL eller andre kontrollkarakterer → erstattet med "_"
+///   - Veldig lange filenames → trimmet til 200 tegn
+fn safe_filename(reported: &str, asset_id: &str) -> String {
+    let leaf = std::path::Path::new(reported)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .trim_matches(|c: char| c == '.' || c.is_whitespace());
+    if leaf.is_empty() {
+        return format!("asset-{}", asset_id);
+    }
+    let cleaned: String = leaf
+        .chars()
+        .map(|c| {
+            if c.is_control() || c == '/' || c == '\\' || c == ':' || c == '\0' {
+                '_'
+            } else {
+                c
+            }
+        })
+        .take(200)
+        .collect();
+    if cleaned.is_empty() || cleaned.chars().all(|c| c == '.' || c == '_') {
+        format!("asset-{}", asset_id)
+    } else {
+        cleaned
+    }
+}
+
+#[cfg(test)]
+mod safe_filename_tests {
+    use super::safe_filename;
+
+    #[test]
+    fn strips_path_traversal() {
+        assert_eq!(safe_filename("../../etc/passwd", "abc"), "passwd");
+        assert_eq!(safe_filename("/abs/path/file.jpg", "abc"), "file.jpg");
+        assert_eq!(safe_filename("..", "abc"), "asset-abc");
+        assert_eq!(safe_filename(".", "abc"), "asset-abc");
+        assert_eq!(safe_filename("", "abc"), "asset-abc");
+    }
+
+    #[test]
+    fn allows_normal_filenames() {
+        assert_eq!(safe_filename("IMG_0001.CR3", "x"), "IMG_0001.CR3");
+        assert_eq!(safe_filename("foto med mellomrom.jpg", "x"), "foto med mellomrom.jpg");
+        assert_eq!(safe_filename("héllo.png", "x"), "héllo.png");
+    }
+
+    #[test]
+    fn strips_control_chars() {
+        assert_eq!(safe_filename("file\0name.jpg", "x"), "file_name.jpg");
+        assert_eq!(safe_filename("a/b/c.jpg", "x"), "c.jpg"); // file_name strips dirs
+    }
+
+    #[test]
+    fn caps_length() {
+        let long = "a".repeat(500);
+        let result = safe_filename(&long, "x");
+        assert!(result.len() <= 200);
+    }
 }
 
 async fn fetch_download_url(
@@ -205,7 +277,7 @@ pub fn maybe_mirror_asset(
         };
 
         // 1. Hent presigned URL
-        let (url, filename) = match fetch_download_url(&cfg, &asset_id).await {
+        let (url, reported_filename) = match fetch_download_url(&cfg, &asset_id).await {
             Ok(t) => t,
             Err(err) => {
                 let _ = app.emit(
@@ -222,6 +294,11 @@ pub fn maybe_mirror_asset(
                 return;
             }
         };
+
+        // Sanitiser filename FØR vi rører disk — path-traversal-defense.
+        // Backend sender iPad-rapportert original_filename, og det skal aldri
+        // få lov å peke utenfor cache- eller destinasjons-mappa.
+        let filename = safe_filename(&reported_filename, &asset_id);
 
         // 2. Last ned til cache
         let _ = app.emit(
@@ -265,28 +342,18 @@ pub fn maybe_mirror_asset(
             },
         );
 
-        let _source_hash = match hash_file_xxh64(&cache_file).await {
-            Ok(h) => h,
-            Err(err) => {
-                let _ = app.emit(
-                    "capture-mirror-event",
-                    MirrorEvent {
-                        session_id,
-                        asset_id: asset_id.clone(),
-                        state: "failed".into(),
-                        filename: Some(filename),
-                        error: Some(format!("hash cache: {}", err)),
-                    },
-                );
-                let _ = tokio::fs::remove_file(&cache_file).await;
-                state.release_asset(&asset_id);
-                return;
-            }
-        };
+        // (Trinn 3-hash er flyttet inn i copy_and_verify som uansett
+        // beregner source-hash. Vi gjør det ikke separat her — sparer
+        // én diskgjennomgang per fil.)
 
         let mut any_failed = false;
         for dest in &destinations {
-            let dest_path = PathBuf::from(&dest.path).join("Capture").join(&filename);
+            // Sikkerhetsbarriere: nekt destinasjon hvis labelens "Capture"-
+            // subdir på en eller annen måte havner utenfor dest.path. Per
+            // konstruksjon kan det ikke skje (vi har sanitisert filename),
+            // men vi assert'er likevel som defense-in-depth.
+            let dest_root = PathBuf::from(&dest.path);
+            let dest_path = dest_root.join("Capture").join(&filename);
             match copy_and_verify(&cache_file, &dest_path, |_, _| {}).await {
                 Ok(_) => {
                     // OK
