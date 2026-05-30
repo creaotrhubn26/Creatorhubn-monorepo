@@ -1,9 +1,10 @@
-# Google Ads developer-token — søknadspakke for Creatorhub
+# Google Ads developer-token — søknadspakke for Role Room
 
 Denne dokumentet inneholder alt du trenger for å søke om et **Basic Access**
-Google Ads developer-token til Role Room, ferdig-utfylt for Creatorhubs
-use case (administrere annonser på vegne av kunder, første live-kunde:
-MedInnova/PreVisit fra 2026-06-01).
+Google Ads developer-token til **Role Room** (theroleroom.com), ferdig-utfylt
+for use casen «administrere annonser på vegne av kunder» — første live-kunde
+MedInnova/PreVisit fra 2026-06-01. Creatorhub AS er den juridiske enheten som
+driver Role Room.
 
 > **Hvorfor du trenger dette:** Uten developer-token kan ikke
 > `role-room-google-ads.ts` snakke med Google Ads API. Sweep-en skip-er
@@ -18,10 +19,10 @@ MedInnova/PreVisit fra 2026-06-01).
 | Krav | Status | Notat |
 |------|--------|-------|
 | **Google Ads Manager-konto (MCC)** | ⚠️ verifiser | Du må søke fra MCC-konto, ikke vanlig Google Ads-konto. Opprett gratis på <https://ads.google.com/intl/en/home/tools/manager-accounts/> hvis du ikke har det. |
-| **Personvernerklæring publisert** | ⚠️ verifiser | URL kreves i skjemaet. Hvis ikke finnes: minimum-versjon på creatorhubn.com/privacy som dekker behandling av kunde-annonsedata. |
-| **Vilkår for bruk publisert** | ⚠️ verifiser | URL kreves. creatorhubn.com/terms holder. |
-| **Tool URL** | ✅ | `https://creatorhubn.com` eller `https://theroleroom.com`. |
-| **Kontakt-e-post** | ✅ | `daniel@creatorhubn.com`. |
+| **Personvernerklæring publisert** | ⚠️ verifiser | URL kreves i skjemaet. **`https://theroleroom.com/privacy`** — minimum-versjon som dekker behandling av kunde-annonsedata. |
+| **Vilkår for bruk publisert** | ⚠️ verifiser | URL kreves. **`https://theroleroom.com/terms`**. |
+| **Tool URL** | ✅ | `https://theroleroom.com` — produktets primær-domene (Creatorhub AS er selskapet bak). |
+| **Kontakt-e-post** | ✅ | `daniel@creatorhubn.com` (eller `daniel@theroleroom.com` hvis du foretrekker brand-konsistent adresse). |
 | **MCC-konto-ID for hvor du logger inn** | ⚠️ verifiser | 10-sifret nummer øverst i Google Ads etter du er logget inn på MCC. |
 | **Forretningsmodell-beskrivelse** | ✅ klar (se §3 nedenfor) | |
 | **Use-case-beskrivelse** | ✅ klar (se §3) | |
@@ -32,9 +33,10 @@ MedInnova/PreVisit fra 2026-06-01).
 1. **Opprett MCC-konto** hvis du kun har vanlig Google Ads. MCC er gratis,
    tar 5 minutter, og er separat fra din egen konto. MCC-en din administrerer
    senere alle kunde-kontoene (MedInnova etc.) ett sted.
-2. **Publiser privacy + terms** på creatorhubn.com hvis ikke finnes. Google
-   sjekker at URL-ene resolve-er — minimum-versjoner som beskriver hva systemet
-   gjør holder for godkjenning.
+2. **Publiser privacy + terms på theroleroom.com** hvis ikke finnes. Google
+   sjekker at URL-ene resolve-er — minimum-versjoner som beskriver hva Role
+   Room gjør med annonsedata holder for godkjenning. Viktig: URL-ene må være
+   på samme domene som Tool URL (theroleroom.com), ikke creatorhubn.com.
 
 ---
 
@@ -61,8 +63,8 @@ nedenfor er på engelsk og målrettet mot Creatorhubs use case.
 | Contact name | `Daniel Qazi` |
 | Contact email | `daniel@creatorhubn.com` |
 | Phone | (ditt telefonnummer, +47 …) |
-| Company name | `Creatorhub AS` |
-| Company website | `https://creatorhubn.com` |
+| Company name | `Creatorhub AS` *(juridisk enhet bak produktet Role Room)* |
+| Company website | `https://theroleroom.com` |
 
 ### Section: Business model
 
@@ -74,12 +76,12 @@ nedenfor er på engelsk og målrettet mot Creatorhubs use case.
 
 **Tool name:**
 ```
-Role Room (by Creatorhub)
+Role Room
 ```
 
 **Tool URL:**
 ```
-https://creatorhubn.com
+https://theroleroom.com
 ```
 
 **Tool description (det viktigste feltet — Google leser dette nøye):**
@@ -165,8 +167,8 @@ Why API access is required (vs. using the Google Ads UI):
 
 | Felt | Svar |
 |------|------|
-| Privacy policy URL | `https://creatorhubn.com/privacy` |
-| Terms of service URL | `https://creatorhubn.com/terms` |
+| Privacy policy URL | `https://theroleroom.com/privacy` |
+| Terms of service URL | `https://theroleroom.com/terms` |
 | I agree to the Google Ads API Terms | ✅ |
 | I will respect the Required Minimum Functionality (RMF) | ✅ |
 | I will not exceed rate limits | ✅ |
@@ -191,8 +193,8 @@ svar på samme e-post du oppga.
 ### Hvis avslått
 
 Google sender konkret grunn — ofte:
-- **Tool URL resolverer ikke** → sjekk at creatorhubn.com fungerer.
-- **Privacy/terms-URL 404** → publiser dem først.
+- **Tool URL resolverer ikke** → sjekk at theroleroom.com fungerer.
+- **Privacy/terms-URL 404** → publiser dem på theroleroom.com først (samme domene som Tool URL).
 - **Beskrivelsen for vag** → bruk §3-svarene over, de er konkrete nok.
 - **For lav forventet aktivitet** → underestimer ikke; faktiske bruksvolumer
   for live agency er typisk over 100 calls/dag selv med én kunde.
