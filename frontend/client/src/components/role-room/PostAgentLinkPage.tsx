@@ -111,7 +111,36 @@ export default function PostAgentLinkPage(): JSX.Element {
               fontWeight: 500,
             }}
           >
-            Paret. Gå tilbake til Post Agent — den fullfører oppsettet automatisk innen et par sekunder.
+            <div style={{ marginBottom: 12 }}>
+              Paret. Post Agent fullfører oppsettet automatisk innen et par sekunder.
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                // Prøv å åpne Post Agent via custom protokoll. URL-handler
+                // er IKKE registrert i Tauri-appen ennå (tauri-plugin-
+                // deep-link kreves), så for nå feiler dette stille. Selv
+                // uten URL-handler tar Mac-appens 2-sek pairing-poll
+                // brukeren videre automatisk når appen er åpen.
+                window.location.href = 'postagent://focus';
+              }}
+              style={{
+                width: '100%',
+                background: '#4ad48a',
+                color: '#0a0518',
+                border: 'none',
+                borderRadius: 8,
+                padding: '12px 16px',
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              Åpne Post Agent (eksperimentelt)
+            </button>
+            <div style={{ fontSize: 12, color: 'rgba(74,212,138,0.7)', marginTop: 8 }}>
+              Hvis ingenting skjer: bytt til Post Agent manuelt — appen henter pairing automatisk.
+            </div>
           </div>
         ) : status === 'unauthorized' ? (
           <div>
