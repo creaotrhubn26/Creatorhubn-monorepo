@@ -1598,7 +1598,8 @@ export type ProducerWorkspaceSurfaceKey =
   | 'brand'
   | 'accounts'
   | 'delivery'
-  | 'meetings';
+  | 'meetings'
+  | 'marketing-plan';
 
 export type ProducerWorkspaceLayout = 'focus' | 'split' | 'grid';
 
