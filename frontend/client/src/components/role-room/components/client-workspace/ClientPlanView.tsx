@@ -33,9 +33,7 @@ export default function ClientPlanView({ projectId }: { projectId: string }) {
           </Stack>
         }
       >
-        {/* FAB-knappen "Create" vises fortsatt — Planner-komponenten har ikke
-            ekstern prop for å skjule den ennå; tracker som follow-up. */}
-        <RoleRoomMobilePlannerView projectId={projectId} mode={viewport.mode} />
+        <RoleRoomMobilePlannerView projectId={projectId} mode={viewport.mode} canCreate={false} />
       </Suspense>
     </Stack>
   );

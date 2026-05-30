@@ -47,6 +47,9 @@ import { getMissingFields } from '../mobile-brief/briefStepDefinitions';
 interface RoleRoomMobilePlannerViewProps {
   projectId: string | null;
   mode: RoleRoomViewportMode;
+  /** Skjul «Opprett oppføring»-FAB-en hvis false. Default true (producer-bruk).
+   *  Klient-flaten setter false så klienten ikke kan opprette nye timeline-items. */
+  canCreate?: boolean;
 }
 
 function formatDue(iso?: string | null): string | null {
@@ -63,6 +66,7 @@ function formatDue(iso?: string | null): string | null {
 export const RoleRoomMobilePlannerView: React.FC<RoleRoomMobilePlannerViewProps> = ({
   projectId,
   mode,
+  canCreate = true,
 }) => {
   const { items, loading, error, reload, createItem } = useProducerTimeline(projectId ?? undefined);
   const { items: reviewItems } = useProducerReviews(projectId ?? undefined);
@@ -261,19 +265,21 @@ export const RoleRoomMobilePlannerView: React.FC<RoleRoomMobilePlannerViewProps>
         </Box>
       </Stack>
 
-      {/* Item 077: single primary CTA */}
-      <Fab
-        color="primary"
-        onClick={handleOpenCreate}
-        aria-label="Opprett oppføring"
-        sx={{
-          position: 'fixed',
-          right: 'calc(var(--rr-spacing-comfortable, 16px) + var(--rr-safe-right, 0px))',
-          bottom: 'calc(var(--rr-spacing-comfortable, 16px) + var(--rr-safe-bottom, 0px))',
-        }}
-      >
-        <AddIcon />
-      </Fab>
+      {/* Item 077: single primary CTA — skjules for klient-flate via canCreate=false */}
+      {canCreate && (
+        <Fab
+          color="primary"
+          onClick={handleOpenCreate}
+          aria-label="Opprett oppføring"
+          sx={{
+            position: 'fixed',
+            right: 'calc(var(--rr-spacing-comfortable, 16px) + var(--rr-safe-right, 0px))',
+            bottom: 'calc(var(--rr-spacing-comfortable, 16px) + var(--rr-safe-bottom, 0px))',
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       <MobilePlannerCreateSheet
         open={createOpen}
