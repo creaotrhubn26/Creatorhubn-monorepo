@@ -27,11 +27,17 @@ Andre runde (Fase 3/4-rester):
 Tredje runde:
 - ✅ **Levering-tab for produksjonsteam** — la til `PRODUCER_REVIEWS_TAB_INDEX` («Godkjenning») + `PRODUCER_EXPORT_TAB_INDEX` («Levering») i produksjonsteamets `visibleTabValues`. Panelene + labels fantes allerede; var bare ikke synlige for modusen. **Fikset også Fix 6**: «Send til godkjenning» navigerte til en tab som ikke var synlig for produksjonsteam → effekten på `:4026` resatte den (bounce). Nå reell.
 
-**Bevisst utsatt (arkitektonisk/data-modell — skal ikke hackes):**
-- **Fix 13 — scene-reorder + beat↔scene source-of-truth.** Scenene i navigatoren *parses fra Fountain-tekst* (eller konverteres fra DB-scener). Reorder betyr å skrive om manus-teksten, og det finnes to konkurrerende source-of-truth-modeller. Krever en eksplisitt arkitektur-beslutning før implementering.
-- **Fix 12 — inline kommentar-anker-UI** i editoren (markører ved linjer + tråder). Backend er nå klart; editor-UI er en større feature.
-- **target-duration-varsel** — krever et `targetDuration`-felt på prosjekt-modellen.
-- Presence-avatarer (sanntid), Fix 9 workflow-breadcrumb, Levering-tab for produksjonsteam, undo-tooltips, BeatBoard-snarvei-hjelp.
+Fjerde runde (tidligere utsatte — nå bygget etter beslutninger):
+- ✅ **Fix 13 — scene-reorder (Fountain er fasit).** `reorderScenesInContent` flytter scenens linje-blokk i teksten; flytt opp/ned-knapper i navigatoren. Kun for Fountain-baserte scener; respekterer lås.
+- ✅ **target-duration** — `targetDurationMinutes` på prosjekt (schemaless compat-store, ingen SQL-migrasjon). Mål-chip + runtime-varsel ved >15 % avvik.
+- ✅ **Inline kommentar-panel** — `PostCommentLayer` montert som «Kommentarer»-høyrepanel i editoren (anchorType=manuscript), med polling/composer/tråder.
+- ✅ **Presence** — poller manus-låsen og viser aktiv redaktør i headeren («Du redigerer» / «<navn> redigerer»).
+
+**Fortsatt åpent (mindre oppfølginger):**
+- Per-linje margin-markører for kommentarer (panel på manus-nivå er på plass).
+- Vennlig navne-oppslag for presence (lockedBy er en bruker-id for andre enn deg selv).
+- Full multi-viewer passiv presence (krever dedikert presence-endepunkt; nåværende presence dekker den aktive redaktøren i enkelt-skriver-låsemodellen).
+- Fix 9 workflow-breadcrumb, undo-tooltips, BeatBoard-snarvei-hjelp (lav verdi nå).
 
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).
