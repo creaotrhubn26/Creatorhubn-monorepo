@@ -261,27 +261,102 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
   });
 
   // ── GET /talents/media-proxy?key=... — signed-GET redirect ────────
-  // Brukes når bucket ikke har public base. Genererer signed URL ved hver
-  // visning + 302-redirect. TTL 6 timer (lang nok for HLS-streaming, kort
-  // nok for sikkerhet hvis lenken lekkes).
+  // KREVER AUTH + verifiserer eier ELLER aktiv consent.
+  //
+  // Auth-modell:
+  //   - Talent som EIER filen (talents/{talent_id}/...) kan alltid se den
+  //   - Partner-user med agency_org_id MÅ ha aktiv consent_registry-rad
+  //     for (talent_id, partner_type=agency.type, partner_ref=agency.id)
+  //     med scope som matcher kind (headshot/showreel etc → media_portfolio)
+  //   - Alle andre: 403
   app.get("/api/role-room/talents/media-proxy", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
     const key = String(req.query.key || "").trim();
     if (!key || !key.startsWith("talents/")) {
       return res.status(400).json({ error: "Ugyldig key" });
     }
-    const cfg = buildR2Config();
-    const client = getR2Client();
-    if (!client || !cfg.bucket) {
-      return res.status(503).json({ error: "Storage ikke konfigurert" });
-    }
+
+    // Trekk ut talent_id fra key: talents/{talent_id}/{kind}/{uuid}-...
+    const m = key.match(/^talents\/([0-9a-f-]{36})\/([a-z_]+)\//);
+    if (!m) return res.status(400).json({ error: "Ugyldig key-format" });
+    const [, talentId, kindSegment] = m;
+
     try {
+      // Sjekk 1: er session-user eieren av denne talent-profilen?
+      const ownerCheck = await pool.query(
+        `SELECT 1 FROM talents WHERE id = $1 AND owner_user_id = $2 LIMIT 1`,
+        [talentId, session.userId],
+      );
+      let allowed = ownerCheck.rowCount > 0;
+
+      // Sjekk 2: er session-user member av en agency med aktiv consent?
+      if (!allowed) {
+        // Map upload-kind → påkrevd consent scope
+        const kindToScope: Record<string, string[]> = {
+          headshot: ["media_portfolio", "full_profile"],
+          alt_photo: ["media_portfolio", "full_profile"],
+          showreel: ["self_tape_review", "media_portfolio", "full_profile"],
+          resume: ["media_portfolio", "contact_info", "full_profile"],
+          photos: ["media_portfolio", "full_profile"],
+        };
+        const requiredScopes = kindToScope[kindSegment] || ["full_profile"];
+
+        const accessCheck = await pool.query(
+          `SELECT 1
+             FROM users u
+             JOIN agency_orgs a ON a.id = u.agency_org_id
+             JOIN talent_consent_registry c
+               ON c.partner_type = a.type
+              AND c.partner_ref = a.id::text
+              AND c.talent_id = $1
+              AND c.status = 'granted'
+              AND (c.expires_at IS NULL OR c.expires_at > now())
+              AND c.scope = ANY($3::text[])
+            WHERE u.id = $2
+            LIMIT 1`,
+          [talentId, session.userId, requiredScopes],
+        );
+        allowed = accessCheck.rowCount > 0;
+      }
+
+      if (!allowed) {
+        return res.status(403).json({ error: "Du har ikke tilgang til denne filen" });
+      }
+
+      const cfg = buildR2Config();
+      const client = getR2Client();
+      if (!client || !cfg.bucket) {
+        return res.status(503).json({ error: "Storage ikke konfigurert" });
+      }
       const signed = await getSignedUrl(
         client,
         new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
         { expiresIn: 6 * 60 * 60 },
       );
-      // Cache-headers: rull seg over hver time
-      res.set("Cache-Control", "private, max-age=3600");
+
+      // Audit-log: hvis partner-user ser filen, log det
+      if (!ownerCheck.rowCount) {
+        try {
+          await pool.query(
+            `INSERT INTO talent_access_audit (talent_id, partner_type, partner_ref, scope, accessed_by, access_context)
+             SELECT $1, a.type, a.id::text, $3, $2, $4::jsonb
+               FROM agency_orgs a JOIN users u ON u.agency_org_id = a.id
+              WHERE u.id = $2 LIMIT 1`,
+            [
+              talentId,
+              session.userId,
+              kindSegment,
+              JSON.stringify({ endpoint: "/media-proxy", key }),
+            ],
+          );
+        } catch (auditErr) {
+          console.warn("[media-proxy audit] failed", auditErr);
+        }
+      }
+
+      res.set("Cache-Control", "private, max-age=1800");
       return res.redirect(302, signed);
     } catch (err) {
       console.error("[media-proxy] failed", err);
@@ -361,21 +436,148 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       const uid = cfPayload.result.uid;
       const subdomain = streamCfg.subdomain;
       const playbackBase = `https://customer-${subdomain}.cloudflarestream.com/${uid}`;
+      const iframeUrl = `${playbackBase}/iframe`;
+      const hlsUrl = `${playbackBase}/manifest/video.m3u8`;
+      const thumbnailUrl = `${playbackBase}/thumbnails/thumbnail.jpg`;
+
+      // Spor upload-progress i talent_stream_uploads for å vise
+      // "Transkodes…" → "Klar!" via webhook-oppdateringer.
+      try {
+        await pool.query(
+          `INSERT INTO talent_stream_uploads
+             (talent_id, uid, status, iframe_url, thumbnail_url, hls_manifest_url)
+           VALUES ($1, $2, 'uploading', $3, $4, $5)
+           ON CONFLICT (uid) DO NOTHING`,
+          [talent.id, uid, iframeUrl, thumbnailUrl, hlsUrl],
+        );
+      } catch (e) {
+        console.warn("[sign-stream] tracker insert failed:", e);
+      }
+
       return res.json({
-        uploadUrl: cfPayload.result.uploadURL, // klient POST'er filen hit
+        uploadUrl: cfPayload.result.uploadURL,
         uid,
-        // finalUrl: lagres i talent.showreel_url. Iframe-embed for player.
-        finalUrl: `${playbackBase}/iframe`,
-        // ekstra URL'er
-        hlsManifestUrl: `${playbackBase}/manifest/video.m3u8`,
+        finalUrl: iframeUrl,
+        hlsManifestUrl: hlsUrl,
         dashManifestUrl: `${playbackBase}/manifest/video.mpd`,
-        thumbnailUrl: `${playbackBase}/thumbnails/thumbnail.jpg`,
+        thumbnailUrl,
         previewMp4Url: `${playbackBase}/downloads/default.mp4`,
         expiresAt: expiry,
       });
     } catch (err) {
       console.error("[uploads/sign-stream] failed", err);
       return res.status(500).json({ error: "Klarte ikke å initiere video-opplastning", detail: String(err) });
+    }
+  });
+
+  // ── GET /me/showreel-status — frontend poller mens video transkodes
+  app.get("/api/role-room/talents/me/showreel-status/:uid", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const { uid } = req.params;
+    try {
+      const talent = await fetchTalentForUser(pool, session.userId);
+      if (!talent) return res.status(404).json({ error: "Ingen profil" });
+      const r = await pool.query(
+        `SELECT uid, status, iframe_url, thumbnail_url, hls_manifest_url,
+                duration_seconds, width, height, ready_at, error_message,
+                created_at, updated_at
+           FROM talent_stream_uploads
+          WHERE uid = $1 AND talent_id = $2 LIMIT 1`,
+        [uid, talent.id],
+      );
+      if (!r.rowCount) return res.status(404).json({ error: "Video ikke funnet" });
+      return res.json({ upload: r.rows[0] });
+    } catch (err) {
+      console.error("[showreel-status] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente status" });
+    }
+  });
+
+  // ── POST /webhooks/cloudflare-stream — Cloudflare Stream sender events
+  // Webhook-signering: Cloudflare bruker SIG-header med HMAC-SHA256 av
+  // body med shared secret. Sett CLOUDFLARE_STREAM_WEBHOOK_SECRET på Render.
+  // Hvis ikke satt, aksepteres webhook uten validering (kun for dev).
+  app.post("/api/role-room/webhooks/cloudflare-stream", async (req, res) => {
+    const secret = (process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET || "").trim();
+    // KRITISK: hvis secret ikke satt, REFUSER alle webhooks (ingen insecure default)
+    if (!secret) {
+      console.error("[webhook] CLOUDFLARE_STREAM_WEBHOOK_SECRET ikke satt — alle webhooks avslås");
+      return res.status(503).json({ error: "Webhook ikke konfigurert" });
+    }
+    const sig = req.header("webhook-signature") || "";
+    // Format: 'time=1234567890,sig1=abcdef...' (HMAC-SHA256 av timestamp.body)
+    const match = sig.match(/time=(\d+),sig1=([a-f0-9]+)/i);
+    if (!match) {
+      return res.status(401).json({ error: "Mangler/ugyldig signatur" });
+    }
+    const [, timestamp, providedSig] = match;
+    // Reject replays > 5 min gamle (anti-replay)
+    const ageMs = Date.now() - Number(timestamp) * 1000;
+    if (Math.abs(ageMs) > 5 * 60 * 1000) {
+      return res.status(401).json({ error: "Signatur for gammel (anti-replay)" });
+    }
+    const rawBody = JSON.stringify(req.body);
+    const expected = require("node:crypto")
+      .createHmac("sha256", secret)
+      .update(`${timestamp}.${rawBody}`)
+      .digest("hex");
+    // Constant-time-compare for å unngå timing-attack
+    const a = Buffer.from(expected, "hex");
+    const b = Buffer.from(providedSig, "hex");
+    if (a.length !== b.length || !require("node:crypto").timingSafeEqual(a, b)) {
+      return res.status(401).json({ error: "Signatur matcher ikke" });
+    }
+
+    const event = req.body as {
+      uid?: string;
+      status?: { state?: string; errorReasonCode?: string; errorReasonText?: string };
+      readyToStream?: boolean;
+      duration?: number;
+      input?: { width?: number; height?: number };
+      size?: number;
+      thumbnail?: string;
+      preview?: string;
+      meta?: Record<string, unknown>;
+    };
+
+    if (!event?.uid) {
+      return res.status(400).json({ error: "Mangler uid" });
+    }
+
+    try {
+      const state = event.status?.state || (event.readyToStream ? "ready" : "uploading");
+      const isReady = state === "ready";
+      const isError = state === "error";
+
+      await pool.query(
+        `UPDATE talent_stream_uploads
+            SET status = $2,
+                ready_at = CASE WHEN $3 THEN now() ELSE ready_at END,
+                error_message = $4,
+                duration_seconds = COALESCE($5, duration_seconds),
+                size_bytes = COALESCE($6, size_bytes),
+                width = COALESCE($7, width),
+                height = COALESCE($8, height),
+                raw_event = $9::jsonb,
+                updated_at = now()
+          WHERE uid = $1`,
+        [
+          event.uid,
+          state,
+          isReady,
+          isError ? (event.status?.errorReasonText || event.status?.errorReasonCode || "ukjent feil") : null,
+          event.duration ?? null,
+          event.size ?? null,
+          event.input?.width ?? null,
+          event.input?.height ?? null,
+          JSON.stringify(event),
+        ],
+      );
+      return res.json({ ok: true, uid: event.uid, state });
+    } catch (err) {
+      console.error("[webhooks/cloudflare-stream] failed", err);
+      return res.status(500).json({ error: "Webhook-prosessering feilet" });
     }
   });
 

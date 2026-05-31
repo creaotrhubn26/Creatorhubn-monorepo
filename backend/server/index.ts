@@ -445,6 +445,7 @@ import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
+import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -25749,6 +25750,13 @@ setupRoleRoomTalentPartnersRoutes({
 // B2B2Talent Phase 5 — direkte fil-opplastning til Cloudflare R2 via
 // presigned PUT-URL. Klient streamer filer direkte, backend ser ikke bytes.
 setupRoleRoomTalentUploadsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 6 — GDPR-rettigheter (art. 15/17/20): export, slett,
+// audit-retention. Migrasjon 216 (talent_stream_uploads).
+setupRoleRoomTalentGdprRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
