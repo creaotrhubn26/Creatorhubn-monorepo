@@ -31,6 +31,9 @@ export function PhotoshopTemplateDialog({ onClose }: Props) {
   const [status, setStatus] = useState<PhotoshopBridgeStatus | null>(null);
   const [templatePath, setTemplatePath] = useState("");
   const [fields, setFields] = useState<TemplateField[]>([]);
+  const [allCandidates, setAllCandidates] = useState<
+    NonNullable<Awaited<ReturnType<typeof photoshop.scanTemplate>>["all_candidates"]>
+  >([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [outputPath, setOutputPath] = useState("");
   const [format, setFormat] = useState<ExportFormat>("jpg");
@@ -72,17 +75,51 @@ export function PhotoshopTemplateDialog({ onClose }: Props) {
     try {
       const r = await photoshop.scanTemplate(templatePath);
       setFields(r.fields);
+      setAllCandidates(r.all_candidates ?? []);
       // Reset values, preserving anything already typed for keys still present
       setValues((prev) => {
         const next: Record<string, string> = {};
         for (const f of r.fields) next[f.key] = prev[f.key] ?? "";
         return next;
       });
-      if (r.fields.length === 0) {
+      // Hvis vi har kandidater men ingen matchede {{key}}-felter, IKKE
+      // vis dette som feil — vis auto-rename-tilbudet i stedet.
+      if (r.fields.length === 0 && (r.all_candidates ?? []).length === 0) {
         setError(
-          'Ingen `{{key}}`-felter funnet i template. Gi text- eller smart-object-layers navn på formen `{{title}}`.',
+          "Fant ingen text- eller smart-object-layers i PSD-en. Templater må ha minst ett av disse for å være utfyllbare.",
         );
       }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runAutoRename() {
+    if (!templatePath || allCandidates.length === 0) return;
+    // Lagre rename-versjon ved siden av originalen
+    const renamedPath = templatePath.replace(/\.psd$/i, "-named.psd");
+    setBusy(true);
+    setError(null);
+    try {
+      await photoshop.autoRenameTemplate({
+        template_path: templatePath,
+        output_path: renamedPath,
+        mappings: allCandidates
+          .filter((c) => !c.has_field_pattern)
+          .map((c) => ({ layer_name: c.layer_name, new_key: c.suggested_key })),
+      });
+      // Bytt templatePath og re-scan
+      setTemplatePath(renamedPath);
+      const r = await photoshop.scanTemplate(renamedPath);
+      setFields(r.fields);
+      setAllCandidates(r.all_candidates ?? []);
+      setValues((prev) => {
+        const next: Record<string, string> = {};
+        for (const f of r.fields) next[f.key] = prev[f.key] ?? "";
+        return next;
+      });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -181,6 +218,58 @@ export function PhotoshopTemplateDialog({ onClose }: Props) {
               </button>
             </div>
           </section>
+
+          {fields.length === 0 &&
+            allCandidates.filter((c) => !c.has_field_pattern).length > 0 && (
+              <section style={{ ...card, borderLeft: "3px solid #f59e0b" }}>
+                <h3 style={cardTitle}>
+                  Templatet har ingen {"{{key}}"}-felter ennå
+                </h3>
+                <div style={{ fontSize: 12, color: "#bbb", marginBottom: 10, lineHeight: 1.5 }}>
+                  Vi fant{" "}
+                  <strong>
+                    {allCandidates.filter((c) => !c.has_field_pattern).length} layers
+                  </strong>{" "}
+                  som kan brukes som felter (text + smart objects), men ingen er navngitt
+                  med <code>{"{{key}}"}</code>-konvensjonen. Klikk under så lager vi en
+                  navngitt kopi av PSD-en for deg, så slipper du å redigere navn i
+                  Photoshop.
+                </div>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 12 }}>
+                  Foreslåtte nøkler:
+                  <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
+                    {allCandidates
+                      .filter((c) => !c.has_field_pattern)
+                      .slice(0, 8)
+                      .map((c) => (
+                        <li key={c.layer_name} style={{ fontFamily: "ui-monospace, monospace" }}>
+                          "{c.layer_name}" → <code>{`{{${c.suggested_key}}}`}</code>{" "}
+                          <span style={{ color: "#666" }}>({c.type})</span>
+                        </li>
+                      ))}
+                    {allCandidates.filter((c) => !c.has_field_pattern).length > 8 && (
+                      <li style={{ color: "#666" }}>
+                        + {allCandidates.filter((c) => !c.has_field_pattern).length - 8} til
+                      </li>
+                    )}
+                  </ul>
+                </div>
+                <button
+                  style={{
+                    ...primaryBtn,
+                    background: "#f59e0b",
+                  }}
+                  onClick={runAutoRename}
+                  disabled={busy || !connected}
+                >
+                  {busy ? "Lager navngitt kopi…" : "Lag navngitt kopi automatisk"}
+                </button>
+                <div style={{ fontSize: 11, color: "#666", marginTop: 8 }}>
+                  Lagrer som <code>{templatePath.replace(/\.psd$/i, "-named.psd")}</code> —
+                  originalen er urørt.
+                </div>
+              </section>
+            )}
 
           {supportedFields.length > 0 && (
             <section style={card}>

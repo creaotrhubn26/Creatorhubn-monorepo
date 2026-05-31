@@ -273,17 +273,49 @@ const COMMANDS = {
     assertString(template_path, "template_path");
     const entry = await fs.getEntryWithUrl("file:" + encodeURI(template_path));
     let fields = [];
+    let all_candidates = [];
     let template_summary = null;
     await core.executeAsModal(async () => {
       const doc = await app.open(entry);
       try {
         template_summary = documentSummary(doc);
         fields = collectTemplateFields(doc);
+        all_candidates = collectFillableCandidates(doc);
       } finally {
         await doc.closeWithoutSaving();
       }
     }, { commandName: "Post Agent: template scan" });
-    return { template_path, template: template_summary, fields };
+    return { template_path, template: template_summary, fields, all_candidates };
+  },
+
+  /*
+   * Template auto-rename: åpner template, gir alle layers i `mappings`
+   * navn på formen `{{new_key}}`, lagrer som en KOPI (output_path)
+   * — originalen er urørt. Lar Irlin slippe å manuelt navngi layers
+   * i Photoshop før hun bruker template-systemet.
+   */
+  "template.autoRename": async ({ template_path, output_path, mappings }) => {
+    assertString(template_path, "template_path");
+    assertString(output_path, "output_path");
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+      throw new Error("mappings må være en non-empty array av { layer_name, new_key }");
+    }
+    const entry = await fs.getEntryWithUrl("file:" + encodeURI(template_path));
+    const outDir = output_path.substring(0, Math.max(output_path.lastIndexOf("/"), 0));
+    const outName = output_path.substring(output_path.lastIndexOf("/") + 1);
+    const outFolder = await fs.getEntryWithUrl("file:" + encodeURI(outDir));
+    let result;
+    await core.executeAsModal(async () => {
+      const doc = await app.open(entry);
+      try {
+        result = await renameLayersToFieldKeys(doc, mappings);
+        const outFile = await outFolder.createFile(outName, { overwrite: true });
+        await doc.saveAs.psd(outFile, { maximizeCompatibility: true });
+      } finally {
+        await doc.closeWithoutSaving();
+      }
+    }, { commandName: "Post Agent: template auto-rename" });
+    return { template_path, output_path, ...result };
   },
 
   /*
@@ -440,6 +472,65 @@ function collectTemplateFields(doc) {
     if (layer.layers && layer.layers.length) stack.push(...layer.layers);
   }
   return out;
+}
+
+function collectFillableCandidates(doc) {
+  /*
+   * Returnerer ALLE text + smart-object layers (uavhengig av om de
+   * matcher {{key}}-mønsteret). Lar UI'en tilby auto-rename når
+   * Irlin har et template uten {{key}}-konvensjon — så vi unngår
+   * å sende henne tilbake til Photoshop bare for å redigere navn.
+   */
+  const out = [];
+  const stack = [...doc.layers];
+  while (stack.length) {
+    const layer = stack.pop();
+    const match = layer.name.match(FIELD_PATTERN);
+    let type = null;
+    if (layer.kind === constants.LayerKind.TEXT) type = "text";
+    else if (layer.kind === constants.LayerKind.SMARTOBJECT) type = "image";
+    if (type) {
+      out.push({
+        layer_name: layer.name,
+        type,
+        has_field_pattern: !!match,
+        suggested_key: match ? match[1] : slugifyForFieldKey(layer.name),
+      });
+    }
+    if (layer.layers && layer.layers.length) stack.push(...layer.layers);
+  }
+  return out;
+}
+
+function slugifyForFieldKey(name) {
+  return (name || "")
+    .toLowerCase()
+    .replace(/[æå]/g, "a")
+    .replace(/ø/g, "o")
+    .replace(/[^\w]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .substring(0, 40)
+    || "field";
+}
+
+async function renameLayersToFieldKeys(doc, mappings) {
+  /*
+   * mappings: [{ layer_name, new_key }]
+   * Setter layer-name til {{new_key}} for hver i mappings.
+   * Returnerer { renamed, skipped }.
+   */
+  const renamed = [];
+  const skipped = [];
+  for (const m of mappings) {
+    const layer = findLayerByName(doc, m.layer_name);
+    if (!layer) {
+      skipped.push({ ...m, reason: "layer not found" });
+      continue;
+    }
+    layer.name = `{{${m.new_key}}}`;
+    renamed.push({ old_name: m.layer_name, new_key: m.new_key });
+  }
+  return { renamed, skipped };
 }
 
 async function registerActionNotifiers() {
