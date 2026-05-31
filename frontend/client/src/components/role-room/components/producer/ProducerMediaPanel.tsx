@@ -6683,12 +6683,20 @@ export default function ProducerMediaPanel({
                 id: `account-status-${entry.platform}`,
                 eyebrow: `${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`,
                 title: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform],
+                // Forklar hva statusen betyr og hva som venter — ellers ser
+                // Stig bare «Ikke koblet» uten å vite om han skal gjøre noe selv
+                // eller vente på klienten.
                 detail: readFirstNonEmptyString(
                   entry.accountLabel || '',
                   entry.accessScope || '',
                   entry.notes || '',
-                  'Tilgangen er ikke avklart ennå.',
-                ),
+                ) ?? (({
+                  not_started: 'Ikke startet — åpne kontotilgang for å koble kontoen, eller be klienten om tilgang.',
+                  client_action: 'Venter på klienten — be klienten koble kontoen eller godta invitasjonen.',
+                  invite_sent: 'Invitasjon sendt — venter på at klienten godtar.',
+                  connected: 'Koblet og klar.',
+                  revoked: 'Tilgangen er trukket tilbake — koble på nytt hvis den fortsatt trengs.',
+                } as Record<string, string>)[entry.status] ?? 'Tilgangen er ikke avklart ennå.'),
               }))
               : [
                 {

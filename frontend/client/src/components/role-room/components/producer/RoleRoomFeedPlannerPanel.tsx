@@ -186,7 +186,7 @@ export default function RoleRoomFeedPlannerPanel({
         if (result?.updatedAt) setLastSavedAt(result.updatedAt);
         setDirty(false);
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : 'Kunne ikke lagre feed-planen.');
+        setSaveError(describeProducerError(error, 'lagre feed-planen'));
       } finally {
         setSaving(false);
       }
