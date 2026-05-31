@@ -65,6 +65,7 @@ import FormationHeaderBar, {
 } from './FormationHeaderBar';
 import ClipsSidebar from './ClipsSidebar';
 import FormationVideoPanel from './FormationVideoPanel';
+import DanceFlowNavRail from './DanceFlowNavRail';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -628,6 +629,10 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           scrollButtons="auto"
           allowScrollButtonsMobile
           sx={{
+            // Phase 3b: skjul horisontal Tabs på lg+; NavRail tar over.
+            // Mobile/tablet beholder horisontal-Tabs siden rail tar for mye
+            // plass på smal skjerm.
+            display: { xs: 'flex', lg: 'none' },
             minHeight: 48,
             px: 1,
             '& .MuiTab-root': {
@@ -651,33 +656,54 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           ))}
         </Tabs>
       </Box>
-      <Box
-        role="tabpanel"
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-        sx={{ flex: 1, minHeight: 0 }}
-      >
-        <React.Suspense
-          fallback={
-            <Box
-              data-testid="dance-tab-loading"
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                py: 6,
-                color: '#a78bfa',
-                fontSize: 12,
-                letterSpacing: 1.5,
-                fontWeight: 700,
-              }}
-            >
-              LASTER…
-            </Box>
-          }
+      {/* Phase 3b: NavRail på lg+ ved siden av tabpanel. Under lg er rail
+          skjult (display none via sx-breakpoint i komponenten — wrapping
+          Box må derfor være row uansett, ellers brytes flex-flow). */}
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <Box
+          sx={{
+            display: { xs: 'none', lg: 'block' },
+            flex: '0 0 auto',
+          }}
         >
-          {renderTabBody(activeTab)}
-        </React.Suspense>
+          <DanceFlowNavRail
+            items={visibleTabs.map((t) => ({
+              id: t.id,
+              label: labels[t.labelToken] ?? t.id,
+              feature: t.feature,
+            }))}
+            activeId={activeTab.id}
+            onSelect={setActiveTabId}
+          />
+        </Box>
+        <Box
+          role="tabpanel"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
+        >
+          <React.Suspense
+            fallback={
+              <Box
+                data-testid="dance-tab-loading"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  py: 6,
+                  color: '#a78bfa',
+                  fontSize: 12,
+                  letterSpacing: 1.5,
+                  fontWeight: 700,
+                }}
+              >
+                LASTER…
+              </Box>
+            }
+          >
+            {renderTabBody(activeTab)}
+          </React.Suspense>
+        </Box>
       </Box>
 
       {/* Cmd+K command palette — søk og hopp mellom 18 paneler */}
