@@ -266,7 +266,6 @@ import {
   ContentCut as ContentCutIcon,
   CameraAlt as CameraAltIcon,
   GrassOutlined as GrassIcon,
-  TrendingUp as TrendingUpIcon,
   School as SchoolIcon,
   LocationOn as LocationOnIcon,
   GpsFixed as GpsFixedIcon,
