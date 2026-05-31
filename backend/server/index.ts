@@ -114,6 +114,7 @@ import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
 import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
+import { setupPagesCtaRoutes } from "./role-room-pages-cta-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31509,6 +31510,9 @@ function requireAdminOrDemoBypass(
 
 // Meta App Review demo for oEmbed Read — egen modul (overlever branch-flips).
 setupOEmbedRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for pages_manage_cta — Role Agent setter Page CTA.
+setupPagesCtaRoutes({ app, requireAdminOrDemoBypass });
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-

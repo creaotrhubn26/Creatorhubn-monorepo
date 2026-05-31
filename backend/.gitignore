@@ -16,6 +16,8 @@ node_modules/
 .env.production.local
 .env.twilio.local
 .env.whatsapp.demo.local
+.env.oembed.demo.local
+.env.pages-cta.demo.local
 
 # Logs
 logs/
