@@ -1803,6 +1803,12 @@ export interface CastingProject {
    * for film/commercial bør sette dette eksplisitt på prosjektnivå.
    */
   cinemaFormat?: StoryboardDocumentAspectRatio;
+  /**
+   * Mål-lengde på ferdig film/episode i minutter. Brukes til å varsle når
+   * manusets estimerte runtime (≈ sidetall) avviker for mye, f.eks. før
+   * man sender til godkjenning. Persisteres på prosjektet (schemaless compat-store).
+   */
+  targetDurationMinutes?: number;
   startDate?: string;
   endDate?: string;
   budget?: number;

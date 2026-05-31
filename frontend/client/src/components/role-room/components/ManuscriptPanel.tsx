@@ -394,6 +394,8 @@ import {
   Lock as LockIcon,
   Send as SendIcon,
   ArrowDropDown as ArrowDropDownIcon,
+  Timer as TimerIcon,
+  WarningAmber as WarningAmberIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
@@ -474,6 +476,10 @@ interface ManuscriptPanelProps {
    * workflowen uten å lete etter en egen tab.
    */
   onSendToApproval?: () => void;
+  /** Prosjektets mål-lengde i minutter (for runtime-varsel). */
+  targetDurationMinutes?: number;
+  /** Lagre ny mål-lengde på prosjektet (null = fjern). */
+  onTargetDurationChange?: (minutes: number | null) => void;
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
@@ -520,6 +526,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   onStoryArcFocusChange,
   onUnsavedStateChange,
   onSendToApproval,
+  targetDurationMinutes,
+  onTargetDurationChange,
 }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
   const branding = useBrandingSettings();
@@ -597,6 +605,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   // Vi viser hvem som låste i stedet for en generisk "Lagringsfeil".
   const [manuscriptLockConflict, setManuscriptLockConflict] = useState<{ lockedBy: string | null; lockedAt: string | null } | null>(null);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+  const [showTargetDialog, setShowTargetDialog] = useState(false);
+  const [targetDraft, setTargetDraft] = useState('');
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
   const [_isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNewManuscriptDialog, setShowNewManuscriptDialog] = useState(false);
@@ -2268,6 +2278,30 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
                   </Button>
                 )}
+                {onTargetDurationChange && (() => {
+                  const estRuntime = Math.round(selectedManuscript?.pageCount || 0);
+                  const target = typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 ? targetDurationMinutes : null;
+                  const deviates = target != null && estRuntime > 0 && Math.abs(estRuntime - target) / target > 0.15;
+                  return (
+                    <Tooltip title={
+                      target == null
+                        ? 'Sett en mål-lengde for å få varsel når manuset blir for langt/kort'
+                        : deviates
+                          ? `Manuset er ~${estRuntime} min, men målet er ${target} min`
+                          : `Mål-lengde ${target} min (manus ~${estRuntime} min)`
+                    }>
+                      <Chip
+                        size="small"
+                        icon={deviates ? <WarningAmberIcon sx={{ fontSize: 16 }} /> : <TimerIcon sx={{ fontSize: 16 }} />}
+                        color={deviates ? 'warning' : 'default'}
+                        variant={target == null ? 'outlined' : 'filled'}
+                        onClick={() => { setTargetDraft(target != null ? String(target) : ''); setShowTargetDialog(true); }}
+                        label={target == null ? 'Sett mål-lengde' : `Mål ${target} min`}
+                        sx={{ cursor: 'pointer', fontSize: responsive.captionFontSize }}
+                      />
+                    </Tooltip>
+                  );
+                })()}
               </>
             )}
             <Button
@@ -3847,6 +3881,45 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       </Dialog>
 
       {/* New Manuscript Dialog */}
+      <Dialog open={showTargetDialog} onClose={() => setShowTargetDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Mål-lengde</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            Sett ønsket lengde på ferdig film/episode i minutter. Du får et varsel når manuset (~1 side per minutt) avviker mer enn 15 % fra målet.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            type="number"
+            label="Mål-lengde (minutter)"
+            value={targetDraft}
+            onChange={(e) => setTargetDraft(e.target.value)}
+            inputProps={{ min: 0, step: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          {typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 && (
+            <Button
+              color="inherit"
+              onClick={() => { onTargetDurationChange?.(null); setShowTargetDialog(false); }}
+            >
+              Fjern mål
+            </Button>
+          )}
+          <Button onClick={() => setShowTargetDialog(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const parsed = Math.round(Number(targetDraft));
+              onTargetDurationChange?.(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+              setShowTargetDialog(false);
+            }}
+          >
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={showNewManuscriptDialog} onClose={() => setShowNewManuscriptDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nytt Manuskript</DialogTitle>
         <DialogContent>

@@ -12843,6 +12843,19 @@ type RoleRoomProjectWorkspaceState = {
                           navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
                         }
                       }}
+                      targetDurationMinutes={typeof currentProject?.targetDurationMinutes === 'number' ? currentProject.targetDurationMinutes : undefined}
+                      onTargetDurationChange={async (minutes) => {
+                        if (!currentProject) return;
+                        const updated = { ...currentProject, targetDurationMinutes: minutes ?? undefined };
+                        setCurrentProject(updated);
+                        try {
+                          await castingService.saveProject(updated);
+                          toast.showSuccess(minutes ? `Mål-lengde satt til ${minutes} min` : 'Mål-lengde fjernet');
+                        } catch (error) {
+                          console.error('Kunne ikke lagre mål-lengde:', error);
+                          toast.showError('Kunne ikke lagre mål-lengde');
+                        }
+                      }}
                       headerLeftContent={
                         <Box
                           sx={{
