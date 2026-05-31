@@ -819,10 +819,26 @@ export default function ClientGallery({}: ClientGalleryProps) {
           <Avatar sx={{ bgcolor: config.primaryColor, width: 40, height: 40 }}>
             {config.icon}
           </Avatar>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff' }}>
-              {gallery?.projectTitle || 'Fotogalleri'}
-            </Typography>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff' }}>
+                {gallery?.projectTitle || 'Fotogalleri'}
+              </Typography>
+              {gallery?.gallerySettings?.proofingRound > 1 && (
+                <Chip
+                  label={`Runde ${gallery.gallerySettings.proofingRound}`}
+                  size="small"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.65rem',
+                    fontWeight: 600,
+                    bgcolor: 'rgba(255,193,7,0.18)',
+                    color: '#ffc107',
+                    border: '1px solid rgba(255,193,7,0.4)',
+                  }}
+                />
+              )}
+            </Box>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
               Klient: {gallery?.clientName}
             </Typography>

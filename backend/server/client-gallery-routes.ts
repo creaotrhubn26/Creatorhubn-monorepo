@@ -253,48 +253,49 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
-      // Upsert by (gallery, image, client_email) so each repeat click just
-      // toggles the row's selectionType rather than piling up duplicates.
-      await pool.query(
-        `INSERT INTO client_image_selections (
-           gallery_id, image_id, client_email, selection_type, priority, client_notes, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-         ON CONFLICT (gallery_id, image_id, client_email)
-         DO UPDATE SET
-           selection_type = EXCLUDED.selection_type,
-           priority       = EXCLUDED.priority,
-           client_notes   = COALESCE(EXCLUDED.client_notes, client_image_selections.client_notes),
-           updated_at     = NOW()`,
-        [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
-      ).catch(async (err) => {
-        // No unique constraint yet on (gallery_id, image_id, client_email)?
-        // Fall back to a manual upsert so a fresh DB still works.
-        if (String(err?.message || "").includes("ON CONFLICT")) {
-          const existing = await pool.query(
-            `SELECT id FROM client_image_selections
-             WHERE gallery_id = $1 AND image_id = $2 AND client_email = $3 LIMIT 1`,
-            [gallery.id, imageId, clientEmail || gallery.clientEmail],
-          );
-          if (existing.rowCount && existing.rows[0]) {
-            await pool.query(
-              `UPDATE client_image_selections
-               SET selection_type = $1, priority = $2,
-                   client_notes = COALESCE($3, client_notes), updated_at = NOW()
-               WHERE id = $4`,
-              [selectionType, priority, clientNotes, existing.rows[0].id],
-            );
-          } else {
-            await pool.query(
-              `INSERT INTO client_image_selections (
-                 gallery_id, image_id, client_email, selection_type, priority, client_notes
-               ) VALUES ($1, $2, $3, $4, $5, $6)`,
-              [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
-            );
-          }
-          return;
-        }
-        throw err;
-      });
+
+      // Multi-round: hver runde har sin egen selections-rad så Fredrik
+      // kan sammenligne runde 1 vs runde 2. Round leses fra gallery_
+      // settings.proofingRound (default 1, oppdateres av /start-new-round).
+      // Manual upsert keyed på (gallery, image, email, round) for å unngå
+      // ON CONFLICT-constraint som ikke nødvendigvis er installert.
+      const currentRound = Number(
+        (access.settings as any)?.proofingRound ?? 1,
+      ) || 1;
+      try {
+        await pool.query(
+          `ALTER TABLE client_image_selections
+             ADD COLUMN IF NOT EXISTS proofing_round INTEGER DEFAULT 1`,
+        );
+      } catch { /* idempotent */ }
+      const effectiveEmail = clientEmail || gallery.clientEmail;
+      const existing = await pool.query(
+        `SELECT id FROM client_image_selections
+          WHERE gallery_id = $1 AND image_id = $2 AND client_email = $3
+            AND COALESCE(proofing_round, 1) = $4
+          LIMIT 1`,
+        [gallery.id, imageId, effectiveEmail, currentRound],
+      );
+      if (existing.rowCount && existing.rows[0]) {
+        await pool.query(
+          `UPDATE client_image_selections
+             SET selection_type = $1, priority = $2,
+                 client_notes = COALESCE($3, client_notes), updated_at = NOW()
+           WHERE id = $4`,
+          [selectionType, priority, clientNotes, existing.rows[0].id],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO client_image_selections (
+             gallery_id, image_id, client_email, selection_type, priority,
+             client_notes, proofing_round, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+          [
+            gallery.id, imageId, effectiveEmail, selectionType, priority,
+            clientNotes, currentRound,
+          ],
+        );
+      }
 
       // Push a realtime event to the photographer's connected clients
       // (iPad + any open tabs) AND persist to the project change-log
@@ -355,14 +356,35 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
-      const result = await pool.query(
-        `SELECT id, image_id, client_email, selection_type, priority, client_notes, updated_at
-         FROM client_image_selections WHERE gallery_id = $1
-         ORDER BY updated_at DESC`,
-        [gallery.id],
-      );
+      // proofing_round-kolonnen kan mangle på galler-DB-er som aldri
+      // har sett en multi-round flow — bruk COALESCE for å degradere
+      // pent til round=1 hvis kolonnen ikke fins ennå.
+      const currentRound = Number(
+        (access.settings as any)?.proofingRound ?? 1,
+      ) || 1;
+      let result;
+      try {
+        result = await pool.query(
+          `SELECT id, image_id, client_email, selection_type, priority,
+                  client_notes, updated_at,
+                  COALESCE(proofing_round, 1) AS proofing_round
+             FROM client_image_selections
+            WHERE gallery_id = $1
+            ORDER BY updated_at DESC`,
+          [gallery.id],
+        );
+      } catch {
+        // Kolonnen finnes ikke ennå — fallback uten den.
+        result = await pool.query(
+          `SELECT id, image_id, client_email, selection_type, priority, client_notes, updated_at
+             FROM client_image_selections WHERE gallery_id = $1
+             ORDER BY updated_at DESC`,
+          [gallery.id],
+        );
+      }
       res.json({
         galleryId: gallery.id,
+        currentRound,
         selections: result.rows.map((r: any) => ({
           id: r.id,
           imageId: r.image_id,
@@ -371,6 +393,7 @@ export function setupClientGalleryRoutes(
           priority: r.priority,
           clientNotes: r.client_notes,
           updatedAt: r.updated_at,
+          proofingRound: Number(r.proofing_round ?? 1) || 1,
         })),
       });
     } catch (error) {
