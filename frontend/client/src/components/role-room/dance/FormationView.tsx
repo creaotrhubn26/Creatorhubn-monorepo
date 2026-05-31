@@ -288,6 +288,48 @@ export const FormationView: React.FC<FormationViewProps> = ({
     };
   }, []);
 
+  // Phase 6c: ResizeObserver gjør Fabric-canvas responsive til container-
+  // bredden. Internal coordinate system holdes på STAGE_WIDTH × STAGE_HEIGHT
+  // (pucks/drag-logikk er uendret) — vi skalerer DOM-size + setZoom slik at
+  // alt rendres pro-rata. Clamp [0.5, 2.0] så pucks ikke blir ubrukelig små
+  // på mobil eller ubrukelig store på 4K-skjermer. Throttlet via requestAnimationFrame.
+  useEffect(() => {
+    const canvasEl = canvasElRef.current;
+    const canvas = fabricRef.current;
+    if (!canvasEl || !canvas) return;
+    const wrapper = canvasEl.parentElement;
+    if (!wrapper) return;
+
+    let rafId: number | null = null;
+    const recompute = (): void => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        const containerWidth = wrapper.clientWidth || STAGE_WIDTH;
+        const targetRatio = Math.max(0.5, Math.min(2, containerWidth / STAGE_WIDTH));
+        const targetWidth = STAGE_WIDTH * targetRatio;
+        const targetHeight = STAGE_HEIGHT * targetRatio;
+        const current = fabricRef.current;
+        if (!current) return;
+        // setDimensions skriver canvas.width/height (DOM) + interne props;
+        // setZoom skalerer rendering-konteksten så objekter holder
+        // relative posisjoner.
+        current.setDimensions({ width: targetWidth, height: targetHeight });
+        current.setZoom(targetRatio);
+        current.requestRenderAll();
+      });
+    };
+
+    recompute(); // initial sync (parent kan endre seg under første render)
+
+    const observer = new ResizeObserver(recompute);
+    observer.observe(wrapper);
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+    };
+  }, []);
+
   // Re-tegn stage-bakgrunn når preset eller snap-grid endres.
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -788,7 +830,11 @@ export const FormationView: React.FC<FormationViewProps> = ({
             boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
             opacity: stageOpacity,
             transition: 'opacity 0.2s',
-            minHeight: STAGE_HEIGHT,
+            // Phase 6c: Box tilpasser seg canvas-størrelsen som
+            // ResizeObserver bestemmer. minWidth = STAGE_WIDTH * 0.5 så
+            // boksen ikke krymper under min-clamp i observer-throttlen.
+            width: '100%',
+            minWidth: STAGE_WIDTH * 0.5,
           }}
         >
           {/* 2D canvas — alltid mountert (Fabric.js krever det), men skjult
