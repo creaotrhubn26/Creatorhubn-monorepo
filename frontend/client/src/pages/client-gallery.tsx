@@ -63,6 +63,8 @@ import {
   Search,
   AccessTime,
   GridView,
+  PlaylistAddCheck,
+  RemoveDone as RemoveDoneIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useClientSession } from '@/contexts/ClientSessionContext';
@@ -803,13 +805,16 @@ export default function ClientGallery({}: ClientGalleryProps) {
         display: 'flex',
     }}
     >
-      {/* Left Sidebar - Universal Showcase Design */}
+      {/* Left Sidebar - Universal Showcase Design.
+          UX-gap #16-fix: skjult på mobile (xs/sm). 280 px sidebar tok
+          75% av iPhone-viewporten og brakk hele galleriet. Mobile bruker
+          MobileSelectionBar nederst i stedet — se slutten av JSX. */}
       <Box
         sx={{
-          width: 280,
+          width: { xs: 0, md: 280 },
           bgcolor: '#0f1419',
           borderRight: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
+          display: { xs: 'none', md: 'flex' },
           flexDirection: 'column',
           p: 2,
       }}
@@ -893,17 +898,21 @@ export default function ClientGallery({}: ClientGalleryProps) {
             </Box>
 
             {selectedImages.size > (gallery?.gallerySettings?.contractedImages || 0) && (
-              <Typography
-                variant="caption"
+              <Stack
+                direction="row"
+                spacing={0.5}
                 sx={{
+                  alignItems: 'center',
                   color: '#ffa726',
-                  display: 'block',
                   mt: 1,
                   fontStyle: 'italic',
-              }}
+                }}
               >
-                💝 Du har funnet ekstra fine minner!
-              </Typography>
+                <Favorite sx={{ fontSize: 14 }} />
+                <Typography variant="caption" sx={{ color: 'inherit', fontStyle: 'inherit' }}>
+                  Du har funnet ekstra fine minner!
+                </Typography>
+              </Stack>
             )}
           </Box>
 
@@ -2356,6 +2365,88 @@ export default function ClientGallery({}: ClientGalleryProps) {
           clientName={gallery?.clientName || null}
         />
       )}
+
+      {/*
+        UX-gap #16-fix: mobile selection-bar.
+        Sidebar er skjult på xs (se Box-en med 'Left Sidebar'-komment).
+        Denne fixed-bottom-bar gir mobile-bruker de viktigste hand-
+        lingene uten å ta over hele skjermen. Vises kun på xs.
+        Bruker MUI-ikoner (Checklist, Send) per feedback-memory
+        'no-emojis-use-mui-icons'.
+      */}
+      <Paper
+        elevation={8}
+        sx={{
+          display: { xs: 'flex', md: 'none' },
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1200,
+          bgcolor: 'rgba(15, 20, 25, 0.96)',
+          backdropFilter: 'blur(12px)',
+          borderTop: '1px solid rgba(255,255,255,0.12)',
+          color: '#fff',
+          flexDirection: 'column',
+          gap: 1,
+          p: 1.5,
+          pb: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+        }}
+      >
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+        >
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+            {selectedImages.size === 0
+              ? 'Ingen valgt ennå'
+              : `${selectedImages.size} valgt${
+                  (gallery?.gallerySettings?.contractedImages ?? 0) > 0
+                    ? ` av ${gallery?.gallerySettings?.contractedImages} inkluderte`
+                    : ''
+                }`}
+          </Typography>
+          {images.length > 0 && (
+            <Button
+              variant="text"
+              size="small"
+              startIcon={
+                selectedImages.size === images.length
+                  ? <RemoveDoneIcon sx={{ fontSize: 18 }} />
+                  : <PlaylistAddCheck sx={{ fontSize: 18 }} />
+              }
+              onClick={() => {
+                if (selectedImages.size === images.length) {
+                  setSelectedImages(new Set());
+                } else {
+                  setSelectedImages(new Set(images.map((img: GalleryImage) => img.id)));
+                }
+              }}
+              sx={{ color: 'rgba(255,255,255,0.85)' }}
+            >
+              {selectedImages.size === images.length ? 'Fjern alle' : `Velg alle (${images.length})`}
+            </Button>
+          )}
+        </Stack>
+        <Button
+          variant="contained"
+          fullWidth
+          size="large"
+          startIcon={<Send />}
+          disabled={selectedImages.size === 0 || submitSelectionMutation.isPending}
+          onClick={() => setShowSubmitDialog(true)}
+          sx={{
+            bgcolor: config.primaryColor,
+            color: 'white',
+            py: 1.25,
+            '&:hover': { bgcolor: alpha(config.primaryColor, 0.85) },
+            '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
+          }}
+        >
+          {selectedImages.size === 0 ? 'Velg bilder først' : 'Send valg'}
+        </Button>
+      </Paper>
     </Box>
   );
 }
