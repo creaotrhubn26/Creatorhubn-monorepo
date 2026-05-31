@@ -51,7 +51,7 @@ import {
   Undo as UndoIcon,
   Redo as RedoIcon,
 } from '@mui/icons-material';
-import { ToggleButton, ToggleButtonGroup, MenuItem } from '@mui/material';
+import { ToggleButton, ToggleButtonGroup, MenuItem, Autocomplete } from '@mui/material';
 import { Canvas, Circle, Rect, Textbox, Line, Group, FabricImage } from 'fabric';
 import {
   DEMO_DANCERS,
@@ -1539,30 +1539,51 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
         ))}
       </Stack>
 
-      {/* F5-6: Template-dropdown */}
-      <TextField
-        select
+      {/* Spor C: FORMATION som Autocomplete-Combobox matching DanceFlow-
+          mockup. Type-ahead viser FORMATION_TEMPLATES (V-Shape, Circle,
+          Line, Diamond, Split Groups). Velger fra liste → applyTemplate +
+          sett navn. Fri tekst → bare oppdater navn. */}
+      <Autocomplete
         size="small"
-        fullWidth
-        label="Template"
-        value=""
-        onChange={(e) => applyTemplate(e.target.value)}
-        SelectProps={{ displayEmpty: true }}
-        inputProps={{ 'data-testid': 'formation-template-select' }}
-        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
-      >
-        <MenuItem value="" sx={{ fontSize: 11, color: '#6b7280' }}>— velg template —</MenuItem>
-        {FORMATION_TEMPLATES.map((t) => (
-          <MenuItem key={t.id} value={t.id} sx={{ fontSize: 11 }}>{t.label}</MenuItem>
-        ))}
-      </TextField>
-      <TextField
-        size="small"
-        fullWidth
+        freeSolo
+        options={FORMATION_TEMPLATES}
+        getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.label)}
         value={formation.name}
-        onChange={(e) => onChange({ name: e.target.value })}
-        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 12, color: '#fff', fontWeight: 600 } }}
+        inputValue={formation.name}
+        onInputChange={(_, value) => onChange({ name: value })}
+        onChange={(_, value) => {
+          if (typeof value === 'string') {
+            onChange({ name: value });
+          } else if (value) {
+            // Mockup-paritet: velger fra dropdown anvender BÅDE template-
+            // posisjoner OG setter navnet.
+            applyTemplate(value.id);
+            onChange({ name: value.label });
+          }
+        }}
         data-testid="formation-details-name"
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Formation"
+            placeholder="V-Shape, Circle, eller skriv eget navn…"
+            sx={{
+              '& .MuiInputBase-input': { fontSize: 12, color: '#fff', fontWeight: 600 },
+              '& .MuiInputLabel-root': { fontSize: 11 },
+            }}
+          />
+        )}
+        renderOption={(props, option) => (
+          <MenuItem {...props} key={option.id} sx={{ fontSize: 12 }}>
+            <Box>
+              <Box sx={{ fontWeight: 600 }}>{option.label}</Box>
+              <Box sx={{ fontSize: 9, color: '#9ca3af' }}>
+                Anvender mal på {formation.positions.length} dansere
+              </Box>
+            </Box>
+          </MenuItem>
+        )}
+        sx={{ mb: 1 }}
       />
       {/* Lag D-1: HH:MM:SS:FF tids-inputs (DanceFlow-mockup-paritet).
           TimecodeInput holder lokal state mens brukeren skriver — committer
