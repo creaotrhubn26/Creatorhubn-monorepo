@@ -20,8 +20,12 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = path.resolve(process.cwd());
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// scripts/ er i backend/scripts/, så repo-root er to nivåer opp
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const VIDEO_DIR = path.resolve(REPO_ROOT, 'recordings');
 const ENV_FILE = path.resolve(REPO_ROOT, 'backend/.env.leads-retrieval.demo.local');
 const DEFAULT_APP_BASE = 'https://creatorhub-backend-rtbl.onrender.com';
@@ -160,9 +164,6 @@ async function removeSpotlight(page) {
 }
 
 async function runDemo(page, env) {
-  if (!env.DEMO_PAGE_ID) throw new Error('DEMO_PAGE_ID required');
-  if (!env.DEMO_PAGE_ACCESS_TOKEN) throw new Error('DEMO_PAGE_ACCESS_TOKEN required');
-
   const pageUrl = appendBypassToken(
     `${env.APP_BASE_URL}/admin/leads-retrieval-app-review-demo`,
     env.WHATSAPP_DEMO_BYPASS_TOKEN,
@@ -211,13 +212,22 @@ async function runDemo(page, env) {
   await showTitleCard(page, {
     subtitle: 'The Role Room · Meta App Review',
     title: 'leads_retrieval — End of Demo',
-    body: 'Page admin grants leads_retrieval explicitly. The Role Room polls form-leads at a polite cadence and writes each lead into the production-team\\'s casting pipeline. Field_data values include name/email/phone the candidate submitted to the Lead Ad — only the Page admin\\'s own form data, never another Page\\'s.',
+    body: `Page admin grants leads_retrieval explicitly. The Role Room polls form-leads at a polite cadence and writes each lead into the production-team's casting pipeline. Field_data values include name/email/phone the candidate submitted to the Lead Ad — only the Page admin's own form data, never another Page's.`,
   });
   await beat(page, 3500);
 }
 
 async function main() {
   const env = await loadEnv();
+  // Tidlig env-validering — unngår å lekke browser-prosesser ved konfig-feil
+  const missing = [];
+  if (!env.DEMO_PAGE_ID) missing.push('DEMO_PAGE_ID');
+  if (!env.DEMO_PAGE_ACCESS_TOKEN) missing.push('DEMO_PAGE_ACCESS_TOKEN');
+  if (missing.length) {
+    console.error(`Error: required env missing: ${missing.join(', ')}`);
+    console.error(`Set them via process.env or backend/.env.<slug>.demo.local`);
+    process.exit(1);
+  }
   await ensureDir(VIDEO_DIR);
   log(`Recording to ${VIDEO_DIR}`);
   const browser = await chromium.launch({
