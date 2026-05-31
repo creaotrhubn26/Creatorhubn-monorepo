@@ -24,6 +24,9 @@ Andre runde (Fase 3/4-rester):
 - ✅ Eksport-oppsummering — JSON-eksport viser antall akter/scener/karakterer/revisjoner.
 - ✅ FirstTimeTour — Fountain-guiden auto-åpnes første gang i editoren (localStorage-guard).
 
+Tredje runde:
+- ✅ **Levering-tab for produksjonsteam** — la til `PRODUCER_REVIEWS_TAB_INDEX` («Godkjenning») + `PRODUCER_EXPORT_TAB_INDEX` («Levering») i produksjonsteamets `visibleTabValues`. Panelene + labels fantes allerede; var bare ikke synlige for modusen. **Fikset også Fix 6**: «Send til godkjenning» navigerte til en tab som ikke var synlig for produksjonsteam → effekten på `:4026` resatte den (bounce). Nå reell.
+
 **Bevisst utsatt (arkitektonisk/data-modell — skal ikke hackes):**
 - **Fix 13 — scene-reorder + beat↔scene source-of-truth.** Scenene i navigatoren *parses fra Fountain-tekst* (eller konverteres fra DB-scener). Reorder betyr å skrive om manus-teksten, og det finnes to konkurrerende source-of-truth-modeller. Krever en eksplisitt arkitektur-beslutning før implementering.
 - **Fix 12 — inline kommentar-anker-UI** i editoren (markører ved linjer + tråder). Backend er nå klart; editor-UI er en større feature.

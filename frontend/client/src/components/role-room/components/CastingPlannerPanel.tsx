@@ -4019,6 +4019,11 @@ type RoleRoomProjectWorkspaceState = {
       TEAM_TAB_INDEX,
       EQUIPMENT_TAB_INDEX,
       ...(canViewProducerEconomy ? [PRODUCER_ECONOMY_TAB_INDEX] : []),
+      // Produksjonsteam trenger også godkjenning- + leveringsflatene, ellers
+      // har de ingen vei fra manus til klient-godkjenning/levering (panelene
+      // og labels finnes allerede, var bare ikke synlige for denne modusen).
+      PRODUCER_REVIEWS_TAB_INDEX,
+      PRODUCER_EXPORT_TAB_INDEX,
       LIVE_SET_TAB_INDEX,
     ];
   }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode]);
