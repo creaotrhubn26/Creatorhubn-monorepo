@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import * as schema from "../migrations/schema.js";
+import { startOrchestrationWorker } from "./orchestration-worker.js";
 
 export interface OrchestrationRoutesDeps {
   app: express.Application;
@@ -19,6 +20,14 @@ export function setupOrchestrationRoutes(
   // Custom workflow storage forblir in-memory for nå (fallback for
   // editingWorkflows-tabellen håndteres lenger ned).
   const customWorkflows: Record<string, any[]> = {};
+
+  // Start in-process orchestration-worker som plukker køede runs.
+  // Workeren kjører action-sekvensen for hver: ekte BREG-validering
+  // gjør et faktisk API-kall; andre actions markeres `not_implemented`
+  // i failed_actions slik at Fredrik ser ærlig hva som skjedde.
+  if (process.env.ORCHESTRATION_WORKER_DISABLED !== "1") {
+    startOrchestrationWorker(pool);
+  }
 
   // Helper: mark eldre køede runs som 'expired' når de når expires_at.
   // Kjøres ved hver status-query for å holde data ærlig uten egen cron.
