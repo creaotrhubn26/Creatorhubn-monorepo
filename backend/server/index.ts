@@ -389,6 +389,7 @@ import {
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupWhatsNewRoutes } from "./whats-new-routes";
+import { setupMarketingPosterRoutes } from "./marketing-poster-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
@@ -17881,6 +17882,15 @@ setupAdminInvestorsRoutes({
 
 // ── "Hva er nytt" per Role Room-modus — public GET + admin CRUD
 setupWhatsNewRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── Marketing-feed-posters (4:5 PNG-assets) — admin CRUD
+setupMarketingPosterRoutes({
   app,
   pool,
   getActiveSessionFromRequest,

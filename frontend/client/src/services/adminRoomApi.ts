@@ -1839,3 +1839,77 @@ export const whatsNewApi = {
     await jsonFetch(`/whats-new/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };
+
+
+// ─────────────────────────────────────────────────────────
+// Marketing-posters (4:5 Admin Room PNG-assets)
+// ─────────────────────────────────────────────────────────
+
+export interface MarketingPoster {
+  id: string;
+  title: string;
+  templateId: string;
+  theme: string;
+  variant: string;
+  fields: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketingPosterInput {
+  title?: string;
+  templateId?: string;
+  theme?: string;
+  variant?: string;
+  fields?: Record<string, unknown>;
+}
+
+export const marketingPostersApi = {
+  list: async (templateId?: string): Promise<MarketingPoster[]> => {
+    const q = templateId ? `?templateId=${encodeURIComponent(templateId)}` : '';
+    const data = await jsonFetch<{ items: MarketingPoster[] }>(`/marketing-posters${q}`);
+    // Skjul "_default_*"-rader fra åpne-listen — disse er kun for default-templating
+    return data.items.filter((p) => !p.id.startsWith('_default_'));
+  },
+  getDefault: async (templateId: string): Promise<MarketingPoster | null> => {
+    const data = await jsonFetch<{ item: MarketingPoster | null }>(
+      `/marketing-posters/default/${encodeURIComponent(templateId)}`,
+    );
+    return data.item;
+  },
+  setDefault: async (templateId: string, input: MarketingPosterInput): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(
+      `/marketing-posters/default/${encodeURIComponent(templateId)}`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  get: async (id: string): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(`/marketing-posters/${encodeURIComponent(id)}`);
+    return data.item;
+  },
+  create: async (input: MarketingPosterInput): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>('/marketing-posters', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patch: async (id: string, input: MarketingPosterInput): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(`/marketing-posters/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  duplicate: async (id: string): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(`/marketing-posters/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/marketing-posters/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
