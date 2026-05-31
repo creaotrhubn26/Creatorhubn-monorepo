@@ -30,6 +30,7 @@ import {
   listFormations,
   patchFormation,
   replaceFormations,
+  FormationVersionConflictError,
   type FormationInput,
   type FormationPatch,
 } from './dance-formation-service.js';
@@ -115,6 +116,8 @@ const createBodySchema = z.object({
   transitionPaths: transitionPathsSchema.optional(),
   // Migrasjon 214 (G14)
   locked: z.boolean().optional(),
+  // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
+  expectedVersion: z.number().int().min(1).optional(),
 });
 
 const patchBodySchema = z.object({
@@ -132,6 +135,8 @@ const patchBodySchema = z.object({
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
   locked: z.boolean().optional(),
+  // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
+  expectedVersion: z.number().int().min(1).optional(),
 });
 
 const replaceItemSchema = z.object({
@@ -149,6 +154,8 @@ const replaceItemSchema = z.object({
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
   locked: z.boolean().optional(),
+  // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
+  expectedVersion: z.number().int().min(1).optional(),
 });
 
 const replaceBodySchema = z.object({
@@ -260,13 +267,28 @@ export function createDanceFormationRouter(
       return;
     }
     const { userId } = req as AuthedRequest;
-    const written = await replaceFormations(
-      pool,
-      userId,
-      parsed.data.projectId ?? null,
-      parsed.data.formations,
-    );
-    res.json({ success: true, data: written });
+    try {
+      const written = await replaceFormations(
+        pool,
+        userId,
+        parsed.data.projectId ?? null,
+        parsed.data.formations,
+      );
+      res.json({ success: true, data: written });
+    } catch (err) {
+      // A2: version-konflikt → 409 så klient kan reconcile
+      if (err instanceof FormationVersionConflictError) {
+        res.status(409).json({
+          error: 'version_conflict',
+          formationId: err.id,
+          serverVersion: err.serverVersion,
+          clientVersion: err.clientVersion,
+          message: 'En annen bruker eller fane har endret denne formasjonen. Last på nytt for å se siste versjon.',
+        });
+        return;
+      }
+      throw err;
+    }
   });
 
   return router;

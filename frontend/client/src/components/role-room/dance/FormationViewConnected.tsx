@@ -31,6 +31,7 @@ import {
   listFormations,
   replaceFormations,
   recordToFormation,
+  FormationVersionConflictError,
   type FormationRecord,
 } from './danceFormationService';
 import {
@@ -210,6 +211,12 @@ export function FormationViewConnected({
         transitionPaths: f.transitionPaths ?? [],
         // Migrasjon 214 (G14)
         locked: f.locked === true,
+        // Migrasjon 215 (A2): send forventet version slik at backend kan
+        // oppdage konkurrerende edits (returnerer 409). Bare når vi har en
+        // server-tildelt version (ikke for nye f-tmp-* som backend genererer).
+        expectedVersion: !f.id.startsWith('f-tmp-') && typeof f.version === 'number'
+          ? f.version
+          : undefined,
       },
     }));
     try {
@@ -223,24 +230,48 @@ export function FormationViewConnected({
         setTimeout(() => setSaveStatus('idle'), 1800);
         // G_1: bygg mapping client-temp-id → server-assigned-id og bruk
         // applyIdMapping så vi ikke sender de samme f-tmp-* på neste tur.
-        const mapping = new Map<string, string>();
+        // A2: bumpede versions må også reflekteres lokalt — bygg version-map.
+        const idMapping = new Map<string, string>();
+        const versionMapping = new Map<string, number>();
         sentInputs.forEach((s, i) => {
           const serverRecord = written[i];
           if (!serverRecord) return;
           if (s.clientId.startsWith('f-tmp-') && serverRecord.id !== s.clientId) {
-            mapping.set(s.clientId, serverRecord.id);
+            idMapping.set(s.clientId, serverRecord.id);
           }
+          // For ALLE records (både nye og eksisterende): oppdater version
+          versionMapping.set(serverRecord.id, serverRecord.version);
         });
-        if (mapping.size > 0) {
+        if (idMapping.size > 0 || versionMapping.size > 0) {
           // Flagger at neste handleFormationsChange er ID-reconcile-only,
           // ikke en brukerendring som krever ny save.
           skipNextChangeRef.current = true;
-          viewRef.current?.applyIdMapping(mapping);
+          viewRef.current?.applyIdMapping(idMapping);
+          viewRef.current?.applyVersionMapping(versionMapping);
         }
       }
     } catch (err) {
-      setSaveStatus('error');
-      setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+      // A2: version-konflikt → spesiell håndtering. Refresh state fra
+      // backend så brukeren ser siste versjon. Vi varsler først, brukeren
+      // klikker for å reload (forhindrer å overskrive bevisst lokal-state).
+      if (err instanceof FormationVersionConflictError) {
+        setSaveStatus('error');
+        setSaveError(
+          'Konflikt: En annen fane eller bruker har endret denne formasjonen. Last på nytt for å se siste versjon.',
+        );
+        // Dispatch toast som DanceWorkspace lytter på
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('dance:toast', {
+            detail: {
+              message: 'Konflikt — endring fra en annen fane. Last på nytt for å fortsette.',
+              kind: 'error',
+            },
+          }));
+        }
+      } else {
+        setSaveStatus('error');
+        setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+      }
     } finally {
       inFlightRef.current = false;
       // Hvis brukeren rakk å gjøre flere endringer mens vi var in-flight,

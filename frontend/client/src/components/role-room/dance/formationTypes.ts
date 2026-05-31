@@ -72,11 +72,16 @@ export interface Formation {
   transitionPaths?: ReadonlyArray<DancerTransitionPath>;
   /**
    * Workflow-audit G14: lås mot uhellsendringer. Pucks kan ikke flyttes
-   * og delete-handler refuserer. Foreløpig client-side state (lagres ikke
-   * i backend før migration får et locked-felt — sjekkboksen gjelder
-   * sesjonen og resetter ved reload).
+   * og delete-handler refuserer. Migrasjon 214 persisterer feltet.
    */
   locked?: boolean;
+  /**
+   * Migrasjon 215 (audit A2): optimistic concurrency-version. Bumpes ved
+   * hver UPDATE på server. Klient sender expectedVersion i save så
+   * concurrent edits oppdager konflikt (409) i stedet for stillegått siste-
+   * skriver-vinner.
+   */
+  version?: number;
 }
 
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────

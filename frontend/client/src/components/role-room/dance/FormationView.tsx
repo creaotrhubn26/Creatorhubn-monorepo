@@ -128,6 +128,8 @@ export interface FormationViewProps {
  */
 export interface FormationViewHandle {
   applyIdMapping: (mapping: Map<string, string>) => void;
+  /** A2: oppdater version-counter etter save. ID-keyed (post-reconcile). */
+  applyVersionMapping: (mapping: Map<string, number>) => void;
 }
 
 // ─── Komponent ────────────────────────────────────────────────────────────
@@ -202,6 +204,15 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
       }));
       // Hvis aktiv formasjon hadde en temp-ID, oppdater referansen.
       setActiveFormationId((cur) => (cur && mapping.has(cur) ? mapping.get(cur) ?? cur : cur));
+      setTimeout(() => { skipHistoryRef.current = false; }, 0);
+    },
+    applyVersionMapping: (mapping: Map<string, number>): void => {
+      if (mapping.size === 0) return;
+      skipHistoryRef.current = true;
+      _setFormations((prev) => prev.map((f) => {
+        const next = mapping.get(f.id);
+        return next != null ? { ...f, version: next } : f;
+      }));
       setTimeout(() => { skipHistoryRef.current = false; }, 0);
     },
   }), []);

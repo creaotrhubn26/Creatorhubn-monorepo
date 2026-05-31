@@ -29,8 +29,22 @@ export interface FormationRecord {
   transitionPaths: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
   /** Migrasjon 214 (G14): låst formasjon — pucks ikke draggable, delete refuserer. */
   locked: boolean;
+  /** Migrasjon 215 (A2): optimistic concurrency. */
+  version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A2: 409-conflict-feil fra backend. Klient kan reagere ved å reload-e. */
+export class FormationVersionConflictError extends Error {
+  constructor(
+    public readonly formationId: string,
+    public readonly serverVersion: number,
+    public readonly clientVersion: number,
+  ) {
+    super(`Conflict på formasjon ${formationId}: server v${serverVersion} vs klient v${clientVersion}`);
+    this.name = 'FormationVersionConflictError';
+  }
 }
 
 export interface FormationInput {
@@ -128,6 +142,8 @@ export async function replaceFormations(input: {
     transitionPaths?: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
     /** Migrasjon 214 (G14). */
     locked?: boolean;
+    /** Migrasjon 215 (A2): optimistic-concurrency-check. */
+    expectedVersion?: number;
   }>;
 }): Promise<FormationRecord[]> {
   const res = await fetch(BASE, {
@@ -136,6 +152,20 @@ export async function replaceFormations(input: {
     credentials: 'include',
     body: JSON.stringify(input),
   });
+  // A2: 409 = version-konflikt. Kast spesial-feil så caller kan distinguere.
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      formationId?: string;
+      serverVersion?: number;
+      clientVersion?: number;
+    };
+    throw new FormationVersionConflictError(
+      body.formationId ?? '(ukjent)',
+      typeof body.serverVersion === 'number' ? body.serverVersion : 0,
+      typeof body.clientVersion === 'number' ? body.clientVersion : 0,
+    );
+  }
   const body = await readJson<{ success: boolean; data: FormationRecord[] }>(res);
   return body.data;
 }
@@ -156,6 +186,7 @@ export function recordToFormation(r: FormationRecord): Formation {
     tags: r.tags ?? [],
     transitionPaths: r.transitionPaths ?? [],
     locked: r.locked === true,
+    version: typeof r.version === 'number' ? r.version : 1,
   };
 }
 

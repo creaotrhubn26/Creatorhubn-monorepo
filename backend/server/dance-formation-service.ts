@@ -38,6 +38,13 @@ export interface FormationInput {
   transitionPaths?: DancerTransitionPath[];
   /** Migrasjon 214 (G14): lock-feltet — pucks ikke draggable, delete refuserer. */
   locked?: boolean;
+  /**
+   * Migrasjon 215 (A2): optimistic concurrency-control. Klient kan sende
+   * version-tallet de leste; UPDATE refuseres (FormationVersionConflictError)
+   * hvis server-version har bevegd seg. Når undefined hopper vi over
+   * conflict-check og kjører som siste-skriver-vinner (bakover-kompatibel).
+   */
+  expectedVersion?: number;
 }
 
 export interface FormationPatch extends Partial<FormationInput> {}
@@ -60,8 +67,18 @@ export interface FormationRecord {
   transitionPaths: DancerTransitionPath[];
   /** Migrasjon 214 (G14). */
   locked: boolean;
+  /** Migrasjon 215 (A2): optimistic concurrency. Bumpes ved hver UPDATE. */
+  version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A2: spesial-feil for å skille concurrent-conflict fra andre feil. */
+export class FormationVersionConflictError extends Error {
+  constructor(public readonly id: string, public readonly serverVersion: number, public readonly clientVersion: number) {
+    super(`Version conflict on formation ${id}: server=${serverVersion} client=${clientVersion}`);
+    this.name = 'FormationVersionConflictError';
+  }
 }
 
 // ─── Mapping ────────────────────────────────────────────────────────────
@@ -155,6 +172,8 @@ function mapRow(row: Record<string, unknown>): FormationRecord {
     // Migrasjon 214: defaultes til false. Eldre records (pre-migration) som
     // returnerer NULL/undefined får automatisk false via JS-coercion.
     locked: row.locked === true,
+    // Migrasjon 215 (A2): version-counter. Defaultes til 1 for kompabilitet.
+    version: asNumberOr(row.version, 1),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -381,7 +400,10 @@ export async function replaceFormations(
       const order = f.displayOrder ?? i;
 
       if (existingIds.has(id)) {
-        const { rows } = await client.query(
+        // A2: hvis expectedVersion er satt, bruk CAS-pattern. WHERE-clausen
+        // sjekker version = expected; rowCount = 0 betyr conflict.
+        const useCAS = typeof f.expectedVersion === 'number';
+        const { rows, rowCount } = await client.query(
           `UPDATE dance_formation SET
              label = $3, notes = $4,
              stage_width_m = $5, stage_depth_m = $6,
@@ -395,27 +417,57 @@ export async function replaceFormations(
              tags = $14,
              transition_paths = $15,
              locked = $16,
+             version = version + 1,
              updated_at = now()
            WHERE owner_user_id = $1 AND id = $2
+             ${useCAS ? 'AND version = $17' : ''}
            RETURNING *`,
-          [
-            ownerUserId, id,
-            f.label,
-            f.notes ?? null,
-            f.stageWidthM ?? 12.0,
-            f.stageDepthM ?? 8.0,
-            JSON.stringify(f.positions ?? []),
-            f.transitionFromId ?? null,
-            order,
-            projectId,
-            f.startSec ?? null,
-            f.endSec ?? null,
-            f.transitionNote ?? null,
-            JSON.stringify(f.tags ?? []),
-            JSON.stringify(f.transitionPaths ?? []),
-            f.locked === true,
-          ],
+          useCAS
+            ? [
+                ownerUserId, id,
+                f.label,
+                f.notes ?? null,
+                f.stageWidthM ?? 12.0,
+                f.stageDepthM ?? 8.0,
+                JSON.stringify(f.positions ?? []),
+                f.transitionFromId ?? null,
+                order,
+                projectId,
+                f.startSec ?? null,
+                f.endSec ?? null,
+                f.transitionNote ?? null,
+                JSON.stringify(f.tags ?? []),
+                JSON.stringify(f.transitionPaths ?? []),
+                f.locked === true,
+                f.expectedVersion,
+              ]
+            : [
+                ownerUserId, id,
+                f.label,
+                f.notes ?? null,
+                f.stageWidthM ?? 12.0,
+                f.stageDepthM ?? 8.0,
+                JSON.stringify(f.positions ?? []),
+                f.transitionFromId ?? null,
+                order,
+                projectId,
+                f.startSec ?? null,
+                f.endSec ?? null,
+                f.transitionNote ?? null,
+                JSON.stringify(f.tags ?? []),
+                JSON.stringify(f.transitionPaths ?? []),
+                f.locked === true,
+              ],
         );
+        if ((rowCount ?? 0) === 0 && useCAS) {
+          // Conflict: server har annen versjon enn klient forventet
+          const { rows: cur } = await client.query(
+            `SELECT version FROM dance_formation WHERE owner_user_id = $1 AND id = $2`,
+            [ownerUserId, id],
+          );
+          const serverVersion = cur.length > 0 ? asNumberOr(cur[0].version, 0) : 0;
+          throw new FormationVersionConflictError(id, serverVersion, f.expectedVersion ?? 0);
+        }
         written.push(mapRow(rows[0]));
       } else {
         const { rows } = await client.query(
