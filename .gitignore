@@ -78,6 +78,7 @@ Frameworks/
 .vercel/
 .npm-cache/
 .playwright-cli/
+.playwright-mcp/
 frontend/.playwright-cli/
 frontend/playwright-report/
 frontend/test-results/
