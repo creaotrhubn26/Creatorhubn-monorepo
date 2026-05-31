@@ -132,3 +132,96 @@ test('producer timeline-mutasjon køes offline og replayes ved reconnect', async
   // Replay skal ha sendt POSTet på nytt (totalt 2: ett offline-forsøk + ett replay).
   expect(timelinePostCount).toBe(2);
 });
+
+test('review opprettet + besluttet offline replayes i rekkefølge med id-remapping', async ({ page }) => {
+  let offline = true;
+  const reviewPosts: Array<{ url: string; method: string }> = [];
+  let createdRealReviewId = '';
+
+  await page.route('**/api/role-room/projects/**/producer/reviews**', async (route) => {
+    const request = route.request();
+    const url = request.url();
+    const method = request.method();
+    if (method === 'POST') reviewPosts.push({ url, method });
+
+    if (offline) {
+      return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'auth_required' }) });
+    }
+    // Online: opprettelse av review returnerer en ekte id; decision returnerer oppdatert review.
+    if (method === 'POST' && /\/producer\/reviews$/.test(new URL(url).pathname)) {
+      createdRealReviewId = 'real-review-1';
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ review: { id: createdRealReviewId, project_id: PROJECT_ID, review_type: 'storyboard', title: 'Klientgodkjenning', status: 'pending' } }) });
+    }
+    if (method === 'POST' && /\/decision$/.test(new URL(url).pathname)) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ review: { id: createdRealReviewId, project_id: PROJECT_ID, review_type: 'storyboard', title: 'Klientgodkjenning', status: 'approved' } }) });
+    }
+    // GET reviews
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: createdRealReviewId ? [{ id: createdRealReviewId, project_id: PROJECT_ID, review_type: 'storyboard', title: 'Klientgodkjenning', status: 'approved' }] : [] }) });
+  });
+  await page.route('**/api/settings**', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"auth_required"}' }));
+  await page.route('**/api/casting/**', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"auth_required"}' }));
+
+  await seedAuth(page);
+  await page.goto(HARNESS, { waitUntil: 'load', timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Nytt prosjekt' })).toBeVisible({ timeout: 30_000 });
+
+  // OFFLINE: opprett review, deretter sett beslutning på den (refererer lokal id).
+  const offlineReview = await page.evaluate(async ({ moduleUrl, projectId }) => {
+    const mod = await import(/* @vite-ignore */ moduleUrl) as {
+      producerWorkflowService: {
+        createReview: (p: string, payload: Record<string, unknown>) => Promise<{ id: string }>;
+        setReviewDecision: (p: string, reviewId: string, payload: Record<string, unknown>) => Promise<{ id: string; status: string }>;
+      };
+    };
+    const created = await mod.producerWorkflowService.createReview(projectId, { reviewType: 'storyboard', title: 'Klientgodkjenning' });
+    const decided = await mod.producerWorkflowService.setReviewDecision(projectId, created.id, { decision: 'approved' });
+    return { localId: created.id, decidedStatus: decided.status };
+  }, { moduleUrl: SERVICE_MODULE, projectId: PROJECT_ID });
+
+  expect(offlineReview.localId).toContain('producer-review');
+  expect(offlineReview.decidedStatus).toBe('approved');
+
+  // To køposter: create (med createdLocalId) + decision (endpoint inneholder lokal id).
+  const queuedRaw = await page.evaluate((projectId) => {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && key.includes(projectId) && key.includes('role-room-producer-mutation-queue')) {
+        return window.localStorage.getItem(key);
+      }
+    }
+    return null;
+  }, PROJECT_ID);
+  const queued = JSON.parse(queuedRaw ?? '[]') as Array<{ endpoint: string; method: string; createdLocalId?: string }>;
+  expect(queued.map((q) => `${q.method} ${q.endpoint}`).join(' | ')).toContain('/decision');
+  expect(queued.length).toBe(2);
+  expect(queued[0].createdLocalId).toBe(offlineReview.localId);
+  expect(queued[1].endpoint).toContain(offlineReview.localId); // decision peker på lokal id
+
+  // RECONNECT: en lesning replayer køen. Decision-endepunktets lokale id skal
+  // remappes til den ekte review-id-en fra create-replayet.
+  offline = false;
+  await page.evaluate(async ({ moduleUrl, projectId }) => {
+    const mod = await import(/* @vite-ignore */ moduleUrl) as {
+      producerWorkflowService: { getReviews: (p: string) => Promise<unknown[]> };
+    };
+    await mod.producerWorkflowService.getReviews(projectId);
+  }, { moduleUrl: SERVICE_MODULE, projectId: PROJECT_ID });
+
+  // Decision-POSTet skal ha truffet den EKTE id-en, ikke den lokale.
+  const decisionPost = reviewPosts.find((p) => p.url.includes('/decision'));
+  expect(decisionPost).toBeTruthy();
+  expect(decisionPost?.url).toContain('real-review-1');
+  expect(decisionPost?.url).not.toContain('producer-review-');
+
+  // Køen tømt.
+  const drained = await page.evaluate((projectId) => {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && key.includes(projectId) && key.includes('role-room-producer-mutation-queue')) {
+        return window.localStorage.getItem(key);
+      }
+    }
+    return null;
+  }, PROJECT_ID);
+  expect(drained === null || drained === '[]').toBe(true);
+});

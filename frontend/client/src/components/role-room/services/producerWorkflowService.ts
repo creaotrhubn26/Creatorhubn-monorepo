@@ -1471,23 +1471,39 @@ function extractCreatedId(response: unknown): string | undefined {
 
 async function readMutationQueue(projectId: string): Promise<QueuedProducerMutation[]> {
   const stored = await settingsService.getSetting<QueuedProducerMutation[]>(PRODUCER_MUTATION_QUEUE_NAMESPACE, { projectId });
-  return Array.isArray(stored) ? stored : [];
+  // VIKTIG: returner en KOPI. settingsService.readCache deler ut det cachede
+  // arrayet by reference; muteres det in-place (push) korrumperes cachen, og
+  // setSetting sin dedup (cached === data) hopper over å persistere endringen.
+  return Array.isArray(stored) ? [...stored] : [];
 }
 
 async function writeMutationQueue(projectId: string, queue: QueuedProducerMutation[]): Promise<void> {
   await settingsService.setSetting(PRODUCER_MUTATION_QUEUE_NAMESPACE, queue, { projectId });
 }
 
+// Per-prosjekt mutex så samtidige kø-operasjoner (enqueue + flush, evt. utløst
+// av parallelle reads/effekter) serialiseres. Uten dette kunne et enqueue-write
+// bli overskrevet av en samtidig kø-operasjon (read-modify-write-race).
+const queueLocks = new Map<string, Promise<unknown>>();
+
+function withQueueLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = queueLocks.get(projectId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  // Hold låsen til den nåværende seksjonen er ferdig; svelg feil i lås-kjeden.
+  queueLocks.set(projectId, next.then(() => undefined, () => undefined));
+  return next;
+}
+
 async function enqueueProducerMutation(
   projectId: string,
   entry: Omit<QueuedProducerMutation, 'id' | 'queuedAt'>,
 ): Promise<void> {
-  const queue = await readMutationQueue(projectId);
-  queue.push({ ...entry, id: generateId('producer-mutation'), queuedAt: nowIso() });
-  await writeMutationQueue(projectId, queue);
+  await withQueueLock(projectId, async () => {
+    const queue = await readMutationQueue(projectId);
+    queue.push({ ...entry, id: generateId('producer-mutation'), queuedAt: nowIso() });
+    await writeMutationQueue(projectId, queue);
+  });
 }
-
-const producerFlushInFlight = new Map<string, Promise<void>>();
 
 /**
  * Replay køede mutasjoner i rekkefølge til backend. Stopper (og beholder resten)
@@ -1495,10 +1511,7 @@ const producerFlushInFlight = new Map<string, Promise<void>>();
  * remappes til ekte backend-id-er i påfølgende posters endpoint.
  */
 async function flushProducerMutationQueue(projectId: string): Promise<void> {
-  const existing = producerFlushInFlight.get(projectId);
-  if (existing) return existing;
-
-  const run = (async () => {
+  await withQueueLock(projectId, async () => {
     let queue = await readMutationQueue(projectId);
     if (queue.length === 0) return;
 
@@ -1532,14 +1545,7 @@ async function flushProducerMutationQueue(projectId: string): Promise<void> {
       queue = queue.slice(1);
       await writeMutationQueue(projectId, queue);
     }
-  })();
-
-  producerFlushInFlight.set(projectId, run);
-  try {
-    await run;
-  } finally {
-    producerFlushInFlight.delete(projectId);
-  }
+  });
 }
 
 /**
@@ -3565,19 +3571,37 @@ export const producerWorkflowService = {
   },
 
   async createReview(projectId: string, payload: CreateProducerReviewInput): Promise<ProducerClientReview> {
-    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
+    const localId = generateId('producer-review');
+    const body = {
+      reviewType: payload.reviewType,
+      title: payload.title,
+      description: payload.description ?? null,
+      targetEntityType: payload.targetEntityType ?? null,
+      targetEntityId: payload.targetEntityId ?? null,
+      dueAt: payload.dueAt ?? null,
+      metadata: payload.metadata ?? {},
+    };
+    const created = await runProducerMutation<ProducerClientReview>({
+      projectId,
+      domain: 'reviews',
       method: 'POST',
-      body: JSON.stringify({
-        reviewType: payload.reviewType,
-        title: payload.title,
-        description: payload.description ?? null,
-        targetEntityType: payload.targetEntityType ?? null,
-        targetEntityId: payload.targetEntityId ?? null,
-        dueAt: payload.dueAt ?? null,
-        metadata: payload.metadata ?? {},
-      }),
+      endpoint: `/projects/${projectId}/producer/reviews`,
+      body,
+      createdLocalId: localId,
+      parse: (response) => normalizeReview(asRecord(response).review, projectId),
+      optimistic: async () => {
+        const optimisticReview = normalizeReview(
+          { ...body, id: localId, status: 'pending', comments: [], created_at: nowIso(), updated_at: nowIso() },
+          projectId,
+        );
+        const mirror = await readReviewsMirror(projectId);
+        await writeReviewsMirror(
+          projectId,
+          sortReviews([...mirror.filter((r) => r.id !== optimisticReview.id), optimisticReview]),
+        );
+        return optimisticReview;
+      },
     });
-    const created = normalizeReview(response.review, projectId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
@@ -3593,19 +3617,45 @@ export const producerWorkflowService = {
     reviewId: string,
     payload: UpdateProducerReviewInput,
   ): Promise<ProducerClientReview> {
-    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
+    const body = buildDefinedBody([
+      ['reviewType', payload.reviewType],
+      ['title', payload.title],
+      ['description', payload.description],
+      ['targetEntityType', payload.targetEntityType],
+      ['targetEntityId', payload.targetEntityId],
+      ['dueAt', payload.dueAt],
+      ['metadata', payload.metadata],
+    ]);
+    const updated = await runProducerMutation<ProducerClientReview>({
+      projectId,
+      domain: 'reviews',
       method: 'PATCH',
-      body: JSON.stringify(buildDefinedBody([
-        ['reviewType', payload.reviewType],
-        ['title', payload.title],
-        ['description', payload.description],
-        ['targetEntityType', payload.targetEntityType],
-        ['targetEntityId', payload.targetEntityId],
-        ['dueAt', payload.dueAt],
-        ['metadata', payload.metadata],
-      ])),
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}`,
+      body,
+      parse: (response) => normalizeReview(asRecord(response).review, projectId),
+      optimistic: async () => {
+        const mirror = await readReviewsMirror(projectId);
+        const existing = mirror.find((r) => r.id === reviewId);
+        const snakePatch = buildDefinedBody([
+          ['review_type', payload.reviewType],
+          ['title', payload.title],
+          ['description', payload.description],
+          ['target_entity_type', payload.targetEntityType],
+          ['target_entity_id', payload.targetEntityId],
+          ['due_at', payload.dueAt],
+          ['metadata', payload.metadata],
+        ]);
+        const merged = normalizeReview(
+          { ...(existing ?? { id: reviewId }), ...snakePatch, id: reviewId, updated_at: nowIso() },
+          projectId,
+        );
+        await writeReviewsMirror(
+          projectId,
+          sortReviews(existing ? mirror.map((r) => (r.id === reviewId ? merged : r)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const updated = normalizeReview(response.review, projectId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
@@ -3636,8 +3686,16 @@ export const producerWorkflowService = {
 
   async deleteReview(projectId: string, reviewId: string): Promise<void> {
     const timelineItems = await this.getTimeline(projectId);
-    await producerWorkflowRequest<undefined>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
+    await runProducerMutation<void>({
+      projectId,
+      domain: 'reviews',
       method: 'DELETE',
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}`,
+      parse: () => undefined,
+      optimistic: async () => {
+        const mirror = await readReviewsMirror(projectId);
+        await writeReviewsMirror(projectId, mirror.filter((r) => r.id !== reviewId));
+      },
     });
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     const linkedTimelineItems = timelineItems.filter((item) => isReviewTimelineItem(item, reviewId));
@@ -4011,14 +4069,35 @@ export const producerWorkflowService = {
     reviewId: string,
     payload: AddProducerReviewCommentInput,
   ): Promise<ProducerReviewComment> {
-    const response = await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}/comments`, {
+    const body = {
+      commentText: payload.commentText,
+      timestampSeconds: payload.timestampSeconds ?? null,
+    };
+    const comment = await runProducerMutation<ProducerReviewComment>({
+      projectId,
+      domain: 'reviews',
       method: 'POST',
-      body: JSON.stringify({
-        commentText: payload.commentText,
-        timestampSeconds: payload.timestampSeconds ?? null,
-      }),
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}/comments`,
+      body,
+      parse: (response) => normalizeReviewComment(asRecord(response).comment, projectId, reviewId),
+      optimistic: async () => {
+        const optimisticComment = normalizeReviewComment(
+          { comment_text: payload.commentText, timestamp_seconds: payload.timestampSeconds ?? null, id: generateId('producer-review-comment'), created_at: nowIso() },
+          projectId,
+          reviewId,
+        );
+        const mirror = await readReviewsMirror(projectId);
+        await writeReviewsMirror(
+          projectId,
+          mirror.map((r) =>
+            r.id === reviewId
+              ? { ...r, comments: [...(r.comments ?? []), optimisticComment], updated_at: nowIso() }
+              : r,
+          ),
+        );
+        return optimisticComment;
+      },
     });
-    const comment = normalizeReviewComment(response.comment, projectId, reviewId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
 
     const reviews = await this.getReviews(projectId);
@@ -4047,15 +4126,39 @@ export const producerWorkflowService = {
     reviewId: string,
     payload: SetProducerReviewDecisionInput,
   ): Promise<ProducerClientReview> {
-    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}/decision`, {
+    const body = {
+      decision: payload.decision,
+      reason: payload.reason ?? null,
+      timestampSeconds: payload.timestampSeconds ?? null,
+    };
+    const persisted = await runProducerMutation<ProducerClientReview>({
+      projectId,
+      domain: 'reviews',
       method: 'POST',
-      body: JSON.stringify({
-        decision: payload.decision,
-        reason: payload.reason ?? null,
-        timestampSeconds: payload.timestampSeconds ?? null,
-      }),
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}/decision`,
+      body,
+      parse: (response) => normalizeReview(asRecord(response).review, projectId),
+      optimistic: async () => {
+        const mirror = await readReviewsMirror(projectId);
+        const existing = mirror.find((r) => r.id === reviewId);
+        const merged = normalizeReview(
+          {
+            ...(existing ?? { id: reviewId }),
+            id: reviewId,
+            status: payload.decision,
+            decision_reason: payload.reason ?? null,
+            decision_at: nowIso(),
+            updated_at: nowIso(),
+          },
+          projectId,
+        );
+        await writeReviewsMirror(
+          projectId,
+          sortReviews(existing ? mirror.map((r) => (r.id === reviewId ? merged : r)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const persisted = normalizeReview(response.review, projectId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
