@@ -82,6 +82,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     const found = PROFESSIONS.find((p) => p.id === (initialProfession || 'photographer'));
     return found?.color || '#ffba6c';
   });
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const activeProfession = PROFESSIONS.find((p) => p.id === profession) || PROFESSIONS[0];
   const recommendedTier = TIER_RECOMMENDATIONS[profession] || TIER_RECOMMENDATIONS.photographer;
@@ -97,7 +98,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           profession,
           brandColor,
         }),
-      }).catch(() => null); // ikke fail-stopper hvis endpoint ikke finnes
+      });
     },
   });
 
@@ -108,7 +109,14 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
   })();
 
   const handleFinish = async () => {
-    await saveMutation.mutateAsync();
+    setSaveError(null);
+    try {
+      await saveMutation.mutateAsync();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ukjent feil';
+      setSaveError(`Kunne ikke lagre bedriftsinfo: ${message}. Prøv igjen.`);
+      return;
+    }
     try {
       window.localStorage.setItem('individual-onboarding-completed', '1');
     } catch {}
@@ -454,6 +462,16 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           </Stack>
         )}
       </DialogContent>
+
+      {saveError && (
+        <Alert
+          severity="error"
+          onClose={() => setSaveError(null)}
+          sx={{ mx: 3, mb: 1 }}
+        >
+          {saveError}
+        </Alert>
+      )}
 
       <DialogActions sx={{
         px: 3, py: 2.5,
