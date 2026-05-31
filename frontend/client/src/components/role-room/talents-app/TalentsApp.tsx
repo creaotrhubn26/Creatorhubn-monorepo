@@ -22,6 +22,7 @@ import ProfilePage from './pages/ProfilePage';
 import AuditPage from './pages/AuditPage';
 import SettingsPage from './pages/SettingsPage';
 import TalentRegistryPage from './pages/TalentRegistryPage';
+import TalentProposalAcceptPage from './pages/TalentProposalAcceptPage';
 import { palette } from './theme';
 
 const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
@@ -72,7 +73,14 @@ export function isPartnerInviteAcceptPath(): boolean {
   return path === '/talents/partner-invite';
 }
 
-export { PartnerInviteAcceptPage };
+/** Reverse-consent: agency foreslår talent → talent åpner lenke. */
+export function isTalentProposalAcceptPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  return path === '/talents/registry-invite';
+}
+
+export { PartnerInviteAcceptPage, TalentProposalAcceptPage };
 
 interface TalentsAppProps {
   initialPage?: TalentsAppPage;

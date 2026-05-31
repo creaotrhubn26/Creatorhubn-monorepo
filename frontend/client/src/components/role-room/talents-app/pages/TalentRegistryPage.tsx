@@ -56,9 +56,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import roleRoomTalentsService, {
   type RegistryOverview,
   type SavedSearch,
+  type TalentProposal,
   type TalentSearchFilters,
   type TalentSearchHit,
 } from '../../services/roleRoomTalentsService';
+import ProposeNewTalentDialog from '../components/ProposeNewTalentDialog';
+import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import { palette, radius } from '../theme';
 
 const cardSx = {
@@ -101,6 +104,9 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [error, setError] = useState<string | null>(null);
   const [saveSearchOpen, setSaveSearchOpen] = useState(false);
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [proposals, setProposals] = useState<TalentProposal[]>([]);
+  const [showProposals, setShowProposals] = useState(false);
 
   const runSearch = useCallback(async (f: TalentSearchFilters) => {
     setLoading(true);
@@ -121,11 +127,18 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
     return () => clearTimeout(t);
   }, [filters, runSearch]);
 
-  // Last saved searches + overview én gang
+  // Last saved searches + overview + proposals én gang
+  const reloadProposals = useCallback(async () => {
+    setProposals(await roleRoomTalentsService.fetchAgencyProposals());
+  }, []);
+
   useEffect(() => {
     void roleRoomTalentsService.fetchSavedSearches().then(setSavedSearches);
     void roleRoomTalentsService.fetchRegistryOverview().then(setOverview);
-  }, []);
+    void reloadProposals();
+  }, [reloadProposals]);
+
+  const pendingProposalsCount = proposals.filter((p) => p.status === 'pending').length;
 
   const featured = useMemo(() => (searchResult?.talents ?? []).slice(0, 5), [searchResult]);
   const allTalents = searchResult?.talents ?? [];
@@ -135,8 +148,8 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
   return (
     <Box sx={{ display: 'flex', minWidth: 0 }}>
       <Box sx={{ flexGrow: 1, minWidth: 0, p: 3 }}>
-        {/* ─── Header + Grid/List toggle ─── */}
-        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3 }}>
+        {/* ─── Header + Foreslå + Grid/List toggle ─── */}
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3, gap: 2 }}>
           <Box>
             <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15 }}>
               Talent Registry
@@ -145,28 +158,53 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               Discover and connect with actors across Norway.
             </Typography>
           </Box>
-          <ToggleButtonGroup
-            value={view}
-            exclusive
-            onChange={(_, v) => v && setView(v)}
-            sx={{
-              bgcolor: palette.bgCard,
-              border: `1px solid ${palette.borderSubtle}`,
-              borderRadius: radius.pill,
-              p: 0.4,
-              '& .MuiToggleButton-root': {
-                border: 'none', borderRadius: radius.pill, px: 2, py: 0.6,
-                color: palette.textMuted, textTransform: 'none', fontSize: '0.85rem',
-                '&.Mui-selected': { bgcolor: palette.accent, color: '#fff' },
-              },
-            }}
-          >
-            <ToggleButton value="grid"><GridViewIcon sx={{ mr: 0.6, fontSize: 18 }} /> Grid</ToggleButton>
-            <ToggleButton value="list"><ViewListIcon sx={{ mr: 0.6, fontSize: 18 }} /> List</ToggleButton>
-          </ToggleButtonGroup>
+          <Stack direction="row" spacing={1.4} alignItems="center">
+            <Button
+              startIcon={<PersonAddOutlinedIcon />}
+              onClick={() => setProposeOpen(true)}
+              disabled={demoMode}
+              sx={{
+                textTransform: 'none', fontWeight: 700, px: 2.4, py: 1.1, borderRadius: radius.sm,
+                background: palette.accentGradient, color: '#fff',
+                '&:hover': { filter: 'brightness(1.08)' },
+                boxShadow: '0 8px 24px rgba(168,85,247,0.28)',
+              }}
+            >
+              Foreslå ny skuespiller
+            </Button>
+            <ToggleButtonGroup
+              value={showProposals ? 'proposals' : view}
+              exclusive
+              onChange={(_, v) => {
+                if (!v) return;
+                if (v === 'proposals') setShowProposals(true);
+                else { setShowProposals(false); setView(v); }
+              }}
+              sx={{
+                bgcolor: palette.bgCard, border: `1px solid ${palette.borderSubtle}`,
+                borderRadius: radius.pill, p: 0.4,
+                '& .MuiToggleButton-root': {
+                  border: 'none', borderRadius: radius.pill, px: 2, py: 0.6,
+                  color: palette.textMuted, textTransform: 'none', fontSize: '0.85rem',
+                  '&.Mui-selected': { bgcolor: palette.accent, color: '#fff' },
+                },
+              }}
+            >
+              <ToggleButton value="grid"><GridViewIcon sx={{ mr: 0.6, fontSize: 18 }} /> Grid</ToggleButton>
+              <ToggleButton value="list"><ViewListIcon sx={{ mr: 0.6, fontSize: 18 }} /> List</ToggleButton>
+              <ToggleButton value="proposals">
+                Forslag{pendingProposalsCount ? ` (${pendingProposalsCount})` : ''}
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
         </Stack>
 
         {error ? <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert> : null}
+
+        {/* Hvis "Forslag"-tab er aktiv, vis proposals-list og hopp over resten */}
+        {showProposals ? (
+          <ProposalsView proposals={proposals} onChanged={reloadProposals} demoMode={demoMode} />
+        ) : (<>
 
         {/* ─── Advanced Filters ─── */}
         <Box sx={{ ...cardSx, mb: 3 }}>
@@ -257,6 +295,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
             {allTalents.map((t) => <TalentListRow key={t.id} talent={t} />)}
           </Stack>
         )}
+        </>)}
       </Box>
 
       {/* ─── Right sidebar ─── */}
@@ -334,7 +373,93 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
           setSavedSearches(await roleRoomTalentsService.fetchSavedSearches());
         }}
       />
+
+      <ProposeNewTalentDialog
+        open={proposeOpen}
+        onClose={() => setProposeOpen(false)}
+        onCreated={async () => {
+          await reloadProposals();
+        }}
+      />
     </Box>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// ProposalsView — viser Stellas pending/accepted/declined proposals med status-badges
+// ──────────────────────────────────────────────────────────────────
+
+function ProposalsView({ proposals, onChanged, demoMode }: { proposals: TalentProposal[]; onChanged: () => Promise<void>; demoMode: boolean }) {
+  if (proposals.length === 0) {
+    return (
+      <Box sx={{ ...cardSx, textAlign: 'center', py: 6 }}>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, mb: 0.8 }}>
+          Ingen forslag sendt ennå
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem' }}>
+          Klikk "Foreslå ny skuespiller" øverst for å sende et forslag. De får e-post og må eksplisitt godkjenne før de havner i registeret.
+        </Typography>
+      </Box>
+    );
+  }
+  const statusBadge = (status: string) => {
+    const map: Record<string, { label: string; color: string; bg: string }> = {
+      pending: { label: '⏳ Venter på svar', color: palette.warning, bg: 'rgba(245,158,11,0.16)' },
+      accepted: { label: '✓ Godkjent', color: palette.success, bg: 'rgba(34,197,94,0.16)' },
+      declined: { label: '✕ Avslått', color: '#f87171', bg: 'rgba(239,68,68,0.16)' },
+      expired: { label: '⏰ Utløpt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
+      cancelled: { label: 'Avbrutt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
+    };
+    const s = map[status] ?? map.cancelled;
+    return <Chip label={s.label} size="small" sx={{ bgcolor: s.bg, color: s.color, fontWeight: 600 }} />;
+  };
+  return (
+    <Stack spacing={1.4}>
+      <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem', mb: 0.8 }}>
+        {proposals.length} forslag — kun de som har godkjent vises i selve registeret. Forslag utløper etter 30 dager.
+      </Typography>
+      {proposals.map((p) => (
+        <Box key={p.id} sx={{ ...cardSx, p: 2 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} justifyContent="space-between">
+            <Stack spacing={0.4} sx={{ flexGrow: 1 }}>
+              <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.95rem' }}>
+                {p.proposed_display_name || p.proposed_email}
+              </Typography>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.8rem' }}>{p.proposed_email}</Typography>
+              {p.context_role ? (
+                <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem', mt: 0.6 }}>
+                  Rolle: {p.context_role}
+                </Typography>
+              ) : null}
+              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mt: 0.6 }}>
+                {p.requested_scopes.slice(0, 5).map((s) => (
+                  <Chip key={s} label={s} size="small" sx={{ bgcolor: 'rgba(168,85,247,0.10)', color: palette.textMuted, height: 18, fontSize: '0.7rem' }} />
+                ))}
+              </Stack>
+            </Stack>
+            <Stack spacing={0.8} alignItems="flex-end">
+              {statusBadge(p.status)}
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem' }}>
+                Sendt {new Date(p.created_at).toLocaleDateString('nb-NO')}
+              </Typography>
+              {p.status === 'pending' && !demoMode ? (
+                <Button
+                  size="small"
+                  onClick={async () => {
+                    if (!window.confirm('Avbryt forslaget?')) return;
+                    await roleRoomTalentsService.cancelAgencyProposal(p.id);
+                    await onChanged();
+                  }}
+                  sx={{ color: '#f87171', textTransform: 'none', fontSize: '0.78rem' }}
+                >
+                  Avbryt
+                </Button>
+              ) : null}
+            </Stack>
+          </Stack>
+        </Box>
+      ))}
+    </Stack>
   );
 }
 

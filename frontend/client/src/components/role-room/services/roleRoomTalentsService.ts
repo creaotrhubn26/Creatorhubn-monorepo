@@ -287,6 +287,75 @@ const roleRoomTalentsService = {
     return payload.search as SavedSearch;
   },
 
+  // ── Phase 7.5 reverse-consent proposals ─────────────────────────
+  async proposeNewTalent(input: {
+    proposed_email: string;
+    proposed_display_name?: string;
+    proposed_phone?: string;
+    requested_scopes?: RoleRoomTalentConsentScope[];
+    personal_message?: string;
+    context_role?: string;
+  }): Promise<TalentProposal | { error: string; existing?: TalentProposal }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/talent-proposals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) {
+      return {
+        error: payload?.error || 'Kunne ikke sende forslag',
+        existing: payload?.existing,
+      };
+    }
+    return payload.proposal as TalentProposal;
+  },
+
+  async fetchAgencyProposals(): Promise<TalentProposal[]> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/talent-proposals`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return Array.isArray(payload?.proposals) ? payload.proposals : [];
+  },
+
+  async cancelAgencyProposal(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/talent-proposals/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Kunne ikke avbryte' };
+    }
+    return { ok: true };
+  },
+
+  async lookupTalentProposal(token: string): Promise<{ proposal: TalentProposalDetail; expired: boolean } | { error: string }> {
+    const r = await fetch(`${AGENCY_BASE}/talent-proposals/${encodeURIComponent(token)}`);
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Ikke funnet' };
+    return payload;
+  },
+
+  async acceptTalentProposal(token: string): Promise<{ ok: boolean; talentId?: string; scopesGranted?: string[]; error?: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/talent-proposals/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, error: payload?.error || 'Kunne ikke akseptere' };
+    return { ok: true, talentId: payload.talentId, scopesGranted: payload.scopesGranted };
+  },
+
+  async declineTalentProposal(token: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`${AGENCY_BASE}/talent-proposals/${encodeURIComponent(token)}/decline`, {
+      method: 'POST',
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Kunne ikke avslå' };
+    }
+    return { ok: true };
+  },
+
   async deleteSavedSearch(id: string): Promise<{ ok: boolean; error?: string }> {
     const r = await authFetch(`${AGENCY_BASE}/agency/saved-searches/${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -623,6 +692,38 @@ export interface SavedSearch {
   updated_at: string;
   last_run_at: string | null;
   owner_user_id: string;
+}
+
+export interface TalentProposal {
+  id: string;
+  proposed_email: string;
+  proposed_display_name: string | null;
+  requested_scopes: RoleRoomTalentConsentScope[];
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+  personal_message: string | null;
+  context_role: string | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  declined_at: string | null;
+  resolved_talent_id: string | null;
+  token: string;
+  acceptUrl?: string;
+}
+
+export interface TalentProposalDetail {
+  id: string;
+  proposed_email: string;
+  proposed_display_name: string | null;
+  requested_scopes: RoleRoomTalentConsentScope[];
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+  personal_message: string | null;
+  context_role: string | null;
+  expires_at: string;
+  agency_name: string;
+  agency_type: RoleRoomTalentPartnerType;
+  agency_about: string | null;
+  agency_verified: boolean;
 }
 
 export interface UploadConfig {
