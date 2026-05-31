@@ -96,12 +96,10 @@ final class PairingAdvertiser: ObservableObject {
                 }
             }
             listener.newConnectionHandler = { connection in
-                // F5a-stub: aksepter og lukk umiddelbart. F5b vil håndtere
-                // PIN-confirmation-protokollen her. Det at vi *kan* ta imot
-                // en connection bekrefter for Desk-siden at iPad-en faktisk
-                // kjører tjenesten — ikke bare en stale Bonjour-cache.
-                connection.start(queue: .global(qos: .userInitiated))
-                connection.cancel()
+                // F5c: hand off til PairingConnection som håndterer den
+                // linje-baserte protokollen (PairingProtocol). Den viser
+                // modal via PairingRequestStore og svarer OK/ERR.
+                PairingConnection.handle(connection)
             }
             listener.start(queue: .main)
             self.listener = listener
