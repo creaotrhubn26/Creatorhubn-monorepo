@@ -1001,6 +1001,11 @@ const projectFileUpload = multer({
   },
 });
 
+// Installer log-redaction FØR app instansieres så alle påfølgende
+// console.* går gjennom maskeringen. Idempotent — trygt å re-importere.
+import { installSecretRedactor } from "./log-redaction.js";
+installSecretRedactor();
+
 const app = express();
 
 app.post(

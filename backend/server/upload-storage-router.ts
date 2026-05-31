@@ -121,7 +121,27 @@ const getR2 = (cfg: GenericR2Config): S3Client | null => {
   return cachedR2;
 };
 
-const R2_SIGNED_TTL_SECONDS = 7 * 24 * 60 * 60;
+// Signed-URL TTL: kort (1 time) som default. En lekket lenke har dermed
+// et mindre risikovindu enn med 7-dagers TTL.
+//
+// Klient-flyt forventes å hente fersk URL via /api/chunked-upload/files/:fileId
+// hver gang den trenger fila — det endepunktet redirecter (302) til en ny
+// signed URL slik at klient-koden ikke trenger å bekymre seg om utløp.
+//
+// Overstyr via env STORAGE_SIGNED_URL_TTL_SECONDS hvis bruksmønsteret
+// krever lengre lenker (f.eks. e-post-baserte klient-galleri-deler som
+// skal kunne åpnes flere ganger).
+const R2_SIGNED_TTL_DEFAULT_SECONDS = 60 * 60; // 1 time
+const R2_SIGNED_TTL_SECONDS = (() => {
+  const env = process.env.STORAGE_SIGNED_URL_TTL_SECONDS;
+  if (env) {
+    const parsed = parseInt(env, 10);
+    if (Number.isFinite(parsed) && parsed >= 60 && parsed <= 7 * 24 * 60 * 60) {
+      return parsed;
+    }
+  }
+  return R2_SIGNED_TTL_DEFAULT_SECONDS;
+})();
 
 export interface AssembledUploadInput {
   fileId: string;
