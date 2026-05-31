@@ -96,6 +96,7 @@ interface Props {
   onOpenPhotoshopTour: () => void;
   onOpenFeedback: () => void;
   onOpenHelp: () => void;
+  onOpenPhotoshopSetup: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -142,6 +143,7 @@ export function HeaderBar({
   onOpenPhotoshopTour,
   onOpenFeedback,
   onOpenHelp,
+  onOpenPhotoshopSetup,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -220,6 +222,17 @@ export function HeaderBar({
                   }}
                 >
                   ✓ Helse-sjekk Photoshop…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenPhotoshopSetup(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(59,130,246,0.16), rgba(37,99,235,0.16))",
+                    border: "1px solid rgba(59,130,246,0.40)",
+                    color: "#dbeafe",
+                    fontWeight: 600,
+                  }}
+                >
+                  🛠 Photoshop-oppsett (kom i gang)
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopBridge(); }}>
                   Photoshop Bridge…

@@ -204,6 +204,124 @@ async fn launch_resolve() -> Result<String, String> {
     Ok(format!("Launched {}", resolve_path))
 }
 
+/// Photoshop setup-status — detekterer hva som er installert på Mac-en
+/// så setup-wizardet vet hvilke steg som er gjort. Brukes for Irlin/Irene
+/// for å unngå at de manuelt må sjekke disse i Finder.
+#[derive(serde::Serialize)]
+pub struct PhotoshopSetupStatus {
+    pub photoshop_installed: bool,
+    pub photoshop_path: Option<String>,
+    pub photoshop_version: Option<String>,
+    pub udt_installed: bool,
+    pub udt_path: Option<String>,
+    pub plugin_manifest_path: Option<String>,
+    pub plugin_manifest_exists: bool,
+}
+
+#[tauri::command]
+fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
+    // Photoshop — let etter de vanlige path-mønstrene
+    let ps_candidates = [
+        "/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app",
+        "/Applications/Adobe Photoshop 2025/Adobe Photoshop 2025.app",
+        "/Applications/Adobe Photoshop 2024/Adobe Photoshop 2024.app",
+        "/Applications/Adobe Photoshop 2023/Adobe Photoshop 2023.app",
+        "/Applications/Adobe Photoshop 2022/Adobe Photoshop 2022.app",
+    ];
+    let mut photoshop_path = None;
+    let mut photoshop_version = None;
+    for p in ps_candidates {
+        if std::path::Path::new(p).exists() {
+            photoshop_path = Some(p.to_string());
+            // Trekk versjon ut av path-navnet
+            photoshop_version = p
+                .split('/')
+                .find(|seg| seg.starts_with("Adobe Photoshop "))
+                .map(|seg| seg.trim_start_matches("Adobe Photoshop ").to_string());
+            break;
+        }
+    }
+
+    // UXP Developer Tool
+    let udt_path = ["/Applications/Adobe UXP Developer Tool.app"]
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .map(|p| p.to_string());
+
+    // Plugin manifest — sjekk om vi finner den der vi forventer
+    // (devmode kjører fra dev-cwd; prod kjører fra resource_dir).
+    let manifest_candidates: Vec<std::path::PathBuf> = vec![
+        // Dev — fra repo-rot
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../post-agent-photoshop-plugin/manifest.json"),
+        // Alternative dev-paths
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..").join("apps/post-agent-photoshop-plugin/manifest.json"),
+    ];
+    let plugin_manifest_path = manifest_candidates
+        .iter()
+        .find(|p| p.exists())
+        .and_then(|p| p.canonicalize().ok())
+        .map(|p| p.display().to_string());
+    let plugin_manifest_exists = plugin_manifest_path.is_some();
+
+    Ok(PhotoshopSetupStatus {
+        photoshop_installed: photoshop_path.is_some(),
+        photoshop_path,
+        photoshop_version,
+        udt_installed: udt_path.is_some(),
+        udt_path,
+        plugin_manifest_path,
+        plugin_manifest_exists,
+    })
+}
+
+/// Åpne UXP Developer Tool i Finder/Launcher slik at brukeren slipper
+/// å lete etter den.
+#[tauri::command]
+async fn open_udt() -> Result<String, String> {
+    let udt_path = "/Applications/Adobe UXP Developer Tool.app";
+    if !std::path::Path::new(udt_path).exists() {
+        return Err(format!(
+            "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først."
+        ));
+    }
+    let output = std::process::Command::new("open")
+        .arg("-a")
+        .arg(udt_path)
+        .output()
+        .map_err(|e| format!("Failed to spawn open: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "open -a failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(format!("Opened {}", udt_path))
+}
+
+/// Reveal plugin-manifest in Finder så brukeren ser akkurat hvilken
+/// fil hun skal dra inn i UDT.
+#[tauri::command]
+async fn reveal_photoshop_plugin_manifest() -> Result<String, String> {
+    let status = photoshop_setup_status()?;
+    let manifest = status
+        .plugin_manifest_path
+        .ok_or("plugin manifest finnes ikke i dette Tauri-bygget")?;
+    let output = std::process::Command::new("open")
+        .arg("-R")
+        .arg(&manifest)
+        .output()
+        .map_err(|e| format!("Failed to spawn open: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "open -R failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(manifest)
+}
+
 /// Activate Resolve and send cmd+, via osascript to open the Preferences dialog.
 #[tauri::command]
 async fn open_resolve_preferences() -> Result<String, String> {
@@ -681,6 +799,9 @@ pub fn run() {
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,
             psd_indexer::psd_get_info,
+            photoshop_setup_status,
+            open_udt,
+            reveal_photoshop_plugin_manifest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
