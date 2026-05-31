@@ -6949,10 +6949,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ mt: 2 }}>
             {/* Selected Item Preview */}
             {item && (
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
-                <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00', fontWeight: 600}}>
-                  📄 Valgt innhold
-                </Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+              }}>
+                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mb: 1 }}>
+                  <DescriptionIcon fontSize="small" sx={{ color: '#f5a623' }} />
+                  <Typography variant="subtitle2" sx={{ color: '#f5a623', fontWeight: 600 }}>
+                    Valgt innhold
+                  </Typography>
+                </Stack>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Box 
                     component="img" 
@@ -7133,10 +7142,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Grid>
 
                 {/* Preview */}
-                <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
+                <Paper sx={{
+                  p: 2,
+                  mt: 3,
+                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                  border: '1px solid rgba(245,166,35,0.22)',
+                  borderRadius: '10px',
+                }}>
                   <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mb: 0.5 }}>
-                    <MenuBookIcon fontSize="small" sx={{ color: '#ff8c00' }} />
-                    <Typography variant="subtitle2" sx={{ color: '#ff8c00' }}>
+                    <MenuBookIcon fontSize="small" sx={{ color: '#f5a623' }} />
+                    <Typography variant="subtitle2" sx={{ color: '#f5a623' }}>
                       Kursforhåndsvisning
                     </Typography>
                   </Stack>
@@ -10042,8 +10057,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Package Options */}
             {pricingData?.pricing?.packages && (
-              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom>Pakketilbud</Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ color: '#edf0f7' }}>Pakketilbud</Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                   {pricingData.pricing.packages.map((pkg: { id: string; name: string; price: number; description: string; images?: number; minutes?: number; tracks?: number; savings?: number }) => (
                     <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }} key={pkg.id}>
@@ -10114,8 +10136,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Paper>
             
             {/* Enhancement Presets */}
-            <Paper sx={{ p: 2, mb: 3 }}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Paper sx={{
+              p: 2,
+              mb: 3,
+              bgcolor: 'rgba(7, 10, 16, 0.6)',
+              border: '1px solid rgba(245,166,35,0.22)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#edf0f7' }}>
                 <AutoFixHigh />
                 Forhåndsinnstillinger
               </Typography>
@@ -10144,8 +10173,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Custom Enhancement Options - Only visible when custom is selected */}
             {selectedPhotoPreset === 'custom' && (
-              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#edf0f7' }}>
                   <Tune />
                   Tilpassede innstillinger
                 </Typography>
@@ -10222,8 +10258,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Progress Indicator */}
             {isEnhancing && (
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.light' }}>
-                <Typography variant="h6" gutterBottom>Forbedrer bilder...</Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(82, 121, 204, 0.10)',
+                border: '1px solid rgba(82, 121, 204, 0.32)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ color: '#edf0f7' }}>Forbedrer bilder…</Typography>
                 <LinearProgress 
                   variant="determinate" 
                   value={enhancementProgress}
@@ -12468,9 +12511,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </FormControl>
 
           {selectedPreset === '4k-master' && (
-            <Paper sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
-              <Typography variant="body2">
-                4K Master: ProRes 422 Q, 3840x2160, 23.98fps - For arkiv og fremtidig redigering
+            <Paper sx={{
+              p: 2,
+              mb: 2,
+              bgcolor: 'rgba(82, 121, 204, 0.10)',
+              border: '1px solid rgba(82, 121, 204, 0.32)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.85)' }}>
+                4K Master: ProRes 422 Q, 3840×2160, 23.98 fps — for arkiv og fremtidig redigering
               </Typography>
             </Paper>
           )}
