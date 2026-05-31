@@ -644,6 +644,7 @@ import {
   ensurePhotographerProjectsSchemaShared,
 } from "./photographer-projects-routes";
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
+import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
@@ -67618,6 +67619,11 @@ setupPhotographerMiscRoutes({
   pool,
   requireUserSession,
   ensurePrintStoreSchema,
+});
+setupGoogleDriveSyncRoutes({
+  app,
+  pool,
+  requireUserSession,
 });
 setupClientGalleryRoutes({
   app,
