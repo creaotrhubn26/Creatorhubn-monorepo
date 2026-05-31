@@ -294,6 +294,124 @@ const COMMANDS = {
    * — originalen er urørt. Lar Irlin slippe å manuelt navngi layers
    * i Photoshop før hun bruker template-systemet.
    */
+  /*
+   * Template-scaffold: lager en ny PSD-fil fra scratch med spec.
+   * Hver text-felt blir et TextLayer navngitt {{key}} med en
+   * placeholder-tekst. Brukeren får en PSD klar til å bli fylt av
+   * template-systemet — slipper å starte fra blankt i Photoshop.
+   *
+   * spec: { width, height, background_color?, fields: [{ key, type, hint, x?, y?, font_size? }] }
+   * type kan være "text" (vi lager TextLayer) eller "image_placeholder"
+   * (vi lager en farget rektangel-layer som Irlin kan høyreklikke →
+   * Convert to Smart Object i Photoshop manuelt).
+   */
+  "template.scaffold": async ({ output_path, spec }) => {
+    assertString(output_path, "output_path");
+    if (!spec || typeof spec !== "object") throw new Error("spec må være et objekt");
+    const { width, height, fields, background_color } = spec;
+    if (!Number.isFinite(width) || !Number.isFinite(height)) {
+      throw new Error("spec.width og spec.height må være tall");
+    }
+    if (!Array.isArray(fields)) throw new Error("spec.fields må være en array");
+
+    const outDir = output_path.substring(0, Math.max(output_path.lastIndexOf("/"), 0));
+    const outName = output_path.substring(output_path.lastIndexOf("/") + 1);
+    const outFolder = await fs.getEntryWithUrl("file:" + encodeURI(outDir));
+    const bg = background_color || { red: 240, green: 240, blue: 240 };
+
+    const createdLayers = [];
+    await core.executeAsModal(async () => {
+      // Lag dokument
+      const doc = await app.createDocument({
+        width,
+        height,
+        resolution: 72,
+        mode: "RGBColorMode",
+        fill: "white",
+        title: spec.name || "Post Agent template",
+      });
+
+      // Fyll bakgrunn med background_color via batchPlay
+      await action.batchPlay(
+        [
+          {
+            _obj: "set",
+            _target: [{ _ref: "color", _property: "foregroundColor" }],
+            to: {
+              _obj: "RGBColor",
+              red: bg.red,
+              green: bg.green,
+              blue: bg.blue,
+            },
+          },
+          {
+            _obj: "fill",
+            using: { _enum: "fillContents", _value: "foregroundColor" },
+          },
+        ],
+        {},
+      );
+
+      // For hver field, lag en layer
+      for (let i = 0; i < fields.length; i++) {
+        const f = fields[i];
+        if (!f.key) continue;
+        const layerName = `{{${f.key}}}`;
+        if (f.type === "text") {
+          // Plasser text-layeren ca. 10% inn fra venstre, jevnt fordelt vertikalt
+          const x = f.x ?? Math.round(width * 0.08);
+          const y = f.y ?? Math.round(height * (0.15 + (i / Math.max(fields.length, 1)) * 0.6));
+          const fontSize = f.font_size ?? Math.round(height / 20);
+          const placeholder = f.hint || layerName;
+          await action.batchPlay(
+            [
+              {
+                _obj: "make",
+                _target: [{ _ref: "textLayer" }],
+                using: {
+                  _obj: "textLayer",
+                  name: layerName,
+                  textKey: placeholder,
+                  textClickPoint: {
+                    _obj: "paint",
+                    horizontal: { _unit: "percentUnit", _value: (x / width) * 100 },
+                    vertical: { _unit: "percentUnit", _value: (y / height) * 100 },
+                  },
+                  textStyleRange: [
+                    {
+                      _obj: "textStyleRange",
+                      from: 0,
+                      to: placeholder.length,
+                      textStyle: {
+                        _obj: "textStyle",
+                        fontPostScriptName: "Helvetica",
+                        size: { _unit: "pointsUnit", _value: fontSize },
+                        color: { _obj: "RGBColor", red: 30, green: 30, blue: 30 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            {},
+          );
+          createdLayers.push({ key: f.key, type: "text", layer_name: layerName });
+        }
+      }
+
+      // Lagre som PSD
+      const outFile = await outFolder.createFile(outName, { overwrite: true });
+      await doc.saveAs.psd(outFile, { maximizeCompatibility: true });
+    }, { commandName: "Post Agent: template scaffold" });
+
+    return {
+      output_path,
+      created_layers: createdLayers,
+      notes:
+        "Smart-object-felter må legges til manuelt i Photoshop (File → Place Embedded + gi navn {{key}}). Vi støtter foreløpig bare text-scaffolding.",
+    };
+  },
+
   "template.autoRename": async ({ template_path, output_path, mappings }) => {
     assertString(template_path, "template_path");
     assertString(output_path, "output_path");

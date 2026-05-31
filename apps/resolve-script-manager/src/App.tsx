@@ -67,6 +67,7 @@ import {
 import { FeedbackDialog } from "./components/FeedbackDialog";
 import { HelpDialog } from "./components/HelpDialog";
 import { PhotoshopSetupWizard } from "./components/PhotoshopSetupWizard";
+import { PhotoshopScaffoldDialog } from "./components/PhotoshopScaffoldDialog";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons";
@@ -151,6 +152,7 @@ export default function App() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showPhotoshopSetup, setShowPhotoshopSetup] = useState(false);
+  const [showPhotoshopScaffold, setShowPhotoshopScaffold] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
   // Auto-show Role Room sign-in on app launch when first-run is done but
   // the user hasn't authenticated yet. Suppressed during first-run since
@@ -678,6 +680,7 @@ export default function App() {
         onOpenFeedback={() => setShowFeedback(true)}
         onOpenHelp={() => setShowHelp(true)}
         onOpenPhotoshopSetup={() => setShowPhotoshopSetup(true)}
+        onOpenPhotoshopScaffold={() => setShowPhotoshopScaffold(true)}
         onSignIn={() => setShowSignIn(true)}
         onSignedOut={() => { /* state refresh happens via storage event */ }}
         advancedMode={advancedMode}
@@ -1003,6 +1006,9 @@ export default function App() {
       )}
       {showPhotoshopTour && (
         <PhotoshopOnboardingTour onClose={() => setShowPhotoshopTour(false)} />
+      )}
+      {showPhotoshopScaffold && (
+        <PhotoshopScaffoldDialog onClose={() => setShowPhotoshopScaffold(false)} />
       )}
       {showPhotoshopSetup && (
         <PhotoshopSetupWizard onClose={() => setShowPhotoshopSetup(false)} />
