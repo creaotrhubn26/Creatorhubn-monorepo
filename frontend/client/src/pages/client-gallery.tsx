@@ -1119,23 +1119,23 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 bilde-count + er bevisst om at extra utover
                 contractedImages koster mer (eksisterende UX i
                 progress-bar over). */}
-            {gallery?.gallerySettings?.allowDownload !== false && images.length > 0 && (
+            {gallery?.gallerySettings?.allowDownload !== false && visibleImages.length > 0 && (
               <Button
                 variant="text"
                 size="small"
                 fullWidth
                 onClick={() => {
-                  if (selectedImages.size === images.length) {
+                  if (selectedImages.size === visibleImages.length) {
                     setSelectedImages(new Set());
                   } else {
-                    setSelectedImages(new Set(images.map((img: GalleryImage) => img.id)));
+                    setSelectedImages(new Set(visibleImages.map((img: GalleryImage) => img.id)));
                   }
                 }}
                 sx={{ color: 'rgba(255,255,255,0.85)' }}
               >
-                {selectedImages.size === images.length
+                {selectedImages.size === visibleImages.length
                   ? 'Fjern alle'
-                  : `Velg alle (${images.length} ${terms.itemPlural})`}
+                  : `Velg alle (${visibleImages.length} ${terms.itemPlural})`}
               </Button>
             )}
             {/* UX-gap #11: hvis klient har hjertet noen bilder, gi dem
@@ -1208,7 +1208,11 @@ export default function ClientGallery({}: ClientGalleryProps) {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `${gallery?.projectTitle || terms.collection}-${selectedImages.size}-${terms.itemPlural}.zip`;
+                    // Inkluder ISO-dato i zip-navnet så klient kan se når
+                    // hun lastet ned (vanlig at man laster ned 2-3 ganger
+                    // for sortering, da hjelper datoen å skille filene).
+                    const today = new Date().toISOString().slice(0, 10);
+                    a.download = `${gallery?.projectTitle || terms.collection}-${today}-${selectedImages.size}-${terms.itemPlural}.zip`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -2460,25 +2464,25 @@ export default function ClientGallery({}: ClientGalleryProps) {
                     : ''
                 }`}
           </Typography>
-          {images.length > 0 && (
+          {visibleImages.length > 0 && (
             <Button
               variant="text"
               size="small"
               startIcon={
-                selectedImages.size === images.length
+                selectedImages.size === visibleImages.length
                   ? <RemoveDoneIcon sx={{ fontSize: 18 }} />
                   : <PlaylistAddCheck sx={{ fontSize: 18 }} />
               }
               onClick={() => {
-                if (selectedImages.size === images.length) {
+                if (selectedImages.size === visibleImages.length) {
                   setSelectedImages(new Set());
                 } else {
-                  setSelectedImages(new Set(images.map((img: GalleryImage) => img.id)));
+                  setSelectedImages(new Set(visibleImages.map((img: GalleryImage) => img.id)));
                 }
               }}
               sx={{ color: 'rgba(255,255,255,0.85)' }}
             >
-              {selectedImages.size === images.length ? 'Fjern alle' : `Velg alle (${images.length})`}
+              {selectedImages.size === visibleImages.length ? 'Fjern alle' : `Velg alle (${visibleImages.length})`}
             </Button>
           )}
         </Stack>

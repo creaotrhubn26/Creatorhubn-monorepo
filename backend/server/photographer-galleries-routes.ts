@@ -57,6 +57,7 @@ export function setupPhotographerGalleriesRoutes(
   }> {
     const galleryQ = await pool.query(
       `SELECT g.client_name, g.client_email, g.project_title, g.access_token,
+              g.gallery_settings,
               u.first_name AS photographer_first, u.last_name AS photographer_last,
               u.email AS photographer_email, u.company_name
          FROM photographer_client_galleries g
@@ -76,6 +77,15 @@ export function setupPhotographerGalleriesRoutes(
     const photographerName = [g.photographer_first, g.photographer_last]
       .filter(Boolean).join(' ') || g.company_name || 'Creatorhubn';
 
+    // Sjekk om galleriet er passordbeskyttet. Klienten må vite det
+    // FØR de klikker lenken så de ikke blir overrasket av en passord-
+    // prompt. Fotografen forventes å sende passordet i en separat
+    // kanal (SMS/Signal), ikke i samme mail.
+    const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
+    const isPasswordProtected = settings.requiresPassword === true
+      && typeof settings.passwordHash === 'string'
+      && (settings.passwordHash as string).length > 0;
+
     const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
     const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
     if (!mailUser || !mailPass) {
@@ -88,6 +98,18 @@ export function setupPhotographerGalleriesRoutes(
     });
 
     const customMessage = opts.customMessage?.trim().slice(0, 2000) ?? null;
+    const passwordNoticeHtml = isPasswordProtected
+      ? `
+        <div style="margin:24px 0;padding:14px 18px;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;">
+          <p style="margin:0;font-size:14px;color:#7a5c00;line-height:1.5;">
+            <strong>Galleriet er passordbeskyttet.</strong>
+            ${escapeHtml(photographerName)} skal ha sendt deg passordet i en separat melding
+            (SMS, Signal eller lignende). Du blir bedt om å taste det inn etter du klikker
+            "Åpne galleriet".
+          </p>
+        </div>
+      `
+      : '';
     const html = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
         <h2 style="color:#1a1a1a;margin:0 0 16px;">Hei ${escapeHtml(g.client_name)},</h2>
@@ -97,6 +119,7 @@ export function setupPhotographerGalleriesRoutes(
             : `Bildene fra <strong>${escapeHtml(g.project_title)}</strong> er klare. Klikk knappen under for å se galleriet ditt.`
           }
         </p>
+        ${passwordNoticeHtml}
         <div style="margin:32px 0;text-align:center;">
           <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Åpne galleriet</a>
         </div>
