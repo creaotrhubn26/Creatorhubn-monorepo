@@ -29,6 +29,7 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
+import Typography from '@mui/material/Typography';
 import {
   CloudDone as SavedIcon,
   CloudOff as ErrorIcon,
@@ -84,8 +85,13 @@ export interface FormationHeaderBarProps {
   /** Save-pill state. */
   saveStatus?: FormationSaveStatus;
   saveError?: string | null;
+  /** Audit A5: sist-lagret-timestamp (ms-epoch). Vises som 'Lagret 14:32'
+   *  når saveStatus er idle. */
+  lastSavedAt?: number | null;
   /** Share-handler. Når undefined, skjules knappen. */
   onShare?: () => void;
+  /** Audit G_2: disable Export-knapp (e.g. på tomt projekt). */
+  disableExport?: boolean;
   /** Test-id-override. */
   'data-testid'?: string;
 }
@@ -96,7 +102,9 @@ export default function FormationHeaderBar({
   onSubTabChange,
   saveStatus = 'idle',
   saveError = null,
+  lastSavedAt = null,
   onShare,
+  disableExport = false,
   'data-testid': testId = 'formation-header-bar',
 }: FormationHeaderBarProps): React.ReactElement {
   const [exportAnchor, setExportAnchor] = React.useState<HTMLElement | null>(null);
@@ -229,6 +237,8 @@ export default function FormationHeaderBar({
           data-testid={`${testId}-export`}
           aria-haspopup="menu"
           aria-expanded={exportAnchor ? 'true' : 'false'}
+          disabled={disableExport}
+          title={disableExport ? 'Legg til en formasjon før du eksporterer' : undefined}
           sx={{
             textTransform: 'none',
             color: danceFlowColors.textSecondary,
@@ -237,6 +247,10 @@ export default function FormationHeaderBar({
             '&:hover': {
               bgcolor: 'rgba(167,139,250,0.08)',
               color: danceFlowColors.lavender,
+            },
+            '&.Mui-disabled': {
+              color: danceFlowColors.textDisabled,
+              borderColor: danceFlowColors.borderSoft,
             },
           }}
           variant="outlined"
@@ -269,8 +283,27 @@ export default function FormationHeaderBar({
           </MenuItem>
         </Menu>
 
-        {/* Save-pill (flyttet hit fra FormationViewConnected) */}
-        <Box sx={{ minWidth: 96, display: 'flex', justifyContent: 'flex-end' }}>
+        {/* Save-pill (flyttet hit fra FormationViewConnected).
+            Audit A5: 'idle' viser persistent 'Lagret kl HH:MM' når
+            lastSavedAt finnes, i stedet for tom plass. */}
+        <Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
+          {saveStatus === 'idle' && lastSavedAt ? (
+            <Typography
+              variant="caption"
+              data-testid={`${testId}-last-saved`}
+              sx={{
+                fontSize: '0.6875rem',
+                color: danceFlowColors.textDisabled,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+              title={new Date(lastSavedAt).toLocaleString('nb-NO')}
+            >
+              Lagret kl {new Date(lastSavedAt).toLocaleTimeString('nb-NO', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Typography>
+          ) : null}
           {saveStatus === 'saving' ? (
             <Chip
               icon={<SavingIcon sx={{ fontSize: 16 }} />}

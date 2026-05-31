@@ -189,14 +189,32 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
   const [subTab, setSubTab] = React.useState<FormationSubTab>('formation');
   const [saveStatus, setSaveStatus] = React.useState<FormationSaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  // Audit A5: persistent sist-lagret-tid for header-pillen.
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
+  // Audit G_2: vet om vi har noen formasjoner — disable Export på tomt projekt.
+  const [hasFormations, setHasFormations] = React.useState<boolean>(false);
 
   const handleSaveStatusChange = React.useCallback(
-    (status: FormationSaveStatus, error: string | null) => {
+    (status: FormationSaveStatus, error: string | null, ts: number | null) => {
       setSaveStatus(status);
       setSaveError(error);
+      if (ts != null) setLastSavedAt(ts);
     },
     [],
   );
+
+  // G_2: lytt på FormationView's 'dance:formations-count'-event
+  // (dispatched når formations.length endres).
+  React.useEffect(() => {
+    const onCount = (e: Event): void => {
+      const detail = (e as CustomEvent<{ count?: number }>).detail;
+      if (detail && typeof detail.count === 'number') {
+        setHasFormations(detail.count > 0);
+      }
+    };
+    window.addEventListener('dance:formations-count', onCount as EventListener);
+    return () => window.removeEventListener('dance:formations-count', onCount as EventListener);
+  }, []);
 
   // Phase 3 vil koble breadcrumbs til ekte prosjekt-navn fra context.
   const breadcrumbs = React.useMemo(
@@ -235,7 +253,9 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           onSubTabChange={setSubTab}
           saveStatus={saveStatus}
           saveError={saveError}
+          lastSavedAt={lastSavedAt}
           onShare={handleShare}
+          disableExport={!hasFormations}
         />
       }
       clipsSidebar={<ClipsSidebar projectId={projectId} />}

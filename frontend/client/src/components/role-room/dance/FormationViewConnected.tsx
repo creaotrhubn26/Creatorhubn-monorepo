@@ -50,8 +50,11 @@ export interface FormationViewConnectedProps {
   onDancerClick?: (dancerId: string) => void;
   /** Phase 2: når true, skjul intern save-pill (FormationHeaderBar viser den). */
   hideSavePill?: boolean;
-  /** Phase 2: bobler opp save-status så parent (DanceWorkspace) kan vise pill i header. */
-  onSaveStatusChange?: (status: SaveStatus, error: string | null) => void;
+  /**
+   * Phase 2 + audit A5: bobler opp save-status + lastSavedAt så parent
+   * (DanceWorkspace) kan vise pill i header med 'Sist lagret kl 14:32'.
+   */
+  onSaveStatusChange?: (status: SaveStatus, error: string | null, lastSavedAt: number | null) => void;
   /** Phase 4: video-panel-slot videresendes til FormationView. */
   videoPanelSlot?: React.ReactNode;
 }
@@ -103,11 +106,27 @@ export function FormationViewConnected({
   const [initialFormations, setInitialFormations] = React.useState<Formation[] | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  // Audit A5: persistent timestamp som overlever 'saved'→'idle'-fade.
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
 
-  // Phase 2: bobler save-state opp så header kan vise pillen.
+  // Phase 2 + A5: bobler save-state + sist-lagret opp så header kan vise pillen.
   React.useEffect(() => {
-    onSaveStatusChange?.(saveStatus, saveError);
-  }, [saveStatus, saveError, onSaveStatusChange]);
+    onSaveStatusChange?.(saveStatus, saveError, lastSavedAt);
+  }, [saveStatus, saveError, lastSavedAt, onSaveStatusChange]);
+
+  // Audit A6: blokker window-close mens autosave pågår.
+  React.useEffect(() => {
+    if (saveStatus !== 'saving' && saveStatus !== 'error') return;
+    const handler = (e: BeforeUnloadEvent): string => {
+      // saving = endringer i flyt, error = endringer ikke persistert.
+      e.preventDefault();
+      // Eldre browsers krever returnValue + returnert string.
+      e.returnValue = 'Endringer holder på å lagres. Vent et øyeblikk før du forlater siden.';
+      return e.returnValue;
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [saveStatus]);
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstChangeRef = React.useRef(true);
@@ -176,6 +195,7 @@ export function FormationViewConnected({
           // the same pattern the choreography autosave uses.
           if (written.length > 0) {
             setSaveStatus('saved');
+            setLastSavedAt(Date.now()); // A5: timestamp overlever idle-fade
             setTimeout(() => setSaveStatus('idle'), 1800);
           }
         } catch (err) {

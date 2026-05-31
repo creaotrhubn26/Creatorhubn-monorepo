@@ -208,6 +208,18 @@ export const FormationView: React.FC<FormationViewProps> = ({
     return () => window.removeEventListener('dance:video-time', onVideoTime as EventListener);
   }, [formations, activeFormationId]);
 
+  // Audit G_2: rapporter formasjons-antall opp via CustomEvent så
+  // DanceWorkspace kan disable Export-knappen på tomt projekt uten å
+  // koble ref-callbacks gjennom flere lag.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent('dance:formations-count', {
+        detail: { count: formations.length },
+      }),
+    );
+  }, [formations.length]);
+
   // Workflow-audit G11: dobbeltklikk på timeline-bakgrunn fra FormationTimeline
   // → opprett ny formasjon ved klikket tid. Kopierer posisjoner fra aktiv
   // formasjon (eller starter tomt), setter startSec/endSec og auto-selecter.
@@ -500,9 +512,33 @@ export const FormationView: React.FC<FormationViewProps> = ({
 
   const deleteFormation = useCallback((id: string) => {
     setFormations((prev) => {
+      const removed = prev.find((f) => f.id === id);
       const next = prev.filter((f) => f.id !== id);
-      if (next.length === 0 || activeFormationId === id) {
-        setActiveFormationId(next[0]?.id ?? null);
+      // Audit K3: hvis vi slettet aktiv formasjon, velg nærmeste basert på
+      // startSec (ikke bare første i lista — det føles ulogisk når 12 av 20
+      // formasjoner er over tid 0:30 og brukeren sletter ved 0:24).
+      if (next.length === 0) {
+        setActiveFormationId(null);
+      } else if (activeFormationId === id) {
+        const target = removed?.startSec;
+        if (typeof target === 'number') {
+          // Finn naboen med minst tids-avstand
+          let bestId = next[0].id;
+          let bestDist = Number.POSITIVE_INFINITY;
+          next.forEach((f) => {
+            const dist = typeof f.startSec === 'number'
+              ? Math.abs(f.startSec - target)
+              : Number.POSITIVE_INFINITY;
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestId = f.id;
+            }
+          });
+          setActiveFormationId(bestId);
+        } else {
+          // Slettet formasjon hadde ingen tid — velg første gjenværende
+          setActiveFormationId(next[0].id);
+        }
       }
       return next;
     });
@@ -1325,41 +1361,73 @@ interface FormationDetailsPanelProps {
 }
 
 /**
- * Lag D-1: TimecodeInput — kontrollert HH:MM:SS:FF input som committer
- * parsed sekunder til parent. Lokal draft-state mens brukeren skriver så
- * cursor ikke hopper. parseTimecode godtar både HH:MM:SS og HH:MM:SS:FF.
+ * Lag D-1 + audit A3: TimecodeInput — kontrollert HH:MM:SS:FF input som
+ * committer parsed sekunder til parent. Lokal draft-state mens brukeren
+ * skriver så cursor ikke hopper. parseTimecode godtar både HH:MM:SS og
+ * HH:MM:SS:FF.
+ *
+ * A3-validering: min/max-sekunder klemmer verdien inn i lovlig range.
+ * Hvis brukeren prøver å sette end <= start (eller start >= end), settes
+ * verdien til min/max + error-state vises som hjelpetekst.
  */
 const TimecodeInput: React.FC<{
   label: string;
   valueSec: number | null;
   onCommit: (sec: number | null) => void;
   testId: string;
-}> = ({ label, valueSec, onCommit, testId }) => {
+  /** A3: nedre grense (eksklusiv). Brukt for end-input: må være > start. */
+  minSec?: number | null;
+  /** A3: øvre grense (eksklusiv). Brukt for start-input: må være < end. */
+  maxSec?: number | null;
+  /** Hjelpetekst som vises i error-state. */
+  invalidHint?: string;
+}> = ({ label, valueSec, onCommit, testId, minSec = null, maxSec = null, invalidHint }) => {
   const formatted = valueSec != null && Number.isFinite(valueSec)
     ? formatTimecode(valueSec)
     : '';
   const [draft, setDraft] = useState<string>(formatted);
   const [hasFocus, setHasFocus] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Sync når parent-verdien endres OG vi ikke holder fokus (unngå overwrite
   // mens brukeren skriver).
   React.useEffect(() => {
-    if (!hasFocus) setDraft(formatted);
+    if (!hasFocus) {
+      setDraft(formatted);
+      setErrorMessage(null);
+    }
   }, [formatted, hasFocus]);
 
   const commit = (raw: string): void => {
     const trimmed = raw.trim();
     if (trimmed === '') {
+      setErrorMessage(null);
       onCommit(null);
       return;
     }
     const parsed = parseTimecode(trimmed);
-    if (parsed != null) {
-      onCommit(parsed);
-    } else {
-      // Ugyldig — tilbakestill til siste gyldig
+    if (parsed == null) {
+      // Ugyldig format — tilbakestill til siste gyldig
       setDraft(formatted);
+      setErrorMessage('Ugyldig format. Bruk HH:MM:SS:FF');
+      setTimeout(() => setErrorMessage(null), 2500);
+      return;
     }
+    // A3: respekt min/max-grenser
+    if (minSec != null && parsed <= minSec) {
+      setDraft(formatted);
+      setErrorMessage(invalidHint ?? `Må være etter ${formatTimecode(minSec)}`);
+      setTimeout(() => setErrorMessage(null), 2500);
+      return;
+    }
+    if (maxSec != null && parsed >= maxSec) {
+      setDraft(formatted);
+      setErrorMessage(invalidHint ?? `Må være før ${formatTimecode(maxSec)}`);
+      setTimeout(() => setErrorMessage(null), 2500);
+      return;
+    }
+    setErrorMessage(null);
+    onCommit(parsed);
   };
 
   return (
@@ -1367,6 +1435,8 @@ const TimecodeInput: React.FC<{
       size="small"
       label={label}
       value={draft}
+      error={Boolean(errorMessage)}
+      helperText={errorMessage || undefined}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={() => setHasFocus(true)}
       onBlur={(e) => {
@@ -1384,6 +1454,7 @@ const TimecodeInput: React.FC<{
         flex: 1,
         '& .MuiInputBase-input': { fontSize: 11, fontVariantNumeric: 'tabular-nums' },
         '& .MuiInputLabel-root': { fontSize: 11 },
+        '& .MuiFormHelperText-root': { fontSize: 9, mt: 0.25, mx: 0.5 },
       }}
     />
   );
@@ -1503,12 +1574,16 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
           valueSec={formation.startSec ?? null}
           onCommit={(sec) => onChange({ startSec: sec })}
           testId="formation-details-start-sec"
+          maxSec={formation.endSec ?? null}
+          invalidHint="Start må være før slutt"
         />
         <TimecodeInput
           label="End Time"
           valueSec={formation.endSec ?? null}
           onCommit={(sec) => onChange({ endSec: sec })}
           testId="formation-details-end-sec"
+          minSec={formation.startSec ?? null}
+          invalidHint="Slutt må være etter start"
         />
       </Stack>
       {/* Phase 6: Duration-computed under start/end så koreografen ser
