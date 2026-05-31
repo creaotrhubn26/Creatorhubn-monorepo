@@ -604,6 +604,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   // Når en ANNEN i produksjonsteamet holder manus-låsen avvises lagring (409).
   // Vi viser hvem som låste i stedet for en generisk "Lagringsfeil".
   const [manuscriptLockConflict, setManuscriptLockConflict] = useState<{ lockedBy: string | null; lockedAt: string | null } | null>(null);
+  // Presence: hvem som har manus-låsen (aktiv redaktør) akkurat nå.
+  const [manuscriptActiveEditor, setManuscriptActiveEditor] = useState<{ label: string; isSelf: boolean } | null>(null);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
@@ -1100,14 +1102,41 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       }
     })();
 
-    // Hold låsen i live mens vinduet er åpent.
+    // Presence: poll låsen så vi viser hvem som er aktiv redaktør nå.
+    const session = authSessionService.getSessionSync();
+    const selfId = session.currentUserId || (session.adminUser?.id != null ? String(session.adminUser.id) : null);
+    const selfName =
+      session.adminUser?.display_name?.trim() ||
+      session.adminUser?.name?.trim() ||
+      session.adminUser?.email?.trim() ||
+      'Deg';
+    const refreshPresence = () => {
+      void manuscriptService.getManuscriptLock(manuscriptId)
+        .then((lock) => {
+          if (cancelled) return;
+          if (lock.held && lock.lockedBy) {
+            const isSelf = selfId != null && String(lock.lockedBy) === String(selfId);
+            setManuscriptActiveEditor({ label: isSelf ? selfName : String(lock.lockedBy), isSelf });
+          } else {
+            setManuscriptActiveEditor(null);
+          }
+        })
+        .catch(() => { /* best-effort */ });
+    };
+    refreshPresence();
+
+    // Hold låsen i live mens vinduet er åpent + oppdater presence.
     const heartbeat = setInterval(() => {
       void manuscriptService.heartbeatManuscriptLock(manuscriptId).catch(() => { /* best-effort */ });
+      refreshPresence();
     }, 30000);
+    const presenceTimer = setInterval(refreshPresence, 15000);
 
     return () => {
       cancelled = true;
       clearInterval(heartbeat);
+      clearInterval(presenceTimer);
+      setManuscriptActiveEditor(null);
       void manuscriptService.releaseManuscriptLock(manuscriptId).catch(() => { /* best-effort */ });
     };
     // Kun re-kjør når et ANNET manus åpnes (id), ikke ved hver innholdsendring
@@ -2178,6 +2207,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           >
             {selectedManuscript && (
               <>
+                {manuscriptActiveEditor && (
+                  <Tooltip title={manuscriptActiveEditor.isSelf
+                    ? 'Du har manuset åpent for redigering (låst for andre)'
+                    : `${manuscriptActiveEditor.label} redigerer manuset nå`}>
+                    <Chip
+                      size="small"
+                      icon={<EditIcon sx={{ fontSize: 14 }} />}
+                      color={manuscriptActiveEditor.isSelf ? 'default' : 'warning'}
+                      label={manuscriptActiveEditor.isSelf ? 'Du redigerer' : `${manuscriptActiveEditor.label} redigerer`}
+                      sx={{ fontSize: responsive.captionFontSize }}
+                    />
+                  </Tooltip>
+                )}
                 <Button
                   variant="outlined"
                   startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
