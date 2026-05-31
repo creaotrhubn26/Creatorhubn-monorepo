@@ -45,6 +45,7 @@ import {
   Share,
   Bookmark,
   MusicNote,
+  SmartToy as SmartToyIcon,
 } from '@mui/icons-material';
 
 interface AudioTrack {
@@ -270,15 +271,11 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
           ctx.arc(commentX, 10, 6, 0, Math.PI * 2);
           ctx.fill();
           
-          // Draw comment text background
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-          ctx.fillRect(commentX - 50, 0, 100, 20);
-          
-          // Draw comment text
+          // Inner dot marker (replaces emoji to avoid font fallback issues)
           ctx.fillStyle = '#FFFFFF';
-          ctx.font = '10px Arial';
-          ctx.textAlign = 'center';
-          ctx.fillText('💬', commentX, 15);
+          ctx.beginPath();
+          ctx.arc(commentX, 10, 2.5, 0, Math.PI * 2);
+          ctx.fill();
         }
       });
     }
@@ -722,9 +719,12 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
             border: `1px solid ${accentColor}40`,
             borderRadius: 2
           }}>
-            <Typography variant="subtitle2" sx={{ color: accentColor, mb: 2 }}>
-              🤖 Analyzing audio...
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+              <SmartToyIcon sx={{ color: accentColor, fontSize: 18 }} />
+              <Typography variant="subtitle2" sx={{ color: accentColor }}>
+                Analyserer lyd…
+              </Typography>
+            </Stack>
             <LinearProgress sx={{ bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: accentColor } }} />
           </Paper>
         ) : analyzedData ? (
