@@ -447,6 +447,7 @@ import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-r
 import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
 import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
 import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-routes";
+import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -25744,6 +25745,16 @@ setupRoleRoomAgenciesRoutes({
 // B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
 // Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
 setupRoleRoomAgencySearchRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 7.5 — reverse-consent: agency foreslår talent → talent
+// godkjenner via e-post-lenke. GDPR-grunnlag for at agency aldri kan tvinge
+// en talent inn i sitt register. Mål: koble til BankID i Phase 8 for
+// juridisk gyldig signering. Strengere barn-handling planlagt (ROADMAP.md).
+// Migrasjon 218 (agency_talent_proposals).
+setupRoleRoomAgencyProposalsRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
