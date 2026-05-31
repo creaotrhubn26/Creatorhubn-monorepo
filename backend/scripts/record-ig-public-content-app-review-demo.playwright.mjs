@@ -40,6 +40,7 @@ async function loadEnv() {
     APP_BASE_URL: process.env.APP_BASE_URL || DEFAULT_APP_BASE,
     WHATSAPP_DEMO_BYPASS_TOKEN: process.env.WHATSAPP_DEMO_BYPASS_TOKEN || '',
     DEMO_IG_USER_ID: process.env.DEMO_IG_USER_ID || '',
+    DEMO_IG_PAGE_ACCESS_TOKEN: process.env.DEMO_IG_PAGE_ACCESS_TOKEN || '',
     DEMO_HASHTAG: process.env.DEMO_HASHTAG || 'norskcasting',
     DEMO_IG_USERNAME: process.env.DEMO_IG_USERNAME || 'nrkdrama',
   };
@@ -165,10 +166,13 @@ async function removeSpotlight(page) {
 }
 
 async function runDemo(page, env) {
-  const pageUrl = appendBypassToken(
+  let pageUrl = appendBypassToken(
     `${env.APP_BASE_URL}/admin/instagram-public-content-app-review-demo`,
     env.WHATSAPP_DEMO_BYPASS_TOKEN,
   );
+  if (env.DEMO_IG_PAGE_ACCESS_TOKEN) {
+    pageUrl += '&accessToken=' + encodeURIComponent(env.DEMO_IG_PAGE_ACCESS_TOKEN);
+  }
   log(`Navigating to ${pageUrl}`);
   await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
   await installStyles(page);

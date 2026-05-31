@@ -155,8 +155,11 @@ const $ = (id) => document.getElementById(id);
 const metadataResult = document.querySelector('[data-testid="metadata-result"]');
 
 function tokenSuffix() {
-  const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
-  return tokenMatch ? '&token=' + tokenMatch[1] : '';
+  const sp = new URLSearchParams(window.location.search);
+  const parts = [];
+  if (sp.get('token')) parts.push('token=' + encodeURIComponent(sp.get('token')));
+  if (sp.get('accessToken')) parts.push('accessToken=' + encodeURIComponent(sp.get('accessToken')));
+  return parts.length ? '&' + parts.join('&') : '';
 }
 
 function fieldValue(v) {

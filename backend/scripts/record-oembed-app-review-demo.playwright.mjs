@@ -47,6 +47,7 @@ async function loadEnv() {
     WHATSAPP_DEMO_BYPASS_TOKEN: process.env.WHATSAPP_DEMO_BYPASS_TOKEN || '',
     DEMO_INSTAGRAM_POST_URL: process.env.DEMO_INSTAGRAM_POST_URL || '',
     DEMO_FACEBOOK_POST_URL: process.env.DEMO_FACEBOOK_POST_URL || '',
+    DEMO_USER_ACCESS_TOKEN: process.env.DEMO_USER_ACCESS_TOKEN || '',
   };
   try {
     const raw = await fs.readFile(ENV_FILE, 'utf8');
@@ -207,6 +208,12 @@ async function runDemo(page, env) {
   await beat(page, 4500);
   await hideTitleCard(page);
   await beat(page, 600);
+
+  // Step 0: fill in User Access Token (optional but unlocks Dev-mode flow)
+  if (env.DEMO_USER_ACCESS_TOKEN) {
+    await page.locator('[data-testid="user-token-input"]').fill(env.DEMO_USER_ACCESS_TOKEN);
+    await beat(page, 600);
+  }
 
   // Step 1: paste Instagram URL
   await showCaption(page, 'Step 1', 'Producer pastes a public Instagram post URL');

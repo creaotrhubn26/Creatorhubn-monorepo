@@ -56,10 +56,12 @@ export function setupOEmbedRoutes(deps: SetupOEmbedRoutesDeps): void {
       res.status(400).json({ error: "url is required (Facebook or Instagram post URL)" });
       return;
     }
+    const explicitToken = typeof req.query.accessToken === "string" ? req.query.accessToken.trim() : "";
     const appId = (process.env.META_APP_ID || "").trim();
     const appSecret = (process.env.META_APP_SECRET || "").trim();
-    if (!appId || !appSecret) {
-      res.status(503).json({ error: "META_APP_ID / META_APP_SECRET not configured" });
+    const accessToken = explicitToken || (appId && appSecret ? `${appId}|${appSecret}` : "");
+    if (!accessToken) {
+      res.status(503).json({ error: "accessToken or META_APP_ID/META_APP_SECRET required" });
       return;
     }
     const kind = detectKind(url);
@@ -75,7 +77,7 @@ export function setupOEmbedRoutes(deps: SetupOEmbedRoutesDeps): void {
       url,
       maxwidth: typeof req.query.maxwidth === "string" ? req.query.maxwidth : "640",
       omitscript: typeof req.query.omitscript === "string" ? req.query.omitscript : "false",
-      access_token: `${appId}|${appSecret}`,
+      access_token: accessToken,
     });
     try {
       const upstream = await fetch(
@@ -140,6 +142,10 @@ export function setupOEmbedRoutes(deps: SetupOEmbedRoutesDeps): void {
     proving end-to-end use of the <code style="color:#86efac">oEmbed Read</code> feature.
     The returned HTML is rendered live in the preview pane below, demonstrating how a producer's blog or landing page would display the embedded post.</p>
 
+  <label for="user-token">User Access Token (optional — paste a token from Graph API Explorer to bypass App Access Token)</label>
+  <input id="user-token" data-testid="user-token-input" type="text" placeholder="EAAxxxxxxx... (leave blank to use App Access Token)" />
+  <div class="hint">Required while app is in Development mode (the oEmbed Read feature is review-gated, so App Access Token returns error 10). A short-lived User Access Token from a Developer/Tester role bypasses the review-gate.</div>
+
   <label for="post-url">Public post URL (Instagram or Facebook)</label>
   <input id="post-url" data-testid="post-url-input" type="url" placeholder="https://www.instagram.com/p/CXXXXXX/ or https://www.facebook.com/.../posts/..." />
   <div class="hint">Public posts only. Private/unlisted content cannot be embedded.</div>
@@ -160,6 +166,7 @@ const result = document.querySelector('[data-testid="result"]');
 $('fetch-btn').addEventListener('click', async () => {
   const url = $('post-url').value.trim();
   if (!url) return;
+  const userToken = $('user-token').value.trim();
   const btn = $('fetch-btn');
   btn.disabled = true;
   preview.innerHTML = '<div class="preview-empty">⏳ Calling Meta Graph API…</div>';
@@ -167,7 +174,8 @@ $('fetch-btn').addEventListener('click', async () => {
   try {
     const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
     const tokenSuffix = tokenMatch ? '&token=' + tokenMatch[1] : '';
-    const resp = await fetch('/api/role-room/embed/oembed?url=' + encodeURIComponent(url) + tokenSuffix, {
+    const userTokenSuffix = userToken ? '&accessToken=' + encodeURIComponent(userToken) : '';
+    const resp = await fetch('/api/role-room/embed/oembed?url=' + encodeURIComponent(url) + tokenSuffix + userTokenSuffix, {
       credentials: 'include',
     });
     const data = await resp.json();

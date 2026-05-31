@@ -54,7 +54,7 @@ export function setupPageMentionsRoutes(deps: SetupPageMentionsRoutesDeps): void
     }
     const limit = typeof req.query.limit === "string" ? req.query.limit : "10";
     const params = new URLSearchParams({
-      fields: "id,from,message,created_time,permalink_url,type,reactions.summary(true),comments.summary(true)",
+      fields: "id,from,message,created_time,permalink_url",
       limit,
       access_token: accessToken,
     });
@@ -149,8 +149,11 @@ const $ = (id) => document.getElementById(id);
 const mentionsResult = document.querySelector('[data-testid="mentions-result"]');
 
 function tokenSuffix() {
-  const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
-  return tokenMatch ? '&token=' + tokenMatch[1] : '';
+  const sp = new URLSearchParams(window.location.search);
+  const parts = [];
+  if (sp.get('token')) parts.push('token=' + encodeURIComponent(sp.get('token')));
+  if (sp.get('accessToken')) parts.push('accessToken=' + encodeURIComponent(sp.get('accessToken')));
+  return parts.length ? '&' + parts.join('&') : '';
 }
 
 function renderMentions(payload) {
