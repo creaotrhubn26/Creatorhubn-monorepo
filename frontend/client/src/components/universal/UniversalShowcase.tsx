@@ -6115,7 +6115,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               rows={3}
               value={shareForm.message}
               onChange={(e) => setShareForm(prev => ({ ...prev, message: e.target.value }))}
-              placeholder="Add a personal message to include with the showcase..."
+              placeholder="Skriv en personlig melding som inkluderes i showcaset…"
               sx={{ mb: 3 }}
             />
 
@@ -6455,7 +6455,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
                 <TextField
                   fullWidth
-                  label="Price per Image (NOK)"
+                  label="Pris per bilde (NOK)"
                   type="number"
                   value={overageForm.pricePerImage}
                   onChange={(e) => setOverageForm(prev => ({ ...prev, pricePerImage: parseInt(e.target.value) || 300 }))}
@@ -6470,7 +6470,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   rows={3}
                   value={overageForm.customMessage}
                   onChange={(e) => setOverageForm(prev => ({ ...prev, customMessage: e.target.value }))}
-                  placeholder="Add any custom message to include in the email..."
+                  placeholder="Legg til en melding som inkluderes i e-posten…"
                 />
               </Box>
             </Box>
@@ -8278,7 +8278,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  placeholder="Sok showcase, prosjekt, kategori..."
+                  placeholder="Søk i showcase, prosjekt, kategori…"
                   variant="outlined"
                   size="small"
                   sx={{
@@ -8752,7 +8752,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  placeholder="Search..."
+                  placeholder="Søk…"
                   variant="outlined"
                   size="small"
                   sx={{
