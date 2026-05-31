@@ -4,11 +4,18 @@
 //   3. Registrere bytes i `user_storage_consumption` ledger
 //   4. Pushe metered usage til Stripe når brukeren overskrider grensen
 //
-// Plan-grenser er hardkodet her for nå (samme grenser som
-// platformSubscriptionPlans i index.ts). Når den definisjonen er hentet
-// ut av index.ts kan vi importere derfra.
+// Plan-grenser leses fra compat-override-store (samme som
+// `platformSubscriptionPlans` i index.ts redigerer fra admin-UI).
+// Hardkodede defaults under brukes hvis admin ikke har lagret en override.
 
 import type { Pool } from "pg";
+
+// Samme nøkkel/tabell som index.ts compatStoreGet bruker — vi peker
+// direkte mot legacy_compat_store her for å unngå et sirkulært import
+// til index.ts.
+const LEGACY_COMPAT_TABLE_NAME = "legacy_compat_store";
+const COMPAT_PLATFORM_SUBSCRIPTION_PLAN_OVERRIDES_STORE_KEY =
+  "platform_subscription_plan_overrides";
 
 const GIB = 1024 * 1024 * 1024;
 
@@ -92,6 +99,72 @@ const normalizePlanTier = (raw: string | null | undefined): PlanTier => {
   return "unknown";
 };
 
+interface PlanOverridesShape {
+  [planSlug: string]: {
+    maxStorageGB?: number | null;
+    allowsStorageOverage?: boolean | null;
+    storageOveragePricePerGbNok?: number | null;
+  };
+}
+
+let overridesCache: {
+  loadedAt: number;
+  data: PlanOverridesShape;
+} | null = null;
+const OVERRIDES_CACHE_TTL_MS = 60_000;
+
+const loadPlanOverrides = async (
+  pool: Pool,
+): Promise<PlanOverridesShape> => {
+  if (
+    overridesCache &&
+    Date.now() - overridesCache.loadedAt < OVERRIDES_CACHE_TTL_MS
+  ) {
+    return overridesCache.data;
+  }
+  try {
+    const r = await pool.query<{ store_value: PlanOverridesShape | null }>(
+      `SELECT store_value FROM ${LEGACY_COMPAT_TABLE_NAME} WHERE store_key = $1 LIMIT 1`,
+      [COMPAT_PLATFORM_SUBSCRIPTION_PLAN_OVERRIDES_STORE_KEY],
+    );
+    const data = r.rows[0]?.store_value ?? {};
+    overridesCache = { loadedAt: Date.now(), data };
+    return data;
+  } catch {
+    overridesCache = { loadedAt: Date.now(), data: {} };
+    return {};
+  }
+};
+
+export const clearStorageQuotaPlanCache = (): void => {
+  overridesCache = null;
+};
+
+const getEffectivePlanLimits = async (
+  pool: Pool,
+  planSlug: string,
+): Promise<{ storageGB: number; allowsOverage: boolean; overagePriceNok: number | null }> => {
+  const overrides = await loadPlanOverrides(pool);
+  const tier = normalizePlanTier(planSlug);
+  const slugLower = planSlug.toLowerCase().trim();
+  const override = overrides[slugLower] || overrides[tier] || {};
+
+  const storageGB =
+    typeof override.maxStorageGB === "number"
+      ? override.maxStorageGB
+      : PLAN_STORAGE_GB[tier];
+  const allowsOverage =
+    typeof override.allowsStorageOverage === "boolean"
+      ? override.allowsStorageOverage
+      : PLAN_ALLOWS_OVERAGE[tier];
+  const overagePriceNok =
+    typeof override.storageOveragePricePerGbNok === "number"
+      ? override.storageOveragePricePerGbNok
+      : null;
+
+  return { storageGB, allowsOverage, overagePriceNok };
+};
+
 export async function getUserPlan(
   pool: Pool,
   userId: string,
@@ -111,20 +184,22 @@ export async function getUserPlan(
       [userId],
     );
     if ((r.rowCount ?? 0) === 0) {
+      const eff = await getEffectivePlanLimits(pool, "unknown");
       return {
         tier: "unknown",
-        storageLimitBytes: PLAN_STORAGE_GB.unknown * GIB,
-        allowsOverage: false,
+        storageLimitBytes: eff.storageGB * GIB,
+        allowsOverage: eff.allowsOverage,
         stripeSubscriptionId: null,
         stripeStorageMeterItemId: null,
       };
     }
     const row = r.rows[0];
     const tier = normalizePlanTier(row.plan_type);
+    const eff = await getEffectivePlanLimits(pool, row.plan_type);
     return {
       tier,
-      storageLimitBytes: PLAN_STORAGE_GB[tier] * GIB,
-      allowsOverage: PLAN_ALLOWS_OVERAGE[tier],
+      storageLimitBytes: eff.storageGB * GIB,
+      allowsOverage: eff.allowsOverage,
       stripeSubscriptionId: row.stripe_subscription_id,
       stripeStorageMeterItemId: row.stripe_storage_meter_item_id,
     };
