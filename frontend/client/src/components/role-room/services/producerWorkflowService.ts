@@ -884,7 +884,11 @@ async function producerWorkflowRequest<T>(endpoint: string, options: RequestInit
       throw new Error('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
     }
 
-    throw new Error(detail);
+    // Fest HTTP-status på feilen så offline-replay-køen kan skille transient
+    // (401/408/429/5xx → behold og prøv igjen) fra permanent (4xx → dropp).
+    const requestError = new Error(detail) as Error & { status?: number };
+    requestError.status = response.status;
+    throw requestError;
   }
 
   if (response.status === 204) {
@@ -1411,7 +1415,184 @@ async function readReviewsMirror(projectId: string): Promise<ProducerClientRevie
   return sortReviews(stored.map((review) => normalizeReview(review, projectId)));
 }
 
+async function writeTimelineMirror(projectId: string, items: ProducerTimelineItem[]): Promise<void> {
+  await settingsService.setSetting(TIMELINE_MIRROR_NAMESPACE, items, { projectId });
+}
+
+async function writeEconomyMirror(projectId: string, items: ProducerEconomyItem[]): Promise<void> {
+  await settingsService.setSetting(ECONOMY_MIRROR_NAMESPACE, items, { projectId });
+}
+
+async function writeReviewsMirror(projectId: string, items: ProducerClientReview[]): Promise<void> {
+  await settingsService.setSetting(REVIEWS_MIRROR_NAMESPACE, items, { projectId });
+}
+
+// ── Offline replay-kø for producer-mutasjoner ──────────────────────────────
+// Producer-tjenesten er backend-først. Når en mutasjon feiler fordi backend er
+// nede, køes det EKSAKTE HTTP-kallet (endpoint + method + body) her og replayes
+// ved neste vellykkede kontakt — FØR fetch overskriver speilet — så offline-
+// skrivinger ikke går tapt ved reconnect. Optimistisk speiling gir umiddelbar
+// UI-feedback; backend-deriverte kaskader reconcileres ved refetch.
+
+const PRODUCER_MUTATION_QUEUE_NAMESPACE = 'role-room-producer-mutation-queue';
+
+type ProducerMutationDomain = 'timeline' | 'economy' | 'reviews';
+
+interface QueuedProducerMutation {
+  id: string;
+  domain: ProducerMutationDomain;
+  method: 'POST' | 'PATCH' | 'DELETE';
+  endpoint: string; // relativ sti; kan inneholde en lokal-id som remappes ved replay
+  body?: unknown;
+  createdLocalId?: string; // satt for create-ops så avhengige køposter kan remappes
+  queuedAt: string;
+}
+
+/**
+ * En feil er transient (behold i kø, prøv igjen) hvis den er en nettverksfeil
+ * (ingen HTTP-status) eller en 401/408/429/5xx. Permanent (4xx ellers) →
+ * dropp fra kø / re-kast til UI, fordi replay aldri vil lykkes.
+ */
+function isTransientBackendError(error: unknown): boolean {
+  const status = (error as { status?: number } | null | undefined)?.status;
+  if (typeof status !== 'number') return true;
+  return status === 401 || status === 408 || status === 429 || status >= 500;
+}
+
+function extractCreatedId(response: unknown): string | undefined {
+  const record = asRecord(response);
+  for (const key of ['item', 'review', 'comment']) {
+    const nested = asRecord(record[key]);
+    const id = readFirstNonEmptyString(nested.id);
+    if (id) return id;
+  }
+  return readFirstNonEmptyString(record.id);
+}
+
+async function readMutationQueue(projectId: string): Promise<QueuedProducerMutation[]> {
+  const stored = await settingsService.getSetting<QueuedProducerMutation[]>(PRODUCER_MUTATION_QUEUE_NAMESPACE, { projectId });
+  return Array.isArray(stored) ? stored : [];
+}
+
+async function writeMutationQueue(projectId: string, queue: QueuedProducerMutation[]): Promise<void> {
+  await settingsService.setSetting(PRODUCER_MUTATION_QUEUE_NAMESPACE, queue, { projectId });
+}
+
+async function enqueueProducerMutation(
+  projectId: string,
+  entry: Omit<QueuedProducerMutation, 'id' | 'queuedAt'>,
+): Promise<void> {
+  const queue = await readMutationQueue(projectId);
+  queue.push({ ...entry, id: generateId('producer-mutation'), queuedAt: nowIso() });
+  await writeMutationQueue(projectId, queue);
+}
+
+const producerFlushInFlight = new Map<string, Promise<void>>();
+
+/**
+ * Replay køede mutasjoner i rekkefølge til backend. Stopper (og beholder resten)
+ * ved første transiente feil — fortsatt offline. Lokal-id-er fra create-ops
+ * remappes til ekte backend-id-er i påfølgende posters endpoint.
+ */
+async function flushProducerMutationQueue(projectId: string): Promise<void> {
+  const existing = producerFlushInFlight.get(projectId);
+  if (existing) return existing;
+
+  const run = (async () => {
+    let queue = await readMutationQueue(projectId);
+    if (queue.length === 0) return;
+
+    const idRemap = new Map<string, string>();
+
+    while (queue.length > 0) {
+      const entry = queue[0];
+      let endpoint = entry.endpoint;
+      for (const [localId, realId] of idRemap) {
+        if (endpoint.includes(localId)) endpoint = endpoint.split(localId).join(realId);
+      }
+
+      try {
+        const response = await producerWorkflowRequest<Record<string, unknown>>(endpoint, {
+          method: entry.method,
+          ...(entry.body !== undefined ? { body: JSON.stringify(entry.body) } : {}),
+        });
+        if (entry.createdLocalId) {
+          const realId = extractCreatedId(response);
+          if (realId) idRemap.set(entry.createdLocalId, realId);
+        }
+      } catch (error) {
+        if (isTransientBackendError(error)) {
+          // Fortsatt offline — behold køen og avbryt; replayes neste gang.
+          return;
+        }
+        // Permanent feil — dropp posten så køen ikke står fast i evig loop.
+        console.warn('[producerWorkflowService] dropper køet mutasjon etter permanent feil:', endpoint, error);
+      }
+
+      queue = queue.slice(1);
+      await writeMutationQueue(projectId, queue);
+    }
+  })();
+
+  producerFlushInFlight.set(projectId, run);
+  try {
+    await run;
+  } finally {
+    producerFlushInFlight.delete(projectId);
+  }
+}
+
+/**
+ * Kjør en producer-mutasjon med offline-replay-semantikk:
+ *  1. Tøm evt. ventende kø først (bevarer rekkefølge).
+ *  2. Hvis køen fortsatt har poster → vi er offline: køpost + optimistisk speil.
+ *  3. Ellers prøv backend live. Ved transient feil → kø + optimistisk. Ved
+ *     permanent feil → re-kast så UI viser valideringsfeil.
+ */
+async function runProducerMutation<T>(opts: {
+  projectId: string;
+  domain: ProducerMutationDomain;
+  method: 'POST' | 'PATCH' | 'DELETE';
+  endpoint: string;
+  body?: unknown;
+  createdLocalId?: string;
+  parse: (response: unknown) => T;
+  optimistic: () => Promise<T>;
+}): Promise<T> {
+  await flushProducerMutationQueue(opts.projectId).catch(() => {});
+
+  const pending = await readMutationQueue(opts.projectId);
+  const enqueue = () =>
+    enqueueProducerMutation(opts.projectId, {
+      domain: opts.domain,
+      method: opts.method,
+      endpoint: opts.endpoint,
+      body: opts.body,
+      createdLocalId: opts.createdLocalId,
+    });
+
+  if (pending.length > 0) {
+    // Køen ble ikke tømt → fortsatt offline. Ikke prøv backend (ville feilet
+    // og kan avhenge av en ennå-uopplastet lokal entitet). Køpost i rekkefølge.
+    await enqueue();
+    return opts.optimistic();
+  }
+
+  try {
+    const response = await producerWorkflowRequest<unknown>(opts.endpoint, {
+      method: opts.method,
+      ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+    });
+    return opts.parse(response);
+  } catch (error) {
+    if (!isTransientBackendError(error)) throw error;
+    await enqueue();
+    return opts.optimistic();
+  }
+}
+
 async function fetchTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
+  await flushProducerMutationQueue(projectId).catch(() => {});
   try {
     const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
     const items = Array.isArray(response.items) ? response.items : [];
@@ -1425,6 +1606,7 @@ async function fetchTimeline(projectId: string): Promise<ProducerTimelineItem[]>
 }
 
 async function fetchEconomy(projectId: string): Promise<ProducerEconomyItem[]> {
+  await flushProducerMutationQueue(projectId).catch(() => {});
   try {
     const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
     const items = Array.isArray(response.items) ? response.items : [];
@@ -1438,6 +1620,7 @@ async function fetchEconomy(projectId: string): Promise<ProducerEconomyItem[]> {
 }
 
 async function fetchReviews(projectId: string): Promise<ProducerClientReview[]> {
+  await flushProducerMutationQueue(projectId).catch(() => {});
   try {
     const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
     const items = Array.isArray(response.items) ? response.items : [];
@@ -2749,22 +2932,41 @@ export const producerWorkflowService = {
 
   async createTimelineItem(projectId: string, payload: CreateProducerTimelineItemInput): Promise<ProducerTimelineItem> {
     const items = await this.getTimeline(projectId);
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
+    const localId = generateId('producer-timeline');
+    const body = {
+      phase: payload.phase,
+      title: payload.title,
+      description: payload.description ?? null,
+      ownerUserId: payload.ownerUserId ?? null,
+      dueAt: payload.dueAt ?? null,
+      status: payload.status ?? 'planned',
+      linkedEntityType: payload.linkedEntityType ?? null,
+      linkedEntityId: payload.linkedEntityId ?? null,
+      sortOrder: payload.sortOrder ?? items.length,
+      metadata: payload.metadata ?? {},
+    };
+    const created = await runProducerMutation<ProducerTimelineItem>({
+      projectId,
+      domain: 'timeline',
       method: 'POST',
-      body: JSON.stringify({
-        phase: payload.phase,
-        title: payload.title,
-        description: payload.description ?? null,
-        ownerUserId: payload.ownerUserId ?? null,
-        dueAt: payload.dueAt ?? null,
-        status: payload.status ?? 'planned',
-        linkedEntityType: payload.linkedEntityType ?? null,
-        linkedEntityId: payload.linkedEntityId ?? null,
-        sortOrder: payload.sortOrder ?? items.length,
-        metadata: payload.metadata ?? {},
-      }),
+      endpoint: `/projects/${projectId}/producer/timeline`,
+      body,
+      createdLocalId: localId,
+      parse: (response) => normalizeTimelineItem(asRecord(response).item, projectId, items.length),
+      optimistic: async () => {
+        const optimisticItem = normalizeTimelineItem(
+          { ...body, id: localId, created_at: nowIso(), updated_at: nowIso() },
+          projectId,
+          items.length,
+        );
+        const mirror = await readTimelineMirror(projectId);
+        await writeTimelineMirror(
+          projectId,
+          sortTimelineItems([...mirror.filter((i) => i.id !== optimisticItem.id), optimisticItem]),
+        );
+        return optimisticItem;
+      },
     });
-    const created = normalizeTimelineItem(response.item, projectId, items.length);
     clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
@@ -2780,22 +2982,51 @@ export const producerWorkflowService = {
     itemId: string,
     payload: UpdateProducerTimelineItemInput,
   ): Promise<ProducerTimelineItem> {
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
+    const body = buildDefinedBody([
+      ['phase', payload.phase],
+      ['title', payload.title],
+      ['description', payload.description],
+      ['ownerUserId', payload.ownerUserId],
+      ['dueAt', payload.dueAt],
+      ['status', payload.status],
+      ['linkedEntityType', payload.linkedEntityType],
+      ['linkedEntityId', payload.linkedEntityId],
+      ['sortOrder', payload.sortOrder],
+      ['metadata', payload.metadata],
+    ]);
+    const persisted = await runProducerMutation<ProducerTimelineItem>({
+      projectId,
+      domain: 'timeline',
       method: 'PATCH',
-      body: JSON.stringify(buildDefinedBody([
-        ['phase', payload.phase],
-        ['title', payload.title],
-        ['description', payload.description],
-        ['ownerUserId', payload.ownerUserId],
-        ['dueAt', payload.dueAt],
-        ['status', payload.status],
-        ['linkedEntityType', payload.linkedEntityType],
-        ['linkedEntityId', payload.linkedEntityId],
-        ['sortOrder', payload.sortOrder],
-        ['metadata', payload.metadata],
-      ])),
+      endpoint: `/projects/${projectId}/producer/timeline/${itemId}`,
+      body,
+      parse: (response) => normalizeTimelineItem(asRecord(response).item, projectId),
+      optimistic: async () => {
+        const mirror = await readTimelineMirror(projectId);
+        const existing = mirror.find((i) => i.id === itemId);
+        const snakePatch = buildDefinedBody([
+          ['phase', payload.phase],
+          ['title', payload.title],
+          ['description', payload.description],
+          ['owner_user_id', payload.ownerUserId],
+          ['due_at', payload.dueAt],
+          ['status', payload.status],
+          ['linked_entity_type', payload.linkedEntityType],
+          ['linked_entity_id', payload.linkedEntityId],
+          ['sort_order', payload.sortOrder],
+          ['metadata', payload.metadata],
+        ]);
+        const merged = normalizeTimelineItem(
+          { ...(existing ?? { id: itemId }), ...snakePatch, id: itemId, updated_at: nowIso() },
+          projectId,
+        );
+        await writeTimelineMirror(
+          projectId,
+          sortTimelineItems(existing ? mirror.map((i) => (i.id === itemId ? merged : i)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const persisted = normalizeTimelineItem(response.item, projectId);
     clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
@@ -2808,8 +3039,16 @@ export const producerWorkflowService = {
 
   async deleteTimelineItem(projectId: string, itemId: string): Promise<void> {
     try {
-      await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
+      await runProducerMutation<void>({
+        projectId,
+        domain: 'timeline',
         method: 'DELETE',
+        endpoint: `/projects/${projectId}/producer/timeline/${itemId}`,
+        parse: () => undefined,
+        optimistic: async () => {
+          const mirror = await readTimelineMirror(projectId);
+          await writeTimelineMirror(projectId, mirror.filter((i) => i.id !== itemId));
+        },
       });
     } catch (error) {
       if (!isMissingProducerTimelineItemError(error)) {
@@ -3030,26 +3269,45 @@ export const producerWorkflowService = {
 
   async createEconomyItem(projectId: string, payload: CreateProducerEconomyItemInput): Promise<ProducerEconomyItem> {
     const items = await this.getEconomyItems(projectId);
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
+    const localId = generateId('producer-economy');
+    const body = {
+      phase: payload.phase,
+      category: payload.category,
+      itemName: payload.itemName,
+      description: payload.description ?? null,
+      estimate: payload.estimate ?? 0,
+      approved: payload.approved ?? 0,
+      actual: payload.actual ?? 0,
+      currency: payload.currency ?? 'NOK',
+      status: payload.status ?? 'draft',
+      clientVisible: payload.clientVisible ?? true,
+      linkedEntityType: payload.linkedEntityType ?? null,
+      linkedEntityId: payload.linkedEntityId ?? null,
+      sortOrder: payload.sortOrder ?? items.length,
+      metadata: payload.metadata ?? {},
+    };
+    const created = await runProducerMutation<ProducerEconomyItem>({
+      projectId,
+      domain: 'economy',
       method: 'POST',
-      body: JSON.stringify({
-        phase: payload.phase,
-        category: payload.category,
-        itemName: payload.itemName,
-        description: payload.description ?? null,
-        estimate: payload.estimate ?? 0,
-        approved: payload.approved ?? 0,
-        actual: payload.actual ?? 0,
-        currency: payload.currency ?? 'NOK',
-        status: payload.status ?? 'draft',
-        clientVisible: payload.clientVisible ?? true,
-        linkedEntityType: payload.linkedEntityType ?? null,
-        linkedEntityId: payload.linkedEntityId ?? null,
-        sortOrder: payload.sortOrder ?? items.length,
-        metadata: payload.metadata ?? {},
-      }),
+      endpoint: `/projects/${projectId}/producer/economy/items`,
+      body,
+      createdLocalId: localId,
+      parse: (response) => normalizeEconomyItem(asRecord(response).item, projectId, items.length),
+      optimistic: async () => {
+        const optimisticItem = normalizeEconomyItem(
+          { ...body, id: localId, created_at: nowIso(), updated_at: nowIso() },
+          projectId,
+          items.length,
+        );
+        const mirror = await readEconomyMirror(projectId);
+        await writeEconomyMirror(
+          projectId,
+          sortEconomyItems([...mirror.filter((i) => i.id !== optimisticItem.id), optimisticItem]),
+        );
+        return optimisticItem;
+      },
     });
-    const created = normalizeEconomyItem(response.item, projectId, items.length);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'economy',
@@ -3064,26 +3322,59 @@ export const producerWorkflowService = {
     itemId: string,
     payload: UpdateProducerEconomyItemInput,
   ): Promise<ProducerEconomyItem> {
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items/${itemId}`, {
+    const body = buildDefinedBody([
+      ['phase', payload.phase],
+      ['category', payload.category],
+      ['itemName', payload.itemName],
+      ['description', payload.description],
+      ['estimate', payload.estimate],
+      ['approved', payload.approved],
+      ['actual', payload.actual],
+      ['currency', payload.currency],
+      ['status', payload.status],
+      ['clientVisible', payload.clientVisible],
+      ['linkedEntityType', payload.linkedEntityType],
+      ['linkedEntityId', payload.linkedEntityId],
+      ['sortOrder', payload.sortOrder],
+      ['metadata', payload.metadata],
+    ]);
+    const persisted = await runProducerMutation<ProducerEconomyItem>({
+      projectId,
+      domain: 'economy',
       method: 'PATCH',
-      body: JSON.stringify(buildDefinedBody([
-        ['phase', payload.phase],
-        ['category', payload.category],
-        ['itemName', payload.itemName],
-        ['description', payload.description],
-        ['estimate', payload.estimate],
-        ['approved', payload.approved],
-        ['actual', payload.actual],
-        ['currency', payload.currency],
-        ['status', payload.status],
-        ['clientVisible', payload.clientVisible],
-        ['linkedEntityType', payload.linkedEntityType],
-        ['linkedEntityId', payload.linkedEntityId],
-        ['sortOrder', payload.sortOrder],
-        ['metadata', payload.metadata],
-      ])),
+      endpoint: `/projects/${projectId}/producer/economy/items/${itemId}`,
+      body,
+      parse: (response) => normalizeEconomyItem(asRecord(response).item, projectId),
+      optimistic: async () => {
+        const mirror = await readEconomyMirror(projectId);
+        const existing = mirror.find((i) => i.id === itemId);
+        const snakePatch = buildDefinedBody([
+          ['phase', payload.phase],
+          ['category', payload.category],
+          ['item_name', payload.itemName],
+          ['description', payload.description],
+          ['estimate', payload.estimate],
+          ['approved', payload.approved],
+          ['actual', payload.actual],
+          ['currency', payload.currency],
+          ['status', payload.status],
+          ['client_visible', payload.clientVisible],
+          ['linked_entity_type', payload.linkedEntityType],
+          ['linked_entity_id', payload.linkedEntityId],
+          ['sort_order', payload.sortOrder],
+          ['metadata', payload.metadata],
+        ]);
+        const merged = normalizeEconomyItem(
+          { ...(existing ?? { id: itemId }), ...snakePatch, id: itemId, updated_at: nowIso() },
+          projectId,
+        );
+        await writeEconomyMirror(
+          projectId,
+          sortEconomyItems(existing ? mirror.map((i) => (i.id === itemId ? merged : i)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const persisted = normalizeEconomyItem(response.item, projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'economy',
@@ -3094,8 +3385,16 @@ export const producerWorkflowService = {
   },
 
   async deleteEconomyItem(projectId: string, itemId: string): Promise<void> {
-    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/economy/items/${itemId}`, {
+    await runProducerMutation<void>({
+      projectId,
+      domain: 'economy',
       method: 'DELETE',
+      endpoint: `/projects/${projectId}/producer/economy/items/${itemId}`,
+      parse: () => undefined,
+      optimistic: async () => {
+        const mirror = await readEconomyMirror(projectId);
+        await writeEconomyMirror(projectId, mirror.filter((i) => i.id !== itemId));
+      },
     });
     emitProducerWorkflowEvent({
       projectId,
