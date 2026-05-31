@@ -2059,13 +2059,24 @@ export function setupClientGalleryRoutes(
       // Pull each image as a node-fetch stream and append. archiver
       // handles back-pressure så vi kun har én in flight om gangen.
       //
-      // Watermark-strategi (3 nivåer, billigst først):
-      //   1. Pre-rendret watermarkedUrl finnes → bare server den (gratis)
-      //   2. Ingen pre-rendret variant, men policy krever watermark →
-      //      buffrer hele bildet, kjør sharp.composite(SVG-tekst),
-      //      append'er bufferet i stedet. Koster RAM+CPU per bilde men
-      //      garanterer at original-pikslene ikke når klienten.
-      //   3. Ikke watermarked → server originalen som stream (gratis).
+      // Per-image-strategi avhenger av to flagger:
+      //   stripExif (default true)  — fjerner GPS, kamera-serie, lens-info.
+      //                                Kritisk compliance-vern for pro-fotografer
+      //                                (bryllup/celeb). Opt-out via
+      //                                gallery_settings.preserveExif = true
+      //                                f.eks. ved RAW-leveranse til retusjør.
+      //   watermarked              — fra policy.watermarked (PR #76).
+      //
+      // Beslutningsmatrise:
+      //   pre-watermarkedUrl + !stripExif  → pass-through (gratis)
+      //   watermark on-the-fly             → sharp.composite (already strips
+      //                                      metadata by sharp's default;
+      //                                      explicit ingen withMetadata)
+      //   stripExif uten watermark         → sharp roundtrip kun for å strippe
+      //                                      (litt CPU men ingen composite)
+      //   ingen av delene                  → pass-through (gratis)
+      const preserveExif = settings.preserveExif === true;
+      const stripExif = !preserveExif;
       let appended = 0;
       for (const img of picked) {
         const preWatermarkedUrl = watermarked && img.watermarkedUrl
@@ -2083,10 +2094,16 @@ export function setupClientGalleryRoutes(
           }
 
           const needsOnTheFlyWatermark = watermarked && !preWatermarkedUrl;
+          // Pre-watermarked variants er allerede branded, men de kan
+          // fortsatt bære EXIF fra original-eksport — så vi går gjennom
+          // sharp også der hvis stripExif krever det.
+          const needsSharpForExif = stripExif && !needsOnTheFlyWatermark;
+
           if (needsOnTheFlyWatermark) {
             // Buffrer + transformerer. Vi ofrer streaming for å garantere
             // at klienten ALDRI får original uten watermark — selv hvis
-            // sharp feiler hopper vi over bildet (logg + skip).
+            // sharp feiler hopper vi over bildet (logg + skip). sharp
+            // default-stripper metadata når .withMetadata() ikke kalles.
             try {
               const sourceBuffer = Buffer.from(await fetchRes.arrayBuffer());
               const sharp = await getSharp();
@@ -2095,6 +2112,7 @@ export function setupClientGalleryRoutes(
               const h = meta.height ?? 1200;
               const overlay = buildWatermarkSvg(w, h);
               const watermarkedBuffer = await sharp(sourceBuffer)
+                .rotate() // auto-orient + strip EXIF orientation
                 .composite([{ input: overlay, gravity: 'southeast', blend: 'over' }])
                 .jpeg({ quality: 90 })
                 .toBuffer();
@@ -2108,8 +2126,47 @@ export function setupClientGalleryRoutes(
               // Skip-på-feil er sikkerhetsdekk: bedre tomt zip-entry
               // enn å lekke original-piksler ved sharp-krasj.
             }
+          } else if (needsSharpForExif) {
+            // Kun strip-pipeline, ingen composite. Litt CPU men null
+            // bildebehandling utover re-encoding for å droppe metadata.
+            // Fallback-on-error: streamer originalen heller enn å miste
+            // bildet helt — siden ingen security-gevinst forsvinner her
+            // (klienten har lovlig tilgang når denne pathen tas).
+            try {
+              const sourceBuffer = Buffer.from(await fetchRes.arrayBuffer());
+              const sharp = await getSharp();
+              const strippedBuffer = await sharp(sourceBuffer)
+                .rotate()
+                .jpeg({ quality: 92 })
+                .toBuffer();
+              archive.append(strippedBuffer, { name: safeName });
+              appended++;
+            } catch (sharpErr) {
+              console.warn(
+                `[client-gallery] exif-strip failed for ${img.id} — faller tilbake til original:`,
+                sharpErr,
+              );
+              // Best-effort: append original-bufferet om strip feilet.
+              // Klienten har uansett rett til bildet i denne pathen.
+              try {
+                const fallbackRes = await fetch(sourceUrl);
+                if (fallbackRes.ok && fallbackRes.body) {
+                  const { Readable } = await import('node:stream');
+                  archive.append(Readable.fromWeb(fallbackRes.body as never), {
+                    name: safeName,
+                  });
+                  appended++;
+                }
+              } catch (fallbackErr) {
+                console.warn(
+                  `[client-gallery] fallback fetch failed ${img.id}:`,
+                  fallbackErr,
+                );
+              }
+            }
           } else {
-            // Pass-through stream — uendret originaloppførsel.
+            // Pass-through stream — kun når preserveExif=true (eksplisitt
+            // opt-out) og ingen watermark trengs.
             const { Readable } = await import('node:stream');
             const nodeStream = Readable.fromWeb(fetchRes.body as never);
             archive.append(nodeStream, { name: safeName });
