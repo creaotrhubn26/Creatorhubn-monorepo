@@ -17,6 +17,7 @@ import { CenterFocusStrong as FitIcon } from '@mui/icons-material';
 import type { Formation } from './formationTypes';
 import { formatTimecode } from './timecode';
 import { MusicWaveformTrack } from './MusicWaveformTrack';
+import { danceFlowColors } from './danceFlowTheme';
 
 const TRACK_HEIGHT = 32;
 const SMALL_TRACK_HEIGHT = 22;
@@ -149,7 +150,7 @@ export function FormationTimeline({
                   position: 'absolute', top: 2, bottom: 2,
                   left: `${startPct}%`, width: `${widthPct}%`, minWidth: 16,
                   bgcolor: `${color}22`, border: `1px solid ${color}55`,
-                  borderRadius: 0.5, color: '#fff',
+                  borderRadius: 0.5, color: danceFlowColors.textPrimary,
                   fontSize: 9.5, fontWeight: 600, px: 0.5,
                   display: 'flex', alignItems: 'center', overflow: 'hidden',
                   whiteSpace: 'nowrap', textOverflow: 'ellipsis',
@@ -199,7 +200,7 @@ export function FormationTimeline({
           <Stack spacing={0.5}>
             {/* FORMATION-spor */}
             <Stack direction="row" alignItems="center" spacing={1}>
-              <Typography sx={{ width: LABEL_WIDTH, fontSize: 10, fontWeight: 700, color: '#a78bfa', letterSpacing: 1, flexShrink: 0 }}>
+              <Typography sx={{ width: LABEL_WIDTH, fontSize: 10, fontWeight: 700, color: danceFlowColors.lavender, letterSpacing: 1, flexShrink: 0 }}>
                 FORMATION
               </Typography>
               <Box sx={{
@@ -237,13 +238,13 @@ export function FormationTimeline({
                           position: 'absolute', top: 2, bottom: 2,
                           left: `${startPct}%`, width: `${widthPct}%`, minWidth: 24,
                           bgcolor: isActive ? 'rgba(167,139,250,0.32)' : 'rgba(167,139,250,0.14)',
-                          border: `${isActive ? 2 : 1}px solid ${isActive ? '#c4b5fd' : 'rgba(167,139,250,0.45)'}`,
-                          borderRadius: 0.5, cursor: 'pointer', color: '#fff',
+                          border: `${isActive ? 2 : 1}px solid ${isActive ? danceFlowColors.lavenderLight : 'rgba(167,139,250,0.45)'}`,
+                          borderRadius: 0.5, cursor: 'pointer', color: danceFlowColors.textPrimary,
                           fontSize: 10, fontWeight: 600, px: 0.5,
                           display: 'flex', alignItems: 'center', overflow: 'hidden',
                           whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                           '&:hover': { bgcolor: 'rgba(167,139,250,0.28)' },
-                          '&:focus-visible': { outline: '2px solid #c4b5fd' },
+                          '&:focus-visible': { outline: `2px solid ${danceFlowColors.lavenderLight}` },
                         }}
                       >
                         {formation.name}
@@ -255,12 +256,12 @@ export function FormationTimeline({
             </Stack>
 
             {/* MOVEMENT-spor (F5-8) */}
-            {movements.length > 0 ? renderBlockTrack('MOVEMENT', '#34d399', movements, 'formation-timeline-movement') : null}
+            {movements.length > 0 ? renderBlockTrack('MOVEMENT', danceFlowColors.successPrimary, movements, 'formation-timeline-movement') : null}
 
             {/* MUSIC waveform-spor (F5-10) — wavesurfer.js-basert */}
             {musicUrl ? (
               <Stack direction="row" alignItems="center" spacing={1}>
-                <Typography sx={{ width: LABEL_WIDTH, fontSize: 10, fontWeight: 700, color: '#fbbf24', letterSpacing: 1, flexShrink: 0 }}>
+                <Typography sx={{ width: LABEL_WIDTH, fontSize: 10, fontWeight: 700, color: danceFlowColors.gold, letterSpacing: 1, flexShrink: 0 }}>
                   MUSIC
                 </Typography>
                 <Box
@@ -296,7 +297,7 @@ export function FormationTimeline({
                 bottom: 0,
                 left: `calc(${LABEL_WIDTH + 8}px + (100% - ${LABEL_WIDTH + 8}px) * ${Math.min(1, Math.max(0, currentTimeSec / computedDuration))})`,
                 width: 0,
-                borderLeft: '1.5px solid #fbbf24',
+                borderLeft: `1.5px solid ${danceFlowColors.gold}`,
                 pointerEvents: 'none',
                 boxShadow: '0 0 8px rgba(251,191,36,0.5)',
                 zIndex: 5,
@@ -324,7 +325,7 @@ export function FormationTimeline({
           data-testid="formation-timeline-zoom"
           style={{ flex: 1 }}
         />
-        <Typography sx={{ fontSize: 10, color: '#a78bfa', minWidth: 36, textAlign: 'right' }}>
+        <Typography sx={{ fontSize: 10, color: danceFlowColors.lavender, minWidth: 36, textAlign: 'right' }}>
           {zoomPct}%
         </Typography>
         <Button
@@ -332,7 +333,7 @@ export function FormationTimeline({
           startIcon={<FitIcon sx={{ fontSize: 14 }} />}
           onClick={() => setZoomPct(100)}
           data-testid="formation-timeline-fit"
-          sx={{ fontSize: 10, textTransform: 'none', color: '#a78bfa' }}
+          sx={{ fontSize: 10, textTransform: 'none', color: danceFlowColors.lavender }}
         >
           Fit
         </Button>
