@@ -139,4 +139,40 @@ test.describe('Innholdsprodusent — offline prosjektopprettelse', () => {
     // Etter reload skal navnet fortsatt være i lokal lagring.
     expect(await nameSurvivesInStorage(CASTING_PROJECTS_STORAGE_KEY, DEMO_PROJECT_NAME)).toBe(true);
   });
+
+  test('brief (client-intake) lagres lokalt når backend er nede', async ({ page }) => {
+    const PROJECT_GOAL =
+      'Posisjonere Northwind Drilling som bransjeledende på HMS og trygg onboarding.';
+    const DELIVERABLES = '1 hovedfilm (16:9), 1 LinkedIn-cutdown (4:5), 1 vertikal teaser (9:16).';
+
+    await forceBackendOffline(page);
+    await openHarness(page);
+    await createDemoProjectOffline(page);
+
+    // Inn i Brief-steget i content-producer-pipelinen.
+    await page.getByRole('button', { name: /1\. Brief/ }).click();
+
+    // Steg 1 i brief-wizarden: Mål og leveranse.
+    await page.getByRole('textbox', { name: 'Hva skal prosjektet oppnå?' }).fill(PROJECT_GOAL);
+    await page.getByRole('textbox', { name: 'Hva skal leveres?' }).fill(DELIVERABLES);
+    await page.getByRole('button', { name: 'Lagre' }).first().click();
+
+    // updateClientIntake skal ha speilet briefen til localStorage-namespacet
+    // `role-room-producer-client-intake` selv om PUT-et fikk 401.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => {
+            for (let i = 0; i < window.localStorage.length; i += 1) {
+              const key = window.localStorage.key(i);
+              if (key && key.includes('role-room-producer-client-intake')) {
+                return window.localStorage.getItem(key);
+              }
+            }
+            return null;
+          }),
+        { timeout: 15_000, message: 'Briefen skal være speilet til localStorage' },
+      )
+      .toContain('bransjeledende på HMS');
+  });
 });

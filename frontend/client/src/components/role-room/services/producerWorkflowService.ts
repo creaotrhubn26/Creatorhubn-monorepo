@@ -37,6 +37,7 @@ const TIMELINE_NAMESPACE = 'role-room-producer-timeline';
 const ECONOMY_NAMESPACE = 'role-room-producer-economy';
 const REVIEWS_NAMESPACE = 'role-room-producer-reviews';
 const CLIENT_MATERIALS_NAMESPACE = 'role-room-producer-client-materials';
+const CLIENT_INTAKE_NAMESPACE = 'role-room-producer-client-intake';
 const SYNTHETIC_REVIEW_SOURCES = new Set(['codex-smoke', 'cli-smoke', 'smoke-test']);
 const SYNTHETIC_REVIEW_TITLE_PATTERN = /^(auto review|smoke review|rbac review|qa review(?:\s+\d+)?|qa budget sync|budget package \d+|codex-review-)/i;
 const CLIENT_INTAKE_TIMELINE_ENTITY_ID = 'client-intake';
@@ -1414,9 +1415,32 @@ async function fetchExpenses(projectId: string): Promise<ProducerExpense[]> {
     .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
 }
 
+async function readClientIntakeFromStorage(projectId: string): Promise<ProducerClientIntake | null> {
+  const stored = await settingsService.getSetting<unknown>(CLIENT_INTAKE_NAMESPACE, { projectId });
+  if (!stored || typeof stored !== 'object') {
+    return null;
+  }
+  return normalizeClientIntake(stored);
+}
+
+async function writeClientIntakeToStorage(projectId: string, intake: ProducerClientIntake): Promise<void> {
+  await settingsService.setSetting(CLIENT_INTAKE_NAMESPACE, intake, { projectId });
+}
+
 async function fetchClientIntake(projectId: string): Promise<ProducerClientIntake> {
-  const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`);
-  return normalizeClientIntake(response.intake ?? {});
+  try {
+    const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`);
+    const normalized = normalizeClientIntake(response.intake ?? {});
+    // Speil til localStorage så offline-lesninger og e2e-harness uten backend
+    // ser siste kjente brief. Samme mønster som fetchClientMaterials.
+    await writeClientIntakeToStorage(projectId, normalized);
+    return normalized;
+  } catch (error) {
+    // Backend ikke tilgjengelig (offline / e2e-harness uten server) — bruk
+    // localStorage-speilet skrevet av updateClientIntake/forrige fetch.
+    console.warn('[producerWorkflowService] fetchClientIntake falt tilbake til localStorage:', error);
+    return (await readClientIntakeFromStorage(projectId)) ?? normalizeClientIntake({});
+  }
 }
 
 async function readClientMaterialsFromStorage(projectId: string): Promise<ProducerClientMaterial[]> {
@@ -2779,27 +2803,40 @@ export const producerWorkflowService = {
     projectId: string,
     intake: ProducerClientIntake,
   ): Promise<ProducerClientIntake> {
-    const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        projectGoal: intake.projectGoal ?? '',
-        deliverables: intake.deliverables ?? '',
-        targetAudience: intake.targetAudience ?? '',
-        keyMessage: intake.keyMessage ?? '',
-        timingConstraints: intake.timingConstraints ?? '',
-        brandNotes: intake.brandNotes ?? '',
-        materialOverview: intake.materialOverview ?? '',
-        referenceLinks: intake.referenceLinks ?? '',
-        contactName: intake.contactName ?? '',
-        contactEmail: intake.contactEmail ?? '',
-        contactPhone: intake.contactPhone ?? '',
-        additionalNotes: intake.additionalNotes ?? '',
-      }),
-    });
-    const normalized = normalizeClientIntake(response.intake ?? {});
+    let normalized: ProducerClientIntake;
+    let offline = false;
+    try {
+      const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          projectGoal: intake.projectGoal ?? '',
+          deliverables: intake.deliverables ?? '',
+          targetAudience: intake.targetAudience ?? '',
+          keyMessage: intake.keyMessage ?? '',
+          timingConstraints: intake.timingConstraints ?? '',
+          brandNotes: intake.brandNotes ?? '',
+          materialOverview: intake.materialOverview ?? '',
+          referenceLinks: intake.referenceLinks ?? '',
+          contactName: intake.contactName ?? '',
+          contactEmail: intake.contactEmail ?? '',
+          contactPhone: intake.contactPhone ?? '',
+          additionalNotes: intake.additionalNotes ?? '',
+        }),
+      });
+      normalized = normalizeClientIntake(response.intake ?? {});
+    } catch (error) {
+      // Backend ikke tilgjengelig — behold briefen optimistisk og lagre lokalt.
+      // Matcher createClientMaterial: ingen data-tap når serveren er nede.
+      console.warn('[producerWorkflowService] updateClientIntake falt tilbake til localStorage:', error);
+      normalized = normalizeClientIntake(intake);
+      offline = true;
+    }
+    // Speil alltid til localStorage — også ved suksess — så offline-lesninger
+    // og e2e-harness uten backend ser siste lagrede brief.
+    await writeClientIntakeToStorage(projectId, normalized);
     clearClientInputReadCache(projectId);
     clearProducerWorkflowReadCache(projectId);
-    if (canCurrentSessionMutateProducerWorkflow()) {
+    if (!offline && canCurrentSessionMutateProducerWorkflow()) {
       await syncClientGroundingTimeline(projectId);
       await syncClientGroundingReviews(projectId);
       clearProducerWorkflowReadCache(projectId);
