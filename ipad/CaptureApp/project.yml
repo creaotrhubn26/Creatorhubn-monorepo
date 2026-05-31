@@ -37,8 +37,8 @@ targets:
           UIImageName: CreatorHubOneLogo
           UIImageRespectsSafeAreaInsets: true
         UIRequiredDeviceCapabilities: [arm64]
-        NSLocalNetworkUsageDescription: Used to discover and communicate with your Canon camera over the local network during a shoot.
-        NSBonjourServices: [_http._tcp]
+        NSLocalNetworkUsageDescription: Used to discover and communicate with your Canon camera over the local network during a shoot, and to advertise this iPad to a paired Creatorhub One Desk (Mac companion) for live mirror.
+        NSBonjourServices: [_http._tcp, _creatorhubcap._tcp]
         NSCameraUsageDescription: Not used. Present only to satisfy App Store review when tethering to external cameras.
         NSPhotoLibraryAddUsageDescription: Used only when you explicitly export a captured session to Photos.
         NSMicrophoneUsageDescription: Record short voice memos attached to individual shots so you can dictate retouch + delivery instructions while shooting continues.
