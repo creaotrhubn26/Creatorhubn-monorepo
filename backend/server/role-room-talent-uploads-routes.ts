@@ -518,14 +518,14 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       return res.status(401).json({ error: "Signatur for gammel (anti-replay)" });
     }
     const rawBody = JSON.stringify(req.body);
-    const expected = require("node:crypto")
+    const expected = crypto
       .createHmac("sha256", secret)
       .update(`${timestamp}.${rawBody}`)
       .digest("hex");
     // Constant-time-compare for å unngå timing-attack
     const a = Buffer.from(expected, "hex");
     const b = Buffer.from(providedSig, "hex");
-    if (a.length !== b.length || !require("node:crypto").timingSafeEqual(a, b)) {
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       return res.status(401).json({ error: "Signatur matcher ikke" });
     }
 
