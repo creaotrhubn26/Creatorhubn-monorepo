@@ -260,6 +260,7 @@ import WorkflowExecutor from './showcase/WorkflowExecutor';
 import ContextualActionBar from './showcase/ContextualActionBar';
 import QuickPreview from './showcase/QuickPreview';
 import ActivityFeed from './showcase/ActivityFeed';
+import MySharedGalleriesPanel from './showcase/MySharedGalleriesPanel';
 import ShareToCommunityDialog from '../community/ShareToCommunityDialog';
 import SmartCollections from './showcase/SmartCollections';
 import ComparisonView from './showcase/ComparisonView';
@@ -5708,6 +5709,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     user: any;
     profession: string;
 }) => {
+    const [mySharedGalleriesOpen, setMySharedGalleriesOpen] = useState(false);
     const [shareForm, setShareForm] = useState({
       selectedShowcase: '',
       clientEmail: prefilledClient?.email || '',
@@ -5752,11 +5754,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     };
 
     return (
+      <>
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Image color="primary" />
-            <Typography variant="h6">Share {getTerm('showcase')} with {getTerm('client')}</Typography>
+            <Typography variant="h6" sx={{ flex: 1 }}>Share {getTerm('showcase')} with {getTerm('client')}</Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setMySharedGalleriesOpen(true)}
+            >
+              Mine delte lenker
+            </Button>
           </Box>
         </DialogTitle>
         <DialogContent>
@@ -5966,6 +5976,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+      <MySharedGalleriesPanel
+        open={mySharedGalleriesOpen}
+        onClose={() => setMySharedGalleriesOpen(false)}
+      />
+    </>
   );
 };
 

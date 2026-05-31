@@ -202,6 +202,156 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
     }
   });
 
+  // GET /api/showcase/galleries/mine — Liste over share-galleries denne
+  // fotografen eier. Brukes av "Mine delte galleries"-panelet til å la
+  // Fredrik se hva som er aktivt og revokere/regenerere ved behov.
+  app.get("/api/showcase/galleries/mine", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const result = await pool.query(
+        `SELECT id, project_title, client_name, client_email, access_token,
+                status, gallery_settings, created_at, updated_at, completed_at
+           FROM photographer_client_galleries
+          WHERE photographer_id = $1
+          ORDER BY created_at DESC
+          LIMIT 200`,
+        [session.userId],
+      );
+      const rows = result.rows.map((r: any) => {
+        const settings = (r.gallery_settings ?? {}) as Record<string, unknown>;
+        const expiresAtRaw = settings.expiresAt;
+        const expiresAt =
+          typeof expiresAtRaw === 'string' && expiresAtRaw.trim()
+            ? expiresAtRaw
+            : null;
+        const isExpired = expiresAt
+          ? new Date(expiresAt).getTime() < Date.now()
+          : false;
+        return {
+          id: r.id,
+          projectTitle: r.project_title,
+          clientName: r.client_name,
+          clientEmail: r.client_email,
+          accessToken: r.access_token,
+          status: r.status ?? 'active',
+          projectState: typeof settings.projectState === 'string' ? settings.projectState : null,
+          source: typeof settings.source === 'string' ? settings.source : null,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          completedAt: r.completed_at,
+          expiresAt,
+          isExpired,
+        };
+      });
+      res.json({ galleries: rows });
+    } catch (error) {
+      console.error("[showcase-galleries-mine] feilet", error);
+      res.status(500).json({ error: "kunne_ikke_liste_galleries" });
+    }
+  });
+
+  // POST /api/showcase/galleries/:galleryId/revoke — Marker som revoked.
+  // Vi sletter ikke raden (audit-spor + selections/comments referer til
+  // gallery_id). Status='revoked' gjør at fetchClientGalleryByAccessToken
+  // returnerer null (return-tidlig hvis status != 'active'), så lenken
+  // svarer 404 derfra.
+  app.post("/api/showcase/galleries/:galleryId/revoke", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const galleryId = String(req.params.galleryId || "").trim();
+    if (!galleryId) {
+      return res.status(400).json({ error: "manglende_gallery_id" });
+    }
+    try {
+      // Eier-sjekk + status-fetch i én query for å unngå race.
+      const owner = await pool.query(
+        `SELECT photographer_id, status, project_title FROM photographer_client_galleries
+          WHERE id = $1 LIMIT 1`,
+        [galleryId],
+      );
+      const row = owner.rows[0];
+      if (!row) {
+        return res.status(404).json({ error: "galleri_ikke_funnet" });
+      }
+      if (row.photographer_id !== session.userId) {
+        return res.status(403).json({ error: "ikke_eier_av_galleri" });
+      }
+      if (row.status === 'revoked') {
+        return res.json({
+          success: true,
+          alreadyRevoked: true,
+          message: `Galleriet "${row.project_title}" var allerede revokert.`,
+        });
+      }
+      await pool.query(
+        `UPDATE photographer_client_galleries
+            SET status = 'revoked', updated_at = NOW()
+          WHERE id = $1`,
+        [galleryId],
+      );
+      res.json({
+        success: true,
+        message: `Lenken til "${row.project_title}" er revokert og fungerer ikke lenger.`,
+      });
+    } catch (error) {
+      console.error("[showcase-gallery-revoke] feilet", error);
+      res.status(500).json({ error: "kunne_ikke_revokere" });
+    }
+  });
+
+  // POST /api/showcase/galleries/:galleryId/regenerate-token — Ruller en
+  // ny accessToken og gjenåpner galleriet (status='active'). Den GAMLE
+  // tokenen slutter å virke umiddelbart fordi vi overskriver. Returnerer
+  // den nye shareUrl-en så frontend kan vise den + kopiere-knapp.
+  app.post(
+    "/api/showcase/galleries/:galleryId/regenerate-token",
+    async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const galleryId = String(req.params.galleryId || "").trim();
+      if (!galleryId) {
+        return res.status(400).json({ error: "manglende_gallery_id" });
+      }
+      try {
+        const owner = await pool.query(
+          `SELECT photographer_id, project_title FROM photographer_client_galleries
+            WHERE id = $1 LIMIT 1`,
+          [galleryId],
+        );
+        const row = owner.rows[0];
+        if (!row) {
+          return res.status(404).json({ error: "galleri_ikke_funnet" });
+        }
+        if (row.photographer_id !== session.userId) {
+          return res.status(403).json({ error: "ikke_eier_av_galleri" });
+        }
+        const newAccessToken = crypto.randomBytes(24).toString("hex");
+        await pool.query(
+          `UPDATE photographer_client_galleries
+              SET access_token = $1, status = 'active', updated_at = NOW()
+            WHERE id = $2`,
+          [newAccessToken, galleryId],
+        );
+        const baseUrl = (
+          process.env.PUBLIC_APP_URL ||
+          process.env.APP_BASE_URL ||
+          "https://creatorhubn.com"
+        ).replace(/\/+$/, "");
+        const shareUrl = `${baseUrl}/client/gallery/${newAccessToken}`;
+        res.json({
+          success: true,
+          accessToken: newAccessToken,
+          shareUrl,
+          message: `Ny lenke generert for "${row.project_title}". Den gamle fungerer ikke lenger.`,
+        });
+      } catch (error) {
+        console.error("[showcase-gallery-regenerate] feilet", error);
+        res.status(500).json({ error: "kunne_ikke_regenerere_token" });
+      }
+    },
+  );
+
   // GET /api/showcase/enhancement-presets — Static preset configurations
   app.get("/api/showcase/enhancement-presets", async (_req, res) => {
     res.json(SHOWCASE_ENHANCEMENT_PRESETS);
