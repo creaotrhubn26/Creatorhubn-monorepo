@@ -67,7 +67,7 @@ const MENU: Array<{ id: TalentsAppPage; label: string; Icon: React.ComponentType
   { id: 'settings', label: 'Settings', Icon: SettingsOutlinedIcon },
 ];
 
-const SIDEBAR_W = 252;
+const SIDEBAR_W = 240;
 
 export default function TalentsAppShell({
   active,
@@ -96,8 +96,27 @@ export default function TalentsAppShell({
           borderRight: `1px solid ${palette.borderSubtle}`,
           display: 'flex',
           flexDirection: 'column',
-          // Subtle filmstrip-perforert kant (matcher mockupens venstre-bar)
+          position: 'relative',
           backgroundImage: `linear-gradient(180deg, ${palette.bgShell} 0%, ${palette.bgRoot} 100%)`,
+          // Filmstrip-perforeringer på venstre kant (matcher mockup #11 sidebar-detalj)
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: '14px',
+            backgroundImage: `repeating-linear-gradient(
+              180deg,
+              transparent 0,
+              transparent 6px,
+              ${palette.filmstrip} 6px,
+              ${palette.filmstrip} 10px,
+              transparent 10px,
+              transparent 18px
+            )`,
+            pointerEvents: 'none',
+          },
         }}
       >
         {/* Logo */}
