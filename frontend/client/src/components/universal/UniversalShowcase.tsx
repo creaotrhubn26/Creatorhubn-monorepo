@@ -5809,7 +5809,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       photographerName: user?.name || '',
       photographerCompany: '',
       projectState: 'in_review' as 'delivered' | 'in_review',
-      projectId: null as string | null
+      projectId: null as string | null,
+      selectionDeadline: '' as string,
     });
     // Multi-client distribution: liste av ekstra mottakere ut over
     // primær clientEmail/clientName-paret. Hver rad blir et eget
@@ -5850,11 +5851,27 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           .filter((r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email) && r.name),
       ];
 
+      // Helper for å sette deadline via PATCH /deadline som fallback hvis
+      // share-endpointet ikke aksepterte selectionDeadline-feltet direkte.
+      // Idempotent — backend resetter reminderSentFor automatisk.
+      const patchDeadlineIfNeeded = async (galleryId?: string) => {
+        if (!shareForm.selectionDeadline || !galleryId) return;
+        try {
+          await apiRequest(`/api/showcase/galleries/${galleryId}/deadline`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deadline: shareForm.selectionDeadline }),
+          });
+        } catch (deadlineErr) {
+          console.warn('[share] kunne ikke sette deadline:', deadlineErr);
+        }
+      };
+
       if (recipients.length === 0) return;
       if (recipients.length === 1) {
-        // Single-recipient — uendret oppførsel.
+        // Single-recipient.
         try {
-          await shareShowcaseMutation.mutateAsync({
+          const shareResult: any = await shareShowcaseMutation.mutateAsync({
             showcaseId: shareForm.selectedShowcase,
             clientEmail: recipients[0].email,
             clientName: recipients[0].name,
@@ -5863,7 +5880,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             photographerCompany: shareForm.photographerCompany,
             projectState: shareForm.projectState,
             projectId: showcase.projectId || shareForm.projectId,
+            selectionDeadline: shareForm.selectionDeadline || null,
           });
+          await patchDeadlineIfNeeded(shareResult?.galleryId);
           onClose();
         } catch (error) {
           console.error('Error sharing showcase:', error);
@@ -5872,7 +5891,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       }
 
       // Batch-flow: send sekvensielt for å unngå rate-limits på email-
-      // tjenesten. Hver mottaker får sin egen accessToken/galleri-row.
+      // tjenesten. Hver mottaker får sin egen accessToken/galleri-row +
+      // sin egen deadline (alle får samme dato).
       setBatchProgress({
         sending: true,
         total: recipients.length,
@@ -5884,7 +5904,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       const succeeded: Array<{ email: string }> = [];
       for (const r of recipients) {
         try {
-          await shareShowcaseMutation.mutateAsync({
+          const shareResult: any = await shareShowcaseMutation.mutateAsync({
             showcaseId: shareForm.selectedShowcase,
             clientEmail: r.email,
             clientName: r.name,
@@ -5893,7 +5913,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             photographerCompany: shareForm.photographerCompany,
             projectState: shareForm.projectState,
             projectId: showcase.projectId || shareForm.projectId,
+            selectionDeadline: shareForm.selectionDeadline || null,
           });
+          await patchDeadlineIfNeeded(shareResult?.galleryId);
           succeeded.push({ email: r.email });
         } catch (error) {
           failed.push({
@@ -6060,6 +6082,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               value={shareForm.message}
               onChange={(e) => setShareForm(prev => ({ ...prev, message: e.target.value }))}
               placeholder="Add a personal message to include with the showcase..."
+              sx={{ mb: 3 }}
+            />
+
+            {/* Selection deadline — utløser automatiske reminders 3 og 1 dag før. */}
+            <TextField
+              fullWidth
+              type="date"
+              label="Frist for klient-utvalg (valgfritt)"
+              value={shareForm.selectionDeadline}
+              onChange={(e) => setShareForm(prev => ({ ...prev, selectionDeadline: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+              helperText="Klient får automatisk påminnelse på e-post 3 dager og 1 dag før fristen."
               sx={{ mb: 3 }}
             />
 
