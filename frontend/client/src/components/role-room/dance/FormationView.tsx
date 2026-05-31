@@ -246,6 +246,47 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
   // er definert (TDZ-defensiv).
   const [keyboardPuckIdx, setKeyboardPuckIdx] = useState<number | null>(null);
 
+  // Audit C1: pinch-zoom på touch-enheter. Lytter på canvas-elementets
+  // touch-events og skalerer Fabric-canvas via canvas.setZoom. Bevarer
+  // ResizeObserver-baseline (Phase 6c) — vi multipliserer på toppen.
+  useEffect(() => {
+    const canvasEl = canvasElRef.current;
+    const canvas = fabricRef.current;
+    if (!canvasEl || !canvas) return;
+    let initialDistance = 0;
+    let initialZoom = 1;
+    const onTouchStart = (e: TouchEvent): void => {
+      if (e.touches.length !== 2) return;
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      initialDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      initialZoom = canvas.getZoom();
+    };
+    const onTouchMove = (e: TouchEvent): void => {
+      if (e.touches.length !== 2 || initialDistance === 0) return;
+      e.preventDefault();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const scale = dist / initialDistance;
+      const nextZoom = Math.max(0.5, Math.min(2, initialZoom * scale));
+      canvas.setZoom(nextZoom);
+      canvas.requestRenderAll();
+    };
+    const onTouchEnd = (): void => { initialDistance = 0; };
+    // passive: false så vi kan preventDefault på pinch
+    canvasEl.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvasEl.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvasEl.addEventListener('touchend', onTouchEnd);
+    canvasEl.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      canvasEl.removeEventListener('touchstart', onTouchStart);
+      canvasEl.removeEventListener('touchmove', onTouchMove);
+      canvasEl.removeEventListener('touchend', onTouchEnd);
+      canvasEl.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
+
   // F5-15: Video + stage-map sync. Hør på 'dance:video-time'-CustomEvent
   // som video-spilleren dispatcher når playheaden flytter seg. Velg
   // formasjonen hvis tidsrom inneholder gjeldende currentTime.
@@ -383,6 +424,12 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
       backgroundColor: '#0d1218',
       selection: false,
       preserveObjectStacking: true,
+      // Audit C1: Fabric v6 har native touch-event-støtte. Vi setter
+      // allowTouchScrolling=false slik at bevegelse på en puck blir drag
+      // (ikke page-scroll). Pinch-zoom håndteres av Fabric når enableRetinaScaling
+      // er aktiv (default).
+      allowTouchScrolling: false,
+      enableRetinaScaling: true,
     });
     fabricRef.current = canvas;
 
