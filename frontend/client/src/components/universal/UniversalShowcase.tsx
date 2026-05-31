@@ -5866,13 +5866,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             {/* Project Linking - Show when no project is linked */}
             {shareForm.selectedShowcase && !shareForm.projectId && (
               <Box sx={{ mb: 3 }}>
-                <Paper sx={{ p: 2, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
+                <Paper sx={{
+                  p: 2,
+                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                  border: '1px solid rgba(82, 121, 204, 0.32)',
+                  borderRadius: '10px',
+                  color: '#edf0f7',
+                }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Info fontSize="small" />
-                    Link to Project (Optional)
+                    Koble til prosjekt (valgfritt)
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Link this showcase to a project to enable project state management and timeline tracking.
+                  <Typography variant="body2" sx={{ mb: 2, color: 'rgba(237,240,247,0.7)' }}>
+                    Koble dette showcaset til et prosjekt for å aktivere prosjekt-state-styring og timeline-sporing.
                   </Typography>
                   <Button 
                     variant="outlined" 
@@ -5951,21 +5957,33 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
             {/* Info message when no project is linked */}
             {shareForm.selectedShowcase && !shareForm.projectId && (
-              <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.100' }}>
-                <Typography variant="body2" color="text.secondary">
+              <Paper sx={{
+                p: 2,
+                mb: 2,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+              }}>
+                <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.7)' }}>
                   <Info fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
-                  No project linked. Project state management is only available when a project is linked.
+                  Ingen prosjekt koblet til. Prosjekt-state-styring er kun tilgjengelig når et prosjekt er koblet.
                 </Typography>
               </Paper>
             )}
 
             {/* Preview */}
             {shareForm.selectedShowcase && (
-              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Preview: </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {shareForm.message || 'Your showcase is ready! Click the link below to view your photos.'}
+              <Paper sx={{
+                p: 2,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+              }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ color: '#edf0f7' }}>
+                  Forhåndsvisning
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.7)' }}>
+                  {shareForm.message || 'Showcaset ditt er klart. Klikk lenken under for å se bildene.'}
                 </Typography>
               </Paper>
             )}
@@ -10003,12 +10021,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Paper>
             
             {/* Price Calculation */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.light', color: 'success.contrastText' }}>
-              <Typography variant="h6">
+            <Paper sx={{
+              p: 2,
+              mb: 3,
+              bgcolor: 'rgba(74, 212, 138, 0.08)',
+              border: '1px solid rgba(74, 212, 138, 0.32)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="h6" sx={{ color: '#4ad48a' }}>
                 Totalpris: {calculatePrice()} NOK
               </Typography>
-              <Typography variant="body2">
-                {selectedImages.size > (pricingData?.projectPricing?.contracted_images || 0) 
+              <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.8)' }}>
+                {selectedImages.size > (pricingData?.projectPricing?.contracted_images || 0)
                   ? `Inkluderer ${Math.max(0, selectedImages.size - (pricingData?.projectPricing?.contracted_images || 0))} ekstra ${profession === 'photographer' ? 'bilder' : 'elementer'}`
                   : 'Alle valgte elementer er inkludert i kontrakten'
                 }
@@ -10022,7 +10047,14 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                   {pricingData.pricing.packages.map((pkg: { id: string; name: string; price: number; description: string; images?: number; minutes?: number; tracks?: number; savings?: number }) => (
                     <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }} key={pkg.id}>
-                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                      <Paper sx={{
+                        p: 2,
+                        textAlign: 'center',
+                        bgcolor: 'rgba(7, 10, 16, 0.6)',
+                        border: '1px solid rgba(245,166,35,0.22)',
+                        borderRadius: '10px',
+                        color: '#edf0f7',
+                      }}>
                         <Typography variant="subtitle1" fontWeight="bold">
                           {profession === 'photographer' || profession === 'enterprise' ? `${pkg.images} bilder` : `${pkg.minutes || pkg.tracks} ${profession === 'videographer' ? 'minutter' : 'låter'}`}
                         </Typography>
