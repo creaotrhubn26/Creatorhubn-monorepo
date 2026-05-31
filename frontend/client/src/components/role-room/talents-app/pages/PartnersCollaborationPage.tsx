@@ -755,6 +755,19 @@ function PartnerRowMenu({ partner, demoMode, onChanged, onSnack }: {
     onSnack(`${partner.display_name} har ikke lenger tilgang`);
     onChanged();
   };
+
+  const handlePause30 = async () => {
+    setAnchorEl(null);
+    if (demoMode) { onSnack('Demo-modus er read-only'); return; }
+    const result = await roleRoomTalentsService.pausePartnerAccess({
+      partner_type: partner.partner_type,
+      partner_ref: partner.id,
+      days: 30,
+    });
+    if (!result.ok) { onSnack(`Feil: ${result.error}`); return; }
+    onSnack(`Tilgangen til ${partner.display_name} er pauset i 30 dager`);
+    onChanged();
+  };
   return (
     <>
       <IconButton size="small" sx={{ color: palette.textMuted }} onClick={(e) => { e.stopPropagation(); setAnchorEl(e.currentTarget); }}>
@@ -775,9 +788,12 @@ function PartnerRowMenu({ partner, demoMode, onChanged, onSnack }: {
           <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: '#f87171' }} /></ListItemIcon>
           Trekk all tilgang
         </MuiMenuItem>
-        <MuiMenuItem disabled sx={{ color: palette.textMuted, fontSize: '0.88rem' }}>
-          <ListItemIcon><PauseCircleOutlineIcon fontSize="small" sx={{ color: palette.textMuted }} /></ListItemIcon>
-          Pause i 30 dager (kommer)
+        <MuiMenuItem
+          onClick={() => void handlePause30()}
+          sx={{ color: palette.textPrimary, fontSize: '0.88rem' }}
+        >
+          <ListItemIcon><PauseCircleOutlineIcon fontSize="small" sx={{ color: palette.warning }} /></ListItemIcon>
+          Pause tilgang i 30 dager
         </MuiMenuItem>
         {partner.website ? (
           <MuiMenuItem
@@ -1035,7 +1051,7 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: palette.bgCard, color: palette.textPrimary, borderRadius: radius.lg, border: `1px solid ${palette.border}` } }}>
       <DialogTitle sx={{ fontWeight: 800, color: palette.textPrimary, borderBottom: `1px solid ${palette.borderSubtle}` }}>
-        {createdInvite ? 'Invitasjon opprettet' : 'Invite Partner'}
+        {createdInvite ? 'Invitasjon klar — kopier lenken' : 'Inviter partner'}
       </DialogTitle>
       <DialogContent sx={{ pt: 2.4 }}>
         {createdInvite ? (
@@ -1069,50 +1085,91 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
             </Typography>
           </Stack>
         ) : (
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem' }}>
-              Inviter en partner til å se profilen din. Partneren får en lenke å akseptere — du bestemmer hvilke data de får tilgang til.
-            </Typography>
-            <TextField select label="Partner-type" value={form.partner_type} onChange={(e) => setForm({ ...form, partner_type: e.target.value as RoleRoomTalentPartnerType })} fullWidth size="small" sx={{ '& .MuiInputBase-input': { color: palette.textPrimary } }}>
-              <MenuItem value="stella_casting">Stella Casting</MenuItem>
-              <MenuItem value="skuespillersenter">Norsk Skuespillersenter</MenuItem>
+          <Stack spacing={2.4} sx={{ pt: 1 }}>
+            {/* Søk eksisterende partner først */}
+            <AgencySearchPicker
+              currentEmail={form.partner_email}
+              onPick={(agency) => {
+                setForm({
+                  ...form,
+                  partner_type: agency.type,
+                  partner_email: agency.contact_email ?? '',
+                  partner_display_name: agency.name,
+                });
+              }}
+            />
+
+            <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 1.4, my: -0.6 }}>
+              <Box sx={{ flexGrow: 1, height: 1, bgcolor: palette.borderSubtle }} />
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Eller fyll ut manuelt
+              </Typography>
+              <Box sx={{ flexGrow: 1, height: 1, bgcolor: palette.borderSubtle }} />
+            </Box>
+
+            <TextField select label="Partner-type" value={form.partner_type} onChange={(e) => setForm({ ...form, partner_type: e.target.value as RoleRoomTalentPartnerType })} fullWidth size="small">
+              <MenuItem value="stella_casting">Casting-byrå</MenuItem>
+              <MenuItem value="skuespillersenter">Sentre/skoler</MenuItem>
               <MenuItem value="production_company">Produksjonsselskap</MenuItem>
               <MenuItem value="caster_individual">Individuell caster</MenuItem>
               <MenuItem value="workshop_provider">Workshop-arrangør</MenuItem>
             </TextField>
-            <TextField label="Partner-e-post" value={form.partner_email} onChange={(e) => setForm({ ...form, partner_email: e.target.value })} fullWidth size="small" placeholder="kari@stellacasting.no" sx={{ '& .MuiInputBase-input': { color: palette.textPrimary } }} />
-            <TextField label="Visningsnavn (valgfritt)" value={form.partner_display_name} onChange={(e) => setForm({ ...form, partner_display_name: e.target.value })} fullWidth size="small" placeholder="Stella Casting AS" sx={{ '& .MuiInputBase-input': { color: palette.textPrimary } }} />
+            <TextField label="E-post" value={form.partner_email} onChange={(e) => setForm({ ...form, partner_email: e.target.value })} fullWidth size="small" placeholder="kari@stellacasting.no" />
+            <TextField label="Visningsnavn (valgfritt)" value={form.partner_display_name} onChange={(e) => setForm({ ...form, partner_display_name: e.target.value })} fullWidth size="small" placeholder="Stella Casting AS" />
+
+            {/* Presets */}
             <Box>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1 }}>Hva får de tilgang til?</Typography>
-              <Stack direction="row" flexWrap="wrap" gap={1}>
+              <Stack direction="row" spacing={0.8} sx={{ mb: 1.4 }} flexWrap="wrap" useFlexGap>
+                <ScopePresetChip
+                  label="📋 Anbefalt for casting"
+                  scopes={['basic_profile', 'media_portfolio', 'contact_info', 'demographics', 'audition_invitations']}
+                  currentScopes={form.scopes}
+                  onSet={(scopes) => setForm({ ...form, scopes })}
+                />
+                <ScopePresetChip
+                  label="🔍 Kun forhåndsvisning"
+                  scopes={['basic_profile']}
+                  currentScopes={form.scopes}
+                  onSet={(scopes) => setForm({ ...form, scopes })}
+                />
+                <ScopePresetChip
+                  label="🎯 Full tilgang"
+                  scopes={['full_profile']}
+                  currentScopes={form.scopes}
+                  onSet={(scopes) => setForm({ ...form, scopes })}
+                />
+              </Stack>
+              <Stack direction="row" flexWrap="wrap" gap={0.8}>
                 {([
-                  ['basic_profile', 'Basis'],
-                  ['media_portfolio', 'Media'],
-                  ['contact_info', 'Kontakt'],
-                  ['demographics', 'Demografi'],
-                  ['availability', 'Tilgjengelighet'],
-                  ['audition_invitations', 'Audition-invites'],
-                  ['self_tape_review', 'Self-tape'],
-                ] as Array<[RoleRoomTalentConsentScope, string]>).map(([scope, label]) => {
+                  ['basic_profile', 'Basis', 'Navn, by, bio'],
+                  ['media_portfolio', 'Media', 'Headshot, showreel, CV'],
+                  ['contact_info', 'Kontakt', 'E-post, telefon'],
+                  ['demographics', 'Demografi', 'Alder, høyde, kjønn'],
+                  ['availability', 'Tilgjengelighet', 'Når kan du jobbe'],
+                  ['audition_invitations', 'Audition-invites', 'Kan sende deg roller'],
+                  ['self_tape_review', 'Self-tape', 'Kan se og kommentere'],
+                ] as Array<[RoleRoomTalentConsentScope, string, string]>).map(([scope, label, desc]) => {
                   const selected = form.scopes.includes(scope);
                   return (
-                    <Chip
-                      key={scope}
-                      label={label}
-                      onClick={() => setForm({ ...form, scopes: selected ? form.scopes.filter((s) => s !== scope) : [...form.scopes, scope] })}
-                      sx={{
-                        bgcolor: selected ? 'rgba(168, 85, 247, 0.24)' : 'rgba(168, 85, 247, 0.08)',
-                        color: selected ? palette.accentBright : palette.textSecondary,
-                        border: selected ? `1px solid ${palette.borderStrong}` : `1px solid ${palette.borderSubtle}`,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    />
+                    <Tooltip key={scope} title={desc} placement="top">
+                      <Chip
+                        label={label}
+                        onClick={() => setForm({ ...form, scopes: selected ? form.scopes.filter((s) => s !== scope) : [...form.scopes, scope] })}
+                        sx={{
+                          bgcolor: selected ? 'rgba(168, 85, 247, 0.24)' : 'rgba(168, 85, 247, 0.08)',
+                          color: selected ? palette.accentBright : palette.textSecondary,
+                          border: selected ? `1px solid ${palette.borderStrong}` : `1px solid ${palette.borderSubtle}`,
+                          fontWeight: 600, cursor: 'pointer',
+                        }}
+                      />
+                    </Tooltip>
                   );
                 })}
               </Stack>
             </Box>
-            <TextField label="Personlig melding (valgfritt)" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} fullWidth size="small" multiline minRows={2} sx={{ '& .MuiInputBase-input': { color: palette.textPrimary } }} />
+
+            <TextField label="Personlig melding (valgfritt)" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} fullWidth size="small" multiline minRows={2} placeholder="Eks: Hei Stella, vi snakket i går — her er profilen min." />
             {error ? <Alert severity="error">{error}</Alert> : null}
           </Stack>
         )}
@@ -1128,5 +1185,101 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
         ) : null}
       </DialogActions>
     </Dialog>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// AgencySearchPicker — autocomplete blant kjente agencies
+// ──────────────────────────────────────────────────────────────────
+
+import { Autocomplete } from '@mui/material';
+import type { RoleRoomAgencyOrg } from '../../services/roleRoomTalentsService';
+
+function AgencySearchPicker({ currentEmail, onPick }: {
+  currentEmail: string;
+  onPick: (agency: RoleRoomAgencyOrg) => void;
+}) {
+  const [agencies, setAgencies] = useState<RoleRoomAgencyOrg[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    roleRoomTalentsService.fetchAgencies().then((list) => {
+      if (!cancelled) {
+        // Filtrer demo-prefiks bort i prod-modus
+        setAgencies(list.filter((a) => !a.slug.startsWith('demo-')));
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <Box>
+      <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1 }}>
+        Søk i registrerte partnere
+      </Typography>
+      <Autocomplete
+        options={agencies}
+        getOptionLabel={(o) => o.name}
+        loading={loading}
+        loadingText="Henter partnere…"
+        noOptionsText="Ingen partnere matcher — fyll ut manuelt under"
+        onChange={(_, value) => { if (value) onPick(value); }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            size="small"
+            placeholder="Eks: Stella, Norsk Skuespillersenter…"
+            sx={{ '& .MuiInputBase-input': { color: palette.textPrimary } }}
+          />
+        )}
+        renderOption={(props, option) => (
+          <Box component="li" {...props} key={option.id}>
+            <Stack direction="row" spacing={1.2} alignItems="center" sx={{ width: '100%' }}>
+              <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(168,85,247,0.18)', color: palette.accentBright, fontSize: '0.7rem', fontWeight: 700 }}>
+                {option.name.slice(0, 2).toUpperCase()}
+              </Avatar>
+              <Stack spacing={0} sx={{ flexGrow: 1 }}>
+                <Typography sx={{ color: palette.textPrimary, fontSize: '0.88rem', fontWeight: 600 }}>{option.name}</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem' }}>{option.contact_email || option.slug}</Typography>
+              </Stack>
+              {option.verified ? (
+                <Chip label="✓" size="small" sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: palette.success, fontWeight: 700, height: 18 }} />
+              ) : null}
+            </Stack>
+          </Box>
+        )}
+      />
+    </Box>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// ScopePresetChip — ett-klikks preset for vanlige scope-sett
+// ──────────────────────────────────────────────────────────────────
+
+function ScopePresetChip({ label, scopes, currentScopes, onSet }: {
+  label: string;
+  scopes: RoleRoomTalentConsentScope[];
+  currentScopes: RoleRoomTalentConsentScope[];
+  onSet: (scopes: RoleRoomTalentConsentScope[]) => void;
+}) {
+  const matches = scopes.length === currentScopes.length && scopes.every((s) => currentScopes.includes(s));
+  return (
+    <Chip
+      label={label}
+      onClick={() => onSet(scopes)}
+      sx={{
+        bgcolor: matches ? palette.accent : 'rgba(168,85,247,0.08)',
+        color: matches ? '#fff' : palette.accentBright,
+        border: `1px solid ${matches ? palette.accent : palette.borderStrong}`,
+        fontWeight: 700,
+        fontSize: '0.78rem',
+        cursor: 'pointer',
+        '&:hover': { bgcolor: matches ? palette.accent : 'rgba(168,85,247,0.18)' },
+      }}
+    />
   );
 }
