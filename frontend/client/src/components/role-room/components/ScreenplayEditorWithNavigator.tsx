@@ -28,6 +28,7 @@ import {
   Snackbar,
   Badge,
   Typography,
+  Collapse,
   useMediaQuery,
   Drawer,
 } from '@mui/material';
@@ -48,6 +49,9 @@ import {
   FullscreenExit as FullscreenExitIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
+  AutoStories as StoryFoundationIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
 import { SceneNavigatorSidebar, type ParsedScene } from './SceneNavigatorSidebar';
@@ -58,6 +62,7 @@ import { StoryStructurePanel } from './StoryStructurePanel';
 import { GrammarCheckPanel } from './screenplay/GrammarCheckPanel';
 import { StoryboardIntegrationView } from './StoryboardIntegrationView';
 import type { SceneBreakdown, UserRoleType, Role, Candidate } from '../models/casting';
+import type { StoryLogicState } from '../services/storyLogicService';
 import { analyzeScript, type BeatCard } from '../services/scriptAnalysisService';
 import { castingAuthService } from '../services/castingAuthService';
 import { ScreenplayGuide } from './ScreenplayGuide';
@@ -252,6 +257,13 @@ export interface ScreenplayEditorWithNavigatorProps {
   // Script title for sharing
   scriptTitle?: string;
   headerSummary?: ScreenplayHeaderSummary | null;
+
+  /**
+   * Story-fundamentet fra Story Logic (logline, tema, sjanger). Når satt vises
+   * en kollapsbar "Story Foundation"-stripe øverst i editoren, så produsenten
+   * har historiens DNA synlig mens han skriver — i stedet for at det er borte.
+   */
+  storyLogicData?: StoryLogicState | null;
 }
 
 const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorProps> = ({
@@ -280,8 +292,16 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   scriptTitle = 'Untitled',
   headerSummary = null,
   editorKey,
+  storyLogicData = null,
 }) => {
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
+  const [storyFoundationOpen, setStoryFoundationOpen] = useState(false);
+  const storyFoundationLogline = storyLogicData?.logline?.fullLogline?.trim() || '';
+  const hasStoryFoundation = Boolean(
+    storyFoundationLogline ||
+    storyLogicData?.theme?.centralTheme ||
+    storyLogicData?.concept?.genre,
+  );
   const responsive = getResponsiveValues(tier);
 
   // ── Consolidated UI state via reducer ─────────────────────────────────────
@@ -301,6 +321,19 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   const [currentLine, setCurrentLine] = useState(1);
   const [_highlightedLine, setHighlightedLine] = useState<number | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  // Åpne Fountain-guiden automatisk FØRSTE gang en bruker er i manus-editoren,
+  // så ikke-tekniske produsenter ikke møter en blank editor uten å vite formatet.
+  useEffect(() => {
+    try {
+      const KEY = 'role_room_screenplay_guide_seen';
+      if (typeof window !== 'undefined' && !window.localStorage.getItem(KEY)) {
+        setShowGuide(true);
+        window.localStorage.setItem(KEY, '1');
+      }
+    } catch {
+      /* private mode / quota — ignorer */
+    }
+  }, []);
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'warning' | 'error' }>({
     open: false, message: '', severity: 'success',
@@ -845,18 +878,19 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <TableReadIcon sx={{ fontSize: responsive.iconSize }} />
               </Tooltip>
             </ToggleButton>
-            {!isTablet && [
-              <ToggleButton key="grammar" value="grammar" aria-label="grammar">
-                <Tooltip title="Grammatikk & Stavekontroll (ML)">
-                  <SpellcheckIcon sx={{ fontSize: responsive.iconSize }} />
-                </Tooltip>
-              </ToggleButton>,
-              <ToggleButton key="storyboard" value="storyboard" aria-label="storyboard">
+            {/* Grammatikk er nyttig også på tablet — vis den alltid. */}
+            <ToggleButton value="grammar" aria-label="grammar">
+              <Tooltip title="Grammatikk & Stavekontroll (ML)">
+                <SpellcheckIcon sx={{ fontSize: responsive.iconSize }} />
+              </Tooltip>
+            </ToggleButton>
+            {!isTablet && (
+              <ToggleButton value="storyboard" aria-label="storyboard">
                 <Tooltip title="Storyboard">
                   <StoryboardIcon sx={{ fontSize: responsive.iconSize }} />
                 </Tooltip>
               </ToggleButton>
-            ]}
+            )}
           </ToggleButtonGroup>
         )}
       </Paper>
@@ -917,14 +951,63 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
         )}
 
         {/* Main Editor */}
-        <Box 
-          sx={{ 
-            flex: 1, 
-            height: '100%', 
+        <Box
+          sx={{
+            flex: 1,
+            height: '100%',
             overflow: 'hidden',
             position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
+          {hasStoryFoundation && (
+            <Box sx={{ flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(139,92,246,0.06)' }}>
+              <Box
+                onClick={() => setStoryFoundationOpen((prev) => !prev)}
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' } }}
+              >
+                <StoryFoundationIcon sx={{ fontSize: responsive.iconSize - 2, color: '#a78bfa' }} />
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#c4b5fd' }}>
+                  Story Foundation
+                </Typography>
+                {!storyFoundationOpen && storyFoundationLogline && (
+                  <Typography
+                    variant="caption"
+                    sx={{ color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}
+                  >
+                    {storyFoundationLogline}
+                  </Typography>
+                )}
+                <Box sx={{ flex: storyFoundationOpen || !storyFoundationLogline ? 1 : 'unset' }} />
+                {storyFoundationOpen ? <ExpandLessIcon sx={{ fontSize: 18, color: '#a78bfa' }} /> : <ExpandMoreIcon sx={{ fontSize: 18, color: '#a78bfa' }} />}
+              </Box>
+              <Collapse in={storyFoundationOpen}>
+                <Box sx={{ px: 1.5, pb: 1.25, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {storyFoundationLogline && (
+                    <Typography variant="body2" sx={{ color: '#fff', fontStyle: 'italic' }}>
+                      "{storyFoundationLogline}"
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.25 }}>
+                    {storyLogicData?.concept?.genre && (
+                      <Chip size="small" label={`Sjanger: ${storyLogicData.concept.genre}`} sx={{ bgcolor: 'rgba(139,92,246,0.15)', color: '#ddd6fe' }} />
+                    )}
+                    {storyLogicData?.theme?.centralTheme && (
+                      <Chip size="small" label={`Tema: ${storyLogicData.theme.centralTheme}`} sx={{ bgcolor: 'rgba(139,92,246,0.15)', color: '#ddd6fe' }} />
+                    )}
+                    {storyLogicData?.logline?.antagonisticForce && (
+                      <Chip size="small" label={`Konflikt: ${storyLogicData.logline.antagonisticForce}`} sx={{ bgcolor: 'rgba(239,68,68,0.12)', color: '#fecaca' }} />
+                    )}
+                    {storyLogicData?.logline?.stakes && (
+                      <Chip size="small" label={`Innsats: ${storyLogicData.logline.stakes}`} sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#fde68a' }} />
+                    )}
+                  </Box>
+                </Box>
+              </Collapse>
+            </Box>
+          )}
+          <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {isReadOnly && (
             <Alert
               severity="info"
@@ -961,6 +1044,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             onCursorChange={handleCursorChange}
             spellCheck={enableSpellcheck}
           />
+          </Box>
         </Box>
 
         {!isMobile && rightPanel !== 'none' && (

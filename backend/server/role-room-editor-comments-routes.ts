@@ -27,6 +27,9 @@ const VALID_ANCHOR_TYPES = [
   // Role Room content production-anchors:
   "content_post", "marketing_plan_post", "feed_plan_post",
   "gallery_image", "storyboard_frame",
+  // Screenplay/manus-anchors (Story Writer): la produksjonsteamet kommentere
+  // på manuset, en scene, eller en konkret linje i Fountain-teksten.
+  "manuscript", "manuscript_scene", "screenplay_line", "beat",
 ];
 const VALID_STATUSES = ["open", "in_progress", "resolved", "wontfix"];
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];

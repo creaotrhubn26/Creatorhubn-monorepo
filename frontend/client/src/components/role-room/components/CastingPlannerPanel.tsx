@@ -1522,6 +1522,35 @@ type RoleRoomProjectWorkspaceState = {
     );
   }, []);
 
+  // Guard mot utilsiktet tap av ulagret arbeid når man forlater en Story Arc-flate
+  // (f.eks. "Tilbake" fra manus eller story-logic). `sources` begrenser sjekken til
+  // relevante kilder; uten argument sjekkes alle registrerte ulagrede kilder.
+  const confirmDiscardUnsavedIfNeeded = useCallback((sources?: string[]): boolean => {
+    const entries = Object.entries(unsavedProjectSwitchStateRef.current);
+    const relevant = sources && sources.length
+      ? entries.filter(([key]) => sources.includes(key))
+      : entries;
+    const reasons = Array.from(new Set(
+      relevant.map(([, value]) => String(value || '').trim()).filter(Boolean),
+    ));
+
+    if (reasons.length === 0) {
+      return true;
+    }
+
+    const reasonText = reasons.length === 1
+      ? reasons[0]
+      : `${reasons.slice(0, -1).join(', ')} og ${reasons[reasons.length - 1]}`;
+
+    if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+      return true;
+    }
+
+    return window.confirm(
+      `Du har ulagret arbeid i ${reasonText}. Hvis du går tilbake nå, kan endringene gå tapt. Vil du fortsette?`,
+    );
+  }, []);
+
   useEffect(() => {
     currentProjectRef.current = currentProject;
   }, [currentProject]);
@@ -3598,6 +3627,9 @@ type RoleRoomProjectWorkspaceState = {
   usePlannerOnboardingTour({
     enabled: onboardingEnabled,
     userKey: aiNudgeUserKey,
+    // Workflow-stepperen rendres kun i content_producer-modus; produksjonsteam
+    // har den ikke, så onboarding-steg 2 må tilpasses.
+    hasWorkflowStepper: isContentProducerMode,
     onOpenCommandPalette: () => setCommandPaletteOpen(true),
     onFocusWorkflowStepper: () => {
       // Scroll til toppen så stepperen er synlig
@@ -11712,9 +11744,23 @@ type RoleRoomProjectWorkspaceState = {
                     <StoryArcIcon sx={{ color: '#fff', fontSize: 18 }} />
                   </Box>
                   <Box>
-                    <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
-                      Role Room Studio
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
+                        Role Room Studio
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={isClientReviewerMode ? 'Klient' : isContentProducerMode ? 'Innholdsprodusent' : 'Produksjon'}
+                        sx={{
+                          height: 20,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          bgcolor: 'rgba(56,189,248,0.18)',
+                          color: '#bae6fd',
+                          border: '1px solid rgba(56,189,248,0.4)',
+                        }}
+                      />
+                    </Box>
                     <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
                       {branding.tokens.labels.storyArcTagline}
                     </Typography>
@@ -12658,6 +12704,7 @@ type RoleRoomProjectWorkspaceState = {
                 <Button
                   startIcon={<CloseIcon />}
                   onClick={() => {
+                    if (!confirmDiscardUnsavedIfNeeded(['story_logic'])) return;
                     startTransition(() => setStoryArcView('main'));
                   }}
                   size="small"
@@ -12680,6 +12727,10 @@ type RoleRoomProjectWorkspaceState = {
                     onSave={handleStoryLogicSave}
                     onUnsavedStateChange={(hasUnsaved, reason) => {
                       setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
+                    }}
+                    onNavigateToStoryWriter={() => {
+                      if (!confirmDiscardUnsavedIfNeeded(['story_logic'])) return;
+                      startTransition(() => setStoryArcView('story-writer'));
                     }}
                   />
                 </Suspense>
@@ -12779,6 +12830,14 @@ type RoleRoomProjectWorkspaceState = {
                       onUnsavedStateChange={(hasUnsaved, reason) => {
                         setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
                       }}
+                      onSendToApproval={() => {
+                        if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;
+                        if (isContentProducerMode) {
+                          openContentProducerPlannerSurface('approval', { focusPanel: 'reviews' });
+                        } else {
+                          navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+                        }
+                      }}
                       headerLeftContent={
                         <Box
                           sx={{
@@ -12796,6 +12855,7 @@ type RoleRoomProjectWorkspaceState = {
                           <Button
                             startIcon={<CloseIcon />}
                             onClick={() => {
+                              if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;
                               startTransition(() => setStoryArcView('main'));
                             }}
                             size="small"

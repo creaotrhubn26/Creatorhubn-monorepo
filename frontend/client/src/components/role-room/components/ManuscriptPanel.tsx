@@ -10,6 +10,7 @@ import {
   IconButton,
   TextField,
   Select,
+  Menu,
   MenuItem,
   FormControl,
   InputLabel,
@@ -390,6 +391,9 @@ const shouldAutoCreateLocationFromScript = (value: string): boolean => {
 };
 import {
   Add as AddIcon,
+  Lock as LockIcon,
+  Send as SendIcon,
+  ArrowDropDown as ArrowDropDownIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
@@ -417,9 +421,10 @@ import {
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
-import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location, Candidate } from '../models/casting';
+import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location, Candidate, AISuggestion } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
 import { manuscriptService } from '../services/manuscriptService';
+import authSessionService from '../services/authSessionService';
 import { RichTextEditor } from './RichTextEditor';
 import { ScriptDiffViewer } from './ScriptDiffViewer';
 import { TimelineView } from './TimelineView';
@@ -463,6 +468,12 @@ interface ManuscriptPanelProps {
   headerLeftContent?: React.ReactNode;
   onStoryArcFocusChange?: (focus?: StoryArcNavigationFocus | null) => void;
   onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
+  /**
+   * Naviger til klient-/godkjenningsflaten. Når satt vises en "Send til
+   * godkjenning"-knapp i editor-headeren, slik at produsenten kommer videre i
+   * workflowen uten å lete etter en egen tab.
+   */
+  onSendToApproval?: () => void;
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
@@ -508,6 +519,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   headerLeftContent,
   onStoryArcFocusChange,
   onUnsavedStateChange,
+  onSendToApproval,
 }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
   const branding = useBrandingSettings();
@@ -581,6 +593,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   }, [scenes]);
   const [isLoading, setIsLoading] = useState(false);
   const [manuscriptSaveStatus, setManuscriptSaveStatus] = useState<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
+  // Når en ANNEN i produksjonsteamet holder manus-låsen avvises lagring (409).
+  // Vi viser hvem som låste i stedet for en generisk "Lagringsfeil".
+  const [manuscriptLockConflict, setManuscriptLockConflict] = useState<{ lockedBy: string | null; lockedAt: string | null } | null>(null);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
   const [_isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNewManuscriptDialog, setShowNewManuscriptDialog] = useState(false);
@@ -931,8 +947,37 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   };
 
+  // Når et AI-forslag godtas utløser serveren automatisk apply (AD-003 i
+  // ai-suggestion-service.ts), så vi refetcher de berørte dataene slik at den
+  // anvendte endringen faktisk blir synlig — i stedet for at kortet bare
+  // forsvinner uten effekt.
+  const handleSuggestionAccepted = (_suggestion: AISuggestion): void => {
+    showSuccess('AI-forslag godtatt og brukt på manuset');
+    const manuscriptId = selectedManuscript?.id;
+    if (manuscriptId) {
+      void loadScenes(manuscriptId);
+      void loadActs(manuscriptId);
+      void loadDialogue(manuscriptId);
+      void loadRevisions(manuscriptId);
+    }
+    void loadCastingData();
+  };
+
   const openManuscriptWorkspace = (manuscript: Manuscript): void => {
     setSelectedManuscript(manuscript);
+  };
+
+  // Tilbake til utkast-oversikten ("Dine Manuskripter") uten å lukke hele
+  // Story Writer — så produsenten kan bytte mellom flere utkast, gi nytt navn
+  // eller opprette et nytt. Bekrefter ved ulagrede endringer.
+  const handleBackToManuscriptList = (): void => {
+    if (manuscriptSaveStatus !== 'saved') {
+      const ok = typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm('Du har ulagrede endringer i dette utkastet. Gå til utkast-oversikten likevel?')
+        : true;
+      if (!ok) return;
+    }
+    setSelectedManuscript(null);
   };
 
   const closeExampleProjectDisclaimerDialog = (): void => {
@@ -1010,6 +1055,55 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       }
     };
   }, [selectedManuscript?.id]);
+
+  // Manus-lås mens et utkast er åpent: hindrer at to i produksjonsteamet
+  // overskriver hverandre stille. Serveren håndhever låsen (PUT → 409 hvis en
+  // annen holder den); her tar vi den ved åpning, holder den i live med
+  // heartbeat, og frigir ved lukking. Eksempel-/demo-manus låses ikke.
+  useEffect(() => {
+    const manuscript = selectedManuscript;
+    const manuscriptId = manuscript?.id;
+    if (!manuscriptId || isExampleManuscriptProject(manuscript)) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await manuscriptService.acquireManuscriptLock(manuscriptId);
+        if (!cancelled) {
+          setManuscriptLockConflict(null);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'manuscript_locked') {
+          const lockErr = error as { lockedBy?: string | null; lockedAt?: string | null };
+          setManuscriptLockConflict({
+            lockedBy: lockErr.lockedBy ?? null,
+            lockedAt: lockErr.lockedAt ?? null,
+          });
+          showWarning(
+            lockErr.lockedBy
+              ? `${lockErr.lockedBy} redigerer dette manuset nå. Endringene dine lagres ikke før låsen frigis.`
+              : 'En annen i teamet redigerer dette manuset nå.',
+          );
+        }
+      }
+    })();
+
+    // Hold låsen i live mens vinduet er åpent.
+    const heartbeat = setInterval(() => {
+      void manuscriptService.heartbeatManuscriptLock(manuscriptId).catch(() => { /* best-effort */ });
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(heartbeat);
+      void manuscriptService.releaseManuscriptLock(manuscriptId).catch(() => { /* best-effort */ });
+    };
+    // Kun re-kjør når et ANNET manus åpnes (id), ikke ved hver innholdsendring
+    // (handleScriptChangeFromSplitView lager nye objekter med samme id).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedManuscript?.id, showWarning]);
 
   useEffect(() => {
     setSelectedShot(null);
@@ -1339,10 +1433,43 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         `${selectedManuscript.title.replace(/\s+/g, '_')}_export.json`
       );
 
-      showSuccess('Manuskript eksportert som JSON');
+      showSuccess(
+        `Eksportert som JSON: ${acts.length} akter · ${scenes.length} scener · ${characterList.length} karakterer · ${revisions.length} revisjoner`,
+      );
     } catch (error) {
       showError('Feil ved eksport');
       console.error(error);
+    }
+  };
+
+  // Eksporter manuset i bransje-formatene Fountain eller Final Draft (FDX) via
+  // backend-endepunktet — så regissør/manusforfatter kan åpne det i ekte
+  // manus-verktøy. (Backend støttet dette; det manglet bare en knapp i UI.)
+  const handleExportScreenplay = async (format: 'fountain' | 'fdx') => {
+    const manuscript = selectedManuscript;
+    setExportMenuAnchor(null);
+    if (!manuscript) return;
+    try {
+      const response = await fetch(
+        `/api/casting/manuscripts/${encodeURIComponent(manuscript.id)}/export?format=${format}`,
+      );
+      if (!response.ok) throw new Error(`Export failed: ${response.status}`);
+      const text = await response.text();
+      const ext = format === 'fdx' ? 'fdx' : 'fountain';
+      const mime = format === 'fdx' ? 'application/xml' : 'text/plain';
+      const blob = new Blob([text], { type: `${mime};charset=utf-8` });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${(manuscript.title || 'manus').replace(/\s+/g, '_')}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showSuccess(format === 'fdx' ? 'Eksportert som Final Draft (FDX)' : 'Eksportert som Fountain');
+    } catch (error) {
+      console.error('Screenplay export failed:', error);
+      showError('Kunne ikke eksportere manuset i dette formatet. Prøv igjen.');
     }
   };
 
@@ -1577,6 +1704,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           isDirtyRef.current = false;
           setLastManuscriptSaved(new Date());
           setManuscriptSaveStatus('saved');
+          setManuscriptLockConflict(null);
           // IMPORTANT: Do NOT call onManuscriptChange or setSelectedManuscript here
           // Auto-save should be completely transparent to parent
         }
@@ -1585,10 +1713,26 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         if (error instanceof Error && error.name === 'AbortError') {
           return;
         }
-        console.error('❌ Error during manuscript auto-save:', error);
-        if (isMountedRef.current) {
+        if (!isMountedRef.current) return;
+        // Lås holdt av en annen bruker (409) → vis HVEM, ikke generisk feil.
+        // isDirtyRef forblir true så innholdet beholdes og kan re-lagres når
+        // låsen frigis. Innholdet er ikke tapt — det ligger fortsatt i editoren.
+        if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'manuscript_locked') {
+          const lockErr = error as { lockedBy?: string | null; lockedAt?: string | null };
+          setManuscriptLockConflict({
+            lockedBy: lockErr.lockedBy ?? null,
+            lockedAt: lockErr.lockedAt ?? null,
+          });
           setManuscriptSaveStatus('error');
+          showWarning(
+            lockErr.lockedBy
+              ? `Manuset redigeres av ${lockErr.lockedBy} akkurat nå — endringene dine er ikke lagret. De beholdes til låsen frigis.`
+              : 'Manuset er låst av en annen i teamet — endringene dine er ikke lagret ennå.',
+          );
+          return;
         }
+        console.error('❌ Error during manuscript auto-save:', error);
+        setManuscriptSaveStatus('error');
       }
     }, 2000);
   }, [selectedManuscript?.id]);
@@ -2024,6 +2168,16 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           >
             {selectedManuscript && (
               <>
+                <Button
+                  variant="outlined"
+                  startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+                  size={responsive.buttonSize}
+                  onClick={handleBackToManuscriptList}
+                  title="Tilbake til utkast-oversikten — bytt mellom utkast, gi nytt navn eller opprett nytt"
+                  sx={{ fontSize: responsive.bodyFontSize }}
+                >
+                  {isMobile ? 'Utkast' : 'Dine manuskripter'}
+                </Button>
                 <ToggleButton
                   value="auto-breakdown"
                   selected={autoBreakdownEnabled}
@@ -2064,8 +2218,34 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   title="Eksporter hele manuskriptet med produksjondata som JSON"
                   sx={{ fontSize: responsive.bodyFontSize }}
                 >
-                  Eksporter
+                  {isMobile ? 'JSON' : 'Eksporter JSON'}
                 </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={!isMobile ? <DescriptionIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+                  endIcon={!isMobile ? <ArrowDropDownIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+                  size={responsive.buttonSize}
+                  onClick={(e) => setExportMenuAnchor(e.currentTarget)}
+                  disabled={isLoading}
+                  title="Eksporter manuset som Fountain eller Final Draft (FDX) for bruk i manus-verktøy"
+                  sx={{ fontSize: responsive.bodyFontSize }}
+                >
+                  {isMobile ? 'Manus' : 'Eksporter manus'}
+                </Button>
+                <Menu
+                  anchorEl={exportMenuAnchor}
+                  open={Boolean(exportMenuAnchor)}
+                  onClose={() => setExportMenuAnchor(null)}
+                >
+                  <MenuItem onClick={() => handleExportScreenplay('fountain')}>
+                    <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText primary="Fountain (.fountain)" secondary="Åpen tekst-standard for manus" />
+                  </MenuItem>
+                  <MenuItem onClick={() => handleExportScreenplay('fdx')}>
+                    <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText primary="Final Draft (.fdx)" secondary="For Final Draft og de fleste manus-verktøy" />
+                  </MenuItem>
+                </Menu>
                 <Button
                   variant="contained"
                   startIcon={!isMobile ? <SaveIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
@@ -2076,6 +2256,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 >
                   Lagre
                 </Button>
+                {onSendToApproval && (
+                  <Button
+                    variant="outlined"
+                    startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+                    size={responsive.buttonSize}
+                    onClick={onSendToApproval}
+                    title="Send manuset videre til klient-/godkjenningsflaten"
+                    sx={{ fontSize: responsive.bodyFontSize }}
+                  >
+                    {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
+                  </Button>
+                )}
               </>
             )}
             <Button
@@ -2121,6 +2313,22 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               '& .MuiLinearProgress-bar': { borderRadius: 999 },
             }}
           />
+        )}
+
+        {selectedManuscript && manuscriptLockConflict && (
+          <Alert
+            severity="warning"
+            icon={<LockIcon fontSize="inherit" />}
+            sx={{ mt: responsive.spacing }}
+          >
+            {manuscriptLockConflict.lockedBy
+              ? `${manuscriptLockConflict.lockedBy} redigerer dette manuset nå`
+              : 'En annen i teamet redigerer dette manuset nå'}
+            {manuscriptLockConflict.lockedAt
+              ? ` (siden ${new Date(manuscriptLockConflict.lockedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })})`
+              : ''}
+            . Endringene dine lagres ikke før låsen frigis — men de beholdes i editoren.
+          </Alert>
         )}
 
         {/* Manuscript Cards - shown when no manuscript is selected */}
@@ -2721,6 +2929,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               <Stack spacing={2}>
                 {activeProjectId && scenes.length > 0 && (
                   <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                     projectId={activeProjectId}
                     filter={{
                       sourceType: 'project',
@@ -2750,6 +2959,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 )}
                 {activeProjectId && scenes.length >= 2 && (
                   <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                     projectId={activeProjectId}
                     filter={{
                       sourceType: 'project',
@@ -2780,6 +2990,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 )}
                 {activeProjectId && scenes.length >= 3 && (
                   <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                     projectId={activeProjectId}
                     filter={{
                       sourceType: 'project',
@@ -2994,6 +3205,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                             <React.Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={20} /></Box>}>
                               <LazyScreenplayEditorWithNavigator
                                 editorKey={`${selectedManuscript.id}-production-split`}
+                                storyLogicData={storyLogicData}
                                 value={content}
                                 onChange={onChange}
                                 scriptTitle={selectedManuscript.title}
@@ -3353,6 +3565,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   <AccordionDetails>
                     <Stack spacing={1.5}>
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'breakdown.prop' }}
                         title="Breakdown — props/locations/kostymer/VFX/risk"
@@ -3372,6 +3585,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'shot-list.draft' }}
                         title="Shot-list"
@@ -3403,11 +3617,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     <Stack spacing={1.5}>
                       <TakesPanel projectId={activeProjectId} sceneId={editingScene.id} />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'coverage.gap' }}
                         title="Coverage-gap"
                       />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'coverage.best-take' }}
                         title="Best take-anbefaling"
@@ -3424,6 +3640,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   <AccordionDetails>
                     <Stack spacing={1.5}>
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'edit.rough-cut-draft' }}
                         title="Rough-cut-draft"
@@ -3438,6 +3655,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.color-consistency-issue' }}
                         title="Color-konsistens"
@@ -3452,6 +3670,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.audio-mix-issue' }}
                         title="Audio-mix-issues"
@@ -3466,6 +3685,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.dialog-pacing-issue' }}
                         title="Dialog-pacing"
@@ -3480,6 +3700,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.music-bed-suggestion' }}
                         title="Musikk-bed"
@@ -3502,6 +3723,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       />
                       <AISuggestionsPanel
+                    onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.sfx-suggestion' }}
                         title="SFX-cue-list"
@@ -4325,6 +4547,7 @@ Anna går raskt gjennom regnet.
       }>
           <LazyScreenplayEditorWithNavigator
             editorKey={manuscript.id}
+            storyLogicData={storyLogicData}
             value={editorContent}
             onChange={handleScreenplayChange}
             scriptTitle={manuscript.title}
@@ -6079,12 +6302,21 @@ const RevisionsTab: React.FC<{
 
     try {
       const sanitizedRevisionNotes = stripHtmlTags(revisionNotes);
+      // Faktisk innlogget bruker — så teamet ser HVEM som lagde revisjonen
+      // (var hardkodet 'current-user').
+      const session = authSessionService.getSessionSync();
+      const changedBy =
+        session.adminUser?.display_name?.trim() ||
+        session.adminUser?.name?.trim() ||
+        session.adminUser?.email?.trim() ||
+        session.currentUserId ||
+        'Ukjent bruker';
       const newRevision: ScriptRevision = {
         id: `rev-${Date.now()}`,
         manuscriptId: manuscript.id,
         version: `${manuscript.version || 1}.${revisions.length + 1}`,
         createdAt: new Date().toISOString(),
-        changedBy: 'current-user',
+        changedBy,
         changesSummary: sanitizedRevisionNotes || revisionName.trim(),
         revisionNotes: revisionNotes,
         content: manuscript.content,
