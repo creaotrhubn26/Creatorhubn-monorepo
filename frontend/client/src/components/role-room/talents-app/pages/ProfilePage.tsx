@@ -36,6 +36,7 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import { useCallback, useEffect, useState } from 'react';
 
 import roleRoomTalentsService, { type RoleRoomTalent } from '../../services/roleRoomTalentsService';
+import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 
 interface ProfilePageProps {
@@ -49,8 +50,8 @@ const cardSx = {
   p: 2.4,
 };
 
-// MVP-helper for upload — URL-input for nå. Vercel Blob kommer i Phase 4.
-const UPLOAD_HELP = 'Lim inn en lenke (URL) til bildet/videoen din. Senere kan du laste opp direkte.';
+// Direkte fil-opplastning til Cloudflare R2 via presigned PUT-URL.
+// Faller tilbake til URL-input hvis R2 ikke er konfigurert på backend.
 
 export default function ProfilePage({ demoMode }: ProfilePageProps) {
   const [talent, setTalent] = useState<RoleRoomTalent | null>(null);
@@ -382,13 +383,31 @@ function OnboardingWizard({ open, onClose, onDone }: OnboardingWizardProps) {
         ) : null}
 
         {step === 2 ? (
-          <Stack spacing={2}>
+          <Stack spacing={2.4}>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem' }}>
-              {UPLOAD_HELP}
+              Last opp filer direkte — vi streamer dem til lagring i EU/EEA. Du kan hoppe over enkeltfiler og legge dem til senere.
             </Typography>
-            <TextField label="Headshot URL" value={form.headshot_url} onChange={(e) => setForm({ ...form, headshot_url: e.target.value })} fullWidth size="small" placeholder="https://…" helperText="Direkte lenke til JPG/PNG. Bruk Dropbox, Google Drive, eller agent-bilder." />
-            <TextField label="Showreel URL" value={form.showreel_url} onChange={(e) => setForm({ ...form, showreel_url: e.target.value })} fullWidth size="small" placeholder="https://vimeo.com/…" helperText="Vimeo eller YouTube. Helst unlisted." />
-            <TextField label="CV URL" value={form.resume_url} onChange={(e) => setForm({ ...form, resume_url: e.target.value })} fullWidth size="small" placeholder="https://…" helperText="PDF eller webside med dine roller." />
+            <MediaUploader
+              kind="headshot"
+              label="Headshot"
+              helperText="JPG/PNG/WebP — bilde av deg fra brystet og opp"
+              value={form.headshot_url}
+              onChange={(url) => setForm({ ...form, headshot_url: url ?? '' })}
+            />
+            <MediaUploader
+              kind="showreel"
+              label="Showreel"
+              helperText="MP4/MOV/WebM — kort video som viser ditt arbeid"
+              value={form.showreel_url}
+              onChange={(url) => setForm({ ...form, showreel_url: url ?? '' })}
+            />
+            <MediaUploader
+              kind="resume"
+              label="CV"
+              helperText="PDF med dine roller, utdanning, agent"
+              value={form.resume_url}
+              onChange={(url) => setForm({ ...form, resume_url: url ?? '' })}
+            />
           </Stack>
         ) : null}
 
@@ -514,9 +533,25 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
             <TextField label="til" type="number" value={form.playing_age_max} onChange={(e) => setForm({ ...form, playing_age_max: e.target.value ? Number(e.target.value) : '' })} fullWidth size="small" />
           </Stack>
           <TextField label="Bio" value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} multiline minRows={4} fullWidth />
-          <TextField label="Headshot URL" value={form.headshot_url} onChange={(e) => setForm({ ...form, headshot_url: e.target.value })} fullWidth size="small" />
-          <TextField label="Showreel URL" value={form.showreel_url} onChange={(e) => setForm({ ...form, showreel_url: e.target.value })} fullWidth size="small" />
-          <TextField label="CV URL" value={form.resume_url} onChange={(e) => setForm({ ...form, resume_url: e.target.value })} fullWidth size="small" />
+
+          <MediaUploader
+            kind="headshot"
+            label="Headshot"
+            value={form.headshot_url}
+            onChange={(url) => setForm({ ...form, headshot_url: url ?? '' })}
+          />
+          <MediaUploader
+            kind="showreel"
+            label="Showreel"
+            value={form.showreel_url}
+            onChange={(url) => setForm({ ...form, showreel_url: url ?? '' })}
+          />
+          <MediaUploader
+            kind="resume"
+            label="CV"
+            value={form.resume_url}
+            onChange={(url) => setForm({ ...form, resume_url: url ?? '' })}
+          />
           <TextField select label="Tilgjengelighet" value={form.availability_status} onChange={(e) => setForm({ ...form, availability_status: e.target.value as RoleRoomTalent['availability_status'] })} fullWidth size="small">
             <MenuItem value="open">Tilgjengelig</MenuItem>
             <MenuItem value="limited">Begrenset</MenuItem>

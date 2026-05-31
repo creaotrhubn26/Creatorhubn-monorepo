@@ -256,6 +256,69 @@ const roleRoomTalentsService = {
     return payload as PartnersOverview;
   },
 
+  async fetchUploadConfig(): Promise<UploadConfig> {
+    const r = await authFetch(`${BASE}/me/uploads/config`);
+    if (!r.ok) return { enabled: false, maxBytes: {}, allowedTypes: {} };
+    const payload = await r.json().catch(() => null);
+    return payload as UploadConfig;
+  },
+
+  /** Signerer en presigned PUT-URL for direkte R2-opplastning. */
+  async signUpload(input: {
+    kind: 'headshot' | 'showreel' | 'resume' | 'alt_photo';
+    contentType: string;
+    size_bytes: number;
+    filename: string;
+  }): Promise<UploadSignResult | { error: string }> {
+    const r = await authFetch(`${BASE}/me/uploads/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Kunne ikke generere upload-URL' };
+    return payload as UploadSignResult;
+  },
+
+  /**
+   * Streamer en File direkte til R2 via presigned PUT-URL.
+   * Bruker XMLHttpRequest for progress-event (fetch har ingen upload-progress).
+   * Returnerer finalUrl ved suksess.
+   */
+  async uploadFileToR2(
+    file: File,
+    kind: 'headshot' | 'showreel' | 'resume' | 'alt_photo',
+    onProgress?: (pct: number) => void,
+  ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+    const signed = await this.signUpload({
+      kind,
+      contentType: file.type,
+      size_bytes: file.size,
+      filename: file.name,
+    });
+    if ('error' in signed) return { ok: false, error: signed.error };
+
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', signed.uploadUrl);
+      xhr.setRequestHeader('Content-Type', signed.contentType);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ ok: true, url: signed.finalUrl });
+        } else {
+          resolve({ ok: false, error: `Opplasting feilet (HTTP ${xhr.status})` });
+        }
+      };
+      xhr.onerror = () => resolve({ ok: false, error: 'Nettverksfeil ved opplasting' });
+      xhr.send(file);
+    });
+  },
+
   async pausePartnerAccess(input: {
     partner_type: RoleRoomTalentPartnerType;
     partner_ref: string;
@@ -395,6 +458,21 @@ export interface RoleRoomPartnerInvite {
   token: string;
   acceptUrl?: string;
   maskedEmail?: string;
+}
+
+export interface UploadConfig {
+  enabled: boolean;
+  maxBytes: Partial<Record<'headshot' | 'showreel' | 'resume' | 'alt_photo', number>>;
+  allowedTypes: Partial<Record<'headshot' | 'showreel' | 'resume' | 'alt_photo', string[]>>;
+}
+
+export interface UploadSignResult {
+  uploadUrl: string;
+  finalUrl: string;
+  key: string;
+  expiresIn: number;
+  contentType: string;
+  instructions?: string;
 }
 
 export interface PartnerInviteDetail {
