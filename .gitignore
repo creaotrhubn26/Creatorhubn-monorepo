@@ -18,6 +18,13 @@ models/
 !frontend/client/src/components/role-room/models/
 !frontend/client/src/components/role-room/models/casting.ts
 !frontend/client/src/components/role-room/models/derivedState.ts
+# iPad CaptureApp har en konvensjonell Swift `Models/`-mappe. `models/`-
+# pattern'en over var ment for ML/pretrained-models, men matchet
+# Swift-mappa stille — det skjulte 7 foundation-modeller fra commit
+# bac8bc13 og brøt iPad-bygget. Whitelist'er hele Models-undertreet så
+# git add fungerer uten -f for nye Swift-modeller.
+!ipad/CaptureApp/CaptureApp/Core/Models/
+!ipad/CaptureApp/CaptureApp/Core/Models/*.swift
 pretrained_models/
 pretrained_models.backup/
 python_ml_service/models/
