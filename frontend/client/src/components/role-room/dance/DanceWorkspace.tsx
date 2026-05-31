@@ -63,6 +63,7 @@ import FormationHeaderBar, {
   type FormationSubTab,
   type FormationSaveStatus,
 } from './FormationHeaderBar';
+import ClipsSidebar from './ClipsSidebar';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -215,6 +216,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           saveError={saveError}
         />
       }
+      clipsSidebar={<ClipsSidebar projectId={projectId} />}
     >
       {subTab === 'formation' ? (
         <Box sx={{ p: { xs: 1, md: 2 }, minHeight: '100%' }}>
