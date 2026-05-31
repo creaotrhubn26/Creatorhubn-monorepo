@@ -56,6 +56,11 @@ import {
 import backgroundUploadService from '../../services/BackgroundUploadService';
 import { useUploadQueue } from '../../hooks/useUploadQueue';
 import { usePhotoEnhancementWebSocket } from '../../hooks/usePhotoEnhancementWebSocket';
+import {
+  chunkedUpload,
+  shouldUseChunkedUpload,
+  CHUNKED_UPLOAD_THRESHOLD_BYTES,
+} from '@/lib/chunked-upload';
 import type { ProcessingOptions as BatchProcessingOptions } from '@shared/photo-enhancement-contracts';
 import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
 
@@ -686,13 +691,54 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       // Use immediate upload (legacy behavior)
       setUploading(true);
       const results: any[] = [];
+      const authHeadersForChunked: Record<string, string> = Object.entries(auth || {}).reduce(
+        (acc, [k, v]) => {
+          if (typeof v === 'string') acc[k] = v;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
 
       try {
         for (let i = 0; i < selectedFiles.length; i++) {
           const file = selectedFiles[i];
+
+          // Chunked path for store filer (≥ 25 MB) — gir resumable upload
+          // som overlever nettverksdrop og browser-restart.
+          if (shouldUseChunkedUpload(file)) {
+            try {
+              const chunked = await chunkedUpload(file, {
+                authHeaders: authHeadersForChunked,
+                metadata: {
+                  ...uploadMetadata,
+                  projectId: projectId ?? selectedProject?.id ?? null,
+                  profession,
+                },
+                onProgress: (info) => {
+                  const pct = Math.round((info.bytesUploaded / info.totalBytes) * 100);
+                  setUploadProgress(prev => ({ ...prev, [file.name]: pct }));
+                },
+              });
+              results.push({ file, result: chunked, success: true });
+              continue;
+            } catch (error: any) {
+              const message = error?.message || String(error);
+              results.push({ file, error: message, success: false });
+              setUploadFailures(prev => [
+                ...prev,
+                {
+                  name: file.name,
+                  reason: `${message} (chunked — fremgang er lagret, prøv på nytt for å resume)`,
+                },
+              ]);
+              if (onUploadError) onUploadError(message, file);
+              continue;
+            }
+          }
+
           const formData = new FormData();
           formData.append('file', file);
-          
+
           // Add metadata
           Object.entries(uploadMetadata).forEach(([key, value]) => {
             formData.append(key, JSON.stringify(value));
