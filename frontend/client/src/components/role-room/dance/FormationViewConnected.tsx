@@ -39,6 +39,14 @@ import {
 } from './dancerProfileService';
 import type { Dancer, Formation } from './formationTypes';
 import { getInitials } from './dancerProfile';
+import {
+  listTimelineItems,
+  createTimelineItem,
+  patchTimelineItem,
+  deleteTimelineItem,
+  type TimelineItemRecord,
+} from './danceTimelineItemService';
+import TimelineItemModal from './TimelineItemModal';
 
 const PURPLE = '#8b5cf6';
 const AUTOSAVE_DEBOUNCE_MS = 1200;
@@ -106,6 +114,11 @@ export function FormationViewConnected({
   const [initialFormations, setInitialFormations] = React.useState<Formation[] | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  // G18: time-anchored notes + movements på timelinen.
+  const [timelineItems, setTimelineItems] = React.useState<TimelineItemRecord[]>([]);
+  const [modalOpen, setModalOpen] = React.useState<boolean>(false);
+  const [modalEditing, setModalEditing] = React.useState<TimelineItemRecord | null>(null);
+  const [modalDefaultStart, setModalDefaultStart] = React.useState<number>(0);
   // Audit A5: persistent timestamp som overlever 'saved'→'idle'-fade.
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
 
@@ -131,13 +144,14 @@ export function FormationViewConnected({
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstChangeRef = React.useRef(true);
 
-  // Load profiles + formations in parallel.
+  // Load profiles + formations + timeline-items i parallel.
   const refresh = React.useCallback(async (): Promise<void> => {
     setLoad({ phase: 'loading' });
     try {
-      const [profiles, records] = await Promise.all([
+      const [profiles, records, items] = await Promise.all([
         listDancerProfiles(projectId ?? undefined),
         listFormations(projectId ?? undefined),
+        listTimelineItems({ projectId: projectId ?? undefined }).catch(() => [] as TimelineItemRecord[]),
       ]);
       setDancers(profilesToDancers(profiles));
       const sorted = [...records].sort((a, b) => a.displayOrder - b.displayOrder);
@@ -146,6 +160,7 @@ export function FormationViewConnected({
           ? sorted.map(recordToFormation)
           : [emptyStarterFormation()],
       );
+      setTimelineItems(items);
       setLoad({ phase: 'ready' });
     } catch (err) {
       setLoad({
@@ -211,6 +226,57 @@ export function FormationViewConnected({
 
   React.useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  // G18: åpne modal når FormationTimeline right-click dispatcher
+  // 'dance:open-timeline-item' { mode, startSec, item }.
+  React.useEffect(() => {
+    const onOpen = (e: Event): void => {
+      const detail = (e as CustomEvent<{
+        mode?: 'create' | 'edit';
+        startSec?: number;
+        item?: TimelineItemRecord;
+      }>).detail;
+      if (!detail) return;
+      if (detail.mode === 'edit' && detail.item) {
+        setModalEditing(detail.item);
+        setModalDefaultStart(detail.item.startSec);
+        setModalOpen(true);
+      } else if (detail.mode === 'create') {
+        setModalEditing(null);
+        setModalDefaultStart(typeof detail.startSec === 'number' ? detail.startSec : 0);
+        setModalOpen(true);
+      }
+    };
+    window.addEventListener('dance:open-timeline-item', onOpen as EventListener);
+    return () => window.removeEventListener('dance:open-timeline-item', onOpen as EventListener);
+  }, []);
+
+  // G18: CRUD handlers
+  const handleCreateItem = React.useCallback(async (input: {
+    kind: 'note' | 'movement';
+    label: string;
+    startSec: number;
+    endSec: number;
+    projectId: string | null;
+  }): Promise<void> => {
+    const created = await createTimelineItem(input);
+    setTimelineItems((prev) => [...prev, created].sort((a, b) => a.startSec - b.startSec));
+  }, []);
+
+  const handleUpdateItem = React.useCallback(async (id: string, patch: {
+    kind?: 'note' | 'movement';
+    label?: string;
+    startSec?: number;
+    endSec?: number;
+  }): Promise<void> => {
+    const updated = await patchTimelineItem(id, patch);
+    setTimelineItems((prev) => prev.map((it) => (it.id === id ? updated : it)).sort((a, b) => a.startSec - b.startSec));
+  }, []);
+
+  const handleDeleteItem = React.useCallback(async (id: string): Promise<void> => {
+    await deleteTimelineItem(id);
+    setTimelineItems((prev) => prev.filter((it) => it.id !== id));
   }, []);
 
   if (load.phase === 'loading') {
@@ -284,6 +350,29 @@ export function FormationViewConnected({
         onFormationsChange={handleFormationsChange}
         onDancerClick={onDancerClick}
         videoPanelSlot={videoPanelSlot}
+        timelineNotes={React.useMemo(
+          () => timelineItems.filter((it) => it.kind === 'note').map((it) => ({
+            id: it.id, text: it.label, startSec: it.startSec, endSec: it.endSec,
+          })),
+          [timelineItems],
+        )}
+        timelineMovements={React.useMemo(
+          () => timelineItems.filter((it) => it.kind === 'movement').map((it) => ({
+            id: it.id, label: it.label, startSec: it.startSec, endSec: it.endSec,
+          })),
+          [timelineItems],
+        )}
+      />
+      {/* G18: modal for create/edit/delete av timeline-items */}
+      <TimelineItemModal
+        open={modalOpen}
+        editing={modalEditing}
+        defaultStartSec={modalDefaultStart}
+        projectId={projectId}
+        onClose={() => { setModalOpen(false); setModalEditing(null); }}
+        onCreate={handleCreateItem}
+        onUpdate={handleUpdateItem}
+        onDelete={handleDeleteItem}
       />
     </Box>
   );

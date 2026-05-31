@@ -113,6 +113,10 @@ export interface FormationViewProps {
    * pre-Phase-4-layout.
    */
   videoPanelSlot?: React.ReactNode;
+  /** G18: time-anchored notes på timeline (fra dance-formation-timeline-items). */
+  timelineNotes?: readonly { id: string; text: string; startSec: number; endSec: number }[];
+  /** G18: time-anchored movements på timeline. */
+  timelineMovements?: readonly { id: string; label: string; startSec: number; endSec: number }[];
 }
 
 // ─── Komponent ────────────────────────────────────────────────────────────
@@ -123,6 +127,8 @@ export const FormationView: React.FC<FormationViewProps> = ({
   onFormationsChange,
   onDancerClick,
   videoPanelSlot,
+  timelineNotes,
+  timelineMovements,
 }) => {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
@@ -1303,6 +1309,8 @@ export const FormationView: React.FC<FormationViewProps> = ({
         activeFormationId={activeFormationId}
         onSelect={setActiveFormationId}
         musicUrl={selectedClipUrl}
+        movements={timelineMovements}
+        notes={timelineNotes}
         dancersTrackSlot={<DancerPathsView formations={formations} dancers={dancers} />}
       />
     </Box>

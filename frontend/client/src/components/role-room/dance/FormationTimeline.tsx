@@ -231,6 +231,24 @@ export function FormationTimeline({
               new CustomEvent(CREATE_FORMATION_AT_EVENT, { detail: { timeSec } }),
             );
           }}
+          onContextMenu={(e) => {
+            // Workflow-audit G18: høyre-klikk på timeline-bakgrunn = åpne
+            // 'Legg til note'-modal ved klikket tid. preventDefault undertrykker
+            // native context-menyen.
+            const rect = e.currentTarget.getBoundingClientRect();
+            const xWithinWrapper = e.clientX - rect.left;
+            const labelOffset = LABEL_WIDTH + 8;
+            if (xWithinWrapper < labelOffset) return;
+            const trackWidth = rect.width - labelOffset;
+            const ratio = (xWithinWrapper - labelOffset) / trackWidth;
+            const timeSec = Math.max(0, Math.min(computedDuration, ratio * computedDuration));
+            e.preventDefault();
+            window.dispatchEvent(
+              new CustomEvent('dance:open-timeline-item', {
+                detail: { mode: 'create', startSec: timeSec },
+              }),
+            );
+          }}
         >
           <Stack spacing={0.5}>
             {/* FORMATION-spor */}
