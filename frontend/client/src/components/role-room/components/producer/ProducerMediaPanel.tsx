@@ -5200,7 +5200,7 @@ export default function ProducerMediaPanel({
     {
       key: 'decision',
       label: 'Beslutning',
-      value: foundationBlockingItems.length > 0 ? 'Låst til grunnlaget er klart' : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
+      value: foundationBlockingItems.length > 0 ? `Låst — ${foundationBlockingItems.length} mangler i grunnlaget` : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
       tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (pendingReviewCount > 0 || openMeetingFollowUpCount > 0 ? '#fcd34d' : '#86efac'),
     },
   ]), [
@@ -6496,7 +6496,11 @@ export default function ProducerMediaPanel({
         intro: activeWorkspace === 'brief'
           ? 'Fullfør briefen før produksjon og godkjenning åpnes opp som parallelle spor.'
           : 'Hold fokus på produksjonsgrunnlaget først. Resten av flyten skal vente til briefen er tydelig.',
-        chipLabel: `${foundationBlockingItems.length} mangler`,
+        // Navngi det første som mangler så chipen er handlingsorientert, ikke
+        // bare et tall — Stig ser umiddelbart hvor han skal begynne.
+        chipLabel: foundationBlockingItems[0]
+          ? `${foundationBlockingItems.length} mangler — start med «${foundationBlockingItems[0].label}»`
+          : `${foundationBlockingItems.length} mangler`,
         priority: foundationBlockingItems.length >= 3 ? 'critical' : 'warning',
         sections,
       };

@@ -21,6 +21,7 @@ import {
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { useProject } from '@/contexts/ProjectContext';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import type {
   CastingProject,
   ProducerClientIntake,
@@ -824,7 +825,7 @@ export default function ProducerExportHandoffPanel({
       return nextPackage;
     } catch (packageError) {
       console.error('[ProducerExportHandoffPanel] Failed to build and upload client package', packageError);
-      setClientInputError('Kunne ikke skrive klientpakken til prosjektets leveranseflyt.');
+      setClientInputError(describeProducerError(packageError, 'skrive klientpakken til prosjektets leveranseflyt'));
       return null;
     } finally {
       setUploadingPackage(false);
@@ -892,7 +893,7 @@ export default function ProducerExportHandoffPanel({
       return uploadedWorkspaceFiles;
     } catch (workspaceError) {
       console.error('[ProducerExportHandoffPanel] Failed to write delivery workspace', workspaceError);
-      setClientInputError('Kunne ikke skrive leveransearbeidsområdet til prosjektfiler.');
+      setClientInputError(describeProducerError(workspaceError, 'skrive leveransearbeidsområdet til prosjektfiler'));
       return [];
     } finally {
       setWritingWorkspace(false);
@@ -927,7 +928,7 @@ export default function ProducerExportHandoffPanel({
       enqueueSnackbar('Delingslenke til klientpakken er klar.', { variant: 'success' });
     } catch (shareError) {
       console.error('[ProducerExportHandoffPanel] Failed to share latest package', shareError);
-      setClientInputError('Kunne ikke lage delingslenke for klientpakken.');
+      setClientInputError(describeProducerError(shareError, 'lage delingslenke for klientpakken'));
     }
   }, [enqueueSnackbar, latestPackage, project.id, shareProjectFile]);
 
@@ -948,7 +949,7 @@ export default function ProducerExportHandoffPanel({
       enqueueSnackbar('Klientpakken er klar for deling.', { variant: 'success' });
     } catch (sendError) {
       console.error('[ProducerExportHandoffPanel] Failed to prepare client handoff', sendError);
-      setClientInputError('Kunne ikke klargjøre klientpakken for deling.');
+      setClientInputError(describeProducerError(sendError, 'klargjøre klientpakken for deling'));
     } finally {
       setSendingToClient(false);
     }
