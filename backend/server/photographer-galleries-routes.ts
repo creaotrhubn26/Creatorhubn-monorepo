@@ -36,6 +36,103 @@ export function setupPhotographerGalleriesRoutes(
     escapeHtml,
   } = deps;
 
+  /// Felles helper for å sende "galleriet ditt er klart"-mail til klient.
+  /// Brukt både av eksplisitt /notify-client og av /mark-complete-auto-
+  /// trigger (gap #3+#10 fra workflow-analyse: fotograf glemmer ofte
+  /// step 2 "send mail" etter "marker komplett" — vi auto-fyrer det nå).
+  ///
+  /// Returnerer { sent, reason } så caller kan logge eller bestemme om
+  /// gallery-state skal rulles tilbake (per nå: aldri rull tilbake —
+  /// mail er best-effort).
+  async function sendGalleryNotification(opts: {
+    galleryId: string;
+    photographerId: string;
+    customMessage?: string | null;
+    triggerKind: 'manual' | 'auto_on_complete';
+  }): Promise<{
+    sent: boolean;
+    reason: 'missing_email' | 'mailer_not_configured' | 'send_failed' | null;
+    recipient: string | null;
+    shareUrl: string | null;
+  }> {
+    const galleryQ = await pool.query(
+      `SELECT g.client_name, g.client_email, g.project_title, g.access_token,
+              u.first_name AS photographer_first, u.last_name AS photographer_last,
+              u.email AS photographer_email, u.company_name
+         FROM photographer_client_galleries g
+         LEFT JOIN users u ON u.id = g.photographer_id::varchar
+        WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
+      [opts.galleryId, opts.photographerId],
+    );
+    if (galleryQ.rowCount === 0) {
+      return { sent: false, reason: 'send_failed', recipient: null, shareUrl: null };
+    }
+    const g = galleryQ.rows[0];
+    if (!g.client_email || !String(g.client_email).includes('@')) {
+      return { sent: false, reason: 'missing_email', recipient: null, shareUrl: null };
+    }
+
+    const shareUrl = buildGalleryShareUrl(g.access_token);
+    const photographerName = [g.photographer_first, g.photographer_last]
+      .filter(Boolean).join(' ') || g.company_name || 'Creatorhubn';
+
+    const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
+    const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
+    if (!mailUser || !mailPass) {
+      return { sent: false, reason: 'mailer_not_configured', recipient: g.client_email, shareUrl };
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: mailUser, pass: mailPass },
+    });
+
+    const customMessage = opts.customMessage?.trim().slice(0, 2000) ?? null;
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="color:#1a1a1a;margin:0 0 16px;">Hei ${escapeHtml(g.client_name)},</h2>
+        <p style="font-size:15px;line-height:1.6;color:#333;">
+          ${customMessage
+            ? escapeHtml(customMessage)
+            : `Bildene fra <strong>${escapeHtml(g.project_title)}</strong> er klare. Klikk knappen under for å se galleriet ditt.`
+          }
+        </p>
+        <div style="margin:32px 0;text-align:center;">
+          <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Åpne galleriet</a>
+        </div>
+        <p style="font-size:13px;color:#666;line-height:1.5;">
+          Eller kopier denne lenken: <br>
+          <a href="${shareUrl}" style="color:#1976d2;word-break:break-all;">${shareUrl}</a>
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
+        <p style="font-size:13px;color:#999;">
+          Hilsen ${escapeHtml(photographerName)}
+        </p>
+      </div>
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: `"${photographerName}" <${mailUser}>`,
+        to: g.client_email,
+        replyTo: g.photographer_email || undefined,
+        subject: `Galleriet ditt fra "${g.project_title}" er klart`,
+        html,
+      });
+    } catch (err) {
+      console.error('[photographer-galleries] sendMail failed:', err);
+      return { sent: false, reason: 'send_failed', recipient: g.client_email, shareUrl };
+    }
+
+    recordAnalyticsEvent('gallery.notified', {
+      entityType: 'gallery',
+      entityId: opts.galleryId,
+      actorUserId: opts.photographerId,
+      metadata: { recipient: g.client_email, trigger: opts.triggerKind },
+    });
+    return { sent: true, reason: null, recipient: g.client_email, shareUrl };
+  }
+
   async function lookupDefaultPackageId(ownerUserId: string): Promise<string | null> {
     if (!ownerUserId) return null;
     try {
@@ -551,10 +648,31 @@ export function setupPhotographerGalleriesRoutes(
         });
       }
 
+      // Auto-send "galleriet ditt er klart"-mail (gap #3+#10 fra
+      // workflow-analyse: fotograf glemte ofte step 2 "trykk send mail"
+      // etter "marker komplett"). Fyres KUN ved ekte transition, ikke
+      // idempotent re-call, og er best-effort — feil blokkerer ikke
+      // mark-complete.
+      let autoNotifyResult: Awaited<ReturnType<typeof sendGalleryNotification>> | null = null;
+      if (!alreadyCompleted) {
+        try {
+          autoNotifyResult = await sendGalleryNotification({
+            galleryId,
+            photographerId: session.userId,
+            triggerKind: 'auto_on_complete',
+          });
+        } catch (notifyErr) {
+          console.warn('[gallery-complete] auto-notify failed (non-fatal):', notifyErr);
+        }
+      }
+
       return res.json({
         id: galleryId,
         status: 'completed',
         alreadyCompleted,
+        autoNotified: autoNotifyResult?.sent ?? false,
+        autoNotifyReason: autoNotifyResult?.reason ?? null,
+        autoNotifyRecipient: autoNotifyResult?.recipient ?? null,
         linkedProjectId,
         projectCallbackOk,
       });
@@ -734,6 +852,9 @@ export function setupPhotographerGalleriesRoutes(
 
   // POST /api/photographer/galleries/:id/notify-client — send share-URL på epost.
   // Body: { customMessage?: string }
+  // Per gap-analyse 2026-05-31: helper-funksjonen brukes også av
+  // /mark-complete for auto-trigger. Dette endepunktet beholdes for
+  // re-send + custom-message-bruk.
   app.post("/api/photographer/galleries/:id/notify-client", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
@@ -741,83 +862,26 @@ export function setupPhotographerGalleriesRoutes(
     if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
     const customMessage = typeof req.body?.customMessage === 'string'
       ? req.body.customMessage.trim().slice(0, 2000) : null;
-
     try {
-      const galleryQ = await pool.query(
-        `SELECT g.client_name, g.client_email, g.project_title, g.access_token,
-                u.first_name AS photographer_first, u.last_name AS photographer_last,
-                u.email AS photographer_email, u.company_name
-           FROM photographer_client_galleries g
-           LEFT JOIN users u ON u.id = g.photographer_id::varchar
-          WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
-        [galleryId, session.userId],
-      );
-      if (galleryQ.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
-      const g = galleryQ.rows[0];
-      if (!g.client_email || !String(g.client_email).includes('@')) {
-        return res.status(400).json({ error: 'invalid_client_email' });
-      }
-
-      const shareUrl = buildGalleryShareUrl(g.access_token);
-      const photographerName = [g.photographer_first, g.photographer_last]
-        .filter(Boolean).join(' ') || g.company_name || 'Creatorhubn';
-
-      // Reuse existing nodemailer-mønster (GMAIL_USER + GMAIL_APP_PASSWORD)
-      const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
-      const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
-      if (!mailUser || !mailPass) {
-        return res.status(503).json({
-          error: 'mailer_not_configured',
-          message: 'Sett GMAIL_USER + GMAIL_APP_PASSWORD i Render for å sende epost.',
-          shareUrl,
+      const result = await sendGalleryNotification({
+        galleryId,
+        photographerId: session.userId,
+        customMessage,
+        triggerKind: 'manual',
+      });
+      if (!result.sent) {
+        const status = result.reason === 'mailer_not_configured' ? 503
+          : result.reason === 'missing_email' ? 400
+          : 500;
+        return res.status(status).json({
+          error: result.reason ?? 'notify_failed',
+          message: result.reason === 'mailer_not_configured'
+            ? 'Sett GMAIL_USER + GMAIL_APP_PASSWORD i Render for å sende epost.'
+            : undefined,
+          shareUrl: result.shareUrl ?? undefined,
         });
       }
-
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: mailUser, pass: mailPass },
-      });
-
-      const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
-          <h2 style="color:#1a1a1a;margin:0 0 16px;">Hei ${escapeHtml(g.client_name)},</h2>
-          <p style="font-size:15px;line-height:1.6;color:#333;">
-            ${customMessage
-              ? escapeHtml(customMessage)
-              : `Bildene fra <strong>${escapeHtml(g.project_title)}</strong> er klare. Klikk knappen under for å se galleriet ditt.`
-            }
-          </p>
-          <div style="margin:32px 0;text-align:center;">
-            <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Åpne galleriet</a>
-          </div>
-          <p style="font-size:13px;color:#666;line-height:1.5;">
-            Eller kopier denne lenken: <br>
-            <a href="${shareUrl}" style="color:#1976d2;word-break:break-all;">${shareUrl}</a>
-          </p>
-          <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
-          <p style="font-size:13px;color:#999;">
-            Hilsen ${escapeHtml(photographerName)}
-          </p>
-        </div>
-      `;
-
-      await transporter.sendMail({
-        from: `"${photographerName}" <${mailUser}>`,
-        to: g.client_email,
-        replyTo: g.photographer_email || undefined,
-        subject: `Galleriet ditt fra "${g.project_title}" er klart`,
-        html,
-      });
-
-      // Logg som event
-      recordAnalyticsEvent('gallery.notified', {
-        entityType: 'gallery',
-        entityId: galleryId,
-        actorUserId: session.userId,
-        metadata: { recipient: g.client_email },
-      });
-
-      res.json({ sent: true, recipient: g.client_email, shareUrl });
+      res.json({ sent: true, recipient: result.recipient, shareUrl: result.shareUrl });
     } catch (err) {
       console.error('[photographer-galleries] notify-client failed:', err);
       res.status(500).json({ error: 'notify_failed' });
