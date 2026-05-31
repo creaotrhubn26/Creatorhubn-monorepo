@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// Modal som vises når Creatorhub One Desk (Mac) sender en paring-request.
-/// Fotografen ser navnet på Desk-en + den 4-sifrede PIN-en Desk har
-/// generert, og bekrefter at samme PIN står på Desk-skjermen.
+/// Modal som vises når en datamaskin på samme nettverk ber om å koble seg
+/// til denne iPaden. Bruker ser navnet på maskinen + en 4-sifret kode, og
+/// bekrefter at samme kode står på maskinens skjerm — det er sjekken som
+/// hindrer at en tilfeldig PC på samme Wi-Fi får tilgang til bildene.
 ///
-/// PIN-en er ikke "tast inn" — den er "verifiser". Out-of-band-channelen
-/// er øynene til fotografen som leser PIN på Desk-skjermen og matcher
-/// den mot tallene som vises i denne prompten.
+/// **UX-prinsipp (gap #6):** Tekst er klar nok til at en danser eller
+/// klient — ikke bare en fotograf-tech — forstår hva som skjer. Ingen
+/// "Desk", "pairing", "Bonjour", "TXT-record" eller andre tech-ord.
 ///
 /// Sheet er ikke-dismissable utenfra (no swipe-down) — bruker MÅ trykke
-/// "Godta" eller "Avvis" så Desk får respons. Time-out i
-/// ``PairingConnection`` rejecter automatisk hvis fotografen ignorerer.
+/// "Tillat" eller "Avvis" så maskinen får respons. Time-out i
+/// ``PairingConnection`` rejecter automatisk hvis ingen tar valg.
 struct PairWithDeskPromptView: View {
     let request: PairingProtocol.PairRequest
     let onAccept: () -> Void
@@ -22,20 +23,22 @@ struct PairWithDeskPromptView: View {
                 Image(systemName: "laptopcomputer.and.iphone")
                     .font(.system(size: 56, weight: .light))
                     .foregroundStyle(.tint)
-                Text("Par med Desk")
+                Text("Koble til datamaskin?")
                     .font(.title2.weight(.semibold))
             }
             .padding(.top, 12)
 
-            Text("\(deskDisplayName) vil pares med denne iPaden for live mirror under shoot.")
+            Text("\(deskDisplayName) ber om å koble seg til denne iPaden så bildene kopieres dit etter hvert som du tar dem.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
 
             VStack(spacing: 12) {
-                Text("Sjekk at PIN-en under matcher det som vises på Desk:")
+                Text("Sjekk at koden under er den samme som vises på datamaskinen:")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
                 Text(request.pin)
                     .font(.system(size: 56, weight: .heavy, design: .rounded).monospacedDigit())
                     .tracking(12)
@@ -45,11 +48,14 @@ struct PairWithDeskPromptView: View {
                         RoundedRectangle(cornerRadius: 16)
                             .fill(Color(uiColor: .secondarySystemBackground))
                     )
+                Text("Hvis kodene ikke matcher — trykk Avvis.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(spacing: 8) {
                 Button(action: onAccept) {
-                    Text("Godta paring")
+                    Text("Tillat tilkobling")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -72,7 +78,7 @@ struct PairWithDeskPromptView: View {
 
     private var deskDisplayName: String {
         request.deskName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "Creatorhub One Desk"
+            ? "En datamaskin"
             : request.deskName
     }
 }
