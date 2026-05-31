@@ -46,6 +46,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FilterListIcon from '@mui/icons-material/FilterListOutlined';
 import GridViewIcon from '@mui/icons-material/GridView';
+import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import SearchIcon from '@mui/icons-material/Search';
@@ -404,10 +405,10 @@ function ProposalsView({ proposals, onChanged, demoMode }: { proposals: TalentPr
   }
   const statusBadge = (status: string) => {
     const map: Record<string, { label: string; color: string; bg: string }> = {
-      pending: { label: '⏳ Venter på svar', color: palette.warning, bg: 'rgba(245,158,11,0.16)' },
-      accepted: { label: '✓ Godkjent', color: palette.success, bg: 'rgba(34,197,94,0.16)' },
-      declined: { label: '✕ Avslått', color: '#f87171', bg: 'rgba(239,68,68,0.16)' },
-      expired: { label: '⏰ Utløpt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
+      pending: { label: 'Venter på svar', color: palette.warning, bg: 'rgba(245,158,11,0.16)' },
+      accepted: { label: 'Godkjent', color: palette.success, bg: 'rgba(34,197,94,0.16)' },
+      declined: { label: 'Avslått', color: '#f87171', bg: 'rgba(239,68,68,0.16)' },
+      expired: { label: 'Utløpt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
       cancelled: { label: 'Avbrutt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
     };
     const s = map[status] ?? map.cancelled;
@@ -596,7 +597,10 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
         <Stack direction="row" spacing={1.2} alignItems="center">
           {age ? <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{age}</Typography> : null}
           {talent.city ? (
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>📍 {talent.city}{talent.country && talent.country !== 'NO' ? `, ${talent.country}` : ', Norway'}</Typography>
+            <Stack direction="row" spacing={0.4} alignItems="center">
+              <LocationOnOutlinedIcon sx={{ color: palette.textMuted, fontSize: 14 }} />
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{talent.city}{talent.country && talent.country !== 'NO' ? `, ${talent.country}` : ', Norway'}</Typography>
+            </Stack>
           ) : null}
         </Stack>
         {langs ? <Typography sx={{ color: palette.textMuted, fontSize: '0.75rem' }}>{langs}</Typography> : null}

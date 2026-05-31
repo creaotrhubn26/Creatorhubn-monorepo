@@ -1121,19 +1121,19 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
               <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1 }}>Hva får de tilgang til?</Typography>
               <Stack direction="row" spacing={0.8} sx={{ mb: 1.4 }} flexWrap="wrap" useFlexGap>
                 <ScopePresetChip
-                  label="📋 Anbefalt for casting"
+                  label="Anbefalt for casting"
                   scopes={['basic_profile', 'media_portfolio', 'contact_info', 'demographics', 'audition_invitations']}
                   currentScopes={form.scopes}
                   onSet={(scopes) => setForm({ ...form, scopes })}
                 />
                 <ScopePresetChip
-                  label="🔍 Kun forhåndsvisning"
+                  label="Kun forhåndsvisning"
                   scopes={['basic_profile']}
                   currentScopes={form.scopes}
                   onSet={(scopes) => setForm({ ...form, scopes })}
                 />
                 <ScopePresetChip
-                  label="🎯 Full tilgang"
+                  label="Full tilgang"
                   scopes={['full_profile']}
                   currentScopes={form.scopes}
                   onSet={(scopes) => setForm({ ...form, scopes })}
