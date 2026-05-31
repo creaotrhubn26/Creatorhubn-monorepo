@@ -14,6 +14,7 @@ import {
   Avatar,
   Box,
   Button,
+  Drawer,
   IconButton,
   InputBase,
   ListItemIcon,
@@ -22,8 +23,12 @@ import {
   Select,
   Stack,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/LogoutOutlined';
+import MenuIcon from '@mui/icons-material/Menu';
+import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
@@ -88,6 +93,114 @@ export default function TalentsAppShell({
 }: TalentsAppShellProps) {
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const userChipRef = React.useRef<HTMLDivElement | null>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md')); // < 900px
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+
+  // Wrap navigate slik at mobile-drawer lukkes etter valg
+  const handleMobileNav = (page: TalentsAppPage) => {
+    setMobileNavOpen(false);
+    onNavigate(page);
+  };
+  const sidebarSx = {
+    width: SIDEBAR_W,
+    flexShrink: 0,
+    bgcolor: palette.bgShell,
+    borderRight: `1px solid ${palette.borderSubtle}`,
+    display: 'flex',
+    flexDirection: 'column',
+    position: 'relative' as const,
+    backgroundImage: `linear-gradient(180deg, ${palette.bgShell} 0%, ${palette.bgRoot} 100%)`,
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      bottom: 0,
+      width: '14px',
+      backgroundImage: `repeating-linear-gradient(180deg, transparent 0, transparent 6px, ${palette.filmstrip} 6px, ${palette.filmstrip} 10px, transparent 10px, transparent 18px)`,
+      pointerEvents: 'none',
+    },
+  };
+
+  // Sidebar-innholdet — gjenbrukt mellom desktop (statisk) og mobile (Drawer)
+  const sidebarContent = (forMobile: boolean) => {
+    const onClick = forMobile ? handleMobileNav : onNavigate;
+    return (
+      <>
+        {/* Logo */}
+        <Box sx={{ p: 2.4, pb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <TalentsLogo variant="large" />
+          {forMobile ? (
+            <IconButton onClick={() => setMobileNavOpen(false)} sx={{ color: palette.textMuted }}>
+              <CloseIcon />
+            </IconButton>
+          ) : null}
+        </Box>
+
+        {/* Meny */}
+        <Stack component="nav" spacing={0.4} sx={{ px: 1.2, flexGrow: 1 }}>
+          {MENU.map(({ id, label, Icon, ready }) => {
+            const isActive = active === id;
+            const isDisabled = !ready;
+            return (
+              <Button
+                key={id}
+                onClick={() => !isDisabled && onClick(id)}
+                startIcon={<Icon />}
+                disabled={isDisabled}
+                sx={{
+                  justifyContent: 'flex-start', textTransform: 'none',
+                  fontWeight: isActive ? 700 : 500, fontSize: '0.9rem',
+                  py: 1.1, pl: 1.4, pr: 1.4, borderRadius: radius.sm,
+                  color: isActive ? palette.textPrimary : palette.textMuted,
+                  bgcolor: isActive ? 'rgba(168, 85, 247, 0.16)' : 'transparent',
+                  borderLeft: `3px solid ${isActive ? palette.accent : 'transparent'}`,
+                  letterSpacing: '0.005em', opacity: isDisabled ? 0.5 : 1,
+                  '& .MuiButton-startIcon': { color: isActive ? palette.accentBright : palette.textMuted, mr: 1.4 },
+                  '&:hover': isDisabled ? {} : { bgcolor: isActive ? 'rgba(168, 85, 247, 0.22)' : 'rgba(168, 85, 247, 0.06)', color: palette.textPrimary },
+                  '&.Mui-disabled': { color: palette.textMuted },
+                }}
+              >
+                <Box sx={{ flexGrow: 1, textAlign: 'left' }}>{label}</Box>
+                {isDisabled ? (
+                  <Box sx={{ ml: 0.6, px: 0.7, py: 0.1, bgcolor: 'rgba(168, 85, 247, 0.1)', borderRadius: radius.xs, color: palette.accentBright, fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Snart
+                  </Box>
+                ) : null}
+              </Button>
+            );
+          })}
+        </Stack>
+
+        <Box sx={{ px: 1.4, py: 1.4 }}>
+          <Box sx={{ p: 1.6, borderRadius: radius.md, bgcolor: palette.bgCard, border: `1px solid ${palette.border}` }}>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.85rem' }}>Trenger du hjelp?</Typography>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.75rem', mt: 0.3, lineHeight: 1.4 }}>
+              Send oss en e-post — vi svarer innen 24 timer.
+            </Typography>
+            <Button size="small" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} href="mailto:support@theroleroom.com?subject=Talents-portalen"
+              sx={{ mt: 1.2, width: '100%', bgcolor: 'rgba(168, 85, 247, 0.12)', color: palette.textPrimary, textTransform: 'none', fontWeight: 600, fontSize: '0.78rem', borderRadius: radius.sm, border: `1px solid ${palette.borderStrong}`, '&:hover': { bgcolor: 'rgba(168, 85, 247, 0.22)' } }}>
+              Kontakt support
+            </Button>
+          </Box>
+        </Box>
+
+        <Box sx={{ px: 1.4, pb: 1 }}>
+          <Select value="en-NO" size="small" startAdornment={<LanguageIcon sx={{ color: palette.textMuted, mr: 0.8, fontSize: 18 }} />}
+            sx={{ width: '100%', color: palette.textPrimary, fontSize: '0.82rem', bgcolor: palette.bgCard, borderRadius: radius.sm, '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderSubtle }, '& .MuiSvgIcon-root.MuiSelect-icon': { color: palette.textMuted } }}>
+            <MenuItem value="en-NO">English (NO)</MenuItem>
+            <MenuItem value="nb-NO">Norsk (bokmål)</MenuItem>
+          </Select>
+        </Box>
+
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.7rem', textAlign: 'center', pb: 1.4, opacity: 0.7 }}>
+          © The Role Room Talents {new Date().getFullYear()}
+        </Typography>
+      </>
+    );
+  };
+
   return (
     <Box
       sx={{
@@ -98,182 +211,20 @@ export default function TalentsAppShell({
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* ─── SIDEBAR ─── */}
-      <Box
-        component="aside"
-        sx={{
-          width: SIDEBAR_W,
-          flexShrink: 0,
-          bgcolor: palette.bgShell,
-          borderRight: `1px solid ${palette.borderSubtle}`,
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative',
-          backgroundImage: `linear-gradient(180deg, ${palette.bgShell} 0%, ${palette.bgRoot} 100%)`,
-          // Filmstrip-perforeringer på venstre kant (matcher mockup #11 sidebar-detalj)
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            bottom: 0,
-            width: '14px',
-            backgroundImage: `repeating-linear-gradient(
-              180deg,
-              transparent 0,
-              transparent 6px,
-              ${palette.filmstrip} 6px,
-              ${palette.filmstrip} 10px,
-              transparent 10px,
-              transparent 18px
-            )`,
-            pointerEvents: 'none',
-          },
-        }}
-      >
-        {/* Logo */}
-        <Box sx={{ p: 2.4, pb: 2 }}>
-          <TalentsLogo variant="large" />
-        </Box>
-
-        {/* Meny — ready-items er klikkbare, others viser "Snart" og er disabled */}
-        <Stack component="nav" spacing={0.4} sx={{ px: 1.2, flexGrow: 1 }}>
-          {MENU.map(({ id, label, Icon, ready }) => {
-            const isActive = active === id;
-            const isDisabled = !ready;
-            return (
-              <Button
-                key={id}
-                onClick={() => !isDisabled && onNavigate(id)}
-                startIcon={<Icon />}
-                disabled={isDisabled}
-                sx={{
-                  justifyContent: 'flex-start',
-                  textTransform: 'none',
-                  fontWeight: isActive ? 700 : 500,
-                  fontSize: '0.9rem',
-                  py: 1.1,
-                  pl: 1.4,
-                  pr: 1.4,
-                  borderRadius: radius.sm,
-                  color: isActive ? palette.textPrimary : palette.textMuted,
-                  bgcolor: isActive ? 'rgba(168, 85, 247, 0.16)' : 'transparent',
-                  borderLeft: `3px solid ${isActive ? palette.accent : 'transparent'}`,
-                  letterSpacing: '0.005em',
-                  opacity: isDisabled ? 0.5 : 1,
-                  '& .MuiButton-startIcon': {
-                    color: isActive ? palette.accentBright : palette.textMuted,
-                    mr: 1.4,
-                  },
-                  '&:hover': isDisabled ? {} : {
-                    bgcolor: isActive ? 'rgba(168, 85, 247, 0.22)' : 'rgba(168, 85, 247, 0.06)',
-                    color: palette.textPrimary,
-                  },
-                  '&.Mui-disabled': {
-                    color: palette.textMuted,
-                  },
-                }}
-              >
-                <Box sx={{ flexGrow: 1, textAlign: 'left' }}>{label}</Box>
-                {isDisabled ? (
-                  <Box
-                    sx={{
-                      ml: 0.6,
-                      px: 0.7,
-                      py: 0.1,
-                      bgcolor: 'rgba(168, 85, 247, 0.1)',
-                      borderRadius: radius.xs,
-                      color: palette.accentBright,
-                      fontSize: '0.6rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Snart
-                  </Box>
-                ) : null}
-              </Button>
-            );
-          })}
-        </Stack>
-
-        {/* Help-card */}
-        <Box sx={{ px: 1.4, py: 1.4 }}>
-          <Box
-            sx={{
-              p: 1.6,
-              borderRadius: radius.md,
-              bgcolor: palette.bgCard,
-              border: `1px solid ${palette.border}`,
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.85rem' }}>
-              Trenger du hjelp?
-            </Typography>
-            <Typography
-              sx={{ color: palette.textMuted, fontSize: '0.75rem', mt: 0.3, lineHeight: 1.4 }}
-            >
-              Send oss en e-post — vi svarer innen 24 timer.
-            </Typography>
-            <Button
-              size="small"
-              endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
-              href="mailto:support@theroleroom.com?subject=Talents-portalen"
-              sx={{
-                mt: 1.2,
-                width: '100%',
-                bgcolor: 'rgba(168, 85, 247, 0.12)',
-                color: palette.textPrimary,
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: '0.78rem',
-                borderRadius: radius.sm,
-                border: `1px solid ${palette.borderStrong}`,
-                '&:hover': { bgcolor: 'rgba(168, 85, 247, 0.22)' },
-              }}
-            >
-              Kontakt support
-            </Button>
-          </Box>
-        </Box>
-
-        {/* Language */}
-        <Box sx={{ px: 1.4, pb: 1 }}>
-          <Select
-            value="en-NO"
-            size="small"
-            startAdornment={<LanguageIcon sx={{ color: palette.textMuted, mr: 0.8, fontSize: 18 }} />}
-            sx={{
-              width: '100%',
-              color: palette.textPrimary,
-              fontSize: '0.82rem',
-              bgcolor: palette.bgCard,
-              borderRadius: radius.sm,
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderSubtle },
-              '& .MuiSvgIcon-root.MuiSelect-icon': { color: palette.textMuted },
-            }}
-          >
-            <MenuItem value="en-NO">English (NO)</MenuItem>
-            <MenuItem value="nb-NO">Norsk (bokmål)</MenuItem>
-          </Select>
-        </Box>
-
-        {/* Footer */}
-        <Typography
-          sx={{
-            color: palette.textMuted,
-            fontSize: '0.7rem',
-            textAlign: 'center',
-            pb: 1.4,
-            opacity: 0.7,
-          }}
-        >
-          © The Role Room Talents 2024
-        </Typography>
+      {/* ─── DESKTOP SIDEBAR (skjult på mobile) ─── */}
+      <Box component="aside" sx={{ ...sidebarSx, display: { xs: 'none', md: 'flex' } }}>
+        {sidebarContent(false)}
       </Box>
+
+      {/* ─── MOBILE DRAWER (kun synlig på mobile, lukker etter nav) ─── */}
+      <Drawer
+        anchor="left"
+        open={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        PaperProps={{ sx: { ...sidebarSx, display: 'flex' } }}
+      >
+        {sidebarContent(true)}
+      </Drawer>
 
       {/* ─── MAIN ─── */}
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -284,12 +235,19 @@ export default function TalentsAppShell({
             height: 64,
             display: 'flex',
             alignItems: 'center',
-            gap: 2,
-            px: 3,
+            gap: { xs: 1, md: 2 },
+            px: { xs: 1.5, md: 3 },
             borderBottom: `1px solid ${palette.borderSubtle}`,
             bgcolor: palette.bgRoot,
           }}
         >
+          {/* Hamburger — kun mobile */}
+          {isMobile ? (
+            <IconButton onClick={() => setMobileNavOpen(true)} sx={{ color: palette.textPrimary }}>
+              <MenuIcon />
+            </IconButton>
+          ) : null}
+
           <Box
             sx={{
               flexGrow: 1,
@@ -340,7 +298,7 @@ export default function TalentsAppShell({
             >
               {user.name.slice(0, 1)}
             </Avatar>
-            <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ minWidth: 0, display: { xs: 'none', sm: 'block' } }}>
               <Typography
                 sx={{ color: palette.textPrimary, fontSize: '0.85rem', fontWeight: 700, lineHeight: 1.1 }}
               >
@@ -350,7 +308,7 @@ export default function TalentsAppShell({
                 {user.role}
               </Typography>
             </Box>
-            <KeyboardArrowDownIcon sx={{ color: palette.textMuted, fontSize: 18 }} />
+            <KeyboardArrowDownIcon sx={{ color: palette.textMuted, fontSize: 18, display: { xs: 'none', sm: 'block' } }} />
           </Stack>
           <Menu
             open={userMenuOpen}

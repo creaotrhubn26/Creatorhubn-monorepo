@@ -256,6 +256,21 @@ const roleRoomTalentsService = {
     return payload as PartnersOverview;
   },
 
+  async pausePartnerAccess(input: {
+    partner_type: RoleRoomTalentPartnerType;
+    partner_ref: string;
+    days?: number;
+  }): Promise<{ ok: boolean; paused_scopes?: string[]; days?: number; error?: string }> {
+    const r = await authFetch(`${BASE}/me/consents/pause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, error: payload?.error || 'Kunne ikke pause' };
+    return { ok: true, paused_scopes: payload.paused_scopes, days: payload.days };
+  },
+
   async bulkSetConsents(input: {
     partner_type: RoleRoomTalentPartnerType;
     partner_ref: string;

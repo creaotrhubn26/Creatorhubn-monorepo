@@ -409,6 +409,45 @@ export function setupRoleRoomTalentPartnersRoutes(
     }
   });
 
+  // ── POST /me/consents/pause ────────────────────────────────────────
+  // Pauser ALL consent for en partner i N dager (default 30).
+  // expires_at settes til now + N dager — automatisk reaktivering ved utløp
+  // er ikke implementert (krever cron); for nå må talent re-grant manuelt.
+  app.post("/api/role-room/talents/me/consents/pause", async (req, res) => {
+    if (isDemoRequest(req)) {
+      return res.status(403).json({ error: "Demo-modus er read-only" });
+    }
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const { partner_type, partner_ref, days } = (req.body || {}) as {
+      partner_type?: string;
+      partner_ref?: string;
+      days?: number;
+    };
+    if (!partner_type || !partner_ref) return res.status(400).json({ error: "partner_type + partner_ref påkrevd" });
+    const pauseDays = Math.max(1, Math.min(365, Number(days) || 30));
+
+    try {
+      const talent = await fetchTalentForUser(pool, session.userId);
+      if (!talent) return res.status(404).json({ error: "Ingen profil" });
+
+      const r = await pool.query(
+        `UPDATE talent_consent_registry
+            SET expires_at = now() + ($4 || ' days')::interval,
+                updated_at = now()
+          WHERE talent_id = $1 AND partner_type = $2 AND partner_ref = $3
+            AND status = 'granted'
+          RETURNING scope`,
+        [talent.id, partner_type, partner_ref, String(pauseDays)],
+      );
+      return res.json({ ok: true, paused_scopes: r.rows.map((row) => row.scope), days: pauseDays });
+    } catch (err) {
+      console.error("[consents/pause] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å pause", detail: String(err) });
+    }
+  });
+
   // ── POST /me/consents/bulk-set ─────────────────────────────────────
   // Atomisk sett 4 boolske perms for én partner. Trigget av matrix-checkbox.
   app.post("/api/role-room/talents/me/consents/bulk-set", async (req, res) => {
