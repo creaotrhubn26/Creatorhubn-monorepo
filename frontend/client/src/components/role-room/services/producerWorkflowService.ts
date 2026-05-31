@@ -38,6 +38,14 @@ const ECONOMY_NAMESPACE = 'role-room-producer-economy';
 const REVIEWS_NAMESPACE = 'role-room-producer-reviews';
 const CLIENT_MATERIALS_NAMESPACE = 'role-room-producer-client-materials';
 const CLIENT_INTAKE_NAMESPACE = 'role-room-producer-client-intake';
+// Offline-mirror-namespaces. BEVISST atskilt fra de eldre TIMELINE/ECONOMY/
+// REVIEWS_NAMESPACE-ene over: de er migreringskilder (migrateLegacy*IfNeeded
+// laster opp innholdet til backend og tømmer dem). Hadde vi speilet backend-
+// data inn der, ville migreringen forsøkt å re-laste det opp. Disse *-cache-
+// namespacene er rene lese-speil og røres aldri av migreringen.
+const TIMELINE_MIRROR_NAMESPACE = 'role-room-producer-timeline-cache';
+const ECONOMY_MIRROR_NAMESPACE = 'role-room-producer-economy-cache';
+const REVIEWS_MIRROR_NAMESPACE = 'role-room-producer-reviews-cache';
 const SYNTHETIC_REVIEW_SOURCES = new Set(['codex-smoke', 'cli-smoke', 'smoke-test']);
 const SYNTHETIC_REVIEW_TITLE_PATTERN = /^(auto review|smoke review|rbac review|qa review(?:\s+\d+)?|qa budget sync|budget package \d+|codex-review-)/i;
 const CLIENT_INTAKE_TIMELINE_ENTITY_ID = 'client-intake';
@@ -1381,22 +1389,65 @@ function buildDefinedBody(entries: Array<[string, unknown]>): Record<string, unk
   return body;
 }
 
+// ── Offline lese-speil for timeline/economy/reviews ────────────────────────
+// Skriver hele listen til et eget *-cache-namespace ved hver vellykket fetch,
+// og leser fra speilet når backend er nede. Røret aldri legacy-namespacene.
+
+async function readTimelineMirror(projectId: string): Promise<ProducerTimelineItem[]> {
+  const stored = await settingsService.getSetting<ProducerTimelineItem[]>(TIMELINE_MIRROR_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) return [];
+  return sortTimelineItems(stored.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+}
+
+async function readEconomyMirror(projectId: string): Promise<ProducerEconomyItem[]> {
+  const stored = await settingsService.getSetting<ProducerEconomyItem[]>(ECONOMY_MIRROR_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) return [];
+  return sortEconomyItems(stored.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+}
+
+async function readReviewsMirror(projectId: string): Promise<ProducerClientReview[]> {
+  const stored = await settingsService.getSetting<ProducerClientReview[]>(REVIEWS_MIRROR_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) return [];
+  return sortReviews(stored.map((review) => normalizeReview(review, projectId)));
+}
+
 async function fetchTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+  try {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    const normalized = sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+    await settingsService.setSetting(TIMELINE_MIRROR_NAMESPACE, normalized, { projectId });
+    return normalized;
+  } catch (error) {
+    console.warn('[producerWorkflowService] fetchTimeline falt tilbake til localStorage-speil:', error);
+    return readTimelineMirror(projectId);
+  }
 }
 
 async function fetchEconomy(projectId: string): Promise<ProducerEconomyItem[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+  try {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    const normalized = sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+    await settingsService.setSetting(ECONOMY_MIRROR_NAMESPACE, normalized, { projectId });
+    return normalized;
+  } catch (error) {
+    console.warn('[producerWorkflowService] fetchEconomy falt tilbake til localStorage-speil:', error);
+    return readEconomyMirror(projectId);
+  }
 }
 
 async function fetchReviews(projectId: string): Promise<ProducerClientReview[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortReviews(items.map((review) => normalizeReview(review, projectId)));
+  try {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    const normalized = sortReviews(items.map((review) => normalizeReview(review, projectId)));
+    await settingsService.setSetting(REVIEWS_MIRROR_NAMESPACE, normalized, { projectId });
+    return normalized;
+  } catch (error) {
+    console.warn('[producerWorkflowService] fetchReviews falt tilbake til localStorage-speil:', error);
+    return readReviewsMirror(projectId);
+  }
 }
 
 async function fetchNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
@@ -1528,26 +1579,32 @@ async function migrateLegacyTimelineIfNeeded(projectId: string, currentItems: Pr
     return currentItems;
   }
 
-  for (const item of legacyItems) {
-    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
-      method: 'POST',
-      body: JSON.stringify({
-        phase: item.phase,
-        title: item.title,
-        description: item.description ?? null,
-        ownerUserId: item.owner_user_id ?? null,
-        dueAt: item.due_at ?? null,
-        status: item.status,
-        linkedEntityType: item.linked_entity_type ?? null,
-        linkedEntityId: item.linked_entity_id ?? null,
-        sortOrder: item.sort_order,
-        metadata: item.metadata ?? {},
-      }),
-    });
+  try {
+    for (const item of legacyItems) {
+      await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
+        method: 'POST',
+        body: JSON.stringify({
+          phase: item.phase,
+          title: item.title,
+          description: item.description ?? null,
+          ownerUserId: item.owner_user_id ?? null,
+          dueAt: item.due_at ?? null,
+          status: item.status,
+          linkedEntityType: item.linked_entity_type ?? null,
+          linkedEntityId: item.linked_entity_id ?? null,
+          sortOrder: item.sort_order,
+          metadata: item.metadata ?? {},
+        }),
+      });
+    }
+    await clearLegacyTimelineStore(projectId);
+    return fetchTimeline(projectId);
+  } catch (error) {
+    // Backend nede — utsett migreringen (behold legacy-store for senere) og
+    // returner det vi har, så lese-fallback ikke bryter offline.
+    console.warn('[producerWorkflowService] migrateLegacyTimeline utsatt (backend utilgjengelig):', error);
+    return currentItems;
   }
-
-  await clearLegacyTimelineStore(projectId);
-  return fetchTimeline(projectId);
 }
 
 async function migrateLegacyEconomyIfNeeded(projectId: string, currentItems: ProducerEconomyItem[]): Promise<ProducerEconomyItem[]> {
@@ -1564,30 +1621,34 @@ async function migrateLegacyEconomyIfNeeded(projectId: string, currentItems: Pro
     return currentItems;
   }
 
-  for (const item of legacyItems) {
-    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
-      method: 'POST',
-      body: JSON.stringify({
-        phase: item.phase,
-        category: item.category,
-        itemName: item.item_name,
-        description: item.description ?? null,
-        estimate: normalizeNumber(item.estimate),
-        approved: normalizeNumber(item.approved),
-        actual: normalizeNumber(item.actual),
-        currency: item.currency,
-        status: item.status,
-        clientVisible: item.client_visible,
-        linkedEntityType: item.linked_entity_type ?? null,
-        linkedEntityId: item.linked_entity_id ?? null,
-        sortOrder: item.sort_order,
-        metadata: item.metadata ?? {},
-      }),
-    });
+  try {
+    for (const item of legacyItems) {
+      await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
+        method: 'POST',
+        body: JSON.stringify({
+          phase: item.phase,
+          category: item.category,
+          itemName: item.item_name,
+          description: item.description ?? null,
+          estimate: normalizeNumber(item.estimate),
+          approved: normalizeNumber(item.approved),
+          actual: normalizeNumber(item.actual),
+          currency: item.currency,
+          status: item.status,
+          clientVisible: item.client_visible,
+          linkedEntityType: item.linked_entity_type ?? null,
+          linkedEntityId: item.linked_entity_id ?? null,
+          sortOrder: item.sort_order,
+          metadata: item.metadata ?? {},
+        }),
+      });
+    }
+    await clearLegacyEconomyStore(projectId);
+    return fetchEconomy(projectId);
+  } catch (error) {
+    console.warn('[producerWorkflowService] migrateLegacyEconomy utsatt (backend utilgjengelig):', error);
+    return currentItems;
   }
-
-  await clearLegacyEconomyStore(projectId);
-  return fetchEconomy(projectId);
 }
 
 async function migrateLegacyReviewsIfNeeded(projectId: string, currentItems: ProducerClientReview[]): Promise<ProducerClientReview[]> {
@@ -1604,51 +1665,56 @@ async function migrateLegacyReviewsIfNeeded(projectId: string, currentItems: Pro
     return currentItems;
   }
 
-  for (const review of legacyReviews) {
-    const createdResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
-      method: 'POST',
-      body: JSON.stringify({
-        reviewType: review.review_type,
-        title: review.title,
-        description: review.description ?? null,
-        targetEntityType: review.target_entity_type ?? null,
-        targetEntityId: review.target_entity_id ?? null,
-        dueAt: review.due_at ?? null,
-        metadata: review.metadata ?? {},
-      }),
-    });
-
-    let migratedReview = normalizeReview(createdResponse.review, projectId);
-
-    for (const comment of review.comments ?? []) {
-      await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/comments`, {
+  try {
+    for (const review of legacyReviews) {
+      const createdResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
         method: 'POST',
         body: JSON.stringify({
-          commentText: comment.comment_text,
-          timestampSeconds: comment.timestamp_seconds ?? undefined,
+          reviewType: review.review_type,
+          title: review.title,
+          description: review.description ?? null,
+          targetEntityType: review.target_entity_type ?? null,
+          targetEntityId: review.target_entity_id ?? null,
+          dueAt: review.due_at ?? null,
+          metadata: review.metadata ?? {},
         }),
       });
+
+      let migratedReview = normalizeReview(createdResponse.review, projectId);
+
+      for (const comment of review.comments ?? []) {
+        await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({
+            commentText: comment.comment_text,
+            timestampSeconds: comment.timestamp_seconds ?? undefined,
+          }),
+        });
+      }
+
+      if (
+        review.status === 'approved'
+        || review.status === 'rejected'
+        || review.status === 'changes_requested'
+      ) {
+        const updatedResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/decision`, {
+          method: 'POST',
+          body: JSON.stringify({
+            decision: review.status,
+            reason: review.decision_reason ?? undefined,
+            timestampSeconds: normalizeNumber(review.metadata?.decisionTimestampSeconds, Number.NaN),
+          }),
+        });
+        migratedReview = normalizeReview(updatedResponse.review, projectId);
+      }
     }
 
-    if (
-      review.status === 'approved'
-      || review.status === 'rejected'
-      || review.status === 'changes_requested'
-    ) {
-      const updatedResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/decision`, {
-        method: 'POST',
-        body: JSON.stringify({
-          decision: review.status,
-          reason: review.decision_reason ?? undefined,
-          timestampSeconds: normalizeNumber(review.metadata?.decisionTimestampSeconds, Number.NaN),
-        }),
-      });
-      migratedReview = normalizeReview(updatedResponse.review, projectId);
-    }
+    await clearLegacyReviewStore(projectId);
+    return fetchReviews(projectId);
+  } catch (error) {
+    console.warn('[producerWorkflowService] migrateLegacyReviews utsatt (backend utilgjengelig):', error);
+    return currentItems;
   }
-
-  await clearLegacyReviewStore(projectId);
-  return fetchReviews(projectId);
 }
 
 type ProducerWorkflowReadDomain = 'timeline' | 'reviews';
