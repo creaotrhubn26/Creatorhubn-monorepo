@@ -118,6 +118,8 @@ const createBodySchema = z.object({
   locked: z.boolean().optional(),
   // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
   expectedVersion: z.number().int().min(1).optional(),
+  // Migrasjon 216 (G26): section/gruppe-label.
+  sectionName: z.string().max(120).nullable().optional(),
 });
 
 const patchBodySchema = z.object({
@@ -137,6 +139,8 @@ const patchBodySchema = z.object({
   locked: z.boolean().optional(),
   // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
   expectedVersion: z.number().int().min(1).optional(),
+  // Migrasjon 216 (G26): section/gruppe-label.
+  sectionName: z.string().max(120).nullable().optional(),
 });
 
 const replaceItemSchema = z.object({
@@ -156,6 +160,8 @@ const replaceItemSchema = z.object({
   locked: z.boolean().optional(),
   // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
   expectedVersion: z.number().int().min(1).optional(),
+  // Migrasjon 216 (G26): section/gruppe-label.
+  sectionName: z.string().max(120).nullable().optional(),
 });
 
 const replaceBodySchema = z.object({

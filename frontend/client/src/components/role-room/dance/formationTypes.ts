@@ -82,6 +82,12 @@ export interface Formation {
    * skriver-vinner.
    */
   version?: number;
+  /**
+   * Migrasjon 216 (audit G26): gruppe-label for å samle formasjoner i
+   * 'Intro / Vers 1 / Refreng / Bridge / Outro'. NULL/undefined = ingen
+   * seksjon.
+   */
+  sectionName?: string | null;
 }
 
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────

@@ -223,6 +223,8 @@ export function FormationViewConnected({
         expectedVersion: !f.id.startsWith('f-tmp-') && typeof f.version === 'number'
           ? f.version
           : undefined,
+        // Migrasjon 216 (G26): section/gruppe-label.
+        sectionName: f.sectionName ?? null,
       },
     }));
     try {

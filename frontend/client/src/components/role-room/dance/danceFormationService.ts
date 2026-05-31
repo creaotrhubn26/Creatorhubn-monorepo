@@ -31,6 +31,8 @@ export interface FormationRecord {
   locked: boolean;
   /** Migrasjon 215 (A2): optimistic concurrency. */
   version: number;
+  /** Migrasjon 216 (G26): gruppe-label. */
+  sectionName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -144,6 +146,8 @@ export async function replaceFormations(input: {
     locked?: boolean;
     /** Migrasjon 215 (A2): optimistic-concurrency-check. */
     expectedVersion?: number;
+    /** Migrasjon 216 (G26): section/gruppe-label. */
+    sectionName?: string | null;
   }>;
 }): Promise<FormationRecord[]> {
   const res = await fetch(BASE, {
@@ -187,6 +191,7 @@ export function recordToFormation(r: FormationRecord): Formation {
     transitionPaths: r.transitionPaths ?? [],
     locked: r.locked === true,
     version: typeof r.version === 'number' ? r.version : 1,
+    sectionName: r.sectionName ?? null,
   };
 }
 

@@ -1275,11 +1275,32 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         ) : null}
 
         <Stack spacing={0.5}>
-          {formations.map((f) => {
+          {formations.map((f, idx) => {
             const isActive = f.id === activeFormationId;
-            return (
+            // G26: vis section-header når sectionName endrer seg mellom
+            // forrige og denne. Beholder flat .map-struktur — bruker
+            // React.Fragment for å rendre header + item som søsken.
+            const prevSection = idx > 0 ? formations[idx - 1].sectionName ?? null : null;
+            const curSection = f.sectionName ?? null;
+            const showHeader = curSection !== prevSection;
+            const headerEl = showHeader && curSection ? (
               <Box
-                key={f.id}
+                key={`section-${idx}-${curSection}`}
+                data-testid={`formation-section-header-${curSection}`}
+                sx={{
+                  px: 0.5, py: 0.5, mt: idx > 0 ? 0.75 : 0,
+                  fontSize: 9, letterSpacing: 1.5, fontWeight: 700,
+                  color: '#fbbf24', textTransform: 'uppercase',
+                  borderBottom: '1px solid rgba(251,191,36,0.2)',
+                }}
+              >
+                {curSection}
+              </Box>
+            ) : null;
+            return (
+              <React.Fragment key={f.id}>
+              {headerEl}
+              <Box
                 data-testid={`formation-item-${f.id}`}
                 sx={{
                   p: 0.75,
@@ -1327,6 +1348,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                   )}
                 </Stack>
               </Box>
+              </React.Fragment>
             );
           })}
         </Stack>
@@ -1700,6 +1722,32 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
         )}
         sx={{ mb: 1 }}
       />
+      {/* G26: Section-input. Frittekst — koreografer skriver Intro/Vers 1/etc.
+          Autocomplete-options samles fra formations.sectionName. */}
+      <Autocomplete
+        size="small"
+        freeSolo
+        options={Array.from(new Set(formations.map((f) => f.sectionName).filter((s): s is string => !!s)))}
+        value={formation.sectionName ?? ''}
+        onChange={(_, value) => onChange({ sectionName: typeof value === 'string' && value.trim() ? value.trim() : null })}
+        onInputChange={(_, value) => {
+          onChange({ sectionName: value.trim() ? value.trim() : null });
+        }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Section (valgfri)"
+            placeholder="Intro, Vers 1, Refreng…"
+            sx={{
+              '& .MuiInputBase-input': { fontSize: 11, color: '#e5e7eb' },
+              '& .MuiInputLabel-root': { fontSize: 11 },
+            }}
+          />
+        )}
+        sx={{ mb: 1 }}
+        data-testid="formation-details-section"
+      />
+
       {/* Lag D-1: HH:MM:SS:FF tids-inputs (DanceFlow-mockup-paritet).
           TimecodeInput holder lokal state mens brukeren skriver — committer
           parsed sekunder til onChange ved blur eller Enter. Ugyldig input

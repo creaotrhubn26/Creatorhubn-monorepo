@@ -45,6 +45,11 @@ export interface FormationInput {
    * conflict-check og kjører som siste-skriver-vinner (bakover-kompatibel).
    */
   expectedVersion?: number;
+  /**
+   * Migrasjon 216 (G26): gruppe-label for formasjonen ('Intro', 'Vers 1',
+   * 'Refreng', 'Bridge'). NULL = ingen seksjon. Display-only metadata.
+   */
+  sectionName?: string | null;
 }
 
 export interface FormationPatch extends Partial<FormationInput> {}
@@ -69,6 +74,8 @@ export interface FormationRecord {
   locked: boolean;
   /** Migrasjon 215 (A2): optimistic concurrency. Bumpes ved hver UPDATE. */
   version: number;
+  /** Migrasjon 216 (G26): gruppe-label. */
+  sectionName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -174,6 +181,8 @@ function mapRow(row: Record<string, unknown>): FormationRecord {
     locked: row.locked === true,
     // Migrasjon 215 (A2): version-counter. Defaultes til 1 for kompabilitet.
     version: asNumberOr(row.version, 1),
+    // Migrasjon 216 (G26): section-label
+    sectionName: row.section_name == null ? null : String(row.section_name),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -252,9 +261,9 @@ export async function createFormation(
        stage_width_m, stage_depth_m, dancer_positions,
        transition_from_id, display_order,
        start_sec, end_sec, transition_note, tags, transition_paths,
-       locked
+       locked, section_name
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       id,
@@ -273,6 +282,7 @@ export async function createFormation(
       JSON.stringify(input.tags ?? []),
       JSON.stringify(input.transitionPaths ?? []),
       input.locked === true,
+      input.sectionName ?? null,
     ],
   );
   return mapRow(rows[0]);
@@ -306,6 +316,7 @@ export async function patchFormation(
   if (patch.tags !== undefined) push('tags', JSON.stringify(patch.tags));
   if (patch.transitionPaths !== undefined) push('transition_paths', JSON.stringify(patch.transitionPaths));
   if (patch.locked !== undefined) push('locked', patch.locked === true);
+  if (patch.sectionName !== undefined) push('section_name', patch.sectionName ?? null);
 
   if (sets.length === 0) return getFormation(pool, ownerUserId, id);
 
@@ -417,10 +428,11 @@ export async function replaceFormations(
              tags = $14,
              transition_paths = $15,
              locked = $16,
+             section_name = $17,
              version = version + 1,
              updated_at = now()
            WHERE owner_user_id = $1 AND id = $2
-             ${useCAS ? 'AND version = $17' : ''}
+             ${useCAS ? 'AND version = $18' : ''}
            RETURNING *`,
           useCAS
             ? [
@@ -439,6 +451,7 @@ export async function replaceFormations(
                 JSON.stringify(f.tags ?? []),
                 JSON.stringify(f.transitionPaths ?? []),
                 f.locked === true,
+                f.sectionName ?? null,
                 f.expectedVersion,
               ]
             : [
@@ -457,6 +470,7 @@ export async function replaceFormations(
                 JSON.stringify(f.tags ?? []),
                 JSON.stringify(f.transitionPaths ?? []),
                 f.locked === true,
+                f.sectionName ?? null,
               ],
         );
         if ((rowCount ?? 0) === 0 && useCAS) {
@@ -476,9 +490,9 @@ export async function replaceFormations(
              stage_width_m, stage_depth_m, dancer_positions,
              transition_from_id, display_order,
              start_sec, end_sec, transition_note, tags, transition_paths,
-             locked
+             locked, section_name
            )
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
            RETURNING *`,
           [
             id, ownerUserId, projectId,
@@ -495,6 +509,7 @@ export async function replaceFormations(
             JSON.stringify(f.tags ?? []),
             JSON.stringify(f.transitionPaths ?? []),
             f.locked === true,
+            f.sectionName ?? null,
           ],
         );
         written.push(mapRow(rows[0]));
