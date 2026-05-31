@@ -1038,6 +1038,32 @@ export default function ClientGallery({}: ClientGalleryProps) {
         {/* Action Buttons */}
         {selectedImages.size > 0 && (
           <Stack spacing={1} sx={{ mt: 'auto' }}>
+            {/* UX-gap-fix (2026-05-31): "Velg alle"-toggle. Tidligere
+                måtte klient klikke hver enkelt thumbnail for å laste
+                ned hele galleriet — typisk Irlin-frustrasjon ved
+                200-bilders portfolio-shoot. Knappen viser eksakt
+                bilde-count + er bevisst om at extra utover
+                contractedImages koster mer (eksisterende UX i
+                progress-bar over). */}
+            {gallery?.gallerySettings?.allowDownload !== false && images.length > 0 && (
+              <Button
+                variant="text"
+                size="small"
+                fullWidth
+                onClick={() => {
+                  if (selectedImages.size === images.length) {
+                    setSelectedImages(new Set());
+                  } else {
+                    setSelectedImages(new Set(images.map((img: GalleryImage) => img.id)));
+                  }
+                }}
+                sx={{ color: 'rgba(255,255,255,0.85)' }}
+              >
+                {selectedImages.size === images.length
+                  ? 'Fjern alle'
+                  : `Velg alle (${images.length} ${terms.itemPlural})`}
+              </Button>
+            )}
             {/* Slice 9.3 — bulk download. Only shown when allowDownload
                 is on (default true) and there's at least one selection.
                 The button calls /download-zip directly via fetch (not
@@ -1049,7 +1075,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
               <Button
                 variant="outlined"
                 fullWidth
-                disabled={busyDownloading}
+                disabled={busyDownloading || selectedImages.size === 0}
                 onClick={async () => {
                   galleryEvents.downloadRequested(gallery?.id || '', selectedImages.size);
                   setDownloadError(null);
