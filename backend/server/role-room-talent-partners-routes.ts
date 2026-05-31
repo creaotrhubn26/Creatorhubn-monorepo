@@ -56,10 +56,37 @@ const MATRIX_SCOPES = [
   "audition_invitations", // → 'Auditions'-kolonnen
 ] as const;
 
-/** Hent talent for en owner-user-id. Returnerer null hvis ingen profil. */
+/** Defensive: kjør spørring som referer is_demo, fall tilbake til
+ *  versjon uten is_demo hvis kolonnen ikke finnes (migrasjon 214 ikke
+ *  anvendt ennå). Forhindrer container-krasj-sykler.
+ */
+async function safeQueryWithDemoFilter<T = unknown>(
+  pool: Pool,
+  withFilter: string,
+  withoutFilter: string,
+  params: unknown[],
+): Promise<{ rows: T[] }> {
+  try {
+    return (await pool.query(withFilter, params)) as { rows: T[] };
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    const msg = (err as Error).message ?? "";
+    if (code === "42703" || /is_demo.*does not exist/i.test(msg)) {
+      console.warn("[talent-partners] is_demo-kolonne mangler — bruker fallback uten demo-filter");
+      return (await pool.query(withoutFilter, params)) as { rows: T[] };
+    }
+    throw err;
+  }
+}
+
+/** Hent talent for en owner-user-id. Returnerer null hvis ingen profil.
+ *  Defensive: tolererer at is_demo-kolonnen mangler.
+ */
 async function fetchTalentForUser(pool: Pool, userId: string) {
-  const r = await pool.query(
+  const r = await safeQueryWithDemoFilter<{ id: string }>(
+    pool,
     `SELECT * FROM talents WHERE owner_user_id = $1 AND COALESCE(is_demo, FALSE) = FALSE LIMIT 1`,
+    `SELECT * FROM talents WHERE owner_user_id = $1 LIMIT 1`,
     [userId],
   );
   return r.rows[0] ?? null;
@@ -94,16 +121,40 @@ export function setupRoleRoomTalentPartnersRoutes(
     let talent: Record<string, unknown> | null = null;
     const demoFilter = demo ? "TRUE" : "FALSE";
 
-    if (demo) {
-      const t = await pool.query(
-        `SELECT * FROM talents WHERE id = $1 AND is_demo = TRUE LIMIT 1`,
-        [DEMO_TALENT_ID],
-      );
-      talent = t.rows[0] ?? null;
-    } else {
-      const session = getActiveSession(req);
-      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      talent = await fetchTalentForUser(pool, session.userId);
+    try {
+      if (demo) {
+        // Defensive: hvis migrasjon 214 ikke er anvendt ennå, returner tom payload
+        // i stedet for å krasje (forhindrer container-krasj-sykler).
+        const t = await safeQueryWithDemoFilter(
+          pool,
+          `SELECT * FROM talents WHERE id = $1 AND is_demo = TRUE LIMIT 1`,
+          `SELECT * FROM talents WHERE id = $1 LIMIT 1`,
+          [DEMO_TALENT_ID],
+        );
+        talent = (t.rows[0] as Record<string, unknown>) ?? null;
+        if (!talent) {
+          return res.json({
+            talent: null,
+            stats: { activePartners: 0, sharedTalentPools: 0, pendingRequests: 0, gdprCompliantPercent: 100 },
+            partners: [],
+            feed: [],
+            warning: "Demo-data ikke seedet ennå — kjør migrasjon 214",
+          });
+        }
+      } else {
+        const session = getActiveSession(req);
+        if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+        talent = await fetchTalentForUser(pool, session.userId);
+      }
+    } catch (preErr) {
+      console.error("[partners-overview pre-flight] failed", preErr);
+      return res.json({
+        talent: null,
+        stats: { activePartners: 0, sharedTalentPools: 0, pendingRequests: 0, gdprCompliantPercent: 100 },
+        partners: [],
+        feed: [],
+        warning: "Pre-flight feilet — migrasjon 214 mangler sannsynligvis",
+      });
     }
 
     try {
@@ -125,7 +176,8 @@ export function setupRoleRoomTalentPartnersRoutes(
       // partner_ref kan være UUID til agency_orgs.id eller en e-post — vi
       // joiner på UUID-formet og faller tilbake til partner_display_name
       // for resten.
-      const consentsResult = await pool.query(
+      const consentsResult = await safeQueryWithDemoFilter(
+        pool,
         `SELECT
             c.id, c.partner_type, c.partner_ref, c.partner_display_name, c.scope,
             c.status, c.granted_at, c.expires_at,
@@ -142,6 +194,30 @@ export function setupRoleRoomTalentPartnersRoutes(
             AND c.status = 'granted'
             AND COALESCE(c.is_demo, FALSE) = ${demoFilter}
             AND (c.expires_at IS NULL OR c.expires_at > now())`,
+        // Fallback uten is_demo (kun gyldig for demo=false; demo=true returnerer ingenting)
+        demo
+          ? `SELECT NULL::uuid AS id, NULL::text AS partner_type, NULL::text AS partner_ref,
+                NULL::text AS partner_display_name, NULL::text AS scope,
+                NULL::text AS status, NULL::timestamptz AS granted_at, NULL::timestamptz AS expires_at,
+                NULL::uuid AS agency_id, NULL::text AS agency_name, NULL::text AS agency_slug,
+                NULL::text AS agency_email, NULL::text AS agency_website,
+                NULL::text AS agency_logo, NULL::boolean AS agency_verified
+              WHERE FALSE`
+          : `SELECT
+                c.id, c.partner_type, c.partner_ref, c.partner_display_name, c.scope,
+                c.status, c.granted_at, c.expires_at,
+                a.id  AS agency_id,
+                a.name AS agency_name,
+                a.slug AS agency_slug,
+                a.contact_email AS agency_email,
+                a.website_url AS agency_website,
+                a.logo_url AS agency_logo,
+                a.verified AS agency_verified
+              FROM talent_consent_registry c
+              LEFT JOIN agency_orgs a ON a.id::text = c.partner_ref
+              WHERE c.talent_id = $1
+                AND c.status = 'granted'
+                AND (c.expires_at IS NULL OR c.expires_at > now())`,
         [talent.id],
       );
 
@@ -184,12 +260,19 @@ export function setupRoleRoomTalentPartnersRoutes(
       }
 
       // Hent siste access fra audit-tabellen for "Last Activity"
-      const auditResult = await pool.query(
+      const auditResult = await safeQueryWithDemoFilter(
+        pool,
         `SELECT partner_type, partner_ref, MAX(accessed_at) AS last_accessed
            FROM talent_access_audit
           WHERE talent_id = $1
             AND COALESCE(is_demo, FALSE) = ${demoFilter}
           GROUP BY partner_type, partner_ref`,
+        demo
+          ? `SELECT NULL::text AS partner_type, NULL::text AS partner_ref, NULL::timestamptz AS last_accessed WHERE FALSE`
+          : `SELECT partner_type, partner_ref, MAX(accessed_at) AS last_accessed
+                FROM talent_access_audit
+               WHERE talent_id = $1
+               GROUP BY partner_type, partner_ref`,
         [talent.id],
       );
       const lastSeenByKey = new Map<string, string>();
@@ -232,12 +315,17 @@ export function setupRoleRoomTalentPartnersRoutes(
       partners.sort((a, b) => (a.last_activity < b.last_activity ? 1 : -1));
 
       // Pending invites count
-      const pendingResult = await pool.query(
+      const pendingResult = await safeQueryWithDemoFilter<{ n: number }>(
+        pool,
         `SELECT count(*)::int AS n FROM talent_partner_invites
           WHERE talent_id = $1
             AND status = 'pending'
             AND COALESCE(is_demo, FALSE) = ${demoFilter}
             AND expires_at > now()`,
+        demo
+          ? `SELECT 0::int AS n WHERE FALSE`
+          : `SELECT count(*)::int AS n FROM talent_partner_invites
+              WHERE talent_id = $1 AND status = 'pending' AND expires_at > now()`,
         [talent.id],
       );
       // I demo-modus: legg 2 mockede pending-rader til den ene seedet for å matche mockup-tallet 3
@@ -246,27 +334,18 @@ export function setupRoleRoomTalentPartnersRoutes(
         : (pendingResult.rows[0]?.n ?? 0);
 
       // Feed: kombiner audit + invite-events + consent-events (siste ~20)
-      const feedResult = await pool.query(
-        `SELECT * FROM (
+      const feedSqlWithIsDemo = `SELECT * FROM (
             SELECT
-              'access' AS kind,
-              a.id::text AS id,
-              a.partner_type,
-              a.partner_ref,
+              'access' AS kind, a.id::text AS id, a.partner_type, a.partner_ref,
               (SELECT name FROM agency_orgs WHERE id::text = a.partner_ref) AS display_name,
               jsonb_build_object('scope', a.scope, 'endpoint', a.access_context->>'endpoint') AS details,
-              a.accessed_at AS occurred_at,
-              NULL::text AS badge
+              a.accessed_at AS occurred_at, NULL::text AS badge
             FROM talent_access_audit a
             WHERE a.talent_id = $1
               AND COALESCE(a.is_demo, FALSE) = ${demoFilter}
               AND a.accessed_at > now() - interval '180 days'
           UNION ALL
-            SELECT
-              'invite' AS kind,
-              i.id::text,
-              i.partner_type,
-              NULL,
+            SELECT 'invite' AS kind, i.id::text, i.partner_type, NULL,
               COALESCE(i.partner_display_name, i.partner_email),
               jsonb_build_object('email', i.partner_email, 'scopes', i.scopes),
               i.created_at,
@@ -276,23 +355,42 @@ export function setupRoleRoomTalentPartnersRoutes(
               AND COALESCE(i.is_demo, FALSE) = ${demoFilter}
               AND i.created_at > now() - interval '180 days'
           UNION ALL
-            SELECT
-              'consent_grant' AS kind,
-              c.id::text,
-              c.partner_type,
-              c.partner_ref,
+            SELECT 'consent_grant' AS kind, c.id::text, c.partner_type, c.partner_ref,
               COALESCE(c.partner_display_name, (SELECT name FROM agency_orgs WHERE id::text = c.partner_ref)),
-              jsonb_build_object('scope', c.scope),
-              c.granted_at,
-              NULL::text
+              jsonb_build_object('scope', c.scope), c.granted_at, NULL::text
             FROM talent_consent_registry c
             WHERE c.talent_id = $1
               AND COALESCE(c.is_demo, FALSE) = ${demoFilter}
               AND c.granted_at > now() - interval '180 days'
               AND c.status = 'granted'
-        ) feed
-        ORDER BY occurred_at DESC
-        LIMIT 20`,
+        ) feed ORDER BY occurred_at DESC LIMIT 20`;
+      const feedSqlWithoutIsDemo = `SELECT * FROM (
+            SELECT 'access' AS kind, a.id::text AS id, a.partner_type, a.partner_ref,
+              (SELECT name FROM agency_orgs WHERE id::text = a.partner_ref) AS display_name,
+              jsonb_build_object('scope', a.scope, 'endpoint', a.access_context->>'endpoint') AS details,
+              a.accessed_at AS occurred_at, NULL::text AS badge
+            FROM talent_access_audit a
+            WHERE a.talent_id = $1 AND a.accessed_at > now() - interval '180 days'
+          UNION ALL
+            SELECT 'invite' AS kind, i.id::text, i.partner_type, NULL,
+              COALESCE(i.partner_display_name, i.partner_email),
+              jsonb_build_object('email', i.partner_email, 'scopes', i.scopes),
+              i.created_at,
+              CASE WHEN i.status = 'pending' THEN 'pending' ELSE NULL END
+            FROM talent_partner_invites i
+            WHERE i.talent_id = $1 AND i.created_at > now() - interval '180 days'
+          UNION ALL
+            SELECT 'consent_grant' AS kind, c.id::text, c.partner_type, c.partner_ref,
+              COALESCE(c.partner_display_name, (SELECT name FROM agency_orgs WHERE id::text = c.partner_ref)),
+              jsonb_build_object('scope', c.scope), c.granted_at, NULL::text
+            FROM talent_consent_registry c
+            WHERE c.talent_id = $1 AND c.status = 'granted'
+              AND c.granted_at > now() - interval '180 days'
+        ) feed ORDER BY occurred_at DESC LIMIT 20`;
+      const feedResult = await safeQueryWithDemoFilter(
+        pool,
+        feedSqlWithIsDemo,
+        demo ? `SELECT NULL::text AS kind, NULL::text AS id, NULL::text AS partner_type, NULL::text AS partner_ref, NULL::text AS display_name, '{}'::jsonb AS details, NULL::timestamptz AS occurred_at, NULL::text AS badge WHERE FALSE` : feedSqlWithoutIsDemo,
         [talent.id],
       );
 
