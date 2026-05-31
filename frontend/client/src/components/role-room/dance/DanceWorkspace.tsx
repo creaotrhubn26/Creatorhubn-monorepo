@@ -58,6 +58,7 @@ const ChoreographyBuilderConnected = React.lazy(() =>
 const FormationViewConnected = React.lazy(() =>
   import('./FormationViewConnected').then((m) => ({ default: m.FormationViewConnected })),
 );
+import DanceFlowShell from './DanceFlowShell';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -390,10 +391,16 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           </Box>
         );
       case 'formations':
+        // Phase 1: wrap i DanceFlowShell. Side-slots (clipsSidebar/details) er
+        // tomme i Phase 1 — Phase 2 wirer header, Phase 3 wirer ClipsSidebar.
+        // Eksisterende FormationViewConnected/FormationView beholder sin egen
+        // inner-grid (Roster | Stage | Details) inntil videre.
         return (
-          <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-            <FormationViewConnected projectId={projectId ?? null} />
-          </Box>
+          <DanceFlowShell>
+            <Box sx={{ p: { xs: 1, md: 2 }, minHeight: '100%' }}>
+              <FormationViewConnected projectId={projectId ?? null} />
+            </Box>
+          </DanceFlowShell>
         );
       case 'rehearsal_log':
         return (
