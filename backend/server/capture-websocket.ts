@@ -1,5 +1,6 @@
 import type { IncomingMessage, Server as HttpServer } from 'http';
 import type { Duplex } from 'stream';
+import { createHash } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -72,6 +73,47 @@ async function ownsSession(
   return rows.length > 0;
 }
 
+/**
+ * Helper-token-fallback for Creatorhub One Desk. Brukes når query
+ * `token` ikke matcher en user-session — vi sjekker da om det er en
+ * gyldig DIT helper-token, og om så er, om dens project_id matcher
+ * capture-sessionens project_id.
+ *
+ * Token-mønsteret er identisk med backend/server/dit-backup-routes.ts:
+ *   SHA-256-hashes og sammenlignes med token_hash i dit_helper_tokens.
+ *   Sjekker revoked_at IS NULL AND expires_at > now().
+ *
+ * Returnerer true hvis Desk skal få lov å subscribe.
+ */
+async function helperTokenAuthorizes(
+  pool: Pool,
+  sessionId: string,
+  token: string,
+): Promise<boolean> {
+  if (!token || token.length > 200) return false;
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  try {
+    const tokenRows = await pool.query<{ project_id: string }>(
+      `SELECT project_id FROM dit_helper_tokens
+       WHERE token_hash = $1
+         AND revoked_at IS NULL
+         AND expires_at > now()`,
+      [tokenHash],
+    );
+    if (tokenRows.rows.length === 0) return false;
+    const projectId = tokenRows.rows[0].project_id;
+
+    const sessionRows = await pool.query<{ project_id: string | null }>(
+      `SELECT project_id FROM capture_sessions WHERE id = $1`,
+      [sessionId],
+    );
+    if (sessionRows.rows.length === 0) return false;
+    return sessionRows.rows[0].project_id === projectId;
+  } catch {
+    return false;
+  }
+}
+
 export function attachCaptureWebSocket(
   server: HttpServer,
   pool: Pool,
@@ -89,18 +131,29 @@ export function attachCaptureWebSocket(
 
     void (async () => {
       const session = await resolveBearerSession(pool, activeSessions, token);
-      if (!session?.userId) {
-        socket.destroy();
+      if (session?.userId) {
+        const owns = await ownsSession(pool, sessionId, session.userId);
+        if (!owns) {
+          socket.destroy();
+          return;
+        }
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          registerClient(sessionId, ws);
+        });
         return;
       }
-      const owns = await ownsSession(pool, sessionId, session.userId);
-      if (!owns) {
-        socket.destroy();
+
+      // Fallback: DIT helper-token (Creatorhub One Desk). Tillates hvis
+      // tokenets project_id matcher capture_sessionens project_id.
+      const helperAuthorized = await helperTokenAuthorizes(pool, sessionId, token);
+      if (helperAuthorized) {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          registerClient(sessionId, ws);
+        });
         return;
       }
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        registerClient(sessionId, ws);
-      });
+
+      socket.destroy();
     })().catch(() => {
       socket.destroy();
     });

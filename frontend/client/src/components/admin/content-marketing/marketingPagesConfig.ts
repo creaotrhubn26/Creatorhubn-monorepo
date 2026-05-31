@@ -21,7 +21,11 @@ export type MarketingPageKey =
   | 'crew-i-norge-2026'
   | 'innspillingsdag-koordinering'
   | 'intimacy-coordinator-norge'
-  | 'kamera-folk-verktoy-2026';
+  | 'kamera-folk-verktoy-2026'
+  | 'etterproduksjon-norge-2026'
+  | 'produksjons-os'
+  | 'innholdsprodusent-norge'
+  | 'dansestudio-norge';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -365,6 +369,112 @@ Men line producer bestiller DP basert på reel + magefølelse — ikke verktøy-
 Vi bygger søkbar verktøy-erfaring inn i Tier-1 CRM. Sony Venice + Cooke + Frame.io? Filtrér og se hvilke DPs har erfaring i alle tre.
 
 Hele datasettet + workflow-smerter: https://theroleroom.com/kamera-folk-verktoy-2026`,
+  },
+  {
+    key: 'etterproduksjon-norge-2026',
+    path: '/etterproduksjon-norge-2026',
+    title: 'Etterproduksjon i norsk filmbransje 2026 — størrelse, software, workflow-smerter | The Role Room',
+    description:
+      'Anslag av norsk post-prod-marked: ~200-250 klippere, ~25-40 colorister, ~30-50 sound designers, ~15-25 post supervisors. Frame.io ~65%, DaVinci Resolve ~75% av grading, Pro Tools ~80% av lyd-mix. Fem koordinerings-smerter med konkrete kostnads-anslag.',
+    pillar: 'data',
+    published: true,
+    linkedinDraft: `Klippere er bredeste crew-rolle i norsk filmbransje — ~200-250 aktive.
+
+Etterproduksjon i tall, anslag 2026:
+- Klippere: ~200-250
+- Colorister: ~25-40
+- Sound designers + mixers: ~30-50
+- Post supervisors: ~15-25
+- Post VFX-artister: ~40-60
+- Music supervisors: ~10-15
+
+Software-fordeling:
+- Klipp: Avid ~45% (drama), Premiere ~35%, Resolve ~15%
+- Color: DaVinci Resolve ~75% (industri-standard)
+- Lyd: Pro Tools ~80%, Logic ~12%
+- Cloud: Frame.io ~65%, ingen workflow ~22%
+
+Og likevel: 22% av norske produksjoner deler fortsatt master-versjoner via Dropbox med filnavn som "v3_final_FINAL_v4_for_real.mov". Colorist får LUT fra DIT i feil versjon. Sound mix sendes 1-2 dager før leveranse — ingen tid til revision-runde.
+
+Vi bygger koordineringslag for hele post-pipeline. Hele datasettet + 5 workflow-smerter med konkret kostnad: https://theroleroom.com/etterproduksjon-norge-2026`,
+  },
+  {
+    key: 'produksjons-os',
+    path: '/produksjons-os',
+    title: 'Produksjons-OS — operativsystemet for film- og innholdsproduksjon i Norge | The Role Room',
+    description:
+      'The Role Room er operativsystemet for film- og innholdsproduksjoner. Tar produksjonen fra idé til distribuert og sett. Tre live vertikaler: produksjonsteam (795 kr/sete), innholdsprodusent (495 kr) og dansestudio (fra 149 kr). Norsk og EU-native.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `The Role Room er ikke en castingplattform.
+
+Casting er inngangsdøra — ikke sentrum. Vi er operativsystemet for film- og innholdsproduksjoner. Tar produksjonen fra idé og planlegging, gjennom casting og gjennomføring, helt til den er distribuert og sett av et publikum.
+
+Tre live vertikaler:
+- Produksjonsteam (795 kr/sete, min 3): casting, manus, produksjonsledelse, klient-godkjenning, distribusjon
+- Innholdsprodusent (495 kr/sete): ads, content marketing, sosial publisering, klient-flow
+- Dansestudio (fra 149 kr): booking, koreografi, casting, medlemskap, øving + skadelogg
+
+Pluss et AI-lag (Agenten, beta) som kobler kundens virksomhet til konkurrentanalyse, partner-discovery, merch og ads-strategi.
+
+Det vi ikke er: ikke et regnskapssystem. Ikke et finansieringsverktøy. Ikke et generisk Kanban-brett. Hva vi IKKE er, definerer hva vi faktisk er.
+
+Pre-revenue. Solo-drevet. Privacy + BankID i pipeline. Vi sier dette åpent fordi vi blir infrastruktur, og infrastruktur tåler ingen marketing-overdrivelse.
+
+Hele posisjoneringen: https://theroleroom.com/produksjons-os`,
+  },
+  {
+    key: 'innholdsprodusent-norge',
+    path: '/innholdsprodusent-norge',
+    title: 'Innholdsprodusent-løsningen — ads + content + klient-samarbeid i ett verktøy | The Role Room',
+    description:
+      'For frilans-innholdsprodusenter som jonglerer 4-8 klienter med ads + content + publisering på tvers av Meta, Google, LinkedIn, TikTok. 495 kr per sete per måned med transparent klient-godkjenning.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `Som frilans-innholdsprodusent jonglerer du sannsynligvis 4-8 klienter samtidig.
+
+Du bruker 30-45 min per dag bare på å finne ut hva som er status på en kampanje. Du hopper mellom 6-8 verktøy (Meta, Google, TikTok, Notion, Slack, e-post, Excel). Klienten lurer på hva som ble godkjent, du lurer på det samme.
+
+Det er den smerten innholdsprodusent-løsningen er bygget for.
+
+I ett verktøy:
+- Ads på Meta + Google + LinkedIn + TikTok med spend-sync
+- Content marketing-plan + carousel-generator
+- Direkte Instagram Business-publisering
+- Versjonert klient-godkjenningsflyt (alle i loop)
+- Management fee beregnet transparent — klient ser samme tall som du
+
+495 kr per sete per måned. Eks. mva. Minimum 1 sete.
+
+Hele løsningen: https://theroleroom.com/innholdsprodusent-norge`,
+  },
+  {
+    key: 'dansestudio-norge',
+    path: '/dansestudio-norge',
+    title: 'Dansestudio-vertikalen — booking, koreografi, casting og medlemmer i ett | The Role Room',
+    description:
+      'For norske dansestudioer som driver med profesjonell dans. Time-booking + koreografi + casting til oppdrag + medlemshåndtering + formasjon + skadelogg i samme system. Dansere fra 149 kr/mnd.',
+    pillar: 'founder',
+    published: true,
+    linkedinDraft: `Norske dansestudioer kjører i dag på 4-6 verktøy:
+- Booking i ett system
+- Casting til oppdrag på Facebook-grupper og Instagram-DM
+- Medlemshåndtering i Excel eller papir
+- Koreografi forklart muntlig i sal
+- Skadelogg ad-hoc (eller ikke i det hele tatt)
+
+Det skaper konteksttap og re-skader.
+
+Dansestudio-vertikalen i The Role Room samler:
+- Time-booking med sal-konflikt-sjekk og auto-påminnelse
+- Casting til danseoppdrag — intern eller åpen for hele The Role Room-nettverket
+- Medlemshåndtering med Stripe-/EHF-fakturering
+- Formasjonsverktøy: bygg dansenummer visuelt, eksporter til hver danser for hjemmeøving
+- Strukturert skadelogg med «klar fra dato»-oppfølging
+
+Frilans-danser: 149 kr/mnd. Studio: 149 – 2 490 kr/mnd etter størrelse.
+
+Hele vertikalen: https://theroleroom.com/dansestudio-norge`,
   },
 ];
 

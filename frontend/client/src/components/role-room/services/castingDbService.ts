@@ -9,6 +9,10 @@ import {
   TROLL_DEMO_PROJECT_ID,
 } from '../constants/producerDemo';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import authSessionService from './authSessionService';
+
+const getAuthHeaders = (): Record<string, string> =>
+  authSessionService.getAuthHeadersSync() as Record<string, string>;
 
 function normalizeRequiredProjectId(projectId: string | null | undefined, operation: string): string {
   const normalized = String(projectId || '').trim();
@@ -55,6 +59,7 @@ export async function saveCastingProjectToDb(project: CastingProject): Promise<v
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders(),
       },
       body: JSON.stringify(project),
     });
@@ -77,7 +82,9 @@ export async function getCastingProjectsFromDb(): Promise<CastingProject[]> {
   }
 
   try {
-    const response = await fetch('/api/casting/projects');
+    const response = await fetch('/api/casting/projects', {
+      headers: getAuthHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch projects: ${response.statusText}`);
@@ -109,10 +116,12 @@ export async function getCastingProjectFromDb(id: string): Promise<CastingProjec
   }
 
   try {
-    const response = await fetch(`/api/casting/projects/${id}`);
+    const response = await fetch(`/api/casting/projects/${id}`, {
+      headers: getAuthHeaders(),
+    });
 
     if (!response.ok) {
-      if (response.status === 404) {
+      if (response.status === 404 || response.status === 401) {
         return null;
       }
       throw new Error(`Failed to fetch project: ${response.statusText}`);
@@ -139,6 +148,7 @@ export async function deleteCastingProjectFromDb(id: string): Promise<void> {
   try {
     const response = await fetch(`/api/casting/projects/${id}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {

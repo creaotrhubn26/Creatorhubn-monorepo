@@ -5,15 +5,18 @@
  * marketing-plan-oversikt med fremdrift, pillars, neste handlinger og
  * hele 30-dagers planen. Autentisering = token-i-URL (magic-link).
  *
- * Ingen redigering i denne iterasjonen — dashbordet er rent innsyn.
- * Kommentarer, godkjenninger og status-endringer kan legges til
- * senere uten å flytte rundt på denne siden.
+ * Klienten kan kommentere direkte på hver post (PostCommentLayer)
+ * via magic-link-sessionToken. Kommentarene lagres i samme tabell
+ * (role_room_editor_comments) som Bjarne ser i Post Agent's
+ * CollaborationSidebar — én delt strøm, to UI-er.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'wouter';
 import ClientPortalRequestsSection from '@/components/role-room/client-portal/ClientPortalRequestsSection';
 import ClientPortalRegisterCard from '@/components/role-room/client-portal/ClientPortalRegisterCard';
+import PostCommentLayer from '@/components/role-room/components/PostCommentLayer';
+import PostVideoPreview from '@/components/role-room/components/PostVideoPreview';
 import {
   Alert,
   Box,
@@ -37,6 +40,16 @@ interface DashboardPost {
   crossPostPlan: Array<{ platform: string; delayDays: number }>;
   status: 'proposed' | 'scheduled' | 'published' | 'skipped';
   scheduledFor: string | null;
+  // Preview-video — Stream primær (HLS-playback), R2 fallback (mp4).
+  previewStreamPlaybackUrl?: string | null;
+  previewStreamThumbnailUrl?: string | null;
+  previewStreamReady?: boolean;
+  previewStreamDurationSec?: number | null;
+  previewVideoR2Url?: string | null;
+  // Klient-review (settes når klient klikker Godkjenn / Be om endring)
+  clientReviewStatus?: 'pending' | 'approved' | 'changes_requested';
+  clientReviewAt?: string | null;
+  clientReviewNote?: string | null;
 }
 
 interface DashboardPillar {
@@ -201,10 +214,10 @@ export default function ClientPortalMarketingPage() {
           {/* Forespørsler øverst — viser kun seksjonen hvis det finnes noen */}
           <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
           <ProgressSection progress={data.progress!} plan={data.plan!} />
-          <UpcomingSection upcoming={data.upcoming!} />
+          <UpcomingSection upcoming={data.upcoming!} projectId={data.project?.id ?? null} clientToken={token} />
           <StrategyCard plan={data.plan!} />
           <PillarsCard pillars={data.plan!.pillars} />
-          <AllPostsCard posts={data.posts!} pillars={data.plan!.pillars} />
+          <AllPostsCard posts={data.posts!} pillars={data.plan!.pillars} projectId={data.project?.id ?? null} clientToken={token} />
         </Stack>
       </Container>
       <Typography
@@ -314,7 +327,11 @@ function StatChip({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function UpcomingSection({ upcoming }: { upcoming: DashboardPost[] }) {
+function UpcomingSection({ upcoming, projectId, clientToken }: {
+  upcoming: DashboardPost[];
+  projectId: string | null;
+  clientToken: string;
+}) {
   if (upcoming.length === 0) return null;
   return (
     <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.24)' }}>
@@ -323,7 +340,7 @@ function UpcomingSection({ upcoming }: { upcoming: DashboardPost[] }) {
       </Typography>
       <Stack spacing={1}>
         {upcoming.map((post) => (
-          <PostRow key={post.id} post={post} compact />
+          <PostRow key={post.id} post={post} compact projectId={projectId} clientToken={clientToken} />
         ))}
       </Stack>
     </Box>
@@ -436,7 +453,12 @@ function PillarsCard({ pillars }: { pillars: DashboardPillar[] }) {
   );
 }
 
-function AllPostsCard({ posts, pillars }: { posts: DashboardPost[]; pillars: DashboardPillar[] }) {
+function AllPostsCard({ posts, pillars, projectId, clientToken }: {
+  posts: DashboardPost[];
+  pillars: DashboardPillar[];
+  projectId: string | null;
+  clientToken: string;
+}) {
   const grouped = useMemo(() => {
     const byPillar = new Map<string | null, DashboardPost[]>();
     for (const p of posts) {
@@ -469,7 +491,7 @@ function AllPostsCard({ posts, pillars }: { posts: DashboardPost[]; pillars: Das
             </Typography>
             <Stack spacing={0.8}>
               {group.posts.map((post) => (
-                <PostRow key={post.id} post={post} />
+                <PostRow key={post.id} post={post} projectId={projectId} clientToken={clientToken} />
               ))}
             </Stack>
           </Box>
@@ -479,7 +501,21 @@ function AllPostsCard({ posts, pillars }: { posts: DashboardPost[]; pillars: Das
   );
 }
 
-function PostRow({ post, compact }: { post: DashboardPost; compact?: boolean }) {
+function PostRow({ post, compact, projectId, clientToken }: {
+  post: DashboardPost;
+  compact?: boolean;
+  projectId: string | null;
+  clientToken: string;
+}) {
+  const [currentTimeSec, setCurrentTimeSec] = useState(0);
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const [timestampMarkers, setTimestampMarkers] = useState<Array<{ sec: number; label: string }>>([]);
+  const seek = useMemo(() => (sec: number) => {
+    if (videoEl) {
+      videoEl.currentTime = sec;
+      void videoEl.play().catch(() => { /* ignore play-restrictions */ });
+    }
+  }, [videoEl]);
   const statusColor = post.status === 'published'
     ? '#22c55e'
     : post.status === 'scheduled'
@@ -502,43 +538,236 @@ function PostRow({ post, compact }: { post: DashboardPost; compact?: boolean }) 
         bgcolor: 'rgba(15,23,42,0.7)',
         border: '1px solid rgba(148,163,184,0.14)',
         display: 'flex',
+        flexDirection: 'column',
         gap: 1,
-        alignItems: 'flex-start',
       }}
     >
-      <Box
-        sx={{
-          width: 44, minHeight: 44,
-          borderRadius: 1.4,
-          bgcolor: 'rgba(34,211,238,0.12)',
-          color: '#a5f3fc',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          px: 1,
-          flexShrink: 0,
-        }}
-      >
-        <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em' }}>DAG</Typography>
-        <Typography sx={{ fontSize: '1rem', fontWeight: 800 }}>
-          {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
-        </Typography>
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mb: 0.4 }}>
-          <Chip size="small" label={FORMAT_LABEL[post.format]} sx={{ bgcolor: `${FORMAT_COLOR[post.format]}33`, color: '#fff', fontWeight: 700, fontSize: '0.7rem' }} />
-          <Chip size="small" label={statusLabel} sx={{ bgcolor: `${statusColor}1f`, color: statusColor, fontWeight: 700, fontSize: '0.7rem' }} />
-          {post.primaryPlatform ? (
-            <Chip size="small" label={post.primaryPlatform} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.3)', fontSize: '0.7rem' }} />
-          ) : null}
-        </Stack>
-        <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: compact ? '0.88rem' : '0.94rem', lineHeight: 1.4 }}>
-          {post.hook}
-        </Typography>
-        {!compact && post.callToAction ? (
-          <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', mt: 0.4 }}>
-            <strong style={{ color: '#86efac' }}>CTA:</strong> {post.callToAction}
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+        <Box
+          sx={{
+            width: 44, minHeight: 44,
+            borderRadius: 1.4,
+            bgcolor: 'rgba(34,211,238,0.12)',
+            color: '#a5f3fc',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            px: 1,
+            flexShrink: 0,
+          }}
+        >
+          <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em' }}>DAG</Typography>
+          <Typography sx={{ fontSize: '1rem', fontWeight: 800 }}>
+            {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
           </Typography>
-        ) : null}
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mb: 0.4 }}>
+            <Chip size="small" label={FORMAT_LABEL[post.format]} sx={{ bgcolor: `${FORMAT_COLOR[post.format]}33`, color: '#fff', fontWeight: 700, fontSize: '0.7rem' }} />
+            <Chip size="small" label={statusLabel} sx={{ bgcolor: `${statusColor}1f`, color: statusColor, fontWeight: 700, fontSize: '0.7rem' }} />
+            {post.primaryPlatform ? (
+              <Chip size="small" label={post.primaryPlatform} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.3)', fontSize: '0.7rem' }} />
+            ) : null}
+          </Stack>
+          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: compact ? '0.88rem' : '0.94rem', lineHeight: 1.4 }}>
+            {post.hook}
+          </Typography>
+          {!compact && post.callToAction ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', mt: 0.4 }}>
+              <strong style={{ color: '#86efac' }}>CTA:</strong> {post.callToAction}
+            </Typography>
+          ) : null}
+        </Box>
       </Box>
+      {!compact && (post.previewStreamPlaybackUrl || post.previewVideoR2Url) ? (
+        <PostVideoPreview
+          streamPlaybackUrl={post.previewStreamPlaybackUrl}
+          streamThumbnailUrl={post.previewStreamThumbnailUrl}
+          streamReady={post.previewStreamReady}
+          r2VideoUrl={post.previewVideoR2Url}
+          durationSec={post.previewStreamDurationSec}
+          onCurrentTime={setCurrentTimeSec}
+          onVideoEl={setVideoEl}
+          timestampMarkers={timestampMarkers}
+        />
+      ) : null}
+      {!compact && projectId ? (
+        <>
+          <PostReviewControls
+            postId={post.id}
+            clientToken={clientToken}
+            currentStatus={post.clientReviewStatus ?? 'pending'}
+            reviewedAt={post.clientReviewAt ?? null}
+            note={post.clientReviewNote ?? null}
+          />
+          <PostCommentLayer
+            projectId={projectId}
+            anchorType="marketing_plan_post"
+            anchorRef={post.id}
+            auth={{ kind: 'client-portal', sessionToken: clientToken }}
+            currentTimeSec={currentTimeSec}
+            onSeek={seek}
+            onTimestampCommentsChanged={setTimestampMarkers}
+          />
+        </>
+      ) : null}
+    </Box>
+  );
+}
+
+function PostReviewControls({
+  postId, clientToken,
+  currentStatus, reviewedAt, note,
+}: {
+  postId: string;
+  clientToken: string;
+  currentStatus: 'pending' | 'approved' | 'changes_requested';
+  reviewedAt: string | null;
+  note: string | null;
+}) {
+  const [status, setStatus] = useState(currentStatus);
+  const [reviewedAtLocal, setReviewedAtLocal] = useState(reviewedAt);
+  const [noteLocal, setNoteLocal] = useState(note);
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (s: 'approved' | 'changes_requested', n: string) => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/client/portal/marketing-plan-posts/${encodeURIComponent(postId)}/review`
+        + `?token=${encodeURIComponent(clientToken)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: s, note: n }),
+        },
+      );
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(detail.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { reviewedAt: string };
+      setStatus(s);
+      setReviewedAtLocal(data.reviewedAt);
+      setNoteLocal(n || null);
+      setShowNoteForm(false);
+      setNoteDraft('');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (status !== 'pending') {
+    const label = status === 'approved' ? 'Godkjent' : 'Be om endring sendt';
+    const bg = status === 'approved' ? 'rgba(74,212,138,0.12)' : 'rgba(240,165,0,0.12)';
+    const border = status === 'approved' ? 'rgba(74,212,138,0.32)' : 'rgba(240,165,0,0.32)';
+    const color = status === 'approved' ? '#4ad48a' : '#f0a500';
+    return (
+      <Box sx={{
+        mt: 1, p: 1.2, borderRadius: 1.6,
+        bgcolor: bg, border: `1px solid ${border}`,
+      }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Typography sx={{ color, fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {label}
+          </Typography>
+          {reviewedAtLocal && (
+            <Typography sx={{ color: 'rgba(226,232,240,0.65)', fontSize: '0.74rem' }}>
+              · {new Date(reviewedAtLocal).toLocaleString('nb', {
+                day: '2-digit', month: 'short',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </Typography>
+          )}
+        </Stack>
+        {noteLocal && (
+          <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.82rem', mt: 0.4, fontStyle: 'italic' }}>
+            "{noteLocal}"
+          </Typography>
+        )}
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ mt: 1 }}>
+      {!showNoteForm ? (
+        <Stack direction="row" spacing={1}>
+          <button onClick={() => void submit('approved', '')}
+                  disabled={submitting}
+                  style={{
+                    background: 'linear-gradient(135deg, #4ad48a, #2db66f)',
+                    border: 0, color: '#0a1a14',
+                    padding: '8px 14px', fontSize: 12, fontWeight: 700,
+                    borderRadius: 4, cursor: submitting ? 'wait' : 'pointer',
+                    flex: 1,
+                  }}>
+            {submitting ? 'Sender …' : 'Godkjenn'}
+          </button>
+          <button onClick={() => setShowNoteForm(true)}
+                  disabled={submitting}
+                  style={{
+                    background: 'rgba(240,165,0,0.18)',
+                    border: '1px solid rgba(240,165,0,0.42)',
+                    color: '#f0a500',
+                    padding: '8px 14px', fontSize: 12, fontWeight: 700,
+                    borderRadius: 4, cursor: 'pointer',
+                    flex: 1,
+                  }}>
+            Be om endring
+          </button>
+        </Stack>
+      ) : (
+        <Box>
+          <textarea value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    rows={3}
+                    placeholder="Hva ønsker du endret?"
+                    style={{
+                      width: '100%',
+                      background: 'rgba(15,23,42,0.7)',
+                      border: '1px solid rgba(240,165,0,0.32)',
+                      borderRadius: 4, padding: '8px 10px',
+                      color: '#e2e8f0', fontSize: 13,
+                      fontFamily: 'inherit', resize: 'vertical',
+                    }} />
+          <Stack direction="row" spacing={1} sx={{ mt: 0.8 }}>
+            <button onClick={() => void submit('changes_requested', noteDraft.trim())}
+                    disabled={submitting || !noteDraft.trim()}
+                    style={{
+                      background: noteDraft.trim()
+                        ? 'linear-gradient(135deg, #f0a500, #d4940a)'
+                        : 'rgba(240,165,0,0.18)',
+                      border: 0, color: '#1a0f00',
+                      padding: '6px 12px', fontSize: 12, fontWeight: 700,
+                      borderRadius: 4,
+                      cursor: noteDraft.trim() && !submitting ? 'pointer' : 'not-allowed',
+                      opacity: noteDraft.trim() ? 1 : 0.5,
+                    }}>
+              Send
+            </button>
+            <button onClick={() => { setShowNoteForm(false); setNoteDraft(''); }}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid rgba(148,163,184,0.32)',
+                      color: 'rgba(226,232,240,0.78)',
+                      padding: '6px 12px', fontSize: 12, fontWeight: 600,
+                      borderRadius: 4, cursor: 'pointer',
+                    }}>
+              Avbryt
+            </button>
+          </Stack>
+        </Box>
+      )}
+      {error && (
+        <Typography sx={{ color: '#ef4f6f', fontSize: '0.78rem', mt: 0.6 }}>
+          {error}
+        </Typography>
+      )}
     </Box>
   );
 }

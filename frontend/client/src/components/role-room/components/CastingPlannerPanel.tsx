@@ -112,6 +112,7 @@ import {
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
   Inbox as InboxIcon,
+  Brush as BrushIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -215,6 +216,7 @@ const EquipmentManagementPanel = lazyWithRetry(() => import('./EquipmentManageme
 const ProductionDayView = lazyWithRetry(() => import('./ProductionDayView').then(m => ({ default: m.ProductionDayView })));
 const CastingShotListPanel = lazyWithRetry(() => import('./CastingShotListPanel').then(m => ({ default: m.CastingShotListPanel })));
 const ManuscriptPanel = lazyWithRetry(() => import('./ManuscriptPanel').then(m => ({ default: m.ManuscriptPanel })));
+const StoryboardTabView = lazyWithRetry(() => import('./StoryboardTabView').then(m => ({ default: m.StoryboardTabView })));
 const StoryLogicPanel = lazyWithRetry(() => import('./screenplay/StoryLogicPanel').then(m => ({ default: m.StoryLogicPanel })));
 const RoleManagementPanel = lazyWithRetry(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
 const CandidateManagementPanel = lazyWithRetry(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
@@ -421,6 +423,7 @@ const TAB_IDS = [
   'tabpanel-producer-tidslinje',
   'tabpanel-producer-reviews',
   'tabpanel-producer-eksport',
+  'tabpanel-storyboard',
 ];
 const STORY_ARC_TAB_INDEX = 1;
 const ROLES_TAB_INDEX = 2;
@@ -439,6 +442,11 @@ const PRODUCER_ECONOMY_TAB_INDEX = 12;
 const PRODUCER_TIMELINE_TAB_INDEX = 13;
 const PRODUCER_REVIEWS_TAB_INDEX = 14;
 const PRODUCER_EXPORT_TAB_INDEX = 15;
+// Dedikert Storyboard-tab plassert etter Role Room Studio. Visuell
+// rekkefølge styres i tabValues-arrayen lenger nede; selve tab-VALUE
+// kommer etter producer-tabs så vi slipper å renummerere hele
+// systemet.
+const STORYBOARD_TAB_INDEX = 16;
 
 // Pre-prod-tabs som grupperes visuelt i sub-tab-strip-en. Ikke en endring
 // av faktisk tab-indeks-systemet — bare en kontekst-strip når en av disse
@@ -459,7 +467,8 @@ const COMMAND_PALETTE_TABS: ReadonlyArray<{
   keywords: string[];
 }> = [
   { tabIndex: 0, label: 'Oversikt', keywords: ['oversikt', 'dashboard', 'home'] },
-  { tabIndex: STORY_ARC_TAB_INDEX, label: 'Story Arc Studio', keywords: ['story', 'manus', 'storyboard', 'planner'] },
+  { tabIndex: STORY_ARC_TAB_INDEX, label: 'Story Arc Studio', keywords: ['story', 'manus', 'planner'] },
+  { tabIndex: STORYBOARD_TAB_INDEX, label: 'Storyboard', keywords: ['storyboard', 'tegne', 'frame', 'shot', 'sketch'] },
   { tabIndex: ROLES_TAB_INDEX, label: 'Roller', keywords: ['roller', 'roles'] },
   { tabIndex: CANDIDATES_TAB_INDEX, label: 'Kandidater', keywords: ['kandidater', 'candidates', 'medvirkende'] },
   { tabIndex: AUDITIONS_TAB_INDEX, label: 'Auditions', keywords: ['audition', 'casting-call'] },
@@ -1002,7 +1011,7 @@ type RoleRoomWorkspaceFilterState = {
   candidateStatusFilter?: string;
   candidateViewMode?: 'list' | 'kanban';
   selectionPhaseFilter?: SelectionPhaseFilter;
-  calendarViewMode?: 'production' | 'crew';
+  calendarViewMode?: 'production' | 'crew' | 'productionDay';
   contentProducerPlannerSurface?: ContentProducerPlannerSurface;
   producerMediaWorkspace?: string | null;
 };
@@ -1136,7 +1145,7 @@ type RoleRoomProjectWorkspaceState = {
   const [globalTagRegistry, setGlobalTagRegistry] = useState<string[]>([]);
   const [globalTagRegistryLoaded, setGlobalTagRegistryLoaded] = useState(false);
   const [storyLogicData, setStoryLogicData] = useState<StoryLogicState | null>(null);
-  const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew'>('production');
+  const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew' | 'productionDay'>('production');
   const [projects, setProjects] = useState<CastingProject[]>([]);
   const [currentProject, setCurrentProject] = useState<CastingProject | null>(null);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -1200,6 +1209,12 @@ type RoleRoomProjectWorkspaceState = {
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [producerWorkflowBootstrapVersion, setProducerWorkflowBootstrapVersion] = useState(0);
   
+  // Mount-fase: før initializeData() er ferdig får URL-state-sync IKKE
+  // lov til å skrive til URL. Uten denne porten strippet URL-write-effekten
+  // ?project=<id> FØR seed-effekten + loadProjects rakk å lese den, og
+  // "Last demo" + dypelenker endte i tom-state "Ingen prosjekt valgt".
+  const [bootstrapComplete, setBootstrapComplete] = useState(false);
+
   // Ref to track current project ID for stale response detection
   const currentProjectIdRef = useRef<string | null>(null);
   const currentProjectRef = useRef<CastingProject | null>(null);
@@ -1910,6 +1925,8 @@ type RoleRoomProjectWorkspaceState = {
     switch (tabIndex) {
       case STORY_ARC_TAB_INDEX:
         return isContentProducerMode ? `Planner · ${activePlannerSurfaceLabel}` : 'Role Room Studio';
+      case STORYBOARD_TAB_INDEX:
+        return 'Storyboard';
       case ROLES_TAB_INDEX:
         return branding.tokens.labels.roles;
       case CANDIDATES_TAB_INDEX:
@@ -3246,7 +3263,17 @@ type RoleRoomProjectWorkspaceState = {
       if (cancelled || !stored) {
         return;
       }
-      persistedWorkspaceStateRef.current = stored;
+      // URL-seedet ref (?project=<id>) skal overstyre stored=null. Uten
+      // dette mister deep-links sin prosjekt-ID når hydrate-effekten kjører
+      // ETTER seed-effekten og overskriver lastRealProjectId med null fra
+      // siste lagrede tom-state. Daniels TROLL-deep-link havnet i tom-state
+      // selv om URL var korrekt og DB hadde 8 roller/8 kandidater klar.
+      const existing = persistedWorkspaceStateRef.current;
+      persistedWorkspaceStateRef.current = {
+        ...stored,
+        lastRealProjectId: stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
+        projectId: stored.projectId ?? existing?.projectId ?? null,
+      };
       setStoryArcView(stored.storyArcView);
       setStoryArcFocus(stored.storyArcFocus ?? null);
       setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
@@ -3314,7 +3341,18 @@ type RoleRoomProjectWorkspaceState = {
   const isTrollProject = useCallback((project: CastingProject): boolean => {
     const projectId = String(project.id || '').trim().toLowerCase();
     const projectName = String(project.name || '').trim().toLowerCase();
-    return projectId === 'troll-project-2026' || projectName === 'troll';
+    // Matcher: (a) canonical static-ID fra seed-service,
+    // (b) name === 'troll' (case-insensitive),
+    // (c) dynamisk demo-ID på formen 'troll-{timestamp}' generert i
+    //     ProjectCreationModal når brukeren klikker "Last Troll Demo".
+    //     Uten denne grenen blir nyere TROLL-kopier (f.eks.
+    //     troll-1780071501773) ikke fanget av modus-gating og dukker opp
+    //     i innholdsprodusent-modus selv om de skulle vært skjult.
+    return (
+      projectId === 'troll-project-2026'
+      || projectName === 'troll'
+      || /^troll-\d{10,}$/.test(projectId)
+    );
   }, []);
 
   const isContentProducerDemoProject = useCallback((project: CastingProject): boolean => {
@@ -3396,6 +3434,11 @@ type RoleRoomProjectWorkspaceState = {
     if (isTemplateProject(project)) {
       return false;
     }
+    // TROLL skal ALDRI auto-velges som "restorable" (Daniels krav: demoen
+    // er et eksplisitt valg via "Last demo"-knappen eller prosjekt-
+    // velgeren). Den vises i prosjekt-velgeren i produksjonsmodus, men
+    // ikke som default-prosjekt for ny innlogging eller for "best
+    // available"-fallback.
     if (isTrollProject(project)) {
       return false;
     }
@@ -3418,18 +3461,49 @@ type RoleRoomProjectWorkspaceState = {
     if (isClientReviewerMode || isClientReviewerSession) {
       return workspaceProjects.filter((project) => !isProtectedDemoProject(project));
     }
-    if (isProducerWorkspaceSession) {
-      return workspaceProjects.filter((project) => !isTrollProject(project));
+    // VIKTIG: plannerAudience er den ekte modus-sjekken. isProducerWorkspaceSession
+    // er VILLEDENDE navngitt — den returnerer true for INNHOLDSPRODUSENT, ikke
+    // produksjonsteam (sammensatt av isContentProducerSession ||
+    // isClientReviewerSession). Tidligere brukte denne filteret den, så
+    // innholdsprodusent endte med å se TROLL og produksjonsteam så den ikke.
+    if (plannerAudience === 'production_team') {
+      // Produksjonsmodus: TROLL-demo SKAL være synlig (det er den eneste modus
+      // hvor "Last Troll Demo"-knappen i Nytt-prosjekt-flyt har mening).
+      // Men ekskluder content-producer-demo siden den hører til vertikal #2.
+      return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
     }
 
-    return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
+    // Andre moduser (innholdsprodusent, dansestudio, utdanning): skjul TROLL
+    // helt fra prosjekt-listen. Bare content-producer-demo er relevant for
+    // dem (eller den modus-spesifikke demo-en).
+    return workspaceProjects.filter((project) =>
+      !isContentProducerDemoProject(project) && !isTrollProject(project),
+    );
   }, [
     isClientReviewerMode,
     isClientReviewerSession,
     isContentProducerDemoProject,
-    isProducerWorkspaceSession,
+    plannerAudience,
     isProtectedDemoProject,
     isTemplateProject,
+    isTrollProject,
+  ]);
+
+  // Auto-clear av currentProject ved modus-bytte: TROLL er eksklusivt for
+  // produksjonsteam, så hvis brukeren har TROLL åpent og bytter til
+  // innholdsprodusent (eller dansestudio/utdanning/klient) må prosjektet
+  // closes. Ellers blir TROLL hengende som currentProject og rendres i
+  // Story Arc Studio / Creative Sync Workspace selv om listen filtrerer
+  // den bort. Sletter IKKE prosjekt-data — bare nuller frontend-ref.
+  useEffect(() => {
+    if (!currentProject) return;
+    if (!isTrollProject(currentProject)) return;
+    if (plannerAudience === 'production_team') return;
+    setCurrentProject(null);
+    setCurrentProjectId(null);
+  }, [
+    currentProject,
+    plannerAudience,
     isTrollProject,
   ]);
 
@@ -3546,7 +3620,10 @@ type RoleRoomProjectWorkspaceState = {
       return;
     }
 
-    if (isProducerWorkspaceSession && isTrollProject(project)) {
+    // TROLL skal eksklusivt kunne åpnes i produksjonsteam-modus. plannerAudience
+    // er den ekte modus-sjekken; isProducerWorkspaceSession er motsatt navngitt
+    // (true for innholdsprodusent), så bruker av den fanget feil retning.
+    if (plannerAudience !== 'production_team' && isTrollProject(project)) {
       toast.showWarning('TROLL-prosjektet er kun tilgjengelig for produksjonsteam.');
       return;
     }
@@ -3849,6 +3926,9 @@ type RoleRoomProjectWorkspaceState = {
   const tabConfig = useMemo(() => [
     { color: professionConfig?.color || '#8b5cf6', icon: _DashboardIcon },
     { color: '#ec4899', icon: StoryArcIcon },
+    // Storyboard-tab — egen direkte-snarvei til FrameDrawingEditor.
+    // Plassert visuelt rett etter Role Room Studio.
+    { color: '#f472b6', icon: BrushIcon },
     { color: '#f48fb1', icon: TheaterComedyIcon },
     { color: professionConfig?.color || '#10b981', icon: RecentActorsIcon },
     { color: '#ffb800', icon: _InterpreterModeIcon },
@@ -3897,6 +3977,7 @@ type RoleRoomProjectWorkspaceState = {
     return [
       0,
       STORY_ARC_TAB_INDEX,
+      STORYBOARD_TAB_INDEX,
       ROLES_TAB_INDEX,
       CANDIDATES_TAB_INDEX,
       AUDITIONS_TAB_INDEX,
@@ -4354,6 +4435,12 @@ type RoleRoomProjectWorkspaceState = {
   // Skipped entirely when client-portal URL schema owns the query string.
   useEffect(() => {
     if (isExternalClientPortalMode || typeof window === 'undefined') return;
+    // Vent til initializeData()/loadProjects() har kjørt og enten satt
+    // currentProject (fra URL/persisted-state) eller bekreftet at intet
+    // prosjekt finnes. Uten denne sjekken skriver effekten med
+    // desiredProject='' BEFORE seed-effekten leser URL, og ?project=<id>
+    // i delelenke strippes før det får materialisert seg som state.
+    if (!bootstrapComplete) return;
     const params = new URLSearchParams(window.location.search);
     const tabId = TAB_IDS[activeTab];
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
@@ -4382,7 +4469,7 @@ type RoleRoomProjectWorkspaceState = {
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
     window.history.pushState({ rrStateSync: true }, '', nextUrl);
-  }, [activeTab, currentProject?.id, storyArcView, contentProducerPlannerSurface, isExternalClientPortalMode]);
+  }, [bootstrapComplete, activeTab, currentProject?.id, storyArcView, contentProducerPlannerSurface, isExternalClientPortalMode]);
 
   // Rehydrate activeTab + currentProject when the user hits browser
   // back/forward. Without this, pushing URLs only *writes* history
@@ -5255,6 +5342,10 @@ type RoleRoomProjectWorkspaceState = {
         console.error('❌ Error initializing data:', error);
       } finally {
         setProjectsLoading(false);
+        // Nå er enten currentProject satt fra URL/persisted state eller
+        // bekreftet null. Åpne URL-state-sync så fremtidige tab/prosjekt-
+        // bytter får skrive til URL.
+        setBootstrapComplete(true);
       }
     };
 
@@ -5717,18 +5808,18 @@ type RoleRoomProjectWorkspaceState = {
       const projectIdToLoad = activeRestorableProjectId ?? persistedRealProjectId;
       
       if (loadedProjects.length > 0 && projectIdToLoad) {
-        // Only refresh data if user already selected a project
-        const targetProject = loadedProjects.find((project) => (
-          project.id === projectIdToLoad
-          && isRestorableWorkspaceProject(project)
-        ));
+        // Hvis URL/persisted-state peker eksplisitt til et prosjekt (inkl. TROLL
+        // som er ikke-restorable for auto-fallback), respekter det valget.
+        // isRestorableWorkspaceProject brukes til AUTO-fallback (default-pick),
+        // ikke eksplisitt URL-navigasjon. Brukeren har valgt prosjektet.
+        const targetProject = loadedProjects.find((project) => project.id === projectIdToLoad);
         const resolvedTargetProject =
           targetProject && isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
             ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
             : targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
               ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
             : targetProject;
-        
+
         if (resolvedTargetProject) {
           // Fetch the full project with all nested data
           const fullProject = await castingService.getProject(resolvedTargetProject.id);
@@ -5738,11 +5829,10 @@ type RoleRoomProjectWorkspaceState = {
             setCurrentProject(resolvedTargetProject);
           }
         } else {
-          // Current project is no longer visible in this session (e.g. content producer + TROLL),
-          // switch to the best available project instead of keeping stale state.
-          const preferredProject = loadedProjects.find((project) => isRestorableWorkspaceProject(project))
-            ?? (isProducerWorkspaceSession ? null : loadedProjects[0]);
-          setCurrentProject(preferredProject ?? null);
+          // URL/persisted-prosjekt finnes ikke lenger i listen — la
+          // currentProject = null heller enn å auto-velge "best available".
+          // Brukeren får tom-state og kan velge på nytt fra velgeren.
+          setCurrentProject(null);
         }
       } else if (loadedProjects.length > 0 && !projectIdToLoad && isProducerWorkspaceSession) {
         const preferredProject = loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? null;
@@ -5757,39 +5847,14 @@ type RoleRoomProjectWorkspaceState = {
           setCurrentProject(fullProject ?? preferredProject);
         }
       } else if (loadedProjects.length === 0) {
-        // Client portal view is read-only against a specific projectId
-        // supplied via URL. Do NOT synthesize a fresh `project-${Date.now()}`
-        // fallback here — otherwise every render generates a new id, each
-        // child effect fetches /api/projects/<new-id>/files → 404 → state
-        // updates → URL rewrite → re-mount → new id → Chrome throttles
-        // navigation. The client-portal-intent effect handles the URL-
-        // specified project separately; if that project truly isn't
-        // reachable, showing `currentProject = null` is the correct state.
-        if (clientPortalIntent) {
-          setProjects([]);
-          setCurrentProject(null);
-        } else {
-          // Only create empty project if mock data initialization didn't work
-          const defaultProject: CastingProject = {
-            id: `project-${Date.now()}`,
-            name: profession ? `${branding.tokens.labels.newProjectPrefix} ${getTerm('project')}` : 'Nytt Role Room prosjekt',
-            description: '',
-            roles: [],
-            candidates: [],
-            schedules: [],
-            crew: [],
-            locations: [],
-            props: [],
-            productionDays: [],
-            shotLists: [],
-            userRoles: [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-          await castingService.saveProject(defaultProject);
-          setProjects([defaultProject]);
-          setCurrentProject(defaultProject);
-        }
+        // Per Daniels krav: ikke auto-opprett default-prosjekt. Race
+        // condition mellom denne grenen og castingService.getProjects()
+        // skapte tomme "Nytt Role Room prosjekt-<ts>"-skall som forurenset
+        // DB-en og overstyrte URL-param som pekte til TROLL eller andre
+        // ekte prosjekter. Tom state med "Nytt prosjekt"-knapp i UI er
+        // riktig tilstand når brukeren ikke har noen prosjekter.
+        setProjects([]);
+        setCurrentProject(null);
       }
     } catch (error) {
       logRoleRoomDiagnostic('projects:load-failed', {
@@ -9291,6 +9356,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabValues = [
               0,
               STORY_ARC_TAB_INDEX,
+              STORYBOARD_TAB_INDEX,
               ROLES_TAB_INDEX,
               CANDIDATES_TAB_INDEX,
               AUDITIONS_TAB_INDEX,
@@ -9312,7 +9378,8 @@ type RoleRoomProjectWorkspaceState = {
               return null;
             }
             const isSelected = displayedActiveTab === tabValue;
-            const isPreProductionTab = tabValue === STORY_ARC_TAB_INDEX;
+            const isPreProductionTab =
+              tabValue === STORY_ARC_TAB_INDEX || tabValue === STORYBOARD_TAB_INDEX;
             const isCastingCoreTab = tabValue >= ROLES_TAB_INDEX && tabValue <= SELECTION_TAB_INDEX;
             const isProductionPlanCoreTab = tabValue >= LOCATIONS_TAB_INDEX && tabValue <= CALENDAR_TAB_INDEX;
             const isResourcesCoreTab = tabValue >= TEAM_TAB_INDEX && tabValue <= EQUIPMENT_TAB_INDEX;
@@ -9343,6 +9410,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabLabels = [
               branding.tokens.labels.dashboard,
               isContentProducerMode ? 'Planner' : 'Role Room Studio',
+              'Storyboard',
               branding.tokens.labels.roles,
               isContentProducerMode ? 'Medvirkende' : branding.tokens.labels.candidates,
               branding.tokens.labels.auditions,
@@ -9361,6 +9429,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabIds = [
               'tab-oversikt',
               'tab-story-arc-studio',
+              'tab-storyboard',
               'tab-roller',
               'tab-kandidater',
               'tab-auditions',
@@ -9379,6 +9448,7 @@ type RoleRoomProjectWorkspaceState = {
             const tabPanelIds = [
               'tabpanel-oversikt',
               'tabpanel-story-arc-studio',
+              'tabpanel-storyboard',
               'tabpanel-roller',
               'tabpanel-kandidater',
               'tabpanel-auditions',
@@ -11475,6 +11545,24 @@ type RoleRoomProjectWorkspaceState = {
                 >
                   {branding.tokens.labels.crewCalendar}
                 </Button>
+                <Button
+                  variant={calendarViewMode === 'productionDay' ? 'contained' : 'outlined'}
+                  onClick={() => {
+                    startTransition(() => setCalendarViewMode('productionDay'));
+                  }}
+                  startIcon={<CalendarIcon />}
+                  size={isMobile ? 'small' : 'medium'}
+                  sx={{
+                    bgcolor: calendarViewMode === 'productionDay' ? 'rgba(251,191,36,0.9)' : 'transparent',
+                    borderColor: 'rgba(251,191,36,0.5)',
+                    color: calendarViewMode === 'productionDay' ? '#fff' : 'rgba(255,255,255,0.7)',
+                    '&:hover': {
+                      bgcolor: calendarViewMode === 'productionDay' ? 'rgba(251,191,36,1)' : 'rgba(251,191,36,0.1)',
+                    },
+                  }}
+                >
+                  Operativ produksjonsstyring
+                </Button>
               </Box>
 
               {/* Calendar Content */}
@@ -11525,17 +11613,25 @@ type RoleRoomProjectWorkspaceState = {
                     reopenDialogSignal={calendarReopenSignal}
                     preselectedFromCreate={calendarPreselectedFromCreate}
                   />
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-                  <ProductionDayView
-                    key={`${currentProject.id}:calendar-production-day`}
-                    projectId={currentProject.id}
-                    onUpdate={async () => {
-                      const updated = await castingService.getProject(currentProject.id);
-                      if (updated) setCurrentProject(updated);
-                    }}
-                    profession={profession}
-                  />
                 </>
+              ) : calendarViewMode === 'productionDay' ? (
+                <Box sx={{ flex: 1, minHeight: 0 }}>
+                  <Suspense fallback={
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                      <CircularProgress sx={{ color: 'rgba(251,191,36,0.8)' }} />
+                    </Box>
+                  }>
+                    <ProductionDayView
+                      key={`${currentProject.id}:calendar-production-day`}
+                      projectId={currentProject.id}
+                      onUpdate={async () => {
+                        const updated = await castingService.getProject(currentProject.id);
+                        if (updated) setCurrentProject(updated);
+                      }}
+                      profession={profession}
+                    />
+                  </Suspense>
+                </Box>
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0 }}>
                   <Suspense fallback={
@@ -12742,6 +12838,21 @@ type RoleRoomProjectWorkspaceState = {
           )}
         </TabPanel>
 
+        <TabPanel value={activeTab} index={STORYBOARD_TAB_INDEX}>
+          <ErrorBoundary>
+            <Suspense fallback={<PanelSkeleton variant="panel" count={3} />}>
+              <StoryboardTabView
+                key={currentProject?.id ?? 'no-project'}
+                currentProject={currentProject ?? null}
+                projectCinemaFormat={currentProject?.cinemaFormat}
+                onNavigateToStoryArc={() => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                }}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        </TabPanel>
+
         <TabPanel value={activeTab} index={PRODUCER_MEDIA_TAB_INDEX}>
           {producerProjectSwitchPending ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
@@ -12911,20 +13022,26 @@ type RoleRoomProjectWorkspaceState = {
           ) : (
             <>
               {/* §5.3 ads-økonomi: faktisk annonsekostnad + 20 % påslag, budsjett-tak,
-                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til. */}
-              <Suspense fallback={null}>
-                <ClientEconomyPanel
-                  projectId={currentProject.id}
-                  userRole={isClientReviewerMode ? 'client_reviewer' : 'content_producer'}
-                />
-              </Suspense>
-              {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
-              {!isClientReviewerMode && (
-                <Box sx={{ mb: 2 }}>
+                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til.
+                  KUN for innholdsprodusent-modus eller klient-review (per Daniels krav:
+                  produksjonsteam-økonomi handler om budsjett-pakker, ikke ads-fakturering). */}
+              {(isContentProducerMode || isClientReviewerMode) && (
+                <>
                   <Suspense fallback={null}>
-                    <AdsManagementPanel projectId={currentProject.id} />
+                    <ClientEconomyPanel
+                      projectId={currentProject.id}
+                      userRole={isClientReviewerMode ? 'client_reviewer' : 'content_producer'}
+                    />
                   </Suspense>
-                </Box>
+                  {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
+                  {!isClientReviewerMode && (
+                    <Box sx={{ mb: 2 }}>
+                      <Suspense fallback={null}>
+                        <AdsManagementPanel projectId={currentProject.id} />
+                      </Suspense>
+                    </Box>
+                  )}
+                </>
               )}
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
@@ -12939,8 +13056,14 @@ type RoleRoomProjectWorkspaceState = {
               canSendBudgetReview={canSendBudgetReview}
               productionMode={plannerAudience}
               onProjectUpdated={async (updatedProject) => {
-                setCurrentProject(updatedProject);
-                await loadProjects();
+                // Bare oppdater hvis vi får gyldig prosjekt-objekt — ellers
+                // beholder vi nåværende state. Tidligere kalt loadProjects()
+                // som med "ingen auto-create"-fix kan returnere tom liste
+                // for et øyeblikk og sette currentProject=null → hele
+                // prosjektet "lukket seg" etter "Lagre totalramme"-klikk.
+                if (updatedProject && updatedProject.id) {
+                  setCurrentProject(updatedProject);
+                }
               }}
               onOpenTeam={!isContentProducerMode && !isClientReviewerMode ? () => {
                 navigateToTab(TEAM_TAB_INDEX);
@@ -12998,8 +13121,14 @@ type RoleRoomProjectWorkspaceState = {
               entityOptions={producerWorkflowEntityOptions}
               ownerOptions={producerWorkflowOwnerOptions}
               onProjectUpdated={async (updatedProject) => {
-                setCurrentProject(updatedProject);
-                await loadProjects();
+                // Bare oppdater hvis vi får gyldig prosjekt-objekt — ellers
+                // beholder vi nåværende state. Tidligere kalt loadProjects()
+                // som med "ingen auto-create"-fix kan returnere tom liste
+                // for et øyeblikk og sette currentProject=null → hele
+                // prosjektet "lukket seg" etter "Lagre totalramme"-klikk.
+                if (updatedProject && updatedProject.id) {
+                  setCurrentProject(updatedProject);
+                }
               }}
               onOpenReviews={isContentProducerMode || isClientReviewerMode ? (focus) => {
                 navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX, focus);
@@ -16692,26 +16821,40 @@ type RoleRoomProjectWorkspaceState = {
 	                        } catch (error) {
 	                            logRoleRoomDiagnostic('project-save:failed', {
 	                              source: 'casting-planner',
-	                              projectId: completeProject.id,
+	                              projectId: normalizedProjectId,
 	                              message: error instanceof Error ? error.message : String(error),
 	                            });
 	                        }
                           
                           // Invalidate query cache to force refresh
                           queryClient.invalidateQueries({ queryKey: ['/api/casting/projects'] });
-                          
-                          // Set the newly created project as current immediately
-                          // This ensures all child components (roles, candidates, locations, shots, etc.) use the same project ID
-                          setCurrentProject(projectWithCrew);
-                          
+
+                          // For TROLL-demo (og andre seed-baserte prosjekter) inneholder
+                          // projectData fra modalen kun {id, name, projectType, description} —
+                          // sub-arrays er tomme. Hent fullt prosjekt fra DB FØR vi setter
+                          // currentProject, slik at dashboardet ser 8 roller/8 kandidater
+                          // umiddelbart, ikke 0/0/0/0 frem til neste loadProjects-cycle.
+                          try {
+                            const fullProject = await castingService.getProject(normalizedProjectId);
+                            if (fullProject) {
+                              setCurrentProject({
+                                ...fullProject,
+                                crew: fullProject.crew || [],
+                              } as CastingProject);
+                            } else {
+                              // Fallback hvis prosjektet ennå ikke er lesbart (race)
+                              setCurrentProject(projectWithCrew);
+                            }
+                          } catch {
+                            setCurrentProject(projectWithCrew);
+                          }
+
                           // Reload projects list in the background to update the list
                           try {
                             const loadedProjects = filterProjectsForSession(await castingService.getProjects());
                             setProjects(loadedProjects);
-                            // Ensure the new project is still set as current (in case reload changed something)
                             const foundProject = loadedProjects.find((project) => project.id === normalizedProjectId);
                             if (foundProject) {
-                              // Ensure crew is initialized
                               const projectWithCrewFromDb = {
                                 ...foundProject,
                                 crew: foundProject.crew || [],

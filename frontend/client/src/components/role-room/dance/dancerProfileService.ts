@@ -6,6 +6,8 @@
  * proxyen i dev og samme-origin i prod gjør jobben.
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 // ─── Re-eksporterbare enum-typer (samme verdier som dancerProfile.ts) ───
 
 export type DanceStyle =
@@ -86,13 +88,14 @@ export async function listDancerProfiles(projectId?: string): Promise<DancerProf
   const url = typeof projectId === 'string' && projectId.length > 0
     ? `${BASE}?projectId=${encodeURIComponent(projectId)}`
     : BASE;
-  const res = await fetch(url, { credentials: 'include' });
+  const res = await fetch(url, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: DancerProfile[] }>(res);
   return body.data;
 }
 
 export async function getDancerProfile(dancerId: string): Promise<DancerProfile | null> {
   const res = await fetch(`${BASE}/${encodeURIComponent(dancerId)}`, {
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (res.status === 404) return null;
@@ -106,7 +109,7 @@ export async function upsertDancerProfile(
 ): Promise<DancerProfile> {
   const res = await fetch(`${BASE}/${encodeURIComponent(dancerId)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(extras),
   });
@@ -117,6 +120,7 @@ export async function upsertDancerProfile(
 export async function deleteDancerProfile(dancerId: string): Promise<void> {
   const res = await fetch(`${BASE}/${encodeURIComponent(dancerId)}`, {
     method: 'DELETE',
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {

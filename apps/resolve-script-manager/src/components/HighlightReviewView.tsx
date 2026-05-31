@@ -351,8 +351,8 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
 
   if (!payload) {
     return (
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal" style={{ width: 400 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-backdrop anim-fade-in" onClick={onClose}>
+        <div className="modal anim-slide-up" style={{ width: 400 }} onClick={(e) => e.stopPropagation()}>
           {error ? <div style={{ color: "#ef4f6f" }}>{error}</div> : <div>Laster picks…</div>}
         </div>
       </div>
@@ -429,13 +429,16 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
           }}>{error}</div>
         )}
 
-        {/* Preload next 3 clip ranges in hidden players for faster bla (#202) */}
+        {/* Preload next clip range i hidden players for faster bla (#202).
+            Tidligere preload="auto" på 3 videoer kunne låse renderer på
+            store source-filer (60GB+). Bruker nå metadata-only på de neste
+            2 picks — buffer fylles uansett når bruker faktisk klikker. */}
         <div style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}>
-          {[1, 2, 3].map((offset) => {
+          {[1, 2].map((offset) => {
             const next = visiblePicks[focusedIndex + offset];
             if (!next) return null;
             return (
-              <video key={`preload-${next.index}`} src={sourceSrc} preload="auto"
+              <video key={`preload-${next.index}`} src={sourceSrc} preload="metadata"
                      muted playsInline aria-hidden="true" />
             );
           })}

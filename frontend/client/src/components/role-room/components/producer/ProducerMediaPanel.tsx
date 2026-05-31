@@ -53,6 +53,7 @@ import {
   MoreHoriz as MoreHorizIcon,
   PhotoCameraOutlined as PhotoCameraOutlinedIcon,
   VideoCallOutlined as VideoCallOutlinedIcon,
+  RocketLaunchOutlined as RocketLaunchOutlinedIcon,
 } from '@mui/icons-material';
 import type {
   CastingProject,
@@ -175,6 +176,7 @@ import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
+import MarketingPlanWorkspace from './MarketingPlanWorkspace';
 import { useResearchProgress } from '../../hooks/useResearchProgress';
 import DataSourcesPanel from './DataSourcesPanel';
 import AccountProviderLogo from './AccountProviderLogo';
@@ -666,6 +668,7 @@ const PRODUCER_WORKSPACE_SURFACE_VALUES: ProducerWorkspaceSurfaceKey[] = [
   'accounts',
   'delivery',
   'meetings',
+  'marketing-plan',
 ];
 
 const isProducerWorkspaceSurfaceKey = (value: unknown): value is ProducerWorkspaceSurfaceKey => (
@@ -697,6 +700,9 @@ const getWorkspaceSurfaceIcon = (surface: ProducerWorkspaceSurfaceKey) => {
   }
   if (surface === 'meetings') {
     return <VideoCallOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
+  }
+  if (surface === 'marketing-plan') {
+    return <RocketLaunchOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
   }
   return <ArticleOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
 };
@@ -744,6 +750,11 @@ const getWorkspaceSurfaceDescription = (
     return isClientReviewerMode
       ? 'Agenda, klientsync, beslutninger og oppfølging i samme flate.'
       : 'Møteagenda, live-notater, beslutninger og oppfølging.';
+  }
+  if (surface === 'marketing-plan') {
+    return isClientReviewerMode
+      ? 'Markedsplan-dashboard med pillars, posts og fremdrift.'
+      : 'KPI-oversikt, pillars, post-kalender og redigering av markedsplanen.';
   }
   return isClientReviewerMode
     ? 'Mål, leveranser, målgruppe og timing for produsenten.'
@@ -1959,6 +1970,8 @@ export default function ProducerMediaPanel({
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [loadingRoleRoomAgentAccess, setLoadingRoleRoomAgentAccess] = useState(false);
   const [roleRoomAgentDialogOpen, setRoleRoomAgentDialogOpen] = useState(false);
+  const [roleRoomAgentDialogInitialTab, setRoleRoomAgentDialogInitialTab] =
+    useState<'research' | 'marketing-plan'>('research');
   const [roleRoomAgentGenerating, setRoleRoomAgentGenerating] = useState(false);
   const [roleRoomAgentApplying, setRoleRoomAgentApplying] = useState(false);
   const [roleRoomAgentResult, setRoleRoomAgentResult] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
@@ -14450,6 +14463,16 @@ export default function ProducerMediaPanel({
             </>
           ) : null}
 
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'marketing-plan' ? (
+            <MarketingPlanWorkspace
+              projectId={projectId}
+              onOpenAdvancedEditor={() => {
+                setRoleRoomAgentDialogInitialTab('marketing-plan');
+                setRoleRoomAgentDialogOpen(true);
+              }}
+            />
+          ) : null}
+
           {!showClientWorkspaceEmptyState && activeWorkspace === 'materials' ? (
             <>
               <Box
@@ -16412,6 +16435,7 @@ export default function ProducerMediaPanel({
         projectName={projectName}
         currentUserId={currentRoleRoomUserId || undefined}
         access={roleRoomAgentAccess}
+        initialTab={roleRoomAgentDialogInitialTab}
         initialWebsiteUrl={intakeDraft.referenceLinks || undefined}
         initialOrganizationNumber={project.clientOrganizationNumber || undefined}
         initialCompanyName={project.clientCompanyName || undefined}

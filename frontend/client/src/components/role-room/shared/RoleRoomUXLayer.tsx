@@ -47,8 +47,15 @@ interface RoleRoomUXLayerProps {
   customHeader?: React.ReactNode;
   /** Support-e-post som vises i help-popoveren */
   supportEmail?: string;
-  /** Lenke til changelog/release-notes */
+  /** Lenke til changelog/release-notes (fallback hvis whatsNewMode ikke er satt) */
   changelogUrl?: string;
+  /**
+   * Modus-slug for "Hva er nytt"-feed. Hvis satt henter HelpButton publiserte
+   * oppføringer fra /api/whats-new?mode=... og viser en badge for uleste.
+   */
+  whatsNewMode?: string;
+  /** Modal-tittel for "Hva er nytt" (når whatsNewMode er satt) */
+  whatsNewTitle?: string;
   children: React.ReactNode;
 }
 
@@ -62,6 +69,8 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
   customHeader,
   supportEmail = 'support@theroleroom.com',
   changelogUrl,
+  whatsNewMode,
+  whatsNewTitle,
   children,
 }) => {
   return (
@@ -108,7 +117,12 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
       {commands.length > 0 && <CommandPalette commands={commands} />}
 
       {!hideHelpButton && (
-        <HelpButton supportEmail={supportEmail} changelogUrl={changelogUrl} />
+        <HelpButton
+          supportEmail={supportEmail}
+          changelogUrl={changelogUrl}
+          mode={whatsNewMode}
+          whatsNewTitle={whatsNewTitle}
+        />
       )}
 
       {tourSteps && tourSteps.length > 0 && (

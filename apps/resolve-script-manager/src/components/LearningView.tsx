@@ -19,6 +19,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import LoopIcon from "@mui/icons-material/Loop";
+import BlockIcon from "@mui/icons-material/Block";
+import TimerIcon from "@mui/icons-material/Timer";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import HistoryIcon from "@mui/icons-material/History";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 interface ClipPreference {
   keeps?: number;
@@ -204,7 +211,11 @@ export function LearningView({ onClose }: Props) {
             {/* Most-kept + most-replaced side-by-side */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                           gap: 12, marginTop: 16 }}>
-              <Section title="🟢 Mest beholdt" subtitle="Systemet rangerte disse godt">
+              <Section
+                title={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <CheckCircleIcon sx={{ fontSize: 14, color: "#3fc77f" }} /> Mest beholdt
+                </span>}
+                subtitle="Systemet rangerte disse godt">
                 {mostKept.length === 0 ? <Empty/> :
                   mostKept.map((r) => (
                     <ClipRow key={r.path} path={r.path}
@@ -214,7 +225,11 @@ export function LearningView({ onClose }: Props) {
                   ))
                 }
               </Section>
-              <Section title="🔁 Mest erstattet" subtitle="Systemet trenger å lære disse">
+              <Section
+                title={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <LoopIcon sx={{ fontSize: 14, color: "#f0b030" }} /> Mest erstattet
+                </span>}
+                subtitle="Systemet trenger å lære disse">
                 {mostReplaced.length === 0 ? <Empty/> :
                   mostReplaced.map((r) => (
                     <ClipRow key={r.path} path={r.path}
@@ -228,7 +243,11 @@ export function LearningView({ onClose }: Props) {
 
             {/* Blacklist */}
             {blacklist.length > 0 && (
-              <Section title="⛔ Blacklist" subtitle="Filtrert ut av fremtidige auto-placements">
+              <Section
+                title={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <BlockIcon sx={{ fontSize: 14, color: "#ef4f6f" }} /> Blacklist
+                </span>}
+                subtitle="Filtrert ut av fremtidige auto-placements">
                 {blacklist.map((p) => (
                   <ClipRow key={p} path={p} primary="blocked" secondary=""
                            color="#ef4f6f" />
@@ -238,8 +257,11 @@ export function LearningView({ onClose }: Props) {
 
             {/* Duration deltas per bin */}
             {Object.keys(durationDeltas).length > 0 && (
-              <Section title="⏱ Lengde-justeringer per energi-bin"
-                       subtitle="Hvor mye lengre/kortere du gjør klippene enn auto-forslag">
+              <Section
+                title={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <TimerIcon sx={{ fontSize: 14 }} /> Lengde-justeringer per energi-bin
+                </span>}
+                subtitle="Hvor mye lengre/kortere du gjør klippene enn auto-forslag">
                 {Object.entries(durationDeltas).map(([bin, val]) => (
                   <div key={bin} style={statRow}>
                     <span style={{ width: 80, color: "#b8a8d8" }}>{bin}</span>
@@ -253,8 +275,11 @@ export function LearningView({ onClose }: Props) {
 
             {/* Recent reorder events */}
             {reorderEvents.length > 0 && (
-              <Section title="↔ Reorder-events (sist 10)"
-                       subtitle="Klipp du flyttet til en annen posisjon enn auto-forslaget">
+              <Section
+                title={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <SwapHorizIcon sx={{ fontSize: 14 }} /> Reorder-events (sist 10)
+                </span>}
+                subtitle="Klipp du flyttet til en annen posisjon enn auto-forslaget">
                 {reorderEvents.map((ev, i) => (
                   <ClipRow key={i} path={ev.clipPath}
                            primary={`pos ${ev.autoIndex} → ${ev.userIndex}`}
@@ -266,8 +291,11 @@ export function LearningView({ onClose }: Props) {
 
             {/* Recent sessions */}
             {selectedProject === "__global" && data.recentSessions.length > 0 && (
-              <Section title="📋 Siste læringsøkter"
-                       subtitle="Klikk for å åpne markdown-rapport">
+              <Section
+                title={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <HistoryIcon sx={{ fontSize: 14 }} /> Siste læringsøkter
+                </span>}
+                subtitle="Klikk for å åpne markdown-rapport">
                 {data.recentSessions.map((s) => (
                   <div key={s._filename} style={statRow}
                        onClick={() => {
@@ -286,8 +314,10 @@ export function LearningView({ onClose }: Props) {
                         {formatSec(s.savedAt)}
                       </div>
                     </div>
-                    <div style={{ fontSize: 11, color: "#b8a8d8" }}>
-                      ✓{s.kept ?? 0} 🔁{s.replaced ?? 0} 🗑{s.removed ?? 0}
+                    <div style={{ fontSize: 11, color: "#b8a8d8", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <CheckCircleIcon sx={{ fontSize: 12, color: "#3fc77f" }} />{s.kept ?? 0}
+                      <LoopIcon sx={{ fontSize: 12, color: "#f0b030" }} />{s.replaced ?? 0}
+                      <DeleteIcon sx={{ fontSize: 12, color: "#ef4f6f" }} />{s.removed ?? 0}
                     </div>
                   </div>
                 ))}
@@ -318,7 +348,7 @@ function Stat({ title, value, accent }: { title: string; value: number; accent?:
 }
 
 function Section({ title, subtitle, children }: {
-  title: string; subtitle?: string; children: React.ReactNode;
+  title: React.ReactNode; subtitle?: string; children: React.ReactNode;
 }) {
   return (
     <div style={{ marginTop: 16 }}>

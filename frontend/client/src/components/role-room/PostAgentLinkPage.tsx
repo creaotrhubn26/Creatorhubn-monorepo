@@ -111,7 +111,34 @@ export default function PostAgentLinkPage(): JSX.Element {
               fontWeight: 500,
             }}
           >
-            Paret. Gå tilbake til Post Agent — den fullfører oppsettet automatisk innen et par sekunder.
+            <div style={{ marginBottom: 12 }}>
+              Paret. Post Agent fullfører oppsettet automatisk innen et par sekunder.
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                // postagent:// URL-protokoll registreres av Tauri-appen
+                // (tauri-plugin-deep-link) fra Post Agent v0.2.4+. OS
+                // ruter klikket til appen som brings vinduet til front.
+                window.location.href = 'postagent://focus';
+              }}
+              style={{
+                width: '100%',
+                background: '#4ad48a',
+                color: '#0a0518',
+                border: 'none',
+                borderRadius: 8,
+                padding: '12px 16px',
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              Åpne Post Agent
+            </button>
+            <div style={{ fontSize: 12, color: 'rgba(74,212,138,0.7)', marginTop: 8 }}>
+              Krever Post Agent v0.2.4+ installert. Eldre versjoner: bytt til appen manuelt — den henter pairing automatisk.
+            </div>
           </div>
         ) : status === 'unauthorized' ? (
           <div>

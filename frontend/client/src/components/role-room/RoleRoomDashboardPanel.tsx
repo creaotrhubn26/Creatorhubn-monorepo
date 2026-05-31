@@ -29,7 +29,12 @@ import {
 import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
+import ProjectTabAccessDialog from './components/ProjectTabAccessDialog';
+import ProjectMembersDialog from './components/ProjectMembersDialog';
+import { roleRoomProjectTabConfigService } from './services/roleRoomProjectTabConfigService';
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
+import RoleRoomOnboardingDialog from './components/RoleRoomOnboardingDialog';
+import { roleRoomMemberProfileService } from './services/roleRoomMemberProfileService';
 import RoleRoomMobileBriefWizard from './components/mobile-brief/RoleRoomMobileBriefWizard';
 import RoleRoomMobilePlannerView from './components/mobile-planner/RoleRoomMobilePlannerView';
 import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRoomMobileShootingDayView';
@@ -88,6 +93,7 @@ import {
   Sync as SyncIcon,
   Person as PersonIcon,
   Group as GroupIcon,
+  Tune as TuneIcon,
   Movie as MovieIcon,
   CalendarMonth as CalendarIcon,
   TheaterComedy as TheaterIcon,
@@ -308,6 +314,30 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const useTabRail = viewport.mode === 'tabletLandscape';
   const auth = useAuth();
 
+  // Onboarding: sjekk om bruker må fullføre profil
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingMinimized, setOnboardingMinimized] = useState(false);
+  const [memberProfileImageUrl, setMemberProfileImageUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!auth.user?.id) return;
+    if (onboardingMinimized) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [status, profile] = await Promise.all([
+          roleRoomMemberProfileService.getOnboardingStatus(),
+          roleRoomMemberProfileService.getMyProfile().catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (status.requiresOnboarding) setOnboardingOpen(true);
+        if (profile?.profileImageUrl) setMemberProfileImageUrl(profile.profileImageUrl);
+      } catch (err) {
+        console.warn('Onboarding status check failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [auth.user?.id, onboardingMinimized, onboardingOpen]);
+
   // Sentralt tab-katalog. Brukes av top-Tabs, side-rail og bottom-nav slik
   // at admin-konfigen virker likt på tvers av viewports.
   const TAB_DEFS: Record<SubTabValue, { label: string; Icon: any; highlight?: boolean }> = {
@@ -426,7 +456,36 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   // Effektiv tab-rekkefølge for innlogget bruker (server-konfig + fallback til defaults).
   // Påvirker top-Tabs, iPad side-rail og telefon-bottom-nav likt.
   const userPrimaryRole = currentUserProjectRoles[0]?.role ?? null;
-  const effectiveTabs = useEffectiveTabsForRole(userPrimaryRole);
+  const platformEffectiveTabs = useEffectiveTabsForRole(userPrimaryRole);
+
+  // Project-spesifikk overstyring: team-leder kan styre hvilke tabs viewer
+  // ser på dette prosjektet. Hvis tabValues=null → bruk platform-defaults.
+  const [projectTabOverride, setProjectTabOverride] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!selectedProjectId) { setProjectTabOverride(null); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/role-room/projects/${encodeURIComponent(selectedProjectId)}/my-tabs`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) return;
+        const data = await res.json() as { tabValues: string[] | null };
+        if (!cancelled) setProjectTabOverride(data.tabValues ?? null);
+      } catch { /* fallback til defaults */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedProjectId]);
+
+  const effectiveTabs = useMemo(() => {
+    if (projectTabOverride && projectTabOverride.length > 0) {
+      return projectTabOverride.filter((t): t is SubTabValue =>
+        platformEffectiveTabs.includes(t as SubTabValue) || true,
+      ) as SubTabValue[];
+    }
+    return platformEffectiveTabs;
+  }, [projectTabOverride, platformEffectiveTabs]);
 
   const canUsePublishing = useMemo(() => {
     const publishingRoles: UserRole['role'][] = [
@@ -657,7 +716,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
               }}
             >
-              {profileInitials ? (
+              {memberProfileImageUrl ? (
+                <Avatar src={memberProfileImageUrl} sx={{ width: 28, height: 28 }} />
+              ) : profileInitials ? (
                 <Avatar sx={{ width: 28, height: 28, bgcolor: 'transparent', fontSize: '0.78rem', fontWeight: 700, color: '#fff' }}>
                   {profileInitials}
                 </Avatar>
@@ -712,6 +773,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             inboxUnreadCount={inboxUnreadCount ?? 0}
             onOpenProfile={handleOpenProfile}
             profileInitials={profileInitials}
+            profileImageUrl={memberProfileImageUrl}
           />
           <RoleRoomProjectSwitcher
             open={switcherOpen}
@@ -809,7 +871,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               sx={{ ml: 0.5 }}
               aria-label="Åpne profil"
             >
-              {profileInitials ? (
+              {memberProfileImageUrl ? (
+                <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }} />
+              ) : profileInitials ? (
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#6366f1', fontSize: '0.85rem', fontWeight: 700 }}>
                   {profileInitials}
                 </Avatar>
@@ -1113,6 +1177,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     crew={crew ?? []}
                     loading={crewLoading}
                     onAdd={addCrewMut}
+                    isProjectLeader={!!selectedProject?.createdBy && selectedProject.createdBy === auth.user?.id}
                   />
                 )}
                 {subTab === 'schedule' && (
@@ -1312,6 +1377,16 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           />
         );
       })()}
+
+      {/* First-time onboarding-flow for ALL Role Room-members */}
+      <RoleRoomOnboardingDialog
+        open={onboardingOpen}
+        onComplete={() => setOnboardingOpen(false)}
+        onMinimize={() => {
+          setOnboardingOpen(false);
+          setOnboardingMinimized(true);
+        }}
+      />
     </Box>
   );
 };
@@ -1629,16 +1704,35 @@ function CrewSubPanel({
   crew,
   loading,
   onAdd,
+  isProjectLeader,
 }: {
   projectId: string;
   crew: CrewMember[];
   loading: boolean;
   onAdd: ReturnType<typeof useAddCrewMember>;
+  isProjectLeader?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
+  const [tabAccessOpen, setTabAccessOpen] = useState(false);
+  const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
+  const [seatUpgrading, setSeatUpgrading] = useState(false);
+  const [seatUpgradeError, setSeatUpgradeError] = useState<string | null>(null);
+  const [membersOpen, setMembersOpen] = useState(false);
   const qc = useQueryClient();
+
+  // Seat-status: hvor mange seats er brukt vs. inkludert i abonnementet.
+  // Kun leder kalle endpoint (det returnerer 403 til vanlige medlemmer for
+  // å unngå info-leak om billing-state) — enabled-flagget unngår 403-støy.
+  const seatStatusQuery = useQuery({
+    queryKey: ['role-room-seat-status', projectId],
+    queryFn: () => roleRoomProjectTabConfigService.getSeatStatus(projectId),
+    enabled: !!projectId && !!isProjectLeader,
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const seatStatus = seatStatusQuery.data;
 
   // Seats granted on this project, keyed by user email (for matching crew rows by email)
   const seatsQuery = useQuery<{ seats: Array<{ userId: string; email?: string; isActive?: boolean }> }>({
@@ -1740,14 +1834,149 @@ function CrewSubPanel({
 
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="subtitle2" fontWeight={600}>
           Crew ({crew.length})
         </Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
-          Legg til
-        </Button>
+        <Stack direction="row" spacing={1}>
+          {isProjectLeader && (
+            <Button size="small" startIcon={<GroupIcon />} onClick={() => setMembersOpen(true)}
+                    sx={{ color: '#6d28d9' }}>
+              Medlemmer
+            </Button>
+          )}
+          {isProjectLeader && (
+            <Button size="small" startIcon={<TuneIcon />} onClick={() => setTabAccessOpen(true)}
+                    sx={{ color: '#6d28d9' }}>
+              Tab-tilganger
+            </Button>
+          )}
+          <Button size="small" startIcon={<AddIcon />}
+                  disabled={isProjectLeader
+                    && seatStatus?.subscriptionHealth?.status !== undefined
+                    && seatStatus.subscriptionHealth.status !== 'none'
+                    && !seatStatus.subscriptionHealth.canMutateSeats}
+                  title={
+                    isProjectLeader
+                      && seatStatus?.subscriptionHealth?.status !== undefined
+                      && seatStatus.subscriptionHealth.status !== 'none'
+                      && !seatStatus.subscriptionHealth.canMutateSeats
+                        ? seatStatus.subscriptionHealth.message
+                        : undefined
+                  }
+                  onClick={() => {
+                    if (isProjectLeader && seatStatus?.nextSeatNeedsBilling) {
+                      setSeatConfirmOpen(true);
+                    } else {
+                      setOpen(true);
+                    }
+                  }}>
+            Legg til
+          </Button>
+        </Stack>
       </Box>
+
+      {/* Subscription-health-varsel: hvis past_due/canceled/paused — vis
+          tydelig over seat-banneret slik at leder forstår hvorfor knapper
+          er disabled */}
+      {isProjectLeader && seatStatus?.subscriptionHealth
+        && !seatStatus.subscriptionHealth.canMutateSeats
+        && seatStatus.subscriptionHealth.status !== 'none' && (
+        <Alert severity="error" variant="filled" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            Abonnementet trenger oppmerksomhet
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block' }}>
+            {seatStatus.subscriptionHealth.message}
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Seat-status: leder ser hvor mange seats abonnementet dekker.
+          Vises kun for leder for å unngå støy for crew-medlemmer. */}
+      {isProjectLeader && seatStatus && seatStatus.hasActiveSubscription && (
+        <Alert
+          severity={seatStatus.extraSeats > 0 ? 'warning' : seatStatus.nextSeatNeedsBilling ? 'info' : 'success'}
+          variant="outlined"
+          sx={{ mb: 2 }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {seatStatus.usedSeats} av {seatStatus.includedSeats} seats brukt
+            {seatStatus.extraSeats > 0 && ` (+${seatStatus.extraSeats} ekstra)`}
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block' }}>
+            {seatStatus.extraSeats > 0
+              ? `Du betaler ${seatStatus.extraCostPerMonth} kr/mnd ekstra for seats utover de ${seatStatus.includedSeats} inkluderte.`
+              : seatStatus.nextSeatNeedsBilling
+                ? `Neste seat koster ${seatStatus.nextSeatCost} kr/mnd ekstra.`
+                : `Du har ${seatStatus.includedSeats - seatStatus.usedSeats} ledige seats igjen på abonnementet.`}
+          </Typography>
+        </Alert>
+      )}
+
+      {isProjectLeader && tabAccessOpen && (
+        <ProjectTabAccessDialog
+          open={tabAccessOpen}
+          onClose={() => setTabAccessOpen(false)}
+          projectId={projectId}
+        />
+      )}
+
+      {isProjectLeader && membersOpen && (
+        <ProjectMembersDialog
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+          projectId={projectId}
+          onMembershipChanged={() => {
+            qc.invalidateQueries({ queryKey: ['role-room-seat-status', projectId] });
+          }}
+        />
+      )}
+
+      {isProjectLeader && seatConfirmOpen && seatStatus && (
+        <Dialog open={seatConfirmOpen} onClose={() => !seatUpgrading && setSeatConfirmOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Ekstra seat — bekreft</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ mb: 1.5 }}>
+              Du har brukt {seatStatus.usedSeats} av {seatStatus.includedSeats} seats inkludert i
+              abonnementet ditt. Hvis du legger til en til vil det koste{' '}
+              <strong>{seatStatus.nextSeatCost} kr/mnd</strong> ekstra (ex. mva.).
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Når du bekrefter blir Stripe-abonnementet oppdatert til ny seat-count
+              og beløpet legges proporsjonalt på neste faktura. Du kan fjerne
+              seats senere ved å fjerne medlemmer.
+            </Typography>
+            {seatUpgradeError && (
+              <Alert severity="error" sx={{ mt: 2 }} onClose={() => setSeatUpgradeError(null)}>
+                {seatUpgradeError}
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSeatConfirmOpen(false)} disabled={seatUpgrading}>Avbryt</Button>
+            <Button variant="contained"
+                    disabled={seatUpgrading}
+                    onClick={async () => {
+                      setSeatUpgrading(true);
+                      setSeatUpgradeError(null);
+                      try {
+                        await roleRoomProjectTabConfigService.upgradeSeat(projectId);
+                        // Suksess: lukk confirm-dialogen, oppdater seat-status, åpne add-crew
+                        await qc.invalidateQueries({ queryKey: ['role-room-seat-status', projectId] });
+                        setSeatConfirmOpen(false);
+                        setOpen(true);
+                      } catch (err) {
+                        setSeatUpgradeError(err instanceof Error ? err.message : String(err));
+                      } finally {
+                        setSeatUpgrading(false);
+                      }
+                    }}>
+              {seatUpgrading ? 'Oppgraderer…' : 'Bekreft + kjøp seat'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       {/* Post Agent must be activated for the project first (via marketplace
           — that's where pricing is shown + accepted). Once 1+ seats exist,

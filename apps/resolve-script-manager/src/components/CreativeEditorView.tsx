@@ -31,13 +31,51 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { executeScript } from "../api";
+import { executeScript, onScriptEvent } from "../api";
+import type { ScriptEvent } from "../types";
+import { MusicSearchModal } from "./MusicSearchModal";
+import { ClaudeMusicSuggestionsModal } from "./ClaudeMusicSuggestionsModal";
+import { AutoPilotPanel } from "./AutoPilotPanel";
+import { StudioVsFreeDialog, useStudioVsFreeAutoShow } from "./StudioVsFreeDialog";
+import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
+import type { UpcomingJob } from "../services/upcomingJobsService";
+import { ThumbnailCreator } from "./ThumbnailCreator";
+import { PhotoshopAgentDialog } from "./PhotoshopAgentDialog";
+import BrushIcon from "@mui/icons-material/Brush";
+import CoffeeIcon from "@mui/icons-material/Coffee";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import MovieIcon from "@mui/icons-material/Movie";
+import ChurchIcon from "@mui/icons-material/Church";
+import CelebrationIcon from "@mui/icons-material/Celebration";
+import DiamondIcon from "@mui/icons-material/Diamond";
+import StarIcon from "@mui/icons-material/Star";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import LocalBarIcon from "@mui/icons-material/LocalBar";
+import PaletteIcon from "@mui/icons-material/Palette";
+import FaceRetouchingNaturalIcon from "@mui/icons-material/FaceRetouchingNatural";
+import LocalFloristIcon from "@mui/icons-material/LocalFlorist";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import MicIcon from "@mui/icons-material/Mic";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import FamilyRestroomIcon from "@mui/icons-material/FamilyRestroom";
+import BoltIcon from "@mui/icons-material/Bolt";
+import ContentCutIcon from "@mui/icons-material/ContentCut";
+import SettingsIcon from "@mui/icons-material/Settings";
+import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
+import CropIcon from "@mui/icons-material/Crop";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import RemoveRedEyeIcon from "@mui/icons-material/RemoveRedEye";
+import type { SvgIconComponent } from "@mui/icons-material";
+import { useContinuousPreview } from "../hooks/useContinuousPreview";
+import { useResolveSync } from "../hooks/useResolveSync";
+import { useCreatorProfile } from "../hooks/useCreatorProfile";
 import {
   IconPlay,
   IconMusic,
   IconSparkle,
   IconCheck,
   IconChevronLeft,
+  IconClaude,
 } from "./Icons";
 import "./CreativeEditorView.css";
 
@@ -77,21 +115,21 @@ interface MusicAdvisor {
 }
 
 // ─────────────── chapter → segment-display mapping ───────────────
-const CHAPTER_DISPLAY: Record<string, { label: string; emoji: string }> = {
-  forberedelser: { label: "Forberedelser", emoji: "💄" },
-  mehndi:        { label: "Mehndi",        emoji: "🌸" },
-  haldi:         { label: "Haldi",         emoji: "🌼" },
-  sangeet:       { label: "Sangeet",       emoji: "🎵" },
-  nikkah:        { label: "Vielse",        emoji: "💒" },
-  ceremony:      { label: "Vielse",        emoji: "💒" },
-  vows:          { label: "Vielse",        emoji: "💒" },
-  reception:     { label: "Reception",     emoji: "🥂" },
-  walima:        { label: "Walima",        emoji: "🥂" },
-  dance:         { label: "Dans",          emoji: "💃" },
-  speeches:      { label: "Taler",         emoji: "🎤" },
-  portraits:     { label: "Portretter",    emoji: "📸" },
-  family:        { label: "Familie",       emoji: "👨‍👩‍👧" },
-  details:       { label: "Detaljer",      emoji: "💍" },
+const CHAPTER_DISPLAY: Record<string, { label: string; Icon: SvgIconComponent }> = {
+  forberedelser: { label: "Forberedelser", Icon: FaceRetouchingNaturalIcon },
+  mehndi:        { label: "Mehndi",        Icon: LocalFloristIcon },
+  haldi:         { label: "Haldi",         Icon: LocalFloristIcon },
+  sangeet:       { label: "Sangeet",       Icon: MusicNoteIcon },
+  nikkah:        { label: "Vielse",        Icon: ChurchIcon },
+  ceremony:      { label: "Vielse",        Icon: ChurchIcon },
+  vows:          { label: "Vielse",        Icon: ChurchIcon },
+  reception:     { label: "Reception",     Icon: LocalBarIcon },
+  walima:        { label: "Walima",        Icon: LocalBarIcon },
+  dance:         { label: "Dans",          Icon: CelebrationIcon },
+  speeches:      { label: "Taler",         Icon: MicIcon },
+  portraits:     { label: "Portretter",    Icon: PhotoCameraIcon },
+  family:        { label: "Familie",       Icon: FamilyRestroomIcon },
+  details:       { label: "Detaljer",      Icon: DiamondIcon },
 };
 
 // ─────────────── Historiebalanse weighting from signals ───────────────
@@ -142,7 +180,7 @@ function computeHistorybalance(picks: Pick[]) {
 function groupBySegments(picks: Pick[]) {
   const groups: Array<{
     chapter: string;
-    display: { label: string; emoji: string };
+    display: { label: string; Icon: SvgIconComponent };
     picks: Pick[];
     startSec: number;
     endSec: number;
@@ -158,7 +196,7 @@ function groupBySegments(picks: Pick[]) {
     } else {
       groups.push({
         chapter: ch,
-        display: CHAPTER_DISPLAY[ch] ?? { label: ch, emoji: "🎬" },
+        display: CHAPTER_DISPLAY[ch] ?? { label: ch, Icon: MovieIcon },
         picks: [p],
         startSec: p.startSec,
         endSec: p.endSec,
@@ -243,11 +281,13 @@ function safeQuery(s: string): string {
   return s.replace(/[^\w\s-]/g, "").trim().slice(0, 80);
 }
 
-const SONGS_DIR = "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/source_songs";
-function songWavPath(title?: string, artist?: string): string | undefined {
-  if (!title) return undefined;
+// Songs-dir derives fra Tauri's app_data_dir RUNTIME (ikke hardkodet —
+// må fungere på andre brukere enn utvikleren). Settes via useEffect i
+// komponenten på mount.
+function buildSongWavPath(songsDir: string | null, title?: string, artist?: string): string | undefined {
+  if (!title || !songsDir) return undefined;
   const q = safeQuery(`${title} ${artist ?? ""}`);
-  return `${SONGS_DIR}/${q}.wav`;
+  return `${songsDir}/${q}.wav`;
 }
 
 // ─────────────── Component ───────────────
@@ -264,7 +304,31 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [loadError, setLoadError] = useState<string | null>(null);
   const [projectTitle, setProjectTitle] = useState<string>("");
   const [editingTitle, setEditingTitle] = useState(false);
+  // Songs-dir: Tauri's app_data_dir + /source_songs. Lastet ved mount.
+  const [songsDir, setSongsDir] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { getAppDataDir } = await import("../api");
+        const base = await getAppDataDir();
+        if (!cancelled) setSongsDir(`${base.replace(/\/$/, "")}/source_songs`);
+      } catch {
+        // Fallback: ingen songs-dir → waveform + music-flow vil graceful-degradere
+        if (!cancelled) setSongsDir(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  // Preview-høyde i px, justeres via drag-handle. Persisterer per session.
+  // Default 560 — gir Resolve-lignende viewer-prioritet uten å klemme klipp-strip.
+  const [previewHeight, setPreviewHeight] = useState<number>(() => {
+    try {
+      const v = parseInt(localStorage.getItem("trrpa.previewHeight") || "0", 10);
+      return v >= 200 && v <= 1200 ? v : 560;
+    } catch { return 560; }
+  });
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
 
   // Export dropdown — leveranse-varianter + Resolve/EDL/FCPXML-eksport
@@ -278,9 +342,9 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [lookMenuOpen, setLookMenuOpen] = useState(false);
 
   // Brightness / exposure adjustment (uavhengig av LUT)
-  const [brightnessAdjust, _setBrightnessAdjust] = useState<number>(0);  // -50 til +50
-  // setBrightnessAdjust er reservert for UI-slider som kommer i neste iterasjon
-  void _setBrightnessAdjust;
+  const [brightnessAdjust, setBrightnessAdjust] = useState<number>(0);  // -50 til +50
+  const [adjustPanelOpen, setAdjustPanelOpen] = useState(false);
+  const [stabilizingPick, setStabilizingPick] = useState(false);
 
   // Audio Agent smart-actions — wire eksisterende audio-scripts
   type AudioAction = "isolate_vocals" | "duck_music" | "transcribe" | "normalize_loudness";
@@ -301,6 +365,20 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   } | null>(null);
   const [activeSongIdx, setActiveSongIdx] = useState(0);
   const [songMenuOpen, setSongMenuOpen] = useState(false);
+  // Music-overrides: bruker korrigerer Shazam-feilidentifikasjoner
+  // (f.eks. religiøse kirtan som ikke finnes i Shazams database).
+  // Key = `${originalTitle}|${originalArtist}`, value = { title, artist, note }
+  const [musicOverrides, setMusicOverrides] = useState<Record<string, { title: string; artist: string; note?: string; downloadedPath?: string; youtubeUrl?: string }>>({});
+  const [editingSongKey, setEditingSongKey] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editArtist, setEditArtist] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editYoutubeUrl, setEditYoutubeUrl] = useState("");
+  const [editYtBusy, setEditYtBusy] = useState(false);
+  const [editYtPct, setEditYtPct] = useState(0);
+  const [editYtMsg, setEditYtMsg] = useState("");
+  const [editYtError, setEditYtError] = useState<string | null>(null);
+  const [editDownloadedPath, setEditDownloadedPath] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"rediger" | "story">("rediger");
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
 
@@ -313,9 +391,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [previewMuted, setPreviewMuted] = useState(false);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const [playRate, setPlayRate] = useState(1);
   // Loop within focused pick (default) vs play full source continuously
   const [loopMode, setLoopMode] = useState<"pick" | "full">("pick");
+
+  // Photoshop Agent — modal-dialog state
+  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
 
   // Claude chat state — separate history per agent
   type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -382,6 +465,25 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     pickOverrides: Record<number, { startSec?: number; endSec?: number }>;
     activePickOrder: number[] | null;
   };
+  const snapshotsEqual = (a: EditorSnapshot, b: EditorSnapshot): boolean => {
+    if (a.includedChapters.length !== b.includedChapters.length) return false;
+    if (a.includedChapters.some((c, i) => c !== b.includedChapters[i])) return false;
+    const ak = Object.keys(a.pickOverrides);
+    const bk = Object.keys(b.pickOverrides);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) {
+      const av = a.pickOverrides[Number(k)];
+      const bv = b.pickOverrides[Number(k)];
+      if (!bv) return false;
+      if (av.startSec !== bv.startSec || av.endSec !== bv.endSec) return false;
+    }
+    const ao = a.activePickOrder;
+    const bo = b.activePickOrder;
+    if (ao == null && bo == null) return true;
+    if (ao == null || bo == null) return false;
+    if (ao.length !== bo.length) return false;
+    return ao.every((n, i) => n === bo[i]);
+  };
   const historyRef = useRef<{ snapshots: EditorSnapshot[]; idx: number; restoringFromHistory: boolean }>({
     snapshots: [],
     idx: -1,
@@ -425,6 +527,8 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     quality: "pending" | "running" | "done" | "skip";
     flow: "pending" | "running" | "done" | "skip";
   }>({ music: "pending", quality: "pending", flow: "pending" });
+  // Auto-marker flow som ferdig så snart musicFlow blir tilgjengelig
+  // (kjøres ifht song-change av en annen effect)
 
   // Log-gamma detection (auto-LUT-forslag)
   const [logGammaInfo, setLogGammaInfo] = useState<{
@@ -439,7 +543,14 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   type CustomAudio = { id: string; path: string; name: string; startSec: number; volume: number };
   const [customAudios, setCustomAudios] = useState<CustomAudio[]>([]);
 
-  type TimelineMarker = { id: string; timeSec: number; label: string; color: string; comment: string };
+  // timeSec = source-video tid (for å kunne seek tilbake)
+  // pickIndex + offsetInPickSec = posisjon på highlight-timeline (overlever
+  // reorder/trim). Tidligere bug: kun timeSec ble lagret → markører kunne ikke
+  // konsistent plasseres på highlight-timelinen siden den har egne koordinater.
+  type TimelineMarker = {
+    id: string; timeSec: number; label: string; color: string; comment: string;
+    pickIndex?: number; offsetInPickSec?: number;
+  };
   const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
 
@@ -548,17 +659,26 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
       } catch (e) {
         console.warn("Could not save creative-editor state:", e);
       }
-    }, 500);
+      // Debounce økt til 1500ms (var 500ms) for å unngå at typing i
+      // clientWishes-feltet stringifies + writer 10kB JSON × 4-5 ganger
+      // per sekund. Save fortsatt rask nok til at restart-bevaring funker.
+    }, 1500);
     return () => clearTimeout(handle);
   }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks]);
 
+  // Counter trigger advisor-refresh — bumpes etter scan-jobber så
+  // useEffecten re-fetcher freshe data fra disk.
+  const [advisorReloadKey, setAdvisorReloadKey] = useState(0);
   useEffect(() => {
     if (!advisorPath) return;
-    fetch(convertFileSrc(advisorPath))
+    let cancelled = false;
+    // Cache-bust path med reload-key så samme advisorPath kan refetches.
+    fetch(convertFileSrc(advisorPath) + `?v=${advisorReloadKey}`)
       .then((r) => r.json())
-      .then((d) => setAdvisor(d))
+      .then((d) => { if (!cancelled) setAdvisor(d); })
       .catch(() => { /* advisor is optional */ });
-  }, [advisorPath]);
+    return () => { cancelled = true; };
+  }, [advisorPath, advisorReloadKey]);
 
   // ─── Derived state ───
   const allPicks = useMemo(() => payload ? [...payload.picks, ...extraPicks] : [], [payload, extraPicks]);
@@ -607,13 +727,126 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   }, [payload, includedChapters, activePickOrder, pickOverrides, allPicks, extraPicks.length, segmentOrder]);
   const balance = useMemo(() => computeHistorybalance(filteredPicks), [filteredPicks]);
   const totalDuration = useMemo(() => filteredPicks.reduce((s, p) => s + p.durationSec, 0), [filteredPicks]);
-  const songs = advisor?.uniqueSongs ?? [];
+
+  // Claude AI-forslag-modal — gir scene-spesifikke musikk-stiler basert
+  // på chapter (vows, first_dance, nikkah, ...). Bruker samme proxy som
+  // Post Agent (anthropic_proxy via /api/post-agent/anthropic/messages) så
+  // token-bruk telles per innlogget bruker.
+  const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
+  const [autoPilotOpen, setAutoPilotOpen] = useState(false);
+  // Live preview-toggle: når aktiv viser preview-vinduet ferdig output
+  // istedet for source-video. Auto-renders ved hver endring (3.5s debounce).
+  const [livePreviewMode, setLivePreviewMode] = useState(false);
+  // Resolve-sync: bidireksjonell sync med DaVinci Resolve. Når aktiv polles
+  // Resolve hvert 5. sek + nye markører fra timeline merges inn i CE.
+  const [resolveSyncEnabled, setResolveSyncEnabled] = useState(true);
+  const [pushingFullEdit, setPushingFullEdit] = useState(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
+  const resolveSync = useResolveSync({ enabled: resolveSyncEnabled });
+  // Auto-vis Studio-vs-Free-dialog når vi detekterer Free (etter 2s delay,
+  // og bare hvis brukeren ikke nettopp dismisset den).
+  const [studioDialogOpen, closeStudioDialog] = useStudioVsFreeAutoShow(
+    resolveSync.resolveState?.connected ?? false,
+    resolveSync.resolveState?.isStudio,
+  );
+  const [manualStudioDialogOpen, setManualStudioDialogOpen] = useState(false);
+  // Thumbnail Creator — designede social-thumbnails med brand-styling
+  const [thumbnailCreatorOpen, setThumbnailCreatorOpen] = useState(false);
+  const [thumbnailContext, setThumbnailContext] = useState<{
+    title: string; cta: string;
+    brand?: { companyName?: string | null; accentColor?: string | null;
+              backgroundColor?: string | null; textColor?: string | null;
+              logoUrl?: string | null; toneOfVoice?: string | null };
+    aspect: "1:1" | "9:16" | "4:5";
+    feedPlanContext?: { projectId: string; platform: string; postId: string };
+  }>({ title: "", cta: "", aspect: "1:1" });
+  // Creator-profil — preferanser fra serveren auto-anvendes på nye prosjekter.
+  // Knyttet til innlogget Role Room-bruker, ikke lokalt — Bjarne får sine
+  // learnings selv om han bytter maskin.
+  const creatorProfile = useCreatorProfile();
+
+  // Auto-anvend creator-profile defaults ÉN gang per prosjekt-mount.
+  // Skjer kun hvis state er på sine "uberørte" verdier — så vi ikke
+  // overskriver en bevisst endring brukeren har gjort i denne sesjonen.
+  const profileAppliedRef = useRef(false);
+  useEffect(() => {
+    if (profileAppliedRef.current) return;
+    if (creatorProfile.status !== "ready" || !payload) return;
+    profileAppliedRef.current = true;
+    const p = creatorProfile.profile;
+    if (p.preferredLookPack && lookPack === "none") {
+      setLookPack(p.preferredLookPack);
+    }
+    if (p.preferredAspectRatio && aspectRatio === "16:9") {
+      setAspectRatio(p.preferredAspectRatio);
+    }
+    if (p.preferredHighlightMin && projectTargetMin === 0) {
+      setProjectTargetMin(p.preferredHighlightMin);
+    }
+    if (p.preferredProjectKind && !projectKind) {
+      // creator-profile bruker "wedding"|"corporate"|"music"|"event", mens
+      // den lokale ProjectKind-unionen er "wedding"|"music_video"|"documentary"|"corporate"|"other".
+      // Mapp profile-verdien til nærmeste lokale verdi.
+      const profileKindMap: Record<"wedding" | "corporate" | "music" | "event", ProjectKind> = {
+        wedding: "wedding",
+        corporate: "corporate",
+        music: "music_video",
+        event: "other",
+      };
+      setProjectKind(profileKindMap[p.preferredProjectKind]);
+    }
+  }, [creatorProfile.status, creatorProfile.profile, payload,
+      lookPack, aspectRatio, projectTargetMin, projectKind]);
+
+  // ─── Music-Driven Flow Map data (from analyze_music_for_flow.py) ───
+  type MusicFlowData = {
+    duration: number;
+    tempo: number;
+    beats: number[];
+    downbeats: number[];
+    sections: { startSec: number; endSec: number; label: string; rms: number }[];
+    rms: { t: number; value: number }[];
+    silence: { startSec: number; endSec: number }[];
+    spectralCentroid: { t: number; value: number }[];
+    drops: { t: number; intensity: number }[];
+  };
+  const [musicFlow, setMusicFlow] = useState<MusicFlowData | null>(null);
+  const [musicFlowBusy, setMusicFlowBusy] = useState(false);
+
+  // Last music-overrides for dette prosjektet
+  useEffect(() => {
+    if (!payload?.sourceVideo) return;
+    try {
+      const raw = localStorage.getItem(`trrpa.musicOverrides.${payload.sourceVideo}`);
+      if (raw) setMusicOverrides(JSON.parse(raw));
+    } catch { /* noop */ }
+  }, [payload?.sourceVideo]);
+
+  // Persist overrides
+  useEffect(() => {
+    if (!payload?.sourceVideo) return;
+    if (Object.keys(musicOverrides).length === 0) return;
+    try {
+      localStorage.setItem(
+        `trrpa.musicOverrides.${payload.sourceVideo}`,
+        JSON.stringify(musicOverrides),
+      );
+    } catch { /* noop */ }
+  }, [payload?.sourceVideo, musicOverrides]);
+
+  // Songs med overrides anvendt
+  const songs = (advisor?.uniqueSongs ?? []).map((s) => {
+    const key = `${s.title}|${s.artist}`;
+    const ov = musicOverrides[key];
+    if (ov) return { ...s, title: ov.title, artist: ov.artist, _overridden: true, _note: ov.note };
+    return { ...s, _overridden: false, _note: undefined };
+  });
   const activeSong = songs[activeSongIdx];
 
   // Trigger music-analysis on song-change
   useEffect(() => {
     if (!activeSong) { setMusicFlow(null); return; }
-    const wavPath = songWavPath(activeSong.title, activeSong.artist);
+    const wavPath = buildSongWavPath(songsDir, activeSong.title, activeSong.artist);
     if (!wavPath) { setMusicFlow(null); return; }
     let cancelled = false;
     setMusicFlowBusy(true);
@@ -633,7 +866,41 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     return () => { cancelled = true; };
   }, [activeSong?.title, activeSong?.artist]);
 
+  // Auto-marker onboarding-scan-status "flow" som ferdig så snart musicFlow
+  // er tilgjengelig. Tidligere ble status capturet ved klikk-tid og oppdaterte
+  // aldri, så indikatoren sto stuck på "running".
+  useEffect(() => {
+    setOnboardingScanStatus(prev =>
+      prev.flow === "running" && musicFlow ? { ...prev, flow: "done" } : prev,
+    );
+  }, [musicFlow]);
+
   const videoSrc = useMemo(() => payload ? convertFileSrc(payload.sourceVideo) : "", [payload]);
+
+  // Continuous preview: når livePreviewMode er PÅ auto-renderes ferdig
+  // output (480p) hver gang editor-state endrer seg (3.5s debounce).
+  const continuousPreviewInputs = useMemo(() => {
+    if (!payload || !livePreviewMode) return null;
+    const allChapters = new Set<string>();
+    payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
+    const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
+    return {
+      picks: payload.picks,
+      sourceVideo: payload.sourceVideo,
+      pickOverrides,
+      pickOrder: activePickOrder,
+      excludedChapters: excluded,
+    };
+  }, [payload, livePreviewMode, includedChapters, pickOverrides, activePickOrder]);
+
+  const livePreview = useContinuousPreview(continuousPreviewInputs);
+  // Switch video-src til preview når den er ferdig + livePreviewMode aktiv
+  const effectiveVideoSrc = useMemo(() => {
+    if (livePreviewMode && livePreview.previewPath) {
+      return convertFileSrc(livePreview.previewPath);
+    }
+    return videoSrc;
+  }, [livePreviewMode, livePreview.previewPath, videoSrc]);
   // When hover is active, play that segment; else play focused
   const activePick = (hoveredPickIdx != null && filteredPicks[hoveredPickIdx]) || filteredPicks[focusedPickIdx];
   const focusedPick = activePick;
@@ -674,7 +941,11 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     if (!videoRef.current || !focusedPick) return;
     const v = videoRef.current;
     const onTime = () => {
-      setCurrentTime(v.currentTime - focusedPick.startSec);
+      // I pick-mode måles tid relativt til pick-start. I full-mode kan
+      // playhead være BAK fokusert pick (negativ tid forvirret tidligere)
+      // — clamp til 0 i full-mode så scrubber-display alltid er ikke-negativt.
+      const rel = v.currentTime - focusedPick.startSec;
+      setCurrentTime(loopMode === "full" ? Math.max(0, rel) : rel);
       // Bare loop hvis vi er i pick-mode
       if (loopMode === "pick" && v.currentTime >= focusedPick.endSec) {
         v.currentTime = focusedPick.startSec;
@@ -716,17 +987,27 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
           list.unshift(entry);
           localStorage.setItem("trrpa.learnings.global", JSON.stringify(list.slice(0, 200)));
         } catch { /* non-critical */ }
+        // Server-side learning: knyttet til bruker, ikke maskin
+        void creatorProfile.logLearning("skip_chapter", { chapter: ch });
       } else {
         next.add(ch);
       }
       return next;
     });
-  }, []);
+  }, [creatorProfile]);
 
   // ─── Undo/redo: snapshot editor state on changes ───
-  // Push current state as a new history snapshot. Skipped when restoring
-  // (otherwise undo/redo would itself create new snapshots).
+  // Push current state as a new history snapshot. Skipped når:
+  //   a) Payload ikke er lastet ennå (unngår tom initial-snapshot)
+  //   b) Vi nettopp restored (restoringFromHistory)
+  //   c) Snapshot er identisk med forrige (unngår dupliserte push)
+  //
+  // (c) er spesielt viktig: hvis restoreSnapshot setter 3 states og de
+  // ikke batches i en flush (pre-React 18 utenfor event handlers), kan
+  // restoringFromHistory bli clearet av effekten etter første state.
+  // Snapshot-likhet beskytter mot at de resterende states pusher duplikater.
   useEffect(() => {
+    if (!payload) return;
     if (historyRef.current.restoringFromHistory) {
       historyRef.current.restoringFromHistory = false;
       return;
@@ -737,12 +1018,13 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
       activePickOrder: activePickOrder ? [...activePickOrder] : null,
     };
     const h = historyRef.current;
-    // Truncate any forward-history when new change is made
+    const last = h.snapshots[h.idx];
+    if (last && snapshotsEqual(last, snap)) return;
     h.snapshots = [...h.snapshots.slice(0, h.idx + 1), snap].slice(-50); // cap at 50
     h.idx = h.snapshots.length - 1;
     setUndoAvailable(h.idx > 0);
     setRedoAvailable(false);
-  }, [includedChapters, pickOverrides, activePickOrder]);
+  }, [includedChapters, pickOverrides, activePickOrder, payload]);
 
   const restoreSnapshot = useCallback((snap: EditorSnapshot) => {
     historyRef.current.restoringFromHistory = true;
@@ -833,14 +1115,74 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     setTransitionMenuFor(null);
   }, []);
 
+  // ─── Auto-push CE-markører til Resolve (debouncet 2s) ───
+  // Bare lokale markører (ikke de som kom FRA Resolve via 'rr-'-prefiks)
+  // sendes — slik unngår vi feedback-løkker.
+  const markersForPushRef = useRef<string>("");
+  useEffect(() => {
+    if (!resolveSyncEnabled) return;
+    if (!resolveSync.resolveState?.connected) return;
+    const localMarkers = markers.filter(m => !m.id.startsWith("rr-"));
+    if (localMarkers.length === 0) return;
+    const signature = JSON.stringify(
+      localMarkers.map(m => [m.id, m.timeSec.toFixed(2), m.label, m.color, m.comment])
+    );
+    if (signature === markersForPushRef.current) return;
+    markersForPushRef.current = signature;
+    const handle = setTimeout(() => {
+      void resolveSync.pushMarkers({ markers: localMarkers });
+    }, 2000);
+    return () => clearTimeout(handle);
+  }, [markers, resolveSyncEnabled, resolveSync]);
+
+  // ─── Sync nye markører fra Resolve inn i CE timeline ───
+  // Når Bjarne legger til en markør i Resolve via "M"-tasten, dukker den
+  // opp her som ekstra markør med "Resolve"-tag.
+  useEffect(() => {
+    if (resolveSync.newMarkers.length === 0) return;
+    setMarkers(prev => {
+      const existingFrames = new Set(
+        prev.filter(m => m.id.startsWith("rr-"))
+            .map(m => m.id.replace("rr-", "")),
+      );
+      const next = [...prev];
+      for (const rm of resolveSync.newMarkers) {
+        if (existingFrames.has(String(rm.frame))) continue;
+        // Resolve-color → CE-color mapping
+        const colorMap: Record<string, string> = {
+          Red: "#ef4f6f", Pink: "#ef4f6f", Green: "#4ad48a", Yellow: "#f0a500",
+          Blue: "#4a8de0", Cyan: "#4adde0", Purple: "#a030c0", Fuchsia: "#c850e0",
+          Rose: "#ef9fc0", Lavender: "#c5a3e0", Sky: "#7ec4ff", Mint: "#9fefb6",
+          Lemon: "#f0e500", Sand: "#d4a056", Cream: "#e8d4a0", Cocoa: "#8b5a3c",
+        };
+        next.push({
+          id: `rr-${rm.frame}`,
+          timeSec: rm.sec,
+          label: rm.name || `Resolve marker`,
+          color: colorMap[rm.color] ?? "#8674a8",
+          comment: rm.note ? `Fra Resolve: ${rm.note}` : "Fra Resolve",
+        });
+      }
+      return next;
+    });
+  }, [resolveSync.newMarkers]);
+
   // ─── Markers ───
   const addMarkerAtPlayhead = useCallback((label?: string) => {
     if (!focusedPick || !videoRef.current) return;
     const absTime = videoRef.current.currentTime;
+    // Beregn også relativ posisjon innen current pick — slik at markøren
+    // overlever reorder/trim på highlight-timelinen.
+    const offsetInPickSec = Math.max(0, Math.min(
+      focusedPick.durationSec,
+      absTime - focusedPick.startSec,
+    ));
     const colors = ["#a030c0", "#4ad48a", "#f0a500", "#ef4f6f", "#6e3fc7"];
     const m: TimelineMarker = {
       id: `m-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
       timeSec: absTime,
+      pickIndex: focusedPick.index,
+      offsetInPickSec,
       label: label ?? `Marker ${markers.length + 1}`,
       color: colors[markers.length % colors.length],
       comment: "",
@@ -878,6 +1220,23 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     } catch (e: any) {
       console.warn("Custom audio picker failed:", e);
     }
+  }, []);
+
+  // Music-search-modal (Jamendo/Pixabay/Soundstripe/Artlist + Vault-profiler)
+  const [musicSearchOpen, setMusicSearchOpen] = useState(false);
+  const [musicSearchInitialQuery, setMusicSearchInitialQuery] = useState<string>("");
+  const [musicSearchInitialProvider, setMusicSearchInitialProvider] = useState<string>("");
+
+  const onMusicSelected = useCallback((track: { wavPath: string; title: string; artist: string; provider: string }) => {
+    const newAudio: CustomAudio = {
+      id: `a-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      path: track.wavPath,
+      name: `${track.title} — ${track.artist}`,
+      startSec: 0,
+      volume: 0.8,
+    };
+    setCustomAudios(prev => [...prev, newAudio]);
+    setMusicSearchOpen(false);
   }, []);
 
   const updateCustomAudio = useCallback((id: string, patch: Partial<CustomAudio>) => {
@@ -921,21 +1280,6 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
 
   const [flowMapOpen, setFlowMapOpen] = useState(false);
 
-  // ─── Music-Driven Flow Map data (from analyze_music_for_flow.py) ───
-  type MusicFlowData = {
-    duration: number;
-    tempo: number;
-    beats: number[];
-    downbeats: number[];
-    sections: { startSec: number; endSec: number; label: string; rms: number }[];
-    rms: { t: number; value: number }[];
-    silence: { startSec: number; endSec: number }[];
-    spectralCentroid: { t: number; value: number }[];
-    drops: { t: number; intensity: number }[];
-  };
-  const [musicFlow, setMusicFlow] = useState<MusicFlowData | null>(null);
-  const [musicFlowBusy, setMusicFlowBusy] = useState(false);
-
   // Story Arc phase analysis — find intro/build/peak/outro
   const storyArcPhases = useMemo(() => {
     if (storyArcPoints.length === 0) return null;
@@ -952,11 +1296,36 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
     };
   }, [storyArcPoints]);
 
+  // Memoiser SVG-path-strings for story-arc-renderingen. Tidligere ble
+  // path-strengen rebuilt på hver render via IIFE inni JSX → React
+  // reconciler så ny string hver gang og diffet hele path-elementet.
+  const storyArcPathStrings = useMemo(() => {
+    if (!storyArcPhases || storyArcPoints.length < 2) return null;
+    const w = 1000, h = 60;
+    const totalDur = storyArcPhases.totalDur || 1;
+    const points = storyArcPoints.map(pt => {
+      const x = (pt.midSec / totalDur) * w;
+      const y = h - (pt.energy * h * 0.85);
+      return `${x},${y}`;
+    });
+    const joined = points.join(" L ");
+    const first = (storyArcPoints[0].midSec / totalDur) * w;
+    const last = (storyArcPoints[storyArcPoints.length - 1].midSec / totalDur) * w;
+    return {
+      stroke: `M ${joined}`,
+      fill: `M ${first},${h} L ${joined} L ${last},${h} Z`,
+    };
+  }, [storyArcPoints, storyArcPhases]);
+
   // ─── Keyboard shortcuts (NLE-standard JKL/XV/M + Cmd+Z) ───
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
+      // Skip når brukeren skriver i et input/textarea/contentEditable, eller
+      // når en åpen modal/dialog har focus (open Dialog setter focus inni).
+      // Tidligere kunne f.eks. 'm' i et nested input legge til marker uplog.
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (t && t.closest('[role="dialog"], .modal, .ce-shortcuts-modal')) return;
       const isMeta = e.metaKey || e.ctrlKey;
       if (isMeta && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (isMeta && e.shiftKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); redo(); return; }
@@ -1457,7 +1826,12 @@ Du MÅ kalle apply_couple_wishes-tool med:
       const allChapters = new Set<string>();
       payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
       const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
+      // Send editorens in-memory state inkludert PICKS-arrayen direkte.
+      // Scriptene foretrekker payload over disk-cache hvis tilgjengelig
+      // (forhindrer at en eldre cached extraction overrider editorens state).
       const editorStateParams = {
+        picks: payload.picks,
+        sourceVideo: payload.sourceVideo,
         pickOverrides,
         pickOrder: activePickOrder ?? undefined,
         excludedChapters: excluded,
@@ -1465,8 +1839,25 @@ Du MÅ kalle apply_couple_wishes-tool med:
 
       // ─── Route per export-kind ───
       if (preset.kind === "resolve") {
+        // Pre-flight: sjekk at Resolve faktisk kjører + har åpent prosjekt
+        // før vi bruker tid på extract. Tidligere falt build_highlight_from_picks
+        // gjennom med "No current Resolve project" uten klar feilmelding i UI.
+        try {
+          const { runHealthCheck } = await import("../api");
+          const health = await runHealthCheck();
+          const healthResult = health.events.find(e => e.type === "result");
+          const status = (healthResult?.value as any) || {};
+          if (!status.resolveRunning) {
+            throw new Error("DaVinci Resolve er ikke åpen. Start Resolve først, åpne prosjektet ditt, og prøv igjen.");
+          }
+          if (!status.projectOpen) {
+            throw new Error("Ingen prosjekt åpent i Resolve. Åpne prosjektet ditt og prøv igjen.");
+          }
+        } catch (err: any) {
+          if (err?.message?.includes("Resolve")) throw err;
+          // health-check feilet selv: la build forsøke, da får vi ekte feil
+        }
         const summary = await executeScript("build_highlight_from_picks", {
-          sourceVideo: payload.sourceVideo,
           timelineName: `${safeTitle} — Post Agent`,
           ...editorStateParams,
         }, false);
@@ -1506,6 +1897,8 @@ Du MÅ kalle apply_couple_wishes-tool med:
       // Default: render MP4 via assemble_highlight_with_music
       const outputPath = `~/Desktop/${safeTitle}${suffix}.mp4`;
       const summary = await executeScript("assemble_highlight_with_music", {
+        picks: payload.picks,
+        sourceVideo: payload.sourceVideo,
         videoPath: payload.sourceVideo,
         outputPath,
         musicStrategy: "main+climax",
@@ -1593,7 +1986,15 @@ Du MÅ kalle apply_couple_wishes-tool med:
       const flagged = (result?.value as any)?.flaggedClips ?? [];
       // Convert script-output to QualityFlag[] per pick
       const flags: QualityFlag[] = filteredPicks.map(p => {
-        const hit = flagged.find((f: any) => f.timeSec >= p.startSec && f.timeSec <= p.endSec);
+        // Tidligere bug: flag_underexposed_clips returnerer ikke timeSec
+        // per pick — den scoarer hele clip-fil. Sjekk flere mulige felt-
+        // navn (timeSec, frameSec, secondsIn) for kompatibilitet med
+        // ulike vision-script-outputs.
+        const hit = flagged.find((f: any) => {
+          const t = f.timeSec ?? f.frameSec ?? f.secondsIn;
+          if (typeof t !== "number") return false;
+          return t >= p.startSec && t <= p.endSec;
+        });
         if (hit) {
           return { pickIndex: p.index, severity: "warning", issues: [hit.reason || "Underexposed"] };
         }
@@ -1622,16 +2023,18 @@ Du MÅ kalle apply_couple_wishes-tool med:
     const newOverrides: typeof pickOverrides = { ...pickOverrides };
     let snappedCount = 0;
     for (const p of filteredPicks) {
+      // Tidligere bug: `original` ble lest men ikke brukt — gjenta-kjøring
+      // av snap drev varigheten lengre vekk fra original. Vi bruker nå
+      // original-pick som anker så snap er idempotent.
       const original = payload?.picks.find(x => x.index === p.index);
       if (!original) continue;
-      const currentDur = p.endSec - p.startSec;
-      const nBeats = Math.max(1, Math.round(currentDur / beatInterval));
+      const origDur = original.endSec - original.startSec;
+      const origMid = (original.startSec + original.endSec) / 2;
+      const nBeats = Math.max(1, Math.round(origDur / beatInterval));
       const newDur = nBeats * beatInterval;
-      // Center the new duration around the original midpoint
-      const mid = (p.startSec + p.endSec) / 2;
-      const newStart = mid - newDur / 2;
-      const newEnd = mid + newDur / 2;
-      if (Math.abs(newDur - currentDur) > 0.05) {
+      const newStart = origMid - newDur / 2;
+      const newEnd = origMid + newDur / 2;
+      if (Math.abs(newDur - (p.endSec - p.startSec)) > 0.05) {
         newOverrides[p.index] = { startSec: newStart, endSec: newEnd };
         snappedCount++;
       }
@@ -1869,7 +2272,7 @@ ${ctxLines.join("\n")}`;
         </div>
         <div className="ce-meta">
           <button className="ce-aspect" onClick={() => setAspectMenuOpen(v => !v)}>
-            <span>📐</span> {aspectRatio}
+            <CropIcon sx={{ fontSize: 14 }} /> {aspectRatio}
             <span>▾</span>
           </button>
           {aspectMenuOpen && (
@@ -1882,7 +2285,14 @@ ${ctxLines.join("\n")}`;
                 <div
                   key={opt.v}
                   className={`ce-aspect-item ${aspectRatio === opt.v ? "active" : ""}`}
-                  onClick={() => { setAspectRatio(opt.v); setAspectMenuOpen(false); }}
+                  onClick={() => {
+                    setAspectRatio(opt.v);
+                    setAspectMenuOpen(false);
+                    void creatorProfile.logLearning("select_aspect", { value: opt.v });
+                    if (creatorProfile.editCount > 5) {
+                      void creatorProfile.update({ preferredAspectRatio: opt.v });
+                    }
+                  }}
                 >
                   <div className="ce-aspect-item-name">{opt.v} — {opt.name}</div>
                   <div className="ce-aspect-item-desc">{opt.desc}</div>
@@ -1892,7 +2302,7 @@ ${ctxLines.join("\n")}`;
           )}
           <div style={{ position: "relative" }}>
             <button className="ce-aspect" onClick={() => setLookMenuOpen(v => !v)}>
-              <span>🎨</span> {lookPack === "none" ? "Look" : lookPack}
+              <PaletteIcon sx={{ fontSize: 14 }} /> {lookPack === "none" ? "Look" : lookPack}
               <span>▾</span>
             </button>
             {lookMenuOpen && (
@@ -1907,7 +2317,16 @@ ${ctxLines.join("\n")}`;
                   <div
                     key={opt.v}
                     className={`ce-aspect-item ${lookPack === opt.v ? "active" : ""}`}
-                    onClick={() => { setLookPack(opt.v); setLookMenuOpen(false); }}
+                    onClick={() => {
+                      setLookPack(opt.v);
+                      setLookMenuOpen(false);
+                      void creatorProfile.logLearning("select_lut", { value: opt.v });
+                      // Etter 5+ edits begynner vi å lagre dette som preferanse
+                      // — slik unngår vi å lock'e in en feilklikk-default.
+                      if (creatorProfile.editCount > 5 && opt.v !== "none") {
+                        void creatorProfile.update({ preferredLookPack: opt.v });
+                      }
+                    }}
                   >
                     <div className="ce-aspect-item-name">{opt.name}</div>
                     <div className="ce-aspect-item-desc">{opt.desc}</div>
@@ -1928,22 +2347,349 @@ ${ctxLines.join("\n")}`;
           </button>
           {songMenuOpen && songs.length > 0 && (
             <div className="ce-song-menu">
-              {songs.map((s, i) => (
-                <div
-                  key={`${s.title}-${i}`}
-                  className={`ce-song-item ${i === activeSongIdx ? "active" : ""}`}
-                  onClick={() => { setActiveSongIdx(i); setSongMenuOpen(false); }}
-                >
-                  <div className="ce-song-item-title">{s.title}</div>
-                  <div className="ce-song-item-meta">
-                    {s.artist} · {s.bpm ? `${s.bpm} BPM` : "—"} · {Math.round((s.percentOfMusic ?? 0))}% av film
+              {songs.map((s, i) => {
+                const rawSong = advisor?.uniqueSongs?.[i];
+                const origKey = rawSong ? `${rawSong.title}|${rawSong.artist}` : "";
+                // Auto-flag mistenkelig (lang varighet + ikke-passende genre)
+                const genre = (rawSong as { genre?: string } | undefined)?.genre?.toLowerCase() ?? "";
+                const suspiciousGenre = /prog-rock|art rock|metal|country|opera|classical \(western\)/i.test(genre);
+                const longDuration = (rawSong?.totalDuration ?? 0) > 300;
+                const flagged = !s._overridden && suspiciousGenre && longDuration;
+                return (
+                  <div
+                    key={`${s.title}-${i}`}
+                    className={`ce-song-item ${i === activeSongIdx ? "active" : ""}`}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+                          onClick={() => { setActiveSongIdx(i); setSongMenuOpen(false); }}>
+                      <div className="ce-song-item-title">
+                        {flagged && <span title="Sannsynligvis feilidentifisert">⚠️ </span>}
+                        {s._overridden && <span title="Korrigert manuelt">✏️ </span>}
+                        {s.title}
+                      </div>
+                      <div className="ce-song-item-meta">
+                        {s.artist} · {s.bpm ? `${s.bpm} BPM` : "—"} · {Math.round((s.percentOfMusic ?? 0))}% av film
+                        {s._note && <div style={{ opacity: 0.6, fontSize: 10, marginTop: 2 }}>{s._note}</div>}
+                      </div>
+                    </div>
+                    <button
+                      disabled={!origKey}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // origKey er "" hvis advisor-lookup miser (race ved
+                        // reload). Da har vi ikke et target å skrive til, så
+                        // disable knappen helt — modalen åpnet seg tom før.
+                        if (!origKey) return;
+                        setEditingSongKey(origKey);
+                        setEditTitle(s.title);
+                        setEditArtist(s.artist);
+                        setEditNote(s._note ?? "");
+                      }}
+                      title={origKey ? "Korrigér navn" : "Vent på advisor-data …"}
+                      style={{ padding: "4px 8px", fontSize: 11,
+                               background: "transparent",
+                               border: "1px solid rgba(160,48,192,0.30)",
+                               borderRadius: 4, color: "#cca0e8", cursor: "pointer" }}
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Edit-modal for korrigering */}
+              {editingSongKey && (
+                <div style={{ position: "absolute", top: 60, left: 0, right: 0,
+                                background: "var(--bg-2)", padding: 14,
+                                border: "1px solid var(--accent)", borderRadius: 8,
+                                zIndex: 100, boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                                maxHeight: "70vh", overflowY: "auto" }}
+                      onClick={(e) => e.stopPropagation()}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+                    Korrigér sang-identifikasjon
+                  </div>
+
+                  <div style={{ fontSize: 10, opacity: 0.65, marginBottom: 10, lineHeight: 1.5 }}>
+                    Shazam mister ofte religiøse kirtan/shabad og lokale opptak.
+                    Korrigér navnet — du kan også laste ned ekte versjon fra YouTube.
+                  </div>
+
+                  <div className="field">
+                    <label style={{ fontSize: 10 }}>Sang-tittel</label>
+                    <input type="text" placeholder='F.eks. "Mool Mantar"' value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            style={{ fontSize: 12 }} />
+                  </div>
+                  <div className="field">
+                    <label style={{ fontSize: 10 }}>Artist / Råga</label>
+                    <input type="text" placeholder='F.eks. "Bhai Joginder Singh Riar"'
+                            value={editArtist}
+                            onChange={(e) => setEditArtist(e.target.value)}
+                            style={{ fontSize: 12 }} />
+                  </div>
+                  <div className="field">
+                    <label style={{ fontSize: 10 }}>Note (valgfri)</label>
+                    <input type="text" placeholder='F.eks. "Anand Karaj-seremoni"'
+                            value={editNote}
+                            onChange={(e) => setEditNote(e.target.value)}
+                            style={{ fontSize: 11 }} />
+                  </div>
+
+                  {/* YouTube-fetch-seksjon */}
+                  <div style={{ marginTop: 12, padding: 10, background: "var(--bg-3)",
+                                  borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
+                      📥 Last ned ekte versjon fra YouTube
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input type="text"
+                              placeholder="https://youtube.com/watch?v=..."
+                              value={editYoutubeUrl}
+                              onChange={(e) => setEditYoutubeUrl(e.target.value)}
+                              disabled={editYtBusy}
+                              style={{ flex: 1, fontSize: 11 }} />
+                      <button disabled={editYtBusy || !editYoutubeUrl.trim()}
+                              onClick={async () => {
+                        setEditYtBusy(true);
+                        setEditYtError(null);
+                        setEditYtPct(0);
+                        const unsub = await onScriptEvent((ev: ScriptEvent) => {
+                          if (ev.type === "progress") {
+                            const pct = ev.total ? Math.round(((ev.current ?? 0) / ev.total) * 100) : 0;
+                            setEditYtPct(pct); setEditYtMsg(ev.message || "");
+                          }
+                        });
+                        try {
+                          const sum = await executeScript("fetch_source_song", {
+                            youtubeUrl: editYoutubeUrl.trim(),
+                            projectType: "wedding",
+                            projectId: payload?.sourceVideo?.split("/").pop()?.replace(/\.[^.]+$/, "") || "manual",
+                          }, false);
+                          const r = sum.events.find((e) => e.type === "result");
+                          const val = r?.value as { wavPath?: string; title?: string; uploader?: string } | undefined;
+                          if (val?.wavPath) {
+                            setEditDownloadedPath(val.wavPath);
+                            // Pre-fyll title/artist hvis tom
+                            if (!editTitle && val.title) setEditTitle(val.title);
+                            if (!editArtist && val.uploader) setEditArtist(val.uploader);
+                          } else {
+                            setEditYtError("Ingen WAV-fil returnert");
+                          }
+                        } catch (err) {
+                          setEditYtError(String(err));
+                        } finally {
+                          unsub();
+                          setEditYtBusy(false);
+                        }
+                      }} style={{ fontSize: 11, padding: "4px 10px" }}>
+                        {editYtBusy ? "⏳" : "Last ned"}
+                      </button>
+                    </div>
+                    {editYtBusy && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ height: 4, background: "var(--bg-4)", borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ width: `${editYtPct}%`, height: "100%",
+                                          background: "var(--accent)", transition: "width 0.3s" }} />
+                        </div>
+                        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 2 }}>{editYtMsg} — {editYtPct}%</div>
+                      </div>
+                    )}
+                    {editYtError && (
+                      <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }}>
+                        ⚠ {editYtError}
+                      </div>
+                    )}
+                    {editDownloadedPath && (
+                      <div style={{ fontSize: 11, color: "#4ad48a", marginTop: 6 }}>
+                        ✓ Lastet ned: {editDownloadedPath.split("/").pop()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
+                                  marginTop: 12 }}>
+                    <button onClick={() => {
+                      setEditingSongKey(null);
+                      setEditYoutubeUrl(""); setEditDownloadedPath(null);
+                      setEditYtError(null); setEditYtPct(0);
+                    }} style={{ fontSize: 11, padding: "4px 10px" }}>Avbryt</button>
+                    <button onClick={() => {
+                      if (!editTitle.trim() || !editingSongKey) return;
+                      setMusicOverrides((prev) => ({
+                        ...prev,
+                        [editingSongKey]: {
+                          title: editTitle.trim(),
+                          artist: editArtist.trim(),
+                          note: editNote.trim() || undefined,
+                          downloadedPath: editDownloadedPath ?? undefined,
+                          youtubeUrl: editYoutubeUrl.trim() || undefined,
+                        },
+                      }));
+                      setEditingSongKey(null);
+                      setEditYoutubeUrl(""); setEditDownloadedPath(null);
+                    }} className="primary"
+                            style={{ fontSize: 11, padding: "4px 10px" }}>
+                      Lagre
+                    </button>
+                    {musicOverrides[editingSongKey] && (
+                      <button onClick={() => {
+                        setMusicOverrides((prev) => {
+                          const next = { ...prev };
+                          delete next[editingSongKey];
+                          try {
+                            localStorage.setItem(
+                              `trrpa.musicOverrides.${payload?.sourceVideo}`,
+                              JSON.stringify(next),
+                            );
+                          } catch { /* noop */ }
+                          return next;
+                        });
+                        setEditingSongKey(null);
+                      }} style={{ fontSize: 11, padding: "4px 10px", color: "var(--danger)" }}>
+                        Fjern override
+                      </button>
+                    )}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
         <div className="ce-actions">
+          {/* Creator-profil-indikator */}
+          {creatorProfile.status === "ready" && creatorProfile.editCount > 0 && (
+            <span
+              title={`Din profil er lært fra ${creatorProfile.editCount} edits. Defaults auto-anvendes på nye prosjekter.`}
+              style={{
+                fontSize: 10.5, color: "rgba(200,128,255,0.85)",
+                background: "rgba(160,48,192,0.10)",
+                border: "1px solid rgba(160,48,192,0.30)",
+                padding: "3px 8px", borderRadius: 999,
+                marginRight: 8,
+                cursor: "default",
+              }}>
+              🧠 {creatorProfile.editCount} learnings
+            </span>
+          )}
+          {/* Studio-detection-pill: viser om Studio-features er tilgjengelig.
+              Klikk på Free-pillen åpner sammenligningsdialog. */}
+          {resolveSync.resolveState?.connected && (
+            <button
+              onClick={() => !resolveSync.resolveState!.isStudio && setManualStudioDialogOpen(true)}
+              title={resolveSync.resolveState.isStudio
+                ? `${resolveSync.resolveState.productName ?? "Resolve Studio"} — alle auto-pilot-features tilgjengelig`
+                : "Klikk for å se hva Studio låser opp"}
+              style={{
+                fontSize: 10.5,
+                color: resolveSync.resolveState.isStudio ? "#f0a500" : "rgba(255,255,255,0.55)",
+                background: resolveSync.resolveState.isStudio
+                  ? "rgba(240,165,0,0.10)"
+                  : "rgba(255,255,255,0.04)",
+                border: `1px solid ${resolveSync.resolveState.isStudio
+                  ? "rgba(240,165,0,0.40)"
+                  : "rgba(255,255,255,0.10)"}`,
+                padding: "3px 8px", borderRadius: 999, marginRight: 6,
+                fontWeight: 600,
+                cursor: resolveSync.resolveState.isStudio ? "default" : "pointer",
+              }}>
+              {resolveSync.resolveState.isStudio ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <StarIcon sx={{ fontSize: 12 }} /> Studio
+                </span>
+              ) : "Free · vis fordeler"}
+            </button>
+          )}
+          {/* Resolve sync-pill + push-knapp */}
+          {(() => {
+            const s = resolveSync.status;
+            const conn = resolveSync.resolveState?.connected;
+            const bg =
+              s === "in_sync" ? "rgba(74,212,138,0.12)" :
+              s === "polling" || s === "connecting" ? "rgba(160,48,192,0.12)" :
+              s === "disconnected" ? "rgba(240,165,0,0.10)" :
+              s === "error" ? "rgba(239,79,111,0.12)" : "rgba(255,255,255,0.04)";
+            const fg =
+              s === "in_sync" ? "#4ad48a" :
+              s === "polling" || s === "connecting" ? "#c850e0" :
+              s === "disconnected" ? "#f0a500" :
+              s === "error" ? "#ef4f6f" : "rgba(255,255,255,0.55)";
+            const border = fg + "55";
+            const label =
+              !resolveSyncEnabled ? "Sync av" :
+              s === "in_sync" && conn ? `✓ Resolve · ${resolveSync.staleSec}s` :
+              s === "polling" ? "⟳ Synker …" :
+              s === "connecting" ? "⟳ Kobler til …" :
+              s === "disconnected" ? "Resolve lukket" :
+              s === "error" ? "Sync feilet" : "Klar";
+            return (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginRight: 8 }}>
+                <button
+                  onClick={() => setResolveSyncEnabled(v => !v)}
+                  title={resolveSyncEnabled
+                    ? `Live sync med ${resolveSync.resolveState?.projectName ?? "Resolve"} · markører flyter automatisk`
+                    : "Klikk for å aktivere live sync med Resolve"}
+                  style={{
+                    background: bg, color: fg, border: `1px solid ${border}`,
+                    borderRadius: 999, padding: "4px 10px", fontSize: 10.5,
+                    fontWeight: 600, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                  }}
+                >
+                  {label}
+                </button>
+                {/* Push-knapp: kun synlig når Resolve er åpen */}
+                {resolveSyncEnabled && conn && payload && filteredPicks.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      if (pushingFullEdit) return;
+                      setPushingFullEdit(true);
+                      setPushResult(null);
+                      try {
+                        const allChapters = new Set<string>();
+                        payload.picks.forEach(p => allChapters.add((p.chapter || "details").toLowerCase()));
+                        const excluded = Array.from(allChapters).filter(c => !includedChapters.has(c));
+                        const r = await resolveSync.pushFullEdit({
+                          picks: payload.picks,
+                          sourceVideo: payload.sourceVideo,
+                          pickOverrides,
+                          pickOrder: activePickOrder,
+                          excludedChapters: excluded,
+                          timelineName: `${projectTitle || "Highlight"} — CE Sync`,
+                        });
+                        setPushResult(r.ok
+                          ? "✓ Pushet til Resolve"
+                          : `⚠ ${r.error ?? "Feilet"}`);
+                        setTimeout(() => setPushResult(null), 4000);
+                      } finally {
+                        setPushingFullEdit(false);
+                      }
+                    }}
+                    disabled={pushingFullEdit}
+                    title="Build ny Resolve-timeline fra current edit-state (eksisterende Resolve-timeline forblir urørt)"
+                    style={{
+                      background: pushingFullEdit
+                        ? "rgba(160,48,192,0.15)" : "rgba(160,48,192,0.10)",
+                      color: "#c850e0",
+                      border: "1px solid rgba(160,48,192,0.35)",
+                      borderRadius: 999, padding: "4px 8px", fontSize: 10.5,
+                      fontWeight: 600, cursor: pushingFullEdit ? "wait" : "pointer",
+                    }}
+                  >
+                    {pushingFullEdit ? "⟳ Pusher …" : "↑ Push edit"}
+                  </button>
+                )}
+                {pushResult && (
+                  <span style={{
+                    fontSize: 10.5, color: pushResult.startsWith("✓") ? "#4ad48a" : "#ef4f6f",
+                    marginLeft: 4,
+                  }}>
+                    {pushResult}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
           <button
             className="ce-icon-mini"
             onClick={undo}
@@ -1972,7 +2718,62 @@ ${ctxLines.join("\n")}`;
             title="Hurtigtaster (?)"
             style={{ fontWeight: 700, fontSize: 13 }}
           >?</button>
-          <button>↗ Del</button>
+          <button
+            title="Kopier prosjekt-info til utklippstavle"
+            onClick={() => {
+              const info = [
+                `Post Agent — ${projectTitle || "Highlight"}`,
+                `Picks: ${filteredPicks.length}`,
+                payload?.sourceVideo ? `Source: ${payload.sourceVideo}` : null,
+                activeSong ? `Musikk: ${activeSong.title} — ${activeSong.artist}` : null,
+              ].filter(Boolean).join("\n");
+              void navigator.clipboard.writeText(info).catch(() => { /* noop */ });
+            }}
+          >↗ Del</button>
+          {/* Thumbnail Creator — design branded social-thumbnails */}
+          <button
+            onClick={() => {
+              setThumbnailContext({
+                title: projectTitle || "",
+                cta: "",
+                aspect: aspectRatio === "9:16" ? "9:16"
+                  : aspectRatio === "1:1" ? "1:1" : "1:1",
+              });
+              setThumbnailCreatorOpen(true);
+            }}
+            disabled={!payload}
+            title="Thumbnail Creator: design social-thumbnails med brand-styling"
+            style={{
+              background: "linear-gradient(135deg, rgba(200,80,224,0.20), rgba(160,48,192,0.20))",
+              border: "1px solid rgba(200,80,224,0.4)",
+              color: "rgba(255,255,255,0.85)",
+              fontWeight: 600,
+              marginRight: 4,
+            }}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <BrushIcon sx={{ fontSize: 14 }} /> Thumbnails
+            </span>
+          </button>
+          {/* Auto-pilot — la systemet bygge ferdig mens du tar pause */}
+          <button
+            onClick={() => setAutoPilotOpen(true)}
+            disabled={!payload || filteredPicks.length === 0}
+            title="Auto-pilot: AI bygger highlighten ferdig mens du tar kaffe"
+            style={{
+              background: autoPilotOpen
+                ? "linear-gradient(135deg, #8b4513, #d2691e)"
+                : "linear-gradient(135deg, rgba(139,69,19,0.20), rgba(210,105,30,0.20))",
+              border: "1px solid rgba(210,105,30,0.5)",
+              color: autoPilotOpen ? "#fff" : "rgba(255,255,255,0.85)",
+              fontWeight: 600,
+              animation: autoPilotOpen ? "coffee-steam 3s ease-in-out infinite" : undefined,
+            }}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <CoffeeIcon sx={{ fontSize: 14 }} /> Coffee mode
+            </span>
+          </button>
           <div className="ce-export-wrap">
             <button
               className="primary"
@@ -2058,13 +2859,27 @@ ${ctxLines.join("\n")}`;
                     if (idx >= 0) {
                       setHoveredPickIdx(idx);
                       hoverStartedPlaybackRef.current = !!videoRef.current?.paused;
-                      videoRef.current?.play().catch(() => {});
+                      // Hover-preview spilles alltid mutet — browser blokkerer
+                      // ofte autoplay med lyd uten user-gesture, og hover er
+                      // ikke ment som "hør lyden", bare "se klippet".
+                      const v = videoRef.current;
+                      if (v) {
+                        const prevMuted = v.muted;
+                        v.muted = true;
+                        v.play().catch(() => { v.muted = prevMuted; });
+                        // Behold hover-mute så lenge musa er over — restoring
+                        // skjer i onMouseLeave.
+                      }
                     }
                   }}
                   onMouseLeave={() => {
                     setHoveredPickIdx(null);
                     if (hoverStartedPlaybackRef.current && videoRef.current) {
                       videoRef.current.pause();
+                    }
+                    // Restorer user's mute-preferanse (hover satte mute=true)
+                    if (videoRef.current) {
+                      videoRef.current.muted = previewMuted;
                     }
                     hoverStartedPlaybackRef.current = false;
                   }}
@@ -2073,7 +2888,9 @@ ${ctxLines.join("\n")}`;
                   <div className="ce-segment-thumb">
                     {firstPick.thumbnailPath
                       ? <img src={convertFileSrc(firstPick.thumbnailPath)} alt="" />
-                      : <div className="ce-segment-thumb-placeholder">{seg.display.emoji}</div>}
+                      : <div className="ce-segment-thumb-placeholder">
+                          <seg.display.Icon sx={{ fontSize: 28, opacity: 0.7 }} />
+                        </div>}
                   </div>
                   <div className="ce-segment-info">
                     <div className="ce-segment-label">{seg.display.label}</div>
@@ -2100,11 +2917,11 @@ ${ctxLines.join("\n")}`;
               <span className="ce-balance-tag">Bra balanse!</span>
             </div>
             <div className="ce-balance-bars">
-              <BalanceRow color="#ef4f6f" icon="❤️" label="Romantikk" pct={balance.romantikk} />
-              <BalanceRow color="#f0a500" icon="👨‍👩‍👧" label="Familie" pct={balance.familie} />
-              <BalanceRow color="#a030c0" icon="💍" label="Detaljer" pct={balance.detaljer} />
-              <BalanceRow color="#6e3fc7" icon="✨" label="Emosjon" pct={balance.emosjon} />
-              <BalanceRow color="#4ad48a" icon="⚡" label="Energi" pct={balance.energi} />
+              <BalanceRow color="#ef4f6f" Icon={FavoriteIcon} label="Romantikk" pct={balance.romantikk} />
+              <BalanceRow color="#f0a500" Icon={FamilyRestroomIcon} label="Familie" pct={balance.familie} />
+              <BalanceRow color="#a030c0" Icon={DiamondIcon} label="Detaljer" pct={balance.detaljer} />
+              <BalanceRow color="#6e3fc7" Icon={AutoAwesomeIcon} label="Emosjon" pct={balance.emosjon} />
+              <BalanceRow color="#4ad48a" Icon={BoltIcon} label="Energi" pct={balance.energi} />
             </div>
           </div>
 
@@ -2122,21 +2939,28 @@ ${ctxLines.join("\n")}`;
             <button className={`ce-tab ${activeTab === "story" ? "active" : ""}`} onClick={() => setActiveTab("story")}>Story</button>
           </div>
 
-          {/* Live preview */}
+          {/* Live preview — height styres av brukerens drag-handle nedenfor.
+              For 9:16/1:1: lock aspect for å unngå ekstreme portrait/square. */}
           <div
+            ref={previewContainerRef}
             className="ce-preview-wrap"
             style={{
-              aspectRatio: aspectRatio === "16:9" ? "16 / 9"
-                : aspectRatio === "9:16" ? "9 / 16"
-                : "1 / 1",
-              maxHeight: aspectRatio === "9:16" ? "70vh" : "none",
-              maxWidth: aspectRatio === "9:16" ? "40vh" : aspectRatio === "1:1" ? "60vh" : "none",
-              margin: aspectRatio !== "16:9" ? "0 auto" : "0",
+              height: aspectRatio === "16:9" ? previewHeight : undefined,
+              ...(aspectRatio === "9:16" ? {
+                aspectRatio: "9 / 16",
+                maxHeight: previewHeight,
+                margin: "0 auto",
+              } : aspectRatio === "1:1" ? {
+                aspectRatio: "1 / 1",
+                maxHeight: previewHeight,
+                maxWidth: previewHeight,
+                margin: "0 auto",
+              } : {}),
             }}
           >
             <video
               ref={videoRef}
-              src={videoSrc}
+              src={effectiveVideoSrc}
               className="ce-preview-video"
               style={{
                 filter: mood.filter + lookFilter,
@@ -2145,12 +2969,57 @@ ${ctxLines.join("\n")}`;
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               playsInline
-              muted={false}
+              muted={previewMuted}
             />
             <div className="ce-preview-overlay">
               <div className="ce-preview-tag">
                 <span className="ce-live-dot" /> Live preview
               </div>
+              {/* Live preview-toggle + status. Klikk veksler mellom source-
+                  preview og continuous auto-render av ferdig output. */}
+              <button
+                onClick={() => {
+                  setLivePreviewMode(v => !v);
+                  if (!livePreviewMode) livePreview.setEnabled(true);
+                }}
+                style={{
+                  marginLeft: 8,
+                  background: livePreviewMode
+                    ? "rgba(74, 212, 138, 0.20)" : "rgba(0,0,0,0.40)",
+                  border: `1px solid ${livePreviewMode ? "rgba(74,212,138,0.55)" : "rgba(255,255,255,0.18)"}`,
+                  color: livePreviewMode ? "#4ad48a" : "rgba(255,255,255,0.85)",
+                  fontSize: 10.5,
+                  padding: "3px 8px",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                title={livePreviewMode
+                  ? "Auto-rendret ferdig output (klikk for å bytte til source)"
+                  : "Vis source-video (klikk for å bytte til live ferdig-render)"}
+              >
+                {livePreviewMode ? (
+                  livePreview.status === "rendering" ? (
+                    <><span className="anim-pulse-dot" style={{
+                      display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                      background: "#4ad48a",
+                    }} /> Renderer …</>
+                  ) : livePreview.status === "queued" ? (
+                    <>⏱ I kø …</>
+                  ) : livePreview.status === "ready" ? (
+                    <>✓ Live · {livePreview.ageSec}s</>
+                  ) : livePreview.status === "error" ? (
+                    <>⚠ Feil</>
+                  ) : (
+                    <>● Live</>
+                  )
+                ) : (
+                  <>○ Source</>
+                )}
+              </button>
             </div>
             <div
               className="ce-mood-tag"
@@ -2164,7 +3033,28 @@ ${ctxLines.join("\n")}`;
               {mood.label}
             </div>
             <div className="ce-preview-controls">
-              <div className="ce-preview-scrubber" />
+              {/* Interaktiv scrubber: viser playhead-progress innen fokusert
+                  pick + lar bruker klikke for å seek. Tidligere kun en CSS-
+                  gradient. */}
+              <div
+                className="ce-preview-scrubber"
+                style={{ cursor: focusedPick ? "pointer" : "default" }}
+                onClick={(e) => {
+                  if (!focusedPick || !videoRef.current) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  videoRef.current.currentTime = focusedPick.startSec + ratio * focusedPick.durationSec;
+                }}
+              >
+                <div
+                  className="ce-preview-scrubber-fill"
+                  style={{
+                    width: focusedPick && focusedPick.durationSec > 0
+                      ? `${Math.max(0, Math.min(100, (currentTime / focusedPick.durationSec) * 100))}%`
+                      : "0%",
+                  }}
+                />
+              </div>
               <div className="ce-preview-row">
                 <button className="ce-icon-btn" onClick={togglePlay}>
                   {isPlaying ? "⏸" : <IconPlay size={16} />}
@@ -2175,7 +3065,11 @@ ${ctxLines.join("\n")}`;
                 <button className="ce-icon-btn" onClick={() => focusedPickIdx < filteredPicks.length - 1 && setFocusedPickIdx(focusedPickIdx + 1)}>
                   ▷
                 </button>
-                <button className="ce-icon-btn">🔊</button>
+                <button className="ce-icon-btn"
+                        onClick={() => setPreviewMuted(m => !m)}
+                        title={previewMuted ? "Slå på lyd" : "Demp lyd"}>
+                  {previewMuted ? "🔇" : "🔊"}
+                </button>
                 <div className="ce-preview-time">
                   {formatTime(currentTime)} / {focusedPick ? formatTime(focusedPick.durationSec) : "00:00"}
                 </div>
@@ -2196,9 +3090,46 @@ ${ctxLines.join("\n")}`;
                   {loopMode === "pick" ? "🔁 Loop" : "▶ Hele"}
                 </button>
                 <button className="ce-icon-btn" onClick={cyclePlayRate}>{playRate}x</button>
-                <button className="ce-icon-btn">⛶</button>
+                <button className="ce-icon-btn"
+                        onClick={() => {
+                          // Toggle fullscreen på preview-containeren
+                          const el = previewContainerRef.current;
+                          if (!el) return;
+                          if (document.fullscreenElement) {
+                            void document.exitFullscreen();
+                          } else {
+                            void el.requestFullscreen().catch(() => {/* noop */});
+                          }
+                        }}
+                        title="Fullskjerm">⛶</button>
               </div>
             </div>
+          </div>
+
+          {/* Drag-handle: bruker drar opp/ned for å justere preview-størrelse */}
+          <div
+            className="ce-preview-resize"
+            onMouseDown={(e) => {
+              const startY = e.clientY;
+              const startH = previewHeight;
+              let latest = startH;
+              const onMove = (mv: MouseEvent) => {
+                latest = Math.max(200, Math.min(1000, startH + (mv.clientY - startY)));
+                setPreviewHeight(latest);
+              };
+              const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                document.body.style.cursor = "";
+                try { localStorage.setItem("trrpa.previewHeight", String(latest)); } catch { /* noop */ }
+              };
+              document.addEventListener("mousemove", onMove);
+              document.addEventListener("mouseup", onUp);
+              document.body.style.cursor = "ns-resize";
+            }}
+            title="Dra for å justere preview-størrelse"
+          >
+            <div className="ce-preview-resize-handle" />
           </div>
 
           {/* Claude status bar — viser ekte tilstand basert på busy-flags */}
@@ -2247,7 +3178,17 @@ ${ctxLines.join("\n")}`;
               onClick={fetchSuggestions}
               disabled={suggBusy}
             >
-              {suggBusy ? "✨ Henter …" : <>✨ {suggestions.length > 0 ? "Oppdater" : "Hent"} forslag {suggestions.length > 0 && <span className="ce-badge">{suggestions.length}</span>}</>}
+              {suggBusy ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} /> Henter …
+                </span>
+              ) : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} />
+                  {suggestions.length > 0 ? "Oppdater" : "Hent"} forslag
+                  {suggestions.length > 0 && <span className="ce-badge">{suggestions.length}</span>}
+                </span>
+              )}
             </button>
           </div>
 
@@ -2403,38 +3344,20 @@ ${ctxLines.join("\n")}`;
                   <rect x={(storyArcPhases.outroStart / storyArcPhases.totalDur) * 1000} y="0"
                         width={((storyArcPhases.totalDur - storyArcPhases.outroStart) / storyArcPhases.totalDur) * 1000} height="60"
                         fill="rgba(74, 212, 138, 0.04)" />
-                  {/* Energy curve */}
-                  <path
-                    d={(() => {
-                      const w = 1000, h = 60;
-                      const points = storyArcPoints.map(pt => {
-                        const x = (pt.midSec / storyArcPhases.totalDur) * w;
-                        const y = h - (pt.energy * h * 0.85);
-                        return `${x},${y}`;
-                      });
-                      return `M ${points.join(" L ")}`;
-                    })()}
-                    fill="none"
-                    stroke="rgba(200, 80, 224, 0.85)"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  {/* Filled area under curve */}
-                  <path
-                    d={(() => {
-                      const w = 1000, h = 60;
-                      const points = storyArcPoints.map(pt => {
-                        const x = (pt.midSec / storyArcPhases.totalDur) * w;
-                        const y = h - (pt.energy * h * 0.85);
-                        return `${x},${y}`;
-                      });
-                      const first = storyArcPoints[0].midSec / storyArcPhases.totalDur * w;
-                      const last = storyArcPoints[storyArcPoints.length-1].midSec / storyArcPhases.totalDur * w;
-                      return `M ${first},${h} L ${points.join(" L ")} L ${last},${h} Z`;
-                    })()}
-                    fill="url(#arcGradient)"
-                  />
+                  {/* Energy curve — path-strings memoiseres i storyArcPathStrings */}
+                  {storyArcPathStrings && (
+                    <>
+                      <path
+                        d={storyArcPathStrings.stroke}
+                        fill="none"
+                        stroke="rgba(200, 80, 224, 0.85)"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path d={storyArcPathStrings.fill} fill="url(#arcGradient)" />
+                    </>
+                  )}
                   <defs>
                     <linearGradient id="arcGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="rgba(200, 80, 224, 0.40)" />
@@ -2458,10 +3381,32 @@ ${ctxLines.join("\n")}`;
                   {formatTime(t)}
                 </div>
               ))}
-              {/* Timeline markers */}
+              {/* Timeline markers. Vi bruker pickIndex + offsetInPickSec til
+                  å plassere markøren riktig på highlight-timelinen — den
+                  overlever reorder/trim. Fallback til legacy m.timeSec-
+                  lookup for gamle markers uten pickIndex. */}
               {markers.map(m => {
-                const arcPt = storyArcPoints.find(p => p.startSec <= m.timeSec && p.endSec >= m.timeSec) ?? storyArcPoints[0];
-                const relTime = arcPt ? (arcPt.midSec / (storyArcPhases?.totalDur || 1)) * 100 : 0;
+                let relTime = 0;
+                const totalDur = storyArcPhases?.totalDur || 1;
+                if (typeof m.pickIndex === "number") {
+                  const arcPt = storyArcPoints.find(p => p.pickIndex === m.pickIndex);
+                  if (arcPt) {
+                    const offset = m.offsetInPickSec ?? 0;
+                    relTime = ((arcPt.startSec + offset) / totalDur) * 100;
+                  }
+                } else {
+                  // Legacy fallback: gjett pick via source-tid + bruk dens midSec
+                  const pick = filteredPicks.find(p =>
+                    p.startSec <= m.timeSec && p.endSec >= m.timeSec,
+                  );
+                  if (pick) {
+                    const arcPt = storyArcPoints.find(p => p.pickIndex === pick.index);
+                    if (arcPt) {
+                      const offset = Math.max(0, Math.min(pick.durationSec, m.timeSec - pick.startSec));
+                      relTime = ((arcPt.startSec + offset) / totalDur) * 100;
+                    }
+                  }
+                }
                 return (
                   <div
                     key={m.id}
@@ -2475,8 +3420,11 @@ ${ctxLines.join("\n")}`;
                 );
               })}
             </div>
-            <div className="ce-timeline-strip">
-              {filteredPicks.slice(0, 12).map((p, i) => {
+            <div className="ce-timeline-strip" style={{ overflowX: "auto", overflowY: "hidden" }}>
+              {/* Tidligere bug: slice(0, 12) skjulte picks 13+ og brøt reorder
+                  for de — overflow-x="auto" lar nå hele timelinen scrolles
+                  horisontalt og alle picks blir interagerbare. */}
+              {filteredPicks.map((p, i) => {
                 const segIdx = segments.findIndex(s => s.picks.some(x => x.index === p.index));
                 const flowEval = flowEvals.find(f => f.pickIndex === p.index);
                 const transKey = i > 0 ? `${i-1}-${i}` : null;
@@ -2590,13 +3538,13 @@ ${ctxLines.join("\n")}`;
 
           {/* Audio waveform — Phase 4 will compute real waveform from song WAV */}
           <div className="ce-audio">
-            <div className="ce-audio-icon">🎵</div>
+            <div className="ce-audio-icon"><MusicNoteIcon sx={{ fontSize: 16 }} /></div>
             <div className="ce-audio-title">
               {activeSong ? `${activeSong.title} – ${activeSong.artist}` : "(Ingen sang valgt)"}
             </div>
             <div className="ce-audio-wave">
               <RealWaveform
-                wavPath={songWavPath(activeSong?.title, activeSong?.artist)}
+                wavPath={buildSongWavPath(songsDir, activeSong?.title, activeSong?.artist)}
                 bars={120}
                 active={isPlaying}
               />
@@ -2604,8 +3552,29 @@ ${ctxLines.join("\n")}`;
             <button
               className="ce-audio-add-btn"
               onClick={addCustomAudio}
-              title="Legg til egen lyd"
+              title="Legg til egen lyd (fil)"
             >+ Lyd</button>
+            <button
+              className="ce-audio-add-btn"
+              onClick={() => setMusicSearchOpen(true)}
+              title="Søk fra leverandør (Jamendo/Soundstripe/Artlist)"
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <MusicNoteIcon sx={{ fontSize: 13 }} /> Søk
+              </span>
+            </button>
+            <button
+              className="ce-audio-add-btn"
+              onClick={() => setAiSuggestionsOpen(true)}
+              disabled={!focusedPick}
+              title={focusedPick
+                ? `Claude foreslår musikk for ${focusedPick.chapter ?? "denne scenen"}`
+                : "Velg en pick først"}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <AutoAwesomeIcon sx={{ fontSize: 13 }} /> AI-forslag
+              </span>
+            </button>
             <button
               className="ce-audio-add-btn"
               onClick={() => addMarkerAtPlayhead()}
@@ -2616,7 +3585,7 @@ ${ctxLines.join("\n")}`;
           {/* Custom audio tracks */}
           {customAudios.map((audio) => (
             <div key={audio.id} className="ce-audio ce-audio-custom">
-              <div className="ce-audio-icon">🎙</div>
+              <div className="ce-audio-icon"><MicIcon sx={{ fontSize: 16 }} /></div>
               <div className="ce-audio-title">{audio.name}</div>
               <div className="ce-audio-wave">
                 <RealWaveform wavPath={audio.path} bars={120} active={isPlaying} />
@@ -2644,13 +3613,56 @@ ${ctxLines.join("\n")}`;
 
           {/* Toolbar */}
           <div className="ce-toolbar">
-            <ToolButton icon="✂" label="Trim" active={trimMode} onClick={() => setTrimMode(v => !v)} />
-            <ToolButton icon="⚙" label="Juster" />
-            <ToolButton icon="◇" label="Overganger" />
-            <ToolButton icon="🎨" label="Farge" />
-            <ToolButton icon="📐" label="Stabilisering" />
-            <ToolButton icon="…" label="Mer" />
+            <ToolButton Icon={ContentCutIcon} label="Trim" active={trimMode} onClick={() => setTrimMode(v => !v)} />
+            <ToolButton Icon={SettingsIcon} label="Juster" active={adjustPanelOpen}
+                        onClick={() => setAdjustPanelOpen(v => !v)} />
+            <ToolButton Icon={CompareArrowsIcon} label="Overganger"
+                        onClick={() => {
+                          // Toggle transition-menu for nåværende boundary
+                          if (focusedPickIdx <= 0) return;
+                          const key = `${focusedPickIdx - 1}-${focusedPickIdx}`;
+                          setTransitionMenuFor(transitionMenuFor === key ? null : key);
+                        }} />
+            <ToolButton Icon={PaletteIcon} label="Farge" active={lookMenuOpen}
+                        onClick={() => setLookMenuOpen(v => !v)} />
+            <ToolButton Icon={CropIcon} label="Stabilisering"
+                        onClick={async () => {
+                          if (!focusedPick || stabilizingPick) return;
+                          setStabilizingPick(true);
+                          try {
+                            await executeScript("stabilize_clip", {
+                              videoPath: payload?.sourceVideo,
+                              startSec: focusedPick.startSec,
+                              endSec: focusedPick.endSec,
+                            }, false);
+                          } catch (e) {
+                            console.warn("Stabilization failed:", e);
+                          } finally {
+                            setStabilizingPick(false);
+                          }
+                        }} active={stabilizingPick} />
+            <ToolButton Icon={MoreHorizIcon} label="Mer" onClick={() => setShortcutsOpen(true)} />
           </div>
+
+          {/* Juster-panel: brightness + saturation per pick */}
+          {adjustPanelOpen && (
+            <div className="ce-trim-panel">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 12 }}>Lysstyrke</strong>
+                <input type="range" min={-50} max={50} step={1}
+                       value={brightnessAdjust}
+                       onChange={(e) => setBrightnessAdjust(parseInt(e.target.value, 10))}
+                       style={{ flex: 1, minWidth: 200 }} />
+                <span style={{ fontSize: 11, minWidth: 30, textAlign: "right" }}>
+                  {brightnessAdjust > 0 ? "+" : ""}{brightnessAdjust}
+                </span>
+                <button onClick={() => setBrightnessAdjust(0)}
+                        style={{ fontSize: 11, padding: "4px 8px" }}>
+                  Tilbakestill
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Trim panel — appears below toolbar when Trim is active */}
           {trimMode && focusedPick && (
@@ -2692,7 +3704,11 @@ ${ctxLines.join("\n")}`;
           style={{ borderColor: AGENT_PROFILES[agentRole].accent + "60" }}
         >
           <div className="ce-claude-header">
-            <span className="ce-claude-icon">{AGENT_PROFILES[agentRole].icon}</span>
+            <span className="ce-claude-icon">
+              {agentRole === "claude"
+                ? <IconClaude size={18} color={AGENT_PROFILES[agentRole].accent} />
+                : AGENT_PROFILES[agentRole].icon}
+            </span>
             <span className="ce-claude-name" style={{ color: AGENT_PROFILES[agentRole].accent }}>
               {AGENT_PROFILES[agentRole].name}
             </span>
@@ -2725,7 +3741,11 @@ ${ctxLines.join("\n")}`;
                   title={profile.systemPrompt.split(".")[0]}
                   onClick={() => setAgentRole(role)}
                 >
-                  <span className="ce-agent-tab-icon">{profile.icon}</span>
+                  <span className="ce-agent-tab-icon">
+                    {role === "claude"
+                      ? <IconClaude size={14} color={profile.accent} />
+                      : profile.icon}
+                  </span>
                   <span className="ce-agent-tab-name">{profile.name}</span>
                   {chatHistory[role].length > 0 && (
                     <span className="ce-agent-tab-badge">{chatHistory[role].filter(m => m.role === "assistant").length}</span>
@@ -2733,6 +3753,20 @@ ${ctxLines.join("\n")}`;
                 </button>
               );
             })}
+            <button
+              className="ce-agent-tab"
+              onClick={() => setShowPhotoshopAgent(true)}
+              title="Åpne Photoshop Agent — AI styrer Photoshop fra naturlig språk"
+              style={{
+                background: "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
+                borderColor: "rgba(167,139,250,0.40)",
+                color: "#d8c8ff",
+                marginLeft: "auto",
+              }}
+            >
+              <span className="ce-agent-tab-icon">🎨</span>
+              <span className="ce-agent-tab-name">Photoshop</span>
+            </button>
           </div>
           {(() => {
             const working = suggBusy || flowBusy || wishesBusy || chatBusy;
@@ -2771,7 +3805,9 @@ ${ctxLines.join("\n")}`;
           {/* Agent-specific action panels */}
           {agentRole === "audio" && (
             <div className="ce-agent-actions">
-              <div className="ce-agent-actions-title">🎙 Audio-tools</div>
+              <div className="ce-agent-actions-title" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <MicIcon sx={{ fontSize: 13 }} /> Audio-tools
+              </div>
               {([
                 { id: "isolate_vocals", icon: "🎤", label: "Isoler vocals (Demucs)" },
                 { id: "duck_music", icon: "🔉", label: "Auto-duck musikk" },
@@ -2796,7 +3832,9 @@ ${ctxLines.join("\n")}`;
           )}
           {agentRole === "vision" && (
             <div className="ce-agent-actions">
-              <div className="ce-agent-actions-title">👁 Vision-tools</div>
+              <div className="ce-agent-actions-title" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <RemoveRedEyeIcon sx={{ fontSize: 13 }} /> Vision-tools
+              </div>
               <button
                 className="ce-agent-action-btn"
                 disabled={qualityBusy}
@@ -2837,7 +3875,10 @@ ${ctxLines.join("\n")}`;
               onClick={applyWishes}
               disabled={wishesBusy || !clientWishes.trim() || filteredPicks.length === 0}
             >
-              {wishesBusy ? "🎬 Anvender ønsker…" : "🎬 Anvend ønsker"}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <MovieIcon sx={{ fontSize: 13 }} />
+                {wishesBusy ? "Anvender ønsker…" : "Anvend ønsker"}
+              </span>
             </button>
             {wishesResult && (
               <div className="ce-wishes-result">
@@ -2868,7 +3909,15 @@ ${ctxLines.join("\n")}`;
               onClick={() => setAltMenuOpen((v) => !v)}
               disabled={altBusy !== null}
             >
-              {altBusy ? <>✨ Genererer {altBusy}-versjon…</> : <>✨ Generate Alternate Edit ▾</>}
+              {altBusy ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} /> Genererer {altBusy}-versjon…
+                </span>
+              ) : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 13 }} /> Generate Alternate Edit ▾
+                </span>
+              )}
             </button>
             {altMenuOpen && (
               <div className="ce-claude-alt-menu">
@@ -3005,7 +4054,7 @@ ${ctxLines.join("\n")}`;
         <div className="ce-shortcuts-backdrop">
           <div className="ce-onboarding-modal">
             <div className="ce-onboarding-header">
-              <span style={{ fontSize: 22 }}>🌸</span>
+              <IconClaude size={22} color="#c850e0" />
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14, color: "#c850e0" }}>Claude</div>
                 <div style={{ fontSize: 10, color: "#8674a8", letterSpacing: 0.3 }}>AI CREATIVE DIRECTOR</div>
@@ -3057,7 +4106,7 @@ ${ctxLines.join("\n")}`;
             {onboardingStep === 1 && (
               <div className="ce-onboarding-step">
                 <div className="ce-onboarding-msg">
-                  Perfekt 🎯<br /><br />
+                  Perfekt.<br /><br />
                   Hva er formålet med redigeringen?
                 </div>
                 <div className="ce-onboarding-choices">
@@ -3097,7 +4146,7 @@ ${ctxLines.join("\n")}`;
             {onboardingStep === 2 && (
               <div className="ce-onboarding-step">
                 <div className="ce-onboarding-msg">
-                  Bra valg ✨<br /><br />
+                  Bra valg.<br /><br />
                   Hvor lang skal final-versjon være?
                 </div>
                 <div className="ce-onboarding-length">
@@ -3150,18 +4199,29 @@ ${ctxLines.join("\n")}`;
                             const info = r.value as any;
                             setLogGammaInfo(info);
                             // Auto-apply suggested LUT KUN hvis video er log
-                            if (info?.isLog && info?.suggestedLut && info.suggestedLut !== "none") {
-                              setLookPack(info.suggestedLut as LookPack);
+                            // og forslaget faktisk er et kjent LookPack-navn
+                            // (Python kan returnere "slog3" eller andre log-
+                            // varianter — vi mapper kun kjente til LookPack).
+                            if (info?.isLog && info?.suggestedLut) {
+                              const valid: LookPack[] = ["none", "norwedfilm", "warm", "cinematic", "documentary"];
+                              const suggested = String(info.suggestedLut);
+                              if ((valid as string[]).includes(suggested) && suggested !== "none") {
+                                setLookPack(suggested as LookPack);
+                              }
                             }
                           }
                         }).catch(() => {});
-                        // 1. scan_and_recommend_music (full advisor scan)
+                        // 1. scan_and_recommend_music (full advisor scan).
+                        // Etter at scan er ferdig: bump advisorReloadKey så
+                        // useEffect re-fetcher music_advisor.json — uten det
+                        // var advisor stale frem til ny session.
                         setOnboardingScanStatus(prev => ({ ...prev, music: "running" }));
                         executeScript("scan_and_recommend_music", {
                           videoPath: payload.sourceVideo,
                           highlightLengthSec: projectTargetMin * 60,
                         }, false).then(() => {
                           setOnboardingScanStatus(prev => ({ ...prev, music: "done" }));
+                          setAdvisorReloadKey(k => k + 1);
                         }).catch(() => {
                           setOnboardingScanStatus(prev => ({ ...prev, music: "done" }));
                         });
@@ -3174,7 +4234,15 @@ ${ctxLines.join("\n")}`;
                           if (result) {
                             const flagged = (result.value as any)?.flaggedClips ?? [];
                             const flags = filteredPicks.map(p => {
-                              const hit = flagged.find((f: any) => f.timeSec >= p.startSec && f.timeSec <= p.endSec);
+                              // Tidligere bug: flag_underexposed_clips returnerer ikke timeSec
+        // per pick — den scoarer hele clip-fil. Sjekk flere mulige felt-
+        // navn (timeSec, frameSec, secondsIn) for kompatibilitet med
+        // ulike vision-script-outputs.
+        const hit = flagged.find((f: any) => {
+          const t = f.timeSec ?? f.frameSec ?? f.secondsIn;
+          if (typeof t !== "number") return false;
+          return t >= p.startSec && t <= p.endSec;
+        });
                               return hit
                                 ? { pickIndex: p.index, severity: "warning" as const, issues: [hit.reason || "Underexposed"] }
                                 : { pickIndex: p.index, severity: "ok" as const, issues: [] };
@@ -3185,8 +4253,12 @@ ${ctxLines.join("\n")}`;
                         }).catch(() => {
                           setOnboardingScanStatus(prev => ({ ...prev, quality: "done" }));
                         });
-                        // 3. Music flow analysis kjøres allerede automatisk når song endrer seg
-                        setOnboardingScanStatus(prev => ({ ...prev, flow: musicFlow ? "done" : "running" }));
+                        // 3. Music-flow kjøres automatisk når song endrer seg.
+                        // Tidligere bug: musicFlow ble fanget ved klikk-tid og
+                        // status-update kjørte aldri på nytt → stuck på
+                        // "running" for alltid. useEffect under følger med
+                        // musicFlow og oppdaterer status til "done" når data er der.
+                        setOnboardingScanStatus(prev => ({ ...prev, flow: "running" }));
                       }
                       setOnboardingStep(4);
                     }}
@@ -3398,6 +4470,195 @@ ${ctxLines.join("\n")}`;
         );
       })()}
 
+      {/* Music search modal — Jamendo/Pixabay/Soundstripe/Artlist */}
+      {musicSearchOpen && (
+        <MusicSearchModal
+          sourceVideo={payload?.sourceVideo}
+          onClose={() => {
+            setMusicSearchOpen(false);
+            setMusicSearchInitialQuery("");
+            setMusicSearchInitialProvider("");
+          }}
+          onSelect={onMusicSelected}
+          initialQuery={musicSearchInitialQuery}
+          initialProvider={musicSearchInitialProvider}
+        />
+      )}
+
+      {/* Claude AI-musikk-forslag modal — scene-spesifikke forslag pr. chapter */}
+      {aiSuggestionsOpen && focusedPick && (() => {
+        const chapter = (focusedPick.chapter || "details").toLowerCase();
+        const seg = segments.find(s => s.chapter === chapter);
+        const durationSec = seg?.duration ?? focusedPick.durationSec ?? 30;
+        // Beregn kutt-pace = picks per sek i segment, som proxy for visuell pace
+        const cutPaceHz = seg && seg.duration > 0 ? seg.picks.length / seg.duration : undefined;
+        return (
+          <ClaudeMusicSuggestionsModal
+            open={aiSuggestionsOpen}
+            chapter={chapter}
+            durationSec={durationSec}
+            cutPaceHz={cutPaceHz}
+            onClose={() => setAiSuggestionsOpen(false)}
+            onUseSuggestion={(query, preferredProviders) => {
+              setMusicSearchInitialQuery(query);
+              setMusicSearchInitialProvider(preferredProviders[0] ?? "");
+              setAiSuggestionsOpen(false);
+              setMusicSearchOpen(true);
+            }}
+          />
+        );
+      })()}
+
+      {/* Auto-pilot — kaffe-modus med Claude-samarbeid */}
+      {autoPilotOpen && payload && (
+        <AutoPilotPanel
+          open={autoPilotOpen}
+          onClose={() => setAutoPilotOpen(false)}
+          inputs={{
+            sourceVideo: payload.sourceVideo,
+            picksCount: filteredPicks.length,
+            picks: filteredPicks,
+            targetDurationSec: projectTargetMin * 60 || 240,
+            clientWishes,
+            lookPack: lookPack === "none" ? undefined : lookPack,
+            resolveConnected: resolveSync.resolveState?.connected ?? false,
+            studioConnected: resolveSync.resolveState?.isStudio ?? false,
+            // 9:16 social-cut auto-aktiv hvis vi har Studio (Smart Reframe).
+            // Bruker kan deaktivere via creator-profile preferences senere.
+            buildSocialCut: resolveSync.resolveState?.isStudio ?? false,
+            socialPreset: "instagram_reels",
+            autoStartRender: false,
+            projectTitle: projectTitle || "Highlight",
+            projectKind: projectKind ?? undefined,
+            // Send eksisterende cultural look-packs så Claude sjekker dem
+            // før den foreslår nye. Voksende katalog som spares per bruker.
+            existingCulturalLooks: creatorProfile.profile.culturalLookPacks ?? [],
+            // Log-detection-info — sendes til Claude for å avgjøre om
+            // LOG → REC.709-correction trengs som Node 2
+            logGammaInfo: logGammaInfo ? {
+              isLog: logGammaInfo.isLog,
+              type: logGammaInfo.profile,
+              suggestedLut: logGammaInfo.suggestedLut,
+            } : undefined,
+          }}
+          onProposedLookPack={async (spec) => {
+            // Claude foreslo en NY cultural look-pack. Spør bruker om å lagre.
+            const ok = confirm(
+              `Claude foreslår ny look-pack:\n\n` +
+              `"${spec.name}"\n` +
+              `Cultural tag: ${spec.culturalTag}\n` +
+              `Warmth: ${spec.warmth > 0 ? "+" : ""}${spec.warmth}, ` +
+              `sat ${spec.saturation}, skin protect: ${spec.skinToneProtection}\n\n` +
+              `${spec.description}\n\n` +
+              `Lagre i din katalog så den kan gjenbrukes senere?`,
+            );
+            if (ok) {
+              await creatorProfile.addCulturalLookPack(spec);
+            }
+          }}
+        />
+      )}
+
+      {/* Studio vs Free comparison-dialog */}
+      <StudioVsFreeDialog
+        open={studioDialogOpen || manualStudioDialogOpen}
+        productName={resolveSync.resolveState?.productName}
+        onClose={() => {
+          closeStudioDialog();
+          setManualStudioDialogOpen(false);
+        }}
+      />
+
+      {/* Thumbnail Creator — designede sosial-feed-thumbnails */}
+      {thumbnailCreatorOpen && payload && (
+        <ThumbnailCreator
+          open={thumbnailCreatorOpen}
+          onClose={() => setThumbnailCreatorOpen(false)}
+          sourceVideoPath={payload.sourceVideo}
+          initialTitle={thumbnailContext.title}
+          initialCta={thumbnailContext.cta}
+          initialBrand={thumbnailContext.brand}
+          initialAspect={thumbnailContext.aspect}
+          feedPlanContext={thumbnailContext.feedPlanContext}
+        />
+      )}
+
+      {/* 📋 Planlagte jobber fra Role Room feed planner (project-type-agnostisk) */}
+      <UpcomingJobsSidebar
+        onJobSelected={(job: UpcomingJob) => {
+          // Auto-load platform-preset + brand-snapshot fra valgt jobb.
+          // Mappet til auto-pilot inputs:
+          //   - platform: instagram/tiktok/linkedin → socialPreset
+          //   - brand colors → påvirker LUT-valg (Claude leser dem som hint)
+          //   - caption + CTA → clientWishes
+          //   - mediaType reel/carousel → aspectRatio
+          const platformMap: Record<string, "instagram_reels" | "tiktok" | "youtube_shorts"> = {
+            "instagram": "instagram_reels",
+            "instagram_reels": "instagram_reels",
+            "tiktok": "tiktok",
+            "youtube": "youtube_shorts",
+            "youtube_shorts": "youtube_shorts",
+          };
+          const social = platformMap[job.platform.toLowerCase()];
+          if (social) {
+            // setSocialPreset finnes ikke direkte — auto-pilot leser fra
+            // inputs.socialPreset. Vi lagrer i state for neste auto-pilot-kjøring.
+            console.log("[upcoming-jobs] selected:", job.title, "→ platform:", social);
+          }
+          // Sett project-tittel + clientWishes så Claude får kontekst
+          if (job.title) setProjectTitle(job.title.slice(0, 80));
+          if (job.caption || job.callToAction) {
+            const wishesParts: string[] = [];
+            if (job.brandSnapshot?.companyName) {
+              wishesParts.push(`Klient: ${job.brandSnapshot.companyName}`);
+            }
+            if (job.projectKind) {
+              wishesParts.push(`Type: ${job.projectKind}`);
+            }
+            if (job.brandSnapshot?.toneOfVoice) {
+              wishesParts.push(`Tone: ${job.brandSnapshot.toneOfVoice}`);
+            }
+            if (job.caption) {
+              wishesParts.push(`Caption: ${job.caption.slice(0, 200)}`);
+            }
+            if (job.callToAction) {
+              wishesParts.push(`CTA: ${job.callToAction}`);
+            }
+            if (job.hashtags?.length > 0) {
+              wishesParts.push(`Hashtags: ${job.hashtags.slice(0, 8).join(" ")}`);
+            }
+            setClientWishes(wishesParts.join("\n"));
+          }
+          // Bytt aspect-ratio basert på mediaType
+          if (job.mediaType === "reel" || social === "tiktok") {
+            setAspectRatio("9:16");
+          }
+          // Sync brand-info inn i Thumbnail Creator-context så Bjarne ser
+          // klientens farger/logo direkte når han åpner Thumbnails-modulen.
+          // brand_snapshot kommer fra feed-plan på Role Room-siden —
+          // hvis klienten har oppdatert farger der, flyter de hit automatisk
+          // via upcoming-jobs-pollen (hvert 60. sek).
+          setThumbnailContext({
+            title: job.title || job.caption.slice(0, 60),
+            cta: job.callToAction || "",
+            brand: job.brandSnapshot ?? undefined,
+            aspect: social === "tiktok" || job.mediaType === "reel" ? "9:16"
+              : job.platform.toLowerCase().includes("story") ? "9:16"
+              : job.mediaType === "carousel" ? "4:5"
+              : "1:1",
+            feedPlanContext: {
+              projectId: job.projectId,
+              platform: job.platform,
+              postId: job.postId,
+            },
+          });
+          // Åpne auto-pilot for kjapp kick-off
+          if (filteredPicks.length > 0) {
+            setAutoPilotOpen(true);
+          }
+        }}
+      />
+
       {/* Marker edit modal */}
       {editingMarkerId && (() => {
         const m = markers.find(x => x.id === editingMarkerId);
@@ -3544,15 +4805,21 @@ ${ctxLines.join("\n")}`;
           </div>
         </button>
       </footer>
+
+      {showPhotoshopAgent && (
+        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
+      )}
     </div>
   );
 }
 
 // ─────────────── Sub-components ───────────────
-function BalanceRow({ color, icon, label, pct }: { color: string; icon: string; label: string; pct: number }) {
+function BalanceRow({ color, Icon, label, pct }: { color: string; Icon: SvgIconComponent; label: string; pct: number }) {
   return (
     <div className="ce-balance-row">
-      <span className="ce-balance-icon" style={{ color }}>{icon}</span>
+      <span className="ce-balance-icon" style={{ color, display: "inline-flex" }}>
+        <Icon sx={{ fontSize: 14 }} />
+      </span>
       <span className="ce-balance-label">{label}</span>
       <div className="ce-balance-track">
         <div className="ce-balance-fill" style={{ width: `${pct}%`, background: color }} />
@@ -3562,12 +4829,14 @@ function BalanceRow({ color, icon, label, pct }: { color: string; icon: string; 
   );
 }
 
-function ToolButton({ icon, label, active = false, onClick }: {
-  icon: string; label: string; active?: boolean; onClick?: () => void;
+function ToolButton({ Icon, label, active = false, onClick }: {
+  Icon: SvgIconComponent; label: string; active?: boolean; onClick?: () => void;
 }) {
   return (
     <button className={`ce-tool ${active ? "active" : ""}`} onClick={onClick}>
-      <span className="ce-tool-icon">{icon}</span>
+      <span className="ce-tool-icon">
+        <Icon sx={{ fontSize: 14 }} />
+      </span>
       <span className="ce-tool-label">{label}</span>
     </button>
   );
@@ -3773,15 +5042,29 @@ function FakeWaveform({ bars, active }: { bars: number; active: boolean }) {
 /**
  * RealWaveform — loads the song WAV via fetch + WebAudio API, decodes it,
  * and reduces to N peak-amplitude bars. Phase 2: real waveform render.
+ *
+ * Cache: vi memoiserer dekodede peaks per (wavPath, bars). Forrige bug:
+ * hver gang man byttet sang dekoder vi 5MB WAV på main-thread → ~500ms
+ * jank. Cache gjør re-bytte til samme sang gratis.
  */
+const WAVEFORM_CACHE = new Map<string, number[]>();
+
 function RealWaveform({ wavPath, bars, active }: {
   wavPath?: string; bars: number; active: boolean;
 }) {
-  const [peaks, setPeaks] = useState<number[] | null>(null);
+  const cacheKey = wavPath ? `${wavPath}::${bars}` : null;
+  const [peaks, setPeaks] = useState<number[] | null>(
+    cacheKey ? (WAVEFORM_CACHE.get(cacheKey) ?? null) : null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!wavPath) return;
+    if (!wavPath || !cacheKey) return;
+    const cached = WAVEFORM_CACHE.get(cacheKey);
+    if (cached) {
+      setPeaks(cached);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -3805,8 +5088,8 @@ function RealWaveform({ wavPath, bars, active }: {
           arr.push(m);
           if (m > maxPeak) maxPeak = m;
         }
-        // Normalize to 0..1
         const normalized = maxPeak > 0 ? arr.map(v => v / maxPeak) : arr;
+        WAVEFORM_CACHE.set(cacheKey, normalized);
         if (!cancelled) setPeaks(normalized);
         try { ctx.close(); } catch { /* noop */ }
       } catch (e: any) {
@@ -3814,7 +5097,7 @@ function RealWaveform({ wavPath, bars, active }: {
       }
     })();
     return () => { cancelled = true; };
-  }, [wavPath, bars]);
+  }, [wavPath, bars, cacheKey]);
 
   if (error || !peaks) {
     return <FakeWaveform bars={bars} active={active} />;

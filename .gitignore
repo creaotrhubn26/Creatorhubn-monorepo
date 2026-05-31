@@ -69,6 +69,10 @@ docs/
 !docs/
 !docs/role-room/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
+!docs/post-agent/
+!docs/post-agent/*.md
+!apps/resolve-script-manager/src/docs/
+!apps/resolve-script-manager/src/docs/*.md
 !backend/docs/whatsapp-app-review-runbook.md
 !backend/docs/oembed-app-review-runbook.md
 !backend/docs/pages-manage-cta-app-review-runbook.md
@@ -93,6 +97,7 @@ Frameworks/
 .vercel/
 .npm-cache/
 .playwright-cli/
+.playwright-mcp/
 frontend/.playwright-cli/
 frontend/playwright-report/
 frontend/test-results/

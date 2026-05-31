@@ -200,6 +200,11 @@ services:
       # gang servicen provisjoneres.
       - key: NEXTROLE_CRON_SECRET
         generateValue: true
+      # Role Room seat-reconciliation cron-token. Brukes av daglig cron
+      # som POSTer til /api/admin-room/role-room/reconcile-seats med
+      # X-Reconcile-Token-header. Auto-generert av Render første gang.
+      - key: ROLE_ROOM_RECONCILE_CRON_TOKEN
+        generateValue: true
       - key: ROLE_ROOM_LINKEDIN_CLIENT_ID
         sync: false
       - key: ROLE_ROOM_LINKEDIN_CLIENT_SECRET
@@ -339,9 +344,11 @@ services:
       - key: POWEROFFICE_BASE_URL
         value: "https://goapi.poweroffice.net/demo/v2"
   # ─────────────────────────────────────────────────────────────────
-  # NextRole trial-expiry cron — kjører daglig 09:00 UTC og POSTer til
-  # backendens interne endepunkt. Endepunktet finner brukere med
-  # ~3 dager igjen av trial og sender trialExpiringEmail.
+  # Creatorhub daglig sweep — kjører 09:00 UTC og kaller flere
+  # interne endepunkter:
+  #   1. NextRole check-trial-expiry + drip-tick
+  #   2. Role Room seat-reconciliation (dry-run; logger drift som
+  #      billing-alerts i admin-panelet)
   # ─────────────────────────────────────────────────────────────────
   - type: cron
     name: creatorhub-nextrole-cron
@@ -359,6 +366,13 @@ services:
           name: creatorhub-backend
           type: web
           envVarKey: NEXTROLE_CRON_SECRET
+      # Role Room seat-reconciliation kjører via samme cron-service
+      # (sparer en service-slot). Token sync'es fra backend-env.
+      - key: ROLE_ROOM_RECONCILE_CRON_TOKEN
+        fromService:
+          name: creatorhub-backend
+          type: web
+          envVarKey: ROLE_ROOM_RECONCILE_CRON_TOKEN
 
   - type: web
     name: creatorhub-gfpgan-runner

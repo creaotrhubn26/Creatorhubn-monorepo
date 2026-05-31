@@ -27,6 +27,11 @@ const VALID_SEGMENTS = new Set([
   "institution",
   "press",
   "agency",
+  // Outreach Plan v2-segments
+  "dance",
+  "affiliate",
+  "content",
+  "education",
   "other",
 ]);
 const VALID_CHANNELS = new Set(["dm", "email", "phone", "in_person", "loom"]);

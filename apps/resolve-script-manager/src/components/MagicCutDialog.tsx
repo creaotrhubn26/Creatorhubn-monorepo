@@ -114,8 +114,22 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
         }
       } else if ((event.type as string) === "clip_decision") {
         // Per-clip event from cull_folder.py — feeds CullTheater live grid.
-        const c = event as unknown as ClipDecisionEvent;
-        setClipDecisions((prev) => [...prev, c]);
+        // Tidligere swallowed Tauri-side eventer som ikke matchet union-type
+        // uten log; nå validerer vi shape før vi pusher slik at en delvis
+        // implementert backend-event ikke korruptér state.
+        const candidate = event as unknown as Partial<ClipDecisionEvent>;
+        const validDecisions = ["keep", "reject", "maybe", "pending"];
+        if (
+          candidate
+          && typeof candidate.clipPath === "string"
+          && typeof candidate.clipName === "string"
+          && typeof candidate.decision === "string"
+          && validDecisions.includes(candidate.decision)
+        ) {
+          setClipDecisions((prev) => [...prev, candidate as ClipDecisionEvent]);
+        } else {
+          console.warn("[magic-cut] clip_decision event missing required fields:", event);
+        }
       }
     }).then((u) => {
       unlisten = u;
@@ -252,6 +266,28 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
     const generatedRunId = `magic-cut-${Date.now()}`;
     setRunId(generatedRunId);
     try {
+      // Pre-flight: auto_rough_cut bygger Resolve-timeline. Sjekk at
+      // Resolve faktisk er åpen før vi kjører den lange prosessen.
+      try {
+        const { runHealthCheck } = await import("../api");
+        const health = await runHealthCheck();
+        const healthResult = health.events.find((e) => e.type === "result");
+        const status = (healthResult?.value as any) || {};
+        if (!status.resolveRunning) {
+          throw new Error("DaVinci Resolve er ikke åpen. Start Resolve, åpne prosjektet ditt og prøv igjen.");
+        }
+        if (!status.projectOpen) {
+          throw new Error("Ingen prosjekt åpent i Resolve. Åpne prosjektet ditt og prøv igjen.");
+        }
+      } catch (err: any) {
+        if (err?.message?.includes("Resolve")) {
+          setError(err.message);
+          setRunning(false);
+          return;
+        }
+        // Helsesjekk-feil → la auto_rough_cut prøve og gi ekte feil
+      }
+
       const summary = await executeScript(
         "auto_rough_cut",
         {
@@ -290,8 +326,8 @@ export function MagicCutDialog({ templateId, templateName, onClose }: Props) {
   }, [runId]);
 
   return (
-    <div className="modal-backdrop" onClick={!running ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 600, maxHeight: "88vh" }}>
+    <div className="modal-backdrop anim-fade-in" onClick={!running ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()} style={{ width: 600, maxHeight: "88vh" }}>
         <h2>
           <IconMagicCut size={20} /> Magic Cut · {templateName}
         </h2>

@@ -86,12 +86,15 @@ export interface RoleRoomAgentFeedPlanRoutesDeps {
     res: express.Response,
   ) => AdminSession | null;
   isCompatAdminFeatureEnabled: (featureId: string) => boolean;
+  /** Mildere session-helper for endpoints som ikke krever admin-rolle —
+   *  brukes av approval-policy-GET som skal være tilgjengelig for klient + produsent. */
+  getActiveSession?: (req: express.Request) => AdminSession | null;
 }
 
 export function setupRoleRoomAgentFeedPlanRoutes(
   deps: RoleRoomAgentFeedPlanRoutesDeps,
 ): void {
-  const { app, pool, requireAdminSession, isCompatAdminFeatureEnabled } = deps;
+  const { app, pool, requireAdminSession, isCompatAdminFeatureEnabled, getActiveSession } = deps;
 
   app.get("/api/role-room/agent/feed-plan/templates/:projectId/:platform", async (req, res) => {
     const featureId = "role-room-agent-producer";
@@ -804,18 +807,26 @@ export function setupRoleRoomAgentFeedPlanRoutes(
   });
 
   // ── Godkjenningspolicy — kunden bestemmer (§5.1) ─────────────────────────
-  // GET: alle med tilgang kan se gjeldende policy.
+  // GET: alltid 200 med policyen. canEdit beregnes best-effort fra session-
+  //      rolle (klient/client_reviewer → true, ellers false). Policyen er en
+  //      boolean ikke sensitiv data, så vi gater ikke read-access. Dette
+  //      eliminerer 401-console-errors for klient-flaten ved sideoppslag.
   app.get("/api/role-room/agent/feed-plan/:projectId/approval-policy", async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
-    if (!session) return;
     const { projectId } = req.params;
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
     const policy = await getApprovalPolicy(pool, projectId);
-    return res.json({ success: true, ...policy, canEdit: isClientActor(session.role) });
+    let canEdit = false;
+    try {
+      const session = getActiveSession ? getActiveSession(req) : null;
+      canEdit = session ? isClientActor(session.role) : false;
+    } catch {
+      canEdit = false;
+    }
+    return res.json({ success: true, ...policy, canEdit });
   });
 
   // PUT: KUN kunden (client_reviewer) kan endre policyen.
@@ -824,8 +835,13 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
-    if (!session) return;
+    const session = getActiveSession ? getActiveSession(req) : requireAdminSession(req, res);
+    if (!session) {
+      if (getActiveSession && !res.headersSent) {
+        return res.status(401).json({ success: false, error: "Innlogging kreves." });
+      }
+      return;
+    }
     const { projectId } = req.params;
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
     if (!isClientActor(session.role)) {

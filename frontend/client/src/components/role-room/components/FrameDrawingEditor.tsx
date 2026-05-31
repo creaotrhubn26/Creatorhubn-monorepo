@@ -3477,6 +3477,23 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const [selectedBrushPackId, setSelectedBrushPackId] = useState<(typeof STUDIO_BRUSH_PACKS)[number]['id']>('noir');
   const [selectedLibraryPreset, setSelectedLibraryPreset] = useState('Hard Shadow');
   const [inspectorMode, setInspectorMode] = useState<'lighting' | 'layers' | 'shot'>('lighting');
+  // Inspector-state for Lighting-fanen + Camera Height. Tidligere var disse
+  // hardkodede tall i UI (Camera Height value=62, Intensity 78, 3.200K 32) —
+  // de gjorde ingenting når man dro i slidene. Nå er de stateful + persistes
+  // i drawingDocument.metadata.lighting/approvalStatus så artisten kan låse
+  // en lyssetting til et frame og hente den tilbake ved neste åpning.
+  // useState bruker lazy-init for å lese metadata KUN på første render —
+  // senere endringer i initialDocument forplanter seg via hydrate-effekten.
+  const initialLighting = initialDocument.metadata.lighting;
+  const [cameraHeight, setCameraHeight] = useState<number>(() => initialLighting?.cameraHeight ?? 62);
+  const [keyLightIntensity, setKeyLightIntensity] = useState<number>(() => initialLighting?.keyLightIntensity ?? 78);
+  // keyLightTempPct er 0-100. Mappes til 2000K-6500K for visning.
+  // 32% → ~3.440K (default).
+  const [keyLightTempPct, setKeyLightTempPct] = useState<number>(() => initialLighting?.keyLightTempPct ?? 32);
+  const [keyLightSoftness, setKeyLightSoftness] = useState<'hard' | 'soft'>(() => initialLighting?.keyLightSoftness ?? 'soft');
+  const [castsShadows, setCastsShadows] = useState<boolean>(() => initialLighting?.castsShadows ?? true);
+  const [ambientOcclusion, setAmbientOcclusion] = useState<boolean>(() => initialLighting?.ambientOcclusion ?? true);
+  const [approvalStatus, setApprovalStatus] = useState<'draft' | 'approved' | 'rejected'>(() => initialDocument.metadata.approvalStatus ?? 'draft');
   const [gridEnabled, setGridEnabled] = useState(workflowLevel === 'blocking' || workflowLevel === 'shot');
   const [boardPolishMode, setBoardPolishMode] = useState<StoryboardDocumentBoardPolishMode>(
     initialBoardPolishState?.mode ?? STUDIO_BOARD_POLISH_DEFAULTS.mode
@@ -3701,6 +3718,18 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setBoardPolishVignette(initialBoardPolishState?.vignette ?? STUDIO_BOARD_POLISH_DEFAULTS.vignette);
     setBoardPolishEffectLayerStates(createBoardPolishEffectLayerStates(initialBoardPolishState?.effectLayers ?? STUDIO_BOARD_POLISH_DEFAULTS.effectLayers));
     setBoardPolishEffectRegions(createBoardPolishEffectRegions(initialBoardPolishState?.effectRegions ?? STUDIO_BOARD_POLISH_DEFAULTS.effectRegions));
+    // Hydrer Inspector Lighting + Approval-state fra dokumentet (samme pattern
+    // som boardPolish ovenfor). Brukes når et eksisterende frame åpnes —
+    // artisten ser tilbake den lyssettingen og approval-statusen som ble
+    // lagret sist.
+    const hydratedLighting = initialDocument.metadata.lighting;
+    setCameraHeight(hydratedLighting?.cameraHeight ?? 62);
+    setKeyLightIntensity(hydratedLighting?.keyLightIntensity ?? 78);
+    setKeyLightTempPct(hydratedLighting?.keyLightTempPct ?? 32);
+    setKeyLightSoftness(hydratedLighting?.keyLightSoftness ?? 'soft');
+    setCastsShadows(hydratedLighting?.castsShadows ?? true);
+    setAmbientOcclusion(hydratedLighting?.ambientOcclusion ?? true);
+    setApprovalStatus(initialDocument.metadata.approvalStatus ?? 'draft');
     setSelectedCinematicSceneKitId(undefined);
     setTransportPlaying(false);
     setTimeLapsePlaying(false);
@@ -3929,6 +3958,34 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         : 264;
   const initialToolsPanelCollapsed = isThumbnailWorkflow ? true : isDesktopCanvasPriority;
   const currentBrushPack = STUDIO_BRUSH_PACKS.find((pack) => pack.id === selectedBrushPackId) || STUDIO_BRUSH_PACKS[0];
+  // Derivert RGB for key light basert på fargetemperatur — varm orange ved
+  // 0 % (2000 K), kjølig blå-hvit ved 100 % (6500 K). Brukes til å tinte
+  // lighting-overlay over canvas.
+  const keyLightColor = useMemo(() => {
+    const t = Math.max(0, Math.min(1, keyLightTempPct / 100));
+    const warm = { r: 255, g: 179, b: 102 };
+    const cool = { r: 204, g: 228, b: 255 };
+    const r = Math.round(warm.r + (cool.r - warm.r) * t);
+    const g = Math.round(warm.g + (cool.g - warm.g) * t);
+    const b = Math.round(warm.b + (cool.b - warm.b) * t);
+    return `rgb(${r}, ${g}, ${b})`;
+  }, [keyLightTempPct]);
+  const keyLightKelvin = Math.round(2000 + (6500 - 2000) * keyLightTempPct / 100);
+  // Synk brush color til pakkens mørkeste swatch (siste i arrayet — typisk
+  // pakkens "main ink"-tone). Slik blir Noir Lighting Pack default til kull-
+  // grått, Commercial High-Key til varm rosa-ink, Action Crosshatch til
+  // svart, Soft Drama Wash til mahogny. Artisten kan fortsatt overstyre
+  // via Color-picker. Forhindrer overstyring av aktive pågående pencil-
+  // strokes ved å bare oppdatere når brush-pack-id endrer seg.
+  useEffect(() => {
+    const primaryInkColor = currentBrushPack.swatches[currentBrushPack.swatches.length - 1]
+      ?? currentBrushPack.swatches[0]
+      ?? '#000000';
+    setBrushSettings((prev) => (
+      prev.color === primaryInkColor ? prev : { ...prev, color: primaryInkColor }
+    ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBrushPackId]);
   const displaySceneLabel = sceneId ? `Scene ${sceneId}` : 'Scene 15';
   const displayShotLabel = frameId
     ? frameId.replace(/^frame[-_]?/i, '').replace(/[-_]/g, ' ').trim().toUpperCase() || 'Shot 5B'
@@ -5601,6 +5658,41 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     },
     []
   );
+
+  // Synk Inspector-state (Lighting + Approval) inn i drawingDocument.metadata
+  // når de endres. Markerer dokumentet som unsaved så neste autosave/save
+  // persisterer verdiene. Sammenligner mot eksisterende metadata for å
+  // unngå infinite loops når initialDocument ankommer disse default-verdiene.
+  useEffect(() => {
+    const currentLighting = drawingDocumentRef.current.metadata.lighting;
+    const nextLighting = {
+      cameraHeight,
+      keyLightIntensity,
+      keyLightTempPct,
+      keyLightSoftness,
+      castsShadows,
+      ambientOcclusion,
+    };
+    const currentApproval = drawingDocumentRef.current.metadata.approvalStatus ?? 'draft';
+    const lightingChanged = !currentLighting
+      || currentLighting.cameraHeight !== nextLighting.cameraHeight
+      || currentLighting.keyLightIntensity !== nextLighting.keyLightIntensity
+      || currentLighting.keyLightTempPct !== nextLighting.keyLightTempPct
+      || currentLighting.keyLightSoftness !== nextLighting.keyLightSoftness
+      || currentLighting.castsShadows !== nextLighting.castsShadows
+      || currentLighting.ambientOcclusion !== nextLighting.ambientOcclusion;
+    const approvalChanged = currentApproval !== approvalStatus;
+    if (!lightingChanged && !approvalChanged) return;
+    commitDocumentUpdate((prev) => ({
+      ...prev,
+      metadata: {
+        ...prev.metadata,
+        lighting: nextLighting,
+        approvalStatus,
+      },
+      updatedAt: new Date().toISOString(),
+    }));
+  }, [cameraHeight, keyLightIntensity, keyLightTempPct, keyLightSoftness, castsShadows, ambientOcclusion, approvalStatus, commitDocumentUpdate]);
 
   useEffect(() => {
     const persistedBoardPolishSignature = JSON.stringify(
@@ -8904,15 +8996,40 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 }}
               >
                 <Chip
-                  icon={<CheckCircle sx={{ color: '#4ade80 !important', fontSize: 15 }} />}
-                  label="Approved"
+                  icon={
+                    approvalStatus === 'approved'
+                      ? <CheckCircle sx={{ color: '#4ade80 !important', fontSize: 15 }} />
+                      : approvalStatus === 'rejected'
+                        ? <CheckCircle sx={{ color: '#f87171 !important', fontSize: 15 }} />
+                        : <FiberManualRecord sx={{ color: '#fbbf24 !important', fontSize: 12 }} />
+                  }
+                  label={approvalStatus === 'approved' ? 'Approved' : approvalStatus === 'rejected' ? 'Rejected' : 'Draft'}
                   size="small"
+                  onClick={() => setApprovalStatus((p) =>
+                    p === 'draft' ? 'approved' : p === 'approved' ? 'rejected' : 'draft'
+                  )}
                   sx={{
                     height: 28,
                     borderRadius: 999,
-                    bgcolor: 'rgba(20,83,45,0.35)',
-                    color: '#86efac',
-                    border: '1px solid rgba(34,197,94,0.28)',
+                    cursor: 'pointer',
+                    bgcolor: approvalStatus === 'approved'
+                      ? 'rgba(20,83,45,0.35)'
+                      : approvalStatus === 'rejected'
+                        ? 'rgba(127,29,29,0.35)'
+                        : 'rgba(120,53,15,0.35)',
+                    color: approvalStatus === 'approved'
+                      ? '#86efac'
+                      : approvalStatus === 'rejected'
+                        ? '#fca5a5'
+                        : '#fde68a',
+                    border: `1px solid ${
+                      approvalStatus === 'approved'
+                        ? 'rgba(34,197,94,0.28)'
+                        : approvalStatus === 'rejected'
+                          ? 'rgba(248,113,113,0.28)'
+                          : 'rgba(251,191,36,0.28)'
+                    }`,
+                    transition: 'all 0.18s',
                   }}
                 />
                 <Button
@@ -10664,9 +10781,11 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                   </Typography>
                   <Slider
                     size="small"
-                    value={62}
+                    value={cameraHeight}
+                    onChange={(_, v) => setCameraHeight(v as number)}
                     min={0}
                     max={100}
+                    aria-label="Camera Height"
                     sx={{
                       flex: 1,
                       color: '#f6b24d',
@@ -10677,6 +10796,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                       },
                     }}
                   />
+                  <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.48)', fontWeight: 700, minWidth: 28, textAlign: 'right' }}>
+                    {cameraHeight}
+                  </Typography>
                 </Stack>
                 <Box
                   data-testid="frame-editor-stage-light-dial"
@@ -10904,6 +11026,121 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                             opacity: 0.38,
                           }}
                         />
+                        {/* Lighting + camera-overlay — Inspector-sliders blir
+                            faktisk visuell tilstand på workspace-en. */}
+                        <Box
+                          data-testid="frame-editor-lighting-overlay"
+                          sx={{
+                            position: 'absolute',
+                            inset: 18,
+                            pointerEvents: 'none',
+                            overflow: 'hidden',
+                            borderRadius: 1,
+                          }}
+                        >
+                          {/* Key light radial fra øvre-venstre — temp tinter
+                              fargen, intensity styrer opacity, softness styrer
+                              blur-radius. */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              inset: 0,
+                              background: `radial-gradient(ellipse 70% 60% at 18% 26%, ${keyLightColor} 0%, transparent 62%)`,
+                              opacity: keyLightIntensity / 220,
+                              filter: keyLightSoftness === 'soft' ? 'blur(32px)' : 'blur(2px)',
+                              mixBlendMode: 'screen',
+                            }}
+                          />
+                          {/* Casts-shadows: motsvarende skygge fra høyre. */}
+                          {castsShadows && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                inset: 0,
+                                background:
+                                  'radial-gradient(ellipse 60% 70% at 82% 68%, rgba(0,0,0,0.55) 0%, transparent 55%)',
+                                opacity: keyLightIntensity / 260,
+                                filter: keyLightSoftness === 'soft' ? 'blur(24px)' : 'blur(2px)',
+                                mixBlendMode: 'multiply',
+                              }}
+                            />
+                          )}
+                          {/* Ambient occlusion: vignett inn fra hjørnene. */}
+                          {ambientOcclusion && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                inset: 0,
+                                background:
+                                  'radial-gradient(circle at center, transparent 52%, rgba(0,0,0,0.42) 100%)',
+                                mixBlendMode: 'multiply',
+                                opacity: 0.6,
+                              }}
+                            />
+                          )}
+                          {/* Camera-height-horisontlinje — 0 = bakkenivå
+                              (linje nede), 100 = fugleperspektiv (linje øverst).
+                              Invertert mapping så slideren beveger seg som
+                              kameraet stiger. */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: 4,
+                              right: 4,
+                              top: `${100 - cameraHeight}%`,
+                              borderTop: '1px dashed rgba(246,178,77,0.5)',
+                              transform: 'translateY(-0.5px)',
+                              transition: 'top 180ms ease',
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                position: 'absolute',
+                                right: 2,
+                                top: -14,
+                                fontSize: 9,
+                                letterSpacing: 1.6,
+                                fontWeight: 700,
+                                color: 'rgba(246,178,77,0.78)',
+                                bgcolor: 'rgba(8,12,22,0.62)',
+                                px: 0.6,
+                                borderRadius: 0.5,
+                              }}
+                            >
+                              CAM {cameraHeight}
+                            </Typography>
+                          </Box>
+                          {/* Lighting-state-badge nederst-høyre. */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              bottom: 4,
+                              right: 4,
+                              px: 0.9,
+                              py: 0.4,
+                              borderRadius: 0.6,
+                              background: 'rgba(8,12,22,0.82)',
+                              border: '1px solid rgba(246,178,77,0.34)',
+                              fontSize: 9,
+                              letterSpacing: 1.4,
+                              fontWeight: 700,
+                              color: 'rgba(248,250,252,0.88)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.6,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            <span>KEY {keyLightIntensity}%</span>
+                            <span style={{ opacity: 0.4 }}>·</span>
+                            <span>{keyLightKelvin}K</span>
+                            <span style={{ opacity: 0.4 }}>·</span>
+                            <span>{keyLightSoftness}</span>
+                            {castsShadows && (<><span style={{ opacity: 0.4 }}>·</span><span>SH</span></>)}
+                            {ambientOcclusion && (<><span style={{ opacity: 0.4 }}>·</span><span>AO</span></>)}
+                          </Box>
+                        </Box>
                       </Box>
                     )}
                     {boardPolishPresentationActive && (
@@ -12451,13 +12688,15 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           Key Light
                         </Typography>
                         <Chip
-                          label="SOFT"
+                          label={keyLightSoftness === 'soft' ? 'SOFT' : 'HARD'}
                           size="small"
+                          onClick={() => setKeyLightSoftness((p) => (p === 'soft' ? 'hard' : 'soft'))}
                           sx={{
                             height: 22,
                             borderRadius: 999,
-                            bgcolor: 'rgba(245,158,11,0.14)',
-                            color: '#fde68a',
+                            cursor: 'pointer',
+                            bgcolor: keyLightSoftness === 'soft' ? 'rgba(245,158,11,0.14)' : 'rgba(220,38,38,0.16)',
+                            color: keyLightSoftness === 'soft' ? '#fde68a' : '#fecaca',
                             '& .MuiChip-label': { px: 0.9, fontSize: '0.62rem', fontWeight: 700, letterSpacing: 0.5 },
                           }}
                         />
@@ -12501,22 +12740,37 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                         Time
                       </Typography>
                       <Typography variant="h6" sx={{ color: '#f8fafc', mb: 0.5 }}>
-                        10:30 PM
+                        {(() => {
+                          // Derived time-of-day fra intensity (mock astronomi):
+                          // 100% = high noon, 0% = midnatt.
+                          const hour = 12 - Math.round((100 - keyLightIntensity) / 6.5);
+                          const period = hour >= 12 ? 'PM' : 'AM';
+                          const h12 = hour > 12 ? hour - 12 : hour <= 0 ? 12 : hour;
+                          return `${h12}:30 ${period}`;
+                        })()}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'rgba(248,250,252,0.8)' }}>
-                        Intensity
+                        Intensity <Box component="span" sx={{ color: '#fde68a', ml: 0.5, fontSize: '0.78rem', fontWeight: 700 }}>{keyLightIntensity}%</Box>
                       </Typography>
                       <Slider
                         size="small"
-                        value={78}
+                        value={keyLightIntensity}
+                        onChange={(_, v) => setKeyLightIntensity(v as number)}
+                        min={0}
+                        max={100}
+                        aria-label="Key Light Intensity"
                         sx={{ color: '#f6b24d', mb: 0.7, '& .MuiSlider-thumb': { width: 14, height: 14 } }}
                       />
                       <Typography variant="body2" sx={{ color: '#f8fafc', mb: 0.4 }}>
-                        3.200K
+                        {(2000 + (6500 - 2000) * keyLightTempPct / 100).toFixed(0).replace(/(\d)(?=(\d{3})+$)/g, '$1.')}K
                       </Typography>
                       <Slider
                         size="small"
-                        value={32}
+                        value={keyLightTempPct}
+                        onChange={(_, v) => setKeyLightTempPct(v as number)}
+                        min={0}
+                        max={100}
+                        aria-label="Key Light Color Temperature"
                         sx={{ color: '#fcd34d', '& .MuiSlider-thumb': { width: 14, height: 14 } }}
                       />
                       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.35 }}>
@@ -12541,8 +12795,28 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           border: '1px solid rgba(255,255,255,0.05)',
                         }}
                       >
-                        <Chip label="Casts Shadows" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.16)', color: '#fde68a' }} />
-                        <Chip label="Ambient Occlusion" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.16)', color: '#fde68a' }} />
+                        <Chip
+                          label="Casts Shadows"
+                          size="small"
+                          onClick={() => setCastsShadows((v) => !v)}
+                          sx={{
+                            cursor: 'pointer',
+                            bgcolor: castsShadows ? 'rgba(245,158,11,0.16)' : 'rgba(255,255,255,0.04)',
+                            color: castsShadows ? '#fde68a' : 'rgba(248,250,252,0.5)',
+                            transition: 'all 0.15s',
+                          }}
+                        />
+                        <Chip
+                          label="Ambient Occlusion"
+                          size="small"
+                          onClick={() => setAmbientOcclusion((v) => !v)}
+                          sx={{
+                            cursor: 'pointer',
+                            bgcolor: ambientOcclusion ? 'rgba(245,158,11,0.16)' : 'rgba(255,255,255,0.04)',
+                            color: ambientOcclusion ? '#fde68a' : 'rgba(248,250,252,0.5)',
+                            transition: 'all 0.15s',
+                          }}
+                        />
                       </Stack>
                       <Stack
                         data-testid="frame-editor-lighting-materials"

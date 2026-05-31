@@ -68,6 +68,36 @@
       "requiresTimeline": false
     },
     {
+      "id": "poll_resolve_state",
+      "name": "Poll Resolve State",
+      "category": "project",
+      "scriptPath": "scripts/project/poll_resolve_state.py",
+      "description": "Lett-vekt status-snapshot av Resolve's aktive prosjekt + timeline + markers. Brukes av Creative Editor's bidireksjonelle sync-loop (kj\u00f8res hvert 5. sek). Returnerer alltid suksess med connected=false hvis Resolve ikke kj\u00f8rer.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": false,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "push_markers_to_resolve",
+      "name": "Push Markers to Resolve",
+      "category": "markers",
+      "scriptPath": "scripts/markers/push_markers_to_resolve.py",
+      "description": "Andre halvdel av bidireksjonell sync \u2014 pusher CE-mark\u00f8rer til aktiv Resolve-timeline. Bruker customData='ce:<id>' for \u00e5 dedupe + oppdatere v\u00e5re tidligere pushes uten \u00e5 r\u00f8re Bjarnes egne mark\u00f8rer.",
+      "requiredInputs": [
+        { "key": "markers", "label": "Mark\u00f8rer-array", "type": "json", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "health_check",
       "name": "Run Health Check",
       "category": "project",
@@ -790,6 +820,42 @@
       ],
       "resolvePageDependency": "Color",
       "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "auto_color_match_shots",
+      "name": "Auto Color Match Shots",
+      "category": "color",
+      "scriptPath": "scripts/color/auto_color_match_shots.py",
+      "description": "Beregner per-pick brightness/contrast/gamma-justering så alle shots lander på samme target Y-mean (median). Eliminerer eksponerings-flicker i xfades. Output kan brukes av assemble_highlight_with_music via filter_complex eq=.",
+      "requiredInputs": [
+        { "key": "picks", "label": "Picks-array", "type": "json", "required": true },
+        { "key": "sourceVideo", "label": "Source video path", "type": "text", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "setup_resolve_color_nodes",
+      "name": "Setup Resolve Color Nodes",
+      "category": "color",
+      "scriptPath": "scripts/color/setup_resolve_color_nodes.py",
+      "description": "Bygger standard wedding-grade node-tre på alle clips i aktiv Resolve-timeline: Primary Correction → LUT → Skin Tone Protection → Vignette. Etter dette stadiet kan Bjarne åpne color page og bare finjustere.",
+      "requiredInputs": [
+        { "key": "lookPack", "label": "LUT-preset (norwedfilm/warm/cinematic/documentary/none)", "type": "text", "required": false },
+        { "key": "applyToAllClips", "label": "Anvend på alle clips", "type": "boolean", "required": false },
+        { "key": "protectSkinTones", "label": "Legg til skin-tone-qualifier", "type": "boolean", "required": false },
+        { "key": "addVignette", "label": "Legg til vignette-node", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "low",
       "status": "ready",
       "dryRunSupported": true,
       "requiresProject": true,
@@ -1818,6 +1884,511 @@
       "requiresTimeline": false
     },
     {
+      "id": "claude_audio_direction",
+      "name": "Claude Audio Direction",
+      "category": "audio",
+      "scriptPath": "scripts/audio/claude_audio_direction.py",
+      "description": "AI lyd-direktørens øre. Claude gir per-chapter audio-polish-direction: ducking-dB, de-ess-level, voice-boost, music/ambient-volum, platform-spesifikk LUFS-target. Kjøres i auto-pilot før apply_audio_polish.",
+      "requiredInputs": [
+        { "key": "chaptersInfo", "label": "Chapters med picks-count + duration", "type": "json", "required": true },
+        { "key": "deliveryPlatform", "label": "youtube|spotify|tiktok|instagram|vimeo|theatrical", "type": "text", "required": false },
+        { "key": "projectKind", "label": "Project kind", "type": "text", "required": false },
+        { "key": "culturalContext", "label": "Kulturell kontekst", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "generate_designed_thumbnails",
+      "name": "Generate Designed Thumbnails",
+      "category": "social",
+      "scriptPath": "scripts/social/generate_designed_thumbnails.py",
+      "description": "Lager 6 designede thumbnail-kandidater med brand-styling. 6 layout-templates (hero/quote/bold/split/frame/gradient), brand-color-applikasjon, logo-plassering, text-overlay med title + CTA. Output PNG til app_data_dir/thumbnails. Brukes både av auto-pilot og av ThumbnailCreator i CE.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "bestFrameSeconds", "label": "Timestamps å sample (best-face-momenter)", "type": "json", "required": false },
+        { "key": "postInfo", "label": "{title, caption, callToAction}", "type": "json", "required": false },
+        { "key": "brandSnapshot", "label": "Brand colors + logo", "type": "json", "required": false },
+        { "key": "aspectRatio", "label": "1:1 | 9:16 | 4:5 | 16:9", "type": "text", "required": false },
+        { "key": "outputDir", "label": "Output-dir", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "analyze_audio_beats",
+      "name": "Analyze Audio Beats",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_audio_beats.py",
+      "description": "Detect BPM, beat-tider og downbeat-tider fra audio/video. Tre-lags fallback: librosa (anbefalt) → aubio → ffmpeg-energy-fallback. Brukes av Music Video Agent for å fylle beat-grid automatisk.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "startSec", "label": "Hopp over første N sek (optional)", "type": "number", "required": false },
+        { "key": "durationSec", "label": "Analyser maks N sek (optional)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "analyze_screen_recording",
+      "name": "Analyze Screen Recording",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_screen_recording.py",
+      "description": "Detect silence-gaps, klikk-momenter og narration-segmenter fra screen-capture-video. Output silenser med varighet (for auto-trim), klikk-kandidater (for click-zoom-keyframer), speech-segmenter og trim-savings. Brukes av Screen Recording Agent.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "silenceMinDurSec", "label": "Min silens-varighet å trimme (sek)", "type": "number", "required": false },
+        { "key": "silenceNoiseDb", "label": "Stille-terskel (dB, default -30)", "type": "number", "required": false },
+        { "key": "clickEnergyThreshold", "label": "Klikk-energi-terskel (default 1.8)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "write_text_to_file",
+      "name": "Write Text To File",
+      "category": "utility",
+      "scriptPath": "scripts/utils/write_text_to_file.py",
+      "description": "Utility: skriver tekst-content til absolutt filsti. Brukes av Caption Studio (SRT/VTT-eksport), Resolve handoff (XML/EDL) og andre frontend-komponenter som trenger fil-output uten @tauri-apps/plugin-fs.",
+      "requiredInputs": [
+        { "key": "content", "label": "Tekst-content", "type": "text", "required": true },
+        { "key": "outputPath", "label": "Absolutt filsti", "type": "text", "required": true },
+        { "key": "encoding", "label": "Encoding (default utf-8)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "sync_multicam_audio",
+      "name": "Sync Multicam Audio",
+      "category": "audio",
+      "scriptPath": "scripts/audio/sync_multicam_audio.py",
+      "description": "Audio-waveform cross-correlation for multi-camera sync. Tar 2+ video-paths, ekstraherer audio fra hver, kjører scipy/numpy.correlate for å finne tidsoffset per kamera relativ til referanse. Brukes av MulticamSyncStudio for å auto-syncronisere bryllup/event/podcast/dokumentar-opptak.",
+      "requiredInputs": [
+        { "key": "clipPaths", "label": "Array av klipp-stier (2+)", "type": "json", "required": true },
+        { "key": "referenceIndex", "label": "Indeks for referanse-klipp (default: lengste)", "type": "number", "required": false },
+        { "key": "analysisDurationSec", "label": "Sek å bruke til correlation (default 30)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_audio_waveform_data",
+      "name": "Extract Audio Waveform Data",
+      "category": "audio",
+      "scriptPath": "scripts/audio/extract_audio_waveform_data.py",
+      "description": "Returner peak-amplitude per bucket for waveform-visualisering i UI. Brukes av MulticamSyncStudio for interaktive timeline-strips.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "bucketCount", "label": "Antall buckets (default 200)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "transcribe_whisper",
+      "name": "Transcribe Whisper",
+      "category": "audio",
+      "scriptPath": "scripts/audio/transcribe_whisper.py",
+      "description": "Transcribe audio/video til JSON med segments + words + timestamps + språk-detect. Tre-lags fallback: faster-whisper (anbefalt) → whisper (original) → OpenAI Whisper API. Foundation for Caption Studio og transkript-aware Director chat.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio/video-fil", "type": "text", "required": true },
+        { "key": "model", "label": "Model (tiny/base/small/medium/large-v3)", "type": "text", "required": false },
+        { "key": "language", "label": "Språk (no/en/auto)", "type": "text", "required": false },
+        { "key": "wordTimestamps", "label": "Inkluder per-ord timing", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "export_resolve_handoff",
+      "name": "Export Resolve Handoff (FCP7 XML + EDL)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/export_resolve_handoff.py",
+      "description": "Eksporter agent-state som DaVinci Resolve-kompatibel timeline. Genererer FCP7 XML (med chapter-markers, lower-third-markers og caption-titles) + EDL fallback. Importeres via Resolve File → Import Timeline.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false },
+        { "key": "projectName", "label": "Project name (default 'Post Agent Handoff')", "type": "text", "required": false },
+        { "key": "chapters", "label": "Chapters-array", "type": "json", "required": false },
+        { "key": "captions", "label": "WhisperTranscript", "type": "json", "required": false },
+        { "key": "lowerThirds", "label": "Lower-thirds items", "type": "json", "required": false },
+        { "key": "framerate", "label": "Framerate override", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "analyze_music_track",
+      "name": "Analyze Music Track (librosa)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/analyze_music_track.py",
+      "description": "Librosa-basert audio-analyse: BPM (beat-tracker), key (Krumhansl-Schmuckler), energy-curve (40 buckets), segmenter (intro/verse/chorus/break/outro), mood/genre-tags via spectral features. Foundation for music-suggestion-matching og auto-ducking.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio-fil", "type": "text", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_music_preview",
+      "name": "Extract Music Preview",
+      "category": "audio",
+      "scriptPath": "scripts/audio/extract_music_preview.py",
+      "description": "Generér waveform-PNG (Role Room-lilla på transparent bg) + 30-sek MP3-preview for music-library UI. Cache'es per audio-hash.",
+      "requiredInputs": [
+        { "key": "audioPath", "label": "Audio-fil", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "apply_voice_ducking",
+      "name": "Apply Voice Ducking",
+      "category": "audio",
+      "scriptPath": "scripts/audio/apply_voice_ducking.py",
+      "description": "Sidechain-compress music under voice via ffmpeg sidechaincompress-filter. Standard broadcast-konvensjoner (ratio 4:1, threshold -25dB, attack 5ms, release 400ms, makeup +3dB). Konfigurerbart per agent/leveranse.",
+      "requiredInputs": [
+        { "key": "voicePath", "label": "Voice/narrasjon-track", "type": "text", "required": true },
+        { "key": "musicPath", "label": "Music-track", "type": "text", "required": true },
+        { "key": "outputPath", "label": "Output-path", "type": "text", "required": true },
+        { "key": "ratio", "label": "Compress-ratio (default 4)", "type": "number", "required": false },
+        { "key": "threshold", "label": "Threshold dB (default -25)", "type": "number", "required": false },
+        { "key": "attackMs", "label": "Attack ms (default 5)", "type": "number", "required": false },
+        { "key": "releaseMs", "label": "Release ms (default 400)", "type": "number", "required": false },
+        { "key": "makeupDb", "label": "Makeup-gain dB (default 3)", "type": "number", "required": false },
+        { "key": "musicGainDb", "label": "Music base-gain dB (default -5)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "find_standout_moments",
+      "name": "Find Standout Moments",
+      "category": "social",
+      "scriptPath": "scripts/social/find_standout_moments.py",
+      "description": "Analyser Whisper-transkript og finn de mest social-clipable momenter for repurpose-cuts. Heuristikk-basert scoring (substansiell lengde, spørsmål, exclamations, strong-words, personlig narrativ, posisjon). Returnerer topp-N non-overlapping cuts med startSec/endSec/score/text/reason.",
+      "requiredInputs": [
+        { "key": "transcript", "label": "Whisper transcript-objekt", "type": "json", "required": true },
+        { "key": "targetDurationSec", "label": "Mål-varighet sek (default 30)", "type": "number", "required": false },
+        { "key": "minDurationSec", "label": "Min-varighet (default 15)", "type": "number", "required": false },
+        { "key": "maxDurationSec", "label": "Max-varighet (default 60)", "type": "number", "required": false },
+        { "key": "topN", "label": "Antall cuts å returnere (default 6)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_social_cut",
+      "name": "Extract Social Cut",
+      "category": "social",
+      "scriptPath": "scripts/social/extract_social_cut.py",
+      "description": "Render én social-cut med face-aware vertical crop (9:16/1:1/4:5/16:9), optional burnt-in captions fra transkript-segmenter, og thumbnail. Brukes av SocialCutsStudio som finalizing-step per cut.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "startSec", "label": "Start-tid sek", "type": "number", "required": true },
+        { "key": "endSec", "label": "Slutt-tid sek", "type": "number", "required": true },
+        { "key": "aspectRatio", "label": "Aspect (default 9:16)", "type": "text", "required": false },
+        { "key": "burnCaptions", "label": "Brenn captions inn", "type": "boolean", "required": false },
+        { "key": "transcriptSegments", "label": "Whisper-segments-array", "type": "json", "required": false },
+        { "key": "faceAware", "label": "Face-aware crop", "type": "boolean", "required": false },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "analyze_broll_clip",
+      "name": "Analyze B-roll Clip (Claude vision)",
+      "category": "social",
+      "scriptPath": "scripts/social/analyze_broll_clip.py",
+      "description": "Bruk Claude vision-AI for å analysere et B-roll-klipp og produsere rik strukturert metadata: objekter, mennesker, scene, location, time-of-day, lighting, mood, motion, shot-type, color-palette, audio-context, suggested-for, dominerende tags. Foundation for B-roll Library og autopilot context-matching.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "B-roll-klipp", "type": "text", "required": true },
+        { "key": "postAgentBaseUrl", "label": "Post Agent base URL", "type": "text", "required": true },
+        { "key": "bearerToken", "label": "Bearer token", "type": "text", "required": true },
+        { "key": "model", "label": "Claude-model (default sonnet-4-6)", "type": "text", "required": false },
+        { "key": "frameCount", "label": "Antall keyframes å analysere (default 4)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "extract_broll_preview",
+      "name": "Extract B-roll Preview",
+      "category": "social",
+      "scriptPath": "scripts/social/extract_broll_preview.py",
+      "description": "Generér kort MP4-preview (3 sek, 480px) + thumbnail-PNG for hover-preview i B-roll Library-UI. Cache'es per klipp-hash.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "B-roll-klipp", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "export_multi_aspect",
+      "name": "Export Multi-Aspect",
+      "category": "social",
+      "scriptPath": "scripts/social/export_multi_aspect.py",
+      "description": "Render én ferdig video i alle 4 vanlige aspect-ratios (16:9 YouTube, 9:16 Reels/TikTok, 1:1 IG Feed, 4:5 IG Portrait) i én operasjon. Face-aware crop hvis OpenCV er installert, ellers center-crop. Foundation for cross-posting fra én master-fil.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Source-video", "type": "text", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false },
+        { "key": "aspects", "label": "Aspects å rendere (default alle 4)", "type": "json", "required": false },
+        { "key": "fileNamePrefix", "label": "Filnavn-prefix (default 'export')", "type": "text", "required": false },
+        { "key": "bitrate", "label": "Video-bitrate (default 8M)", "type": "text", "required": false },
+        { "key": "faceAware", "label": "Bruk face-detect for crop", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "render_lower_thirds",
+      "name": "Render Lower Thirds (transparent PNG)",
+      "category": "social",
+      "scriptPath": "scripts/social/render_lower_thirds.py",
+      "description": "Rendrer hver lower-third-item som transparent 1920×1080 PNG med alpha-kanal, klar for import som titles i DaVinci Resolve. Tar items-array fra LowerThirdsStudio og produserer én PNG per item på riktig posisjon.",
+      "requiredInputs": [
+        { "key": "items", "label": "Lower-third items-array", "type": "json", "required": true },
+        { "key": "outputDir", "label": "Output-dir (optional)", "type": "text", "required": false },
+        { "key": "width", "label": "Render-bredde (default 1920)", "type": "number", "required": false },
+        { "key": "height", "label": "Render-høyde (default 1080)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "setup_platform_timeline",
+      "name": "Setup Platform Timeline",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/setup_platform_timeline.py",
+      "description": "Setter ALLE timeline-settings korrekt for valgt plattform (instagram_reels, tiktok, youtube_shorts/master, instagram_feed_portrait/story, linkedin, vimeo_4k, theatrical_2k). Inkluderer resolution, fps, color space, audio sample rate, pixel aspect — ikke bare oppløsning. readOnly-mode returnerer current settings + diff mot platform-default.",
+      "requiredInputs": [
+        { "key": "platform", "label": "Platform-navn", "type": "text", "required": true },
+        { "key": "readOnly", "label": "Bare lese current settings", "type": "boolean", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "build_vertical_social_cut",
+      "name": "Build Vertical Social Cut (Studio Smart Reframe)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_vertical_social_cut.py",
+      "description": "Studio AI Smart Reframe lager 9:16-versjon parallelt med 16:9 highlight. Subject-tracking holder brud/brudgom sentrert i cropet. Auto-pilot bruker dette for å levere social-cut samtidig som hoved-highlight — én pipeline = to leveranser.",
+      "requiredInputs": [
+        { "key": "sourceTimelineName", "label": "Source 16:9 timeline-navn", "type": "text", "required": false },
+        { "key": "socialPreset", "label": "instagram_reels|tiktok|youtube_shorts", "type": "text", "required": false },
+        { "key": "projectTitle", "label": "Prosjekt-tittel", "type": "text", "required": false },
+        { "key": "autoRender", "label": "Start render umiddelbart", "type": "boolean", "required": false },
+        { "key": "outputPath", "label": "Output-path", "type": "text", "required": false },
+        { "key": "isStudio", "label": "Resolve Studio detected", "type": "boolean", "required": true }
+      ],
+      "resolvePageDependency": "Color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "transcribe_with_resolve_ai",
+      "name": "Transcribe with Resolve AI (Studio Speech-to-Text)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/transcribe_with_resolve_ai.py",
+      "description": "Studio AI Speech-to-Text på 19+ språk. Genererer subtitle-track på timelinen + SRT-fil. Aktiverer caption-burn-in på 9:16 social-cut for IG/TikTok (85% ser uten lyd).",
+      "requiredInputs": [
+        { "key": "language", "label": "no/en/ur/hi/ar/auto", "type": "text", "required": false },
+        { "key": "burnInForVertical", "label": "Burn-in på social-cut", "type": "boolean", "required": false },
+        { "key": "projectTitle", "label": "Tittel", "type": "text", "required": false },
+        { "key": "isStudio", "label": "Resolve Studio detected", "type": "boolean", "required": true }
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "apply_voice_isolation_to_speech",
+      "name": "Apply Voice Isolation to Speech (Studio)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/apply_voice_isolation_to_speech.py",
+      "description": "Resolve Studio AI-feature: fjerner bakgrunns-støy fra speech-clips automatisk. Studio-only — exit-er tidlig på Free. Tries clip-level FX først, fallback til track-level eller prominent markører hvis API-pathen ikke er tilgjengelig.",
+      "requiredInputs": [
+        { "key": "perChapter", "label": "Audio-direction per chapter", "type": "json", "required": false },
+        { "key": "pickChapters", "label": "Picks med chapter-mapping", "type": "json", "required": true },
+        { "key": "speechChapters", "label": "Chapter-navn som er speech-tunge", "type": "json", "required": false },
+        { "key": "isStudio", "label": "Resolve Studio detected", "type": "boolean", "required": true }
+      ],
+      "resolvePageDependency": "Fairlight",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "setup_fairlight_audio",
+      "name": "Setup Fairlight Audio",
+      "category": "audio",
+      "scriptPath": "scripts/audio/setup_fairlight_audio.py",
+      "description": "Bygger Claude's audio-direction direkte inn i Resolve's Fairlight-page: markører ved ducking-punkter, clip-colors per chapter, clip-volume gain. RESPEKTERER eksisterende track-layout — endrer ikke Bjarnes manuelle arbeid.",
+      "requiredInputs": [
+        { "key": "perChapter", "label": "Claude's per-chapter direction", "type": "json", "required": true },
+        { "key": "pickChapters", "label": "Picks med chapter-mapping", "type": "json", "required": false },
+        { "key": "overallLufsTarget", "label": "LUFS target", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": "Fairlight",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "apply_audio_polish",
+      "name": "Apply Audio Polish",
+      "category": "audio",
+      "scriptPath": "scripts/audio/apply_audio_polish.py",
+      "description": "Anvender Claude's audio-direction på ferdig-rendert highlight: highpass + de-ess + voice-boost + LUFS-normalisering. Output er platform-klar.",
+      "requiredInputs": [
+        { "key": "inputPath", "label": "Rendert MP4", "type": "text", "required": true },
+        { "key": "outputPath", "label": "Output-path (optional)", "type": "text", "required": false },
+        { "key": "perChapter", "label": "Claude's per-chapter direction", "type": "json", "required": false },
+        { "key": "overallLufsTarget", "label": "LUFS target", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "claude_music_suggestions",
+      "name": "Claude Music Suggestions",
+      "category": "audio",
+      "scriptPath": "scripts/audio/claude_music_suggestions.py",
+      "description": "Spør Claude om 3-5 musikk-forslag for en spesifikk scene (ceremony, vows, first_dance, speeches, nikkah ...). Returnerer søke-queries klare for å lime inn i provider-søk (Jamendo / Pixabay / Soundstripe / Artlist) — ikke navngitte populære artister, men stil-beskrivelser med BPM + lengde + begrunnelse.",
+      "requiredInputs": [
+        {
+          "key": "chapter",
+          "label": "Chapter (ceremony, vows, first_dance, speeches, nikkah, ...)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "durationSec",
+          "label": "Scene-varighet (sek)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "mood",
+          "label": "Mood-keywords (optional, kommaseparert)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "cuesAvailable",
+          "label": "Tilgjengelige providers (optional)",
+          "type": "json",
+          "required": false
+        },
+        {
+          "key": "cutPaceHz",
+          "label": "Kutt-pace (kutt per sek, optional)",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": false,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "apply_beat_markers_to_resolve",
       "name": "Apply Beat Markers to Resolve",
       "category": "audio",
@@ -2118,6 +2689,230 @@
       "category": "audio",
       "scriptPath": "scripts/audio/match_external_audio_to_clips.py",
       "description": "Match eksterne lyd-opptak (lavalier/recorder) til video-klipp via cross-correlation. Returnerer matches med offset + confidence.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "cluster_faces_from_clips",
+      "name": "Cluster Faces From Clips",
+      "category": "vision",
+      "scriptPath": "scripts/vision/cluster_faces_from_clips.py",
+      "description": "Finn unike ansikter i klipp via insightface + DBSCAN-clustering. Returnerer klynger med representative thumbnails.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "scan_and_organize_sources",
+      "name": "Scan and Organize Sources",
+      "category": "project",
+      "scriptPath": "scripts/project/scan_and_organize_sources.py",
+      "description": "Multi-source scan: les kamera-metadata, grupper klipp per kamera.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "backup_multi_source_with_angles",
+      "name": "Backup Multi-Source with Angles",
+      "category": "project",
+      "scriptPath": "scripts/project/backup_multi_source_with_angles.py",
+      "description": "Kopier flere kilder til organisert DIT-struktur med vinkel-baserte kamera-mapper.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "create_resolve_bins_from_manifest",
+      "name": "Create Resolve Bins From Manifest",
+      "category": "project",
+      "scriptPath": "scripts/project/create_resolve_bins_from_manifest.py",
+      "description": "Lag bins i Resolve-MediaPool basert p\u00e5 bins.json fra backup-kj\u00f8ringen.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "build_three_timelines",
+      "name": "Build Three Timelines",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_three_timelines.py",
+      "description": "Orchestrator: bygg long film + highlight + teaser i ett kall.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "detect_timeline_gaps",
+      "name": "Detect Timeline Gaps",
+      "category": "qc",
+      "scriptPath": "scripts/qc/detect_timeline_gaps.py",
+      "description": "Sjekk for svarte mellomrom mellom klipp f\u00f8r delivery.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "detect_silent_sections_in_timeline",
+      "name": "Detect Silent Sections in Timeline",
+      "category": "qc",
+      "scriptPath": "scripts/qc/detect_silent_sections_in_timeline.py",
+      "description": "Finn stille intervaller i timeline (ingen audio p\u00e5 noen track). Foresl\u00e5r ubrukte sanger.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "qc_source_video",
+      "name": "QC Source Video",
+      "category": "qc",
+      "scriptPath": "scripts/qc/qc_source_video.py",
+      "description": "ffmpeg-basert QC: finn svarte intervaller + stille perioder i en video. Krever ikke Resolve.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "mark_qc_issues_on_timeline",
+      "name": "Mark QC Issues on Timeline",
+      "category": "markers",
+      "scriptPath": "scripts/qc/mark_qc_issues_on_timeline.py",
+      "description": "Legg til Resolve-markers ved hvert svart/stille intervall \u2014 r\u00f8d for gap, gul for stille.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "build_long_film_timeline",
+      "name": "Build Long-Film Timeline",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_long_film_timeline.py",
+      "description": "Ekte wedding-film: full ceremony/vows/speeches + curated dans+reception. Bruker ALLE shots, ikke bare picks.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "read_activity_log",
+      "name": "Read Activity Log",
+      "category": "project",
+      "scriptPath": "scripts/project/read_activity_log.py",
+      "description": "Returnerer Python-loggede activity-entries (terminal-runs etc.).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "search_music_providers",
+      "name": "Search Music Providers",
+      "category": "audio",
+      "scriptPath": "scripts/audio/search_music_providers.py",
+      "description": "Unified s\u00f8k over alle konfigurerte providers (Jamendo, Pixabay, Soundstripe, Artlist).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "download_provider_track",
+      "name": "Download Provider Track",
+      "category": "audio",
+      "scriptPath": "scripts/audio/download_provider_track.py",
+      "description": "Last ned valgt track fra en provider. Returnerer lokal WAV-path.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "read_credential_profiles",
+      "name": "Read Credential Profiles",
+      "category": "audio",
+      "scriptPath": "scripts/audio/read_credential_profiles.py",
+      "description": "Returnerer profil-liste m/ maskede credentials + aktiv profil + per-prosjekt-mapping.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "save_credential_profiles",
+      "name": "Save Credential Profiles",
+      "category": "audio",
+      "scriptPath": "scripts/audio/save_credential_profiles.py",
+      "description": "CRUD: upsert_profile / delete_profile / set_active / set_project_profile.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "fetch_vault_music_secrets",
+      "name": "Fetch Vault Music Secrets",
+      "category": "audio",
+      "scriptPath": "scripts/audio/fetch_vault_music_secrets.py",
+      "description": "List musikk-relevante vault-secrets fra Role Room for et prosjekt.",
       "requiredInputs": [],
       "resolvePageDependency": null,
       "riskLevel": "low",

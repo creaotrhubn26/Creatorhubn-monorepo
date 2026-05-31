@@ -71,7 +71,6 @@ import {
   Close as CloseIcon,
   Check as CheckIcon,
   Preview as PreviewIcon,
-  Lightbulb as LightbulbIcon,
   Upload as UploadIcon,
   Inventory as InventoryIcon,
   FileDownload as DownloadIcon,
@@ -4273,89 +4272,8 @@ function CandidateManagementPanelInner({
         
         <DialogContent sx={{ pt: 3 }}>
           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-            {candidatesToPreview.length} kandidat(er) vil bli lagt til i 3D-scenen. 
-            Velg lysoppsett for scenen.
+            {candidatesToPreview.length} kandidat(er) vil bli lagt til i 3D-scenen.
           </Typography>
-
-          {/* Lighting Preset Selector */}
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="subtitle2" sx={{ 
-              color: '#a78bfa', 
-              mb: 1.5, 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1 
-            }}>
-              <LightbulbIcon sx={{ fontSize: 18 }} />
-              Velg lysoppsett
-            </Typography>
-            <Box sx={{ 
-              display: 'grid', 
-              gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
-              gap: 1,
-            }}>
-              {LIGHTING_PRESETS.map((preset) => (
-                <Card
-                  key={preset.id}
-                  sx={{
-                    cursor: 'pointer',
-                    bgcolor: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 1.5,
-                    p: 1.5,
-                    transition: 'all 0.2s ease',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.06)',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                    }
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Typography variant="body2" sx={{ 
-                      fontWeight: 500, 
-                      color: 'rgba(255,255,255,0.8)',
-                      fontSize: '0.8rem',
-                    }}>
-                      {preset.name}
-                    </Typography>
-                  </Box>
-                  <Typography variant="caption" sx={{ 
-                    color: 'rgba(255,255,255,0.87)', 
-                    fontSize: '0.65rem',
-                    display: 'block',
-                  }}>
-                    {preset.description}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
-                    <Chip
-                      label={`${preset.lights.length} lys`}
-                      size="small"
-                      sx={{
-                        bgcolor: 'rgba(255,184,0,0.15)',
-                        color: '#ffb800',
-                        fontSize: '0.6rem',
-                        height: 16,
-                        '& .MuiChip-label': { px: 0.75 }
-                      }}
-                    />
-                    <Chip
-                      label={preset.category}
-                      size="small"
-                      sx={{
-                        bgcolor: 'rgba(184,107,255,0.15)',
-                        color: '#b86bff',
-                        fontSize: '0.6rem',
-                        height: 16,
-                        '& .MuiChip-label': { px: 0.75 }
-                      }}
-                    />
-                  </Box>
-                </Card>
-              ))}
-            </Box>
-          </Box>
-
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 2 }} />
 
           <Typography variant="subtitle2" sx={{ 
             color: 'rgba(255,255,255,0.87)', 

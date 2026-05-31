@@ -28,6 +28,7 @@ import { Readable } from 'stream';
 import multer from 'multer';
 import nodemailer from 'nodemailer';
 import QRCode from 'qrcode';
+import { sendTransactionalEmail } from './transactional-email-service';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, and, desc, sql, or, gte, lte, isNull, isNotNull } from 'drizzle-orm';
@@ -184,6 +185,7 @@ import {
   assertWithinBudget,
   computeBudgetStatus,
   computeBudgetPacing,
+  setAutoPauseOnCap,
   BudgetExceededError,
 } from './role-room-ads-budget.js';
 import { syncMetaCampaignSpend, syncCampaignSpend } from './role-room-ads-sync.js';
@@ -196,7 +198,9 @@ import { fetchActiveMarketingPlan } from './role-room-marketing-plan.js';
 import {
   buildAdsConnectorRegistry,
   buildPlatformTokenResolver,
+  runAdsRecommendationsForProject,
 } from './role-room-ads-cron.js';
+import { fetchAdRecommendations } from './role-room-ads-db.js';
 import {
   buildAdsAuthUrl,
   exchangeAdsCodeForToken,
@@ -8193,19 +8197,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return url.toString();
   }
 
-  function buildRoleRoomClientInviteUrl(req: Request, options: {
+  function buildRoleRoomClientInviteUrl(_req: Request, options: {
     inviteToken: string;
     browserOrigin?: string | null;
   }): string {
+    // Klientportalen er host'et eksklusivt på theroleroom.com — IKKE
+    // creatorhubn.com eller andre admin-room-domener. Hvis Daniel åpnet
+    // invite-flyten via creatorhubn.com (cross-domain admin), sendte
+    // frontend tidligere browserOrigin='https://creatorhubn.com' som ble
+    // brukt direkte i magic-linken og dro klienten til feil domene.
+    // Nå ignoreres browserOrigin + request-origin helt for klient-invite-
+    // URL-en. Kun env-konfigurert origin overstyrer default, og det skal
+    // bare brukes ved spesialhosting (f.eks. partner-domene).
     const configuredOrigin = sanitizeRoleRoomBrowserOrigin(
       process.env.ROLE_ROOM_CLIENT_PORTAL_ORIGIN
       ?? process.env.ROLE_ROOM_PUBLIC_ORIGIN
       ?? process.env.ROLE_ROOM_FRONTEND_ORIGIN,
     );
-    const origin = sanitizeRoleRoomBrowserOrigin(options.browserOrigin)
-      ?? configuredOrigin
-      ?? getRoleRoomRequestOrigin(req)
-      ?? DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN;
+    void options.browserOrigin;
+    const origin = configuredOrigin ?? DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN;
     return new URL(`/api/role-room/client/invites/${encodeURIComponent(options.inviteToken)}/activate`, origin).toString();
   }
 
@@ -8246,6 +8256,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     accessDuration: RoleRoomClientInviteAccessDuration;
     accessEndsAt?: string | null;
     inviteExpiresAt?: string | null;
+    projectId?: string | null;
+    sentByUserId?: string | null;
   }) {
     const mailer = getRoleRoomClientInviteMailer();
     if (!mailer) {
@@ -8334,35 +8346,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       .filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
       .join('\n');
 
-    try {
-      const info = await mailer.transporter.sendMail({
-        from: `${fromLabel} <${mailer.user}>`,
-        to: options.recipientEmail,
-        replyTo: replyToEmail,
-        subject,
-        text,
-        html,
-      });
+    // Send via transactional-email-service: Resend først (med
+    // RESEND_API_KEY) eller Gmail SMTP-fallback. Logger til
+    // transactional_email_log for Admin Room-dashboard. Den gamle direkte
+    // nodemailer-call-en mailer.transporter.sendMail er erstattet.
+    const result = await sendTransactionalEmail({
+      to: options.recipientEmail,
+      subject,
+      html,
+      text,
+      replyTo: replyToEmail,
+      fromLabel,
+      kind: 'role_room_client_invite',
+      projectId: options.projectId ?? null,
+      sentByUserId: options.sentByUserId ?? null,
+      pool,
+    });
 
-      return {
-        sent: true,
-        reason: null,
-        provider: 'smtp',
-        messageId: readStringValue(info.messageId),
-        accepted: Array.isArray(info.accepted)
-          ? info.accepted.map((value: unknown) => String(value))
-          : [],
-      };
-    } catch (error) {
-      console.error('Role Room client invite email send error:', error);
-      return {
-        sent: false,
-        reason: 'send_failed',
-        provider: 'smtp',
-        messageId: null,
-        accepted: [] as string[],
-      };
-    }
+    return result;
   }
 
   function buildRoleRoomClientInvite(
@@ -14561,6 +14562,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         values,
       );
 
+      // Versjonér intake: lagre snapshot etter hver write.
+      // Best-effort — feiler ikke save-flowen hvis snapshot-en svikter.
+      try {
+        const mod = await import("./role-room-intake-versions-routes.js");
+        await mod.snapshotIntakeVersion(pool, {
+          projectId,
+          generatedByUserId: userId,
+          generatedByKind: 'user',
+        });
+      } catch (e) {
+        console.warn("[intake-save] snapshot feilet", e);
+      }
+
       if (isClientReviewerProjectRole(effectiveRoleRecord?.role)) {
         await notifyProducerTeamAboutClientBrief(
           projectId,
@@ -17365,6 +17379,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           accessDuration,
           accessEndsAt,
           inviteExpiresAt: expiresAt,
+          projectId,
+          sentByUserId: requestUser?.userId ?? null,
         });
 
         await pool.query(
@@ -22501,6 +22517,67 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     },
   );
 
+  // ── Lag 2: AI-anbefalinger (kunden + produsenten ser hva agenten foreslår) ──
+  router.get(
+    '/ads/recommendations',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        const period =
+          typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
+            ? req.query.period
+            : new Date().toISOString().slice(0, 7);
+        const persisted = await fetchAdRecommendations(pool, projectId, period);
+        if (!persisted) {
+          return res.json({ period, recommendations: [], overallNote: null, generatedAt: null, generatedWithModel: null });
+        }
+        const data = persisted.recommendations as { recommendations?: unknown[]; overallNote?: string | null } | null;
+        res.json({
+          period,
+          recommendations: Array.isArray(data?.recommendations) ? data!.recommendations : [],
+          overallNote: data?.overallNote ?? null,
+          generatedAt: persisted.generatedAt,
+          generatedWithModel: persisted.generatedWithModel,
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load recommendations', detail: String(error) });
+      }
+    },
+  );
+
+  // Manuell trigger — nyttig for å se anbefalinger UTEN å vente på neste cron.
+  // Entitlement-gated (samme kvote som marketing-plan / ad-creatives).
+  router.post(
+    '/ads/recommendations/generate',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { projectId } = req.body ?? {};
+        const period =
+          typeof req.body?.period === 'string' && /^\d{4}-\d{2}$/.test(req.body.period)
+            ? req.body.period
+            : new Date().toISOString().slice(0, 7);
+        if (!projectId || typeof projectId !== 'string') {
+          return res.status(400).json({ error: 'projectId_required' });
+        }
+        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        if (!entitlement.allowed) {
+          return res.status(402).json({ error: 'entitlement_required', entitlement });
+        }
+        const summary = await runAdsRecommendationsForProject(pool, projectId, period);
+        if (!summary) {
+          return res.status(503).json({ error: 'generator_unavailable', detail: 'AI-generatoren er utilgjengelig. Prøv igjen.' });
+        }
+        res.json({ period, ...summary });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to generate recommendations', detail: String(error) });
+      }
+    },
+  );
+
   // ── Ad-creative-generering (Lag 1: agenten lager riktige ads) ─────────
   // Tar bedriftskontekst (auto-beriket fra aktiv marketing-plan) + ad-input
   // (mål, plattform, landingsside, tilbud, compliance) og lar Claude lage
@@ -22625,7 +22702,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           overageRequestedNok: budget?.overageRequestedNok ?? null,
         });
         const pacing = computeBudgetPacing({ status, period });
-        res.json({ period, status, pacing, canEdit: await isClientForProject(req, projectId) });
+        const autoPauseOnCap = budget?.autoPauseOnCap ?? false;
+        res.json({ period, status, pacing, autoPauseOnCap, canEdit: await isClientForProject(req, projectId) });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load budget', detail: String(error) });
       }
@@ -22652,6 +22730,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ budget });
       } catch (error) {
         res.status(500).json({ error: 'Failed to set budget', detail: String(error) });
+      }
+    },
+  );
+
+  // Lag 3b: klient-styrt auto-pause-toggle. Off by default; krever §2.3-skriftlig
+  // godkjenning-prinsipp respektert (kunden er den eneste som kan slå på/av).
+  router.put(
+    '/ads/budget/auto-pause',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, enabled } = req.body ?? {};
+        const period = typeof req.body?.period === 'string' && /^\d{4}-\d{2}$/.test(req.body.period)
+          ? req.body.period
+          : currentPeriod();
+        if (!projectId || typeof enabled !== 'boolean') {
+          return res.status(400).json({ error: 'invalid_input', detail: 'projectId + enabled (boolean) required' });
+        }
+        if (!(await isClientForProject(req, projectId))) {
+          return res.status(403).json({ error: 'client_only', detail: 'Bare kunden kan styre auto-pause (§2.3).' });
+        }
+        const identifiers = getUserIdentifiers(req);
+        const budget = await setAutoPauseOnCap(pool, projectId, period, enabled, identifiers[0] ?? 'klient');
+        res.json({ budget });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to set auto-pause', detail: String(error) });
       }
     },
   );

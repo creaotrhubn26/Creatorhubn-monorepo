@@ -7,13 +7,17 @@ import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
+import AgencyPortalView from './components/AgencyPortalView';
+import TalentsApp, { parseTalentsAppPage, isPartnerInviteAcceptPath, PartnerInviteAcceptPage } from './talents-app/TalentsApp';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
 import MarketingPageRouter from '@/components/admin/content-marketing/MarketingPageRouter';
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
 import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
+import ClientWorkspaceShell from './components/client-workspace/ClientWorkspaceShell';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
+import { useAriaHiddenFocusFix } from '@/hooks/useAriaHiddenFocusFix';
 import { detectLocale } from './cms/useLocale';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
@@ -115,6 +119,14 @@ function CastingStandaloneAppContent() {
     [localeCtx.pathname],
   );
 
+  // Klient-flate: /client/workspace/:projectId — kuratert 5-tabs-shell
+  // (Økonomi, Godkjenning, Brief, Roller, Plan) for client_reviewer-rollen.
+  // Producer kan også åpne med ?preview=true for å se sin egen klient-flate.
+  const clientWorkspaceProjectId = useMemo(() => {
+    const match = localeCtx.pathname.match(/^\/client\/workspace\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [localeCtx.pathname]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -150,6 +162,10 @@ function CastingStandaloneAppContent() {
       : <PublicBriefDetail slug={briefRoute.slug} />;
   }
 
+  if (clientWorkspaceProjectId) {
+    return <ClientWorkspaceShell projectId={clientWorkspaceProjectId} />;
+  }
+
   if (isEducationPath) {
     return <RoleRoomEducationPartnershipPage locale={localeCtx.locale} />;
   }
@@ -164,6 +180,11 @@ function CastingStandaloneRuntimeContent() {
 
   // Presence-heartbeat: pinger /api/presence/heartbeat hvert 30s mens innlogget
   usePresenceHeartbeat(isAuthenticated);
+  // Global aria-hidden-fokus-fiks for MUI v6.1-modaler — fjerner konsoll-
+  // warningen "Blocked aria-hidden on an element because its descendant
+  // retained focus" ved å blur-e fokuserte elementer som ender under et
+  // aria-hidden-tre.
+  useAriaHiddenFocusFix(true);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
   const [processingClientInviteLogin, setProcessingClientInviteLogin] = useState(false);
   const handledGoogleTransferRef = useRef<string | null>(null);
@@ -433,7 +454,11 @@ function CastingStandaloneRuntimeContent() {
   const sessionAdminUser = authSessionService.getSessionSync().adminUser;
   const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
   const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
-  const shouldRenderTalentPortal = !guestMode && (
+  const talentsAppPage = useMemo(() => parseTalentsAppPage(), []);
+  const isInviteAcceptPath = useMemo(() => isPartnerInviteAcceptPath(), []);
+  const shouldRenderTalentsApp = !guestMode && talentsAppPage !== null && !isInviteAcceptPath;
+  const shouldRenderAgencyPortal = !guestMode && !shouldRenderTalentsApp && normalizedRole === 'agency';
+  const shouldRenderTalentPortal = !guestMode && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
     Boolean(talentPortalIntent)
     || normalizedRole === 'talent'
     || normalizedRequestedRole === 'talent'
@@ -463,12 +488,24 @@ function CastingStandaloneRuntimeContent() {
                 : 'Laster Role Room…'}
           </Typography>
         </Box>
-      ) : !isAuthenticated ? (
+      ) : isInviteAcceptPath ? (
+          <PartnerInviteAcceptPage />
+        ) : !isAuthenticated ? (
           <CastingLandingPage onEnter={handleEnter} />
+        ) : shouldRenderTalentsApp ? (
+          <ToastProvider position="bottom-right">
+            <TalentsApp initialPage={talentsAppPage ?? undefined} />
+          </ToastProvider>
         ) : (
           <ToastProvider position="bottom-right">
             <RoleRoomUXLayer
-              workspaceId={shouldRenderTalentPortal ? 'talent-portal-v1' : 'casting-planner-v1'}
+              workspaceId={
+                shouldRenderAgencyPortal
+                  ? 'agency-portal-v1'
+                  : shouldRenderTalentPortal
+                    ? 'talent-portal-v1'
+                    : 'casting-planner-v1'
+              }
               mode={getActiveProfessionMode()}
               onSwitchMode={(newMode) => {
                 const url = new URL(window.location.href);
@@ -476,7 +513,8 @@ function CastingStandaloneRuntimeContent() {
                 window.location.href = url.toString();
               }}
               supportEmail="support@theroleroom.com"
-              changelogUrl="https://creatorhubn.com/news"
+              whatsNewMode={getActiveProfessionMode()}
+              whatsNewTitle="Hva er nytt i The Role Room"
               tourSteps={
                 shouldRenderTalentPortal
                   ? [
@@ -515,7 +553,13 @@ function CastingStandaloneRuntimeContent() {
                     ]
               }
             >
-              {shouldRenderTalentPortal ? (
+              {shouldRenderAgencyPortal ? (
+                <AgencyPortalView
+                  onClose={() => {
+                    void handleReturnToLanding();
+                  }}
+                />
+              ) : shouldRenderTalentPortal ? (
                 <TalentPortalView
                   intent={talentPortalIntent}
                   onClose={() => {

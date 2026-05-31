@@ -44,6 +44,7 @@ import {
 import type { TalentPortalIntent, TalentPortalSection } from '../utils/talentPortal';
 import { buildTalentPortalUrl } from '../utils/talentPortal';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
+import TalentConsentsSection from './TalentConsentsSection';
 
 interface TalentPortalViewProps {
   intent?: TalentPortalIntent | null;
@@ -95,6 +96,7 @@ const SECTION_OPTIONS: Array<{ id: TalentPortalSection; label: string }> = [
   { id: 'selftapes', label: 'Self tapes' },
   { id: 'activity', label: 'Oppdateringer' },
   { id: 'profile', label: 'Profil' },
+  { id: 'consents', label: 'Tilganger' },
 ];
 
 const cardSx = {
@@ -1761,6 +1763,10 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                       </Stack>
                     </Box>
                   </Box>
+                ) : null}
+
+                {activeSection === 'consents' ? (
+                  <TalentConsentsSection />
                 ) : null}
 
                 {(activeSection === 'overview' || activeSection === 'profile') ? (

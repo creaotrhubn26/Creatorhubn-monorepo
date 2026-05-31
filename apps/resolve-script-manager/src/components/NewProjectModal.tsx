@@ -17,6 +17,10 @@ import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { executeScript, onScriptEvent, convertFileSrc } from "../api";
 import type { ScriptEvent } from "../types";
+import MovieIcon from "@mui/icons-material/Movie";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import ViewModuleIcon from "@mui/icons-material/ViewModule";
+import ViewListIcon from "@mui/icons-material/ViewList";
 
 export type SongRole =
   | "skip"
@@ -301,8 +305,8 @@ export function NewProjectModal({ onClose, onComplete }: Props) {
   }, [extractPct, identifyPct, autoIdentify]);
 
   return (
-    <div className="modal-backdrop" onClick={stage === "form" || stage === "review" ? onClose : undefined}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}
+    <div className="modal-backdrop anim-fade-in" onClick={stage === "form" || stage === "review" ? onClose : undefined}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()}
            style={{ maxWidth: 720, width: "min(96vw, 720px)", maxHeight: "90vh", overflowY: "auto" }}>
         <h2>Nytt prosjekt fra fil</h2>
 
@@ -381,9 +385,17 @@ export function NewProjectModal({ onClose, onComplete }: Props) {
               <div style={{ fontSize: 11, opacity: 0.6 }}>Total: {overallPct}%</div>
             </div>
 
-            <ProgressLine label="🎬 Picks (scene + ML signals)" pct={extractPct} msg={extractMsg} />
+            <ProgressLine
+              label={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <MovieIcon sx={{ fontSize: 14 }} /> Picks (scene + ML signals)
+              </span>}
+              pct={extractPct} msg={extractMsg} />
             {autoIdentify && (
-              <ProgressLine label="🎵 Identifiser musikk" pct={identifyPct} msg={identifyMsg} />
+              <ProgressLine
+                label={<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <MusicNoteIcon sx={{ fontSize: 14 }} /> Identifiser musikk
+                </span>}
+                pct={identifyPct} msg={identifyMsg} />
             )}
 
             <div style={{ fontSize: 11, opacity: 0.5, fontStyle: "italic" }}>
@@ -413,13 +425,13 @@ export function NewProjectModal({ onClose, onComplete }: Props) {
                   <div style={{ display: "flex", gap: 4, fontSize: 12 }}>
                     <button onClick={() => setViewMode("grid")}
                             className={viewMode === "grid" ? "primary" : ""}
-                            style={{ padding: "4px 10px" }}>
-                      ▦ Grid
+                            style={{ padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <ViewModuleIcon sx={{ fontSize: 14 }} /> Grid
                     </button>
                     <button onClick={() => setViewMode("list")}
                             className={viewMode === "list" ? "primary" : ""}
-                            style={{ padding: "4px 10px" }}>
-                      ☰ Liste
+                            style={{ padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <ViewListIcon sx={{ fontSize: 14 }} /> Liste
                     </button>
                   </div>
                 </div>
@@ -535,25 +547,25 @@ function ThumbPair({ coverUrl, frameUrl, size }:
            style={{ width: size, height: size, borderRadius: 4, overflow: "hidden",
                      background: fallback, display: "flex",
                      alignItems: "center", justifyContent: "center",
-                     fontSize: size > 50 ? 18 : 14, opacity: coverUrl ? 1 : 0.4 }}>
+                     opacity: coverUrl ? 1 : 0.4 }}>
         {coverUrl
           ? <img src={coverUrl} alt="art" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          : <span>🎵</span>}
+          : <MusicNoteIcon sx={{ fontSize: size > 50 ? 24 : 18 }} />}
       </div>
       <div title="Scene-frame fra kildevideo"
            style={{ width: size, height: size, borderRadius: 4, overflow: "hidden",
                      background: fallback, display: "flex",
                      alignItems: "center", justifyContent: "center",
-                     fontSize: size > 50 ? 18 : 14, opacity: frameUrl ? 1 : 0.4 }}>
+                     opacity: frameUrl ? 1 : 0.4 }}>
         {frameUrl
           ? <img src={frameUrl} alt="scene" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          : <span>🎬</span>}
+          : <MovieIcon sx={{ fontSize: size > 50 ? 24 : 18 }} />}
       </div>
     </div>
   );
 }
 
-function ProgressLine({ label, pct, msg }: { label: string; pct: number; msg: string }) {
+function ProgressLine({ label, pct, msg }: { label: React.ReactNode; pct: number; msg: string }) {
   return (
     <div>
       {label && (

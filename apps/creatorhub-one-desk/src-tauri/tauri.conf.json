@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Creatorhub One Desk",
+  "version": "0.1.0",
+  "identifier": "com.creatorhub.one-desk",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1422",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Creatorhub One Desk",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Mac-companion for iPad CaptureApp og minnekort-ingest",
+    "longDescription": "Speiler iPad CaptureApp-sessions til lokal RAID i sanntid, og kjører post-shoot minnekort-ingest med xxHash64-verifisering mot eksisterende CreatorHub-backend.",
+    "createUpdaterArtifacts": "v1Compatible",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/latest/download/creatorhub-one-desk-{{target}}-{{arch}}.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ0RjE5NjUwREUwQjFFM0EKUldRNkhndmVVSmJ4Uk1ydlF3T3pSQTRDSWFPUFZZdmRmbmRjdkJza0pjcUp5cEtFYUtBcHYwVWoK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

@@ -70,7 +70,12 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
     setError(null);
     try {
       const res = await fetch(`${base}/pairing/start`, { method: "POST" });
-      if (!res.ok) throw new Error(`pairing/start: HTTP ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error("For mange innloggings-forsøk. Vent 30 sekunder og prøv på nytt.");
+        }
+        throw new Error(`pairing/start: HTTP ${res.status}`);
+      }
       const data = (await res.json()) as PairingStart;
       setPairing(data);
       setStage("awaiting");
@@ -94,8 +99,24 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
   // Polling loop
   useEffect(() => {
     if (stage !== "awaiting" || !pairing) return;
+    // Lokal flagg: så snart tick'en har sett "paired" / "expired" /
+    // "error", skal etterfølgende tick-er ikke gjøre noe. Forhindrer en
+    // race der setInterval fyrer en gang til mellom paired-respons og
+    // useEffect-cleanup — serveren har allerede slettet pairing-koden,
+    // så den neste tick'en fikk 410 og overskrev "paired"-state med
+    // "Pairing-koden er utløpt" som Daniel så.
+    const stopRef = { stopped: false };
+    const stopPolling = () => {
+      stopRef.stopped = true;
+      if (pollTimer.current) {
+        window.clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
+    };
     const tick = async () => {
+      if (stopRef.stopped) return;
       if (Date.now() - startedAt.current > MAX_POLL_MS) {
+        stopPolling();
         setStage("error");
         setError("Pairing timed out — generer ny kode.");
         return;
@@ -107,23 +128,30 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: pairing.code }),
         });
+        if (stopRef.stopped) return;
         if (res.status === 202) return; // still pending
         if (res.status === 410) {
+          stopPolling();
           setStage("error");
           setError("Pairing-koden er utløpt. Klikk 'Prøv på nytt'.");
           return;
         }
         if (!res.ok) {
+          stopPolling();
           setStage("error");
           setError(`pairing/poll: HTTP ${res.status}`);
           return;
         }
         const data = (await res.json()) as { bearerToken?: string };
         if (!data.bearerToken) {
+          stopPolling();
           setStage("error");
           setError("Backend returnerte tomt token.");
           return;
         }
+        // Stopp polling FØR vi lagrer + setter state, så ingen ny tick
+        // kan fyre mens vi er midt i success-flyten.
+        stopPolling();
         await saveBearerToSettings(data.bearerToken);
         setStage("paired");
         onSignedIn();
@@ -136,6 +164,7 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
     pollTimer.current = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
     void tick(); // first poll immediately
     return () => {
+      stopRef.stopped = true;
       if (pollTimer.current) window.clearInterval(pollTimer.current);
     };
   }, [stage, pairing, base, onSignedIn]);

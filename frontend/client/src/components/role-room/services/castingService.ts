@@ -1,8 +1,9 @@
 // @ts-nocheck
-import type { 
-  CastingProject, 
-  Role, 
-  Candidate, 
+import type {
+  CastingProject,
+  Role,
+  Candidate,
+  ContactInfo,
   Schedule,
   CrewMember,
   CrewAssignment,
@@ -844,6 +845,7 @@ async function saveProjectToRemote(project: CastingProject, options?: ProjectMut
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getRoleRoomAuthHeaders(),
     },
     body: JSON.stringify(project),
   });
@@ -871,6 +873,7 @@ async function fetchProjectFromRemote(projectId: string): Promise<CastingProject
   projectId = normalizeRequiredProjectId(projectId, 'fetchProjectFromRemote');
   const response = await fetch(`/api/casting/projects/${projectId}?fresh=${Date.now()}`, {
     cache: 'no-store',
+    headers: getRoleRoomAuthHeaders(),
   });
   if (!response.ok) {
     if (response.status === 404) {
@@ -1254,16 +1257,50 @@ function normalizeProject(project: CastingProject): { project: CastingProject; c
     changed = true;
   }
 
+  // Garanter at hver candidate har `contactInfo`. Backend serverer
+  // kandidater med flat `email`/`phone` (snake_case rader fra
+  // casting_candidates), men KanbanPanel + ConsentContractDialog + andre
+  // konsumenter forventer `candidate.contactInfo.email`. Mismatchen krasjet
+  // hele dashboardet med "Cannot read properties of undefined (reading
+  // 'email')" så snart TROLL-demo lastet med 8 kandidater.
+  const sourceCandidates = Array.isArray((project as Record<string, unknown>).candidates)
+    ? ((project as Record<string, unknown>).candidates as Candidate[])
+    : null;
+  const normalizedCandidates = sourceCandidates
+    ? sourceCandidates.map((candidate) => {
+        const flat = candidate as Record<string, unknown>;
+        const nestedInfo = (flat.contactInfo ?? flat.contact_info) as ContactInfo | undefined;
+        const email = nestedInfo?.email ?? (typeof flat.email === 'string' ? flat.email : undefined);
+        const phone = nestedInfo?.phone ?? (typeof flat.phone === 'string' ? flat.phone : undefined);
+        const next: Candidate = {
+          ...candidate,
+          contactInfo: { ...(nestedInfo ?? {}), email, phone },
+        };
+        if (
+          (candidate as Record<string, unknown>).contactInfo !== next.contactInfo
+          || (nestedInfo?.email ?? undefined) !== email
+          || (nestedInfo?.phone ?? undefined) !== phone
+        ) {
+          changed = true;
+        }
+        return next;
+      })
+    : null;
+
   if (!changed) {
     return { project, changed: false };
   }
 
+  const out: CastingProject = {
+    ...project,
+    crew: normalizedCrew,
+    userRoles: normalizedUserRoles,
+  };
+  if (normalizedCandidates !== null) {
+    out.candidates = normalizedCandidates;
+  }
   return {
-    project: {
-      ...project,
-      crew: normalizedCrew,
-      userRoles: normalizedUserRoles,
-    },
+    project: out,
     changed: true,
   };
 }
@@ -1603,7 +1640,9 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
   }
   
   try {
-    const response = await fetch('/api/casting/projects');
+    const response = await fetch('/api/casting/projects', {
+      headers: getRoleRoomAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch projects: ${response.statusText}`);
     }
@@ -1684,10 +1723,12 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
     lastLocalSaveAt: project.updatedAt ?? toIsoNow(),
   });
 
-  if (shouldUseRoleRoomLocalFallback()) {
-    return;
-  }
-  
+  // FJERNET: shouldUseRoleRoomLocalFallback()-bypass.
+  // Den hoppet over saveProjectToRemote på theroleroom.com (prod-domenet),
+  // så ALLE frontend-utløste prosjektoppdateringer ble silentlig
+  // dropt for production users. Backend bevarer nested-arrays (4217a2be)
+  // og leveransen er trygg å alltid prøve.
+
   // Try to sync with database
   try {
     await saveProjectToRemote(project, options);
@@ -1725,14 +1766,14 @@ async function deleteProjectFromDb(id: string, options?: ProjectMutationOptions)
   projects = projects.filter(p => p.id !== id);
   saveProjectsToStorage(projects);
 
-  if (shouldUseRoleRoomLocalFallback()) {
-    return;
-  }
-  
+  // FJERNET: shouldUseRoleRoomLocalFallback()-bypass — samme grunn
+  // som saveProjectToDb. Production-users må kunne slette på backend.
+
   // Try to sync with database
   try {
     const response = await fetch(`/api/casting/projects/${id}`, {
       method: 'DELETE',
+      headers: getRoleRoomAuthHeaders(),
     });
     
     if (!response.ok) {
@@ -1819,16 +1860,28 @@ export const castingService = {
     }
 
     const request = (async (): Promise<CastingProject | null> => {
-      if (shouldUseRoleRoomLocalFallback()) {
-        const fallbackProject = localProject || null;
-        projectFetchCache.set(id, { project: fallbackProject, cachedAt: Date.now() });
-        return fallbackProject;
-      }
-
+      // FJERNET: shouldUseRoleRoomLocalFallback()-fallback til localProject.
+      // Den returnerte true på `theroleroom.com/` (production-domenet),
+      // og bypasset API-kallet helt — så getProject returnerte alltid
+      // det lokale skall-prosjektet fra saveProjectsToStorage istedenfor
+      // det fulle prosjektet fra backend. Resultat etter Last demo:
+      // `currentProject.roles` var undefined (ikke i objektet), så
+      // dashboardet viste 0/0/0/0 selv om compat-store hadde 8/8/6.
+      // getProjects bruker samme check kun til logg-suppression, ikke
+      // til å skippe fetchen, så her gjør vi det samme: alltid prøv API.
       try {
-        const response = await fetch(`/api/casting/projects/${id}`);
+        // cache: 'no-store' + cache-buster querystring tvinger fersk respons.
+        // Uten denne returnerte browser-cachen en stale 404 fra FØR Last demo
+        // hadde seedet prosjektet, så getProject() returnerte localProject
+        // (skall fra saveProjectsToStorage) i stedet for det fullstendige
+        // seede prosjektet med 8 roller / 8 kandidater / 6 crew. Resultat:
+        // currentProject.roles var undefined og dashboardet viste 0/0/0/0.
+        const response = await fetch(`/api/casting/projects/${id}?fresh=${Date.now()}`, {
+          cache: 'no-store',
+          headers: getRoleRoomAuthHeaders(),
+        });
         if (!response.ok) {
-          if (response.status === 404) {
+          if (response.status === 404 || response.status === 401) {
             const fallbackProject = localProject || null;
             projectFetchCache.set(id, { project: fallbackProject, cachedAt: Date.now() });
             return fallbackProject;
@@ -2668,7 +2721,9 @@ export const castingService = {
 
     try {
       // Try to fetch from database API first
-      const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`);
+      const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`, {
+        headers: getRoleRoomAuthHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.shotLists) {
@@ -2714,7 +2769,7 @@ export const castingService = {
       // Save to database API
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
         body: JSON.stringify(shotList)
       });
       if (response.ok) {
@@ -2756,7 +2811,8 @@ export const castingService = {
     try {
       // Delete from database API
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists/${shotListId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getRoleRoomAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -2806,7 +2862,7 @@ export const castingService = {
     try {
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists/reorder`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
         body: JSON.stringify({ order: orderedIds }),
       });
       if (response.ok) return;
@@ -2841,7 +2897,7 @@ export const castingService = {
     assertPayloadProjectScope(projectId, payload, 'startLiveSetSession');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sessions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -2967,7 +3023,9 @@ export const castingService = {
       query.set('lon', payload.lon.toString());
     }
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/weather${suffix}`);
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/weather${suffix}`, {
+      headers: getRoleRoomAuthHeaders(),
+    });
     let data: {
       success?: boolean;
       current?: Record<string, unknown>;
@@ -3048,7 +3106,9 @@ export const castingService = {
     const userId = getCurrentUserId();
 
     try {
-      const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`);
+      const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`, {
+        headers: getRoleRoomAuthHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         const snapshots = Array.isArray(data?.snapshots) ? data.snapshots : [];
@@ -3089,7 +3149,7 @@ export const castingService = {
     try {
       const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
         body: JSON.stringify(payload),
       });
       if (response.ok) {
@@ -5232,3 +5292,4 @@ export const castingService = {
     return template;
   },
 };
+

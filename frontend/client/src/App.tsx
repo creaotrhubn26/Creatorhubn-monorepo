@@ -189,6 +189,7 @@ import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import PrivacyPolicy from '@/pages/privacy-policy';
 import TermsAndConditions from '@/pages/terms-and-conditions';
+import ClientWorkspaceShell from '@/components/role-room/components/client-workspace/ClientWorkspaceShell';
 import PublicCV from '@/pages/public-cv';
 import NextRoleLanding from '@/pages/nextrole-landing';
 import CreatorhubInnovationPage from '@/pages/CreatorhubInnovationPage';
@@ -837,6 +838,7 @@ function App() {
                   <Route path="/client/gallery/:projectId/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/portal/:token" component={ClientPortalMarketingPage as React.ComponentType<any>} />
+                  <Route path="/client/workspace/:projectId" component={ClientWorkspaceShell as React.ComponentType<any>} />
                   <Route path="/reset-passord/:token" component={ResetPasswordPage as React.ComponentType<any>} />
                   <Route path="/innstillinger/sikkerhet" component={SecuritySettingsPage as React.ComponentType<any>} />
                   <Route path="/capture/sessions/:sessionId/culling" component={CullingReviewPage as React.ComponentType<any>} />

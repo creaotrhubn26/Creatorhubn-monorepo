@@ -40,6 +40,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import authSessionService from '../services/authSessionService';
 
 interface DitDestination {
   id: string;
@@ -129,10 +130,11 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
   const loadAll = useCallback(() => {
     if (!projectId) return;
     setLoading(true);
+    const auth = authSessionService.getAuthHeadersSync();
     Promise.all([
-      fetch(`/api/dit/projects/${projectId}/destinations`, { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : { destinations: [] }),
-      fetch(`/api/dit/projects/${projectId}/helper-tokens`, { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : { tokens: [] }),
-      fetch(`/api/dit/projects/${projectId}/jobs?limit=100`, { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : { jobs: [] }),
+      fetch(`/api/dit/projects/${projectId}/destinations`, { credentials: 'same-origin', headers: auth }).then((r) => r.ok ? r.json() : { destinations: [] }),
+      fetch(`/api/dit/projects/${projectId}/helper-tokens`, { credentials: 'same-origin', headers: auth }).then((r) => r.ok ? r.json() : { tokens: [] }),
+      fetch(`/api/dit/projects/${projectId}/jobs?limit=100`, { credentials: 'same-origin', headers: auth }).then((r) => r.ok ? r.json() : { jobs: [] }),
     ])
       .then(([d, t, j]) => {
         setDestinations(Array.isArray(d?.destinations) ? d.destinations : []);
@@ -162,7 +164,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       const res = await fetch(`/api/dit/projects/${projectId}/helper-tokens`, {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
         body: JSON.stringify({ label, station_name: stationName }),
       });
       const data = await res.json();
@@ -180,6 +182,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       const res = await fetch(`/api/dit/helper-tokens/${id}`, {
         method: 'DELETE',
         credentials: 'same-origin',
+        headers: authSessionService.getAuthHeadersSync(),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       loadAll();
@@ -195,7 +198,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       const res = await fetch('/api/dit/destinations', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
         body: JSON.stringify({
           project_id: projectId,
           destination_type: destDraft.destination_type,
@@ -221,7 +224,11 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
   const deleteDestination = async (id: string) => {
     if (!window.confirm('Slett denne destinasjonen? Pågående backup-jobs kan ikke flyttes — slett kun ubrukte destinasjoner.')) return;
     try {
-      const res = await fetch(`/api/dit/destinations/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+      const res = await fetch(`/api/dit/destinations/${id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: authSessionService.getAuthHeadersSync(),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       loadAll();
     } catch (err) {

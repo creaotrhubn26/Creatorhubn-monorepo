@@ -57,6 +57,14 @@ import {
   type TeamSeatRow,
 } from './post-agent-storage.js';
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 interface SessionData {
   userId: string;
   email: string;
@@ -187,7 +195,10 @@ export function createPostAgentRouter(
 
   router.post(
     '/pairing/start',
-    aiRateLimit({ windowMs: 60_000, max: 10, label: 'post-agent-pairing-start' }),
+    // 30/min per IP. Hvis Daniel restartet Post Agent et par ganger eller
+    // klikket "Prøv på nytt" gjentatte ganger, slo den gamle 10/min-grensen
+    // inn umiddelbart med rå HTTP 429 og blokkerte legitim innlogging.
+    aiRateLimit({ windowMs: 60_000, max: 30, label: 'post-agent-pairing-start' }),
     async (_req: Request, res: Response) => {
       void prunePairingCodes(pool);
       let code = generatePairingCode();
@@ -404,32 +415,296 @@ export function createPostAgentRouter(
    */
   router.get('/me', postAgentAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
+    // Robust mot databaser der profession/company_name-kolonnene ikke har
+    // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
+    // med "column ... does not exist", fall tilbake til minimum-set og
+    // returner profession/companyName som null — UI viser fortsatt
+    // brukeren som pålogget istedenfor "Token utløpt".
+    const fullCols = 'id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator';
+    const minCols  = 'id, email, first_name, last_name, role, profile_image_url, is_administrator';
+    let u: Record<string, unknown> | undefined;
+    let degraded = false;
     try {
       const { rows } = await pool.query(
-        `SELECT id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator
-         FROM users WHERE id = $1 LIMIT 1`,
+        `SELECT ${fullCols} FROM users WHERE id = $1 LIMIT 1`,
         [userId],
       );
-      const u = rows[0];
-      if (!u) {
-        res.status(404).json({ error: 'user_not_found' });
+      u = rows[0];
+    } catch (err) {
+      const msg = (err as Error).message || '';
+      if (/column .* does not exist/i.test(msg)) {
+        degraded = true;
+        try {
+          const { rows } = await pool.query(
+            `SELECT ${minCols} FROM users WHERE id = $1 LIMIT 1`,
+            [userId],
+          );
+          u = rows[0];
+        } catch (err2) {
+          res.status(500).json({ error: 'profile_lookup_failed', detail: (err2 as Error).message });
+          return;
+        }
+      } else {
+        res.status(500).json({ error: 'profile_lookup_failed', detail: msg });
         return;
       }
-      const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    }
+    if (!u) {
+      res.status(404).json({ error: 'user_not_found' });
+      return;
+    }
+    const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    res.json({
+      id: u.id,
+      email: u.email,
+      name: fullName || (u.email as string | undefined)?.split('@')[0] || 'Bruker',
+      firstName: u.first_name,
+      lastName: u.last_name,
+      role: u.role || 'user',
+      profileImageUrl: u.profile_image_url,
+      profession: degraded ? null : u.profession,
+      companyName: degraded ? null : u.company_name,
+      isAdministrator: u.is_administrator === true,
+      schemaDegraded: degraded || undefined,
+    });
+  });
+
+  // ---- Feedback ----
+
+  /**
+   * POST /feedback — Irlin/Daniel sender bug/forslag/spørsmål direkte fra
+   * Post Agent's "📨 Send feedback"-dialog. Lagrer i DB + sender e-post
+   * til daniel@creatorhubn.com. Erstattet tidligere mailto:-fallback som
+   * krevde konfigurert mail-klient.
+   *
+   * Body: { category, message, bridge_status?, platform?, user_agent?, client_version? }
+   */
+  router.post('/feedback', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as {
+      category?: string;
+      message?: string;
+      bridge_status?: unknown;
+      platform?: string;
+      user_agent?: string;
+      client_version?: string;
+    };
+    const category = (body.category ?? 'other').toString().slice(0, 40);
+    const message = (body.message ?? '').toString().trim();
+    if (!message) {
+      res.status(400).json({ error: 'message_required' });
+      return;
+    }
+
+    // Lagre — DB-table opprettet i migration 215. Hvis table mangler,
+    // svelg feilen og fortsett med e-post slik at brukeren ikke får
+    // 500 mens migrate venter.
+    let feedbackId: number | null = null;
+    try {
+      const { rows } = await pool.query<{ id: number }>(
+        `INSERT INTO post_agent_feedback
+          (user_id, category, message, bridge_status, platform, user_agent, client_version)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+         RETURNING id`,
+        [
+          userId,
+          category,
+          message,
+          body.bridge_status ? JSON.stringify(body.bridge_status) : null,
+          body.platform ?? null,
+          body.user_agent ?? null,
+          body.client_version ?? null,
+        ],
+      );
+      feedbackId = rows[0]?.id ?? null;
+    } catch (err) {
+      console.warn('[post-agent feedback] DB insert failed:', (err as Error).message);
+    }
+
+    // Hent bruker-info for e-posten
+    let userEmail = 'ukjent';
+    try {
+      const { rows } = await pool.query<{ email: string }>(
+        `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      userEmail = rows[0]?.email ?? 'ukjent';
+    } catch {
+      /* non-critical */
+    }
+
+    // Send e-post — silent failure er ok (DB-raden er primær storage)
+    const subject = `Post Agent feedback [${category}] fra ${userEmail}`;
+    const text =
+`Fra: ${userEmail} (user_id ${userId})
+Kategori: ${category}
+${body.platform ? `Plattform: ${body.platform}` : ''}
+${body.client_version ? `Klient-versjon: ${body.client_version}` : ''}
+Feedback-ID: ${feedbackId ?? '(DB-feil)'}
+
+---
+${message}
+---
+
+Bridge-status: ${body.bridge_status ? JSON.stringify(body.bridge_status, null, 2) : '(ikke rapportert)'}
+User agent: ${body.user_agent ?? '(ikke rapportert)'}
+Tidspunkt: ${new Date().toISOString()}
+`;
+    const html = `<p><strong>Fra:</strong> ${escapeHtml(userEmail)} (user_id ${userId})</p>
+<p><strong>Kategori:</strong> ${escapeHtml(category)}</p>
+<p><strong>Feedback-ID:</strong> ${feedbackId ?? '(DB-feil)'}</p>
+<hr>
+<pre style="white-space:pre-wrap">${escapeHtml(message)}</pre>
+<hr>
+<details><summary>Diagnostikk</summary>
+<pre>${escapeHtml(text)}</pre>
+</details>`;
+
+    const emailResult = await sendEmail({
+      to: 'daniel@creatorhubn.com',
+      subject,
+      text,
+      html,
+      fromName: 'Post Agent Feedback',
+    });
+
+    res.json({
+      ok: true,
+      feedback_id: feedbackId,
+      emailed: emailResult.success,
+      email_error: emailResult.success ? undefined : emailResult.error,
+    });
+  });
+
+  // ---- Creator Profile ----
+  //
+  // Per-bruker preferanser + learnings som Creative Editor auto-anvender
+  // på nye prosjekter. Knyttet til innlogget Role Room-bruker (RR_BEARER_TOKEN),
+  // ikke lokalt. Slik bytter Bjarne arbeidsmaskin og får sine learnings med.
+  //
+  // Tabell: post_agent_creator_profiles (user_id PK, profile JSONB, updated_at).
+
+  let creatorProfileTableEnsured = false;
+  async function ensureCreatorProfileTable(): Promise<void> {
+    if (creatorProfileTableEnsured) return;
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS post_agent_creator_profiles (
+          user_id VARCHAR(255) PRIMARY KEY,
+          profile JSONB NOT NULL DEFAULT '{}'::jsonb,
+          edit_count INT NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      creatorProfileTableEnsured = true;
+    } catch (err) {
+      console.error('[post-agent] ensure creator-profile table failed:', err);
+    }
+  }
+
+  // GET — returnerer brukers profil. Tom-objekt hvis ikke satt opp ennå.
+  router.get('/creator-profile', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    await ensureCreatorProfileTable();
+    try {
+      const { rows } = await pool.query(
+        `SELECT profile, edit_count, updated_at
+           FROM post_agent_creator_profiles WHERE user_id = $1`,
+        [userId],
+      );
+      const row = rows[0];
       res.json({
-        id: u.id,
-        email: u.email,
-        name: fullName || u.email?.split('@')[0] || 'Bruker',
-        firstName: u.first_name,
-        lastName: u.last_name,
-        role: u.role || 'user',
-        profileImageUrl: u.profile_image_url,
-        profession: u.profession,
-        companyName: u.company_name,
-        isAdministrator: u.is_administrator === true,
+        profile: row?.profile ?? {},
+        editCount: row?.edit_count ?? 0,
+        updatedAt: row?.updated_at ?? null,
       });
     } catch (err) {
-      res.status(500).json({ error: 'profile_lookup_failed', detail: (err as Error).message });
+      console.error('[post-agent] creator-profile GET failed:', err);
+      res.status(500).json({ error: 'profile_fetch_failed' });
+    }
+  });
+
+  // PATCH — merger inn nye preferanser. Frontend sender bare det som har
+  // endret seg slik at vi ikke trampler inn på andre felter.
+  router.patch('/creator-profile', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    await ensureCreatorProfileTable();
+    const patch = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof patch !== 'object' || patch === null) {
+      res.status(400).json({ error: 'invalid_body' });
+      return;
+    }
+    try {
+      const { rows: existing } = await pool.query(
+        `SELECT profile FROM post_agent_creator_profiles WHERE user_id = $1`,
+        [userId],
+      );
+      const current = (existing[0]?.profile ?? {}) as Record<string, unknown>;
+      const merged = { ...current, ...patch };
+      await pool.query(
+        `INSERT INTO post_agent_creator_profiles (user_id, profile)
+              VALUES ($1, $2::jsonb)
+         ON CONFLICT (user_id) DO UPDATE
+            SET profile = EXCLUDED.profile,
+                updated_at = NOW()`,
+        [userId, JSON.stringify(merged)],
+      );
+      res.json({ ok: true, profile: merged });
+    } catch (err) {
+      console.error('[post-agent] creator-profile PATCH failed:', err);
+      res.status(500).json({ error: 'profile_save_failed' });
+    }
+  });
+
+  // POST /learning — appender en learning (Bjarne aksepterte/avviste et
+  // forslag fra Claude, fjernet et chapter, etc.) Inkrementerer edit_count
+  // og opdaterer aggregert profil basert på hva som er lært.
+  router.post('/creator-profile/learning', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    await ensureCreatorProfileTable();
+    const body = (req.body ?? {}) as {
+      kind?: string;
+      data?: Record<string, unknown>;
+    };
+    const kind = String(body.kind ?? '').trim();
+    if (!kind) {
+      res.status(400).json({ error: 'missing_kind' });
+      return;
+    }
+    try {
+      const { rows: existing } = await pool.query(
+        `SELECT profile, edit_count FROM post_agent_creator_profiles WHERE user_id = $1`,
+        [userId],
+      );
+      const current = (existing[0]?.profile ?? {}) as Record<string, unknown>;
+      const recent = Array.isArray(current.recentLearnings)
+        ? (current.recentLearnings as Array<Record<string, unknown>>)
+        : [];
+      const newRecent = [
+        { ts: Date.now(), kind, ...(body.data ?? {}) },
+        ...recent,
+      ].slice(0, 200); // cap
+
+      // Aggregér enkle counter-felter
+      const counters = (current.counters ?? {}) as Record<string, number>;
+      counters[kind] = (counters[kind] ?? 0) + 1;
+
+      const merged = { ...current, recentLearnings: newRecent, counters };
+
+      await pool.query(
+        `INSERT INTO post_agent_creator_profiles (user_id, profile, edit_count)
+              VALUES ($1, $2::jsonb, 1)
+         ON CONFLICT (user_id) DO UPDATE
+            SET profile = EXCLUDED.profile,
+                edit_count = post_agent_creator_profiles.edit_count + 1,
+                updated_at = NOW()`,
+        [userId, JSON.stringify(merged)],
+      );
+      res.json({ ok: true, editCount: ((existing[0]?.edit_count as number | undefined) ?? 0) + 1 });
+    } catch (err) {
+      console.error('[post-agent] creator-profile learning POST failed:', err);
+      res.status(500).json({ error: 'learning_save_failed' });
     }
   });
 

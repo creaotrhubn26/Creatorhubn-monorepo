@@ -26,8 +26,11 @@ import roleRoomAgentService, {
   type RoleRoomApprovalPolicy,
   type RoleRoomBudgetResult,
   type RoleRoomChannelResults,
+  type RoleRoomAdRecommendationsResult,
+  type RoleRoomAdRecommendationSeverity,
 } from '../../services/roleRoomAgentService';
 import GrantedAssetsCard from './GrantedAssetsCard';
+import ClientConnectWizard from '../client-workspace/ClientConnectWizard';
 
 /**
  * Client-facing economy hub (MedInnova-avtalen §5.3): the simplest possible view
@@ -97,7 +100,22 @@ export default function ClientEconomyPanel({
   const [budgetInput, setBudgetInput] = useState('');
   const [savingBudget, setSavingBudget] = useState(false);
   const [results, setResults] = useState<RoleRoomChannelResults | null>(null);
+  const [recommendations, setRecommendations] = useState<RoleRoomAdRecommendationsResult | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshRecommendations = async () => {
+    const r = await roleRoomAgentService.fetchAdsRecommendations(projectId, period);
+    setRecommendations(r);
+  };
+
+  const triggerRegenerate = async () => {
+    setRegenerating(true);
+    const res = await roleRoomAgentService.generateAdsRecommendations(projectId, period);
+    if (res.ok) await refreshRecommendations();
+    else setError(res.error ?? 'Generering feilet.');
+    setRegenerating(false);
+  };
 
   const refreshBudget = async () => {
     const b = await roleRoomAgentService.fetchAdsBudget(projectId, period);
@@ -106,18 +124,26 @@ export default function ClientEconomyPanel({
   };
 
   useEffect(() => {
+    // Samme guard som approval-policy-effect — uten projectId fyrer
+    // dependent API-er med tom string og console fylles med 400'er.
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const [data, res] = await Promise.all([
+        const [data, res, recs] = await Promise.all([
           roleRoomAgentService.fetchAdsSpendSummary(period),
           roleRoomAgentService.fetchAdsResults(projectId, period),
+          roleRoomAgentService.fetchAdsRecommendations(projectId, period),
         ]);
         if (!cancelled) {
           setSummary(data);
           setResults(res);
+          setRecommendations(recs);
         }
       } catch {
         if (!cancelled) setError('Klarte ikke å hente forbruket.');
@@ -131,6 +157,10 @@ export default function ClientEconomyPanel({
   }, [period, projectId]);
 
   useEffect(() => {
+    // Hopp over hvis projectId enda ikke er resolvert — ellers fyrer fetch med
+    // tom string, backend svarer 400, og console viser feilmelding på første
+    // render selv om alt egentlig fungerer.
+    if (!projectId) return;
     let cancelled = false;
     (async () => {
       const p = await roleRoomAgentService.fetchApprovalPolicy(projectId);
@@ -168,6 +198,13 @@ export default function ClientEconomyPanel({
     if (req == null) return;
     setSavingBudget(true);
     const ok = await roleRoomAgentService.approveAdsOverage(projectId, req, period);
+    if (ok) await refreshBudget();
+    setSavingBudget(false);
+  };
+
+  const toggleAutoPause = async (enabled: boolean) => {
+    setSavingBudget(true);
+    const ok = await roleRoomAgentService.setAdsBudgetAutoPause(projectId, enabled, period);
     if (ok) await refreshBudget();
     setSavingBudget(false);
   };
@@ -297,6 +334,59 @@ export default function ClientEconomyPanel({
         </Stack>
       )}
 
+      {/* ── Lag 2: AI-anbefalinger (myk veiledning, ingen automatisk handling) ── */}
+      {recommendations && (recommendations.recommendations.length > 0 || recommendations.overallNote) && (
+        <Stack spacing={1.1} sx={CARD_SX}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <InsightsIcon sx={{ fontSize: 20, color: '#fbbf24' }} />
+            <Typography sx={LABEL}>AI-anbefalinger</Typography>
+            <Box sx={{ flex: 1 }} />
+            <Button
+              size="small"
+              disabled={regenerating}
+              onClick={triggerRegenerate}
+              sx={{ textTransform: 'none', color: '#fbbf24', fontWeight: 700 }}
+            >
+              {regenerating ? 'Genererer…' : 'Generer på nytt'}
+            </Button>
+          </Stack>
+          <Typography sx={SUBTLE}>
+            Agentens forslag basert på faktiske tall denne perioden. Ingen automatisk handling — du eller produsenten bestemmer.
+            {recommendations.generatedAt && (
+              <> Sist generert {new Date(recommendations.generatedAt).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.</>
+            )}
+          </Typography>
+
+          {recommendations.overallNote && (
+            <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+              «{recommendations.overallNote}»
+            </Typography>
+          )}
+
+          {recommendations.recommendations.map((r) => {
+            const sev: RoleRoomAdRecommendationSeverity = r.severity;
+            const muiSeverity: 'info' | 'warning' | 'error' = sev === 'critical' ? 'error' : sev === 'warning' ? 'warning' : 'info';
+            return (
+              <Alert
+                key={r.id}
+                severity={muiSeverity}
+                sx={{ '& .MuiAlert-message': { fontSize: '0.78rem', width: '100%' } }}
+              >
+                <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>{r.title}</Typography>
+                {r.body && (
+                  <Typography sx={{ fontSize: '0.78rem', mt: 0.3 }}>{r.body}</Typography>
+                )}
+                {r.evidence.length > 0 && (
+                  <Box component="ul" sx={{ m: '6px 0 0 0', pl: 2, '& li': { fontSize: '0.72rem', color: 'rgba(226,232,240,0.78)' } }}>
+                    {r.evidence.map((e, i) => <li key={i}>{e}</li>)}
+                  </Box>
+                )}
+              </Alert>
+            );
+          })}
+        </Stack>
+      )}
+
       {/* ── Budsjett-tak (kunden setter, §3) ── */}
       <Stack spacing={1.2} sx={CARD_SX}>
         <Stack direction="row" alignItems="center" spacing={1}>
@@ -385,6 +475,29 @@ export default function ClientEconomyPanel({
                 Produsenten har bedt om en økt ramme på {nok(budget.status.overageRequestedNok)}.
               </Alert>
             )}
+
+            {/* ── Auto-pause-toggle (Lag 3b) — kun kunden kan styre ── */}
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.3, pt: 0.5, borderTop: '1px solid rgba(148,163,184,0.12)' }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
+                  Pause kampanjer automatisk når taket nås
+                </Typography>
+                <Typography sx={SUBTLE}>
+                  {budget.autoPauseOnCap
+                    ? 'På — agenten pauser aktive Meta/Google/LinkedIn-kampanjer i neste daglige sjekk hvis perioden går over taket.'
+                    : 'Av — du må selv pause hvis taket nås.'}
+                </Typography>
+              </Box>
+              <Tooltip title={budget.canEdit ? '' : 'Bare kunden kan styre auto-pause (§2.3)'}>
+                <span>
+                  <Switch
+                    checked={!!budget.autoPauseOnCap}
+                    disabled={!budget.canEdit || savingBudget}
+                    onChange={(e) => toggleAutoPause(e.target.checked)}
+                  />
+                </span>
+              </Tooltip>
+            </Stack>
           </Stack>
         ) : (
           <Typography sx={SUBTLE}>
@@ -451,7 +564,11 @@ export default function ClientEconomyPanel({
       </Stack>
 
       {/* ── Hvilke sider/kontoer kunden har gitt admin til ── */}
-      <GrantedAssetsCard />
+      {/* For klient: vis onboarding-wizard med plattform-velger + logoer.
+          For produsent: vis original Granted Assets-liste. */}
+      {['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase())
+        ? <ClientConnectWizard />
+        : <GrantedAssetsCard perspective="producer" />}
 
       {!['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase()) && (
         <Typography sx={{ ...SUBTLE, textAlign: 'center' }}>

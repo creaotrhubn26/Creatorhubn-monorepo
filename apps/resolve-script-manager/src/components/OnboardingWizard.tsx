@@ -305,8 +305,8 @@ export function OnboardingWizard({ onClose, defaultTemplateId, onTemplateChange 
   }, [analysis, folder, selectedTemplateId, projectName, onTemplateChange]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 640, maxHeight: "85vh" }}>
+    <div className="modal-backdrop anim-fade-in" onClick={onClose}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()} style={{ width: 640, maxHeight: "85vh" }}>
         <h2>Set up Project</h2>
 
         {/* STAGE 1 — PICK FOLDER */}

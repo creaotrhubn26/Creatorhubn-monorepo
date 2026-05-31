@@ -1001,6 +1001,8 @@ export interface RoleRoomBudgetResult {
   period: string;
   status: RoleRoomBudgetStatus;
   pacing?: RoleRoomBudgetPacing;
+  /** Lag 3b: kunden har slått på automatisk pause når taket nås. */
+  autoPauseOnCap?: boolean;
   canEdit: boolean;
 }
 
@@ -1057,6 +1059,36 @@ export interface RoleRoomLinkedInCampaignGroup {
   id: string; // urn:li:sponsoredCampaignGroup:{id}
   name: string;
   status: string | null;
+}
+
+// ── Lag 2: AI-anbefalinger ─────────────────────────────────────────────
+export type RoleRoomAdRecommendationType =
+  | 'reallocate_budget'
+  | 'pause_underperformer'
+  | 'scale_winner'
+  | 'refresh_creative'
+  | 'fix_tracking'
+  | 'investigate';
+export type RoleRoomAdRecommendationSeverity = 'info' | 'warning' | 'critical';
+
+export interface RoleRoomAdRecommendation {
+  id: string;
+  type: RoleRoomAdRecommendationType;
+  severity: RoleRoomAdRecommendationSeverity;
+  title: string;
+  body: string;
+  evidence: string[];
+  affectsChannels?: string[];
+  suggestedAction: { kind: 'manual'; detail?: string };
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export interface RoleRoomAdRecommendationsResult {
+  period: string;
+  recommendations: RoleRoomAdRecommendation[];
+  overallNote: string | null;
+  generatedAt: string | null;
+  generatedWithModel: string | null;
 }
 
 // ── AI-genererte annonser (Lag 1) ──────────────────────────────────────
@@ -1483,6 +1515,30 @@ export const roleRoomAgentService = {
     return (await response.json().catch(() => null)) as RoleRoomChannelResults | null;
   },
 
+  /** Lag 2: hent siste persisterte anbefalinger for prosjektet + perioden. */
+  async fetchAdsRecommendations(projectId: string, period?: string): Promise<RoleRoomAdRecommendationsResult | null> {
+    const qs = new URLSearchParams({ projectId, ...(period ? { period } : {}) });
+    const response = await fetch(`/api/role-room/ads/recommendations?${qs.toString()}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return null;
+    return (await response.json().catch(() => null)) as RoleRoomAdRecommendationsResult | null;
+  },
+
+  /** Lag 2: manuell trigger — bygger og lagrer anbefalinger uten å vente på cron. */
+  async generateAdsRecommendations(projectId: string, period?: string): Promise<{ ok: boolean; error?: string }> {
+    const response = await fetch('/api/role-room/ads/recommendations/generate', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, ...(period ? { period } : {}) }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      return { ok: false, error: payload?.detail || payload?.error || 'Kunne ikke generere anbefalinger' };
+    }
+    return { ok: true };
+  },
+
   // ── Kampanje-styring (se/opprett/pause/gjenoppta/avslutt) ──
   async listAdsCampaigns(opts?: { projectId?: string; platform?: string; status?: string }): Promise<RoleRoomAdsCampaign[]> {
     const qs = new URLSearchParams();
@@ -1706,6 +1762,16 @@ export const roleRoomAgentService = {
       method: 'PUT',
       headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, maxSpendNok, ...(period ? { period } : {}) }),
+    });
+    return response.ok;
+  },
+
+  /** Lag 3b: kunden slår automatisk pause av kampanjer ved tak på/av. */
+  async setAdsBudgetAutoPause(projectId: string, enabled: boolean, period?: string): Promise<boolean> {
+    const response = await fetch('/api/role-room/ads/budget/auto-pause', {
+      method: 'PUT',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, enabled, ...(period ? { period } : {}) }),
     });
     return response.ok;
   },
@@ -2384,6 +2450,27 @@ export const roleRoomAgentService = {
       | { success?: boolean; posts?: MarketingPlanPost[] }
       | null;
     return Array.isArray(payload?.posts) ? payload!.posts! : [];
+  },
+
+  /**
+   * Polling-variant — returnerer kun posts endret etter `since`, pluss
+   * serverTime som kallieren kan bruke som since på neste tick.
+   */
+  async pollMarketingPlanPosts(planId: string, since: string | null): Promise<{
+    posts: MarketingPlanPost[]; serverTime: string;
+  }> {
+    const u = new URL(`/api/role-room/marketing-plan/${encodeURIComponent(planId)}/posts`,
+      window.location.origin);
+    if (since) u.searchParams.set('since', since);
+    const response = await fetch(u.pathname + u.search, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { posts?: MarketingPlanPost[]; serverTime?: string } | null;
+    return {
+      posts: payload?.posts ?? [],
+      serverTime: payload?.serverTime ?? new Date().toISOString(),
+    };
   },
 
   async generateMarketingPlanPosts(input: {
@@ -3113,7 +3200,176 @@ export const roleRoomAgentService = {
     if (!response.ok) throw new Error(payload?.error || 'Kunne ikke aktivere planen.');
     return payload?.plan ?? null;
   },
+
+  // ── Post-redigering (inline edit i dashboard) ────────────────────
+  async updateMarketingPlanPost(postId: string, patch: {
+    hook?: string;
+    script?: string;
+    captionDraft?: string;
+    callToAction?: string;
+    format?: MarketingPlanPost['format'];
+    primaryPlatform?: MarketingPlanPost['primaryPlatform'];
+    dayOffset?: number | null;
+    status?: MarketingPlanPost['status'];
+  }, ifMatchUpdatedAt?: string): Promise<MarketingPlanPost> {
+    const headers: Record<string, string> = {
+      ...readRoleRoomAgentHeaders(),
+      'Content-Type': 'application/json',
+    };
+    if (ifMatchUpdatedAt) headers['If-Match'] = ifMatchUpdatedAt;
+    const response = await fetch(
+      `/api/role-room/marketing-plan/posts/${encodeURIComponent(postId)}`,
+      { method: 'PATCH', headers, body: JSON.stringify(patch) },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; post?: MarketingPlanPost; error?: string;
+          currentUpdatedAt?: string } | null;
+    if (response.status === 409) {
+      throw Object.assign(
+        new Error('Posten ble endret av noen andre mens du redigerte. Last inn på nytt.'),
+        { conflict: true, currentUpdatedAt: payload?.currentUpdatedAt },
+      );
+    }
+    if (!response.ok || !payload?.post) {
+      throw new Error(payload?.error || `Kunne ikke oppdatere posten (HTTP ${response.status})`);
+    }
+    return payload.post;
+  },
+
+  // ── Versjonering: research/intake ────────────────────────────────
+  async listIntakeVersions(projectId: string): Promise<IntakeVersion[]> {
+    const response = await fetch(
+      `/api/role-room/research/${encodeURIComponent(projectId)}/versions`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; versions?: IntakeVersion[] } | null;
+    return payload?.versions ?? [];
+  },
+
+  async activateIntakeVersion(projectId: string, versionId: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/research/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/activate`,
+      { method: 'POST', headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || `Aktivering feilet (HTTP ${response.status})`);
+    }
+  },
+
+  async labelIntakeVersion(projectId: string, versionId: string, label: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/research/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/label`,
+      {
+        method: 'POST',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      },
+    );
+    if (!response.ok) throw new Error(`Label-oppdatering feilet (HTTP ${response.status})`);
+  },
+
+  // ── Versjonering: markedsplan ───────────────────────────────────
+  async listPlanVersions(projectId: string): Promise<PlanVersion[]> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/versions`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; versions?: PlanVersion[] } | null;
+    return payload?.versions ?? [];
+  },
+
+  async activatePlanVersion(projectId: string, versionId: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/activate`,
+      { method: 'POST', headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || `Aktivering feilet (HTTP ${response.status})`);
+    }
+  },
+
+  async labelPlanVersion(projectId: string, versionId: string, label: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/label`,
+      {
+        method: 'POST',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      },
+    );
+    if (!response.ok) throw new Error(`Label-oppdatering feilet (HTTP ${response.status})`);
+  },
+
+  async getMarketingActivityFeed(projectId: string, opts: {
+    before?: string | null; limit?: number;
+  } = {}): Promise<{ events: ActivityEvent[]; hasMore: boolean; nextCursor: string | null }> {
+    const u = new URL(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/activity-feed`,
+      window.location.origin);
+    if (opts.before) u.searchParams.set('before', opts.before);
+    if (opts.limit) u.searchParams.set('limit', String(opts.limit));
+    const response = await fetch(u.pathname + u.search, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; events?: ActivityEvent[];
+          hasMore?: boolean; nextCursor?: string | null } | null;
+    return {
+      events: payload?.events ?? [],
+      hasMore: payload?.hasMore === true,
+      nextCursor: payload?.nextCursor ?? null,
+    };
+  },
 };
+
+export type ActivityEventKind =
+  | 'plan_version'
+  | 'client_comment'
+  | 'team_comment'
+  | 'client_review_approved'
+  | 'client_review_changes_requested'
+  | 'preview_uploaded'
+  | 'post_edited';
+
+export interface ActivityEvent {
+  kind: ActivityEventKind;
+  at: string;
+  actor: { kind: 'user' | 'agent' | 'client'; name: string | null };
+  title: string;
+  detail?: string | null;
+  postId?: string | null;
+  postHook?: string | null;
+}
+
+export interface IntakeVersion {
+  id: string;
+  versionNumber: number;
+  label: string | null;
+  generatedByKind: 'user' | 'agent';
+  generatedByUserId: string | null;
+  generatedByName: string | null;
+  isActive: boolean;
+  createdAt: string;
+  goalPreview: string | null;
+}
+
+export interface PlanVersion {
+  id: string;
+  versionNumber: number;
+  label: string | null;
+  generatedByKind: 'user' | 'agent';
+  generatedByUserId: string | null;
+  generatedByName: string | null;
+  isActive: boolean;
+  createdAt: string;
+  valueProp: string | null;
+  pillarCount: number;
+  postCount: number;
+}
 
 // ── Marketing plan types ─────────────────────────────────────────────────
 
@@ -3208,6 +3464,14 @@ export interface MarketingPlanPost {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Audit — settes ved hver inline-edit (PATCH /posts/:postId). */
+  lastEditedAt?: string | null;
+  lastEditedByUserId?: string | null;
+  lastEditedByName?: string | null;
+  /** 'team' = produsent/team, 'client' = klient_reviewer. Brukt for
+   *  farget badge i Markedsplan-dashboardet så det er klart hvem
+   *  som endret. */
+  lastEditedByKind?: 'team' | 'client' | null;
 }
 
 export default roleRoomAgentService;

@@ -26,6 +26,7 @@
 import type express from 'express';
 import type { Pool } from 'pg';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { signAssetReadUrl } from './capture-upload-service.js';
 
 interface AdminSession {
   userId: string;
@@ -478,6 +479,162 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
     } catch (error) {
       console.error('[dit] take-status failed:', error);
       return res.status(500).json({ success: false, error: 'Kunne ikke laste status', take_status: [] });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // PROJECT INFO — helper-token-gated (Creatorhub One Desk)
+  // Returnerer prosjekt-navn + memory-card-configs fra wizard +
+  // destinasjoner i én call. Read-only.
+  // ═══════════════════════════════════════════════════════════
+
+  // Returnerer signed download-URL for et capture-asset (Creatorhub One Desk
+  // F6b mirror). Helper-token-gated; verifiserer at asset's session.project_id
+  // matcher token.project_id. Foretrekker fullKey, faller tilbake til
+  // previewKey hvis full ikke finnes.
+  app.get('/api/dit/assets/:assetId/download-url', async (req, res) => {
+    const auth = await verifyHelperToken(pool, req);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'Ugyldig eller utløpt helper-token' });
+    }
+    const assetId = String(req.params.assetId || '').trim();
+    if (!assetId) {
+      return res.status(400).json({ success: false, error: 'assetId påkrevd' });
+    }
+    try {
+      const row = await pool.query<{
+        id: string;
+        original_filename: string;
+        preview_key: string | null;
+        full_key: string | null;
+        size_bytes: string | null;
+        mime: string;
+        project_id: string | null;
+      }>(
+        `SELECT a.id, a.original_filename, a.preview_key, a.full_key,
+                a.size_bytes, a.mime, s.project_id
+         FROM capture_assets a
+         JOIN capture_sessions s ON s.id = a.session_id
+         WHERE a.id = $1
+         LIMIT 1`,
+        [assetId],
+      );
+      if (row.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Asset ikke funnet' });
+      }
+      const asset = row.rows[0];
+      if (asset.project_id !== auth.project_id) {
+        return res.status(403).json({ success: false, error: 'Token gjelder annet prosjekt' });
+      }
+      const key = asset.full_key ?? asset.preview_key;
+      if (!key) {
+        return res.status(409).json({
+          success: false,
+          error: 'Asset har verken full_key eller preview_key (kanskje ikke uploaded ennå)',
+        });
+      }
+      const url = await signAssetReadUrl(key);
+      if (!url) {
+        return res.status(500).json({ success: false, error: 'Kunne ikke signere download-URL' });
+      }
+      return res.json({
+        success: true,
+        url,
+        filename: asset.original_filename,
+        size_bytes: asset.size_bytes ? Number(asset.size_bytes) : null,
+        mime: asset.mime,
+        is_full: asset.full_key !== null,
+      });
+    } catch (error) {
+      console.error('[dit] asset download-url failed:', error);
+      return res.status(500).json({ success: false, error: 'Kunne ikke hente download-URL' });
+    }
+  });
+
+  // Lister capture-sessions (iPad CaptureApp) for dette prosjektet. Brukes
+  // av Creatorhub One Desk for å vise hvilke sessions Desk kan mirror.
+  // Helper-token-gated; samme project_id-isolasjon som /info.
+  app.get('/api/dit/projects/:projectId/capture-sessions', async (req, res) => {
+    const auth = await verifyHelperToken(pool, req);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'Ugyldig eller utløpt helper-token' });
+    }
+    const projectId = String(req.params.projectId || '').trim();
+    if (auth.project_id !== projectId) {
+      return res.status(403).json({ success: false, error: 'Token gjelder annet prosjekt' });
+    }
+    try {
+      const result = await pool.query<{
+        id: string;
+        name: string;
+        starts_at: Date;
+        ends_at: Date | null;
+        status: string;
+        owner_user_id: string;
+      }>(
+        `SELECT id, name, starts_at, ends_at, status, owner_user_id
+         FROM capture_sessions
+         WHERE project_id = $1
+         ORDER BY starts_at DESC
+         LIMIT 50`,
+        [projectId],
+      );
+      return res.json({
+        success: true,
+        sessions: result.rows.map((r) => ({
+          id: r.id,
+          name: r.name ?? '',
+          starts_at: r.starts_at ? r.starts_at.toISOString() : null,
+          ends_at: r.ends_at ? r.ends_at.toISOString() : null,
+          status: r.status,
+          owner_user_id: r.owner_user_id,
+          is_active: r.ends_at === null && r.status === 'active',
+        })),
+      });
+    } catch (error) {
+      console.error('[dit] capture-sessions list failed:', error);
+      return res.status(500).json({ success: false, error: 'Kunne ikke laste capture-sessions', sessions: [] });
+    }
+  });
+
+  app.get('/api/dit/projects/:projectId/info', async (req, res) => {
+    const auth = await verifyHelperToken(pool, req);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'Ugyldig eller utløpt helper-token' });
+    }
+    const projectId = String(req.params.projectId || '').trim();
+    if (auth.project_id !== projectId) {
+      return res.status(403).json({ success: false, error: 'Token gjelder annet prosjekt' });
+    }
+    try {
+      const [projectRes, destRes] = await Promise.all([
+        pool.query<{ id: string; name: string | null; title: string | null; metadata: Record<string, unknown> | null }>(
+          'SELECT id, name, title, metadata FROM legacy.projects WHERE id = $1 LIMIT 1',
+          [projectId],
+        ),
+        pool.query<DitDestinationRow>(
+          'SELECT * FROM dit_destinations WHERE project_id = $1 ORDER BY priority ASC, label ASC',
+          [projectId],
+        ),
+      ]);
+      if (projectRes.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      }
+      const project = projectRes.rows[0];
+      const metadata = (project.metadata ?? {}) as Record<string, unknown>;
+      return res.json({
+        success: true,
+        project: {
+          id: project.id,
+          name: project.name || project.title || '',
+        },
+        memory_card_configs: Array.isArray(metadata.memoryCardConfigs) ? metadata.memoryCardConfigs : [],
+        selected_memory_cards: Array.isArray(metadata.selectedMemoryCards) ? metadata.selectedMemoryCards : [],
+        destinations: destRes.rows.map(serializeDestination),
+      });
+    } catch (error) {
+      console.error('[dit] project info failed:', error);
+      return res.status(500).json({ success: false, error: 'Kunne ikke laste prosjekt-info' });
     }
   });
 }

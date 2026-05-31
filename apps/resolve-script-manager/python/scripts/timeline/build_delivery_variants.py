@@ -44,6 +44,15 @@ CACHE_PATH = os.path.expanduser(
 # fraction (None = use whatever is in the picks). `score_floor` filters
 # out low-scoring picks (used by teaser to keep only the best).
 VARIANTS: dict[str, dict[str, Any]] = {
+    "long_film": {
+        "label": "Long Film",
+        "target_sec": 2700.0,  # 45 min (typisk wedding-film)
+        "max_sec": 3600.0,     # 60 min cap
+        "score_floor": 0.0,    # behold alle picks
+        "chapter_mix": None,   # bevarer naturlig fordeling
+        "description": "30-60 min full-length wedding film med ceremony + speeches + dans",
+        "include_all_picks": True,  # spesialflagg — bypasser duration-trimming
+    },
     "teaser": {
         "label": "Teaser",
         "target_sec": 30.0,
@@ -167,6 +176,11 @@ def _select_picks_for_variant(all_picks: list[dict], cfg: dict) -> list[dict]:
     cap = cfg["max_sec"]
     floor = cfg.get("score_floor", 0.0)
     chapter_mix = cfg.get("chapter_mix")
+
+    # include_all_picks bypass — bruk alle picks (long-film-modus).
+    if cfg.get("include_all_picks"):
+        out = sorted(all_picks, key=lambda p: float(p.get("startSec") or 0))
+        return out
 
     # Filter on score floor
     candidates = [p for p in all_picks if (p.get("score") or 0) >= floor]

@@ -163,8 +163,14 @@ def acoustid_lookup(api_key: str, fingerprint: str, duration: int) -> list[dict]
         req = urllib.request.Request(full_url, headers={"User-Agent": "RoleRoomPostAgent/0.1"})
         with urllib.request.urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        bridge.warn(f"AcoustID HTTP {exc.code}: {exc.reason}")
+        return []
+    except urllib.error.URLError as exc:
+        bridge.warn(f"AcoustID network: {exc.reason}")
+        return []
     except Exception as exc:  # noqa: BLE001
-        bridge.warn(f"AcoustID lookup failed: {exc}")
+        bridge.warn(f"AcoustID error: {exc.__class__.__name__}: {exc}")
         return []
 
     if data.get("status") != "ok":
@@ -193,6 +199,43 @@ def acoustid_lookup(api_key: str, fingerprint: str, duration: int) -> list[dict]
                     "releaseGroupId": rg_id,
                 })
     return matches
+
+
+def shazam_lookup(audio_path: str) -> list[dict]:
+    """Fallback: bruk Shazam (shazamio) når AcoustID feiler.
+    Returnerer matches i samme format som acoustid_lookup."""
+    try:
+        import asyncio
+        from shazamio import Shazam  # type: ignore
+    except ImportError:
+        bridge.warn("shazamio ikke installert — kan ikke gjøre fallback")
+        return []
+
+    async def _identify():
+        shazam = Shazam()
+        try:
+            return await shazam.recognize(audio_path)
+        except AttributeError:
+            return await shazam.recognize_song(audio_path)
+
+    try:
+        result = asyncio.run(_identify())
+    except Exception as exc:  # noqa: BLE001
+        bridge.warn(f"Shazam fallback error: {exc.__class__.__name__}: {exc}")
+        return []
+
+    track = (result or {}).get("track") or {}
+    title = track.get("title")
+    artist = track.get("subtitle")
+    if not title:
+        return []
+    return [{
+        "score": 0.85,  # Shazam-match ≈ 85% confidence
+        "title": title,
+        "artist": artist or "",
+        "mbid": None,
+        "releaseGroupId": None,
+    }]
 
 
 def fetch_cover_art(release_group_id: str, dest_dir: str, key: str) -> str | None:
@@ -345,8 +388,13 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
         matches = acoustid_lookup(api_key, fingerprint, fp_dur)
         if not matches:
-            results.append({"startSec": start, "endSec": end, "error": "no_acoustid_match"})
-            continue
+            # Fallback: prøv Shazam på samme audio-snippet
+            bridge.log(f"  AcoustID ga ingen match — prøver Shazam-fallback …")
+            matches = shazam_lookup(fp_audio)
+            if not matches:
+                results.append({"startSec": start, "endSec": end, "error": "no_match"})
+                continue
+            bridge.log(f"  Shazam-fallback fungerte!")
 
         top = matches[0]
         key = f"{top['title']}|{top['artist']}"

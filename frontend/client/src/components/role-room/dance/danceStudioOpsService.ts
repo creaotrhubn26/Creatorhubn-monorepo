@@ -2,6 +2,8 @@
  * Frontend client for /api/dance/studio.
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 const BASE = '/api/dance/studio';
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -128,6 +130,7 @@ export interface MovementVocabTerm {
 
 async function fetchList<T>(path: string, projectId?: string | null): Promise<T[]> {
   const res = await fetch(`${BASE}${path}${qs({ projectId: projectId ?? undefined })}`, {
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   const body = await readJson<{ success: boolean; data: T[] }>(res);
@@ -137,7 +140,7 @@ async function fetchList<T>(path: string, projectId?: string | null): Promise<T[
 async function postJson<T>(path: string, payload: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(payload),
   });
@@ -148,7 +151,7 @@ async function postJson<T>(path: string, payload: unknown): Promise<T> {
 async function patchJson<T>(path: string, payload: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(payload),
   });
@@ -157,7 +160,7 @@ async function patchJson<T>(path: string, payload: unknown): Promise<T> {
 }
 
 async function deletePath(path: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`, { method: 'DELETE', credentials: 'include' });
+  const res = await fetch(`${BASE}${path}`, { method: 'DELETE', headers: danceAuthHeaders(), credentials: 'include' });
   if (!res.ok && res.status !== 404) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error || `HTTP ${res.status}`);
@@ -174,6 +177,7 @@ export const deleteClass = (id: string) => deletePath(`/classes/${encodeURICompo
 
 export const listEnrollments = async (classId: string): Promise<DanceClassEnrollment[]> => {
   const res = await fetch(`${BASE}/classes/${encodeURIComponent(classId)}/enrollments`, {
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   const body = await readJson<{ success: boolean; data: DanceClassEnrollment[] }>(res);
@@ -207,7 +211,7 @@ export const listBookings = async (filters: { roomId?: string; from?: string; to
   if (filters.from) sp.set('from', filters.from);
   if (filters.to) sp.set('to', filters.to);
   const url = sp.toString() ? `${BASE}/room-bookings?${sp}` : `${BASE}/room-bookings`;
-  const res = await fetch(url, { credentials: 'include' });
+  const res = await fetch(url, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: DanceRoomBooking[] }>(res);
   return body.data;
 };

@@ -373,13 +373,29 @@ export function setupCastingProjectsRoutes(
 
   // ── Projects: CRUD ────────────────────────────────────────────────
 
-  app.get("/api/casting/projects", async (_req, res) => {
+  app.get("/api/casting/projects", async (req, res) => {
+    // Krev auth + filtrer på created_by = innloggende user, slik at:
+    // (a) brukere kun ser sine egne prosjekter (var en gjennomgripende
+    //     user-isolation-bug — alle så alle prosjekter inkl. demo-rester),
+    // (b) TROLL-demo-prosjekter (seedet med 'demo-user' før fix 7f656d58)
+    //     vises ikke til ekte brukere,
+    // (c) andre moduser (innholdsprodusent, dansestudio, utdanning)
+    //     får ikke produksjons-team-prosjekter slengt i fanget.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const ownerId = session.userId;
     try {
       const dbRows = await compatStoreListByPrefix<any>("casting:project:");
       if (dbRows.length > 0) {
         const projects = dbRows
           .map((row) => row.value)
-          .filter((project) => project && typeof project === "object");
+          .filter((project) => project && typeof project === "object")
+          .filter((project) => {
+            const createdBy = typeof project.created_by === "string" ? project.created_by : null;
+            // Ekskluder demo-rester (created_by null eller hardkodet 'demo-user')
+            if (!createdBy || createdBy === "demo-user") return false;
+            return createdBy === ownerId;
+          });
         legacyCastingProjects.clear();
         for (const project of projects) {
           const id = typeof project.id === "string" ? project.id : "";
@@ -389,7 +405,12 @@ export function setupCastingProjectsRoutes(
         res.json({ projects });
         return;
       }
-      res.json({ projects: Array.from(legacyCastingProjects.values()) });
+      const inMemoryFiltered = Array.from(legacyCastingProjects.values()).filter((project: any) => {
+        const createdBy = typeof project?.created_by === "string" ? project.created_by : null;
+        if (!createdBy || createdBy === "demo-user") return false;
+        return createdBy === ownerId;
+      });
+      res.json({ projects: inMemoryFiltered });
     } catch (error) {
       console.error("Error listing casting projects:", error);
       res.status(500).json({ error: "Could not list projects" });
@@ -414,7 +435,14 @@ export function setupCastingProjectsRoutes(
       return;
     }
     const now = new Date().toISOString();
-    const existing = legacyCastingProjects.get(id) || {};
+    // Les fra compat-store, IKKE bare in-memory. Seed-endepunkter som
+    // /api/demo/troll/seed-all skriver til compat-store men ikke til
+    // legacyCastingProjects-mappen, så `existing = {}` her ville wipet
+    // ut alle nested arrays (roles, candidates, crew, ...) via den
+    // shallow `{...existing, ...payload}`-mergen under. Resultatet var
+    // at frontend's saveProject-kall etter "Last demo" tømte 8 roller /
+    // 8 kandidater / 6 crew Daniel hadde seedet.
+    const existing = (await getLegacyCastingProject(id)) || {};
     const existingRecord = existing as Record<string, unknown>;
     const payloadRecord = payload as Record<string, unknown>;
     const ownerId = readString(
@@ -441,13 +469,20 @@ export function setupCastingProjectsRoutes(
       ownerEmail,
       ownerId,
     );
+    // session.userId som siste fallback: hvis frontend ikke sender createdBy
+    // (Holy Crust-flowen er ett eksempel — POST gikk uten createdBy), endte
+    // prosjektet med created_by=null i compat-store, som så fikk GET
+    // /api/casting/projects/:id til å returnere null pga owner-sjekk →
+    // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
+    // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
+    // seg selv direkte etter opprettelse/oppdatering.
     const createdBy = readString(
       payloadRecord.createdBy,
       payloadRecord.created_by,
       existingRecord.createdBy,
       existingRecord.created_by,
       ownerId,
-    );
+    ) ?? session.userId;
     const createdByEmail = readString(
       payloadRecord.createdByEmail,
       payloadRecord.created_by_email,
@@ -462,18 +497,52 @@ export function setupCastingProjectsRoutes(
       existingRecord.created_by_label,
       ownerLabel,
     );
+    // Bevar existing nested arrays når payload sender en tom array. Frontends
+    // saveProject etter "Last demo" sender skall-payload med crew:[] som
+    // ellers ville wipet 6 crew fra seed-prosessen. Andre nested fields
+    // (roles, candidates, schedules, locations, props, shotLists, scenes)
+    // er ikke i payload så de bevares av shallow merge uansett — denne
+    // sjekken dekker EXPLICIT tomme arrays.
+    const nestedArrayKeys = [
+      "roles", "candidates", "crew", "schedules", "locations",
+      "props", "shotLists", "scenes", "productionDays",
+      "sceneBreakdowns", "userRoles", "equipment", "manuscripts",
+      "consents",
+    ] as const;
+    const mergedPayload = { ...payload } as Record<string, unknown>;
+    for (const key of nestedArrayKeys) {
+      const incoming = (payload as Record<string, unknown>)[key];
+      const existingArr = (existing as Record<string, unknown>)[key];
+      if (Array.isArray(incoming) && incoming.length === 0 && Array.isArray(existingArr) && existingArr.length > 0) {
+        delete mergedPayload[key];
+      }
+    }
     const project = {
-      ...existing,
-      ...payload,
+      ...(existing as Record<string, unknown>),
+      ...mergedPayload,
       id,
       ownerId,
+      owner_id: ownerId,
       ownerEmail,
+      owner_email: ownerEmail,
       ownerLabel,
+      owner_label: ownerLabel,
       createdBy,
+      // GET /api/casting/projects/:id sjekker project.created_by (snake_case)
+      // i owner-isolation. Hvis vi bare lagret createdBy (camelCase), endte
+      // GET med null → 'forbidden' → verification-flowen i frontend feilet
+      // 5 ganger. Lagre BEGGE for å match begge lesere.
+      created_by: createdBy,
       createdByEmail,
+      created_by_email: createdByEmail,
       createdByLabel,
-      createdAt: existing.createdAt || now,
+      created_by_label: createdByLabel,
+      createdAt: (existing as Record<string, unknown>).createdAt || now,
+      created_at: (existing as Record<string, unknown>).created_at
+        || (existing as Record<string, unknown>).createdAt
+        || now,
       updatedAt: now,
+      updated_at: now,
     };
     const hadExisting = legacyCastingProjects.has(id);
     const previousProject = legacyCastingProjects.get(id);
@@ -503,6 +572,11 @@ export function setupCastingProjectsRoutes(
   });
 
   app.get("/api/casting/projects/:projectId", async (req, res) => {
+    // Auth + owner-sjekk for å hindre kryss-bruker-leak. Demo-prosjekter
+    // (created_by = 'demo-user') blokkeres også — de finnes som rester fra
+    // før fix 7f656d58, og bør ikke serveres til noen ekte bruker.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const projectId = rejectInvalidProjectId(
         res,
@@ -510,8 +584,13 @@ export function setupCastingProjectsRoutes(
         "getProject",
       );
       if (!projectId) return;
-      const project = await getLegacyCastingProject(projectId);
+      const project: any = await getLegacyCastingProject(projectId);
       if (!project) {
+        res.json(null);
+        return;
+      }
+      const createdBy = typeof project.created_by === "string" ? project.created_by : null;
+      if (!createdBy || createdBy === "demo-user" || createdBy !== session.userId) {
         res.json(null);
         return;
       }
@@ -523,7 +602,8 @@ export function setupCastingProjectsRoutes(
   });
 
   app.put("/api/casting/projects/:projectId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const id = rejectInvalidProjectId(
       res,
       req.params.projectId,
@@ -566,13 +646,20 @@ export function setupCastingProjectsRoutes(
       ownerEmail,
       ownerId,
     );
+    // session.userId som siste fallback: hvis frontend ikke sender createdBy
+    // (Holy Crust-flowen er ett eksempel — POST gikk uten createdBy), endte
+    // prosjektet med created_by=null i compat-store, som så fikk GET
+    // /api/casting/projects/:id til å returnere null pga owner-sjekk →
+    // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
+    // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
+    // seg selv direkte etter opprettelse/oppdatering.
     const createdBy = readString(
       payloadRecord.createdBy,
       payloadRecord.created_by,
       existingRecord.createdBy,
       existingRecord.created_by,
       ownerId,
-    );
+    ) ?? session.userId;
     const createdByEmail = readString(
       payloadRecord.createdByEmail,
       payloadRecord.created_by_email,
@@ -587,18 +674,29 @@ export function setupCastingProjectsRoutes(
       existingRecord.created_by_label,
       ownerLabel,
     );
+    const updatedAtIso = new Date().toISOString();
     const updated = {
       ...existing,
       ...req.body,
       id,
       ownerId,
+      owner_id: ownerId,
       ownerEmail,
+      owner_email: ownerEmail,
       ownerLabel,
+      owner_label: ownerLabel,
       createdBy,
+      // Lagre BÅDE camelCase og snake_case for å match GET-routens
+      // owner-sjekk (project.created_by). Samme rasjonal som POST.
+      created_by: createdBy,
       createdByEmail,
+      created_by_email: createdByEmail,
       createdByLabel,
-      createdAt: existing.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      created_by_label: createdByLabel,
+      createdAt: existing.createdAt || existing.created_at || updatedAtIso,
+      created_at: existing.created_at || existing.createdAt || updatedAtIso,
+      updatedAt: updatedAtIso,
+      updated_at: updatedAtIso,
     };
     const hadExisting = legacyCastingProjects.has(id);
     const previousProject = legacyCastingProjects.get(id);

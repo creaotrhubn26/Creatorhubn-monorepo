@@ -5,6 +5,8 @@
  * enum-verdier).
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 export type InjuryEntryStatus = 'active' | 'healing' | 'resolved';
 export type InjurySide = 'left' | 'right' | 'both';
 export type InjuryTrigger =
@@ -74,7 +76,7 @@ export async function listInjuries(query: ListInjuriesQuery = {}): Promise<Injur
   if (query.status) params.set('status', query.status);
   if (typeof query.limit === 'number') params.set('limit', String(query.limit));
   const qs = params.toString();
-  const res = await fetch(qs ? `${BASE}?${qs}` : BASE, { credentials: 'include' });
+  const res = await fetch(qs ? `${BASE}?${qs}` : BASE, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: InjuryLogEntry[] }>(res);
   return body.data;
 }
@@ -82,7 +84,7 @@ export async function listInjuries(query: ListInjuriesQuery = {}): Promise<Injur
 export async function createInjury(input: InjuryLogEntryInput): Promise<InjuryLogEntry> {
   const res = await fetch(BASE, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(input),
   });
@@ -93,7 +95,7 @@ export async function createInjury(input: InjuryLogEntryInput): Promise<InjuryLo
 export async function patchInjury(id: string, patch: InjuryLogEntryPatch): Promise<InjuryLogEntry> {
   const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(patch),
   });
@@ -104,6 +106,7 @@ export async function patchInjury(id: string, patch: InjuryLogEntryPatch): Promi
 export async function deleteInjury(id: string): Promise<void> {
   const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {

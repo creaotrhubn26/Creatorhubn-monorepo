@@ -13,6 +13,10 @@ import CrewINorgePage from './CrewINorgePage';
 import InnspillingsdagKoordineringPage from './InnspillingsdagKoordineringPage';
 import IntimacyCoordinatorPage from './IntimacyCoordinatorPage';
 import KameraFolkVerktoyPage from './KameraFolkVerktoyPage';
+import EtterproduksjonNorgePage from './EtterproduksjonNorgePage';
+import ProduksjonsOSPage from './ProduksjonsOSPage';
+import InnholdsprodusentPage from './InnholdsprodusentPage';
+import DansestudioNorgePage from './DansestudioNorgePage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -70,6 +74,14 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <IntimacyCoordinatorPage />;
     case 'kamera-folk-verktoy-2026':
       return <KameraFolkVerktoyPage />;
+    case 'etterproduksjon-norge-2026':
+      return <EtterproduksjonNorgePage />;
+    case 'produksjons-os':
+      return <ProduksjonsOSPage />;
+    case 'innholdsprodusent-norge':
+      return <InnholdsprodusentPage />;
+    case 'dansestudio-norge':
+      return <DansestudioNorgePage />;
     default:
       return null;
   }

@@ -822,14 +822,18 @@ export default function ProjectEconomyHub({
     ?? null;
   const unscheduledLoad = productionEstimate.productionDayLoads.find((item) => item.dayId === 'unscheduled') ?? null;
   const brandGuideReadyCount = useMemo(
-    () => [
-      Boolean(producerPlanning.brandGuide.logoUrl),
-      Boolean(producerPlanning.brandGuide.colors?.length),
-      Boolean(producerPlanning.brandGuide.fonts?.filter((font) => Boolean(font?.trim())).length),
-      Boolean(producerPlanning.brandGuide.toneOfVoice?.trim()),
-      Boolean(producerPlanning.brandGuide.visualStyle?.trim()),
-    ].filter(Boolean).length,
-    [producerPlanning.brandGuide],
+    () => {
+      const brand = producerPlanning?.brandGuide;
+      if (!brand) return 0;
+      return [
+        Boolean(brand.logoUrl),
+        Boolean(brand.colors?.length),
+        Boolean(brand.fonts?.filter((font) => Boolean(font?.trim())).length),
+        Boolean(brand.toneOfVoice?.trim()),
+        Boolean(brand.visualStyle?.trim()),
+      ].filter(Boolean).length;
+    },
+    [producerPlanning?.brandGuide],
   );
   const deliveryWorkflowReadyCount = useMemo(
     () => [

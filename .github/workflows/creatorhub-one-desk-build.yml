@@ -1,0 +1,73 @@
+name: Build Creatorhub One Desk
+
+# Build-only workflow for F0-F6. Validerer at scaffolden bygger på macOS
+# for både aarch64 og x86_64. INGEN release-trigger, INGEN signing, INGEN
+# auto-publish. Release-pipeline kommer i F7 som egen workflow.
+#
+# Triggers:
+#   - Pull request som rører apps/creatorhub-one-desk/**
+#   - Push til main som rører apps/creatorhub-one-desk/**
+#   - Manuell dispatch
+
+on:
+  pull_request:
+    paths:
+      - 'apps/creatorhub-one-desk/**'
+      - '.github/workflows/creatorhub-one-desk-build.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/creatorhub-one-desk/**'
+      - '.github/workflows/creatorhub-one-desk-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (macOS ${{ matrix.target }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/creatorhub-one-desk/src-tauri
+
+      - name: Install npm deps
+        working-directory: apps/creatorhub-one-desk
+        run: npm install
+
+      - name: Cargo check
+        working-directory: apps/creatorhub-one-desk/src-tauri
+        run: cargo check --target ${{ matrix.target }}
+
+      - name: TypeScript check
+        working-directory: apps/creatorhub-one-desk
+        run: npx tsc --noEmit
+
+      - name: Build Tauri app (unsigned)
+        working-directory: apps/creatorhub-one-desk
+        run: npm run tauri build -- --target ${{ matrix.target }} --no-bundle
+
+      - name: Note — unsigned build (F0)
+        run: |
+          echo "::notice::F0 scaffold-build. Ingen signing, ingen release, ingen artifact-upload."

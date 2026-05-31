@@ -219,7 +219,11 @@
   color: white;
   border-color: #341d6c;
 }
-.ce-icon-mini:disabled { opacity: 0.35; cursor: not-allowed; }
+.ce-icon-mini:disabled {
+  opacity: 0.55;        /* fortsatt klart synlig icon */
+  cursor: not-allowed;
+  color: #8674a8;       /* dimmer farge istedet for transparens */
+}
 .ce-actions button {
   padding: 8px 16px;
   border-radius: 8px;
@@ -265,14 +269,14 @@
 /* ─── Body grid med hard overflow-constraints ─── */
 .ce-body {
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr) 390px;
-  gap: 22px;
-  padding: 22px 32px;
+  grid-template-columns: 240px minmax(0, 1fr) 340px;
+  gap: 18px;
+  padding: 18px 24px;
   overflow: hidden;
   min-height: 0;
   align-items: start;
 }
-.ce-segments { width: 290px; max-width: 290px; min-width: 0; overflow: hidden; }
+.ce-segments { width: 240px; max-width: 240px; min-width: 0; overflow: hidden; }
 .ce-main {
   width: 100%;
   max-width: 100%;
@@ -280,7 +284,7 @@
   overflow-x: hidden;
   overflow-y: auto;
 }
-.ce-claude   { width: 390px; max-width: 390px; min-width: 0; overflow: hidden; }
+.ce-claude   { width: 340px; max-width: 340px; min-width: 0; overflow: hidden; }
 
 /* ─── Segments sidebar ─── */
 .ce-segments {
@@ -524,7 +528,7 @@
 /* ─── Main editor area ─── */
 .ce-main {
   display: grid;
-  grid-template-rows: auto 1fr auto auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto auto auto auto;
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -561,18 +565,46 @@
   background: black;
   border-radius: 12px;
   overflow: hidden;
-  aspect-ratio: 16 / 9;
   min-height: 0;
+  min-width: 0;
   max-width: 100%;
   width: 100%;
   border: 1px solid #1a0d45;
-  isolation: isolate; /* contain stacking context — mood-tag stays inside */
+  isolation: isolate;
 }
+/* Video tar HELE wrap-arealet, object-fit:contain skalerer den naturlige
+   16:9-rammen innenfor med letterbox/pillarbox sentrert. */
 .ce-preview-video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: center;
   background: black;
+  display: block;
+}
+
+/* Drag-handle nedenfor preview — bruker drar for å resize */
+.ce-preview-resize {
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  margin: -4px 0 -2px;
+  user-select: none;
+}
+.ce-preview-resize:hover .ce-preview-resize-handle {
+  background: rgba(160, 48, 192, 0.6);
+  width: 80px;
+}
+.ce-preview-resize-handle {
+  width: 50px;
+  height: 4px;
+  background: rgba(160, 48, 192, 0.30);
+  border-radius: 2px;
+  transition: background 0.15s, width 0.15s;
 }
 .ce-preview-overlay {
   position: absolute;
@@ -648,13 +680,16 @@
   cursor: pointer;
   position: relative;
 }
-.ce-preview-scrubber::after {
-  content: "";
+/* Tidligere ::after med hardkodet 35% — bytt til child-div bundet til
+   currentTime/durationSec så scrubberen faktisk reflekterer avspilling. */
+.ce-preview-scrubber-fill {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 35%;
+  width: 0%;
   background: linear-gradient(to right, #a030c0, #c850e0);
   border-radius: 2px;
+  transition: width 0.05s linear;
+  pointer-events: none;
 }
 .ce-preview-row {
   display: flex;
@@ -737,8 +772,26 @@
 .ce-timeline {
   background: rgba(26, 13, 69, 0.3);
   border: 1px solid #1a0d45;
-  border-radius: 10px;
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
   padding: 8px 12px 12px;
+}
+/* ce-audio som direkte søsken etter ce-timeline = sammenhengende element */
+.ce-timeline + .ce-audio {
+  border-radius: 0 0 10px 10px;
+  margin-top: -10px;
+  border-top: 1px solid #1a0d45;
+}
+.ce-audio + .ce-audio,
+.ce-audio + .ce-audio-custom,
+.ce-audio-custom + .ce-audio-custom {
+  border-radius: 0;
+  margin-top: -10px;
+  border-top: 1px solid #1a0d45;
+}
+.ce-audio:last-child:not(.ce-audio-custom),
+.ce-audio-custom:last-child {
+  border-radius: 0 0 10px 10px;
 }
 .ce-timeline-ruler {
   position: relative;
@@ -911,6 +964,10 @@
 }
 
 /* Timeline markers (vertical lines + flags) */
+/* Designvalg: den stiplede VERTIKALE-linjen er kun visuell — vi vil ikke
+   at den skal stjele klikk fra picks i timeline-stripen som ligger bak.
+   Selve FLAGGET (.ce-timeline-marker-flag) er klikkbart via pointer-events:
+   auto under, så marker-edit-modalen åpner via flagget. */
 .ce-timeline-marker {
   position: absolute;
   top: -4px;
@@ -1282,13 +1339,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Audio waveform */
+/* Audio waveform — stacker tett under ce-timeline (V1) som A1-track */
 .ce-audio {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  background: rgba(26, 13, 69, 0.3);
+  padding: 6px 12px;
+  background: rgba(18, 9, 54, 0.45);  /* litt mørkere enn timeline = visuell skille V vs A */
   border: 1px solid #1a0d45;
   border-radius: 10px;
 }

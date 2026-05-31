@@ -44,35 +44,74 @@ def _find_ffmpeg() -> str | None:
     return None
 
 
+def _apply_editor_state(picks: list[dict], params: dict) -> list[dict]:
+    """Apply pickOverrides + pickOrder + excludedChapters fra editor.
+    Samme contract som build_highlight_from_picks / assemble."""
+    overrides_raw = params.get("pickOverrides") or {}
+    if isinstance(overrides_raw, dict):
+        ov: dict[int, dict] = {}
+        for k, v in overrides_raw.items():
+            try: ov[int(k)] = v if isinstance(v, dict) else {}
+            except (TypeError, ValueError): continue
+        for p in picks:
+            o = ov.get(p.get("index"))
+            if not o: continue
+            if "startSec" in o: p["startSec"] = float(o["startSec"])
+            if "endSec"   in o: p["endSec"]   = float(o["endSec"])
+            p["durationSec"] = max(0.1, p["endSec"] - p["startSec"])
+
+    pick_order = params.get("pickOrder")
+    if isinstance(pick_order, list) and pick_order:
+        m = {idx: i for i, idx in enumerate(pick_order)}
+        picks = [p for p in picks if p.get("index") in m]
+        picks.sort(key=lambda p: m[p["index"]])
+
+    excluded = params.get("excludedChapters") or []
+    if isinstance(excluded, list) and excluded:
+        ex = {str(c).lower() for c in excluded}
+        picks = [p for p in picks if (p.get("chapter") or "details").lower() not in ex]
+
+    return picks
+
+
 def run(params: dict[str, Any], dry_run: bool) -> None:
     preset = (params.get("preset") or "fast").strip()  # fast | balanced | hq
     height = int(params.get("height") or 720)
     only_approved = params.get("onlyApproved", True)
 
-    if not os.path.isfile(CACHE_PATH):
-        bridge.error("Picks cache mangler — kjør extract_highlight_from_film (review-mode) først")
-        sys.exit(1)
-    try:
-        with open(CACHE_PATH) as f:
-            cached = json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
-        bridge.error(f"Could not read picks cache: {exc}")
-        sys.exit(1)
+    # Foretrekk payload over cache (samme pattern som assemble_highlight_with_music).
+    # Editor sender picks + sourceVideo + editor-state direkte for continuous preview.
+    payload_picks = params.get("picks")
+    payload_source = (params.get("sourceVideo") or "").strip()
 
-    picks = cached.get("picks") or []
-    if only_approved:
-        # The interactive-review UI markerer ALL pickene som approved=True
-        # i utgangspunktet og lar bruker fjerne — så et tomt approval-felt
-        # tolkes som "ikke filtrert, all picks brukes". Vi sjekker bare for
-        # eksplisitt False.
-        picks = [p for p in picks if p.get("approved") is not False]
+    if isinstance(payload_picks, list) and payload_picks:
+        picks = list(payload_picks)
+        source_video = payload_source
+        bridge.log(f"Bruker {len(picks)} picks fra editor-payload")
+    else:
+        if not os.path.isfile(CACHE_PATH):
+            bridge.error("Picks cache mangler — kjør extract_highlight_from_film (review-mode) først")
+            sys.exit(1)
+        try:
+            with open(CACHE_PATH) as f:
+                cached = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            bridge.error(f"Could not read picks cache: {exc}")
+            sys.exit(1)
 
-    source_video = cached.get("sourceVideo") or ""
+        picks = cached.get("picks") or []
+        if only_approved:
+            picks = [p for p in picks if p.get("approved") is not False]
+        source_video = cached.get("sourceVideo") or ""
+
+    # Apply editor-state (overrides + reorder + filter)
+    picks = _apply_editor_state(picks, params)
+
     if not picks:
-        bridge.error("Picks cache has no approved picks")
+        bridge.error("Ingen picks å render etter editor-filtrering")
         sys.exit(1)
     if not source_video or not os.path.isfile(source_video):
-        bridge.error(f"Source video '{source_video}' missing — re-run extract_highlight_from_film")
+        bridge.error(f"Source video '{source_video}' missing")
         sys.exit(1)
 
     ffmpeg = _find_ffmpeg()

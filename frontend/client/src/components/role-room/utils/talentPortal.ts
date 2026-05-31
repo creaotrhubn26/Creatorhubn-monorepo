@@ -6,7 +6,7 @@ import {
   normalizeRoleRoomStandalonePath,
 } from './runtime';
 
-export type TalentPortalSection = 'overview' | 'auditions' | 'selftapes' | 'activity' | 'profile';
+export type TalentPortalSection = 'overview' | 'auditions' | 'selftapes' | 'activity' | 'profile' | 'consents';
 
 export interface TalentPortalIntent {
   projectId?: string;
@@ -25,6 +25,7 @@ const TALENT_PORTAL_SECTIONS: readonly TalentPortalSection[] = [
   'selftapes',
   'activity',
   'profile',
+  'consents',
 ];
 
 const isTalentPortalSection = (value: string | null): value is TalentPortalSection => (

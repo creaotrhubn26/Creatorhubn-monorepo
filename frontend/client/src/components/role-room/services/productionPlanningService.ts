@@ -201,24 +201,27 @@ export const productionPlanningService = {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Check location availability
+    // Check location availability. `availability` finnes ikke alltid på
+    // seedet TROLL-data (backend lagrer ikke nestet availability-objekt),
+    // så hele blokken trenger optional chaining for å ikke krasje validate.
     const locations = await castingService.getLocations(projectId);
     const location = locations.find(l => l.id === productionDay.locationId);
     if (!location) {
       errors.push('Location not found');
     } else {
-      // Check if location is available on this date
-      if (location.availability.startDate && productionDay.date < location.availability.startDate) {
+      if (location.availability?.startDate && productionDay.date < location.availability.startDate) {
         warnings.push(`Location may not be available before ${location.availability.startDate}`);
       }
-      if (location.availability.endDate && productionDay.date > location.availability.endDate) {
+      if (location.availability?.endDate && productionDay.date > location.availability.endDate) {
         warnings.push(`Location may not be available after ${location.availability.endDate}`);
       }
     }
 
-    // Check crew availability
+    // Check crew availability. `productionDay.crew` / `.props` kan være
+    // undefined fra backend-seed der disse er valgfrie arrays — bruk
+    // tomme arrays som fallback for å unngå krasj.
     const allCrew = await castingService.getCrew(projectId);
-    productionDay.crew.forEach(crewId => {
+    (productionDay.crew ?? []).forEach(crewId => {
       const crew = allCrew.find(c => c.id === crewId);
       if (!crew) {
         errors.push(`Crew member ${crewId} not found`);
@@ -234,7 +237,7 @@ export const productionPlanningService = {
 
     // Check prop availability
     const allProps = await castingService.getProps(projectId);
-    productionDay.props.forEach(propId => {
+    (productionDay.props ?? []).forEach(propId => {
       const prop = allProps.find(p => p.id === propId);
       if (!prop) {
         errors.push(`Prop ${propId} not found`);

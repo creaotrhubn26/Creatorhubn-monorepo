@@ -236,11 +236,18 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     bridge.progress(20, 100, "Scoring each shot (motion + audio)…")
     shot_scores: list[dict] = []
+    # Live-mode: generer thumbnail for hvert shot slik at frontend kan vise
+    # Harry-Potter-stil preview. Kun shots > 1s for å spare tid på korte cuts.
+    thumb_dir = os.path.join(
+        os.path.expanduser("~/Library/Application Support/no.creatorhubn.roleroom-post-agent"),
+        "shot_thumbs",
+    )
+    os.makedirs(thumb_dir, exist_ok=True)
+
     for i, (start, end) in enumerate(shots):
         motion = shot_motion_score(ffmpeg, video_path, start, end)
         audio = shot_audio_energy(ffmpeg, video_path, start, end)
         shot_dur = end - start
-        # Length bonus: reward 1-6s shots, lightly penalize very long static ones
         length_factor = 1.0 if 1.0 <= shot_dur <= 6.0 else (0.7 if shot_dur < 1.0 else 0.85)
         base_score = (motion * motion_w + audio * audio_w) * length_factor
         shot_scores.append({
@@ -251,9 +258,31 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "motion": round(motion, 3),
             "audio": round(audio, 3),
             "baseScore": round(base_score, 4),
-            "score": round(base_score, 4),  # may be augmented below
-            "signals": {},  # populated by signal pipeline
+            "score": round(base_score, 4),
+            "signals": {},
         })
+        # Live-mode: hent thumbnail ved shot-midpunkt + emit event
+        thumb_path = None
+        if shot_dur >= 1.0:
+            thumb_path = os.path.join(thumb_dir, f"shot_{i:05d}.jpg")
+            if not os.path.isfile(thumb_path):
+                try:
+                    mid = start + shot_dur / 2
+                    import subprocess as _sp
+                    _sp.run([
+                        ffmpeg, "-y", "-loglevel", "error",
+                        "-ss", f"{mid:.2f}", "-i", video_path,
+                        "-frames:v", "1", "-vf", "scale=160:-1", "-q:v", "5",
+                        thumb_path,
+                    ], capture_output=True, timeout=8)
+                except Exception:  # noqa: BLE001
+                    thumb_path = None
+        bridge.emit("shot_scored",
+                    index=i, total=len(shots),
+                    startSec=round(start, 2), endSec=round(end, 2),
+                    durationSec=round(shot_dur, 2),
+                    score=round(base_score, 3),
+                    thumbnailPath=thumb_path if thumb_path and os.path.isfile(thumb_path) else None)
         if (i + 1) % 10 == 0:
             bridge.progress(20 + int(35 * (i + 1) / len(shots)), 100, f"Scored {i + 1}/{len(shots)}")
 
@@ -375,6 +404,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     # Sort picks chronologically for narrative flow
     picked.sort(key=lambda s: s["startSec"])
+
+    # Live-mode: emit "picks_finalized" event så frontend kan markere hvilke
+    # shots som ble valgt (versus bare scored). Sender bare picked-indekser.
+    picked_indexes = [p["index"] for p in picked]
+    bridge.emit("picks_finalized", indices=picked_indexes,
+                totalPicked=len(picked), totalShots=len(shots))
     chapters_summary = ""
     if chapter_labels:
         used_chaps: dict[str, float] = {}
@@ -445,6 +480,52 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         with open(picks_path, "w") as f:
             json.dump(picks_payload, f, indent=2)
         bridge.log(f"Cached {len(picked)} picks for interactive review → {picks_path}")
+
+        # Lagre ALL scene-detected shots (ikke bare picks) for long-film-build.
+        # Disse trengs for å bygge "ekte" long-film med MELLOM-klipp inkludert.
+        all_shots_payload = {
+            "sourceVideo": video_path,
+            "sourceDurationSec": duration,
+            "fps": fps,
+            "shots": shot_scores,  # ALL detected shots med score + signals + chapter
+            "chapters": sorted(set(chapter_labels.values())) if chapter_labels else [],
+        }
+        all_shots_path = os.path.join(cache_dir, "last_all_shots.json")
+        with open(all_shots_path, "w") as f:
+            json.dump(all_shots_payload, f, indent=2)
+        bridge.log(f"Cached {len(shot_scores)} totale shots → {all_shots_path}")
+
+        # Activity-log → vises i HomeView / Mine prosjekter
+        try:
+            from activity_log import log_activity
+            log_activity(
+                video_path, "extract",
+                f"Extract ferdig: {len(picked)} picks",
+                summary=f"{len(shot_scores)} totale shots · {chapters_summary.lstrip(' · ') if chapters_summary else 'ingen chapter-labels'}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Auto-arkiver picks-cache så prosjektet vises i Mine prosjekter UI
+        try:
+            import shutil as _shutil
+            import re as _re
+            picks_dir = os.path.join(cache_dir, "picks")
+            os.makedirs(picks_dir, exist_ok=True)
+            base = os.path.splitext(os.path.basename(video_path))[0]
+            safe = _re.sub(r"[^\w-]+", "_", base)[:80]
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            archive_path = os.path.join(picks_dir, f"{safe}_{ts}.json")
+            _shutil.copy2(picks_path, archive_path)
+            bridge.log(f"Auto-arkivert til {archive_path}")
+            try:
+                from activity_log import log_activity as _la
+                _la(video_path, "manual_edit",
+                    "Prosjekt auto-arkivert", summary=os.path.basename(archive_path))
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception as _exc:  # noqa: BLE001
+            bridge.warn(f"Auto-archive failed: {_exc}")
         bridge.progress(100, 100, "Klar for review")
         bridge.result({
             "reviewMode": True,

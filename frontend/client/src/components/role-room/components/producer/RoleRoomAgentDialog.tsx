@@ -53,6 +53,7 @@ import roleRoomAgentService, {
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
+import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
 
 type RoleRoomAgentDialogProps = {
@@ -91,6 +92,10 @@ type RoleRoomAgentDialogProps = {
   progressStages?: ResearchStage[];
   progressStatus?: ResearchProgressStatus;
   progressError?: string | null;
+  /** Hvilken fane som er aktiv ved åpning. Default 'research'. Brukes
+   *  når dialog-en åpnes fra et annet sted (f.eks. "Endre plan"-knappen
+   *  i Markedsplan-arbeidsflaten) for å hoppe rett til riktig fane. */
+  initialTab?: 'research' | 'marketing-plan' | 'merch' | 'feed-planner' | 'chat';
 };
 
 function renderList(items: string[]) {
@@ -228,6 +233,7 @@ export default function RoleRoomAgentDialog({
   progressStages,
   progressStatus,
   progressError,
+  initialTab,
 }: RoleRoomAgentDialogProps) {
   const [websiteUrl, setWebsiteUrl] = useState(initialWebsiteUrl ?? '');
   const [organizationNumber, setOrganizationNumber] = useState(initialOrganizationNumber ?? '');
@@ -239,7 +245,13 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>(initialTab ?? 'research');
+
+  // Synk hvis initialTab endrer seg etter mount (dialog gjenåpnes med
+  // ny tab fra parent).
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Item #155 — lytt etter cross-component navigasjon (MarketingPlanPanel
@@ -817,6 +829,11 @@ export default function RoleRoomAgentDialog({
         <Stack spacing={1.4}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {notice ? <Alert severity="success">{notice}</Alert> : null}
+
+          <Stack direction="row" justifyContent="flex-end">
+            <ResearchVersionsPickerInline projectId={projectId} />
+          </Stack>
+
 
           <Box
             sx={{

@@ -328,19 +328,35 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         bridge.error(f"Missing tools: {', '.join(missing)}")
         sys.exit(1)
 
-    if not os.path.isfile(PICKS_PATH):
-        bridge.error(f"No picks cached at {PICKS_PATH}. "
-                     "Run extract_highlight_from_film first.")
-        sys.exit(1)
+    # Picks: prioriter params (editorens in-memory state) over disk-cache.
+    # Cache er fallback for batch-kjøringer uten editor-context.
+    payload_picks = params.get("picks")
+    payload_source = (params.get("sourceVideo") or "").strip()
+    if isinstance(payload_picks, list) and payload_picks:
+        picks = list(payload_picks)
+        pick_data = {
+            "picks": picks,
+            "sourceVideo": payload_source,
+            "timelineName": (params.get("timelineName") or "").strip(),
+        }
+        bridge.log(f"Bruker {len(picks)} picks fra editor-payload (ikke cache)")
+    else:
+        if not os.path.isfile(PICKS_PATH):
+            bridge.error(f"No picks cached at {PICKS_PATH}. "
+                         "Run extract_highlight_from_film first.")
+            sys.exit(1)
+        with open(PICKS_PATH) as f: pick_data = json.load(f)
+        picks = pick_data["picks"]
+        bridge.log(f"Bruker {len(picks)} picks fra cache ({PICKS_PATH})")
+
+    # Advisor er fortsatt påkrevd (musikk-recommendations brukes til
+    # beat-sync). Hvis editor sender egen musikk-track skal et eget
+    # endepunkt brukes — denne pipelinen ER musikk-først-flowen.
     if not os.path.isfile(ADVISOR_PATH):
         bridge.error(f"No advisor cached at {ADVISOR_PATH}. "
                      "Run scan_and_recommend_music first.")
         sys.exit(1)
-
-    with open(PICKS_PATH) as f: pick_data = json.load(f)
     with open(ADVISOR_PATH) as f: advisor = json.load(f)
-
-    picks = pick_data["picks"]
 
     # Apply pickOverrides from frontend (Trim-toolbar in CreativeEditorView).
     # Format: { "<pickIndex>": { "startSec": float, "endSec": float } }
@@ -479,10 +495,16 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     MAIN_IDX = 1
     CLIMAX_IDX = 2 if climax_path else None
 
-    # Main-song cursor (advances through picks of same song)
+    # Main-song cursor (advances through picks of same song).
+    # Tidligere bug: ordered[1] krasjet med IndexError hvis ordered har
+    # nøyaktig 1 element og det elementet ER climax. Fallback til climax-
+    # pick selv hvis det er eneste tilgjengelige.
     main_beats = main_info["beat_times"]
     main_interval = main_info["beat_interval"]
-    first_main_pick = ordered[0] if (climax_pick is None or ordered[0] != climax_pick) else ordered[1]
+    if climax_pick is not None and ordered[0] == climax_pick:
+        first_main_pick = ordered[1] if len(ordered) > 1 else climax_pick
+    else:
+        first_main_pick = ordered[0]
     main_yt_anchor = first_main_pick["startSec"] + main_sync["sync_offset"]
     main_cursor_idx = bisect.bisect_left(main_beats, main_yt_anchor)
 
@@ -521,10 +543,19 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         else:
             orig_dur = p["endSec"] - p["startSec"]
             n_beats = max(1, round(orig_dur / main_interval))
+            # Tidligere bug: når låten har færre beats igjen enn picks,
+            # kollapset alle resterende picks til 0-sek-trims → ffmpeg
+            # feilet. Beat-cursoren wrapper nå rundt + sikrer minimum
+            # varighet (én beat-interval) per pick.
+            if main_cursor_idx + n_beats >= len(main_beats):
+                # Wrap til starten av neste chorus (eller beat 0 hvis intet)
+                wrap_anchor = main_info.get("chorus_start") or 0.0
+                main_cursor_idx = bisect.bisect_left(main_beats, wrap_anchor)
+                main_cursor_idx = max(0, min(main_cursor_idx, len(main_beats) - n_beats - 1))
             new_idx = min(main_cursor_idx + n_beats, len(main_beats) - 1)
             yt_start = main_beats[main_cursor_idx]
             yt_end = main_beats[new_idx]
-            snapped = yt_end - yt_start
+            snapped = max(main_interval, yt_end - yt_start)  # garanter ≥1 beat
             main_cursor_idx = new_idx
             mid = (p["startSec"] + p["endSec"]) / 2
             specs.append({"pick": p, "is_climax": False,
@@ -600,15 +631,29 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         )
         filter_complex = filter_complex + ";" + ";".join(audio_inputs_filter)
 
-    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning",
-           *inputs, "-filter_complex", filter_complex,
-           "-map", "[outv]", "-map", "[outa]",
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-           "-c:a", "aac", "-b:a", "192k", output_path]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
-    if r.returncode != 0:
-        bridge.error(f"ffmpeg failed: {(r.stderr or '')[-1500:]}")
-        sys.exit(1)
+    # Skriv filter_complex til en temp-fil og bruk -filter_complex_script.
+    # Med 50+ picks blir filter-streng > 30kB; inline-argument trunkeres i
+    # ffmpeg's error-log slik at det blir umulig å feilsøke. Fil-form
+    # preserverer hele kjeden og lar oss inkludere den i feilmelding.
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False,
+                                     encoding="utf-8") as fc_file:
+        fc_file.write(filter_complex)
+        fc_path = fc_file.name
+    try:
+        cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning",
+               *inputs, "-filter_complex_script", fc_path,
+               "-map", "[outv]", "-map", "[outa]",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+               "-c:a", "aac", "-b:a", "192k", output_path]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+        if r.returncode != 0:
+            err_tail = (r.stderr or "")[-2000:]
+            bridge.log(f"filter_complex skrevet til: {fc_path} ({len(filter_complex)} bytes)")
+            bridge.error(f"ffmpeg failed: {err_tail}")
+            sys.exit(1)
+    finally:
+        try: os.unlink(fc_path)
+        except OSError: pass
 
     size_mb = os.path.getsize(output_path) / (1024*1024)
     bridge.progress(100, 100, "Ferdig")

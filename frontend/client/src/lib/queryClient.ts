@@ -94,8 +94,14 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
 
   try {
+    // Role Room logger inn via Google Workspace og lagrer tokenet i
+    // role_room_auth_token (TOKEN_STORAGE_KEY i authSessionService).
+    // Uten denne fallback-en sender apiRequest fetch UTEN Bearer-token
+    // når brukeren kom inn via Role Room-flowen → 401-flom på alle
+    // /api/casting/projects + /api/settings-kall.
     const token =
       localStorage.getItem('creatorhub_auth_token') ||
+      localStorage.getItem('role_room_auth_token') ||
       localStorage.getItem('token') ||
       '';
     if (token) {

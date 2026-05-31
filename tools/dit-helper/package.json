@@ -1,6 +1,6 @@
 {
   "name": "@theroleroom/dit-helper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Native CLI-helper for DIT-backup-tracking i The Role Room. Watcher kamera-kort-mounts, kopierer til N destinasjoner med xxHash64-verifisering, og rapporterer status til The Role Room backend.",
   "type": "module",
   "bin": {

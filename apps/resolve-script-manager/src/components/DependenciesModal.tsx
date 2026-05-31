@@ -126,8 +126,8 @@ export function DependenciesModal({ onClose }: Props) {
     : 0;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 600, maxHeight: "85vh" }}>
+    <div className="modal-backdrop anim-fade-in" onClick={onClose}>
+      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()} style={{ width: 600, maxHeight: "85vh" }}>
         <h2>Dependencies</h2>
         <div className="desc">
           Verktøy appen trenger for full funksjonalitet. Mangler noe — klikk "Install" på radene.

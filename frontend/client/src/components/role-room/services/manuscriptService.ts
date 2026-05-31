@@ -17,6 +17,10 @@ import {
   isRoleRoomDemoSeedAllowed,
 } from '../constants/producerDemo';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import authSessionService from './authSessionService';
+
+const getAuthHeaders = (): Record<string, string> =>
+  authSessionService.getAuthHeadersSync() as Record<string, string>;
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -41,12 +45,12 @@ function markManuscriptApiUnavailable(reason?: string): void {
  * Check if database is available
  */
 async function checkDatabaseAvailability(): Promise<boolean> {
-  if (shouldUseRoleRoomLocalFallback()) {
-    manuscriptApiAvailable = false;
-    dbAvailable = false;
-    return false;
-  }
-
+  // FJERNET: shouldUseRoleRoomLocalFallback()-bypass.
+  // Den returnerte true på theroleroom.com/ (prod-domenet) og blokkerte
+  // ALLE manuscript/scene/dialogue/act-API-kall — så Story Writer /
+  // Story Logic / Scener viste tomt selv etter at backend's seed mirror
+  // skrev manuscripts + scener riktig til compat-store. Samme fix-mønster
+  // som i castingService (0e0515f1).
   if (manuscriptApiAvailable === false) {
     return false;
   }
@@ -2935,7 +2939,9 @@ class ManuscriptService {
     
     try {
       // Fetch all roles for the project
-      const response = await fetch(`/api/casting/projects/${projectId}`);
+      const response = await fetch(`/api/casting/projects/${projectId}`, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch project data');
       }
@@ -3015,7 +3021,9 @@ class ManuscriptService {
     
     try {
       // Fetch all locations for the project
-      const response = await fetch(`/api/casting/projects/${projectId}`);
+      const response = await fetch(`/api/casting/projects/${projectId}`, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch project data');
       }

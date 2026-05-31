@@ -78,8 +78,13 @@ export function setupRoleRoomClientPortalRoutes(
     if (!invite) {
       return res.status(500).json({ success: false, error: "Klarte ikke å opprette invitasjonen." });
     }
-    const base = process.env.CREATORHUB_PUBLIC_URL
-      || process.env.APP_URL
+    // Klientportalen lever på theroleroom.com, ikke creatorhubn.com.
+    // CREATORHUB_PUBLIC_URL peker til admin-room-domenet og skulle ikke
+    // brukes for klient-portal-lenker. Bruk role-room-spesifikke
+    // env-variabler først; fall til theroleroom.com som default.
+    const base = process.env.ROLE_ROOM_CLIENT_PORTAL_ORIGIN
+      || process.env.ROLE_ROOM_PUBLIC_ORIGIN
+      || process.env.ROLE_ROOM_FRONTEND_ORIGIN
       || "https://theroleroom.com";
     const magicLinkUrl = `${base.replace(/\/$/, "")}/client/portal/${encodeURIComponent(invite.sessionToken)}`;
     return res.json({

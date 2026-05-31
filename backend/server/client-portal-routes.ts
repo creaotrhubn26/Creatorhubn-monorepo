@@ -280,4 +280,102 @@ export function setupClientPortalRoutes(
       ...dashboard,
     });
   });
+
+  // Klient godkjenner eller ber om endring på en spesifikk
+  // marketing-plan-post. Status logges på posten + en editor_comment
+  // opprettes for sporing slik at Bjarne ser hvem som reviewet og
+  // hvilken note som ble lagt ved.
+  app.post("/api/client/portal/marketing-plan-posts/:postId/review",
+    async (req, res) => {
+      const token = typeof req.query.token === "string" ? req.query.token : "";
+      if (!token) return res.status(400).json({ error: "missing_token" });
+      const session = await resolveClientPortalSession(pool, token);
+      if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+
+      const postId = String(req.params.postId || "").trim();
+      const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+      const status = typeof body.status === "string" ? body.status : "";
+      const note = typeof body.note === "string" ? body.note.trim() : "";
+
+      if (status !== "approved" && status !== "changes_requested") {
+        return res.status(400).json({ error: "invalid_status" });
+      }
+      if (status === "changes_requested" && !note) {
+        return res.status(400).json({ error: "missing_note_for_changes" });
+      }
+
+      // Eier-sjekk: posten må tilhøre prosjektet sesjonen er bundet til
+      const { rows: postRows } = await pool.query<{ projectId: string }>(
+        `SELECT mp.project_id AS "projectId"
+           FROM role_room_marketing_plan_posts p
+           JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
+          WHERE p.id = $1`,
+        [postId],
+      );
+      const projectId = postRows[0]?.projectId;
+      if (!projectId) return res.status(404).json({ error: "post_not_found" });
+      if (projectId !== session.projectId) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+
+      await pool.query(
+        `UPDATE role_room_marketing_plan_posts
+            SET client_review_status = $1,
+                client_review_at = now(),
+                client_review_session_id = $2,
+                client_review_note = $3,
+                updated_at = now()
+          WHERE id = $4`,
+        [status, session.id, note || null, postId],
+      );
+
+      // Sporbarhet — opprett en editor_comment slik at status-endring
+      // dukker opp i Bjarnes CollaborationSidebar med samme historikk
+      // som vanlige kommentarer.
+      const commentText = status === "approved"
+        ? `Klient godkjente posten${note ? `: ${note}` : ""}`
+        : `Klient ba om endring: ${note}`;
+      try {
+        await pool.query(
+          `INSERT INTO role_room_editor_comments
+             (project_id, anchor_type, anchor_ref, comment_text,
+              author_display_name, status, priority)
+           VALUES ($1, 'marketing_plan_post', $2, $3, $4, 'open',
+                   $5)`,
+          [
+            projectId, postId, commentText,
+            session.clientName ?? session.clientEmail,
+            status === "changes_requested" ? "high" : "normal",
+          ],
+        );
+      } catch (e) {
+        // Audit-comment skal aldri blokkere review-flowen.
+        console.warn("[client-portal/review] kunne ikke logge editor_comment", e);
+      }
+
+      // Email-notify producer i bakgrunnen
+      void (async () => {
+        try {
+          const mod = await import("./marketing-preview-email-service.js");
+          await mod.notifyProducerOfClientComment({
+            pool, projectId, postId,
+            commentText: status === "approved"
+              ? `Godkjente posten${note ? `: ${note}` : ""}`
+              : `Be om endring: ${note}`,
+            clientName: session.clientName,
+            reviewStatus: status as 'approved' | 'changes_requested',
+          });
+        } catch (e) {
+          console.warn("[client-portal/review] producer-email feilet", e);
+        }
+      })();
+
+      return res.json({
+        ok: true,
+        postId,
+        status,
+        reviewedAt: new Date().toISOString(),
+      });
+    },
+  );
 }

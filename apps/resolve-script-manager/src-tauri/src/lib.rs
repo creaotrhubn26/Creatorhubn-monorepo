@@ -7,6 +7,8 @@ mod cull;
 mod folder_watcher;
 mod history;
 mod media_probe;
+mod photoshop_bridge;
+mod psd_indexer;
 mod python;
 mod role_room_api;
 
@@ -15,13 +17,16 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_deep_link::DeepLinkExt;
 use uuid::Uuid;
 
 use card_watcher::{CardWatcherState, MountedCard};
 use cull::CullSession;
 use folder_watcher::{FolderWatcherState, WatchedFolder};
 use history::HistoryRecord;
+use photoshop_bridge::PhotoshopBridgeState;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use python::{python_root, spawn_python, AppSettings, RunSummary, RunningScriptsState};
 
@@ -41,9 +46,14 @@ async fn list_scripts(app: AppHandle) -> Result<Value, String> {
     read_json(python_root(&app)?.join("registry.json"))
 }
 
-/// Claude chat — proxies to api.anthropic.com using ANTHROPIC_API_KEY from
-/// AppSettings. Used by CreativeEditorView's Claude Co-Editor panel.
-/// Non-streaming; returns the assistant message as text + optional tool_use.
+/// Claude chat — proxies via The Role Room backend (/api/post-agent/anthropic/messages).
+/// Backend håndterer entitlement-check, rate-limiting og usage-tracking per
+/// bruker. Brukes av CreativeEditorView's Claude Co-Editor panel.
+///
+/// Auth-prioritet:
+///   1. RR_BEARER_TOKEN → proxy via Role Room (tracked usage, foretrukket)
+///   2. ANTHROPIC_API_KEY → direkte til api.anthropic.com (dev/admin fallback,
+///      hopper over usage-tracking — bør kun brukes lokalt)
 #[tauri::command]
 async fn claude_chat(
     app: AppHandle,
@@ -53,18 +63,24 @@ async fn claude_chat(
     max_tokens: Option<u32>,
     tools: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let api_key = if let Some(settings) = app.try_state::<AppSettings>() {
-        settings
-            .snapshot()
-            .get("ANTHROPIC_API_KEY")
-            .cloned()
-            .unwrap_or_default()
+    let (bearer, base_url, api_key) = if let Some(settings) = app.try_state::<AppSettings>() {
+        let snap = settings.snapshot();
+        (
+            snap.get("RR_BEARER_TOKEN").cloned().unwrap_or_default(),
+            snap.get("RR_POST_AGENT_BASE_URL")
+                .cloned()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
+            snap.get("ANTHROPIC_API_KEY").cloned().unwrap_or_default(),
+        )
     } else {
-        String::new()
+        (String::new(), "https://creatorhubn.com/api/post-agent".to_string(), String::new())
     };
-    if api_key.is_empty() {
-        return Err("ANTHROPIC_API_KEY not set — open Settings → Admin and paste your key".into());
+
+    if bearer.is_empty() && api_key.is_empty() {
+        return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY. Logg inn fra Settings.".into());
     }
+
     let model = model.unwrap_or_else(|| "claude-opus-4-7".to_string());
     let max_tokens = max_tokens.unwrap_or(1024);
     let mut body = serde_json::json!({
@@ -76,15 +92,30 @@ async fn claude_chat(
     if let Some(t) = tools { body["tools"] = Value::Array(t); }
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Anthropic request failed: {}", e))?;
+    let resp = if !bearer.is_empty() {
+        // Proxy via Role Room — usage tracking + entitlement-check skjer på backend
+        let trimmed_base = base_url.trim_end_matches('/');
+        client
+            .post(format!("{}/anthropic/messages", trimmed_base))
+            .header("Authorization", format!("Bearer {}", bearer))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Role Room proxy request failed: {}", e))?
+    } else {
+        // Fallback: direkte til Anthropic (dev/admin) — NB: hopper over usage-tracking
+        client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Anthropic request failed: {}", e))?
+    };
+
     let status = resp.status();
     let text = resp
         .text()
@@ -171,6 +202,124 @@ async fn launch_resolve() -> Result<String, String> {
         ));
     }
     Ok(format!("Launched {}", resolve_path))
+}
+
+/// Photoshop setup-status — detekterer hva som er installert på Mac-en
+/// så setup-wizardet vet hvilke steg som er gjort. Brukes for Irlin/Irene
+/// for å unngå at de manuelt må sjekke disse i Finder.
+#[derive(serde::Serialize)]
+pub struct PhotoshopSetupStatus {
+    pub photoshop_installed: bool,
+    pub photoshop_path: Option<String>,
+    pub photoshop_version: Option<String>,
+    pub udt_installed: bool,
+    pub udt_path: Option<String>,
+    pub plugin_manifest_path: Option<String>,
+    pub plugin_manifest_exists: bool,
+}
+
+#[tauri::command]
+fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
+    // Photoshop — let etter de vanlige path-mønstrene
+    let ps_candidates = [
+        "/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app",
+        "/Applications/Adobe Photoshop 2025/Adobe Photoshop 2025.app",
+        "/Applications/Adobe Photoshop 2024/Adobe Photoshop 2024.app",
+        "/Applications/Adobe Photoshop 2023/Adobe Photoshop 2023.app",
+        "/Applications/Adobe Photoshop 2022/Adobe Photoshop 2022.app",
+    ];
+    let mut photoshop_path = None;
+    let mut photoshop_version = None;
+    for p in ps_candidates {
+        if std::path::Path::new(p).exists() {
+            photoshop_path = Some(p.to_string());
+            // Trekk versjon ut av path-navnet
+            photoshop_version = p
+                .split('/')
+                .find(|seg| seg.starts_with("Adobe Photoshop "))
+                .map(|seg| seg.trim_start_matches("Adobe Photoshop ").to_string());
+            break;
+        }
+    }
+
+    // UXP Developer Tool
+    let udt_path = ["/Applications/Adobe UXP Developer Tool.app"]
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .map(|p| p.to_string());
+
+    // Plugin manifest — sjekk om vi finner den der vi forventer
+    // (devmode kjører fra dev-cwd; prod kjører fra resource_dir).
+    let manifest_candidates: Vec<std::path::PathBuf> = vec![
+        // Dev — fra repo-rot
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../post-agent-photoshop-plugin/manifest.json"),
+        // Alternative dev-paths
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..").join("apps/post-agent-photoshop-plugin/manifest.json"),
+    ];
+    let plugin_manifest_path = manifest_candidates
+        .iter()
+        .find(|p| p.exists())
+        .and_then(|p| p.canonicalize().ok())
+        .map(|p| p.display().to_string());
+    let plugin_manifest_exists = plugin_manifest_path.is_some();
+
+    Ok(PhotoshopSetupStatus {
+        photoshop_installed: photoshop_path.is_some(),
+        photoshop_path,
+        photoshop_version,
+        udt_installed: udt_path.is_some(),
+        udt_path,
+        plugin_manifest_path,
+        plugin_manifest_exists,
+    })
+}
+
+/// Åpne UXP Developer Tool i Finder/Launcher slik at brukeren slipper
+/// å lete etter den.
+#[tauri::command]
+async fn open_udt() -> Result<String, String> {
+    let udt_path = "/Applications/Adobe UXP Developer Tool.app";
+    if !std::path::Path::new(udt_path).exists() {
+        return Err(format!(
+            "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først."
+        ));
+    }
+    let output = std::process::Command::new("open")
+        .arg("-a")
+        .arg(udt_path)
+        .output()
+        .map_err(|e| format!("Failed to spawn open: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "open -a failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(format!("Opened {}", udt_path))
+}
+
+/// Reveal plugin-manifest in Finder så brukeren ser akkurat hvilken
+/// fil hun skal dra inn i UDT.
+#[tauri::command]
+async fn reveal_photoshop_plugin_manifest() -> Result<String, String> {
+    let status = photoshop_setup_status()?;
+    let manifest = status
+        .plugin_manifest_path
+        .ok_or("plugin manifest finnes ikke i dette Tauri-bygget")?;
+    let output = std::process::Command::new("open")
+        .arg("-R")
+        .arg(&manifest)
+        .output()
+        .map_err(|e| format!("Failed to spawn open: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "open -R failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(manifest)
 }
 
 /// Activate Resolve and send cmd+, via osascript to open the Preferences dialog.
@@ -550,10 +699,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(CardWatcherState::default())
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
         .manage(FolderWatcherState::default())
+        .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
             // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
@@ -573,9 +724,34 @@ pub fn run() {
                     eprintln!("Failed to emit menu event {}: {}", event_name, err);
                 }
             });
-            if let Err(err) = card_watcher::spawn_watcher(handle) {
+            // Deep-link handler: når /link-siden i web åpner postagent://focus
+            // (etter vellykket pairing) skal vi bringe hovedvinduet til front.
+            // Plugin håndterer OS-registreringen automatisk basert på
+            // plugins.deep-link.desktop.schemes i tauri.conf.json.
+            let deep_handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
+                eprintln!("Deep link received: {:?}", urls);
+                if let Some(window) = deep_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+                // Forward til frontend så den kan reagere (f.eks. polle
+                // pairing umiddelbart hvis kode er i URL-en).
+                if let Err(err) = deep_handle.emit("deep-link://received", urls) {
+                    eprintln!("Failed to emit deep-link event: {}", err);
+                }
+            });
+            if let Err(err) = card_watcher::spawn_watcher(handle.clone()) {
                 eprintln!("Failed to start card watcher: {}", err);
             }
+            // Start lokal WS-server for Photoshop UXP-plugin (port 1733).
+            let bridge_state = app
+                .state::<Arc<PhotoshopBridgeState>>()
+                .inner()
+                .clone();
+            photoshop_bridge::spawn_server(handle, bridge_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -619,6 +795,13 @@ pub fn run() {
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
+            photoshop_bridge::photoshop_send_command,
+            photoshop_bridge::photoshop_status,
+            psd_indexer::psd_index_directory,
+            psd_indexer::psd_get_info,
+            photoshop_setup_status,
+            open_udt,
+            reveal_photoshop_plugin_manifest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

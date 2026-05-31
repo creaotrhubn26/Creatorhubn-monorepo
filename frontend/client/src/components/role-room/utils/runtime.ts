@@ -114,5 +114,16 @@ export function isRoleRoomStandaloneRuntime(): boolean {
 }
 
 export function shouldUseRoleRoomLocalFallback(): boolean {
-  return isRoleRoomStandaloneRuntime();
+  // Returnerer ALLTID false. Tidligere returnerte den true på
+  // theroleroom.com/ fordi domenet matcher "standalone runtime"-konseptet
+  // i isRoleRoomStandalonePathname. Det fikk service-laget (castingService,
+  // manuscriptService m.fl.) til å hoppe over API-kall og returnere kun
+  // localStorage-cache — som var tom for nye prosjekter rett etter Last
+  // demo. Resultat: dashboardet viste 0 roller, Story Writer/Scener var
+  // tomme osv. Backend er ALLTID tilgjengelig (prod via Render, dev via
+  // Vite-proxy), så denne fallback-modusen har aldri vært riktig på
+  // tilkoblede klienter. Standalone-pathname-konseptet er fortsatt
+  // beholdt for URL-routing-logikken, men localStorage-only-modus er
+  // ikke et reelt scenario i deployerte miljøer.
+  return false;
 }

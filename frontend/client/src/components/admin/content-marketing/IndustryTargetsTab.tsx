@@ -22,6 +22,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -160,6 +161,22 @@ export function IndustryTargetsTab() {
   const tier1CommentTarget = 5;
   const askReadyCount = targets.filter((t) => (t.ask_readiness ?? 0) === 3).length;
 
+  // Outreach Plan v2 — fase-progress
+  const fase1Producers = targets.filter((t) => t.segment === 'producer' && t.tier === 'T1');
+  const fase1Contacted = fase1Producers.filter((t) => !!t.first_contact_at).length;
+  const fase1MetWith = fase1Producers.filter((t) => !!t.meeting_at).length;
+  const fase1Piloted = fase1Producers.filter((t) => !!t.pilot_started_at).length;
+
+  const fase2aContent = targets.filter((t) => t.segment === 'content_producer');
+  const fase2aPiloted = fase2aContent.filter((t) => !!t.pilot_started_at).length;
+  const fase2bDance = targets.filter((t) => t.segment === 'skuda' || t.segment === 'noda' || t.segment === 'dance_studio');
+  const fase2bSkudaNoda = targets.filter((t) => (t.segment === 'skuda' || t.segment === 'noda') && !!t.meeting_at).length;
+
+  const fase3Partners = targets.filter((t) =>
+    ['nsf', 'nfi', 'institution', 'education_institution', 'affiliate_partner'].includes(t.segment),
+  );
+  const fase3MetWith = fase3Partners.filter((t) => !!t.meeting_at).length;
+
   async function handleSetAskReadiness(target: IndustryTarget, next: number) {
     try {
       await industryTargetsApi.patch(target.id, { askReadiness: next });
@@ -190,6 +207,77 @@ export function IndustryTargetsTab() {
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
       <OutreachWeek1Checklist />
+
+      <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.22)' }}>
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1.5 }}>
+          <Typography sx={{ color: '#a78bfa', fontWeight: 800, fontSize: '0.92rem', letterSpacing: '0.04em' }}>
+            Outreach Plan v2 — fase-progress
+          </Typography>
+          <Tooltip
+            arrow
+            placement="top"
+            title="Beregnet fra targets-data i denne CRM-en. Fase 1 = produksjonsteam (mål 3-5 piloter), Fase 2 = innholdsprodusent + dansestudio, Fase 3 = partnere (NSF/NFI/utdanning/affiliate). v2-disiplin: maks 2 grupper aktivt om gangen, ikke 6."
+          >
+            <Chip
+              label="i"
+              size="small"
+              sx={{ height: 18, width: 18, fontSize: '0.6rem', bgcolor: 'rgba(167,139,250,0.2)', color: '#c4b5fd', cursor: 'help', '& .MuiChip-label': { px: 0 } }}
+            />
+          </Tooltip>
+        </Stack>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.25)' }}>
+            <Typography sx={{ color: '#22d3ee', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
+              Fase 1 · Produksjonsteam (mnd 1-3)
+            </Typography>
+            <Stack spacing={0.4} sx={{ mb: 0.5 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem' }}>
+                <strong>{fase1Producers.length}</strong> Tier-1 produsenter opprettet
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                {fase1Contacted} kontaktet · {fase1MetWith} møter · <strong style={{ color: fase1Piloted >= 3 ? '#22c55e' : '#fbbf24' }}>{fase1Piloted}</strong> piloter
+              </Typography>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.7rem' }}>
+              Mål: 3-5 piloter à 6 mnd
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(167,139,250,0.05)', border: '1px solid rgba(167,139,250,0.25)' }}>
+            <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
+              Fase 2 · Innhold + dans (mnd 3-6)
+            </Typography>
+            <Stack spacing={0.4} sx={{ mb: 0.5 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem' }}>
+                <strong>{fase2aContent.length}</strong> innholdsprodusenter · <strong>{fase2aPiloted}</strong> piloter
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                <strong>{fase2bDance.length}</strong> dans · Skuda/NoDa-møter: <strong style={{ color: fase2bSkudaNoda > 0 ? '#86efac' : '#fbbf24' }}>{fase2bSkudaNoda}</strong>
+              </Typography>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.7rem' }}>
+              Start når Fase 1 har ≥3 piloter
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(52,211,153,0.05)', border: '1px solid rgba(52,211,153,0.25)' }}>
+            <Typography sx={{ color: '#34d399', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
+              Fase 3 · Partnere (mnd 6-12)
+            </Typography>
+            <Stack spacing={0.4} sx={{ mb: 0.5 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem' }}>
+                <strong>{fase3Partners.length}</strong> partner-targets opprettet
+              </Typography>
+              <Typography sx={{ color: 'rgba(229,231,235,0.78)', fontSize: '0.78rem' }}>
+                <strong>{fase3MetWith}</strong> partner-møter holdt (NSF/NFI/utdanning/affiliate)
+              </Typography>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.7rem' }}>
+              Vent — krever varm intro fra Fase 1-piloter
+            </Typography>
+          </Box>
+        </Box>
+      </Paper>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(6, 1fr)' }, gap: 1.5, mb: 3 }}>
         <StatCard label="Targets totalt" value={stats?.totals.total ?? 0} accent="#a78bfa" />
@@ -259,7 +347,34 @@ export function IndustryTargetsTab() {
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Segment</TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Status</TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700 }}>Sist engasjert</TableCell>
-              <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 140 }} title="3-touch-regel fra Outreach Plan">3-touch</TableCell>
+              <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 140 }}>
+                <Tooltip
+                  arrow
+                  placement="top"
+                  title={
+                    <Box sx={{ p: 0.5, maxWidth: 280 }}>
+                      <Typography sx={{ color: '#22d3ee', fontWeight: 800, fontSize: '0.78rem', mb: 0.5 }}>
+                        3-touch-regel (Outreach Plan v2)
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(229,231,235,0.95)', fontSize: '0.72rem', lineHeight: 1.5, mb: 0.75 }}>
+                        Aldri pitch før du har gitt 3 substantive touches.
+                        20 dypt personaliserte meldinger gir mer enn 200 generiske.
+                      </Typography>
+                      <Typography sx={{ color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }}>
+                        T1: engaged offentlig (kommentar, repost)
+                      </Typography>
+                      <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 700 }}>
+                        T2: ga substantiv value (artikkel, stat, intro)
+                      </Typography>
+                      <Typography sx={{ color: '#22d3ee', fontSize: '0.7rem', fontWeight: 700 }}>
+                        T3: klar for ask (DM, mail, møte)
+                      </Typography>
+                    </Box>
+                  }
+                >
+                  <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(34,211,238,0.5)' }}>3-touch</span>
+                </Tooltip>
+              </TableCell>
               <TableCell sx={{ color: 'rgba(226,232,240,0.85)', fontWeight: 700, width: 220 }}>Handlinger</TableCell>
             </TableRow>
           </TableHead>
@@ -473,60 +588,104 @@ export function IndustryTargetsTab() {
 // Persisteres til localStorage så Daniel beholder progresjonen ved
 // reload. "Skjul"-knapp ved bunnen setter hidden=true permanent.
 
-const WEEK1_STORAGE_KEY = 'roleroom-outreach-week1-v1';
-const WEEK1_DAYS: Array<{ day: string; label: string; action: string }> = [
-  { day: 'Mon', label: 'Foundation', action: 'Bygg CRM. List 15 CDs + 30 produsenter. Finn én felles kontakt per target.' },
-  { day: 'Tue', label: 'LinkedIn-rytme', action: 'Sett opp LinkedIn-engagement — 30 min/dag på substantive kommentarer mot Tier-1 targets.' },
-  { day: 'Wed', label: 'Første CD-DM', action: 'Skriv personaliserte DM-er til topp 5 CDs. Send 1 (bruk AI-utkast på en target).' },
-  { day: 'Thu', label: 'Første produsent-mail', action: 'Skriv personaliserte mailer til topp 5 produsenter. Send 1.' },
-  { day: 'Fri', label: 'Første møte', action: 'Kaffe eller møte booket med 1 CD eller 1 produsent. Hvis ingen møter — meldingen er feil, skriv om.' },
-  { day: 'Sat', label: 'Rushprint-utkast', action: 'Skriv guest-artikkel (1.200 ord). Topic-forslag: AI-klausuler, casting-tid-data, eller barne-compliance.' },
-  { day: 'Sun', label: 'Hvile', action: 'Norsk forretningskultur respekterer arbeidsfri. Outreach på søndag signaliserer desperasjon.' },
+const OUTREACH_V2_STORAGE_KEY = 'roleroom-outreach-30days-v2';
+
+const OUTREACH_V2_WEEKS: Array<{
+  week: number;
+  title: string;
+  subtitle: string;
+  actions: string[];
+}> = [
+  {
+    week: 1,
+    title: 'Uke 1 — Foundation',
+    subtitle: 'Bygg infrastrukturen før du kontakter noen',
+    actions: [
+      'Opprett 8 Tier-1-produksjonsselskaper i denne CRM-en: Indie Film, Motlys, Maipo, Friland, Paradox, Mer Film, Bacon, Newsy.',
+      'Finn navngitt kontaktperson hos hvert via LinkedIn — produsent eller produksjonsleder. Aldri "info@". Hvis du ikke vet hvem, har du ikke gjort hjemmeleksen.',
+      'Send 1 substantiv LinkedIn-engagement (kommentar på siste innlegg) til hver kontaktperson. Ingen pitch.',
+    ],
+  },
+  {
+    week: 2,
+    title: 'Uke 2 — Første kontakt',
+    subtitle: 'Personlige meldinger — ikke skala, ikke spray',
+    actions: [
+      'Send 3 personlige meldinger til Tier-1 via AutoAwesome-knappen med producer-os-pilot-template.',
+      'Skriv første LinkedIn-innlegg som gründer om støy-eliminering i norsk produksjon.',
+      'Send Skuda + NoDa-partnerskaps-mail med skuda-noda-partnership-template (måned 3-prep).',
+    ],
+  },
+  {
+    week: 3,
+    title: 'Uke 3 — Lyttemøter',
+    subtitle: '20 min lytting > 5 min pitch',
+    actions: [
+      'Hold 2-3 lyttemøter med produksjonsselskap. Tre spørsmål: "Gå meg gjennom siste produksjon — hvor mistet dere oversikt?" / "Tid på koordinering vs. kreativt?" / "Hvilket verktøy ville dere kvitte dere med?"',
+      'Vis Role Room kort — kun det de klagde på, ikke alle features.',
+      'Skriv svarene i target-notes så Claude-personalisering blir bedre neste gang.',
+    ],
+  },
+  {
+    week: 4,
+    title: 'Uke 4 — Konvertere',
+    subtitle: 'Pilot er en gave, ikke et salg',
+    actions: [
+      'Tilby gratis 6-måneders pilot til 2-3 av de mest interesserte. Sett pilot_started_at på target.',
+      'Onboard personlig — 30 min video der du selv setter opp deres første prosjekt sammen med dem.',
+      'Andre LinkedIn-innlegg som gründer — bygg-i-offentlighet, ærlig om hva som funket og ikke.',
+      'Håndskrevet takkekort 48 timer etter onboarding-møtet.',
+    ],
+  },
 ];
 
-function loadWeek1State(): { done: boolean[]; hidden: boolean } {
-  if (typeof window === 'undefined') return { done: Array(7).fill(false), hidden: false };
+const OUTREACH_V2_TOTAL_ACTIONS = OUTREACH_V2_WEEKS.reduce((acc, w) => acc + w.actions.length, 0);
+
+type OutreachV2State = { done: Record<string, boolean>; hidden: boolean };
+
+function loadOutreachV2State(): OutreachV2State {
+  if (typeof window === 'undefined') return { done: {}, hidden: false };
   try {
-    const raw = window.localStorage.getItem(WEEK1_STORAGE_KEY);
-    if (!raw) return { done: Array(7).fill(false), hidden: false };
+    const raw = window.localStorage.getItem(OUTREACH_V2_STORAGE_KEY);
+    if (!raw) return { done: {}, hidden: false };
     const parsed = JSON.parse(raw);
     return {
-      done: Array.isArray(parsed.done) && parsed.done.length === 7 ? parsed.done.map(Boolean) : Array(7).fill(false),
+      done: parsed.done && typeof parsed.done === 'object' ? parsed.done : {},
       hidden: !!parsed.hidden,
     };
   } catch {
-    return { done: Array(7).fill(false), hidden: false };
+    return { done: {}, hidden: false };
   }
 }
 
-function saveWeek1State(state: { done: boolean[]; hidden: boolean }): void {
+function saveOutreachV2State(state: OutreachV2State): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(WEEK1_STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(OUTREACH_V2_STORAGE_KEY, JSON.stringify(state));
   } catch {
     /* localStorage kan være blokkert — gi opp stille */
   }
 }
 
 function OutreachWeek1Checklist() {
-  const [state, setState] = useState(loadWeek1State);
+  const [state, setState] = useState(loadOutreachV2State);
 
-  function toggle(idx: number) {
-    const next = { ...state, done: state.done.map((d, i) => (i === idx ? !d : d)) };
+  function toggle(key: string) {
+    const next: OutreachV2State = { ...state, done: { ...state.done, [key]: !state.done[key] } };
     setState(next);
-    saveWeek1State(next);
+    saveOutreachV2State(next);
   }
 
   function hideForever() {
-    const next = { ...state, hidden: true };
+    const next: OutreachV2State = { ...state, hidden: true };
     setState(next);
-    saveWeek1State(next);
+    saveOutreachV2State(next);
   }
 
   if (state.hidden) return null;
 
-  const doneCount = state.done.filter(Boolean).length;
-  const allDone = doneCount === 7;
+  const doneCount = Object.values(state.done).filter(Boolean).length;
+  const allDone = doneCount === OUTREACH_V2_TOTAL_ACTIONS;
 
   return (
     <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.28)', position: 'relative' }}>
@@ -535,11 +694,11 @@ function OutreachWeek1Checklist() {
           <RocketLaunchIcon sx={{ color: '#22d3ee', fontSize: 22 }} />
           <Box>
             <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1rem' }}>
-              Outreach Plan · Uke 1-handlingsliste
+              Outreach Plan v2 · Første 30 dager
               {allDone ? <Chip label="Ferdig!" size="small" sx={{ ml: 1.5, height: 18, bgcolor: 'rgba(34,197,94,0.2)', color: '#86efac', fontWeight: 700, fontSize: '0.66rem' }} /> : null}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem' }}>
-              {doneCount} / 7 fullført · Per dokumentet: "Hvis null møter etter fredag — meldingen er feil, skriv om"
+              {doneCount} / {OUTREACH_V2_TOTAL_ACTIONS} handlinger · Per v2: "Hvis ingen møter i kalenderen innen uke 3 — meldingen din er feil. Skriv om."
             </Typography>
           </Box>
         </Stack>
@@ -547,47 +706,63 @@ function OutreachWeek1Checklist() {
           Skjul permanent
         </Button>
       </Stack>
-      <Stack spacing={0.75}>
-        {WEEK1_DAYS.map((row, idx) => {
-          const done = state.done[idx];
+      <Stack spacing={2}>
+        {OUTREACH_V2_WEEKS.map((week) => {
+          const weekDoneCount = week.actions.filter((_, idx) => state.done[`w${week.week}_${idx}`]).length;
+          const weekAllDone = weekDoneCount === week.actions.length;
           return (
-            <Stack
-              key={row.day}
-              direction="row"
-              spacing={1.25}
-              alignItems="flex-start"
-              onClick={() => toggle(idx)}
-              sx={{
-                cursor: 'pointer',
-                p: 0.75,
-                borderRadius: 1,
-                opacity: done ? 0.55 : 1,
-                '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
-              }}
-            >
-              {done ? (
-                <CheckBoxIcon fontSize="small" sx={{ color: '#22d3ee', mt: 0.25 }} />
-              ) : (
-                <CheckBoxOutlineBlankIcon fontSize="small" sx={{ color: 'rgba(148,163,184,0.55)', mt: 0.25 }} />
-              )}
-              <Box sx={{ minWidth: 48 }}>
-                <Typography sx={{ color: done ? 'rgba(203,213,225,0.55)' : '#22d3ee', fontWeight: 800, fontSize: '0.74rem', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  {row.day}
+            <Box key={week.week}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+                <Typography sx={{ color: weekAllDone ? '#86efac' : '#22d3ee', fontWeight: 800, fontSize: '0.86rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  {week.title}
                 </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.5)', fontSize: '0.66rem' }}>{row.label}</Typography>
-              </Box>
-              <Typography
-                sx={{
-                  flex: 1,
-                  color: done ? 'rgba(203,213,225,0.55)' : '#e2e8f0',
-                  fontSize: '0.84rem',
-                  lineHeight: 1.5,
-                  textDecoration: done ? 'line-through' : 'none',
-                }}
-              >
-                {row.action}
+                <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.74rem' }}>
+                  · {weekDoneCount}/{week.actions.length}
+                </Typography>
+              </Stack>
+              <Typography sx={{ color: 'rgba(203,213,225,0.55)', fontSize: '0.74rem', mb: 0.75, ml: 0.25 }}>
+                {week.subtitle}
               </Typography>
-            </Stack>
+              <Stack spacing={0.5}>
+                {week.actions.map((action, idx) => {
+                  const key = `w${week.week}_${idx}`;
+                  const done = !!state.done[key];
+                  return (
+                    <Stack
+                      key={key}
+                      direction="row"
+                      spacing={1.25}
+                      alignItems="flex-start"
+                      onClick={() => toggle(key)}
+                      sx={{
+                        cursor: 'pointer',
+                        p: 0.6,
+                        borderRadius: 1,
+                        opacity: done ? 0.55 : 1,
+                        '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
+                      }}
+                    >
+                      {done ? (
+                        <CheckBoxIcon fontSize="small" sx={{ color: '#22d3ee', mt: 0.25 }} />
+                      ) : (
+                        <CheckBoxOutlineBlankIcon fontSize="small" sx={{ color: 'rgba(148,163,184,0.55)', mt: 0.25 }} />
+                      )}
+                      <Typography
+                        sx={{
+                          flex: 1,
+                          color: done ? 'rgba(203,213,225,0.55)' : '#e2e8f0',
+                          fontSize: '0.84rem',
+                          lineHeight: 1.5,
+                          textDecoration: done ? 'line-through' : 'none',
+                        }}
+                      >
+                        {action}
+                      </Typography>
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            </Box>
           );
         })}
       </Stack>
@@ -612,21 +787,21 @@ function TouchCadence({ value, onChange }: { value: number; onChange: (next: num
       {[1, 2, 3].map((step) => {
         const reached = step <= clamped;
         return (
-          <Box
-            key={step}
-            onClick={() => onChange(clamped === step ? step - 1 : step)}
-            title={TOUCH_LABELS[step]}
-            sx={{
-              width: 14,
-              height: 14,
-              borderRadius: '50%',
-              cursor: 'pointer',
-              bgcolor: reached ? TOUCH_COLORS[step] : 'transparent',
-              border: `2px solid ${reached ? TOUCH_COLORS[step] : 'rgba(148,163,184,0.35)'}`,
-              transition: 'all 0.18s ease',
-              '&:hover': { transform: 'scale(1.18)', boxShadow: `0 0 0 3px ${TOUCH_COLORS[step]}33` },
-            }}
-          />
+          <Tooltip key={step} arrow placement="top" title={TOUCH_LABELS[step]}>
+            <Box
+              onClick={() => onChange(clamped === step ? step - 1 : step)}
+              sx={{
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                cursor: 'pointer',
+                bgcolor: reached ? TOUCH_COLORS[step] : 'transparent',
+                border: `2px solid ${reached ? TOUCH_COLORS[step] : 'rgba(148,163,184,0.35)'}`,
+                transition: 'all 0.18s ease',
+                '&:hover': { transform: 'scale(1.18)', boxShadow: `0 0 0 3px ${TOUCH_COLORS[step]}33` },
+              }}
+            />
+          </Tooltip>
         );
       })}
       {clamped === 3 ? (
@@ -747,6 +922,7 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
         lensSystems: initial.lens_systems ?? [],
         ditSoftware: initial.dit_software ?? [],
         cloudWorkflow: initial.cloud_workflow ?? [],
+        postSoftware: initial.post_software ?? [],
       });
       setProductionsText(serializeProductions(initial.recent_productions ?? []));
     } else {
@@ -922,6 +1098,24 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
                 helperText="Kritisk for DP/regissør-outreach — de svarer ikke uten å kunne sjekke reel."
               />
 
+              {/* Post-prod-spesifikke felter — vises kun for post-prod-roller */}
+              {['editor', 'colorist', 'sound_designer', 'foley_artist', 'post_supervisor', 'post_vfx_artist', 'title_designer', 'music_supervisor', 'mastering_engineer', 'composer'].includes(form.segment ?? '') ? (
+                <Stack spacing={1.25} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(167,139,250,0.05)', border: '1px dashed rgba(167,139,250,0.3)' }}>
+                  <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    Etterproduksjon · software-erfaring
+                  </Typography>
+                  <TextField
+                    label="Post-software"
+                    size="small"
+                    fullWidth
+                    value={(form.postSoftware ?? []).join(', ')}
+                    onChange={(e) => setForm((p) => ({ ...p, postSoftware: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                    placeholder="davinci_resolve, adobe_premiere, avid_media_composer, baselight, pro_tools, frame_io"
+                    helperText="Komma-separert. Bruk slugs (lowercase + underscore)."
+                  />
+                </Stack>
+              ) : null}
+
               {/* Kamera-spesifikke felter — vises kun for kamera-roller */}
               {['dp', 'first_ac', 'second_ac', 'camera_operator', 'steadicam_operator', 'drone_operator', 'dit'].includes(form.segment ?? '') ? (
                 <Stack spacing={1.25} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(34,211,238,0.05)', border: '1px dashed rgba(34,211,238,0.3)' }}>
@@ -985,8 +1179,14 @@ const SEGMENT_TO_OUTREACH_SEGMENTS: Partial<Record<IndustrySegment, Array<Outrea
   press: ['press'],
   nsf: ['union'],
   nfi: ['institution'],
-  skuda: ['institution'],
+  skuda: ['dance'],
   agency: ['agency'],
+  // Outreach Plan v2-mappings
+  noda: ['dance'],
+  dance_studio: ['dance'],
+  content_producer: ['content', 'agency'],
+  affiliate_partner: ['affiliate'],
+  education_institution: ['education', 'institution'],
 };
 
 function OutreachDialog({ target, onClose, onError }: { target: IndustryTarget | null; onClose: () => void; onError: (msg: string) => void }) {

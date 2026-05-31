@@ -89,7 +89,7 @@ import { AddonsPanel } from './AddonsPanel';
 import { authSessionService } from '../services/authSessionService';
 import CommandPalette from '../shared/CommandPalette';
 import ProfessionModeChip from '../shared/ProfessionModeChip';
-import HelpButton from '../shared/HelpButton';
+import HelpButton, { type WhatsNewItem } from '../shared/HelpButton';
 import FirstTimeTour from '../shared/FirstTimeTour';
 import RoleRoomMobileProfileSheet from '../components/RoleRoomMobileProfileSheet';
 import { useAuth } from '../../../hooks/useAuth';
@@ -186,6 +186,63 @@ const PLACEHOLDER_BODIES: Record<string, string> = {
   billing: 'EHF-faktura for kommune-avtaler, KID-betaling for studio-elever, Fiken/Tripletex-koblinger.',
   union: 'Skuda/NoDa-medlemstatus, aktive tariffer, automatisk loggføring av arbeidsdager til Skuda-statistikk.',
 };
+
+const DANCE_WHATS_NEW: WhatsNewItem[] = [
+  {
+    date: '2026-05-29',
+    kind: 'fix',
+    title: 'Dance API-kall autentiserer nå riktig',
+    description: 'Choreography, formations, ops, billing, teams, profiles og rehearsals sender Authorization-header — slutt på 401 i nettleser-konsollen.',
+  },
+  {
+    date: '2026-05-29',
+    kind: 'feature',
+    title: '"Hva er nytt"-modal i dansestudio',
+    description: 'Help-knappen nederst-høyre viser nå dansestudio-spesifikke oppdateringer i stedet for å sende deg til en generell news-side.',
+  },
+  {
+    date: '2026-05-28',
+    kind: 'improvement',
+    title: '7 UX-forbedringer i Dance Workspace',
+    description: 'Polish av navigasjon og tab-flyt på tvers av Classes/Instructors/Rooms/Performances.',
+  },
+  {
+    date: '2026-05-26',
+    kind: 'feature',
+    title: 'F12 — code-splitting med React.lazy',
+    description: 'Tunge dance-paneler lastes nå on-demand. Mobil-sweep (F11) gjør hele workspacet brukbart på telefon.',
+  },
+  {
+    date: '2026-05-22',
+    kind: 'feature',
+    title: 'F10 — Classes/Instructors/Rooms stat-stripes',
+    description: 'Hver kjernekategori har egne KPI-stripes øverst, slik at du ser status uten å bore ned.',
+  },
+  {
+    date: '2026-05-20',
+    kind: 'feature',
+    title: 'F8 — Dance Production Calendar',
+    description: '12 nye kalender-features for å planlegge forestillinger, prøver og turné.',
+  },
+  {
+    date: '2026-05-18',
+    kind: 'feature',
+    title: 'F5-B — ekte 3D, bezier-curve-tool og wavesurfer.js',
+    description: 'Ingen stubs igjen i Formation Builder. Bezier-formasjoner, ekte 3D-render, audio-waveform-cue.',
+  },
+  {
+    date: '2026-05-12',
+    kind: 'feature',
+    title: 'Magic-link + PIN GDPR-flyt for team-invites',
+    description: 'Login-redesign med 3 path-valg, custom-rolle-system og full invite-stack ende-til-ende.',
+  },
+  {
+    date: '2026-05-08',
+    kind: 'feature',
+    title: 'Full Stripe billing + tester-invites',
+    description: 'Abonnement, add-ons, trial-banner, customer-portal og admin-konfig på plass.',
+  },
+];
 
 const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, projectId }) => {
   const branding = useBrandingSettings();
@@ -646,10 +703,14 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         })}
       />
 
-      {/* Persistent help-knapp nederst-høyre */}
+      {/* Persistent help-knapp nederst-høyre.
+          `mode="dance"` henter publiserte oppføringer fra Admin Room → CMS.
+          DANCE_WHATS_NEW brukes som fallback hvis backend er nede / tom. */}
       <HelpButton
         supportEmail="support@theroleroom.com"
-        changelogUrl="https://creatorhubn.com/news"
+        whatsNewTitle="Hva er nytt i Dance Studio"
+        mode="dance"
+        whatsNew={DANCE_WHATS_NEW}
       />
 
       {/* Første-gang-tour — vises kun ved første besøk per bruker */}

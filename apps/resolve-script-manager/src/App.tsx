@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import "./styles/animations.css";
 import {
   executeScript,
   getRunHistory,
@@ -36,12 +37,36 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
+import { AgentEditorView } from "./components/AgentEditorView";
+import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
+import CORPORATE_AGENT_CONFIG from "./agents/corporate";
+import SCREEN_RECORDING_AGENT_CONFIG from "./agents/screen_recording";
+import EVENT_AGENT_CONFIG from "./agents/event";
+import DOCUMENTARY_AGENT_CONFIG from "./agents/documentary";
+import PODCAST_AGENT_CONFIG from "./agents/podcast";
+import SHORT_FILM_AGENT_CONFIG from "./agents/short_film";
+import type { AgentConfig } from "./agents/types";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
+import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
+import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
+import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
+import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
+import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
+import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
+import { PhotoshopHealthCheckDialog } from "./components/PhotoshopHealthCheckDialog";
+import {
+  PhotoshopOnboardingTour,
+  hasCompletedPhotoshopTour,
+} from "./components/PhotoshopOnboardingTour";
+import { FeedbackDialog } from "./components/FeedbackDialog";
+import { HelpDialog } from "./components/HelpDialog";
+import { PhotoshopSetupWizard } from "./components/PhotoshopSetupWizard";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons";
@@ -72,8 +97,40 @@ export default function App() {
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
+  // Auto-updater dialog-state. Set når sjekk finner ny versjon; null mens
+  // ingen oppdatering venter eller mens vi laster ned. Selve download +
+  // install kalles via onDownload-prop på UpdaterDialog.
+  const [updateInfo, setUpdateInfo] = useState<{
+    version: string;
+    notes: string | null;
+    runDownload: (
+      onProgress: (fraction: number, status: "downloading" | "finished") => void,
+    ) => Promise<void>;
+  } | null>(null);
+  const [agentEditorConfig, setAgentEditorConfig] = useState<AgentConfig | null>(null);
+  const [agentSourcePath, setAgentSourcePath] = useState<string>("");
+
+  const openAgent = useCallback(async (config: AgentConfig) => {
+    try {
+      const picked = await openFileDialog({
+        multiple: false,
+        title: `Velg kilde for ${config.name}`,
+        filters: [
+          { name: "Video", extensions: ["mp4", "mov", "mkv", "m4v", "avi"] },
+          { name: "Audio", extensions: ["wav", "mp3", "flac", "aif", "aiff", "m4a"] },
+        ],
+      });
+      if (typeof picked === "string" && picked.length > 0) {
+        setAgentSourcePath(picked);
+        setAgentEditorConfig(config);
+      }
+    } catch (err) {
+      console.error(`[${config.kind}] file pick failed:`, err);
+    }
+  }, []);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showWeddingWizard, setShowWeddingWizard] = useState(false);
+  const [showQcVideo, setShowQcVideo] = useState(false);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
   useEffect(() => {
@@ -83,6 +140,17 @@ export default function App() {
   }, []);
   const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
   const [showWatch, setShowWatch] = useState(false);
+  const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
+  const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
+  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
+  const [showPsdGallery, setShowPsdGallery] = useState(false);
+  const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
+  const [showPhotoshopTour, setShowPhotoshopTour] = useState(
+    () => !hasCompletedPhotoshopTour(),
+  );
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showPhotoshopSetup, setShowPhotoshopSetup] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
   // Auto-show Role Room sign-in on app launch when first-run is done but
   // the user hasn't authenticated yet. Suppressed during first-run since
@@ -227,27 +295,66 @@ export default function App() {
         await runScript(script, {}, false);
       }).then((u) => unlisteners.push(u));
       listen("menu://new-workflow", () => setView("pipeline")).then((u) => unlisteners.push(u));
-      listen("menu://check-updates", async () => {
+      // Updater-handler: brukes både av menu://check-updates og av
+      // auto-check ved oppstart. Sjekker etter ny versjon; hvis funnet
+      // setter vi updateInfo som rendrer UpdaterDialog. Selve nedlastings-
+      // + install-kallet skjer fra dialogens "Last ned"-knapp via
+      // runDownload-prop, som propagerer Tauri-download-events tilbake til
+      // dialogens progress-bar. notifyNone=true betyr "menu trigget,
+      // si fra hvis det ikke er noe nytt"; auto-check skipper det.
+      const runUpdateCheck = async (notifyNone: boolean) => {
         try {
-          const { check } = await import("@tauri-apps/plugin-updater");
-          const update = await check();
-          if (update) {
-            setEvents((prev) => [
-              ...prev,
-              { type: "log", ts: Date.now() / 1000, runId: "n/a",
-                message: `Update available: v${update.version} — ${update.body ?? ""}` },
-            ]);
-          } else {
-            setEvents((prev) => [
-              ...prev,
-              { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
-            ]);
+          const updater = await import("@tauri-apps/plugin-updater");
+          const update = await updater.check();
+          if (!update) {
+            if (notifyNone) {
+              setEvents((prev) => [
+                ...prev,
+                { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
+              ]);
+            }
+            return;
           }
+          setEvents((prev) => [
+            ...prev,
+            { type: "log", ts: Date.now() / 1000, runId: "n/a",
+              message: `Update available: v${update.version}` },
+          ]);
+          // Hold update-objektet i closure til brukeren klikker "Last ned".
+          // downloadAndInstall tar en progress-callback med events:
+          //   Started(contentLength) → vis 0
+          //   Progress(chunkLength) → akkumuler bytes
+          //   Finished → 100% + skift til installed-state
+          setUpdateInfo({
+            version: update.version,
+            notes: update.body ?? null,
+            runDownload: async (onProgress) => {
+              let total = 0;
+              let downloaded = 0;
+              await update.downloadAndInstall((event) => {
+                if (event.event === "Started") {
+                  total = event.data.contentLength ?? 0;
+                  onProgress(0, "downloading");
+                } else if (event.event === "Progress") {
+                  downloaded += event.data.chunkLength;
+                  if (total > 0) onProgress(downloaded / total, "downloading");
+                } else if (event.event === "Finished") {
+                  onProgress(1, "finished");
+                }
+              });
+            },
+          });
         } catch (e) {
-          // Updater not configured (no endpoint/pubkey) — silent in dev
+          // Updater not configured (no endpoint/pubkey) — silent i dev
           console.warn("[updater] not available:", e);
         }
-      }).then((u) => unlisteners.push(u));
+      };
+      listen("menu://check-updates", () => void runUpdateCheck(true))
+        .then((u) => unlisteners.push(u));
+      // Auto-check ved oppstart (én gang, 4 sek etter mount slik at
+      // hovedflyten ikke blir blokket av en tung GitHub-fetch).
+      const autoCheckTimer = window.setTimeout(() => void runUpdateCheck(false), 4000);
+      unlisteners.push(() => window.clearTimeout(autoCheckTimer));
     });
     return () => { cancelled = true; unlisteners.forEach((u) => u?.()); };
   // runs + scriptsById intentionally NOT in deps — we always read latest via closure ref
@@ -367,6 +474,116 @@ export default function App() {
     }
   }, [recordRun]);
 
+  // Silent helper — refresh health uten busy/log-spam (for autosjekk)
+  const silentHealthCheck = useCallback(async () => {
+    try {
+      const summary = await runHealthCheck();
+      const resultEvent = summary.events.find((e) => e.type === "result");
+      if (resultEvent?.value && typeof resultEvent.value === "object") {
+        setHealth(resultEvent.value as HealthStatus);
+      }
+    } catch { /* non-critical */ }
+  }, []);
+
+  // Role Room auth-status: undefined (sjekker), "ok" (gyldig token), "expired" (token finnes men 401), "none" (ingen token)
+  const [authStatus, setAuthStatus] = useState<"checking" | "ok" | "expired" | "none">("checking");
+  const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
+  const [authMemberProfile, setAuthMemberProfile] = useState<{
+    displayName: string | null;
+    profileImageUrl: string | null;
+    professions: string[];
+  } | null>(null);
+
+  const silentAuthCheck = useCallback(async () => {
+    const s = loadSettings();
+    const token = s.RR_BEARER_TOKEN?.trim();
+    if (!token) {
+      setAuthStatus("none");
+      setAuthUserEmail(null);
+      return;
+    }
+    try {
+      const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+      const res = await fetch(`${base}/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const me = await res.json() as { email?: string; name?: string };
+        if (me?.email) {
+          setAuthStatus("ok");
+          setAuthUserEmail(me.email);
+
+          // Hent Role Room-medlemsprofil (avatar + navn + profesjon) i bakgrunnen.
+          // Origin: strip /api/post-agent fra base for å nå sibling-endpoint
+          try {
+            const origin = base.replace(/\/api\/post-agent\/?$/, "");
+            const profRes = await fetch(`${origin}/api/role-room/profile/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (profRes.ok) {
+              const data = await profRes.json() as {
+                profile?: { displayName?: string | null; profileImageUrl?: string | null; professions?: string[] };
+              };
+              const p = data.profile;
+              if (p) {
+                setAuthMemberProfile({
+                  displayName: p.displayName ?? null,
+                  profileImageUrl: p.profileImageUrl ?? null,
+                  professions: p.professions ?? [],
+                });
+              }
+            }
+          } catch {
+            // Profil-fetch er best-effort — status er allerede satt ok
+          }
+        } else {
+          setAuthStatus("expired");
+          setAuthUserEmail(null);
+          setAuthMemberProfile(null);
+        }
+      } else if (res.status === 401 || res.status === 403) {
+        setAuthStatus("expired");
+        setAuthUserEmail(null);
+        setAuthMemberProfile(null);
+      } else {
+        setAuthStatus("expired");
+        setAuthUserEmail(null);
+        setAuthMemberProfile(null);
+      }
+    } catch {
+      // Nettverksfeil — IKKE downgrade auth-status. Vi vet ikke om
+      // tokenet er ugyldig eller om serveren bare er uoppnåelig.
+      // Tidligere satte vi her "expired", som forårsaket en bug der
+      // re-login fra dialogen ikke registrerte: nytt token ble lagret,
+      // silentAuthCheck kjørte, men hvis fetchen feilet (eller var
+      // litt sen), så ble status overskrevet til "expired" igjen.
+      // Beholde nåværende status er trygt — neste auto-check eller
+      // focus-trigger vil prøve igjen.
+    }
+  }, []);
+
+  // Auto-refresh health + auth: ved fokus + hvert 30. sekund + på auth-change-event
+  useEffect(() => {
+    void silentHealthCheck();
+    void silentAuthCheck();
+    const onFocus = () => { silentHealthCheck(); silentAuthCheck(); };
+    // Når pairing-dialogen lagrer ny token (saveBearerToSettings) fyrer
+    // den 'trrpa:auth-changed' — uten denne lytteren venter HomeView
+    // opp til 30s før status-pillen oppdateres.
+    const onAuthChange = () => { silentAuthCheck(); };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("trrpa:auth-changed", onAuthChange);
+    const interval = setInterval(() => {
+      silentHealthCheck();
+      silentAuthCheck();
+    }, 30_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("trrpa:auth-changed", onAuthChange);
+      clearInterval(interval);
+    };
+  }, [silentHealthCheck, silentAuthCheck]);
+
   const handleOpenFolder = useCallback(async () => {
     try {
       await openScriptFolder();
@@ -452,6 +669,15 @@ export default function App() {
         onOpenSettings={() => setShowSettings(true)}
         onOpenDependencies={() => setShowDependencies(true)}
         onOpenWatch={() => setShowWatch(true)}
+        onOpenPhotoshopBridge={() => setShowPhotoshopBridge(true)}
+        onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
+        onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
+        onOpenPsdGallery={() => setShowPsdGallery(true)}
+        onOpenPhotoshopHealth={() => setShowPhotoshopHealth(true)}
+        onOpenPhotoshopTour={() => setShowPhotoshopTour(true)}
+        onOpenFeedback={() => setShowFeedback(true)}
+        onOpenHelp={() => setShowHelp(true)}
+        onOpenPhotoshopSetup={() => setShowPhotoshopSetup(true)}
         onSignIn={() => setShowSignIn(true)}
         onSignedOut={() => { /* state refresh happens via storage event */ }}
         advancedMode={advancedMode}
@@ -474,10 +700,24 @@ export default function App() {
           }}
           onNewProjectFromFile={() => setShowNewProject(true)}
           onOpenWeddingWizard={() => setShowWeddingWizard(true)}
+          onOpenMusicVideoAgent={() => void openAgent(MUSIC_VIDEO_AGENT_CONFIG)}
+          onOpenCorporateAgent={() => void openAgent(CORPORATE_AGENT_CONFIG)}
+          onOpenScreenRecordingAgent={() => void openAgent(SCREEN_RECORDING_AGENT_CONFIG)}
+          onOpenEventAgent={() => void openAgent(EVENT_AGENT_CONFIG)}
+          onOpenDocumentaryAgent={() => void openAgent(DOCUMENTARY_AGENT_CONFIG)}
+          onOpenPodcastAgent={() => void openAgent(PODCAST_AGENT_CONFIG)}
+          onOpenShortFilmAgent={() => void openAgent(SHORT_FILM_AGENT_CONFIG)}
+          onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
-          signedIn={Boolean(loadSettings().RR_BEARER_TOKEN)}
+          signedIn={authStatus === "ok"}
+          authStatus={authStatus}
+          authUserEmail={authUserEmail}
+          authMemberProfile={authMemberProfile}
           onSignIn={() => setShowSignIn(true)}
           resolveConnected={Boolean(health?.resolveRunning && health?.projectOpen)}
+          resolveRunning={Boolean(health?.resolveRunning)}
+          resolveProjectOpen={Boolean(health?.projectOpen)}
+          resolveProjectName={health?.projectName}
         />
       )}
 
@@ -684,7 +924,15 @@ export default function App() {
       {creativeEditorPath && (
         <CreativeEditorView
           picksPath={creativeEditorPath}
-          advisorPath={creativeEditorPath.replace(/last_highlight_picks\.json$/, "music_advisor.json")}
+          /* music_advisor.json er en singleton i app-data-dir — ikke per-projekt.
+             Bruk app-data + filnavn istedet for å derive fra picks-path
+             (som ikke matcher arkiverte filer). */
+          advisorPath={
+            creativeEditorPath.replace(
+              /(?:picks\/[^/]+\.json|last_highlight_picks\.json)$/,
+              "music_advisor.json",
+            )
+          }
           onClose={() => setCreativeEditorPath(null)}
           onStartNewProject={() => {
             setCreativeEditorPath(null);
@@ -703,6 +951,17 @@ export default function App() {
         />
       )}
 
+      {agentEditorConfig && (
+        <AgentEditorView
+          sourcePath={agentSourcePath}
+          config={agentEditorConfig}
+          onClose={() => {
+            setAgentEditorConfig(null);
+            setAgentSourcePath("");
+          }}
+        />
+      )}
+
       {showWeddingWizard && (
         <GuidedWeddingWizard
           onClose={() => setShowWeddingWizard(false)}
@@ -713,6 +972,8 @@ export default function App() {
         />
       )}
 
+      {showQcVideo && <QcSourceVideoModal onClose={() => setShowQcVideo(false)} />}
+
       {showFirstRun && <FirstRunSetupWizard onClose={() => setShowFirstRun(false)} />}
 
       {/* Auto-prompt sign-in on launch when first-run is done but user isn't authed.
@@ -720,11 +981,47 @@ export default function App() {
       {!showFirstRun && showSignIn && (
         <RoleRoomSignInDialog
           onClose={() => setShowSignIn(false)}
-          onSignedIn={() => setShowSignIn(false)}
+          onSignedIn={() => { setShowSignIn(false); void silentAuthCheck(); }}
         />
       )}
 
       {showWatch && <WatchFolderModal onClose={() => setShowWatch(false)} />}
+      {showPhotoshopBridge && (
+        <PhotoshopBridgeDialog onClose={() => setShowPhotoshopBridge(false)} />
+      )}
+      {showPhotoshopTemplates && (
+        <PhotoshopTemplateDialog onClose={() => setShowPhotoshopTemplates(false)} />
+      )}
+      {showPhotoshopAgent && (
+        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
+      )}
+      {showPsdGallery && (
+        <PsdGalleryDialog onClose={() => setShowPsdGallery(false)} />
+      )}
+      {showPhotoshopHealth && (
+        <PhotoshopHealthCheckDialog onClose={() => setShowPhotoshopHealth(false)} />
+      )}
+      {showPhotoshopTour && (
+        <PhotoshopOnboardingTour onClose={() => setShowPhotoshopTour(false)} />
+      )}
+      {showPhotoshopSetup && (
+        <PhotoshopSetupWizard onClose={() => setShowPhotoshopSetup(false)} />
+      )}
+      {showHelp && (
+        <HelpDialog onClose={() => setShowHelp(false)} />
+      )}
+      {showFeedback && (
+        <FeedbackDialog onClose={() => setShowFeedback(false)} />
+      )}
+
+      {updateInfo && (
+        <UpdaterDialog
+          version={updateInfo.version}
+          notes={updateInfo.notes}
+          onDownload={updateInfo.runDownload}
+          onDismiss={() => setUpdateInfo(null)}
+        />
+      )}
 
       {showMagicCut && activeTemplate && (
         <MagicCutDialog
@@ -737,7 +1034,7 @@ export default function App() {
       {showSignIn && (
         <RoleRoomSignInDialog
           onClose={() => setShowSignIn(false)}
-          onSignedIn={() => setShowSignIn(false)}
+          onSignedIn={() => { setShowSignIn(false); void silentAuthCheck(); }}
         />
       )}
     </div>

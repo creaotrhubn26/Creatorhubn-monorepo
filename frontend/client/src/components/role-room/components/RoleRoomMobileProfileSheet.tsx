@@ -10,11 +10,12 @@
  * Phone: fullscreen bottom sheet. iPad/desktop: popover anchored to profile button.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Avatar,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -26,6 +27,8 @@ import {
 } from '@mui/material';
 import {
   Close as CloseIcon,
+  Edit as EditIcon,
+  Group as GroupIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
   SwapHoriz as ModeIcon,
@@ -34,6 +37,10 @@ import {
 import type { RoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import ProfessionModeSwitcher from './ProfessionModeSwitcher';
 import { getActiveProfessionMode } from '../config/professionMode';
+import RoleRoomOnboardingDialog from './RoleRoomOnboardingDialog';
+import RoleRoomMemberDirectoryDialog from './RoleRoomMemberDirectoryDialog';
+import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
+import type { RoleRoomMemberProfile } from '../services/roleRoomMemberProfileService';
 
 interface ProfileWorkspaceSummary {
   companyName?: string | null;
@@ -81,17 +88,41 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
     workspaceSummary?.statusLabel || workspaceSummary?.planName || workspaceSummary?.companyName,
   );
   const [modeSwitcherOpen, setModeSwitcherOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [memberProfile, setMemberProfile] = useState<RoleRoomMemberProfile | null>(null);
   const activeProfessionMode = getActiveProfessionMode();
+
+  // Hent Role Room-medlemsprofil når sheeten åpnes (image + bio + roller)
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const profile = await roleRoomMemberProfileService.getMyProfile();
+        if (!cancelled) setMemberProfile(profile);
+      } catch {
+        if (!cancelled) setMemberProfile(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, editOpen]);
+
+  const profileImageUrl = memberProfile?.profileImageUrl ?? null;
+  const bioShort = memberProfile?.bio
+    ? memberProfile.bio.length > 140 ? memberProfile.bio.slice(0, 137) + '…' : memberProfile.bio
+    : null;
+  const topProfessions = memberProfile?.professions?.slice(0, 4) ?? [];
 
   const body = (
     <Stack spacing={2} sx={{ p: 2 }}>
       <Stack direction="row" spacing={2} alignItems="center">
-        <Avatar sx={{ width: 48, height: 48, bgcolor: '#6366f1' }}>
-          {initialsOf(displayName, email) || <PersonIcon />}
+        <Avatar src={profileImageUrl ?? undefined} sx={{ width: 56, height: 56, bgcolor: '#6366f1', fontSize: '1rem' }}>
+          {profileImageUrl ? null : initialsOf(memberProfile?.displayName ?? displayName, email) || <PersonIcon />}
         </Avatar>
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography variant="subtitle1" fontWeight={700} noWrap>
-            {displayName || email || 'Bruker'}
+            {memberProfile?.displayName || displayName || email || 'Bruker'}
           </Typography>
           {email ? (
             <Typography variant="body2" color="text.secondary" noWrap>
@@ -104,6 +135,59 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
             </Typography>
           ) : null}
         </Box>
+      </Stack>
+
+      {(bioShort || topProfessions.length > 0) && (
+        <Box>
+          {bioShort && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: topProfessions.length > 0 ? 1 : 0 }}>
+              {bioShort}
+            </Typography>
+          )}
+          {topProfessions.length > 0 && (
+            <Stack direction="row" flexWrap="wrap" gap={0.5}>
+              {topProfessions.map((p) => (
+                <Chip key={p} label={p} size="small"
+                      sx={{ bgcolor: 'rgba(139,92,246,0.12)', color: '#6d28d9', fontWeight: 600 }} />
+              ))}
+            </Stack>
+          )}
+        </Box>
+      )}
+
+      <Stack spacing={1}>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<EditIcon />}
+          onClick={() => setEditOpen(true)}
+          sx={{
+            minHeight: 'var(--rr-touch-target-min, 44px)',
+            justifyContent: 'flex-start',
+            borderColor: 'rgba(124,58,237,0.35)',
+            color: '#6d28d9',
+            textTransform: 'none',
+            fontWeight: 600,
+          }}
+        >
+          Rediger profil
+        </Button>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<GroupIcon />}
+          onClick={() => setDirectoryOpen(true)}
+          sx={{
+            minHeight: 'var(--rr-touch-target-min, 44px)',
+            justifyContent: 'flex-start',
+            borderColor: 'rgba(124,58,237,0.35)',
+            color: '#6d28d9',
+            textTransform: 'none',
+            fontWeight: 600,
+          }}
+        >
+          Finn medlemmer
+        </Button>
       </Stack>
 
       {showWorkspace ? (
@@ -201,6 +285,22 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
     </Dialog>
   ) : null;
 
+  const editDialog = (
+    <RoleRoomOnboardingDialog
+      open={editOpen}
+      mode="edit"
+      onComplete={() => setEditOpen(false)}
+      onClose={() => setEditOpen(false)}
+    />
+  );
+
+  const directoryDialog = (
+    <RoleRoomMemberDirectoryDialog
+      open={directoryOpen}
+      onClose={() => setDirectoryOpen(false)}
+    />
+  );
+
   if (usePopover) {
     return (
       <>
@@ -214,7 +314,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
             paper: {
               sx: {
                 mt: 0.5,
-                width: 'min(340px, 90vw)',
+                width: 'min(360px, 92vw)',
                 borderRadius: 2,
               },
             },
@@ -223,6 +323,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           {body}
         </Popover>
         {modeSwitcherDialog}
+        {editDialog}
+        {directoryDialog}
       </>
     );
   }
@@ -270,6 +372,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         <DialogContent sx={{ p: 0, pb: 'var(--rr-safe-bottom, 0px)' }}>{body}</DialogContent>
       </Dialog>
       {modeSwitcherDialog}
+      {editDialog}
     </>
   );
 };

@@ -1,9 +1,9 @@
 [package]
 name = "resolve-script-manager"
-version = "0.1.0"
+version = "0.2.5"
 description = "The Role Room Post Agent — DaVinci Resolve pipeline automation"
 authors = ["The Role Room"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "resolve_script_manager_lib"
@@ -17,6 +17,7 @@ tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync"] }
@@ -25,3 +26,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 notify = "6"
 walkdir = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+dashmap = "6"
+psd = "0.3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+base64 = "0.22"

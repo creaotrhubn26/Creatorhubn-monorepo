@@ -271,7 +271,9 @@ def detect_beats(video: str, ffmpeg: str, duration: float, source_audio_path: st
             "y, sr = librosa.load(sys.argv[1], sr=22050)\n"
             "tempo, beats = librosa.beat.beat_track(y=y, sr=sr)\n"
             "times = librosa.frames_to_time(beats, sr=sr).tolist()\n"
-            "print(json.dumps({'beats': times, 'tempo': float(tempo)}))\n"
+            # Newer librosa returnerer tempo som ndarray[1] istedet for scalar
+            "tempo_val = float(tempo[0]) if hasattr(tempo, '__len__') else float(tempo)\n"
+            "print(json.dumps({'beats': times, 'tempo': tempo_val}))\n"
         )
         r = subprocess.run(
             [python, "-c", snippet, tmp_audio],
@@ -466,25 +468,36 @@ def narrate_with_claude(shot_meta: list[dict]) -> list[str]:
 
     shot_meta: [{ index, duration, motion, frames: [path_start, path_mid, path_end] }]
     """
+    # Bruk The Role Room-proxyen når bruker er innlogget, fallback til
+    # direkte Anthropic SDK kun hvis ANTHROPIC_API_KEY er satt (dev/admin).
+    # Begge stier returnerer en kompatibel client med .messages.create().
+    bearer = os.environ.get("RR_BEARER_TOKEN", "").strip()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        bridge.warn("ANTHROPIC_API_KEY not set — skipping narration, using generic labels")
+    if not bearer and not api_key:
+        bridge.warn("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY — hopper over narration")
         return [f"Shot {s['index']+1}" for s in shot_meta]
 
     try:
-        import anthropic  # type: ignore
+        if bearer:
+            from anthropic_proxy import Anthropic  # type: ignore[import-not-found]
+            client = Anthropic(bearer_token=bearer)
+        else:
+            import anthropic  # type: ignore[import-not-found]
+            client = anthropic.Anthropic(api_key=api_key)
     except ImportError:
-        bridge.warn("anthropic python package not installed — skipping narration")
+        bridge.warn("anthropic-pakka mangler — hopper over narration")
         return [f"Shot {s['index']+1}" for s in shot_meta]
+    # Parallelize Claude-narrasjon med ThreadPoolExecutor. Tidligere
+    # sekvensiell: 200 shots × ~3s = >10 minutter. Med max_workers=5
+    # holder vi oss godt under Anthropic's rate-limit men 5x raskere.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    client = anthropic.Anthropic(api_key=api_key)
-    out: list[str] = []
-    for s in shot_meta:
+    def narrate_one(s: dict) -> tuple[int, str]:
         frames: list[str] = s.get("frames") or []
         usable = [p for p in frames if p and os.path.isfile(p)]
+        idx = s["index"]
         if not usable:
-            out.append(f"Shot {s['index']+1}")
-            continue
+            return idx, f"Shot {idx+1}"
 
         try:
             content: list[dict] = []
@@ -527,14 +540,23 @@ def narrate_with_claude(shot_meta: list[dict]) -> list[str]:
                 if getattr(block, "type", None) == "text":
                     text = getattr(block, "text", "").strip()
                     break
-            out.append(text or f"Shot {s['index']+1}")
+            return idx, (text or f"Shot {idx+1}")
         except Exception as exc:  # noqa: BLE001
-            bridge.warn(f"Claude narration for shot {s['index']+1} failed: {exc}")
-            out.append(f"Shot {s['index']+1}")
+            bridge.warn(f"Claude narration for shot {idx+1} failed: {exc}")
+            return idx, f"Shot {idx+1}"
 
-        if (s["index"] + 1) % 5 == 0:
-            bridge.progress(s["index"] + 1, len(shot_meta), f"Narrated {s['index']+1}/{len(shot_meta)}")
-    return out
+    out_by_idx: dict[int, str] = {}
+    completed = 0
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {pool.submit(narrate_one, s): s for s in shot_meta}
+        for fut in as_completed(futures):
+            idx, text = fut.result()
+            out_by_idx[idx] = text
+            completed += 1
+            if completed % 5 == 0 or completed == len(shot_meta):
+                bridge.progress(completed, len(shot_meta), f"Narrated {completed}/{len(shot_meta)}")
+    # Bevar original-rekkefølge basert på index
+    return [out_by_idx.get(s["index"], f"Shot {s['index']+1}") for s in shot_meta]
 
 
 def run(params: dict, dry_run: bool) -> None:

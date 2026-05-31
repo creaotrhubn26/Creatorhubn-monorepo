@@ -124,3 +124,38 @@ export async function deleteStoryboard(
   );
   await readJson<{ success: boolean }>(res);
 }
+
+export interface GenerateAIImageInput {
+  prompt?: string;
+  sceneDescription?: string;
+  intExt?: string;
+  timeOfDay?: string;
+  locationName?: string;
+  shotType?: string;
+  cinematicFormat?: string;
+  styleNote?: string;
+  quality?: 'standard' | 'hd';
+  aspectRatio?: '1792x1024' | '1024x1024' | '1024x1792';
+}
+
+export async function generateAIImage(
+  projectId: string,
+  storyboardId: string,
+  input: GenerateAIImageInput = {},
+): Promise<{ storyboard: Storyboard; composedPrompt: string; revisedPrompt: string | null }> {
+  const res = await fetch(
+    `${BASE}/projects/${encodeURIComponent(projectId)}/storyboards/${encodeURIComponent(storyboardId)}/generate-ai-image`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(input),
+    },
+  );
+  const w = await readJson<{
+    success: boolean;
+    data: Storyboard;
+    composedPrompt: string;
+    revisedPrompt: string | null;
+  }>(res);
+  return { storyboard: w.data, composedPrompt: w.composedPrompt, revisedPrompt: w.revisedPrompt };
+}

@@ -643,6 +643,21 @@ export type IndustrySegment =
   | 'steadicam_operator'
   | 'drone_operator'
   | 'video_assist'
+  // Etterproduksjon-segments (migrasjon 178)
+  | 'colorist'
+  | 'sound_designer'
+  | 'foley_artist'
+  | 'post_supervisor'
+  | 'post_vfx_artist'
+  | 'title_designer'
+  | 'music_supervisor'
+  | 'mastering_engineer'
+  // Outreach Plan v2-segments
+  | 'noda'
+  | 'content_producer'
+  | 'dance_studio'
+  | 'affiliate_partner'
+  | 'education_institution'
   | 'other';
 export type IndustryStatus = 'cold' | 'warm' | 'engaged' | 'advocate' | 'paused';
 export type IndustryEngagementKind =
@@ -704,6 +719,8 @@ export interface IndustryTarget {
   lens_systems?: string[];
   dit_software?: string[];
   cloud_workflow?: string[];
+  // Post-prod-felter (migrasjon 178)
+  post_software?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -744,6 +761,8 @@ export type IndustryTargetInput = {
   lensSystems?: string[];
   ditSoftware?: string[];
   cloudWorkflow?: string[];
+  // Post-prod-felter (migrasjon 178)
+  postSoftware?: string[];
 };
 
 export interface IndustryTargetStats {
@@ -826,6 +845,21 @@ export const INDUSTRY_SEGMENT_LABELS: Record<IndustrySegment, string> = {
   steadicam_operator: 'Steadicam operator',
   drone_operator: 'Drone-operatør',
   video_assist: 'Video assist',
+  // Etterproduksjon-segments (migrasjon 178)
+  colorist: 'Colorist',
+  sound_designer: 'Sound designer',
+  foley_artist: 'Foley artist',
+  post_supervisor: 'Post supervisor',
+  post_vfx_artist: 'Post VFX artist',
+  title_designer: 'Title designer',
+  music_supervisor: 'Music supervisor',
+  mastering_engineer: 'Mastering engineer',
+  // Outreach Plan v2-segments
+  noda: 'NoDa (norske dansekunstnere)',
+  content_producer: 'Innholdsprodusent (frilans)',
+  dance_studio: 'Dansestudio',
+  affiliate_partner: 'Affiliate-partner (foto.no, DaVinci, Adobe)',
+  education_institution: 'Utdanningsinstitusjon (filmskole, BI, NTNU)',
   other: 'Annet',
 };
 
@@ -1008,6 +1042,11 @@ export type OutreachTemplateSegment =
   | 'institution'
   | 'press'
   | 'agency'
+  // Outreach Plan v2-segments
+  | 'dance'
+  | 'affiliate'
+  | 'content'
+  | 'education'
   | 'other';
 
 export type OutreachTemplateChannel = 'dm' | 'email' | 'phone' | 'in_person' | 'loom';
@@ -1668,5 +1707,135 @@ export const newsletterTemplatesApi = {
   },
   remove: async (id: string): Promise<void> => {
     await jsonFetch(`/newsletter/role-room/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Role Room billing-health — Stripe-konfig-sjekk
+// ─────────────────────────────────────────────────────────
+
+export interface RoleRoomBillingHealthPriceCheck {
+  configured: boolean;
+  priceIdPreview: string | null;
+  exists: boolean | null;
+  unitAmount: number | null;
+  currency: string | null;
+  interval: string | null;
+  active: boolean | null;
+  amountMatchesExpected: boolean | null;
+  expectedAmountKr: number;
+  errorMessage: string | null;
+}
+
+export interface RoleRoomBillingHealth {
+  checkedAt: string;
+  stripeSecretKey: {
+    configured: boolean;
+    preview: string | null;
+    mode: 'live' | 'test' | 'unknown';
+    validatedAgainstStripe: boolean | null;
+    errorMessage: string | null;
+  };
+  webhookSecret: {
+    configured: boolean;
+    preview: string | null;
+    formatOk: boolean;
+  };
+  productionTeamPrice: RoleRoomBillingHealthPriceCheck | null;
+  contentProducerPrice: RoleRoomBillingHealthPriceCheck | null;
+  publicUrl: {
+    configured: boolean;
+    value: string | null;
+  };
+  overall: 'ok' | 'warnings' | 'failed';
+  failureCount: number;
+  warningCount: number;
+  summary: string;
+}
+
+export const roleRoomBillingHealthApi = {
+  check: async (): Promise<RoleRoomBillingHealth> => {
+    return jsonFetch<RoleRoomBillingHealth>('/role-room-billing-health');
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// "Hva er nytt"-oppføringer per Role Room-modus
+// ─────────────────────────────────────────────────────────
+
+export type WhatsNewKind = 'feature' | 'improvement' | 'fix';
+
+export interface WhatsNewEntry {
+  id: string;
+  mode: string;
+  kind: WhatsNewKind;
+  date: string | null;
+  title: string;
+  description: string | null;
+  published: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WhatsNewEntryInput = {
+  mode?: string;
+  kind?: WhatsNewKind;
+  date?: string | null;
+  title?: string;
+  description?: string | null;
+  published?: boolean;
+  displayOrder?: number;
+};
+
+/**
+ * Whats-new-modi matcher faktiske `ProfessionMode`-verdier (se
+ * `config/professionMode.ts`) pluss "dance" (felles for begge dance-
+ * arketyper, brukt av DanceWorkspace) og "global" (plattform-brede ting).
+ *
+ * Hver modus mappes til én feed:
+ *   • production / photographer / content_producer / content_creator —
+ *     casting-main sender selve ProfessionMode-strengen som modus.
+ *   • dance — DanceWorkspace bruker denne for både dance_studio og
+ *     dance_freelance (begge ser samme dance-feed).
+ *   • global — felles oppføringer (plattform-policy, prising, brand).
+ */
+export const WHATS_NEW_MODES: Array<{ slug: string; label: string }> = [
+  { slug: 'production', label: 'Produksjon (film/video)' },
+  { slug: 'photographer', label: 'Foto' },
+  { slug: 'content_producer', label: 'Innholdsprodusent' },
+  { slug: 'content_creator', label: 'Innholdsskaper' },
+  { slug: 'dance', label: 'Dance Studio (alle dans-arketyper)' },
+  { slug: 'global', label: 'Hele plattformen' },
+];
+
+export const WHATS_NEW_KIND_LABELS: Record<WhatsNewKind, string> = {
+  feature: 'Nytt',
+  improvement: 'Forbedret',
+  fix: 'Fikset',
+};
+
+export const whatsNewApi = {
+  listAdmin: async (mode?: string): Promise<WhatsNewEntry[]> => {
+    const path = mode ? `/whats-new?mode=${encodeURIComponent(mode)}` : '/whats-new';
+    const data = await jsonFetch<{ items: WhatsNewEntry[] }>(path);
+    return data.items;
+  },
+  create: async (input: WhatsNewEntryInput): Promise<WhatsNewEntry> => {
+    const data = await jsonFetch<{ item: WhatsNewEntry }>('/whats-new', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patch: async (id: string, input: WhatsNewEntryInput): Promise<WhatsNewEntry> => {
+    const data = await jsonFetch<{ item: WhatsNewEntry }>(`/whats-new/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/whats-new/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };

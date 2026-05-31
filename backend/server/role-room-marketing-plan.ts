@@ -648,7 +648,19 @@ export async function activateMarketingPlan(
         WHERE id = $1 AND project_id = $2 AND status = 'draft'`,
       [planId, projectId],
     );
-    return (result.rowCount ?? 0) > 0;
+    const activated = (result.rowCount ?? 0) > 0;
+    // Snapshot etter aktivering — best-effort, ikke blokkerende
+    if (activated) {
+      try {
+        const mod = await import('./role-room-plan-versions-routes.js');
+        await mod.snapshotPlanVersion(pool, {
+          projectId, generatedByUserId: null, generatedByKind: 'agent',
+        });
+      } catch (e) {
+        console.warn('[marketing-plan] versioning snapshot failed', e);
+      }
+    }
+    return activated;
   } catch (error) {
     console.error('[marketing-plan] activate failed', error);
     return false;

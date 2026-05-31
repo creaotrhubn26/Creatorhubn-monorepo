@@ -15,6 +15,7 @@
 
 import jsPDF from 'jspdf';
 import type { RoleRoomAgentProducerBootstrapResult } from '../services/roleRoomAgentService';
+import authSessionService from '../services/authSessionService';
 
 const VERSION_STORE_KEY_PREFIX = 'roleRoom.researchVersions.';
 const MAX_VERSIONS_PER_PROJECT = 50;
@@ -29,7 +30,7 @@ export async function fetchServerResearchVersion(
   try {
     const response = await fetch(
       `/api/role-room/agent/research/version-info?researchId=${encodeURIComponent(researchId)}`,
-      { credentials: 'include' },
+      { headers: authSessionService.getAuthHeadersSync() },
     );
     if (!response.ok) return null;
     const payload = await response.json().catch(() => null) as

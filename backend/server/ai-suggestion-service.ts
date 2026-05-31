@@ -371,6 +371,15 @@ export function createAISuggestionService(
     projectId: string,
     filter: AISuggestionFilter = {},
   ): Promise<AISuggestion[]> {
+    // casting_ai_suggestions.project_id er uuid-type. TROLL-demo og andre
+    // legacy-prosjekter har string-IDer som ikke er gyldige UUIDs (f.eks.
+    // 'troll-1780050683358') — sender vi dem til Postgres returnerer den
+    // 500 "invalid input syntax for type uuid". Tabellen kan likevel ikke
+    // ha rader for ikke-UUID prosjekter, så vi kortslutter med tom liste.
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(projectId)) {
+      return [];
+    }
     const conditions: string[] = ["project_id = $1"];
     const values: unknown[] = [projectId];
     let i = 2;

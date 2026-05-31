@@ -45,6 +45,7 @@ import {
   Link as LinkIcon,
   Sync as SyncIcon,
   Save as SaveIcon,
+  AutoFixHigh as AutoFixHighIcon,
   Close as CloseIcon,
   Visibility as VisibilityIcon,
   CollectionsBookmark as CollectionsBookmarkIcon,
@@ -108,7 +109,7 @@ interface StoryboardIntegrationViewProps {
 }
 
 type ViewMode = 'script' | 'storyboard' | 'shotlist' | 'split';
-type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'review';
+type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'review' | 'moodboard';
 type StoryboardDetailLevel = 'idea' | 'blocking' | 'shot' | 'presentation';
 type StoryboardAssistFlag =
   | 'perspectiveGrid'
@@ -164,7 +165,86 @@ const WORKSPACE_MODE_OPTIONS: Array<{ value: StoryboardWorkspaceMode; label: str
   { value: 'thumbnail', label: 'Thumbnails' },
   { value: 'scene', label: 'Scene' },
   { value: 'review', label: 'Review' },
+  { value: 'moodboard', label: 'Mood-board' },
 ];
+
+// Stil-presets for tegne-systemet og AI-bilde-generering. Hver preset
+// definerer børste-default, palett og AI-prompt-tilegg slik at artisten
+// kan låse hele framet til en visuell stil med ett valg.
+type StylePresetId = 'storyboard' | 'noir' | 'watercolor' | 'liveAction' | 'anime' | 'sciFi';
+
+interface StylePreset {
+  id: StylePresetId;
+  label: string;
+  description: string;
+  brush: {
+    type: 'pen' | 'marker' | 'brush' | 'highlighter';
+    color: string;
+    size: number;
+  };
+  palette: string[];
+  aiPromptSuffix: string;
+  canvasTint: string;
+}
+
+const STYLE_PRESETS: Record<StylePresetId, StylePreset> = {
+  storyboard: {
+    id: 'storyboard',
+    label: 'Storyboard rough',
+    description: 'Klassisk svart-hvit blyantskisse for rapid sketching.',
+    brush: { type: 'pen', color: '#1a1a1a', size: 4 },
+    palette: ['#1a1a1a', '#555555', '#999999', '#cccccc'],
+    aiPromptSuffix: 'black-and-white pencil/charcoal storyboard sketch with loose strokes, clear silhouettes, no text, no captions',
+    canvasTint: '#fafaf8',
+  },
+  noir: {
+    id: 'noir',
+    label: 'Film noir',
+    description: 'Høy-kontrast svart-hvit med chiaroscuro. Klassisk 40-talls noir / Sin City-stil.',
+    brush: { type: 'brush', color: '#000000', size: 6 },
+    palette: ['#000000', '#1a1a1a', '#444444', '#888888', '#ffffff'],
+    aiPromptSuffix: 'high contrast black-and-white film noir, deep shadows, low-key lighting, chiaroscuro, hard rim light, smoke/fog atmosphere, dramatic silhouettes, 1940s detective film, Sin City graphic novel style',
+    canvasTint: '#0a0a0a',
+  },
+  watercolor: {
+    id: 'watercolor',
+    label: 'Watercolor concept',
+    description: 'Soft akvarell-stil for mood-pieces og early concept-art.',
+    brush: { type: 'brush', color: '#5b7da8', size: 12 },
+    palette: ['#1e2a3a', '#5b7da8', '#a8b8c4', '#d9c5a0', '#e8d4b8', '#8b6f47'],
+    aiPromptSuffix: 'watercolor concept art, soft washes of color, atmospheric perspective, painterly, loose impressionistic style, no harsh lines',
+    canvasTint: '#f8f4ed',
+  },
+  liveAction: {
+    id: 'liveAction',
+    label: 'Live-action ref',
+    description: 'Fotorealistisk konsept som en ekte set/lokasjon. Bruk som over-paint-referanse.',
+    brush: { type: 'pen', color: '#2a2a2a', size: 3 },
+    palette: ['#2a2a2a', '#6b5a4a', '#8b7355', '#a89880', '#c4b59a', '#d4c5a8'],
+    aiPromptSuffix: 'photorealistic cinematic concept frame, naturalistic lighting, real-world location reference, 35mm film grain, anamorphic widescreen',
+    canvasTint: '#ffffff',
+  },
+  anime: {
+    id: 'anime',
+    label: 'Anime / Manga',
+    description: 'Skarp linjeføring, flate fyllinger, anime-/manga-inspirert.',
+    brush: { type: 'pen', color: '#1a1a1a', size: 3 },
+    palette: ['#1a1a1a', '#ff5252', '#2196f3', '#4caf50', '#ffeb3b', '#ffffff'],
+    aiPromptSuffix: 'anime storyboard, manga style, sharp clean ink lines, flat color fills, dramatic action lines, screentone shading, dynamic perspective',
+    canvasTint: '#ffffff',
+  },
+  sciFi: {
+    id: 'sciFi',
+    label: 'Sci-fi neon',
+    description: 'Mørk neon-stil for cyberpunk og futuristisk sci-fi.',
+    brush: { type: 'marker', color: '#00d4ff', size: 5 },
+    palette: ['#00d4ff', '#ff00ff', '#ffff00', '#00ff00', '#9c27b0', '#000020'],
+    aiPromptSuffix: 'cyberpunk sci-fi concept art, neon-lit, holographic interfaces, dark atmospheric environment, rim light from magenta and cyan sources, futuristic architecture',
+    canvasTint: '#0a0a1f',
+  },
+};
+
+const STYLE_PRESET_OPTIONS = Object.values(STYLE_PRESETS);
 
 const STORYBOARD_LANGUAGE_OPTIONS = ['Wide', 'Medium', 'Close-up', 'Insert', 'Over-shoulder', 'Top shot'] as const;
 const SCREEN_DIRECTION_OPTIONS: ScreenDirection[] = ['left-to-right', 'right-to-left', 'static'];
@@ -1386,6 +1466,65 @@ const StoryboardView: React.FC<{
   const editingFrame = frames.find((frame) => frame.id === editingFrameId) || null;
   const quickViewFrame = frames.find((frame) => frame.id === quickViewFrameId) || null;
   const activeFrame = frames[activeFrameIndex] || null;
+  // AI-image-gen state. Når knappen klikkes, kaller vi backend's DALL-E 3-
+  // route med scene-context + valgt frames metadata. Resultat-bilde lagres
+  // som backgroundImage på framet via patchFrame, så tegneren kan tegne over.
+  const [aiGenerating, setAiGenerating] = useState(false);
+  // Stil-preset for hele frame-grupperingen. Påvirker (1) AI-prompt-tilegg
+  // som sendes til DALL-E, (2) default-børste + palett i FrameDrawingEditor
+  // gjennom initialBrushSettings, og (3) canvas-tint i preview-thumbnails.
+  // Default: 'storyboard' (klassisk svart-hvit blyantskisse).
+  const [stylePresetId, setStylePresetId] = useState<StylePresetId>('storyboard');
+  const stylePreset = STYLE_PRESETS[stylePresetId];
+  const handleGenerateAIImage = useCallback(async () => {
+    if (!activeFrame || !projectId) return;
+    setAiGenerating(true);
+    try {
+      const { upsertStoryboard, generateAIImage } = await import('../services/storyboardApiService');
+      // Sørg for at det finnes en server-rad for dette framet (idempotent
+      // upsert på frame_id). Vi trenger en uuid for å trigge DALL-E-routen.
+      const sbRow = await upsertStoryboard(projectId, {
+        sceneId,
+        frameId: activeFrame.id,
+        title: activeFrame.shotNumber
+          ? `${activeFrame.shotNumber} — ${activeFrame.description ?? ''}`.trim()
+          : (activeFrame.description ?? sceneLabel),
+        width: 1792,
+        height: 1024,
+        workflowLevel: activeFrame.detailLevel ?? 'idea',
+      });
+      const result = await generateAIImage(projectId, sbRow.id, {
+        sceneDescription: scene.description ?? scene.sceneHeading ?? sceneLabel,
+        intExt: scene.intExt,
+        timeOfDay: scene.timeOfDay,
+        locationName: scene.locationName ?? scene.location,
+        shotType: activeFrame.shotType ?? activeFrame.cameraAngle,
+        cinematicFormat: projectCinemaFormat,
+        // Stil-preset overstyrer styleNote når den er valgt. AI-prompten
+        // får hele preset.aiPromptSuffix lagt på enden — slik blokkerer
+        // valg av Noir-preset hele framet til chiaroscuro-estetikk.
+        styleNote: [stylePreset.aiPromptSuffix, activeFrame.notes].filter(Boolean).join('. ') || undefined,
+        quality: 'standard',
+        aspectRatio: '1792x1024',
+      });
+      const imageUrl = result.storyboard.imageData ?? '';
+      if (imageUrl) {
+        // Sett som frame's imageUrl + imageSource så det vises som bakgrunn
+        // i FrameCard og kan tegnes over i FrameDrawingEditor.
+        patchFrame(activeFrame.id, {
+          imageUrl,
+          thumbnailUrl: imageUrl,
+          imageSource: 'ai-generated',
+          updatedAt: new Date().toISOString(),
+        });
+        showSuccess('AI-bilde generert. Klikk «Tegne» for å skissere over.');
+      }
+    } catch (err) {
+      showError(`Kunne ikke generere AI-bilde: ${(err as Error).message}`);
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, stylePreset, patchFrame, showSuccess, showError]);
   const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
   const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
   const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;
@@ -2086,6 +2225,43 @@ const StoryboardView: React.FC<{
               )}
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
+              {/* Stil-preset-velger. Påvirker både AI-prompt (Noir → film-
+                  noir-chiaroscuro) og standardene i FrameDrawingEditor. */}
+              <Tooltip title={stylePreset.description}>
+                <TextField
+                  select
+                  size="small"
+                  value={stylePresetId}
+                  onChange={(e) => setStylePresetId(e.target.value as StylePresetId)}
+                  sx={{ minWidth: 170 }}
+                  SelectProps={{ native: false }}
+                  label="Stil-preset"
+                >
+                  {STYLE_PRESET_OPTIONS.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Box sx={{
+                          width: 14, height: 14, borderRadius: '3px',
+                          background: p.canvasTint,
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          flexShrink: 0,
+                        }} />
+                        <span>{p.label}</span>
+                      </Stack>
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Tooltip>
+              <Button
+                startIcon={<AutoFixHighIcon />}
+                variant="contained"
+                color="secondary"
+                size="small"
+                onClick={handleGenerateAIImage}
+                disabled={!activeFrame || aiGenerating}
+              >
+                {aiGenerating ? 'Genererer…' : 'Generer AI-bilde'}
+              </Button>
               <Button
                 startIcon={<SaveIcon />}
                 variant="outlined"
@@ -2242,6 +2418,28 @@ const StoryboardView: React.FC<{
         </Stack>
       </Paper>
 
+      {/* Mood-board-fanen: viser MoodBoardPanel full-bredde i stedet
+          for frame-grid. Lar artisten bygge visuell referanse-stack
+          før frames tegnes. */}
+      {workspaceMode === 'moodboard' && (
+        <Box sx={{ mt: 1 }}>
+          <MoodBoardPanel
+            sceneId={sceneId}
+            compact={false}
+            onUseAsReference={(image) => {
+              const targetFrame = frames[activeFrameIndex] ?? frames[0];
+              if (!targetFrame) return;
+              setPendingReferenceSrc(image.dataUrl);
+              setDrawingFrameId(targetFrame.id);
+              // Hopp tilbake til thumbnail-modus så artisten ser hvor
+              // referansen lander.
+              setWorkspaceMode('thumbnail');
+            }}
+          />
+        </Box>
+      )}
+
+      {workspaceMode !== 'moodboard' && (
       <Box
         sx={{
           display: 'grid',
@@ -2349,25 +2547,31 @@ const StoryboardView: React.FC<{
           </Box>
         ))}
       </Box>
+      )}
 
-      {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift. */}
-      {storyboardFrames.length > 1 && (
+      {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift.
+          Bruker `frames`/`activeFrameIndex`/`onSelectFrame` prop-navnene i
+          StoryboardView (parent StoryboardIntegrationView's variabler
+          `storyboardFrames`/`activeFrameIdx`/`handleFrameSelect` finnes ikke
+          her i sub-komponenten — refactor-tabbing forårsaket ReferenceError
+          som krasjet hele Storyboard-dialogen). */}
+      {frames.length > 1 && (
         <Box sx={{ mt: 2, display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }} data-testid="continuity-mount">
           <ContinuityStrip
-            frames={storyboardFrames.map((f) => ({
+            frames={frames.map((f) => ({
               id: f.id,
               imageUrl: f.imageUrl,
               thumbnailUrl: f.thumbnailUrl,
               description: f.description,
               shotNumber: f.shotNumber,
             }))}
-            activeIndex={activeFrameIdx}
-            onSelectFrame={handleFrameSelect}
+            activeIndex={activeFrameIndex}
+            onSelectFrame={onSelectFrame}
             compact
           />
           <StyleConsistencyIndicator
-            frames={storyboardFrames}
-            activeFrameId={storyboardFrames[activeFrameIdx]?.id}
+            frames={frames}
+            activeFrameId={frames[activeFrameIndex]?.id}
             targetPalette={moodBoardPalette.palette.length > 0 ? moodBoardPalette.palette : undefined}
             compact
           />
@@ -2377,10 +2581,10 @@ const StoryboardView: React.FC<{
       {/* Sprint A.7: Animatic-avspilling — spiller frame-sekvensen som
           enkel video for å teste pacing. Caption (manus-linjer) vises
           under stagen så artisten ser om dialog matcher visuelt tempo. */}
-      {storyboardFrames.length > 0 && (
+      {frames.length > 0 && (
         <Box sx={{ mt: 2 }} data-testid="animatic-mount">
           <AnimaticPlayer
-            frames={storyboardFrames.map((f) => {
+            frames={frames.map((f) => {
               let caption: string | undefined;
               if (
                 Array.isArray(f.scriptLineRange) &&

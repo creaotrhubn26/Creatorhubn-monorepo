@@ -2,6 +2,8 @@
  * Frontend client for /api/dance/ops.
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 const BASE = '/api/dance/ops';
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -22,13 +24,13 @@ function qs(params: Record<string, string | undefined | null>): string {
 }
 
 async function fetchList<T>(path: string, projectId?: string | null): Promise<T[]> {
-  const res = await fetch(`${BASE}${path}${qs({ projectId: projectId ?? undefined })}`, { credentials: 'include' });
+  const res = await fetch(`${BASE}${path}${qs({ projectId: projectId ?? undefined })}`, { headers: danceAuthHeaders(), credentials: 'include' });
   const body = await readJson<{ success: boolean; data: T[] }>(res);
   return body.data;
 }
 async function postJson<T>(path: string, payload: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(payload),
   });
   const body = await readJson<{ success: boolean; data: T }>(res);
@@ -36,14 +38,14 @@ async function postJson<T>(path: string, payload: unknown): Promise<T> {
 }
 async function patchJson<T>(path: string, payload: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH', headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include', body: JSON.stringify(payload),
   });
   const body = await readJson<{ success: boolean; data: T }>(res);
   return body.data;
 }
 async function deletePath(path: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`, { method: 'DELETE', credentials: 'include' });
+  const res = await fetch(`${BASE}${path}`, { method: 'DELETE', headers: danceAuthHeaders(), credentials: 'include' });
   if (!res.ok && res.status !== 404) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error || `HTTP ${res.status}`);

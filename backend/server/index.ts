@@ -33,6 +33,7 @@ import Stripe from "stripe";
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -40,6 +41,29 @@ import { Pool } from "pg";
 import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
+import { registerRoleRoomProfileRoutes } from "./role-room-profile-routes.js";
+import { registerRoleRoomProjectTabConfigRoutes } from "./role-room-project-tab-config-routes.js";
+import { registerRoleRoomProjectMembersRoutes } from "./role-room-project-members-routes.js";
+import { registerRoleRoomSeatManagementRoutes } from "./role-room-seat-management-routes.js";
+import { registerRoleRoomBillingAlertsRoutes } from "./role-room-billing-alerts-routes.js";
+import { registerRoleRoomSeatReconciliationRoutes } from "./role-room-seat-reconciliation-routes.js";
+import { registerRoleRoomUpcomingJobsRoutes } from "./role-room-upcoming-jobs-routes.js";
+import { registerRoleRoomFeedPlanThumbnailRoutes } from "./role-room-feed-plan-thumbnail-routes.js";
+import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-routes.js";
+import { registerRoleRoomThumbnailTemplatesRoutes } from "./role-room-thumbnail-templates-routes.js";
+import { registerRoleRoomLowerThirdsRoutes } from "./role-room-lower-thirds-routes.js";
+import { registerRoleRoomCaptionsRoutes } from "./role-room-captions-routes.js";
+import { registerRoleRoomBrollRoutes } from "./role-room-broll-routes.js";
+import { registerRoleRoomMusicRoutes } from "./role-room-music-routes.js";
+import { registerRoleRoomMulticamRoutes } from "./role-room-multicam-routes.js";
+import { registerRoleRoomSocialCutsRoutes } from "./role-room-social-cuts-routes.js";
+import { registerRoleRoomReviewRoutes } from "./role-room-review-routes.js";
+import { registerRoleRoomEditorCommentsRoutes } from "./role-room-editor-comments-routes.js";
+import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketing-preview-video-routes.js";
+import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
+import { registerRoleRoomPlanVersionsRoutes } from "./role-room-plan-versions-routes.js";
+import { registerRoleRoomMarketingActivityFeedRoutes } from "./role-room-marketing-activity-feed-routes.js";
+import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
   readAuditionReminderStatus,
@@ -92,6 +116,11 @@ import { persistWebhookEvents } from "./role-room-whatsapp-events-service.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createPostAgentRouter } from "./post-agent-anthropic-routes.js";
 import { handlePostAgentStripeWebhook } from "./post-agent-stripe-webhook.js";
+import {
+  handleRoleRoomSubscriptionUpdated,
+  handleRoleRoomSubscriptionDeleted,
+  handleRoleRoomPaymentFailed,
+} from "./role-room-seat-webhook-handlers.js";
 import { createSfxMatchRouter } from "./sfx-match-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -368,6 +397,7 @@ import {
 } from "./meta-conversions-api";
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
+import { setupWhatsNewRoutes } from "./whats-new-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
@@ -411,6 +441,9 @@ import { setupRoleRoomAgentCoreRoutes } from "./role-room-agent-core-routes";
 import { setupRoleRoomDataSourcesRoutes } from "./role-room-data-sources-routes";
 import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-routes";
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
+import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
+import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
+import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -465,6 +498,7 @@ import { setupRoleRoomEducationInquiriesRoutes } from "./role-room-education-inq
 import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
 import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
+import { setupRoleRoomBillingHealthRoutes } from "./role-room-billing-health-routes";
 import { setupRoleRoomAuditionsRoutes } from "./role-room-auditions-routes";
 import { setupCmsPagesRoutes } from "./cms-pages-routes";
 import { setupCommunityPresenceRoutes } from "./community-presence-routes";
@@ -597,6 +631,7 @@ import { setupAdminSeoTrendsRoutes } from "./admin-seo-trends-routes";
 import { setupTwoFaRoutes } from "./twofa-routes";
 import { setupCouplesRoutes } from "./couples-routes";
 import { setupAdminProvisioningRoutes } from "./admin-provisioning-routes";
+import { setupResendAdminRoutes } from "./resend-admin-routes";
 import { setupEmailsRoutes } from "./emails-routes";
 import { setupTelemetryRoutes } from "./telemetry-routes";
 import { setupVideoSyncRoutes } from "./video-sync-routes";
@@ -1057,6 +1092,8 @@ app.post(
           if (!agentResult.matched) {
             await clearRoleRoomCommercialStripeSubscription(invoice);
           }
+          // I tillegg: logg billing-alert for Role Room seat-billing
+          await handleRoleRoomPaymentFailed(pool, invoice);
           break;
         }
         case "customer.subscription.deleted": {
@@ -1072,6 +1109,14 @@ app.post(
           if (!agentResult.matched) {
             await clearRoleRoomCommercialStripeSubscription(subscription);
           }
+          // I tillegg: revoker tilgangen til alle team-medlemmer
+          await handleRoleRoomSubscriptionDeleted(pool, subscription);
+          break;
+        }
+        case "customer.subscription.updated": {
+          const subscription = event.data.object as Stripe.Subscription;
+          // Detecter quantity-drift + status-overganger til past_due/unpaid
+          await handleRoleRoomSubscriptionUpdated(pool, subscription);
           break;
         }
         default:
@@ -1689,6 +1734,59 @@ registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
+
+// Role Room member profile (separat fra Creatorhub-profil) — central solution
+// for alle Role Room-medlemmer. Inkluderer onboarding-state + R2-image-upload.
+// Bruker statiske imports av aws-sdk (toppen av filen) — `require()` her
+// før genererte esbuild-bundle som kastet `Dynamic require of @aws-sdk/client-s3`
+// ved boot på Render, så hele backend feilet å starte og alle deploys
+// siden 2026-05-28 18:16 var "update_failed".
+{
+  const r2cfg = buildCmsR2Config();
+  let uploadImage: ((buf: Buffer, mime: string, key: string) => Promise<string>) | undefined;
+  if (r2cfg.enabled && r2cfg.endpoint && r2cfg.accessKeyId && r2cfg.secretAccessKey && r2cfg.bucket) {
+    const client = new S3Client({
+      region: "auto",
+      endpoint: r2cfg.endpoint,
+      credentials: {
+        accessKeyId: r2cfg.accessKeyId,
+        secretAccessKey: r2cfg.secretAccessKey,
+      },
+    });
+    const bucket = r2cfg.bucket;
+    const publicBase = r2cfg.publicUrlBase?.replace(/\/+$/, "");
+    uploadImage = async (buffer, mimeType, key) => {
+      await client.send(new PutObjectCommand({
+        Bucket: bucket, Key: key, Body: buffer,
+        ContentType: mimeType,
+        CacheControl: "public, max-age=31536000, immutable",
+      }));
+      return publicBase ? `${publicBase}/${key}` : `${r2cfg.endpoint}/${bucket}/${key}`;
+    };
+  }
+  registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
+}
+registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
+registerRoleRoomProjectMembersRoutes(app, { pool, activeSessions });
+registerRoleRoomSeatManagementRoutes(app, { pool, activeSessions });
+registerRoleRoomBillingAlertsRoutes(app, { pool, requireAdminSession });
+registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
+registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
+registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
+registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
+registerRoleRoomThumbnailTemplatesRoutes(app, { pool, activeSessions });
+registerRoleRoomLowerThirdsRoutes(app, { pool, activeSessions });
+registerRoleRoomCaptionsRoutes(app, { pool, activeSessions });
+registerRoleRoomBrollRoutes(app, { pool, activeSessions });
+registerRoleRoomMusicRoutes(app, { pool, activeSessions });
+registerRoleRoomMulticamRoutes(app, { pool, activeSessions });
+registerRoleRoomSocialCutsRoutes(app, { pool, activeSessions });
+registerRoleRoomReviewRoutes(app, { pool, activeSessions });
+registerRoleRoomEditorCommentsRoutes(app, { pool, activeSessions });
+registerRoleRoomMarketingPreviewVideoRoutes(app, { pool, activeSessions });
+registerRoleRoomIntakeVersionsRoutes(app, { pool, activeSessions });
+registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
+registerRoleRoomMarketingActivityFeedRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
@@ -17790,6 +17888,15 @@ setupAdminInvestorsRoutes({
   logAdminActivity,
 });
 
+// ── "Hva er nytt" per Role Room-modus — public GET + admin CRUD
+setupWhatsNewRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
 // ── Industry targets (Tier-1 CRM) — driver content-marketing-engagement-system
 setupAdminIndustryTargetsRoutes({
   app,
@@ -17953,9 +18060,14 @@ setupMetaCapiRoutes({ app, getActiveSessionFromRequest });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
   try {
-    const ownerUserId = (req as { userId?: string }).userId
-      ?? readString(req.headers["x-user-id"] as string | undefined)
-      ?? "demo-user";
+    // Resolve faktisk innloggende bruker via Bearer-token. Faller tilbake til
+    // "demo-user" kun hvis ingen session — slik kan demo brukes anonymt i dev,
+    // men ekte brukere får prosjektet eid av seg selv så /api/casting/projects/:id
+    // finner det (filtrerer på created_by).
+    const resolvedUserId = compatResolveUserId(req);
+    const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
+      ? resolvedUserId
+      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
@@ -17973,6 +18085,186 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
       pool.query("SELECT * FROM casting_crew WHERE project_id = $1", [report.project.id]),
       pool.query("SELECT * FROM casting_locations WHERE project_id = $1", [report.project.id]),
     ]);
+
+    // Speil seedet data inn i compat-store så frontend's castingService.getProject()
+    // (som leser /api/casting/projects/:id → compat-store, IKKE de normaliserte
+    // tabellene) faktisk ser dataene. Uten dette viste demo-en 0 roller/0
+    // kandidater i dashbordet selv om DB hadde 8/8 seedet.
+    try {
+      const projectId = report.project.id;
+      const [
+        projectRes, rolesRes, candidatesRes, schedulesRes, propsRes, shotListsRes, userRolesRes,
+      ] = await Promise.all([
+        pool.query("SELECT * FROM casting_projects WHERE id = $1", [projectId]),
+        pool.query("SELECT * FROM casting_roles WHERE project_id = $1", [projectId]),
+        pool.query("SELECT * FROM casting_candidates WHERE project_id = $1", [projectId]),
+        pool.query("SELECT * FROM casting_schedules WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+        pool.query("SELECT * FROM casting_props WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+        pool.query("SELECT * FROM casting_shot_lists WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+        pool.query("SELECT * FROM casting_user_roles WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] })),
+      ]);
+      if (projectRes.rowCount && projectRes.rowCount > 0) {
+        const row = projectRes.rows[0] as Record<string, unknown>;
+        let metadata: Record<string, unknown> = {};
+        if (row.metadata && typeof row.metadata === "object") {
+          metadata = row.metadata as Record<string, unknown>;
+        } else if (typeof row.metadata === "string") {
+          try { metadata = JSON.parse(row.metadata); } catch { metadata = {}; }
+        }
+        const readStr = (v: unknown): string => (typeof v === "string" ? v : "");
+        const compatProject = {
+          ...row,
+          roles: rolesRes.rows,
+          candidates: candidatesRes.rows,
+          crew: crewRes.rows,
+          schedules: schedulesRes.rows,
+          locations: locsRes.rows,
+          props: propsRes.rows,
+          shotLists: shotListsRes.rows,
+          userRoles: userRolesRes.rows,
+          metadata,
+          projectId: row.id,
+          projectName: row.name,
+          projectType: readStr(metadata.projectType) || row.project_type,
+          clientName: readStr(metadata.clientName),
+          clientEmail: readStr(metadata.clientEmail),
+          clientPhone: readStr(metadata.clientPhone),
+          clientCompanyName: readStr(metadata.clientCompanyName),
+          clientOrganizationNumber: readStr(metadata.clientOrganizationNumber),
+          clientCompanyAddress: readStr(metadata.clientCompanyAddress),
+          eventDate: readStr(metadata.eventDate),
+          location: readStr(metadata.location),
+          guestCount: readStr(metadata.guestCount),
+          socialProfiles: Array.isArray(metadata.socialProfiles) ? metadata.socialProfiles : [],
+          collaborators: Array.isArray(metadata.collaborators) ? metadata.collaborators : [],
+          competitorAnalysis: metadata.competitorAnalysis ?? null,
+          localPresencePlan: metadata.localPresencePlan ?? null,
+          roleRoomAgentPrefill: metadata.roleRoomAgentPrefill ?? null,
+          splitSheetData: metadata.splitSheetData ?? null,
+          enableSplitSheet: metadata.enableSplitSheet === true,
+        };
+        await compatStoreSet(`casting:project:${projectId}`, compatProject);
+      }
+
+      // Mirror manuskripter + scener + shotLists + dialogue + acts til
+      // egne compat-store-prefiks slik at listManuscripts/listScenes
+      // m.fl. (som leser fra `casting:manuscript:` / `casting:scenes:` osv,
+      // ikke SQL-tabellene) faktisk finner dem. Uten dette returnerte
+      // /api/casting/manuscripts?projectId=<id> tom liste selv om DB-en
+      // hadde 1 manuskript + 10 scener seedet — så Story Writer / Story
+      // Logic / Scener / Role Room Studio viste ingen data.
+      // casting_acts ble lagt til i migrasjon 183. SQL-rader leses og
+      // mirres til compat-store under `casting:acts:<manuscript-id>` slik
+      // at listActs (som leser fra compat-store, ikke SQL direkte) finner
+      // 3-akts-strukturen seedet av troll-demo-seed-service.
+      const [manuscriptsRes, scenesRes, dialogueRes, actsRes] = await Promise.all([
+        pool.query("SELECT * FROM casting_manuscripts WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query("SELECT * FROM casting_scenes WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query("SELECT * FROM casting_dialogue WHERE project_id = $1", [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query("SELECT * FROM casting_acts WHERE project_id = $1 ORDER BY act_number", [projectId]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      // Mirror manuscripts. Hver manuscript får sin egen compat-store-key
+      // `casting:manuscript:<id>` siden listManuscripts() leser den prefix-en.
+      for (const m of manuscriptsRes.rows as any[]) {
+        const mid = typeof m?.id === "string" ? m.id : "";
+        if (!mid) continue;
+        await compatStoreSet(`casting:manuscript:${mid}`, {
+          ...m,
+          projectId: m.project_id ?? projectId,
+        });
+      }
+      // Scenes/dialogue/acts er keyet på MANUSCRIPT-id (ikke project), se
+      // dbLegacyScenesKey i casting-manuscripts-service. Grupper per
+      // manuscript_id og skriv én blob per manuscript.
+      const groupByManuscript = <T extends { manuscript_id?: string }>(rows: T[]) => {
+        const map = new Map<string, T[]>();
+        for (const row of rows) {
+          const mid = typeof row.manuscript_id === "string" ? row.manuscript_id : "";
+          if (!mid) continue;
+          const list = map.get(mid) ?? [];
+          list.push(row);
+          map.set(mid, list);
+        }
+        return map;
+      };
+      const scenesByManuscript = groupByManuscript(scenesRes.rows as any[]);
+      // Frontend (ManuscriptPanel + Scene Breakdown) leser camelCase-felter
+      // (sceneNumber, sceneHeading, intExt, timeOfDay, actNumber osv).
+      // SQL-radene er snake_case, så vi mapper feltene før skriving til
+      // compat-store. Uten mapping vises tabell-kolonnene Scene #, Heading,
+      // INT/EXT, Time blank selv om dataene finnes.
+      for (const [mid, rows] of scenesByManuscript) {
+        await compatStoreSet(`casting:scenes:${mid}`, rows.map((s: any) => ({
+          ...s,
+          projectId: s.project_id ?? projectId,
+          manuscriptId: s.manuscript_id ?? mid,
+          sceneNumber: s.scene_number,
+          sceneHeading: s.title,
+          intExt: s.int_ext,
+          timeOfDay: s.time_of_day,
+          // ProductionManuscriptView leser scene.locationName for
+          // Production Breakdown sin Location-kolonne. Vi har lagret
+          // lokasjonsnavnet i `setting`-feltet (string), så vi mirrorer
+          // det til både `locationName` og `location` for kompatibilitet.
+          locationName: s.setting,
+          location: s.setting,
+          createdAt: s.created_at,
+          updatedAt: s.updated_at,
+        })));
+      }
+      // Mirror revisions per manuscript så Script Revisjoner & Diff Viewer
+      // viser v1/v2/v3 med change-summary.
+      const revisionsRes = await pool
+        .query("SELECT * FROM casting_revisions WHERE project_id = $1 ORDER BY created_at", [projectId])
+        .catch(() => ({ rows: [] as any[] }));
+      const revisionsByManuscript = groupByManuscript(revisionsRes.rows as any[]);
+      for (const [mid, rows] of revisionsByManuscript) {
+        await compatStoreSet(`casting:revisions:${mid}`, rows.map((r: any) => ({
+          ...r,
+          projectId: r.project_id ?? projectId,
+          manuscriptId: r.manuscript_id ?? mid,
+          changeSummary: r.change_summary,
+          changesSummary: r.change_summary,
+          revisionNotes: r.revision_notes,
+          createdBy: r.created_by,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        })));
+      }
+      const dialogueByManuscript = groupByManuscript(dialogueRes.rows as any[]);
+      for (const [mid, rows] of dialogueByManuscript) {
+        await compatStoreSet(`casting:dialogue:${mid}`, rows.map((d: any) => ({
+          ...d,
+          projectId: d.project_id ?? projectId,
+          manuscriptId: d.manuscript_id ?? mid,
+          sceneId: d.scene_id,
+          characterName: d.character_name,
+          dialogueText: d.dialogue_text,
+          lineNumber: d.line_number,
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+        })));
+      }
+      const actsByManuscript = groupByManuscript(actsRes.rows as any[]);
+      for (const [mid, rows] of actsByManuscript) {
+        await compatStoreSet(`casting:acts:${mid}`, rows.map((a: any) => ({
+          ...a,
+          projectId: a.project_id ?? projectId,
+          manuscriptId: a.manuscript_id ?? mid,
+          actNumber: a.act_number,
+          startSceneNumber: a.start_scene_number,
+          endSceneNumber: a.end_scene_number,
+          createdAt: a.created_at,
+          updatedAt: a.updated_at,
+        })));
+      }
+      // ShotLists er per project i compat-store-konvensjonen.
+      if (shotListsRes.rows.length > 0) {
+        await compatStoreSet(`casting:shot-lists:${projectId}`, shotListsRes.rows);
+      }
+    } catch (mirrorErr) {
+      console.warn("[troll-demo] compat-store-mirror failed (non-fatal)", mirrorErr);
+    }
 
     res.json({
       success: true,
@@ -18012,9 +18304,10 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
 // Bare videre-kaller seed-all-handleren.
 app.post("/api/demo/troll/initialize-all", async (req, res) => {
   try {
-    const ownerUserId = (req as { userId?: string }).userId
-      ?? readString(req.headers["x-user-id"] as string | undefined)
-      ?? "demo-user";
+    const resolvedUserId = compatResolveUserId(req);
+    const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
+      ? resolvedUserId
+      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
@@ -25429,6 +25722,28 @@ setupRoleRoomAgentFeedPlanRoutes({
   pool,
   requireAdminSession,
   isCompatAdminFeatureEnabled,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent — talent eier sin egen profil + samtykke-registry per partner.
+// Migrasjon 209 (talents) + 210 (talent_consent_registry).
+setupRoleRoomTalentsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 1.5 — agency-perspektivet. Stella/NSF/produsenter ser
+// talents kun via consent. Migrasjon 211 (agency_orgs + users.agency_org_id).
+setupRoleRoomAgenciesRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 2 — alt-i-ett partners-overview + bulk-set + invite-flow.
+// Migrasjon 213 (talent_partner_invites). E2E-data for /talents/partners-siden.
+setupRoleRoomTalentPartnersRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
 });
 // ── Role Room social Meta — flyttet til ./role-room-social-meta-routes.ts
 //   16 endpoints: instagram (10) + facebook (6) inkl. OAuth, publish,
@@ -31107,6 +31422,15 @@ setupRoleRoomBillingAdminRoutes({
   ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
   ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
   ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+});
+
+// ── Role Room billing health-check — admin-gated Stripe-konfig-sjekk
+//   GET /api/admin/role-room/billing-health. Speiler scripten i
+//   backend/scripts/check-role-room-billing.mjs så Daniel kan sjekke
+//   Stripe-konfig fra Admin Room uten å åpne Render-shell.
+setupRoleRoomBillingHealthRoutes({
+  app,
+  requireAdminSession,
 });
 
 // ── Role Room auditions — Audition-entitet (migrasjon 140).
@@ -67187,6 +67511,7 @@ setupCouplesRoutes({
 // requests dups var interleaved og slettet i samme commit (live versions
 // ved 54093+ er uendret).
 setupAdminProvisioningRoutes({ app, pool, requireAdminSession });
+setupResendAdminRoutes({ app, pool, requireAdminSession });
 
 // /api/emails/* — 5 endpoints (CustomerInquiryCenter henter submissions
 // som email-meldinger: recent, stats, contacts, PATCH star, PATCH read).

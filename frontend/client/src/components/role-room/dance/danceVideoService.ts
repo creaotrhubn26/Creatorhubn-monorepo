@@ -2,6 +2,8 @@
  * Frontend client for /api/dance/video-clips and /api/dance/video-annotations.
  */
 
+import { danceAuthHeaders } from './danceAuthHeaders';
+
 export type VideoClipKind = 'rehearsal' | 'reference' | 'performance';
 export type AnnotationStatus = 'open' | 'resolved';
 
@@ -95,6 +97,10 @@ export async function uploadClip(input: UploadClipInput): Promise<VideoClip> {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${BASE}/video-clips`, true);
     xhr.withCredentials = true;
+    const authHeaders = danceAuthHeaders();
+    for (const [k, v] of Object.entries(authHeaders)) {
+      xhr.setRequestHeader(k, v);
+    }
     if (input.onProgress) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) input.onProgress!(e.loaded, e.total);
@@ -132,6 +138,7 @@ export async function listClips(query: ListClipsQuery = {}): Promise<VideoClip[]
   if (typeof query.limit === 'number') params.set('limit', String(query.limit));
   const qs = params.toString();
   const res = await fetch(qs ? `${BASE}/video-clips?${qs}` : `${BASE}/video-clips`, {
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   const body = await readJson<{ success: boolean; data: VideoClip[] }>(res);
@@ -140,6 +147,7 @@ export async function listClips(query: ListClipsQuery = {}): Promise<VideoClip[]
 
 export async function getClip(id: string): Promise<VideoClip | null> {
   const res = await fetch(`${BASE}/video-clips/${encodeURIComponent(id)}`, {
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (res.status === 404) return null;
@@ -153,7 +161,7 @@ export async function patchClip(
 ): Promise<VideoClip> {
   const res = await fetch(`${BASE}/video-clips/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(patch),
   });
@@ -164,6 +172,7 @@ export async function patchClip(
 export async function deleteClip(id: string): Promise<void> {
   const res = await fetch(`${BASE}/video-clips/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {
@@ -176,6 +185,7 @@ export async function deleteClip(id: string): Promise<void> {
 
 export async function listAnnotations(clipId: string): Promise<VideoAnnotation[]> {
   const res = await fetch(`${BASE}/video-clips/${encodeURIComponent(clipId)}/annotations`, {
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   const body = await readJson<{ success: boolean; data: VideoAnnotation[] }>(res);
@@ -203,7 +213,7 @@ export async function createAnnotation(
 ): Promise<VideoAnnotation> {
   const res = await fetch(`${BASE}/video-clips/${encodeURIComponent(clipId)}/annotations`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(input),
   });
@@ -229,7 +239,7 @@ export async function patchAnnotation(
 ): Promise<VideoAnnotation> {
   const res = await fetch(`${BASE}/video-annotations/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(patch),
   });
@@ -240,6 +250,7 @@ export async function patchAnnotation(
 export async function deleteAnnotation(id: string): Promise<void> {
   const res = await fetch(`${BASE}/video-annotations/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: danceAuthHeaders(),
     credentials: 'include',
   });
   if (!res.ok && res.status !== 404) {
@@ -259,6 +270,7 @@ export async function uploadVoiceNote(
   form.append('file', blob, filename);
   const res = await fetch(`${BASE}/video-clips/${encodeURIComponent(clipId)}/voice-note`, {
     method: 'POST',
+    headers: danceAuthHeaders(),
     credentials: 'include',
     body: form,
   });
