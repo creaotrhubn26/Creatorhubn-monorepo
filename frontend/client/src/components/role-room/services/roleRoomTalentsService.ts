@@ -239,6 +239,158 @@ const roleRoomTalentsService = {
     if (!r.ok) return { error: payload?.error || 'Kunne ikke hente talent' };
     return payload.talent as RoleRoomMaskedTalent;
   },
+
+  // ── Phase 2 e2e ──────────────────────────────────────────────────
+  async fetchPartnersOverview(): Promise<PartnersOverview> {
+    const r = await authFetch(`${BASE}/me/partners-overview`);
+    if (!r.ok) {
+      return {
+        talent: null,
+        stats: { activePartners: 0, sharedTalentPools: 0, pendingRequests: 0, gdprCompliantPercent: 100 },
+        partners: [],
+        feed: [],
+      };
+    }
+    const payload = await r.json().catch(() => null);
+    return payload as PartnersOverview;
+  },
+
+  async bulkSetConsents(input: {
+    partner_type: RoleRoomTalentPartnerType;
+    partner_ref: string;
+    partner_display_name?: string;
+    perms: { profiles: boolean; selftapes: boolean; workshops: boolean; auditions: boolean };
+  }): Promise<{ ok: true } | { error: string }> {
+    const r = await authFetch(`${BASE}/me/consents/bulk-set`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Kunne ikke oppdatere tillatelser' };
+    return { ok: true };
+  },
+
+  async createPartnerInvite(input: {
+    partner_type: RoleRoomTalentPartnerType;
+    partner_email: string;
+    partner_display_name?: string;
+    scopes?: RoleRoomTalentConsentScope[];
+    message?: string;
+  }): Promise<RoleRoomPartnerInvite | { error: string }> {
+    const r = await authFetch(`${BASE}/me/partner-invites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Kunne ikke opprette invite' };
+    return payload.invite as RoleRoomPartnerInvite;
+  },
+
+  async fetchPartnerInvites(): Promise<RoleRoomPartnerInvite[]> {
+    const r = await authFetch(`${BASE}/me/partner-invites`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return Array.isArray(payload?.invites) ? payload.invites : [];
+  },
+
+  async cancelPartnerInvite(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${BASE}/me/partner-invites/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Kunne ikke avbryte invite' };
+    }
+    return { ok: true };
+  },
+
+  async lookupPartnerInvite(token: string): Promise<{ invite: PartnerInviteDetail; expired?: boolean } | { error: string }> {
+    const r = await fetch(`${AGENCY_BASE}/partner-invites/${encodeURIComponent(token)}`);
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Invite ikke funnet' };
+    return payload;
+  },
+
+  async acceptPartnerInvite(token: string): Promise<{ ok: boolean; agencyId?: string; error?: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/partner-invites/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, error: payload?.error || 'Kunne ikke akseptere invite' };
+    return { ok: true, agencyId: payload.agencyId };
+  },
 };
+
+// ── Phase 2 e2e types ────────────────────────────────────────────────
+
+export interface PartnerOverviewRow {
+  id: string;
+  partner_type: RoleRoomTalentPartnerType;
+  role_label: 'Casting Partner' | 'Professional Center';
+  initials: string;
+  display_name: string;
+  location: string | null;
+  email: string | null;
+  website: string | null;
+  logo: string | null;
+  verified: boolean;
+  scopes: RoleRoomTalentConsentScope[];
+  access_level: 'full' | 'limited' | 'custom' | 'view_only';
+  last_activity: string;
+  perms: { profiles: boolean; selftapes: boolean; workshops: boolean; auditions: boolean };
+}
+
+export interface FeedEvent {
+  kind: 'access' | 'invite' | 'consent_grant';
+  id: string;
+  partner_type: RoleRoomTalentPartnerType;
+  partner_ref: string | null;
+  display_name: string | null;
+  details: Record<string, unknown>;
+  occurred_at: string;
+  badge: 'pending' | null;
+}
+
+export interface PartnersOverview {
+  talent: { id: string; display_name: string } | null;
+  stats: {
+    activePartners: number;
+    sharedTalentPools: number;
+    pendingRequests: number;
+    gdprCompliantPercent: number;
+  };
+  partners: PartnerOverviewRow[];
+  feed: FeedEvent[];
+}
+
+export interface RoleRoomPartnerInvite {
+  id: string;
+  partner_type: RoleRoomTalentPartnerType;
+  partner_email: string;
+  partner_display_name: string | null;
+  scopes: RoleRoomTalentConsentScope[];
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+  message: string | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  token: string;
+  acceptUrl?: string;
+  maskedEmail?: string;
+}
+
+export interface PartnerInviteDetail {
+  id: string;
+  partner_type: RoleRoomTalentPartnerType;
+  partner_email: string;
+  partner_display_name: string | null;
+  scopes: RoleRoomTalentConsentScope[];
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+  message: string | null;
+  expires_at: string;
+  talent_name: string;
+}
 
 export default roleRoomTalentsService;

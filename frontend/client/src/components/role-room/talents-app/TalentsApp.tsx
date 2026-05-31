@@ -14,6 +14,7 @@ import { Box, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import TalentsAppShell, { type TalentsAppPage } from './TalentsAppShell';
 import PartnersCollaborationPage from './pages/PartnersCollaborationPage';
+import PartnerInviteAcceptPage from './pages/PartnerInviteAcceptPage';
 import { palette } from './theme';
 
 const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
@@ -49,6 +50,15 @@ export function parseTalentsAppPage(): TalentsAppPage | null {
   const segment = path.substring('/talents'.length).replace(/^\//, '');
   return ROUTE_TO_PAGE[segment] ?? 'dashboard';
 }
+
+/** Egen check for invite-accept-siden — full-screen uten shell. */
+export function isPartnerInviteAcceptPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  return path === '/talents/partner-invite';
+}
+
+export { PartnerInviteAcceptPage };
 
 export default function TalentsApp({ initialPage }: { initialPage?: TalentsAppPage }) {
   const [page, setPage] = useState<TalentsAppPage>(initialPage ?? 'partners');
