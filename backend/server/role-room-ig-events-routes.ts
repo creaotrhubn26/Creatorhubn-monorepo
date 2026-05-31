@@ -330,10 +330,10 @@ function renderEvents(payload) {
   const data = (payload.events && Array.isArray(payload.events.data)) ? payload.events.data : [];
   const header = '<div style="color:#fbbf24;font-size:13px;margin-top:8px"><strong>' + data.length + '</strong> events on IG account ' + payload.igUserId + '</div>';
   const cards = data.slice(0, 20).map((e, i) => {
-    const placeName = (e.place && e.place.name) || '(no place)';
+    const placeName = (e.venue && e.venue.name) || (e.place && e.place.name) || '(no place)';
     return '<div class="event-card" data-testid="event-card">'
       + '<div class="event-info">'
-      + '<div class="event-name">' + (e.name || '(no name)').replace(/</g, '&lt;') + '</div>'
+      + '<div class="event-name">' + (e.title || e.name || '(no title)').replace(/</g, '&lt;') + '</div>'
       + '<div class="event-meta">'
       + '<span>📅 ' + (e.start_time || '?') + '</span>'
       + (e.end_time ? '<span>→ ' + e.end_time + '</span>' : '')
