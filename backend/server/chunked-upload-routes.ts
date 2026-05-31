@@ -22,6 +22,10 @@ import * as fsSync from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomUUID } from "crypto";
+import {
+  routeAssembledUpload,
+  getStorageStatus,
+} from "./upload-storage-router.js";
 
 export interface ChunkedUploadRoutesDeps {
   app: express.Application;
@@ -421,17 +425,59 @@ export function setupChunkedUploadRoutes(
         }
 
         const stats = await fs.stat(finalPath);
-        const finalRelPath = path.relative(UPLOAD_ROOT, finalPath);
+
+        // Rute den ferdige fila til riktig storage-backend:
+        //   - video/* → Cloudflare Stream
+        //   - annet → R2 hvis konfigurert
+        //   - fallback → filesystem (servet via /api/chunked-upload/files/:fileId)
+        const storage = await routeAssembledUpload({
+          fileId,
+          fileName: row.file_name,
+          mimeType: row.mime_type,
+          size: stats.size,
+          sourcePath: finalPath,
+          metadata: row.metadata,
+          userId,
+        });
+
+        // Hvis backend ikke er filesystem, oppdater final_file_path til å
+        // peke til hvor fila faktisk endte opp (intern referanse). Hvis
+        // den fortsatt er på filesystem behold relativ sti slik at
+        // /api/chunked-upload/files/:fileId fortsatt fungerer.
+        const finalRelPath =
+          storage.backend === "filesystem"
+            ? path.relative(UPLOAD_ROOT, finalPath)
+            : storage.backend === "r2"
+              ? `r2://${storage.r2Bucket}/${storage.r2Key}`
+              : `stream://${storage.streamUid}`;
+
+        // Lagre storage-metadata i metadata-feltet (vi har ikke egen kolonne)
+        const updatedMetadata = {
+          ...(row.metadata && typeof row.metadata === "object"
+            ? row.metadata
+            : {}),
+          storageBackend: storage.backend,
+          ...(storage.streamUid ? { streamUid: storage.streamUid } : {}),
+          ...(storage.playbackUrl ? { playbackUrl: storage.playbackUrl } : {}),
+          ...(storage.thumbnailUrl
+            ? { thumbnailUrl: storage.thumbnailUrl }
+            : {}),
+          ...(storage.r2Key
+            ? { r2Key: storage.r2Key, r2Bucket: storage.r2Bucket }
+            : {}),
+          ...(storage.downloadUrl ? { downloadUrl: storage.downloadUrl } : {}),
+        };
 
         await pool.query(
           `UPDATE chunked_uploads
               SET status = 'completed',
                   final_file_id = $2,
                   final_file_path = $3,
+                  metadata = $4::jsonb,
                   completed_at = now(),
                   updated_at = now()
             WHERE id = $1`,
-          [uploadId, fileId, finalRelPath],
+          [uploadId, fileId, finalRelPath, JSON.stringify(updatedMetadata)],
         );
 
         res.json({
@@ -442,7 +488,17 @@ export function setupChunkedUploadRoutes(
           size: stats.size,
           mimeType: row.mime_type,
           metadata: row.metadata,
-          downloadUrl: `/api/chunked-upload/files/${fileId}`,
+          storage: {
+            backend: storage.backend,
+            streamUid: storage.streamUid,
+            playbackUrl: storage.playbackUrl,
+            thumbnailUrl: storage.thumbnailUrl,
+            ready: storage.ready,
+            r2Key: storage.r2Key,
+            r2Bucket: storage.r2Bucket,
+          },
+          downloadUrl:
+            storage.downloadUrl || `/api/chunked-upload/files/${fileId}`,
         });
       } catch (err) {
         console.error("[chunked-upload] finish failed:", err);
@@ -488,6 +544,7 @@ export function setupChunkedUploadRoutes(
   });
 
   // FILES — serve assemblet fil (kun for upload-eieren).
+  // Hvis fila ble flyttet til R2 eller Stream: redirect til ekte URL.
   app.get("/api/chunked-upload/files/:fileId", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
@@ -496,7 +553,7 @@ export function setupChunkedUploadRoutes(
 
     try {
       const r = await pool.query(
-        `SELECT file_name, mime_type, final_file_path
+        `SELECT file_name, mime_type, final_file_path, metadata
            FROM chunked_uploads
           WHERE final_file_id = $1 AND user_id = $2 AND status = 'completed'`,
         [fileId, userId],
@@ -505,6 +562,18 @@ export function setupChunkedUploadRoutes(
         return res.status(404).end();
       }
       const row = r.rows[0];
+      const metadata =
+        row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      const backend = metadata.storageBackend as string | undefined;
+
+      if (backend === "cloudflare_stream" && metadata.playbackUrl) {
+        return res.redirect(302, String(metadata.playbackUrl));
+      }
+      if (backend === "r2" && metadata.downloadUrl) {
+        return res.redirect(302, String(metadata.downloadUrl));
+      }
+
+      // Filesystem-pathen — final_file_path er relativ til UPLOAD_ROOT
       const fullPath = path.join(UPLOAD_ROOT, row.final_file_path);
       if (!fullPath.startsWith(UPLOAD_ROOT)) {
         return res.status(403).end();
@@ -521,5 +590,12 @@ export function setupChunkedUploadRoutes(
       console.error("[chunked-upload] file serve failed:", err);
       res.status(500).end();
     }
+  });
+
+  // STORAGE STATUS — diagnoseendpoint for å vise hva som er koblet til.
+  app.get("/api/chunked-upload/storage-status", (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    res.json({ success: true, ...getStorageStatus() });
   });
 }
