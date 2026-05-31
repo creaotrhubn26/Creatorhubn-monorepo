@@ -42,6 +42,13 @@ export interface UploadStorageResult {
   filesystemPath?: string;
   // Public/signed URL klienter kan bruke direkte (ikke alltid satt)
   downloadUrl?: string;
+  // Envelope-encryption-metadata (kun satt hvis encryptAtRest=true)
+  encryptedAtRest?: boolean;
+  encryptionAlgorithm?: "aes-256-gcm";
+  encryptedDek?: string; // base64 — DEK kryptert med per-bruker-KEK
+  // Ciphertext-størrelse er forskjellig fra plaintext-størrelse pga
+  // iv (12B) + auth-tag (16B) prepended/appended. Lagre begge.
+  ciphertextSize?: number;
 }
 
 interface GenericR2Config {
@@ -153,6 +160,11 @@ export interface AssembledUploadInput {
   // Metadata vi bruker til tagging (Stream meta, R2 object metadata)
   metadata?: Record<string, unknown>;
   userId: string;
+  // Hvis true: krypter med envelope-encryption før upload. Krever
+  // STORAGE_MASTER_KEK_HEX env. Stream tillates ikke (Cloudflare må
+  // kunne lese for transcoding); video med encryptAtRest blir tvunget
+  // til R2 eller filesystem. Standard: false (bakoverkompatibel).
+  encryptAtRest?: boolean;
 }
 
 export interface RouteToStorageOpts {
@@ -178,9 +190,60 @@ export async function routeAssembledUpload(
   const mime = input.mimeType || null;
   const isVideo = !!mime && mime.startsWith("video/");
   const streamCfg = buildStreamConfig();
+  const wantsEncryption = input.encryptAtRest === true;
 
-  // 1) Video → Stream
-  if (!opts.preferFilesystem && isVideo && streamCfg.enabled) {
+  // Hvis encryptAtRest=true: forhåndskrypter til en temp-fil og bruk
+  // den som kilde for R2/filesystem. Stream tillates IKKE — Cloudflare
+  // må kunne lese råfila for transcoding.
+  let activeSourcePath = input.sourcePath;
+  let activeSize = input.size;
+  let encryptionMeta: {
+    encryptedDek: string;
+    ciphertextSize: number;
+  } | null = null;
+  let encryptTempPath: string | null = null;
+
+  if (wantsEncryption) {
+    const {
+      isEncryptionAvailable,
+      generateDek,
+      deriveUserKek,
+      encryptDek,
+      EncryptStream,
+      ciphertextSizeFor,
+    } = await import("./file-encryption.js");
+    if (!isEncryptionAvailable()) {
+      throw new Error("encryption_not_configured: STORAGE_MASTER_KEK_HEX mangler");
+    }
+
+    const dek = generateDek();
+    const userKek = deriveUserKek(input.userId);
+    const encryptedDek = encryptDek(dek, userKek);
+
+    // Stream-kryptering til temp-fil. Vi skriver til en sti ved siden av
+    // kildefila slik at vi rydder begge ved feil.
+    encryptTempPath = `${input.sourcePath}.enc.tmp`;
+    await new Promise<void>((resolve, reject) => {
+      const readStream = fsSync.createReadStream(input.sourcePath);
+      const writeStream = fsSync.createWriteStream(encryptTempPath!);
+      const cipher = new EncryptStream(dek);
+      readStream.on("error", reject);
+      writeStream.on("error", reject);
+      cipher.on("error", reject);
+      writeStream.on("close", () => resolve());
+      readStream.pipe(cipher).pipe(writeStream);
+    });
+
+    activeSourcePath = encryptTempPath;
+    activeSize = ciphertextSizeFor(input.size);
+    encryptionMeta = {
+      encryptedDek,
+      ciphertextSize: activeSize,
+    };
+  }
+
+  // 1) Video → Stream (kun hvis IKKE encrypt-at-rest)
+  if (!opts.preferFilesystem && !wantsEncryption && isVideo && streamCfg.enabled) {
     try {
       const bytes = await fs.readFile(input.sourcePath);
       const streamRes = await uploadToStream(bytes, mime!, {
@@ -222,26 +285,35 @@ export async function routeAssembledUpload(
         .replace(/[\\/:*?"<>|\x00-\x1F]/g, "_")
         .slice(0, 200);
       const key = `${r2Cfg.prefix}${input.userId}/${input.fileId}/${safeName}`;
-      const stream = fsSync.createReadStream(input.sourcePath);
+      const stream = fsSync.createReadStream(activeSourcePath);
 
       await r2Client.send(
         new PutObjectCommand({
           Bucket: r2Cfg.bucket,
           Key: key,
           Body: stream,
-          ContentType: mime ?? "application/octet-stream",
-          ContentLength: input.size,
+          // Hvis kryptert: ciphertext er opaque blob, ikke originalt MIME
+          ContentType: wantsEncryption
+            ? "application/octet-stream"
+            : mime ?? "application/octet-stream",
+          ContentLength: activeSize,
           Metadata: {
             "user-id": input.userId,
             "file-id": input.fileId,
             "original-name": safeName,
+            ...(wantsEncryption ? { "encrypted-at-rest": "aes-256-gcm" } : {}),
           },
         }),
       );
 
-      // Bygg URL: public hvis konfigurert, ellers signed (7d)
+      // Bygg URL: public hvis konfigurert, ellers signed.
+      // VIKTIG: encrypted-at-rest filer kan IKKE 302-redirectes til R2 —
+      // klient ville fått dekrypterbar ciphertext. Vi setter downloadUrl
+      // til vårt egen proxy-endepunkt så fil-serving piper gjennom decrypt.
       let url: string;
-      if (r2Cfg.publicUrlBase) {
+      if (wantsEncryption) {
+        url = `/api/chunked-upload/files/${input.fileId}`;
+      } else if (r2Cfg.publicUrlBase) {
         url = `${r2Cfg.publicUrlBase.replace(/\/$/, "")}/${key}`;
       } else {
         url = await getSignedUrl(
@@ -251,8 +323,11 @@ export async function routeAssembledUpload(
         );
       }
 
-      // Rydd kildefil
+      // Rydd kildefiler — både original og ev. encrypt-temp
       await fs.rm(input.sourcePath, { force: true }).catch(() => undefined);
+      if (encryptTempPath) {
+        await fs.rm(encryptTempPath, { force: true }).catch(() => undefined);
+      }
 
       return {
         backend: "r2",
@@ -263,6 +338,12 @@ export async function routeAssembledUpload(
         r2Key: key,
         r2Bucket: r2Cfg.bucket,
         downloadUrl: url,
+        ...(encryptionMeta && {
+          encryptedAtRest: true,
+          encryptionAlgorithm: "aes-256-gcm" as const,
+          encryptedDek: encryptionMeta.encryptedDek,
+          ciphertextSize: encryptionMeta.ciphertextSize,
+        }),
       };
     } catch (err) {
       console.warn(
@@ -273,7 +354,15 @@ export async function routeAssembledUpload(
     }
   }
 
-  // 3) Filesystem fallback — behold der den ligger
+  // 3) Filesystem fallback — behold der den ligger.
+  // Hvis kryptert: vi behold ciphertext-fila (encryptTempPath) som primær,
+  // sletter originalen.
+  if (wantsEncryption && encryptTempPath) {
+    // Flytt encryptTempPath til input.sourcePath og slett originalen
+    await fs.rm(input.sourcePath, { force: true }).catch(() => undefined);
+    await fs.rename(encryptTempPath, input.sourcePath).catch(() => undefined);
+  }
+
   return {
     backend: "filesystem",
     fileId: input.fileId,
@@ -282,6 +371,12 @@ export async function routeAssembledUpload(
     mimeType: mime,
     filesystemPath: input.sourcePath,
     downloadUrl: `/api/chunked-upload/files/${input.fileId}`,
+    ...(encryptionMeta && {
+      encryptedAtRest: true,
+      encryptionAlgorithm: "aes-256-gcm" as const,
+      encryptedDek: encryptionMeta.encryptedDek,
+      ciphertextSize: encryptionMeta.ciphertextSize,
+    }),
   };
 }
 

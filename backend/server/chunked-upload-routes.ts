@@ -452,9 +452,17 @@ export function setupChunkedUploadRoutes(
         const stats = await fs.stat(finalPath);
 
         // Rute den ferdige fila til riktig storage-backend:
-        //   - video/* → Cloudflare Stream
+        //   - video/* → Cloudflare Stream (kun hvis encryptAtRest=false)
         //   - annet → R2 hvis konfigurert
         //   - fallback → filesystem (servet via /api/chunked-upload/files/:fileId)
+        //
+        // encryptAtRest leses fra init-payload (chunked_uploads.metadata).
+        // Hvis true: storage-router krypterer med envelope-encryption før
+        // upload. Stream-pathen blokkeres (Cloudflare må kunne lese for
+        // transcoding/playback).
+        const initMetadata =
+          row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        const encryptAtRest = initMetadata.encryptAtRest === true;
         const storage = await routeAssembledUpload({
           fileId,
           fileName: row.file_name,
@@ -463,6 +471,7 @@ export function setupChunkedUploadRoutes(
           sourcePath: finalPath,
           metadata: row.metadata,
           userId,
+          encryptAtRest,
         });
 
         // Hvis backend ikke er filesystem, oppdater final_file_path til å
@@ -491,6 +500,15 @@ export function setupChunkedUploadRoutes(
             ? { r2Key: storage.r2Key, r2Bucket: storage.r2Bucket }
             : {}),
           ...(storage.downloadUrl ? { downloadUrl: storage.downloadUrl } : {}),
+          // Envelope-encryption-metadata (kun satt hvis fila ble kryptert)
+          ...(storage.encryptedAtRest
+            ? {
+                encryptedAtRest: true,
+                encryptionAlgorithm: storage.encryptionAlgorithm,
+                encryptedDek: storage.encryptedDek,
+                ciphertextSize: storage.ciphertextSize,
+              }
+            : {}),
         };
 
         await pool.query(
@@ -665,16 +683,134 @@ export function setupChunkedUploadRoutes(
         }
         return res.redirect(302, signed);
       }
-      if (backend === "r2" && metadata.downloadUrl) {
-        void recordFileAccess(pool, {
-          userId,
-          fileId,
-          backend: "r2",
-          accessType: "download",
-          outcome: "success",
-          req,
-        }).catch(() => undefined);
-        return res.redirect(302, String(metadata.downloadUrl));
+      if (backend === "r2") {
+        // Encrypted-at-rest filer KAN IKKE redirectes til R2 direkte —
+        // klient ville fått dekrypterbar ciphertext. Pipe gjennom oss
+        // og decrypt på-the-fly i stedet.
+        if (metadata.encryptedAtRest === true && metadata.encryptedDek) {
+          try {
+            const {
+              deriveUserKek,
+              decryptDek,
+              DecryptStream,
+              isEncryptionAvailable,
+            } = await import("./file-encryption.js");
+            if (!isEncryptionAvailable()) {
+              void recordFileAccess(pool, {
+                userId,
+                fileId,
+                backend: "r2",
+                accessType: "download",
+                outcome: "sign_failed",
+                req,
+                metadata: { reason: "encryption_key_missing" },
+              }).catch(() => undefined);
+              return res.status(503).json({
+                error: "encryption_key_missing",
+                message:
+                  "Master-KEK mangler — kan ikke dekryptere fila.",
+              });
+            }
+
+            const r2Cfg = (
+              await import("./upload-storage-router.js")
+            ).getStorageStatus().r2;
+            if (!r2Cfg.enabled || !r2Cfg.bucket) {
+              return res.status(503).json({
+                error: "r2_not_configured",
+              });
+            }
+
+            // Hent ciphertext fra R2
+            const { S3Client, GetObjectCommand } = await import(
+              "@aws-sdk/client-s3"
+            );
+            const r2Client = new S3Client({
+              region: "auto",
+              endpoint:
+                process.env.GENERIC_UPLOADS_R2_ENDPOINT ||
+                process.env.CLOUDFLARE_R2_ENDPOINT ||
+                process.env.R2_ENDPOINT,
+              credentials: {
+                accessKeyId:
+                  process.env.GENERIC_UPLOADS_R2_ACCESS_KEY_ID ||
+                  process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
+                  process.env.R2_ACCESS_KEY_ID ||
+                  "",
+                secretAccessKey:
+                  process.env.GENERIC_UPLOADS_R2_SECRET_ACCESS_KEY ||
+                  process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+                  process.env.R2_SECRET_ACCESS_KEY ||
+                  "",
+              },
+            });
+            const obj = await r2Client.send(
+              new GetObjectCommand({
+                Bucket: r2Cfg.bucket,
+                Key: String(metadata.r2Key),
+              }),
+            );
+            if (!obj.Body) {
+              return res.status(502).json({ error: "r2_empty_body" });
+            }
+
+            const userKek = deriveUserKek(userId);
+            const dek = decryptDek(String(metadata.encryptedDek), userKek);
+            const ctSize = Number(metadata.ciphertextSize ?? 0);
+            if (ctSize <= 0) {
+              return res.status(500).json({
+                error: "ciphertext_size_missing",
+              });
+            }
+            const decryptStream = new DecryptStream(dek, ctSize);
+
+            if (row.mime_type) {
+              res.setHeader("Content-Type", row.mime_type);
+            }
+            res.setHeader(
+              "Content-Disposition",
+              `attachment; filename="${row.file_name.replace(/"/g, "")}"`,
+            );
+
+            void recordFileAccess(pool, {
+              userId,
+              fileId,
+              backend: "r2",
+              accessType: "download",
+              outcome: "success",
+              req,
+              metadata: { encrypted: true },
+            }).catch(() => undefined);
+
+            (obj.Body as NodeJS.ReadableStream).pipe(decryptStream).pipe(res);
+            return;
+          } catch (err: any) {
+            console.error("[chunked-upload] decrypt-from-R2 failed:", err);
+            void recordFileAccess(pool, {
+              userId,
+              fileId,
+              backend: "r2",
+              accessType: "download",
+              outcome: "sign_failed",
+              req,
+              metadata: { error: String(err?.message || err).slice(0, 200) },
+            }).catch(() => undefined);
+            return res.status(500).json({ error: "decrypt_failed" });
+          }
+        }
+
+        // Ikke-kryptert R2 — redirect til signed URL som før
+        if (metadata.downloadUrl) {
+          void recordFileAccess(pool, {
+            userId,
+            fileId,
+            backend: "r2",
+            accessType: "download",
+            outcome: "success",
+            req,
+          }).catch(() => undefined);
+          return res.redirect(302, String(metadata.downloadUrl));
+        }
       }
 
       // Filesystem-pathen — final_file_path er relativ til UPLOAD_ROOT
@@ -697,6 +833,53 @@ export function setupChunkedUploadRoutes(
         "Content-Disposition",
         `attachment; filename="${row.file_name.replace(/"/g, "")}"`,
       );
+
+      // Hvis fila er encrypted-at-rest: pipe-dekrypter
+      if (metadata.encryptedAtRest === true && metadata.encryptedDek) {
+        try {
+          const { deriveUserKek, decryptDek, DecryptStream, isEncryptionAvailable } =
+            await import("./file-encryption.js");
+          if (!isEncryptionAvailable()) {
+            return res.status(503).json({
+              error: "encryption_key_missing",
+              message: "Master-KEK mangler — kan ikke dekryptere fila.",
+            });
+          }
+          const userKek = deriveUserKek(userId);
+          const dek = decryptDek(String(metadata.encryptedDek), userKek);
+          const ctSize = Number(metadata.ciphertextSize ?? 0);
+          if (ctSize <= 0) {
+            return res
+              .status(500)
+              .json({ error: "ciphertext_size_missing" });
+          }
+          const decryptStream = new DecryptStream(dek, ctSize);
+          void recordFileAccess(pool, {
+            userId,
+            fileId,
+            backend: "filesystem",
+            accessType: "download",
+            outcome: "success",
+            req,
+            metadata: { encrypted: true },
+          }).catch(() => undefined);
+          fsSync.createReadStream(fullPath).pipe(decryptStream).pipe(res);
+          return;
+        } catch (err: any) {
+          console.error("[chunked-upload] decrypt-from-fs failed:", err);
+          void recordFileAccess(pool, {
+            userId,
+            fileId,
+            backend: "filesystem",
+            accessType: "download",
+            outcome: "sign_failed",
+            req,
+            metadata: { error: String(err?.message || err).slice(0, 200) },
+          }).catch(() => undefined);
+          return res.status(500).json({ error: "decrypt_failed" });
+        }
+      }
+
       void recordFileAccess(pool, {
         userId,
         fileId,

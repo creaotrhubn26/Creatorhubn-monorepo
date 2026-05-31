@@ -62,6 +62,8 @@ docs/
 !docs/role-room/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
 !docs/PRICING.md
+!docs/security/
+!docs/security/*.md
 !docs/post-agent/
 !docs/post-agent/*.md
 !apps/resolve-script-manager/src/docs/
