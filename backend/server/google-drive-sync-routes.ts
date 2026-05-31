@@ -1,5 +1,5 @@
-// Google Drive sync — bygger mappestrukturen som UniversalFileUpload trenger
-// i Fredriks Drive-konto. Tidligere kalte frontend
+// Google Drive sync — bygger mappestrukturen + kopierer fil-bytes til
+// Fredriks Drive-konto. Tidligere kalte frontend
 // `/api/google-drive/sync-uploads-to-project-folders` som ikke eksisterte i
 // backend i det hele tatt; sync feilet derfor stille med 404 og frontend
 // viste bare "Failed to sync to Google Drive".
@@ -9,15 +9,20 @@
 //   2. Sjekker Drive-kvote før vi prøver å lage noe.
 //   3. Sikrer at root-mappa for prosjektet eksisterer (idempotent).
 //   4. Lager target-undermappa (f.eks. "01_Raw") under prosjekt-mappa.
-//   5. Returnerer ferdig folder-struktur + items markert som "ready".
-//
-// Det faktiske oppload-trinnet (kopiere filer fra intern lagring til Drive)
-// er en separat operasjon (`upload-contextual`); det krever fil-bytes som
-// ikke alltid er tilgjengelig på vår side. Dette endepunktet gir Fredrik
-// minst en ærlig folder-setup-respons i stedet for 404.
+//   5. For hver item med fileId (referanse til chunked_uploads): henter
+//      bytes fra storage-backend (filesystem eller R2) og kopierer til
+//      Drive via files.create med media body. Stream-videoer hoppes
+//      over (de lever som streaming, ikke files). Per-fil retry på
+//      429/5xx + 401-reauth.
 
 import express from "express";
 import type { Pool } from "pg";
+import * as fs from "fs";
+import * as fsPromises from "fs/promises";
+import * as path from "path";
+import * as os from "os";
+import { Readable } from "stream";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   loadDriveClient,
   ensureDriveFolder,
@@ -25,6 +30,48 @@ import {
   withDriveRetry,
   mapDriveError,
 } from "./google-drive-helpers.js";
+
+const CHUNKED_UPLOAD_ROOT =
+  process.env.CHUNKED_UPLOAD_DIR ||
+  path.join(os.tmpdir(), "creatorhub-chunked-uploads");
+
+const firstNonEmpty = (...vals: (string | undefined)[]): string | undefined => {
+  for (const v of vals) if (v && v.trim().length > 0) return v.trim();
+  return undefined;
+};
+
+let cachedR2: S3Client | null = null;
+const getGenericR2 = (): { client: S3Client; bucket: string } | null => {
+  const endpoint = firstNonEmpty(
+    process.env.GENERIC_UPLOADS_R2_ENDPOINT,
+    process.env.CLOUDFLARE_R2_ENDPOINT,
+    process.env.R2_ENDPOINT,
+  );
+  const bucket = firstNonEmpty(
+    process.env.GENERIC_UPLOADS_R2_BUCKET,
+    process.env.CLOUDFLARE_R2_BUCKET,
+    process.env.R2_BUCKET,
+  );
+  const accessKeyId = firstNonEmpty(
+    process.env.GENERIC_UPLOADS_R2_ACCESS_KEY_ID,
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    process.env.R2_ACCESS_KEY_ID,
+  );
+  const secretAccessKey = firstNonEmpty(
+    process.env.GENERIC_UPLOADS_R2_SECRET_ACCESS_KEY,
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    process.env.R2_SECRET_ACCESS_KEY,
+  );
+  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
+  if (!cachedR2) {
+    cachedR2 = new S3Client({
+      region: "auto",
+      endpoint,
+      credentials: { accessKeyId, secretAccessKey },
+    });
+  }
+  return { client: cachedR2, bucket };
+};
 
 export interface GoogleDriveSyncRoutesDeps {
   app: express.Application;
@@ -139,14 +186,173 @@ export function setupGoogleDriveSyncRoutes(
           projectFolderId,
         );
 
-        const driveItems = Array.isArray(items)
-          ? items.map((item: any) => ({
-              id: item?.id ?? null,
-              fileName: item?.name ?? item?.fileName ?? "ukjent",
-              status: "folder_ready",
-              targetFolderId,
-            }))
-          : [];
+        // For hver item: hvis fileId (eller id som peker til chunked_uploads)
+        // er sendt inn, hent bytes fra storage-backend og last opp til Drive.
+        // Stream-videoer hoppes over — de er ikke filer.
+        const driveItems: Array<{
+          id: string | null;
+          fileName: string;
+          status: string;
+          driveFileId?: string;
+          driveFileUrl?: string;
+          message?: string;
+        }> = [];
+
+        const itemsArray = Array.isArray(items) ? items : [];
+        for (const item of itemsArray) {
+          const itemId: string | null =
+            item?.fileId || item?.chunkedUploadId || item?.id || null;
+          const itemName = String(
+            item?.name || item?.fileName || "ukjent",
+          ).slice(0, 200);
+
+          if (!itemId) {
+            driveItems.push({
+              id: null,
+              fileName: itemName,
+              status: "skipped_no_id",
+              message: "Item mangler fileId — kan ikke finne kilden.",
+            });
+            continue;
+          }
+
+          // Slå opp i chunked_uploads
+          const lookup = await pool.query(
+            `SELECT file_name, mime_type, final_file_path, metadata
+               FROM chunked_uploads
+              WHERE (final_file_id = $1 OR id::text = $1)
+                AND user_id = $2
+                AND status = 'completed'`,
+            [itemId, userId],
+          );
+          if ((lookup.rowCount ?? 0) === 0) {
+            driveItems.push({
+              id: itemId,
+              fileName: itemName,
+              status: "skipped_not_found",
+              message: "Fant ikke fila i chunked_uploads.",
+            });
+            continue;
+          }
+          const row = lookup.rows[0];
+          const metadata =
+            row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+          const backend = metadata.storageBackend as string | undefined;
+          const mime = row.mime_type || "application/octet-stream";
+
+          if (backend === "cloudflare_stream") {
+            driveItems.push({
+              id: itemId,
+              fileName: row.file_name,
+              status: "skipped_stream",
+              message:
+                "Video er lagret i Cloudflare Stream som streaming, ikke fil — hoppes over.",
+            });
+            continue;
+          }
+
+          // Bygg lesestrøm fra riktig backend
+          let bodyStream: Readable | null = null;
+          let bytesLength: number | undefined;
+
+          try {
+            if (backend === "r2") {
+              const r2 = getGenericR2();
+              if (!r2) {
+                driveItems.push({
+                  id: itemId,
+                  fileName: row.file_name,
+                  status: "failed",
+                  message: "R2 er ikke konfigurert i miljøvariabler.",
+                });
+                continue;
+              }
+              const key = metadata.r2Key as string | undefined;
+              if (!key) {
+                driveItems.push({
+                  id: itemId,
+                  fileName: row.file_name,
+                  status: "failed",
+                  message: "R2-key mangler i metadata.",
+                });
+                continue;
+              }
+              const obj = await r2.client.send(
+                new GetObjectCommand({ Bucket: r2.bucket, Key: key }),
+              );
+              if (!obj.Body) {
+                driveItems.push({
+                  id: itemId,
+                  fileName: row.file_name,
+                  status: "failed",
+                  message: "R2 returnerte tom body.",
+                });
+                continue;
+              }
+              bodyStream = obj.Body as Readable;
+              bytesLength = obj.ContentLength;
+            } else {
+              // filesystem
+              const fullPath = path.join(
+                CHUNKED_UPLOAD_ROOT,
+                row.final_file_path,
+              );
+              if (!fullPath.startsWith(CHUNKED_UPLOAD_ROOT)) {
+                driveItems.push({
+                  id: itemId,
+                  fileName: row.file_name,
+                  status: "failed",
+                  message: "Ugyldig sti i metadata.",
+                });
+                continue;
+              }
+              try {
+                const stat = await fsPromises.stat(fullPath);
+                bytesLength = stat.size;
+              } catch {}
+              bodyStream = fs.createReadStream(fullPath);
+            }
+
+            // Last opp til Drive med retry
+            const driveRes = await withDriveRetry(
+              () =>
+                driveApi.files.create({
+                  requestBody: {
+                    name: row.file_name,
+                    parents: [targetFolderId],
+                    mimeType: mime,
+                  },
+                  media: { mimeType: mime, body: bodyStream! },
+                  fields: "id, webViewLink",
+                }),
+              { onReauth },
+            );
+
+            driveItems.push({
+              id: itemId,
+              fileName: row.file_name,
+              status: "uploaded",
+              driveFileId: driveRes.data.id ?? undefined,
+              driveFileUrl: driveRes.data.webViewLink ?? undefined,
+            });
+          } catch (err: any) {
+            const mapped = mapDriveError(err);
+            driveItems.push({
+              id: itemId,
+              fileName: row.file_name,
+              status: "failed",
+              message: mapped.message,
+            });
+          }
+        }
+
+        const counts = driveItems.reduce(
+          (acc, it) => {
+            acc[it.status] = (acc[it.status] || 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>,
+        );
 
         res.json({
           success: true,
@@ -154,13 +360,14 @@ export function setupGoogleDriveSyncRoutes(
           projectFolderId,
           folderUrl: `https://drive.google.com/drive/folders/${targetFolderId}`,
           items: driveItems,
+          counts,
           quota: {
             limit: quota.limit,
             usage: quota.usage,
             free: quota.free,
           },
-          note: items?.length
-            ? "Mappestrukturen er klar i Drive. Last opp filer på nytt for å kopiere dem dit, eller bruk fil-upload-flowen for å pushe direkte."
+          note: itemsArray.length
+            ? `Mappestruktur klar + ${counts.uploaded || 0} fil(er) kopiert til Drive. ${counts.skipped_stream || 0} video(er) hoppet over (lagres i Cloudflare Stream).`
             : "Mappestrukturen er klar i Drive.",
         });
       } catch (err: any) {
