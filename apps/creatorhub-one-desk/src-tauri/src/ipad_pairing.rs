@@ -214,3 +214,101 @@ pub fn spawn_browser(app: AppHandle, state: Arc<IpadPairingState>) -> Result<(),
 
     Ok(())
 }
+
+// ── Auto-pair via TCP (F5c Desk-side) ────────────────────────────────
+
+/// Resultatet av en send_pair_request — enten OK med iPad-ens
+/// device_id, eller ERR med årsak. Brukt internt av
+/// `generate_pairing_pin_and_send`.
+#[derive(Debug, Clone)]
+pub enum PairResponse {
+    Ok { ipad_device_id: String },
+    Err(String),
+}
+
+/// Sender PAIR-kommandoen til iPad-en, leser én response-linje,
+/// parser OK/ERR. 65s timeout for hele runden (5s mer enn iPad-ens
+/// promptTimeout så vi ikke timer ut FØR brukeren har sjansen).
+///
+/// Prøver hver adresse i `addresses` i rekkefølge til vi får
+/// connection — Bonjour annonserer ofte både IPv6 + IPv4, og noen
+/// kan være ureachable på vårt LAN.
+pub async fn send_pair_request(
+    addresses: &[String],
+    port: u16,
+    desk_id: &str,
+    desk_name: &str,
+    pin: &str,
+) -> PairResponse {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
+    use tokio::time::timeout;
+
+    if addresses.is_empty() {
+        return PairResponse::Err("no_addresses".into());
+    }
+    // Sanitiser felter — \t og \n må ikke krasje protokollen.
+    let safe_id = sanitize_field(desk_id);
+    let safe_name = sanitize_field(desk_name);
+    let safe_pin = sanitize_field(pin);
+    let payload = format!("PAIR\t{}\t{}\t{}\n", safe_id, safe_name, safe_pin);
+
+    let mut last_err = String::from("no_connect");
+    for addr in addresses {
+        // Skip link-local IPv6 hvis vi ikke vet hvilket interface å bruke
+        if addr.contains('%') || addr.contains(':') && addr.split(':').count() > 3 {
+            // IPv6 — kan funke, prøv likevel men ikke prioritert
+        }
+        let target = format!("{}:{}", addr, port);
+        let connect_res = timeout(Duration::from_secs(5), TcpStream::connect(&target)).await;
+        let mut stream = match connect_res {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
+                last_err = format!("connect {}: {}", target, e);
+                continue;
+            }
+            Err(_) => {
+                last_err = format!("connect {}: timeout", target);
+                continue;
+            }
+        };
+
+        // Skriv payload
+        if let Err(e) = stream.write_all(payload.as_bytes()).await {
+            return PairResponse::Err(format!("write: {}", e));
+        }
+        if let Err(e) = stream.flush().await {
+            return PairResponse::Err(format!("flush: {}", e));
+        }
+
+        // Les response — opp til 256 bytes, 65s timeout
+        let mut buf = vec![0u8; 256];
+        let read_res = timeout(Duration::from_secs(65), stream.read(&mut buf)).await;
+        let n = match read_res {
+            Ok(Ok(0)) => return PairResponse::Err("connection_closed_before_response".into()),
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return PairResponse::Err(format!("read: {}", e)),
+            Err(_) => return PairResponse::Err("timeout".into()),
+        };
+        let line = String::from_utf8_lossy(&buf[..n]).trim_end_matches('\n').to_string();
+        let parts: Vec<&str> = line.split('\t').collect();
+        match parts.as_slice() {
+            ["OK", device_id, ..] => {
+                return PairResponse::Ok {
+                    ipad_device_id: device_id.to_string(),
+                };
+            }
+            ["ERR", reason, ..] => return PairResponse::Err(reason.to_string()),
+            _ => return PairResponse::Err(format!("malformed_response: {}", line)),
+        }
+    }
+
+    PairResponse::Err(last_err)
+}
+
+fn sanitize_field(s: &str) -> String {
+    s.chars()
+        .filter(|c| *c != '\t' && *c != '\n' && *c != '\r')
+        .take(200)
+        .collect()
+}

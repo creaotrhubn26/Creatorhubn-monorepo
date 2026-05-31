@@ -29,6 +29,7 @@ import {
   listDiscoveredIpads,
   listPairedIpads,
   PairedIpad,
+  PairResultEvent,
   PendingPin,
   unpairIpad,
 } from "../api";
@@ -39,6 +40,8 @@ export default function IPadPairingSection() {
   const [pin, setPin] = useState<PendingPin | null>(null);
   const [pinDialogTarget, setPinDialogTarget] = useState<DiscoveredIpad | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pairProgress, setPairProgress] = useState<"idle" | "waiting" | "failed">("idle");
+  const [pairError, setPairError] = useState<string | null>(null);
 
   const refreshAll = async () => {
     try {
@@ -57,23 +60,39 @@ export default function IPadPairingSection() {
 
   useEffect(() => {
     void refreshAll();
-    let cleanup: UnlistenFn | undefined;
+    const unlisteners: UnlistenFn[] = [];
     void listen<DiscoveredIpad[]>("ipads-discovered", (e) => setDiscovered(e.payload)).then(
-      (un) => {
-        cleanup = un;
-      },
+      (un) => unlisteners.push(un),
     );
+    // F5c auto-pair: når iPad svarer OK eller ERR, Rust-side emit'er
+    // 'pair-result'. Frontend lukker dialogen + refresher paired-listen
+    // ved success, viser feil-melding ved fail (manuell fallback fortsatt
+    // tilgjengelig).
+    void listen<PairResultEvent>("pair-result", (e) => {
+      if (e.payload.success) {
+        setPairProgress("idle");
+        setPinDialogTarget(null);
+        setPin(null);
+        setPairError(null);
+        void listPairedIpads().then(setPaired);
+      } else {
+        setPairProgress("failed");
+        setPairError(e.payload.error ?? "Ukjent feil");
+      }
+    }).then((un) => unlisteners.push(un));
     const tick = window.setInterval(() => {
       void currentPairingPin().then(setPin);
     }, 1500);
     return () => {
-      cleanup?.();
+      for (const un of unlisteners) un();
       window.clearInterval(tick);
     };
   }, []);
 
   const handleStartPair = async (ipad: DiscoveredIpad) => {
     setError(null);
+    setPairError(null);
+    setPairProgress("waiting");
     setPinDialogTarget(ipad);
     try {
       const newPin = await generatePairingPin({
@@ -82,7 +101,8 @@ export default function IPadPairingSection() {
       });
       setPin(newPin);
     } catch (e) {
-      setError(typeof e === "string" ? e : String(e));
+      setPairProgress("failed");
+      setPairError(typeof e === "string" ? e : String(e));
     }
   };
 
@@ -90,6 +110,8 @@ export default function IPadPairingSection() {
     await cancelPairingPin();
     setPin(null);
     setPinDialogTarget(null);
+    setPairProgress("idle");
+    setPairError(null);
   };
 
   const handleConfirmPair = async (ipad: DiscoveredIpad) => {
@@ -224,7 +246,7 @@ export default function IPadPairingSection() {
           <DialogContent dividers>
             <Stack spacing={2} sx={{ alignItems: "center", textAlign: "center" }}>
               <Typography variant="body2" color="text.secondary">
-                Åpne CaptureApp på iPad og tast denne PIN-en under "Par med Desk":
+                Sjekk at PIN-en under matcher det iPad-en viser, og trykk "Godta paring" der.
               </Typography>
               <Typography
                 variant="h2"
@@ -235,10 +257,17 @@ export default function IPadPairingSection() {
               <Typography variant="caption" color="text.secondary">
                 Utløper {pin ? new Date(pin.expires_at_unix_ms).toLocaleTimeString("nb-NO") : ""}
               </Typography>
-              <Alert severity="info" sx={{ mt: 1 }}>
-                Inntil CaptureApp støtter automatisk PIN-bekreftelse: klikk
-                "Bekreft manuelt" når brukeren bekrefter på iPad-en.
-              </Alert>
+              {pairProgress === "waiting" && (
+                <Alert severity="info" sx={{ mt: 1, width: "100%" }}>
+                  Venter på bekreftelse på iPad…
+                </Alert>
+              )}
+              {pairProgress === "failed" && pairError && (
+                <Alert severity="warning" sx={{ mt: 1, width: "100%" }}>
+                  Auto-paring feilet ({pairError}). Du kan bruke "Bekreft manuelt"
+                  nedenfor hvis iPad-en likevel viser PIN-prompten.
+                </Alert>
+              )}
             </Stack>
           </DialogContent>
           <DialogActions>

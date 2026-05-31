@@ -9,6 +9,7 @@ mod capture_mirror;
 mod capture_subscriber;
 mod copy_engine;
 mod copy_session;
+mod desk_identity;
 mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
@@ -23,7 +24,7 @@ use helper_client::{CaptureSessionSummary, Config, ProjectInfo};
 use ipad_pairing::{DiscoveredIpad, IpadPairingState, PairedIpad, PendingPin};
 use mount_watcher::{DetectedMount, MountWatcherState};
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[derive(Serialize)]
 struct StoredConfig {
@@ -145,13 +146,97 @@ fn current_pairing_pin(state: tauri::State<Arc<IpadPairingState>>) -> Option<Pen
     state.current_pin()
 }
 
+/// Henter Desk's egen stabile identitet. Genereres ved første kall.
+/// Brukt av UI for å vise "denne Desk-en heter X" + av paring-flowen
+/// så iPad-en kan kjenne igjen oss på tvers av token-rotering.
+#[tauri::command]
+fn current_desk_identity() -> Result<desk_identity::DeskIdentity, String> {
+    desk_identity::load_or_create()
+}
+
+#[derive(serde::Serialize, Clone)]
+struct PairResultEvent {
+    fullname: String,
+    success: bool,
+    ipad_device_id: Option<String>,
+    error: Option<String>,
+}
+
 #[tauri::command]
 fn generate_pairing_pin(
+    app: tauri::AppHandle,
     state: tauri::State<Arc<IpadPairingState>>,
     fullname: String,
     device_name: String,
-) -> PendingPin {
-    state.generate_pin(&fullname, &device_name)
+) -> Result<PendingPin, String> {
+    let pin = state.generate_pin(&fullname, &device_name);
+
+    // Slå opp iPad's adresser/port for å kunne sende TCP PAIR-request
+    let target = state.list_discovered().into_iter().find(|d| d.fullname == fullname);
+    let Some(target) = target else {
+        return Err(format!("iPad ikke i discovered-state: {}", fullname));
+    };
+    let identity = desk_identity::load_or_create()?;
+    let app_clone = app.clone();
+    let state_clone: Arc<IpadPairingState> = state.inner().clone();
+    let pin_value = pin.pin.clone();
+    let target_name = target.device_name.clone();
+    let target_addresses = target.addresses.clone();
+    let target_port = target.port;
+    let fullname_clone = fullname.clone();
+
+    // Spawn auto-send. Når iPad svarer OK: confirm_pair_ipad-logikken
+    // kjøres inline + pair-result-event emit'es. Frontend trenger ikke
+    // gjøre noe annet enn å lytte på event-et.
+    tokio::spawn(async move {
+        let response = ipad_pairing::send_pair_request(
+            &target_addresses,
+            target_port,
+            &identity.desk_id,
+            &identity.desk_name,
+            &pin_value,
+        )
+        .await;
+        match response {
+            ipad_pairing::PairResponse::Ok { ipad_device_id } => {
+                // Upsert in paired.json
+                let mut list = ipad_pairing::load_paired();
+                if !list.iter().any(|p| p.device_id == ipad_device_id) {
+                    list.push(PairedIpad {
+                        device_id: ipad_device_id.clone(),
+                        device_name: target_name,
+                        paired_at_iso: chrono_now_iso(),
+                    });
+                    if let Err(err) = ipad_pairing::save_paired(&list) {
+                        eprintln!("[pair] save_paired failed: {}", err);
+                    }
+                }
+                state_clone.clear_pin();
+                let _ = app_clone.emit(
+                    "pair-result",
+                    PairResultEvent {
+                        fullname: fullname_clone,
+                        success: true,
+                        ipad_device_id: Some(ipad_device_id),
+                        error: None,
+                    },
+                );
+            }
+            ipad_pairing::PairResponse::Err(err) => {
+                let _ = app_clone.emit(
+                    "pair-result",
+                    PairResultEvent {
+                        fullname: fullname_clone,
+                        success: false,
+                        ipad_device_id: None,
+                        error: Some(err),
+                    },
+                );
+            }
+        }
+    });
+
+    Ok(pin)
 }
 
 #[tauri::command]
@@ -318,6 +403,7 @@ pub fn run() {
             generate_pairing_pin,
             cancel_pairing_pin,
             confirm_pair_ipad,
+            current_desk_identity,
             unpair_ipad,
             list_capture_sessions,
             start_capture_subscription,
