@@ -20,8 +20,12 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = path.resolve(process.cwd());
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// scripts/ er i backend/scripts/, så repo-root er to nivåer opp
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const VIDEO_DIR = path.resolve(REPO_ROOT, 'recordings');
 const ENV_FILE = path.resolve(REPO_ROOT, 'backend/.env.page-metadata.demo.local');
 const DEFAULT_APP_BASE = 'https://creatorhub-backend-rtbl.onrender.com';
@@ -159,8 +163,6 @@ async function removeSpotlight(page) {
 }
 
 async function runDemo(page, env) {
-  if (!env.DEMO_PAGE_ID) throw new Error('DEMO_PAGE_ID required');
-
   const pageUrl = appendBypassToken(
     `${env.APP_BASE_URL}/admin/page-public-metadata-app-review-demo`,
     env.WHATSAPP_DEMO_BYPASS_TOKEN,
@@ -204,6 +206,14 @@ async function runDemo(page, env) {
 
 async function main() {
   const env = await loadEnv();
+  // Tidlig env-validering — unngår å lekke browser-prosesser ved konfig-feil
+  const missing = [];
+  if (!env.DEMO_PAGE_ID) missing.push('DEMO_PAGE_ID');
+  if (missing.length) {
+    console.error(`Error: required env missing: ${missing.join(', ')}`);
+    console.error(`Set them via process.env or backend/.env.<slug>.demo.local`);
+    process.exit(1);
+  }
   await ensureDir(VIDEO_DIR);
   log(`Recording to ${VIDEO_DIR}`);
   const browser = await chromium.launch({
