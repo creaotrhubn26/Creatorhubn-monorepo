@@ -255,7 +255,8 @@ export default function FormationHeaderBar({
           </MenuItem>
           <MenuItem onClick={() => handleExport('json')} data-testid={`${testId}-export-json`}>
             <ListItemIcon><JsonIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="JSON (rådata)" secondary="For re-import / backup" />
+            {/* Workflow-audit G22: brukervennlig label i stedet for teknisk "JSON" */}
+            <ListItemText primary="Backup-fil" secondary="For å re-importere eller dele med en annen DanceFlow-bruker" />
           </MenuItem>
           <MenuItem
             onClick={() => handleExport('pdf')}

@@ -599,6 +599,54 @@ export const FormationView: React.FC<FormationViewProps> = ({
         <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1 }}>
           DANSE-ROSTER ({dancers.length})
         </Typography>
+        {/* Workflow-audit G3: hvis ingen ekte dansere er lagt til (kun
+            DEMO_DANCERS via default prop med d- prefiks), vis tydelig CTA
+            som leder til Dancers-fanen. */}
+        {dancers.length === 0 || dancers.every((d) => d.id.startsWith('d-')) ? (
+          <Box
+            data-testid="formation-roster-empty"
+            sx={{
+              p: 1.25,
+              mb: 1,
+              borderRadius: 1,
+              border: '1px dashed #2a3142',
+              bgcolor: 'rgba(167,139,250,0.04)',
+            }}
+          >
+            <Typography sx={{ fontSize: 10, color: '#e5e7eb', fontWeight: 600, mb: 0.5 }}>
+              Demo-dansere vises
+            </Typography>
+            <Typography sx={{ fontSize: 9, color: '#9ca3af', mb: 1, lineHeight: 1.4 }}>
+              Legg til dine egne dansere i Dancers-fanen for å bruke ekte navn.
+            </Typography>
+            <Box
+              component="button"
+              type="button"
+              data-testid="formation-roster-empty-cta"
+              onClick={() => {
+                if (typeof window === 'undefined') return;
+                window.dispatchEvent(
+                  new CustomEvent('dance:set-tab', { detail: { tabId: 'students' } }),
+                );
+              }}
+              sx={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#a78bfa',
+                bgcolor: 'transparent',
+                border: '1px solid #a78bfa',
+                borderRadius: 0.5,
+                px: 1,
+                py: 0.4,
+                cursor: 'pointer',
+                font: 'inherit',
+                '&:hover': { bgcolor: 'rgba(167,139,250,0.12)' },
+              }}
+            >
+              Gå til Dancers →
+            </Box>
+          </Box>
+        ) : null}
         <Stack spacing={0.5}>
           {dancers.map((d) => {
             const inFormation = isDancerInFormation(d.id);
@@ -804,7 +852,15 @@ export const FormationView: React.FC<FormationViewProps> = ({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={curveMode ? 'Slå av kurve-modus' : 'Tegn kurve mellom dansere'}>
+          {/* Workflow-audit G15: tydeliggjør curve-mode med rikere tooltip */}
+          <Tooltip
+            title={
+              curveMode
+                ? 'Slå av kurve-modus (klikk på en danser for å avbryte)'
+                : 'Buet bevegelses-sti — klikk to dansere for å koble dem med en kurve i stedet for rett linje'
+            }
+            placement="bottom"
+          >
             <ToggleButton
               size="small"
               value="curve"

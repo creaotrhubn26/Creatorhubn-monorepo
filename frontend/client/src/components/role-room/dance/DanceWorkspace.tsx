@@ -207,6 +207,25 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
     [],
   );
 
+  // Workflow-audit G19: Share-knapp wired. Kopier nåværende URL til
+  // clipboard + vis snackbar. Senere kan vi utvide til delbare lenker
+  // med token-basert read-only-tilgang (audit-v2 H1).
+  const handleShare = React.useCallback(async (): Promise<void> => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setShareMessage('Lenke kopiert til utklippstavle');
+    } catch {
+      setShareMessage('Kunne ikke kopiere lenke');
+    }
+  }, []);
+  const [shareMessage, setShareMessage] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!shareMessage) return;
+    const t = setTimeout(() => setShareMessage(null), 2200);
+    return () => clearTimeout(t);
+  }, [shareMessage]);
+
   return (
     <DanceFlowShell
       header={
@@ -216,6 +235,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           onSubTabChange={setSubTab}
           saveStatus={saveStatus}
           saveError={saveError}
+          onShare={handleShare}
         />
       }
       clipsSidebar={<ClipsSidebar projectId={projectId} />}
@@ -240,6 +260,31 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           </Typography>
         </Box>
       )}
+      {/* Workflow-audit G19: share-feedback snackbar */}
+      {shareMessage ? (
+        <Box
+          role="status"
+          data-testid="dance-flow-share-snackbar"
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bgcolor: '#1e2536',
+            color: '#a78bfa',
+            border: '1px solid #a78bfa',
+            borderRadius: 1,
+            px: 2,
+            py: 1,
+            fontSize: 12,
+            fontWeight: 600,
+            zIndex: 2000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          }}
+        >
+          {shareMessage}
+        </Box>
+      ) : null}
     </DanceFlowShell>
   );
 };

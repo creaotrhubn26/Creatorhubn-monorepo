@@ -140,10 +140,13 @@ const HlsAttacher: React.FC<{
   return (
     <video
       ref={setRef}
-      controls
       preload="metadata"
       onTimeUpdate={onTimeUpdate}
       data-testid={testId}
+      // Workflow-audit G7: native controls skjult — vår TransportBar tar over
+      // (vises under video-elementet). Vi beholder å rendre native som
+      // fallback hvis nettleseren ikke har JS.
+      controls={false}
       style={{
         width: '100%',
         height: '100%',
@@ -346,6 +349,258 @@ export default function FormationVideoPanel({
           </Typography>
         )}
       </Box>
+
+      {/* Workflow-audit G7: custom transport-bar. Vises bare når en spillbar
+          clip er valgt (HLS/direct). Embed-fallback (YouTube/Vimeo) bruker
+          VideoRefPlayer sin egen native controls. */}
+      {selected && selected.signedUrl && (sourceKind === 'hls' || sourceKind === 'direct') ? (
+        <TransportBar videoElRef={videoElRef} testId={`${testId}-transport`} />
+      ) : null}
     </Box>
   );
 }
+
+/**
+ * Workflow-audit G7: Profesjonell transport-bar matching NLE-konvensjon.
+ * Branche-standard keybinds: space (play/pause), J/K/L (rewind/pause/play),
+ * comma/period (frame-by-frame), pil-venstre/høyre (±5s), 0-9 (sett speed).
+ *
+ * Reads/writes til videoElRef direkte — ingen state-duplisering i React.
+ * Lokal state holder bare UI-rendring (play-state, currentTime, duration,
+ * playbackRate), syncet via 'play'/'pause'/'timeupdate'/'durationchange'/
+ * 'ratechange'-events fra video-elementet.
+ */
+const TRANSPORT_SKIP_SEC = 5;
+const TRANSPORT_FRAME_SEC = 1 / 30; // ~33ms — 30fps default
+const TRANSPORT_SPEEDS = [0.25, 0.5, 1.0, 1.5, 2.0] as const;
+
+const TransportBar: React.FC<{
+  videoElRef: React.MutableRefObject<HTMLVideoElement | null>;
+  testId: string;
+}> = ({ videoElRef, testId }) => {
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [currentTime, setCurrentTime] = React.useState(0);
+  const [duration, setDuration] = React.useState<number>(0);
+  const [playbackRate, setPlaybackRate] = React.useState<number>(1);
+
+  // Sync UI-state med video-element-events.
+  React.useEffect(() => {
+    const video = videoElRef.current;
+    if (!video) return;
+    const onPlay = (): void => setIsPlaying(true);
+    const onPause = (): void => setIsPlaying(false);
+    const onTime = (): void => setCurrentTime(video.currentTime);
+    const onDuration = (): void => setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+    const onRate = (): void => setPlaybackRate(video.playbackRate);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('durationchange', onDuration);
+    video.addEventListener('ratechange', onRate);
+    // Initial sync (i tilfelle vi mountes etter at video har lastet)
+    setIsPlaying(!video.paused);
+    setCurrentTime(video.currentTime);
+    if (Number.isFinite(video.duration)) setDuration(video.duration);
+    setPlaybackRate(video.playbackRate);
+    return () => {
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('durationchange', onDuration);
+      video.removeEventListener('ratechange', onRate);
+    };
+  }, [videoElRef]);
+
+  const togglePlay = React.useCallback((): void => {
+    const v = videoElRef.current;
+    if (!v) return;
+    if (v.paused) void v.play().catch(() => {});
+    else v.pause();
+  }, [videoElRef]);
+
+  const skip = React.useCallback((deltaSec: number): void => {
+    const v = videoElRef.current;
+    if (!v) return;
+    v.currentTime = Math.max(0, Math.min((duration || 0) + 60, v.currentTime + deltaSec));
+  }, [videoElRef, duration]);
+
+  const setSpeed = React.useCallback((rate: number): void => {
+    const v = videoElRef.current;
+    if (!v) return;
+    v.playbackRate = rate;
+  }, [videoElRef]);
+
+  const handleScrub = React.useCallback((e: React.ChangeEvent<HTMLInputElement>): void => {
+    const v = videoElRef.current;
+    if (!v) return;
+    const next = Number(e.target.value);
+    if (!Number.isFinite(next)) return;
+    v.currentTime = next;
+  }, [videoElRef]);
+
+  // Keyboard bindings — globalt på window, men respekt input-fokus.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+      const v = videoElRef.current;
+      if (!v) return;
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          if (v.paused) void v.play().catch(() => {});
+          else v.pause();
+          break;
+        case 'j':
+        case 'J':
+          v.currentTime = Math.max(0, v.currentTime - TRANSPORT_SKIP_SEC);
+          break;
+        case 'k':
+        case 'K':
+          v.pause();
+          break;
+        case 'l':
+        case 'L':
+          if (v.paused) void v.play().catch(() => {});
+          else v.playbackRate = Math.min(2.0, v.playbackRate + 0.5);
+          break;
+        case ',':
+          e.preventDefault();
+          v.currentTime = Math.max(0, v.currentTime - TRANSPORT_FRAME_SEC);
+          break;
+        case '.':
+          e.preventDefault();
+          v.currentTime = v.currentTime + TRANSPORT_FRAME_SEC;
+          break;
+        case 'ArrowLeft':
+          if (!e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            v.currentTime = Math.max(0, v.currentTime - TRANSPORT_SKIP_SEC);
+          }
+          break;
+        case 'ArrowRight':
+          if (!e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            v.currentTime = v.currentTime + TRANSPORT_SKIP_SEC;
+          }
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [videoElRef]);
+
+  const fmt = (sec: number): string => {
+    const total = Math.max(0, Math.floor(sec));
+    const hh = Math.floor(total / 3600);
+    const mm = Math.floor((total % 3600) / 60);
+    const ss = total % 60;
+    const ff = Math.floor((sec - total) * 30); // 30fps default
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    return `${pad(hh)}:${pad(mm)}:${pad(ss)}:${pad(ff)}`;
+  };
+
+  return (
+    <Box
+      data-testid={testId}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.5,
+        px: 1.25,
+        py: 0.75,
+        borderTop: `1px solid ${danceFlowColors.borderStrong}`,
+        bgcolor: danceFlowColors.bgPanel,
+      }}
+    >
+      {/* Scrubber */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={TRANSPORT_FRAME_SEC}
+          value={currentTime}
+          onChange={handleScrub}
+          aria-label="Video scrubber"
+          data-testid={`${testId}-scrub`}
+          style={{ flex: 1, accentColor: '#a78bfa', cursor: 'pointer' }}
+        />
+      </Box>
+      {/* Kontroller */}
+      <Stack direction="row" alignItems="center" spacing={0.5}>
+        <button
+          type="button"
+          onClick={() => skip(-TRANSPORT_SKIP_SEC)}
+          data-testid={`${testId}-back`}
+          title="Back 5s (J / ←)"
+          style={{
+            background: 'transparent', border: 'none', color: danceFlowColors.textSecondary,
+            cursor: 'pointer', fontSize: 14, padding: '2px 4px',
+          }}
+        >
+          ⏮
+        </button>
+        <button
+          type="button"
+          onClick={togglePlay}
+          data-testid={`${testId}-play`}
+          aria-pressed={isPlaying}
+          title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+          style={{
+            background: 'transparent', border: 'none', color: danceFlowColors.lavender,
+            cursor: 'pointer', fontSize: 18, padding: '2px 6px', fontWeight: 700,
+          }}
+        >
+          {isPlaying ? '⏸' : '▶'}
+        </button>
+        <button
+          type="button"
+          onClick={() => skip(TRANSPORT_SKIP_SEC)}
+          data-testid={`${testId}-fwd`}
+          title="Forward 5s (L / →)"
+          style={{
+            background: 'transparent', border: 'none', color: danceFlowColors.textSecondary,
+            cursor: 'pointer', fontSize: 14, padding: '2px 4px',
+          }}
+        >
+          ⏭
+        </button>
+        {/* Speed-select */}
+        <Box sx={{ ml: 0.5 }}>
+          <select
+            value={playbackRate}
+            onChange={(e) => setSpeed(Number(e.target.value))}
+            aria-label="Playback speed"
+            data-testid={`${testId}-speed`}
+            style={{
+              background: danceFlowColors.bgInset,
+              color: danceFlowColors.textSecondary,
+              border: `1px solid ${danceFlowColors.borderSoft}`,
+              borderRadius: 4, fontSize: 11, padding: '2px 4px',
+              fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {TRANSPORT_SPEEDS.map((s) => (
+              <option key={s} value={s}>{s.toFixed(2)}x</option>
+            ))}
+          </select>
+        </Box>
+        {/* Tids-display */}
+        <Typography
+          data-testid={`${testId}-timecode`}
+          sx={{
+            ml: 'auto', fontSize: 11, fontWeight: 600,
+            color: danceFlowColors.textSecondary,
+            fontVariantNumeric: 'tabular-nums', letterSpacing: 0.5,
+          }}
+        >
+          {fmt(currentTime)} / {fmt(duration)}
+        </Typography>
+      </Stack>
+    </Box>
+  );
+};
