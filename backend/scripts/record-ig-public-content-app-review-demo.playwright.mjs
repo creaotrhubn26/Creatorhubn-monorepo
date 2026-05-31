@@ -41,8 +41,8 @@ async function loadEnv() {
     WHATSAPP_DEMO_BYPASS_TOKEN: process.env.WHATSAPP_DEMO_BYPASS_TOKEN || '',
     DEMO_IG_USER_ID: process.env.DEMO_IG_USER_ID || '',
     DEMO_IG_PAGE_ACCESS_TOKEN: process.env.DEMO_IG_PAGE_ACCESS_TOKEN || '',
-    DEMO_HASHTAG: process.env.DEMO_HASHTAG || 'norskcasting',
-    DEMO_IG_USERNAME: process.env.DEMO_IG_USERNAME || 'nrkdrama',
+    DEMO_HASHTAG: process.env.DEMO_HASHTAG || '',
+    DEMO_IG_USERNAME: process.env.DEMO_IG_USERNAME || '',
   };
   try {
     const raw = await fs.readFile(ENV_FILE, 'utf8');
@@ -204,7 +204,7 @@ async function runDemo(page, env) {
   await spotlight(page, '[data-testid="search-hashtag-button"]');
   await beat(page, 1000);
   await page.locator('[data-testid="search-hashtag-button"]').click();
-  await page.locator('[data-testid="media-card"], [data-testid="hashtag-err"]').first().waitFor({ timeout: 25_000 });
+  await page.locator('[data-testid="hashtag-raw"], [data-testid="hashtag-err"]').first().waitFor({ timeout: 30_000 });
   await spotlight(page, '[data-testid="hashtag-result"]');
   await beat(page, 5000);
   await removeSpotlight(page);
@@ -220,7 +220,7 @@ async function runDemo(page, env) {
   await spotlight(page, '[data-testid="discover-button"]');
   await beat(page, 1000);
   await page.locator('[data-testid="discover-button"]').click();
-  await page.locator('[data-testid="discovery-card"], [data-testid="discovery-err"]').first().waitFor({ timeout: 25_000 });
+  await page.locator('[data-testid="discovery-raw"], [data-testid="discovery-err"]').first().waitFor({ timeout: 30_000 });
   await spotlight(page, '[data-testid="discovery-result"]');
   await beat(page, 5000);
   await removeSpotlight(page);
