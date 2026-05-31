@@ -2215,6 +2215,16 @@ function drawFormation(
  * Animer alle dansere fra deres posisjoner i `from`-formation til `to`-formation.
  * Bruker Fabric sin innebygde tween-animasjon.
  */
+/**
+ * Audit B4: prefers-reduced-motion-detektor. Brukeren har «Reduce motion»
+ * på i OS-en — vi hopper instant i stedet for tween, både for puck-
+ * animasjon og CSS-transitions.
+ */
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function animateFormationTransition(
   canvas: Canvas,
   from: Formation,
@@ -2224,7 +2234,9 @@ function animateFormationTransition(
 ): void {
   const innerWidth = STAGE_WIDTH - 2 * STAGE_PADDING;
   const innerHeight = STAGE_HEIGHT - 2 * STAGE_PADDING;
-  const duration = 1500; // ms
+  // Audit B4: 0ms duration når reduced-motion er på (fortsatt 1 frame for at
+  // onComplete-callbacks fyrer korrekt — Fabric håndterer 0 som "snap").
+  const duration = prefersReducedMotion() ? 0 : 1500;
   const groups = canvas.getObjects().filter((o) => (o as { dancerId?: string }).dancerId) as (Group & { dancerId: string })[];
 
   let animationsRemaining = 0;
@@ -2236,6 +2248,18 @@ function animateFormationTransition(
     animationsRemaining++;
     const targetX = STAGE_PADDING + targetPos.x * innerWidth;
     const targetY = STAGE_PADDING + targetPos.y * innerHeight;
+
+    if (duration === 0) {
+      // Reduced-motion path: bare sett verdiene + render
+      group.set({ left: targetX, top: targetY });
+      group.setCoords();
+      completedCount++;
+      if (completedCount >= animationsRemaining) {
+        canvas.requestRenderAll();
+        onComplete();
+      }
+      return;
+    }
 
     group.animate({ left: targetX, top: targetY }, {
       duration,

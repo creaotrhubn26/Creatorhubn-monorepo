@@ -66,6 +66,7 @@ import FormationHeaderBar, {
 import ClipsSidebar from './ClipsSidebar';
 import FormationVideoPanel from './FormationVideoPanel';
 import DanceFlowNavRail from './DanceFlowNavRail';
+import { useDanceCheatSheet } from './DanceCheatSheet';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -216,6 +217,9 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
     return () => window.removeEventListener('dance:formations-count', onCount as EventListener);
   }, []);
 
+  // Audit I2: ?-keybind for cheat-sheet modal med alle keybinds + tips.
+  const cheatSheet = useDanceCheatSheet();
+
   // Phase 3 vil koble breadcrumbs til ekte prosjekt-navn fra context.
   const breadcrumbs = React.useMemo(
     () => [
@@ -280,6 +284,8 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           </Typography>
         </Box>
       )}
+      {/* Audit I2: cheat-sheet modal — vises ved ? eller programmatisk */}
+      {cheatSheet.CheatSheet}
       {/* Workflow-audit G19: share-feedback snackbar */}
       {shareMessage ? (
         <Box
@@ -430,6 +436,22 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
       profession_mode: mode,
     });
   }, [activeTabId, mode]);
+
+  // Audit D1: hold siste video-tid på window-prop så ⌘K's 'Opprett
+  // formasjon ved nåværende tid' kan lese den uten å re-rendere
+  // tre-nivåer-ned-komponenter. Stateløs ref-pattern.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as Window & { __dancePlayhead?: number };
+    const onTime = (e: Event): void => {
+      const detail = (e as CustomEvent<{ currentTime?: number }>).detail;
+      if (detail && typeof detail.currentTime === 'number') {
+        w.__dancePlayhead = detail.currentTime;
+      }
+    };
+    window.addEventListener('dance:video-time', onTime as EventListener);
+    return () => window.removeEventListener('dance:video-time', onTime as EventListener);
+  }, []);
 
   // Multi-team membership + active-team-bytter (URL ?team=<orgId>)
   const { memberships, refresh: refreshMemberships } = useMyMemberships();
@@ -773,17 +795,76 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
 
       {/* Cmd+K command palette — søk og hopp mellom 18 paneler */}
       <CommandPalette
-        commands={visibleTabs.map((t) => {
-          const tabLabel = labels[t.labelToken] ?? t.id;
-          return {
-            id: `tab-${t.id}`,
-            label: tabLabel,
-            description: t.descriptionToken ? labels[t.descriptionToken] : undefined,
-            category: 'Hopp til',
-            keywords: [t.id, tabLabel.toLowerCase()],
-            onSelect: () => setActiveTabId(t.id),
-          };
-        })}
+        commands={[
+          ...visibleTabs.map((t) => {
+            const tabLabel = labels[t.labelToken] ?? t.id;
+            return {
+              id: `tab-${t.id}`,
+              label: tabLabel,
+              description: t.descriptionToken ? labels[t.descriptionToken] : undefined,
+              category: 'Hopp til' as const,
+              keywords: [t.id, tabLabel.toLowerCase()],
+              onSelect: () => setActiveTabId(t.id),
+            };
+          }),
+          // Audit D1: formation-actions tilgjengelig fra ⌘K palette.
+          // Dispatch CustomEvents — FormationView/Timeline lytter.
+          {
+            id: 'formation-create-at-now',
+            label: 'Opprett formasjon ved nåværende tid',
+            description: 'Bruker video-playhead som start-tid',
+            category: 'Kreativt' as const,
+            keywords: ['ny', 'opprett', 'create', 'formasjon'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              // Dispatchen leses av FormationView's create-listener.
+              // Bruker 0 hvis ingen video — bedre enn å gjøre ingenting.
+              const vTime = (window as Window & { __dancePlayhead?: number }).__dancePlayhead ?? 0;
+              window.dispatchEvent(
+                new CustomEvent('dance:create-formation-at', { detail: { timeSec: vTime } }),
+              );
+            },
+          },
+          {
+            id: 'formation-export-pdf',
+            label: 'Eksporter stage plot (PDF)',
+            description: 'Print eller lagre som PDF',
+            category: 'Handling' as const,
+            keywords: ['pdf', 'print', 'stage', 'plot', 'export'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              window.dispatchEvent(
+                new CustomEvent('dance:export-formation', { detail: { format: 'pdf' } }),
+              );
+            },
+          },
+          {
+            id: 'formation-export-png',
+            label: 'Eksporter scene som PNG',
+            description: 'Snapshot av nåværende formasjon',
+            category: 'Handling' as const,
+            keywords: ['png', 'bilde', 'snapshot', 'export'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              window.dispatchEvent(
+                new CustomEvent('dance:export-formation', { detail: { format: 'png' } }),
+              );
+            },
+          },
+          {
+            id: 'formation-export-backup',
+            label: 'Eksporter backup-fil (JSON)',
+            description: 'For re-import / deling',
+            category: 'Handling' as const,
+            keywords: ['json', 'backup', 'export'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              window.dispatchEvent(
+                new CustomEvent('dance:export-formation', { detail: { format: 'json' } }),
+              );
+            },
+          },
+        ]}
       />
 
       {/* Persistent help-knapp nederst-høyre.
