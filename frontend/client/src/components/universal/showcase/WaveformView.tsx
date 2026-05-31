@@ -477,11 +477,14 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
           justifyContent: 'center',
           zIndex: 100}}>
           <CircularProgress size={60} sx={{ color: accentColor, mb: 2 }} />
-          <Typography variant="h6" sx={{ color: accentColor }}>
-            🎵 Analyzing Audio Waveform...
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+            <MusicNote sx={{ color: accentColor }} />
+            <Typography variant="h6" sx={{ color: accentColor }}>
+              Analyserer lydbølge…
+            </Typography>
+          </Stack>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', mt: 1 }}>
-            Generating real-time visualization
+            Genererer sanntidsvisualisering
           </Typography>
         </Box>
       )}
@@ -731,9 +734,12 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
             border: `1px solid ${accentColor}40`,
             borderRadius: 2
           }}>
-            <Typography variant="subtitle2" sx={{ color: accentColor, mb: 2, fontWeight: 600}}>
-              🎵 AI Analysis Results
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+              <MusicNote sx={{ color: accentColor, fontSize: 18 }} />
+              <Typography variant="subtitle2" sx={{ color: accentColor, fontWeight: 600 }}>
+                AI-analyse-resultater
+              </Typography>
+            </Stack>
             <Grid container spacing={2}>
               <Grid item xs={6} sm={3}>
                 <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2 }}>
