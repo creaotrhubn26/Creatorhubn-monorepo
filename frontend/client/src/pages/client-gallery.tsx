@@ -843,8 +843,13 @@ export default function ClientGallery({}: ClientGalleryProps) {
             Ditt valg
           </Typography>
 
-          {/* Progress visualization */}
+          {/* Progress visualization — kun når galleriet faktisk har en
+              contracted-image-count. Uten det (mange galleries i
+              prod har contractedImages = 0) viste teksten "0 av 0
+              inkluderte" som ga inntrykk av at klient ikke kunne
+              velge noe. UX-gap #13. */}
           <Box sx={{ mb: 2 }}>
+            {(gallery?.gallerySettings?.contractedImages ?? 0) > 0 ? (
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 {selectedImages.size} av {gallery?.gallerySettings?.contractedImages || 0},{' '}
@@ -857,6 +862,13 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 </Typography>
               )}
             </Box>
+            ) : (
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
+                {selectedImages.size === 0
+                  ? `Velg så mange ${terms.itemPlural} du vil`
+                  : `${selectedImages.size} valgt`}
+              </Typography>
+            )}
 
             <Box
               sx={{
@@ -1062,6 +1074,26 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 {selectedImages.size === images.length
                   ? 'Fjern alle'
                   : `Velg alle (${images.length} ${terms.itemPlural})`}
+              </Button>
+            )}
+            {/* UX-gap #11: hvis klient har hjertet noen bilder, gi dem
+                en snarvei til "velg alle favoritter". Vanlig flow:
+                browse → hjerte 30 av 200 → bestem seg for å ta dem som
+                final. Uten snarveien måtte man re-klikke alle 30. */}
+            {gallery?.gallerySettings?.allowDownload !== false && favoriteImages.size > 0 && (
+              <Button
+                variant="text"
+                size="small"
+                fullWidth
+                onClick={() => {
+                  // Union av eksisterende selections + alle favoritter
+                  const union = new Set(selectedImages);
+                  favoriteImages.forEach((id) => union.add(id));
+                  setSelectedImages(union);
+                }}
+                sx={{ color: 'rgba(255,255,255,0.85)' }}
+              >
+                Velg alle favoritter ({favoriteImages.size})
               </Button>
             )}
             {/* Slice 9.3 — bulk download. Only shown when allowDownload
