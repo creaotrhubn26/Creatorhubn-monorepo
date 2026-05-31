@@ -107,15 +107,28 @@ export default function MediaUploader({
 
     setUploading(true);
     setProgress(0);
+
+    // Showreel går via Cloudflare Stream hvis aktivert (auto-transcoding + adaptive bitrate).
+    // Andre kinds (headshot/CV/alt_photo) går via R2 direct upload.
+    if (kind === 'showreel' && config?.streamEnabled) {
+      const result = await roleRoomTalentsService.uploadShowreelToStream(file, (pct) => setProgress(pct));
+      setUploading(false);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onChange(result.result.finalUrl);
+      return;
+    }
+
     const result = await roleRoomTalentsService.uploadFileToR2(file, kind, (pct) => setProgress(pct));
     setUploading(false);
-
     if (!result.ok) {
       setError(result.error);
       return;
     }
     onChange(result.url);
-  }, [allowedTypes, kind, maxBytes, onChange]);
+  }, [allowedTypes, kind, maxBytes, onChange, config?.streamEnabled]);
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -149,8 +162,42 @@ export default function MediaUploader({
     return null;
   }, [value, kind]);
 
+  // Detect Cloudflare Stream-URL (videodelivery.net eller cloudflarestream.com)
+  const isStreamUrl = value && (value.includes('cloudflarestream.com') || value.includes('videodelivery.net'));
+
   // ── Render: eksisterende fil med preview + bytt/slett ─────────────
   if (value && !uploading) {
+    // Showreel via Cloudflare Stream: vis ekte iframe-player
+    if (kind === 'showreel' && isStreamUrl) {
+      return (
+        <Box sx={{ borderRadius: radius.md, border: `1px solid ${palette.border}`, bgcolor: palette.bgCardElevated, overflow: 'hidden' }}>
+          <Box sx={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', bgcolor: '#000' }}>
+            <Box
+              component="iframe"
+              src={value}
+              title={label}
+              sx={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+              allowFullScreen
+            />
+          </Box>
+          <Stack direction="row" spacing={1.4} alignItems="center" sx={{ p: 1.4 }}>
+            <CheckCircleIcon sx={{ color: palette.success, fontSize: 18 }} />
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 600, fontSize: '0.9rem', flexGrow: 1 }}>
+              {label} via Cloudflare Stream — adaptive bitrate
+            </Typography>
+            <Button size="small" startIcon={<CloudUploadIcon />} onClick={() => inputRef.current?.click()} sx={{ textTransform: 'none', color: palette.textSecondary, fontSize: '0.78rem' }}>
+              Bytt
+            </Button>
+            <IconButton size="small" onClick={handleRemove} sx={{ color: palette.danger }}>
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+          <input ref={inputRef} type="file" accept={acceptAttr} hidden onChange={handleInputChange} />
+        </Box>
+      );
+    }
+
     return (
       <Box sx={{ p: 2, borderRadius: radius.md, border: `1px solid ${palette.border}`, bgcolor: palette.bgCardElevated }}>
         <Stack direction="row" spacing={2} alignItems="center">
@@ -225,7 +272,9 @@ export default function MediaUploader({
             }}
           />
           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-            Streamer direkte til Cloudflare R2. Ikke lukk siden før opplastningen er ferdig.
+            {kind === 'showreel' && config?.streamEnabled
+              ? 'Streamer direkte til Cloudflare Stream. Videoen blir auto-transkodet for adaptive bitrate når den er ferdig.'
+              : 'Streamer direkte til Cloudflare R2. Ikke lukk siden før opplastningen er ferdig.'}
           </Typography>
         </Stack>
       </Box>
@@ -294,6 +343,11 @@ export default function MediaUploader({
         {allowedTypes.length > 0 ? (
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
             {allowedTypes.map((t) => t.split('/').pop()).join(' · ')} · maks {formatBytes(maxBytes)}
+          </Typography>
+        ) : null}
+        {kind === 'showreel' && config?.streamEnabled ? (
+          <Typography sx={{ color: palette.accentBright, fontSize: '0.72rem', mt: 0.6, fontWeight: 600 }}>
+            ⚡ Videoen blir transkodet for HLS/DASH og spilles av i optimal kvalitet på alle enheter
           </Typography>
         ) : null}
       </Box>
