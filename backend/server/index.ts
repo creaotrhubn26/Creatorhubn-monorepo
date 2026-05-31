@@ -121,6 +121,7 @@ import { setupPageMetadataRoutes } from "./role-room-page-metadata-routes.js";
 import { setupIgPublicRoutes } from "./role-room-ig-public-routes.js";
 import { setupLeadsRetrievalRoutes } from "./role-room-leads-retrieval-routes.js";
 import { setupIgEventsRoutes } from "./role-room-ig-events-routes.js";
+import { setupMetaReviewIndexRoutes } from "./role-room-meta-review-index-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31537,6 +31538,9 @@ setupLeadsRetrievalRoutes({ app, requireAdminOrDemoBypass });
 
 // Meta App Review demo for instagram_manage_events — IG events CRUD.
 setupIgEventsRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo INDEX — one URL surfacing all 9 demos.
+setupMetaReviewIndexRoutes({ app, requireAdminOrDemoBypass });
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
