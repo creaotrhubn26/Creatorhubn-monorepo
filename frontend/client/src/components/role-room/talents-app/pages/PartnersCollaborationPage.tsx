@@ -139,15 +139,22 @@ export default function PartnersCollaborationPage() {
   const [snack, setSnack] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
 
+  // Demo-modus: ?demo=1 i URL → isolert demo-talent (read-only).
+  // Forhindrer at hovedstrøm-data noensinne blandes med demo.
+  const demoMode = useMemo(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1',
+    [],
+  );
+
   const reload = useCallback(async () => {
     setError(null);
-    const data = await roleRoomTalentsService.fetchPartnersOverview();
+    const data = await roleRoomTalentsService.fetchPartnersOverview({ demo: demoMode });
     setOverview(data);
     setLoading(false);
     if (data.partners.length > 0 && !selectedId) {
       setSelectedId(data.partners[0].id);
     }
-  }, [selectedId]);
+  }, [selectedId, demoMode]);
 
   useEffect(() => {
     void reload();
@@ -168,6 +175,10 @@ export default function PartnersCollaborationPage() {
 
   const handleTogglePerm = useCallback(
     async (row: PartnerOverviewRow, key: keyof PartnerOverviewRow['perms']) => {
+      if (demoMode) {
+        setSnack('Demo-modus er read-only — toggling er deaktivert');
+        return;
+      }
       const next = { ...row.perms, [key]: !row.perms[key] };
       setBusyRow(row.id);
       // Optimistisk oppdater
@@ -213,6 +224,31 @@ export default function PartnersCollaborationPage() {
   return (
     <Box sx={{ display: 'flex', minWidth: 0 }}>
       <Box sx={{ flexGrow: 1, minWidth: 0, p: 3 }}>
+        {demoMode ? (
+          <Box
+            sx={{
+              mb: 2,
+              px: 2,
+              py: 1.2,
+              borderRadius: radius.sm,
+              background: 'linear-gradient(90deg, rgba(168,85,247,0.18), rgba(217,70,239,0.12))',
+              border: `1px solid ${palette.borderStrong}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.4,
+            }}
+          >
+            <Chip
+              label="DEMO MODE"
+              size="small"
+              sx={{ bgcolor: palette.accent, color: '#fff', fontWeight: 800, letterSpacing: '0.12em' }}
+            />
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.85rem' }}>
+              Du ser isolert demo-data (talent: Ingrid Nilsen). Ingen handlinger lagres. Fjern <code>?demo=1</code> fra URL for å se ekte data.
+            </Typography>
+          </Box>
+        ) : null}
+
         {/* ─── Page header ─── */}
         <Stack
           direction="row"
@@ -231,7 +267,14 @@ export default function PartnersCollaborationPage() {
           </Box>
           <Button
             startIcon={<PersonAddAltOutlinedIcon />}
-            onClick={() => setInviteOpen(true)}
+            onClick={() => {
+              if (demoMode) {
+                setSnack('Demo-modus er read-only — kan ikke invitere');
+                return;
+              }
+              setInviteOpen(true);
+            }}
+            disabled={demoMode}
             sx={{
               textTransform: 'none',
               fontWeight: 700,
@@ -243,6 +286,7 @@ export default function PartnersCollaborationPage() {
               color: '#fff',
               '&:hover': { filter: 'brightness(1.08)' },
               boxShadow: '0 8px 24px rgba(168, 85, 247, 0.28)',
+              '&.Mui-disabled': { opacity: 0.55, color: '#fff' },
             }}
           >
             Invite Partner

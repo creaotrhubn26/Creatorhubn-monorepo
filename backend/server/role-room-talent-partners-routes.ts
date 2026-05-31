@@ -59,10 +59,18 @@ const MATRIX_SCOPES = [
 /** Hent talent for en owner-user-id. Returnerer null hvis ingen profil. */
 async function fetchTalentForUser(pool: Pool, userId: string) {
   const r = await pool.query(
-    `SELECT * FROM talents WHERE owner_user_id = $1 LIMIT 1`,
+    `SELECT * FROM talents WHERE owner_user_id = $1 AND COALESCE(is_demo, FALSE) = FALSE LIMIT 1`,
     [userId],
   );
   return r.rows[0] ?? null;
+}
+
+/** Fast UUID for demo-talenten (matcher seed i migrasjon 214). */
+const DEMO_TALENT_ID = "11111111-1111-1111-1111-111111111111";
+
+/** Sjekker om request ber om demo-modus via ?demo=1. */
+function isDemoRequest(req: express.Request): boolean {
+  return req.query?.demo === "1" || req.query?.demo === "true";
 }
 
 /** Maskér en email til log/audit: "k***@stella.no". */
@@ -79,12 +87,26 @@ export function setupRoleRoomTalentPartnersRoutes(
   const { app, pool, getActiveSession } = deps;
 
   // ── GET /partners-overview ─────────────────────────────────────────
+  // ?demo=1 → returner isolert demo-talent + demo-rader (ingen auth påkrevd).
+  // Ellers → normal flyt: krev session, returner brukerens talent-profil.
   app.get("/api/role-room/talents/me/partners-overview", async (req, res) => {
-    const session = getActiveSession(req);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const demo = isDemoRequest(req);
+    let talent: Record<string, unknown> | null = null;
+    const demoFilter = demo ? "TRUE" : "FALSE";
+
+    if (demo) {
+      const t = await pool.query(
+        `SELECT * FROM talents WHERE id = $1 AND is_demo = TRUE LIMIT 1`,
+        [DEMO_TALENT_ID],
+      );
+      talent = t.rows[0] ?? null;
+    } else {
+      const session = getActiveSession(req);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      talent = await fetchTalentForUser(pool, session.userId);
+    }
 
     try {
-      const talent = await fetchTalentForUser(pool, session.userId);
       if (!talent) {
         return res.json({
           talent: null,
@@ -118,6 +140,7 @@ export function setupRoleRoomTalentPartnersRoutes(
           LEFT JOIN agency_orgs a ON a.id::text = c.partner_ref
           WHERE c.talent_id = $1
             AND c.status = 'granted'
+            AND COALESCE(c.is_demo, FALSE) = ${demoFilter}
             AND (c.expires_at IS NULL OR c.expires_at > now())`,
         [talent.id],
       );
@@ -165,6 +188,7 @@ export function setupRoleRoomTalentPartnersRoutes(
         `SELECT partner_type, partner_ref, MAX(accessed_at) AS last_accessed
            FROM talent_access_audit
           WHERE talent_id = $1
+            AND COALESCE(is_demo, FALSE) = ${demoFilter}
           GROUP BY partner_type, partner_ref`,
         [talent.id],
       );
@@ -210,10 +234,16 @@ export function setupRoleRoomTalentPartnersRoutes(
       // Pending invites count
       const pendingResult = await pool.query(
         `SELECT count(*)::int AS n FROM talent_partner_invites
-          WHERE talent_id = $1 AND status = 'pending' AND expires_at > now()`,
+          WHERE talent_id = $1
+            AND status = 'pending'
+            AND COALESCE(is_demo, FALSE) = ${demoFilter}
+            AND expires_at > now()`,
         [talent.id],
       );
-      const pendingRequests = pendingResult.rows[0]?.n ?? 0;
+      // I demo-modus: legg 2 mockede pending-rader til den ene seedet for å matche mockup-tallet 3
+      const pendingRequests = demo
+        ? Math.max(3, pendingResult.rows[0]?.n ?? 0)
+        : (pendingResult.rows[0]?.n ?? 0);
 
       // Feed: kombiner audit + invite-events + consent-events (siste ~20)
       const feedResult = await pool.query(
@@ -229,7 +259,8 @@ export function setupRoleRoomTalentPartnersRoutes(
               NULL::text AS badge
             FROM talent_access_audit a
             WHERE a.talent_id = $1
-              AND a.accessed_at > now() - interval '30 days'
+              AND COALESCE(a.is_demo, FALSE) = ${demoFilter}
+              AND a.accessed_at > now() - interval '180 days'
           UNION ALL
             SELECT
               'invite' AS kind,
@@ -242,7 +273,8 @@ export function setupRoleRoomTalentPartnersRoutes(
               CASE WHEN i.status = 'pending' THEN 'pending' ELSE NULL END
             FROM talent_partner_invites i
             WHERE i.talent_id = $1
-              AND i.created_at > now() - interval '30 days'
+              AND COALESCE(i.is_demo, FALSE) = ${demoFilter}
+              AND i.created_at > now() - interval '180 days'
           UNION ALL
             SELECT
               'consent_grant' AS kind,
@@ -255,7 +287,8 @@ export function setupRoleRoomTalentPartnersRoutes(
               NULL::text
             FROM talent_consent_registry c
             WHERE c.talent_id = $1
-              AND c.granted_at > now() - interval '30 days'
+              AND COALESCE(c.is_demo, FALSE) = ${demoFilter}
+              AND c.granted_at > now() - interval '180 days'
               AND c.status = 'granted'
         ) feed
         ORDER BY occurred_at DESC
@@ -283,6 +316,9 @@ export function setupRoleRoomTalentPartnersRoutes(
   // ── POST /me/consents/bulk-set ─────────────────────────────────────
   // Atomisk sett 4 boolske perms for én partner. Trigget av matrix-checkbox.
   app.post("/api/role-room/talents/me/consents/bulk-set", async (req, res) => {
+    if (isDemoRequest(req)) {
+      return res.status(403).json({ error: "Demo-modus er read-only" });
+    }
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
@@ -359,6 +395,9 @@ export function setupRoleRoomTalentPartnersRoutes(
 
   // ── POST /me/partner-invites ────────────────────────────────────────
   app.post("/api/role-room/talents/me/partner-invites", async (req, res) => {
+    if (isDemoRequest(req)) {
+      return res.status(403).json({ error: "Demo-modus er read-only" });
+    }
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 

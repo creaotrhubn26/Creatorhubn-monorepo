@@ -241,8 +241,9 @@ const roleRoomTalentsService = {
   },
 
   // ── Phase 2 e2e ──────────────────────────────────────────────────
-  async fetchPartnersOverview(): Promise<PartnersOverview> {
-    const r = await authFetch(`${BASE}/me/partners-overview`);
+  async fetchPartnersOverview(opts?: { demo?: boolean }): Promise<PartnersOverview> {
+    const qs = opts?.demo ? '?demo=1' : '';
+    const r = await authFetch(`${BASE}/me/partners-overview${qs}`);
     if (!r.ok) {
       return {
         talent: null,
