@@ -3,6 +3,7 @@ import type { HealthStatus, ProjectTemplateSummary } from "../types";
 import { IconGear, IconBox, IconEye, IconMagicCut } from "./Icons";
 import { UserProfile } from "./UserProfile";
 import { useDepHealth, type DepHealth } from "../hooks/useDepHealth";
+import { PhotoshopStatusPill } from "./PhotoshopStatusPill";
 
 function DepHealthPill({ onOpen }: { onOpen: () => void }) {
   const { state } = useDepHealth();
@@ -150,6 +151,7 @@ export function HeaderBar({
           {connectionLabel(health)}
         </span>
         <DepHealthPill onOpen={onOpenDependencies} />
+        <PhotoshopStatusPill onClick={onOpenPhotoshopBridge} />
       </div>
 
       <div className="header-actions">
