@@ -46,6 +46,7 @@ import { VisualEditorProvider } from '../admin/visual-editor/VisualEditorContext
 import CreatorHubMarketplace from '../resume/ResumeBuilderMarketplace';
 import ContractSummaryWidget from '../contract-designer/ContractSummaryWidget';
 import RelatedItemsWidget from './shared/RelatedItemsWidget';
+import StorageUsageBanner from './shared/StorageUsageBanner';
 import {
   Box,
   Container,
@@ -4798,6 +4799,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     : null)
               }
             />
+            <Box sx={{ mt: 2, mb: 2 }}>
+              <StorageUsageBanner
+                variant="expanded"
+                onUpgradeClick={() => setTabValue('settings')}
+                onManageFilesClick={() => setTabValue('files')}
+              />
+            </Box>
           <MuiCard sx={{
             // Landing-matched dark surface med profesjon-spesifikk
             // aksent-border. Hver fag har egen "lyd" (orange/rød/blå/
