@@ -393,6 +393,7 @@ export function InnholdsprodusentPage() {
           </Stack>
         </Box>
 
+
         <NewsletterSignupBlock
           heading="Få bransje-data + workflow-research i innboksen"
           body="Norwegian Casting Brief — én bransje-observasjon, ett konkret datapunkt, én ting verdt å vite. 4 minutter."

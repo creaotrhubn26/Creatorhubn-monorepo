@@ -142,6 +142,15 @@ import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
+import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
+import { setupPagesCtaRoutes } from "./role-room-pages-cta-routes.js";
+import { setupPagePublicContentRoutes } from "./role-room-page-public-content-routes.js";
+import { setupPageMentionsRoutes } from "./role-room-page-mentions-routes.js";
+import { setupPageMetadataRoutes } from "./role-room-page-metadata-routes.js";
+import { setupIgPublicRoutes } from "./role-room-ig-public-routes.js";
+import { setupLeadsRetrievalRoutes } from "./role-room-leads-retrieval-routes.js";
+import { setupIgEventsRoutes } from "./role-room-ig-events-routes.js";
+import { setupMetaReviewIndexRoutes } from "./role-room-meta-review-index-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31829,6 +31838,33 @@ function requireAdminOrDemoBypass(
   if (isDemoBypassed(req)) return true;
   return Boolean(requireAdminSession(req, res));
 }
+
+// Meta App Review demo for oEmbed Read — egen modul (overlever branch-flips).
+setupOEmbedRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for pages_manage_cta — Role Agent setter Page CTA.
+setupPagesCtaRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Page Public Content Access — public page-discovery.
+setupPagePublicContentRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Page Mentions — read posts tagging a Page.
+setupPageMentionsRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Page Public Metadata Access — rich public fields.
+setupPageMetadataRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Instagram Public Content Access — hashtag + discovery.
+setupIgPublicRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for leads_retrieval — Lead Ads form-submissions ingest.
+setupLeadsRetrievalRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for instagram_manage_events — IG events CRUD.
+setupIgEventsRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo INDEX — one URL surfacing all 9 demos.
+setupMetaReviewIndexRoutes({ app, requireAdminOrDemoBypass });
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
