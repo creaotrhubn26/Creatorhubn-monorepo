@@ -650,6 +650,7 @@ import { setupUploadsRoutes } from "./uploads-routes";
 import { setupStorageStatusRoutes } from "./storage-status-routes";
 import { setupStorageBillingAdminRoutes } from "./storage-billing-admin-routes";
 import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
+import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
@@ -67694,6 +67695,11 @@ setupStorageBillingAdminRoutes({
   requireAdminSession,
 });
 setupAdminStorageCostRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminFileAuditRoutes({
   app,
   pool,
   requireAdminSession,

@@ -32,6 +32,7 @@ import {
   pushStorageUsageToStripe,
   getStorageStatus as getQuotaStatus,
 } from "./storage-quota-service.js";
+import { recordFileAccess } from "./file-access-audit.js";
 
 export interface ChunkedUploadRoutesDeps {
   app: express.Application;
@@ -604,7 +605,9 @@ export function setupChunkedUploadRoutes(
   });
 
   // FILES — serve assemblet fil (kun for upload-eieren).
-  // Hvis fila ble flyttet til R2 eller Stream: redirect til ekte URL.
+  // Stream-videoer: signert short-TTL playback-URL (1t) regenerert per request
+  // R2-filer: signert short-TTL URL (fra storage-router, default 1t)
+  // Filesystem: pipe direkte
   app.get("/api/chunked-upload/files/:fileId", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
@@ -619,6 +622,15 @@ export function setupChunkedUploadRoutes(
         [fileId, userId],
       );
       if ((r.rowCount ?? 0) === 0) {
+        // Audit-logg failed access (404)
+        void recordFileAccess(pool, {
+          userId,
+          fileId,
+          backend: "unknown",
+          accessType: "download",
+          outcome: "not_found",
+          req,
+        }).catch(() => undefined);
         return res.status(404).end();
       }
       const row = r.rows[0];
@@ -626,16 +638,56 @@ export function setupChunkedUploadRoutes(
         row.metadata && typeof row.metadata === "object" ? row.metadata : {};
       const backend = metadata.storageBackend as string | undefined;
 
-      if (backend === "cloudflare_stream" && metadata.playbackUrl) {
-        return res.redirect(302, String(metadata.playbackUrl));
+      // Cloudflare Stream — generer fersk signed playback-URL per request
+      // (requireSignedURLs=true er satt ved upload). 1t TTL.
+      if (backend === "cloudflare_stream" && metadata.streamUid) {
+        const { signStreamPlaybackUrl } = await import(
+          "./cloudflare-stream-service.js"
+        );
+        const signed = await signStreamPlaybackUrl(
+          String(metadata.streamUid),
+          60 * 60,
+        );
+        void recordFileAccess(pool, {
+          userId,
+          fileId,
+          backend: "cloudflare_stream",
+          accessType: "stream_playback",
+          outcome: signed ? "success" : "sign_failed",
+          req,
+        }).catch(() => undefined);
+        if (!signed) {
+          return res.status(503).json({
+            error: "stream_token_failed",
+            message:
+              "Kunne ikke generere signert avspilling-URL — prøv igjen om litt.",
+          });
+        }
+        return res.redirect(302, signed);
       }
       if (backend === "r2" && metadata.downloadUrl) {
+        void recordFileAccess(pool, {
+          userId,
+          fileId,
+          backend: "r2",
+          accessType: "download",
+          outcome: "success",
+          req,
+        }).catch(() => undefined);
         return res.redirect(302, String(metadata.downloadUrl));
       }
 
       // Filesystem-pathen — final_file_path er relativ til UPLOAD_ROOT
       const fullPath = path.join(UPLOAD_ROOT, row.final_file_path);
       if (!fullPath.startsWith(UPLOAD_ROOT)) {
+        void recordFileAccess(pool, {
+          userId,
+          fileId,
+          backend: "filesystem",
+          accessType: "download",
+          outcome: "path_traversal_blocked",
+          req,
+        }).catch(() => undefined);
         return res.status(403).end();
       }
       if (row.mime_type) {
@@ -645,6 +697,14 @@ export function setupChunkedUploadRoutes(
         "Content-Disposition",
         `attachment; filename="${row.file_name.replace(/"/g, "")}"`,
       );
+      void recordFileAccess(pool, {
+        userId,
+        fileId,
+        backend: "filesystem",
+        accessType: "download",
+        outcome: "success",
+        req,
+      }).catch(() => undefined);
       fsSync.createReadStream(fullPath).pipe(res);
     } catch (err) {
       console.error("[chunked-upload] file serve failed:", err);
