@@ -42,6 +42,21 @@ async function fetchAgencyForUser(pool: Pool, userId: string) {
   return r.rows[0] ?? null;
 }
 
+/** Demo-modus: returner Stella Casting som standard "agency view". */
+function getDemoAgency() {
+  return {
+    id: "a2222222-2222-2222-2222-2222222222a2",
+    type: "stella_casting",
+    name: "Stella Casting (demo)",
+    slug: "demo-stella-casting",
+    agency_role: "admin",
+  };
+}
+
+function isDemoRequest(req: express.Request): boolean {
+  return req.query?.demo === "1" || req.query?.demo === "true";
+}
+
 type SearchFilters = {
   q?: string;
   location?: string;       // matcher city ILIKE
@@ -94,6 +109,7 @@ function buildSearchSql(
   agencyType: string,
   agencyId: string,
   filters: SearchFilters,
+  demo: boolean,
 ): { sql: string; params: unknown[]; countSql: string } {
   const params: unknown[] = [agencyType, agencyId];
   const where: string[] = [
@@ -102,7 +118,7 @@ function buildSearchSql(
     `c.status = 'granted'`,
     `(c.expires_at IS NULL OR c.expires_at > now())`,
     `t.profile_status != 'archived'`,
-    `COALESCE(t.is_demo, FALSE) = FALSE`,
+    `COALESCE(t.is_demo, FALSE) = ${demo ? "TRUE" : "FALSE"}`,
   ];
 
   let p = 3;
@@ -245,16 +261,21 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
 
   // ── GET /agency/talents/search ─────────────────────────────────────
   app.get("/api/role-room/agency/talents/search", async (req, res) => {
-    const session = getActiveSession(req);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const demo = isDemoRequest(req);
+    let agency: { id: string; type: string; name: string; slug: string; agency_role: string } | null = null;
+
+    if (demo) {
+      agency = getDemoAgency();
+    } else {
+      const session = getActiveSession(req);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      agency = await fetchAgencyForUser(pool, session.userId);
+      if (!agency) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+    }
 
     try {
-      const agency = await fetchAgencyForUser(pool, session.userId);
-      if (!agency) {
-        return res.status(403).json({ error: "Du tilhører ikke en agency" });
-      }
       const filters = parseFilters(req.query as Record<string, unknown>);
-      const { sql, params, countSql } = buildSearchSql(agency.type, agency.id, filters);
+      const { sql, params, countSql } = buildSearchSql(agency.type, agency.id, filters, demo);
 
       const [result, count] = await Promise.all([
         pool.query(sql, params),
@@ -275,11 +296,19 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
 
   // ── GET /agency/registry-overview — stats for sidebar ───────────────
   app.get("/api/role-room/agency/registry-overview", async (req, res) => {
-    const session = getActiveSession(req);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-    try {
-      const agency = await fetchAgencyForUser(pool, session.userId);
+    const demo = isDemoRequest(req);
+    let agency: { id: string; type: string; name: string } | null = null;
+    if (demo) {
+      agency = getDemoAgency();
+    } else {
+      const session = getActiveSession(req);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      agency = await fetchAgencyForUser(pool, session.userId);
       if (!agency) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+    }
+    try {
+      const demoFlag = demo ? "TRUE" : "FALSE";
+      // 1) Aggregate stats
       const r = await pool.query(
         `WITH visible AS (
            SELECT DISTINCT t.id, t.created_at, t.availability_status
@@ -288,7 +317,7 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
             WHERE c.partner_type = $1 AND c.partner_ref = $2
               AND c.status = 'granted'
               AND (c.expires_at IS NULL OR c.expires_at > now())
-              AND COALESCE(t.is_demo, FALSE) = FALSE
+              AND COALESCE(t.is_demo, FALSE) = ${demoFlag}
               AND t.profile_status != 'archived'
          )
          SELECT
@@ -298,9 +327,38 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
          FROM visible`,
         [agency.type, agency.id],
       );
+
+      // 2) Sparkline: daily new signups siste 30 dager (matcher "+87 New
+      //    signups Last 30 days"-tallet). En signup = en NY talent som ga
+      //    samtykke til denne agency på den dagen.
+      const sparkline = await pool.query(
+        `WITH days AS (
+           SELECT generate_series(
+             (now() at time zone 'UTC')::date - interval '29 days',
+             (now() at time zone 'UTC')::date,
+             interval '1 day'
+           )::date AS day
+         ), counts AS (
+           SELECT DATE(c.granted_at at time zone 'UTC') AS day,
+                  COUNT(DISTINCT t.id)::int AS n
+             FROM talent_consent_registry c
+             JOIN talents t ON t.id = c.talent_id
+            WHERE c.partner_type = $1 AND c.partner_ref = $2
+              AND c.status = 'granted'
+              AND COALESCE(t.is_demo, FALSE) = ${demoFlag}
+              AND c.granted_at >= now() - interval '30 days'
+            GROUP BY DATE(c.granted_at at time zone 'UTC')
+         )
+         SELECT days.day::text AS day, COALESCE(counts.n, 0)::int AS n
+           FROM days LEFT JOIN counts USING (day)
+           ORDER BY days.day`,
+        [agency.type, agency.id],
+      );
+
       return res.json({
         agency: { id: agency.id, name: agency.name },
         ...r.rows[0],
+        sparkline: sparkline.rows, // [{ day: '2026-05-02', n: 0 }, ...] — 30 punkter
       });
     } catch (err) {
       console.error("[registry-overview] failed", err);
@@ -310,6 +368,21 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
 
   // ── GET /agency/saved-searches ──────────────────────────────────────
   app.get("/api/role-room/agency/saved-searches", async (req, res) => {
+    const demo = isDemoRequest(req);
+    if (demo) {
+      // Demo: returner shared-searches for demo-agency (Stella)
+      const agency = getDemoAgency();
+      const r = await pool.query(
+        `SELECT id, name, filters, estimated_count, estimated_at, shared,
+                created_at, updated_at, last_run_at, owner_user_id
+           FROM agency_saved_searches
+          WHERE agency_org_id = $1 AND shared = TRUE
+          ORDER BY updated_at DESC LIMIT 20`,
+        [agency.id],
+      );
+      return res.json({ searches: r.rows });
+    }
+
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {

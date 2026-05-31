@@ -46,6 +46,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FilterListIcon from '@mui/icons-material/FilterListOutlined';
 import GridViewIcon from '@mui/icons-material/GridView';
+import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import SearchIcon from '@mui/icons-material/Search';
@@ -357,8 +358,18 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               </Box>
             </Box>
             <Box sx={{ mt: 2, height: 60, borderRadius: radius.sm, bgcolor: 'rgba(168,85,247,0.04)', position: 'relative', overflow: 'hidden' }}>
-              <Sparkline color={palette.accent} />
+              <Sparkline color={palette.accent} data={overview.sparkline ?? []} />
             </Box>
+            {(overview.sparkline ?? []).length > 0 ? (
+              <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.6 }}>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.68rem' }}>
+                  {new Date(overview.sparkline![0].day).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}
+                </Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.68rem' }}>
+                  I dag
+                </Typography>
+              </Stack>
+            ) : null}
           </Box>
         ) : null}
       </Box>
@@ -404,10 +415,10 @@ function ProposalsView({ proposals, onChanged, demoMode }: { proposals: TalentPr
   }
   const statusBadge = (status: string) => {
     const map: Record<string, { label: string; color: string; bg: string }> = {
-      pending: { label: '⏳ Venter på svar', color: palette.warning, bg: 'rgba(245,158,11,0.16)' },
-      accepted: { label: '✓ Godkjent', color: palette.success, bg: 'rgba(34,197,94,0.16)' },
-      declined: { label: '✕ Avslått', color: '#f87171', bg: 'rgba(239,68,68,0.16)' },
-      expired: { label: '⏰ Utløpt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
+      pending: { label: 'Venter på svar', color: palette.warning, bg: 'rgba(245,158,11,0.16)' },
+      accepted: { label: 'Godkjent', color: palette.success, bg: 'rgba(34,197,94,0.16)' },
+      declined: { label: 'Avslått', color: '#f87171', bg: 'rgba(239,68,68,0.16)' },
+      expired: { label: 'Utløpt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
       cancelled: { label: 'Avbrutt', color: palette.textMuted, bg: 'rgba(148,163,184,0.16)' },
     };
     const s = map[status] ?? map.cancelled;
@@ -596,7 +607,10 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
         <Stack direction="row" spacing={1.2} alignItems="center">
           {age ? <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{age}</Typography> : null}
           {talent.city ? (
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>📍 {talent.city}{talent.country && talent.country !== 'NO' ? `, ${talent.country}` : ', Norway'}</Typography>
+            <Stack direction="row" spacing={0.4} alignItems="center">
+              <LocationOnOutlinedIcon sx={{ color: palette.textMuted, fontSize: 14 }} />
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{talent.city}{talent.country && talent.country !== 'NO' ? `, ${talent.country}` : ', Norway'}</Typography>
+            </Stack>
           ) : null}
         </Stack>
         {langs ? <Typography sx={{ color: palette.textMuted, fontSize: '0.75rem' }}>{langs}</Typography> : null}
@@ -709,20 +723,49 @@ function SaveSearchDialog({ open, filters, currentCount, onClose, onSaved }: { o
   );
 }
 
-function Sparkline({ color }: { color: string }) {
-  // Enkel SVG-sparkline med deterministisk "growth"-mønster
-  const points = '0,55 30,52 60,48 90,52 120,40 150,38 180,30 210,32 240,22 270,16 300,8';
+function Sparkline({ color, data }: { color: string; data: Array<{ day: string; n: number }> }) {
+  // Ekte dynamisk sparkline med 30 datapunkter fra /agency/registry-overview.
+  // Y-skala normaliseres til max-verdien i dataen (min 1 for å unngå div/0).
+  const width = 320;
+  const height = 60;
+  const paddingTop = 6;
+  const paddingBottom = 4;
+  const usableHeight = height - paddingTop - paddingBottom;
+
+  if (!data || data.length === 0) {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%">
+        <text x={width / 2} y={height / 2} textAnchor="middle" fill={palette.textMuted} fontSize="11" fontFamily="sans-serif">
+          Ingen aktivitet siste 30 dager
+        </text>
+      </svg>
+    );
+  }
+
+  const maxVal = Math.max(1, ...data.map((d) => d.n));
+  const stepX = data.length > 1 ? width / (data.length - 1) : width;
+  const pts = data.map((d, i) => {
+    const x = i * stepX;
+    const y = height - paddingBottom - (d.n / maxVal) * usableHeight;
+    return { x, y, val: d.n, day: d.day };
+  });
+  const polyPoints = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const lastPt = pts[pts.length - 1];
+
   return (
-    <svg viewBox="0 0 320 60" width="100%" height="100%" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" preserveAspectRatio="none">
       <defs>
-        <linearGradient id="sl-fill" x1="0" x2="0" y1="0" y2="1">
+        <linearGradient id="sl-fill-dyn" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.45" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={`0,60 ${points} 320,60`} fill="url(#sl-fill)" />
-      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="300" cy="8" r="3" fill={color} />
+      <polygon points={`0,${height} ${polyPoints} ${width},${height}`} fill="url(#sl-fill-dyn)" />
+      <polyline points={polyPoints} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lastPt.x} cy={lastPt.y} r="3" fill={color} />
+      <title>
+        {pts.map((p) => `${new Date(p.day).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}: ${p.val}`).join('\n')}
+      </title>
     </svg>
   );
 }

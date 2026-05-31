@@ -42,11 +42,16 @@ interface MediaUploaderProps {
   forceUrlInput?: boolean;
 }
 
-const KIND_ICON: Record<UploadKind, string> = {
-  headshot: '📷',
-  alt_photo: '🖼️',
-  showreel: '🎬',
-  resume: '📄',
+import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
+import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
+import MovieOutlinedIcon from '@mui/icons-material/MovieOutlined';
+import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
+
+const KIND_ICON: Record<UploadKind, React.ComponentType<{ sx?: object }>> = {
+  headshot: CameraAltOutlinedIcon,
+  alt_photo: ImageOutlinedIcon,
+  showreel: MovieOutlinedIcon,
+  resume: PictureAsPdfOutlinedIcon,
 };
 
 function formatBytes(n: number): string {
@@ -209,8 +214,8 @@ export default function MediaUploader({
               sx={{ width: 72, height: 72, borderRadius: radius.sm, objectFit: 'cover', border: `1px solid ${palette.borderSubtle}` }}
             />
           ) : (
-            <Box sx={{ width: 72, height: 72, borderRadius: radius.sm, bgcolor: 'rgba(168,85,247,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.8rem' }}>
-              {KIND_ICON[kind]}
+            <Box sx={{ width: 72, height: 72, borderRadius: radius.sm, bgcolor: 'rgba(168,85,247,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {(() => { const Ico = KIND_ICON[kind]; return <Ico sx={{ fontSize: 32, color: palette.accentBright }} />; })()}
             </Box>
           )}
           <Stack spacing={0.4} sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -347,7 +352,7 @@ export default function MediaUploader({
         ) : null}
         {kind === 'showreel' && config?.streamEnabled ? (
           <Typography sx={{ color: palette.accentBright, fontSize: '0.72rem', mt: 0.6, fontWeight: 600 }}>
-            ⚡ Videoen blir transkodet for HLS/DASH og spilles av i optimal kvalitet på alle enheter
+            Videoen blir auto-transkodet for HLS/DASH og spilt av i optimal kvalitet på alle enheter
           </Typography>
         ) : null}
       </Box>

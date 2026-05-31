@@ -679,6 +679,7 @@ export interface RegistryOverview {
   total_visible: number;
   new_30d: number;
   available_now: number;
+  sparkline?: Array<{ day: string; n: number }>;
 }
 
 export interface SavedSearch {
