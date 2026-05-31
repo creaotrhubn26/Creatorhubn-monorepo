@@ -104,6 +104,7 @@ import AdminAICostDashboard from './AdminAICostDashboard';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
 import BillingManagementPanel from './BillingManagementPanel';
 import UserCostOverviewPanel from './UserCostOverviewPanel';
+import SecretsRotationPanel from './SecretsRotationPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
 import CreatorhubVisualEditorRefactored from './CreatorhubVisualEditorRefactored';
@@ -910,6 +911,7 @@ export default function AdminDashboard({
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
     { id: 'centralized-monitoring', label: 'Sentralisert Overvåkning', icon: Assessment },
     { id: 'protokollstyring', label: 'Protokollstyring', icon: Security },
+    { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
     { id: 'drift-helse', label: 'Drift', icon: Settings },
     { id: 'system-backup', label: 'Backup', icon: Storage },
     { id: 'gdpr-compliance', label: 'GDPR', icon: Security },
@@ -951,7 +953,7 @@ export default function AdminDashboard({
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -985,6 +987,7 @@ export default function AdminDashboard({
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
     protokollstyring: 'Styr interne protokoller, rutiner og push-konfigurasjon.',
+    'secrets-rotation': 'Spor når Stripe-/Cloudflare-/Render-nøkler ble rotert sist; varsel ved forfall.',
     'drift-helse': 'Overvåk tjenestehelse, kapasitet og systemstatus.',
     'system-backup': 'Administrer sikkerhetskopier og gjenoppretting.',
     'gdpr-compliance': 'Følg personvernkrav, sletterutiner og samsvar.',
@@ -1803,6 +1806,8 @@ export default function AdminDashboard({
         );
       case 'user-costs':
         return <UserCostOverviewPanel />;
+      case 'secrets-rotation':
+        return <SecretsRotationPanel />;
       case 'marketplace-apps':
         return <MarketplaceAppConfigManager />;
       case 'analytics-hub':
