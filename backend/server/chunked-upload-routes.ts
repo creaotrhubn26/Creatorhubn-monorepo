@@ -26,6 +26,12 @@ import {
   routeAssembledUpload,
   getStorageStatus,
 } from "./upload-storage-router.js";
+import {
+  canUserUpload,
+  recordStorageUsage,
+  pushStorageUsageToStripe,
+  getStorageStatus as getQuotaStatus,
+} from "./storage-quota-service.js";
 
 export interface ChunkedUploadRoutesDeps {
   app: express.Application;
@@ -141,6 +147,24 @@ export function setupChunkedUploadRoutes(
         success: false,
         error: "invalid_chunk_config",
         message: "Ugyldig chunkSize eller totalChunks.",
+      });
+    }
+
+    // Quota-sjekk FØR vi tillater upload. Returnerer 507 hvis plan-grensen
+    // er nådd og planen ikke tillater overforbruk; ellers ok (overage
+    // håndteres ved finish via Stripe metered usage).
+    const quota = await canUserUpload(pool, userId, fileSize);
+    if (!quota.ok) {
+      return res.status(507).json({
+        success: false,
+        error: quota.reason || "storage_quota_exceeded",
+        message: quota.message,
+        usage: {
+          tier: quota.status.user.tier,
+          usedBytes: quota.status.usedBytes,
+          limitBytes: quota.status.user.storageLimitBytes,
+          allowsOverage: quota.status.user.allowsOverage,
+        },
       });
     }
 
@@ -480,6 +504,33 @@ export function setupChunkedUploadRoutes(
           [uploadId, fileId, finalRelPath, JSON.stringify(updatedMetadata)],
         );
 
+        // Registrer i storage-ledger. Bryter ikke responsen hvis det feiler,
+        // men logger så vi kan reconcile senere.
+        try {
+          await recordStorageUsage(
+            pool,
+            userId,
+            stats.size,
+            storage.backend,
+            "chunked_finish",
+            fileId,
+            { fileName: row.file_name },
+          );
+        } catch (ledgerErr) {
+          console.error(
+            "[chunked-upload] storage-ledger update failed:",
+            ledgerErr,
+          );
+        }
+
+        // Push usage til Stripe i bakgrunnen (fire-and-forget) — vi vil
+        // ikke at finish skal blokkeres av Stripe-svartid.
+        void pushStorageUsageToStripe(pool, userId).catch((err) => {
+          console.error("[chunked-upload] Stripe usage push failed:", err);
+        });
+
+        const finalQuota = await getQuotaStatus(pool, userId).catch(() => null);
+
         res.json({
           success: true,
           uploadId,
@@ -499,6 +550,15 @@ export function setupChunkedUploadRoutes(
           },
           downloadUrl:
             storage.downloadUrl || `/api/chunked-upload/files/${fileId}`,
+          quota: finalQuota
+            ? {
+                tier: finalQuota.user.tier,
+                usedBytes: finalQuota.usedBytes,
+                limitBytes: finalQuota.user.storageLimitBytes,
+                overageBytes: finalQuota.overageBytes,
+                allowsOverage: finalQuota.user.allowsOverage,
+              }
+            : null,
         });
       } catch (err) {
         console.error("[chunked-upload] finish failed:", err);

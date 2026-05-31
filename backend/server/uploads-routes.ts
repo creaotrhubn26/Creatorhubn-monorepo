@@ -20,6 +20,11 @@ import {
   routeAssembledUpload,
   getStorageStatus,
 } from "./upload-storage-router.js";
+import {
+  canUserUpload,
+  recordStorageUsage,
+  pushStorageUsageToStripe,
+} from "./storage-quota-service.js";
 
 export interface UploadsRoutesDeps {
   app: express.Application;
@@ -65,6 +70,23 @@ export function setupUploadsRoutes(deps: UploadsRoutesDeps): void {
         });
       }
 
+      // Quota-sjekk: 507 hvis plan-grensen er overskredet og overage ikke
+      // er tillatt på planen.
+      const quota = await canUserUpload(pool, userId, req.file.size);
+      if (!quota.ok) {
+        return res.status(507).json({
+          success: false,
+          error: quota.reason || "storage_quota_exceeded",
+          message: quota.message,
+          usage: {
+            tier: quota.status.user.tier,
+            usedBytes: quota.status.usedBytes,
+            limitBytes: quota.status.user.storageLimitBytes,
+            allowsOverage: quota.status.user.allowsOverage,
+          },
+        });
+      }
+
       const fileId = randomUUID();
       const safeName = (req.file.originalname || "upload.bin")
         .replace(/[\\/:*?"<>|\x00-\x1F]/g, "_")
@@ -92,6 +114,26 @@ export function setupUploadsRoutes(deps: UploadsRoutesDeps): void {
           sourcePath: tempPath,
           metadata,
           userId,
+        });
+
+        // Registrer i storage-ledger
+        try {
+          await recordStorageUsage(
+            pool,
+            userId,
+            req.file.size,
+            storage.backend,
+            "single_upload",
+            fileId,
+            { fileName: safeName },
+          );
+        } catch (ledgerErr) {
+          console.error("[uploads] storage-ledger update failed:", ledgerErr);
+        }
+
+        // Push usage til Stripe i bakgrunnen
+        void pushStorageUsageToStripe(pool, userId).catch((err) => {
+          console.error("[uploads] Stripe usage push failed:", err);
         });
 
         res.json({

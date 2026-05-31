@@ -647,6 +647,7 @@ import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
 import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
 import { setupUploadsRoutes } from "./uploads-routes";
+import { setupStorageStatusRoutes } from "./storage-status-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
@@ -67633,6 +67634,11 @@ setupChunkedUploadRoutes({
   requireUserSession,
 });
 setupUploadsRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupStorageStatusRoutes({
   app,
   pool,
   requireUserSession,
