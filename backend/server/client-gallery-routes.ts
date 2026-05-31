@@ -118,6 +118,54 @@ export function setupClientGalleryRoutes(
     "suggestion",
   ]);
 
+  // Tolker gallery_settings → konkrete policy-flagger. Sentralisert her
+  // fordi flere kall-steder må ta samme avgjørelser. Det fins to formater
+  // som har samlet seg over tid:
+  //   - Showcase-deling (PR #75):   { projectState, allowDownloads, allowComments }
+  //   - iPad-capture-flow (legacy): { allowDownload, allowComments }
+  // projectState er den autoritative source-of-truth når den er satt:
+  //   - 'in_review'  → ingen nedlasting, kommentarer tillatt, watermark
+  //   - 'delivered'  → nedlasting tillatt, kommentarer låst, ingen watermark
+  // Fallback (ingen projectState): respekter eksplisitte flagger med
+  // defaults som matcher den eksisterende oppførselen.
+  type GalleryPolicy = {
+    canDownload: boolean;
+    canComment: boolean;
+    watermarked: boolean;
+    projectState: 'in_review' | 'delivered' | null;
+  };
+  function resolveGalleryPolicy(settings: Record<string, unknown>): GalleryPolicy {
+    const stateRaw = typeof settings.projectState === 'string' ? settings.projectState : null;
+    const projectState =
+      stateRaw === 'delivered' || stateRaw === 'in_review' ? stateRaw : null;
+
+    if (projectState === 'in_review') {
+      return {
+        canDownload: false,
+        canComment: settings.allowComments !== false,
+        watermarked: settings.watermarkEnabled !== false,
+        projectState,
+      };
+    }
+    if (projectState === 'delivered') {
+      return {
+        canDownload: settings.allowDownload !== false && settings.allowDownloads !== false,
+        canComment: false,
+        watermarked: settings.watermarkEnabled === true,
+        projectState,
+      };
+    }
+    // Legacy / ustyrt gallery — gå på eksplisitte flagger.
+    const allowDownload =
+      settings.allowDownload !== false && settings.allowDownloads !== false;
+    return {
+      canDownload: allowDownload,
+      canComment: settings.allowComments !== false,
+      watermarked: settings.watermarkEnabled === true,
+      projectState: null,
+    };
+  }
+
   //
   // Unauthenticated — the accessToken IS the auth. Every request re-signs
   // Capture-sourced image URLs so the gallery keeps working past R2's
@@ -923,6 +971,16 @@ export function setupClientGalleryRoutes(
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
         });
       }
+      const policy = resolveGalleryPolicy(access.settings ?? {});
+      if (!policy.canComment) {
+        return res.status(403).json({
+          error: 'comments_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'delivered'
+            ? 'Prosjektet er levert. Kommentarer er låst — kontakt fotograf for endringer.'
+            : 'Kommentarer er deaktivert for dette galleriet.',
+        });
+      }
       await ensureVideoTimecodeCommentsSchema();
       let parentId: string | null = null;
       if (parentIdRaw) {
@@ -1129,6 +1187,16 @@ export function setupClientGalleryRoutes(
         return res.status(access.status).json({
           error: access.error,
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const policy = resolveGalleryPolicy(access.settings ?? {});
+      if (!policy.canComment) {
+        return res.status(403).json({
+          error: 'comments_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'delivered'
+            ? 'Prosjektet er levert. Kommentarer er låst — kontakt fotograf for endringer.'
+            : 'Kommentarer er deaktivert for dette galleriet.',
         });
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
@@ -1839,8 +1907,15 @@ export function setupClientGalleryRoutes(
       }
       const gallery = access.gallery;
       const settings = access.settings;
-      if (settings.allowDownload === false) {
-        return res.status(403).json({ error: "download_disabled" });
+      const policy = resolveGalleryPolicy(settings ?? {});
+      if (!policy.canDownload) {
+        return res.status(403).json({
+          error: 'download_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'in_review'
+            ? 'Prosjektet er fortsatt i klient-review. Nedlasting åpnes når fotograf merker det som levert.'
+            : 'Nedlasting er deaktivert for dette galleriet.',
+        });
       }
 
       // Slice 9X.11 — kontrakt-gate. Hvis galleriet er linket til en
