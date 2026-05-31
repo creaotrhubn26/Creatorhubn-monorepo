@@ -62,7 +62,7 @@ import {
 } from './formationTypes';
 import { FormationTimeline } from './FormationTimeline';
 import { DancerPathsView } from './DancerPathsView';
-import { formatTimecode } from './timecode';
+import { formatTimecode, parseTimecode } from './timecode';
 import { DancerPathPreview } from './DancerPathPreview';
 import { StageMap3D } from './StageMap3D';
 import { CurveOverlay } from './CurveOverlay';
@@ -859,22 +859,54 @@ export const FormationView: React.FC<FormationViewProps> = ({
           ) : null}
           {stageMode === '2d' ? (
             <>
+              {/* Lag C-1: DanceFlow-konvensjons-labels (Upstage/Downstage/Left/Right)
+                  matcher dans-mockup-spec. Beholder MIRROR·BACK WALL-undertekst som
+                  brukerhint for produsenter som ikke kjenner teaterterminologien. */}
               <Typography
+                data-testid="formation-stage-label-upstage"
                 sx={{
                   position: 'absolute', top: 6, left: 0, right: 0, textAlign: 'center',
-                  fontSize: 9, color: '#6b7280', letterSpacing: 1.5, pointerEvents: 'none',
-                }}
-              >
-                ↑ MIRROR · BACK WALL
-              </Typography>
-              <Typography
-                sx={{
-                  position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center',
-                  fontSize: 9, color: '#fbbf24', letterSpacing: 1.5, pointerEvents: 'none',
+                  fontSize: 11, color: '#9ca3af', letterSpacing: 2, pointerEvents: 'none',
                   fontWeight: 700,
                 }}
               >
-                ↓ AUDIENCE · FRONT
+                Upstage
+                <Box component="span" sx={{ display: 'block', fontSize: 8, color: '#6b7280', mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
+                  ↑ Mirror · Back Wall
+                </Box>
+              </Typography>
+              <Typography
+                data-testid="formation-stage-label-downstage"
+                sx={{
+                  position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center',
+                  fontSize: 11, color: '#fbbf24', letterSpacing: 2, pointerEvents: 'none',
+                  fontWeight: 700,
+                }}
+              >
+                Downstage
+                <Box component="span" sx={{ display: 'block', fontSize: 8, color: '#9ca3af', mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
+                  ↓ Audience · Front
+                </Box>
+              </Typography>
+              <Typography
+                data-testid="formation-stage-label-left"
+                sx={{
+                  position: 'absolute', top: '50%', left: 4, transform: 'translateY(-50%) rotate(-90deg)',
+                  transformOrigin: 'center', fontSize: 9, color: '#6b7280',
+                  letterSpacing: 1.5, pointerEvents: 'none', fontWeight: 600,
+                }}
+              >
+                Left
+              </Typography>
+              <Typography
+                data-testid="formation-stage-label-right"
+                sx={{
+                  position: 'absolute', top: '50%', right: 4, transform: 'translateY(-50%) rotate(90deg)',
+                  transformOrigin: 'center', fontSize: 9, color: '#6b7280',
+                  letterSpacing: 1.5, pointerEvents: 'none', fontWeight: 600,
+                }}
+              >
+                Right
               </Typography>
               {/* F5-13B: bezier-curve-overlay i 2D-modus. */}
               {activeFormation ? (() => {
@@ -893,6 +925,75 @@ export const FormationView: React.FC<FormationViewProps> = ({
             </>
           ) : null}
         </Box>
+
+        {/* Lag C-1: Stage Controls — Opacity + Show Paths + Show IDs UNDER
+            stagen (matcher DanceFlow-mockup). Slider og toggles styrer SAMME
+            state som FormationDetailsPanel-controlsene; begge UI'er er i sync. */}
+        <Stack
+          direction="row"
+          spacing={1.5}
+          alignItems="center"
+          data-testid="formation-stage-controls"
+          sx={{
+            width: '100%',
+            px: 1,
+            py: 0.75,
+            bgcolor: 'rgba(255,255,255,0.02)',
+            borderRadius: 1,
+            border: '1px solid #1e2536',
+          }}
+        >
+          <Typography sx={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, letterSpacing: 0.5, flexShrink: 0 }}>
+            Opacity
+          </Typography>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(stageOpacity * 100)}
+            onChange={(e) => setStageOpacity(Number(e.target.value) / 100)}
+            data-testid="formation-stage-opacity"
+            aria-label="Stage opacity"
+            style={{ flex: 1, maxWidth: 180, accentColor: '#a78bfa' }}
+          />
+          <Typography sx={{ fontSize: 10, color: '#a78bfa', fontWeight: 600, minWidth: 32 }}>
+            {Math.round(stageOpacity * 100)}%
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Box
+            component="label"
+            sx={{
+              display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 11,
+              color: '#e5e7eb', fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showPaths}
+              onChange={() => setShowPaths((v) => !v)}
+              data-testid="formation-stage-show-paths"
+              style={{ accentColor: '#a78bfa' }}
+            />
+            Show Paths
+          </Box>
+          <Box
+            component="label"
+            sx={{
+              display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 11,
+              color: '#e5e7eb', fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showIds}
+              onChange={() => setShowIds((v) => !v)}
+              data-testid="formation-stage-show-ids"
+              style={{ accentColor: '#a78bfa' }}
+            />
+            Show IDs
+          </Box>
+        </Stack>
 
         <Typography sx={{ fontSize: 10, color: '#6b7280', textAlign: 'center', mt: -0.5 }}>
           Drag dansere på scenen for å plassere. Posisjonen lagres automatisk i aktiv formasjon.
@@ -1097,6 +1198,71 @@ interface FormationDetailsPanelProps {
   onChange: (patch: Partial<Formation>) => void;
 }
 
+/**
+ * Lag D-1: TimecodeInput — kontrollert HH:MM:SS:FF input som committer
+ * parsed sekunder til parent. Lokal draft-state mens brukeren skriver så
+ * cursor ikke hopper. parseTimecode godtar både HH:MM:SS og HH:MM:SS:FF.
+ */
+const TimecodeInput: React.FC<{
+  label: string;
+  valueSec: number | null;
+  onCommit: (sec: number | null) => void;
+  testId: string;
+}> = ({ label, valueSec, onCommit, testId }) => {
+  const formatted = valueSec != null && Number.isFinite(valueSec)
+    ? formatTimecode(valueSec)
+    : '';
+  const [draft, setDraft] = useState<string>(formatted);
+  const [hasFocus, setHasFocus] = useState(false);
+
+  // Sync når parent-verdien endres OG vi ikke holder fokus (unngå overwrite
+  // mens brukeren skriver).
+  React.useEffect(() => {
+    if (!hasFocus) setDraft(formatted);
+  }, [formatted, hasFocus]);
+
+  const commit = (raw: string): void => {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      onCommit(null);
+      return;
+    }
+    const parsed = parseTimecode(trimmed);
+    if (parsed != null) {
+      onCommit(parsed);
+    } else {
+      // Ugyldig — tilbakestill til siste gyldig
+      setDraft(formatted);
+    }
+  };
+
+  return (
+    <TextField
+      size="small"
+      label={label}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setHasFocus(true)}
+      onBlur={(e) => {
+        setHasFocus(false);
+        commit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      placeholder="00:00:00:00"
+      inputProps={{ 'data-testid': testId, spellCheck: false }}
+      sx={{
+        flex: 1,
+        '& .MuiInputBase-input': { fontSize: 11, fontVariantNumeric: 'tabular-nums' },
+        '& .MuiInputLabel-root': { fontSize: 11 },
+      }}
+    />
+  );
+};
+
 const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
   formation, formations, dancers,
   hiddenDancerIds, onToggleHidden,
@@ -1201,30 +1367,22 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
         sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 12, color: '#fff', fontWeight: 600 } }}
         data-testid="formation-details-name"
       />
+      {/* Lag D-1: HH:MM:SS:FF tids-inputs (DanceFlow-mockup-paritet).
+          TimecodeInput holder lokal state mens brukeren skriver — committer
+          parsed sekunder til onChange ved blur eller Enter. Ugyldig input
+          tilbakestilles til siste gyldig verdi. */}
       <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
-        <TextField
-          size="small"
-          type="number"
-          label="Start (s)"
-          value={formation.startSec ?? ''}
-          onChange={(e) => {
-            const v = e.target.value === '' ? null : Number(e.target.value);
-            onChange({ startSec: Number.isFinite(v as number) ? (v as number) : null });
-          }}
-          inputProps={{ min: 0, step: 0.5, 'data-testid': 'formation-details-start-sec' }}
-          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        <TimecodeInput
+          label="Start Time"
+          valueSec={formation.startSec ?? null}
+          onCommit={(sec) => onChange({ startSec: sec })}
+          testId="formation-details-start-sec"
         />
-        <TextField
-          size="small"
-          type="number"
-          label="Slutt (s)"
-          value={formation.endSec ?? ''}
-          onChange={(e) => {
-            const v = e.target.value === '' ? null : Number(e.target.value);
-            onChange({ endSec: Number.isFinite(v as number) ? (v as number) : null });
-          }}
-          inputProps={{ min: 0, step: 0.5, 'data-testid': 'formation-details-end-sec' }}
-          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        <TimecodeInput
+          label="End Time"
+          valueSec={formation.endSec ?? null}
+          onCommit={(sec) => onChange({ endSec: sec })}
+          testId="formation-details-end-sec"
         />
       </Stack>
       {/* Phase 6: Duration-computed under start/end så koreografen ser
