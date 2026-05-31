@@ -52,6 +52,8 @@ export interface FormationViewConnectedProps {
   hideSavePill?: boolean;
   /** Phase 2: bobler opp save-status så parent (DanceWorkspace) kan vise pill i header. */
   onSaveStatusChange?: (status: SaveStatus, error: string | null) => void;
+  /** Phase 4: video-panel-slot videresendes til FormationView. */
+  videoPanelSlot?: React.ReactNode;
 }
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -94,6 +96,7 @@ export function FormationViewConnected({
   onDancerClick,
   hideSavePill = false,
   onSaveStatusChange,
+  videoPanelSlot,
 }: FormationViewConnectedProps): React.ReactElement {
   const [load, setLoad] = React.useState<LoadState>({ phase: 'loading' });
   const [dancers, setDancers] = React.useState<Dancer[]>([]);
@@ -258,6 +261,7 @@ export function FormationViewConnected({
         initialFormations={initialFormations ?? []}
         onFormationsChange={handleFormationsChange}
         onDancerClick={onDancerClick}
+        videoPanelSlot={videoPanelSlot}
       />
     </Box>
   );

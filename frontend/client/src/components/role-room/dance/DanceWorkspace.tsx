@@ -64,6 +64,7 @@ import FormationHeaderBar, {
   type FormationSaveStatus,
 } from './FormationHeaderBar';
 import ClipsSidebar from './ClipsSidebar';
+import FormationVideoPanel from './FormationVideoPanel';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -224,6 +225,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             projectId={projectId}
             hideSavePill
             onSaveStatusChange={handleSaveStatusChange}
+            videoPanelSlot={<FormationVideoPanel />}
           />
         </Box>
       ) : (

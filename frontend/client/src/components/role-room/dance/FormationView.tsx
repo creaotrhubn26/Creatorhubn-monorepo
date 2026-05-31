@@ -105,6 +105,12 @@ export interface FormationViewProps {
    * funksjonell endring (eksisterende drag/click-flyt urørt).
    */
   onDancerClick?: (dancerId: string) => void;
+  /**
+   * Phase 4: valgfri video-panel-slot. Når satt, splittes stage-kolonnen i
+   * to ([video | stage]) under lg. Når undefined: ingen visuell endring fra
+   * pre-Phase-4-layout.
+   */
+  videoPanelSlot?: React.ReactNode;
 }
 
 // ─── Komponent ────────────────────────────────────────────────────────────
@@ -114,6 +120,7 @@ export const FormationView: React.FC<FormationViewProps> = ({
   initialFormations = DEMO_FORMATIONS,
   onFormationsChange,
   onDancerClick,
+  videoPanelSlot,
 }) => {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
@@ -563,6 +570,28 @@ export const FormationView: React.FC<FormationViewProps> = ({
       </Box>
 
       {/* ─── Stage canvas (sentralt) ───────────────── */}
+      {/* Phase 4: når videoPanelSlot er satt, splittes senter-kolonnen i
+          [video | stage]. Når undefined faller layouten tilbake til
+          pre-Phase-4-stagen (flat column-stack). */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: videoPanelSlot
+            ? { xs: '1fr', lg: 'minmax(280px, 1fr) auto' }
+            : '1fr',
+          gap: videoPanelSlot ? 1 : 0,
+          bgcolor: '#0a0a0a',
+        }}
+        data-testid="formation-stage-center-grid"
+      >
+        {videoPanelSlot ? (
+          <Box
+            sx={{ p: 2, display: 'flex', alignItems: 'stretch', minWidth: 0 }}
+            data-testid="formation-video-slot"
+          >
+            {videoPanelSlot}
+          </Box>
+        ) : null}
       <Box
         data-testid="formation-stage-wrapper"
         sx={{
@@ -807,6 +836,7 @@ export const FormationView: React.FC<FormationViewProps> = ({
         <Typography sx={{ fontSize: 10, color: '#6b7280', textAlign: 'center', mt: -0.5 }}>
           Drag dansere på scenen for å plassere. Posisjonen lagres automatisk i aktiv formasjon.
         </Typography>
+      </Box>
       </Box>
 
       {/* ─── Formations-liste (høyre) ──────────────── */}
