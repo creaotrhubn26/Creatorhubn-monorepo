@@ -10,7 +10,7 @@
  *   POST   /api/admin-room/marketing-posters/:id/duplicate
  *   DELETE /api/admin-room/marketing-posters/:id
  *
- * Tabellen `marketing_posters` (migrasjon 214) eier dataen. Tabell
+ * Tabellen `marketing_posters` (migrasjon 215) eier dataen. Tabell
  * auto-init i memory så routen ikke 500'er hvis migrasjon ikke er kjørt.
  */
 
@@ -41,7 +41,7 @@ function asJsonbObject(value: unknown): string {
 export function setupMarketingPosterRoutes(deps: AdminRoomRoutesDeps): void {
   const { app, pool, requireAdminRoomAccess, logAdminActivity } = deps;
 
-  // Idempotent tabell-init — beskytter mot 500-er hvis migrasjon 214 ikke
+  // Idempotent tabell-init — beskytter mot 500-er hvis migrasjon 215 ikke
   // har kjørt på en gitt instans (samme mønster som whats-new-routes.ts).
   void pool
     .query(
