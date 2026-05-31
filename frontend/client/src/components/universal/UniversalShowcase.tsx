@@ -266,6 +266,7 @@ import {
   School as SchoolIcon,
   LocationOn as LocationOnIcon,
   GpsFixed as GpsFixedIcon,
+  Folder,
 } from '@mui/icons-material';
 import { ProjectSelectorModal } from '../shared/ProjectSelectorModal';
 import ProjectTimeline from '../project/ProjectTimeline';
@@ -4037,7 +4038,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       let successMessage = `${imageIds.length} bilde${imageIds.length !== 1 ? 'r' : ','} er sendt til Google Photos for redigering.`;
       
       if (projectInfo) {
-        successMessage += `\n\n📁 Prosjekt: ${projectInfo?.name}`;
+        successMessage += `\n\nProsjekt: ${projectInfo?.name}`;
         if (projectInfo?.clientName) {
           successMessage += `\n👤 Klient: ${projectInfo.clientName}`;
     }
@@ -6491,15 +6492,25 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Box>
 
             {/* Profession-specific Categories */}
-            <Box sx={{ mt: 3, p: 3, bgcolor: 'rgba(33, 150, 243, 0.05)', borderRadius: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                📁 Tilgjengelige Kategorier for {professionConfig.title}
-              </Typography>
+            <Box sx={{
+              mt: 3,
+              p: 3,
+              bgcolor: 'rgba(82, 121, 204, 0.10)',
+              border: '1px solid rgba(82, 121, 204, 0.28)',
+              borderRadius: '10px',
+            }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <Folder fontSize="small" />
+                <Typography variant="h6">
+                  Tilgjengelige kategorier for {professionConfig.title}
+                </Typography>
+              </Stack>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                 {professionCategories.map((category, index) => (
                   <Chip
                     key={index}
-                    label={`📁 ${category}`}
+                    icon={<Folder sx={{ fontSize: 14 }} />}
+                    label={category}
                     variant="outlined"
                     size="small"
                     sx={{ mb: 1 }}
