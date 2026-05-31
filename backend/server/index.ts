@@ -446,6 +446,7 @@ import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
 import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
+import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -25736,6 +25737,13 @@ setupRoleRoomTalentsRoutes({
 // B2B2Talent Phase 1.5 — agency-perspektivet. Stella/NSF/produsenter ser
 // talents kun via consent. Migrasjon 211 (agency_orgs + users.agency_org_id).
 setupRoleRoomAgenciesRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
+// Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
+setupRoleRoomAgencySearchRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,

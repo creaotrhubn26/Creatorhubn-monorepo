@@ -72,10 +72,10 @@ interface TalentsAppShellProps {
 // med "Kommer snart"-tag (matcher Irlins forventning, ikke false promises).
 const MENU: Array<{ id: TalentsAppPage; label: string; Icon: React.ComponentType; ready?: boolean }> = [
   { id: 'dashboard', label: 'Hjem', Icon: DashboardIcon, ready: true },
+  { id: 'registry', label: 'Talent Registry', Icon: GroupIcon, ready: true },
   { id: 'profiles', label: 'Min profil', Icon: PersonOutlineIcon, ready: true },
   { id: 'partners', label: 'Partnere', Icon: HandshakeOutlinedIcon, ready: true },
   { id: 'audit', label: 'Hvem har sett meg?', Icon: VisibilityIcon, ready: true },
-  { id: 'registry', label: 'Talent Registry', Icon: GroupIcon },
   { id: 'selftapes', label: 'Self-Tapes', Icon: PlayCircleOutlineIcon },
   { id: 'auditions', label: 'Auditions', Icon: EventNoteIcon },
   { id: 'settings', label: 'Innstillinger', Icon: SettingsOutlinedIcon, ready: true },
