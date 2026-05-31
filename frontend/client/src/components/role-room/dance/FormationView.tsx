@@ -119,9 +119,20 @@ export interface FormationViewProps {
   timelineMovements?: readonly { id: string; label: string; startSec: number; endSec: number }[];
 }
 
+/**
+ * G_1: imperativ handle som FormationViewConnected bruker for å reconcile
+ * client-temp-IDs (`f-tmp-…`) med server-tildelte IDs etter at autosave
+ * returnerer. Bruk: `viewRef.current?.applyIdMapping(new Map([['f-tmp-1', 'fmt_abc']]))`.
+ * Oppdaterer KUN id-feltet — andre felter (positions, name, etc.) forblir
+ * brukerens current state slik at vi ikke trår over senere drag.
+ */
+export interface FormationViewHandle {
+  applyIdMapping: (mapping: Map<string, string>) => void;
+}
+
 // ─── Komponent ────────────────────────────────────────────────────────────
 
-export const FormationView: React.FC<FormationViewProps> = ({
+export const FormationView = React.forwardRef<FormationViewHandle, FormationViewProps>(({
   dancers = DEMO_DANCERS,
   initialFormations = DEMO_FORMATIONS,
   onFormationsChange,
@@ -129,7 +140,7 @@ export const FormationView: React.FC<FormationViewProps> = ({
   videoPanelSlot,
   timelineNotes,
   timelineMovements,
-}) => {
+}, ref) => {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
 
@@ -176,6 +187,24 @@ export const FormationView: React.FC<FormationViewProps> = ({
     });
     setTimeout(() => { skipHistoryRef.current = false; }, 0);
   }, []);
+
+  // G_1: imperativ handle for FormationViewConnected. Erstatter client-temp-
+  // IDs (`f-tmp-*`) med server-IDs etter autosave-success. skipHistoryRef
+  // gjør at vi ikke forurenser undo-stacken — ID-mapping er ikke en
+  // brukerendring.
+  React.useImperativeHandle(ref, () => ({
+    applyIdMapping: (mapping: Map<string, string>): void => {
+      if (mapping.size === 0) return;
+      skipHistoryRef.current = true;
+      _setFormations((prev) => prev.map((f) => {
+        const next = mapping.get(f.id);
+        return next ? { ...f, id: next } : f;
+      }));
+      // Hvis aktiv formasjon hadde en temp-ID, oppdater referansen.
+      setActiveFormationId((cur) => (cur && mapping.has(cur) ? mapping.get(cur) ?? cur : cur));
+      setTimeout(() => { skipHistoryRef.current = false; }, 0);
+    },
+  }), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const t = e.target as HTMLElement | null;
@@ -1324,7 +1353,9 @@ export const FormationView: React.FC<FormationViewProps> = ({
     ) : null}
     </Box>
   );
-};
+});
+
+FormationView.displayName = 'FormationView';
 
 // ═══════════════════════ FORMATION TEMPLATES (F5-6) ═══════════════════════
 

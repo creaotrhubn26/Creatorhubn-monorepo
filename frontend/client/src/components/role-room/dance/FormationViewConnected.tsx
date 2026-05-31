@@ -26,7 +26,7 @@ import {
   CloudOff as ErrorIcon,
   CloudSync as SavingIcon,
 } from '@mui/icons-material';
-import { FormationView } from './FormationView';
+import { FormationView, type FormationViewHandle } from './FormationView';
 import {
   listFormations,
   replaceFormations,
@@ -143,6 +143,14 @@ export function FormationViewConnected({
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstChangeRef = React.useRef(true);
+  // G_1: imperativ ref til FormationView for ID-reconcile post-save.
+  const viewRef = React.useRef<FormationViewHandle | null>(null);
+  // G_1: ikke kjør ny save mens en er in-flight — queue pending state i stedet.
+  const inFlightRef = React.useRef(false);
+  const pendingNextRef = React.useRef<Formation[] | null>(null);
+  // G_1: hopp neste handleFormationsChange ETTER vi har applyIdMapping —
+  // reconcile er identisk med backend, ingen ny save trengs.
+  const skipNextChangeRef = React.useRef(false);
 
   // Load profiles + formations + timeline-items i parallel.
   const refresh = React.useCallback(async (): Promise<void> => {
@@ -174,6 +182,77 @@ export function FormationViewConnected({
     void refresh();
   }, [refresh]);
 
+  // G_1: utfør én save-runde. Track temp-IDs som ble sendt, og etter respons
+  // applyIdMapping på FormationView slik at fremtidige saves bare UPDATE'er
+  // (i stedet for å lage duplikate INSERTs med samme positions).
+  const performSave = React.useCallback(async (next: Formation[]): Promise<void> => {
+    if (inFlightRef.current) {
+      // En save er allerede underveis — buffer denne for å kjøres etterpå.
+      pendingNextRef.current = next;
+      return;
+    }
+    inFlightRef.current = true;
+    setSaveStatus('saving');
+    setSaveError(null);
+    // Snapshot av IDs vi sender — brukes til reconciliation etter response.
+    const sentInputs = next.map((f, i) => ({
+      clientId: f.id,
+      payload: {
+        id: f.id.startsWith('f-tmp-') ? undefined : f.id,
+        label: f.name,
+        notes: f.notes ?? null,
+        positions: f.positions.map((p) => ({ ...p })),
+        displayOrder: i,
+        startSec: f.startSec ?? null,
+        endSec: f.endSec ?? null,
+        transitionNote: f.transitionNote ?? null,
+        tags: f.tags ?? [],
+        transitionPaths: f.transitionPaths ?? [],
+        // Migrasjon 214 (G14)
+        locked: f.locked === true,
+      },
+    }));
+    try {
+      const written = await replaceFormations({
+        projectId: projectId ?? null,
+        formations: sentInputs.map((s) => s.payload),
+      });
+      if (written.length > 0) {
+        setSaveStatus('saved');
+        setLastSavedAt(Date.now());
+        setTimeout(() => setSaveStatus('idle'), 1800);
+        // G_1: bygg mapping client-temp-id → server-assigned-id og bruk
+        // applyIdMapping så vi ikke sender de samme f-tmp-* på neste tur.
+        const mapping = new Map<string, string>();
+        sentInputs.forEach((s, i) => {
+          const serverRecord = written[i];
+          if (!serverRecord) return;
+          if (s.clientId.startsWith('f-tmp-') && serverRecord.id !== s.clientId) {
+            mapping.set(s.clientId, serverRecord.id);
+          }
+        });
+        if (mapping.size > 0) {
+          // Flagger at neste handleFormationsChange er ID-reconcile-only,
+          // ikke en brukerendring som krever ny save.
+          skipNextChangeRef.current = true;
+          viewRef.current?.applyIdMapping(mapping);
+        }
+      }
+    } catch (err) {
+      setSaveStatus('error');
+      setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+    } finally {
+      inFlightRef.current = false;
+      // Hvis brukeren rakk å gjøre flere endringer mens vi var in-flight,
+      // kjør én ekstra save-runde med siste state.
+      const pending = pendingNextRef.current;
+      if (pending) {
+        pendingNextRef.current = null;
+        void performSave(pending);
+      }
+    }
+  }, [projectId]);
+
   const handleFormationsChange = React.useCallback(
     (next: Formation[]) => {
       // FormationView fires this on every state change including initial mount.
@@ -183,45 +262,18 @@ export function FormationViewConnected({
         isFirstChangeRef.current = false;
         return;
       }
+      // G_1: ID-reconcile-only-endring → ikke trigge ny save (state er
+      // identisk med backend).
+      if (skipNextChangeRef.current) {
+        skipNextChangeRef.current = false;
+        return;
+      }
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      setSaveStatus('saving');
-      setSaveError(null);
-      debounceRef.current = setTimeout(async () => {
-        try {
-          const written = await replaceFormations({
-            projectId: projectId ?? null,
-            formations: next.map((f, i) => ({
-              // Strip "f-tmp-…" client-only IDs; backend assigns stable ones.
-              id: f.id.startsWith('f-tmp-') ? undefined : f.id,
-              label: f.name,
-              notes: f.notes ?? null,
-              positions: f.positions.map((p) => ({ ...p })),
-              displayOrder: i,
-              startSec: f.startSec ?? null,
-              endSec: f.endSec ?? null,
-              transitionNote: f.transitionNote ?? null,
-              tags: f.tags ?? [],
-              transitionPaths: f.transitionPaths ?? [],
-              // Migrasjon 214 (G14): persist lock-state.
-              locked: f.locked === true,
-            })),
-          });
-          // Note: we don't replace local state with the server response
-          // here, because the user may already be dragging the next change.
-          // The next reload (e.g. tab switch) will reconcile IDs. This is
-          // the same pattern the choreography autosave uses.
-          if (written.length > 0) {
-            setSaveStatus('saved');
-            setLastSavedAt(Date.now()); // A5: timestamp overlever idle-fade
-            setTimeout(() => setSaveStatus('idle'), 1800);
-          }
-        } catch (err) {
-          setSaveStatus('error');
-          setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
-        }
+      debounceRef.current = setTimeout(() => {
+        void performSave(next);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-    [projectId],
+    [performSave],
   );
 
   React.useEffect(() => () => {
@@ -345,6 +397,7 @@ export function FormationViewConnected({
         </Alert>
       ) : null}
       <FormationView
+        ref={viewRef}
         dancers={dancers}
         initialFormations={initialFormations ?? []}
         onFormationsChange={handleFormationsChange}
