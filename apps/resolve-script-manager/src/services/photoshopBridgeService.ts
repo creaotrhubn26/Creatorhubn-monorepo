@@ -158,4 +158,27 @@ export const photoshop = {
     output_path: string;
     mappings: Array<{ layer_name: string; new_key: string }>;
   }) => send<TemplateAutoRenameResult>("template.autoRename", params),
+
+  scaffoldTemplate: (params: {
+    output_path: string;
+    spec: {
+      name?: string;
+      width: number;
+      height: number;
+      background_color?: { red: number; green: number; blue: number };
+      fields: Array<{
+        key: string;
+        type: "text" | "image_placeholder";
+        hint?: string;
+        x?: number;
+        y?: number;
+        font_size?: number;
+      }>;
+    };
+  }) =>
+    send<{
+      output_path: string;
+      created_layers: Array<{ key: string; type: string; layer_name: string }>;
+      notes: string;
+    }>("template.scaffold", params),
 };

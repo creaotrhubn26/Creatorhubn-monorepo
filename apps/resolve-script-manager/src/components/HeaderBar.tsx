@@ -97,6 +97,7 @@ interface Props {
   onOpenFeedback: () => void;
   onOpenHelp: () => void;
   onOpenPhotoshopSetup: () => void;
+  onOpenPhotoshopScaffold: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -144,6 +145,7 @@ export function HeaderBar({
   onOpenFeedback,
   onOpenHelp,
   onOpenPhotoshopSetup,
+  onOpenPhotoshopScaffold,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -239,6 +241,9 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTemplates(); }}>
                   Photoshop Templates…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopScaffold(); }}>
+                  + Lag template fra startpunkt…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
