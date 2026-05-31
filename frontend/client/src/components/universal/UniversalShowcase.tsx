@@ -224,6 +224,7 @@ import {
   TrendingUp as TimelineIcon,
   ForumOutlined as CommentResolverIcon,
   ShowChart as TrendingUpIcon,
+  RestartAlt as RestartAltIcon,
   Layers,
   VolumeUp,
   Subtitles,
@@ -266,6 +267,7 @@ import ActivityFeed from './showcase/ActivityFeed';
 import CommentResolverPanel from './showcase/CommentResolverPanel';
 import MySharedGalleriesPanel from './showcase/MySharedGalleriesPanel';
 import EngagementFeedPanel from './showcase/EngagementFeedPanel';
+import MultiRoundManagerPanel from './showcase/MultiRoundManagerPanel';
 import ShareToCommunityDialog from '../community/ShareToCommunityDialog';
 import SmartCollections from './showcase/SmartCollections';
 import ComparisonView from './showcase/ComparisonView';
@@ -1368,7 +1370,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [activityFeedOpen, setActivityFeedOpen] = useState(false);
   const [commentResolverOpen, setCommentResolverOpen] = useState(false);
   const [engagementFeedOpen, setEngagementFeedOpen] = useState(false);
-  
+  const [multiRoundManagerOpen, setMultiRoundManagerOpen] = useState(false);
+
+
   // Smart Collections State
   const [showSmartCollections, setShowSmartCollections] = useState(false);
 
@@ -9379,6 +9383,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </IconButton>
             </Tooltip>
 
+            {/* Multi-round Manager */}
+            <Tooltip title="Runde-håndtering — start ny runde etter klient-feedback">
+              <IconButton
+                size="small"
+                onClick={() => setMultiRoundManagerOpen(true)}
+                sx={{
+                  color: 'rgba(255,255,255,0.7)','&:hover': {
+                    color: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                <RestartAltIcon />
+              </IconButton>
+            </Tooltip>
+
 
             {/* Comparison View Button */}
             <Tooltip title="Compare Items">
@@ -13475,6 +13495,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       <EngagementFeedPanel
         open={engagementFeedOpen}
         onClose={() => setEngagementFeedOpen(false)}
+      />
+
+      {/* Multi-round revisions */}
+      <MultiRoundManagerPanel
+        open={multiRoundManagerOpen}
+        onClose={() => setMultiRoundManagerOpen(false)}
       />
 
       {/* Comparison View */}

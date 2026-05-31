@@ -706,6 +706,118 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
   });
 
 
+  // ── Multi-round revisions ─────────────────────────────────────────
+  // Bryllup/event-fotografer trenger ofte runde 1 (klient velger) →
+  // runde 2 (etter retusj/feedback). Round-info lagres som
+  //   gallery_settings.proofingRound      (current round på galleriet)
+  //   client_image_selections.proofing_round (round når selection ble gjort)
+  // proofing_round-kolonnen sikres lazy via ensureSelectionsRoundColumn.
+
+  let selectionsRoundColumnReady: Promise<void> | null = null;
+  async function ensureSelectionsRoundColumn() {
+    if (!selectionsRoundColumnReady) {
+      selectionsRoundColumnReady = (async () => {
+        try {
+          await pool.query(
+            `ALTER TABLE client_image_selections
+               ADD COLUMN IF NOT EXISTS proofing_round INTEGER DEFAULT 1`,
+          );
+          await pool.query(
+            `UPDATE client_image_selections
+                SET proofing_round = 1
+              WHERE proofing_round IS NULL`,
+          );
+        } catch (err: any) {
+          console.warn('[selections-round-ensure] failed:', err?.message);
+        }
+      })();
+    }
+    return selectionsRoundColumnReady;
+  }
+
+  // GET /api/showcase/galleries/:galleryId/round — Hent current round.
+  app.get("/api/showcase/galleries/:galleryId/round", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const galleryId = String(req.params.galleryId || "").trim();
+    if (!galleryId) return res.status(400).json({ error: "manglende_gallery_id" });
+    try {
+      const row = await pool.query(
+        `SELECT photographer_id, gallery_settings, project_title
+           FROM photographer_client_galleries
+          WHERE id = $1 LIMIT 1`,
+        [galleryId],
+      );
+      const g = row.rows[0];
+      if (!g) return res.status(404).json({ error: "galleri_ikke_funnet" });
+      if (g.photographer_id !== session.userId) {
+        return res.status(403).json({ error: "ikke_eier_av_galleri" });
+      }
+      const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
+      const round = Number(settings.proofingRound ?? 1) || 1;
+      res.json({ galleryId, projectTitle: g.project_title, round });
+    } catch (error) {
+      console.error("[showcase-round-get] feilet", error);
+      res.status(500).json({ error: "kunne_ikke_hente_round" });
+    }
+  });
+
+  // POST /api/showcase/galleries/:galleryId/start-new-round — Bump round.
+  // Setter status='active' og expiresAt 30d. Eksisterende selections
+  // beholdes med sin runde-tagg så Fredrik kan sammenligne runder.
+  app.post(
+    "/api/showcase/galleries/:galleryId/start-new-round",
+    async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const galleryId = String(req.params.galleryId || "").trim();
+      if (!galleryId) return res.status(400).json({ error: "manglende_gallery_id" });
+      try {
+        await ensureSelectionsRoundColumn();
+        const row = await pool.query(
+          `SELECT photographer_id, gallery_settings, project_title
+             FROM photographer_client_galleries
+            WHERE id = $1 LIMIT 1`,
+          [galleryId],
+        );
+        const g = row.rows[0];
+        if (!g) return res.status(404).json({ error: "galleri_ikke_funnet" });
+        if (g.photographer_id !== session.userId) {
+          return res.status(403).json({ error: "ikke_eier_av_galleri" });
+        }
+        const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
+        const currentRound = Number(settings.proofingRound ?? 1) || 1;
+        const newRound = currentRound + 1;
+        const newExpiresAt = new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000,
+        ).toISOString();
+        const nextSettings = {
+          ...settings,
+          proofingRound: newRound,
+          expiresAt: newExpiresAt,
+          projectState: 'in_review',
+        };
+        await pool.query(
+          `UPDATE photographer_client_galleries
+              SET status = 'active',
+                  gallery_settings = $1::jsonb,
+                  updated_at = NOW()
+            WHERE id = $2`,
+          [JSON.stringify(nextSettings), galleryId],
+        );
+        res.json({
+          success: true,
+          round: newRound,
+          previousRound: currentRound,
+          message: `"${g.project_title}" er nå på runde ${newRound}. Klienten kan velge på nytt — eksisterende valg fra runde ${currentRound} er bevart for sammenligning.`,
+        });
+      } catch (error) {
+        console.error("[showcase-start-new-round] feilet", error);
+        res.status(500).json({ error: "kunne_ikke_starte_ny_runde" });
+      }
+    },
+  );
+
   // GET /api/showcase/enhancement-presets — Static preset configurations
   app.get("/api/showcase/enhancement-presets", async (_req, res) => {
     res.json(SHOWCASE_ENHANCEMENT_PRESETS);
