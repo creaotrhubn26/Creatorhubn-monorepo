@@ -62,6 +62,7 @@ import {
 } from './formationTypes';
 import { FormationTimeline } from './FormationTimeline';
 import { DancerPathsView } from './DancerPathsView';
+import { formatTimecode } from './timecode';
 import { DancerPathPreview } from './DancerPathPreview';
 import { StageMap3D } from './StageMap3D';
 import { CurveOverlay } from './CurveOverlay';
@@ -1180,6 +1181,31 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
           sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
         />
       </Stack>
+      {/* Phase 6: Duration-computed under start/end så koreografen ser
+          intervallen uten å regne i hodet. Null hvis enten start eller end
+          mangler, eller hvis end ≤ start. */}
+      {(() => {
+        const start = formation.startSec;
+        const end = formation.endSec;
+        if (typeof start !== 'number' || typeof end !== 'number' || end <= start) {
+          return null;
+        }
+        const durationSec = end - start;
+        return (
+          <Typography
+            data-testid="formation-details-duration"
+            sx={{
+              fontSize: 10,
+              color: 'rgba(167,139,250,0.85)',
+              mt: -0.5,
+              mb: 1,
+              ml: 0.5,
+            }}
+          >
+            Varighet: {formatTimecode(durationSec)} ({durationSec.toFixed(1)}s)
+          </Typography>
+        );
+      })()}
       <TextField
         size="small"
         fullWidth
@@ -1574,7 +1600,7 @@ function drawFormation(
     drawPath(formation, options.nextFormation as Formation | null | undefined ?? null!, colorFor);
   }
 
-  formation.positions.forEach((pos) => {
+  formation.positions.forEach((pos, idx) => {
     if (hidden.has(pos.dancerId)) return;
     const dancer = dancersById.get(pos.dancerId);
     if (!dancer) return;
@@ -1657,11 +1683,15 @@ function drawFormation(
     const groupChildren = [arrow, circle, initials, nameLabel];
     if (leadStar) groupChildren.push(leadStar);
     if (options.showIds) {
-      const idLabel = new Textbox(pos.dancerId, {
-        fontSize: 9,
+      // Phase 6: ordinal D1/D2/D3... — leselig vs full UUID. Idx er stabil
+      // innen samme formasjon siden positions-arrayen vedlikeholdes av
+      // brukeren.
+      const idLabel = new Textbox(`D${idx + 1}`, {
+        fontSize: 11,
         fontFamily: '-apple-system, sans-serif',
-        fill: 'rgba(255,255,255,0.55)',
-        width: 80,
+        fill: 'rgba(255,255,255,0.75)',
+        fontWeight: '700',
+        width: 40,
         textAlign: 'center',
         originX: 'center',
         originY: 'center',
