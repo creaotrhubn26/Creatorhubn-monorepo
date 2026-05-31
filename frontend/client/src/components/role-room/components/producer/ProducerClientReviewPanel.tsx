@@ -14,6 +14,7 @@ import {
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material';
@@ -496,7 +497,27 @@ export default function ProducerClientReviewPanel({
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
   const isMobileReview = useMediaQuery(theme.breakpoints.down('sm'));
-  const { items, summary, loading, error, createReview, addComment, setDecision } = useProducerReviews(projectId);
+  const {
+    items,
+    summary,
+    loading,
+    error,
+    lastSyncedAt,
+    livePollActive,
+    createReview,
+    addComment,
+    setDecision,
+  } = useProducerReviews(projectId, { livePollMs: 15000 });
+  // Klient-handlinger (godkjenn/kommenter i portalen) skjer på en annen enhet,
+  // så vi poll'er backend hvert 15. sek for å vise dem i tilnærmet sanntid.
+  const lastSyncedLabel = useMemo(() => {
+    if (!lastSyncedAt) return null;
+    try {
+      return new Date(lastSyncedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return null;
+    }
+  }, [lastSyncedAt]);
   const [agreementsById, setAgreementsById] = useState<Record<string, ProjectAgreement>>({});
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
   const [clientMaterials, setClientMaterials] = useState<ProducerClientMaterial[]>([]);
@@ -1735,6 +1756,52 @@ export default function ProducerClientReviewPanel({
                   {projectStatusLabel}
                 </Typography>
               </Box>
+              {livePollActive ? (
+                <Tooltip
+                  arrow
+                  placement="bottom"
+                  title={
+                    'Sanntid med klienten: del en magic-link fra et godkjenningspunkt (kopier invitasjon / '
+                    + 'send e-post). Klienten åpner klientportalen og kan godkjenne, be om endringer eller '
+                    + 'kommentere — uten innlogging. Beslutninger og kommentarer dukker opp her automatisk '
+                    + 'innen ~15 sek, så du slipper å laste på nytt. For live samskriving: del et Google-'
+                    + 'dokument; for samtale: opprett en Meet-lenke i møteflaten.'
+                  }
+                >
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.6,
+                      px: 1,
+                      py: 0.35,
+                      borderRadius: 999,
+                      border: '1px solid rgba(34,197,94,0.4)',
+                      bgcolor: 'rgba(34,197,94,0.12)',
+                      cursor: 'help',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        bgcolor: '#22c55e',
+                        boxShadow: '0 0 0 0 rgba(34,197,94,0.6)',
+                        animation: 'rrLivePulse 1.8s ease-out infinite',
+                        '@keyframes rrLivePulse': {
+                          '0%': { boxShadow: '0 0 0 0 rgba(34,197,94,0.55)' },
+                          '70%': { boxShadow: '0 0 0 6px rgba(34,197,94,0)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(34,197,94,0)' },
+                        },
+                      }}
+                    />
+                    <Typography sx={{ color: '#bbf7d0', fontSize: '0.7rem', fontWeight: 700 }}>
+                      {lastSyncedLabel ? `Sanntid · oppdatert ${lastSyncedLabel}` : 'Sanntid på'}
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              ) : null}
             </Stack>
             <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem' }}>
               {projectName} · Venter {summary.pending} · Godkjent {summary.approved} · Endringer {summary.changesRequested}
