@@ -25736,16 +25736,18 @@ setupRoleRoomTalentsRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
-// B2B2Talent Phase 1.5 — agency-perspektivet. Stella/NSF/produsenter ser
-// talents kun via consent. Migrasjon 211 (agency_orgs + users.agency_org_id).
-setupRoleRoomAgenciesRoutes({
+// B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
+// Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
+// VIKTIG: Må registreres FØR setupRoleRoomAgenciesRoutes, fordi sistnevnte
+// har "/agency/talents/:talentId" som ellers fanger "/agency/talents/search".
+setupRoleRoomAgencySearchRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
-// B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
-// Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
-setupRoleRoomAgencySearchRoutes({
+// B2B2Talent Phase 1.5 — agency-perspektivet. Stella/NSF/produsenter ser
+// talents kun via consent. Migrasjon 211 (agency_orgs + users.agency_org_id).
+setupRoleRoomAgenciesRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
