@@ -379,9 +379,16 @@ const ShowcaseCard = React.memo(({
             zIndex: 2,
             transition: 'all 0.3s ease-in-out'
           }}>
-            {showcaseSettings.watermark === 'text' ? (showcaseSettings.watermarkText || 'CreatorHub') :
-             showcaseSettings.watermark === 'logo' ? '🏢' :
-             showcaseSettings.watermark === 'both' ? `🏢 ${showcaseSettings.watermarkText || 'CreatorHub'}` : ','}
+            {showcaseSettings.watermark === 'text' ? (
+              <span>{showcaseSettings.watermarkText || 'CreatorHub'}</span>
+            ) : showcaseSettings.watermark === 'logo' ? (
+              <Business sx={{ fontSize: 'inherit', verticalAlign: 'middle' }} />
+            ) : showcaseSettings.watermark === 'both' ? (
+              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                <Business sx={{ fontSize: 'inherit' }} />
+                {showcaseSettings.watermarkText || 'CreatorHub'}
+              </Box>
+            ) : null}
           </Box>
         )}
 
