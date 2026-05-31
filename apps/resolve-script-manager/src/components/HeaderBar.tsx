@@ -93,6 +93,8 @@ interface Props {
   onOpenPhotoshopAgent: () => void;
   onOpenPsdGallery: () => void;
   onOpenPhotoshopHealth: () => void;
+  onOpenPhotoshopTour: () => void;
+  onOpenFeedback: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -136,6 +138,8 @@ export function HeaderBar({
   onOpenPhotoshopAgent,
   onOpenPsdGallery,
   onOpenPhotoshopHealth,
+  onOpenPhotoshopTour,
+  onOpenFeedback,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -234,6 +238,12 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPsdGallery(); }}>
                   PSD-galleri…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTour(); }}>
+                  👋 Vis Photoshop-tour på nytt
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenFeedback(); }}>
+                  📨 Send feedback
                 </button>
                 <div className="header-menu-divider" />
                 <button onClick={() => { setMenuOpen(false); onConnect(); }} disabled={busy}>

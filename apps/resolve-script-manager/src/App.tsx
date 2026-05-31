@@ -60,6 +60,11 @@ import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
 import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
 import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
 import { PhotoshopHealthCheckDialog } from "./components/PhotoshopHealthCheckDialog";
+import {
+  PhotoshopOnboardingTour,
+  hasCompletedPhotoshopTour,
+} from "./components/PhotoshopOnboardingTour";
+import { FeedbackDialog } from "./components/FeedbackDialog";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons";
@@ -138,6 +143,10 @@ export default function App() {
   const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   const [showPsdGallery, setShowPsdGallery] = useState(false);
   const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
+  const [showPhotoshopTour, setShowPhotoshopTour] = useState(
+    () => !hasCompletedPhotoshopTour(),
+  );
+  const [showFeedback, setShowFeedback] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
   // Auto-show Role Room sign-in on app launch when first-run is done but
   // the user hasn't authenticated yet. Suppressed during first-run since
@@ -661,6 +670,8 @@ export default function App() {
         onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
         onOpenPsdGallery={() => setShowPsdGallery(true)}
         onOpenPhotoshopHealth={() => setShowPhotoshopHealth(true)}
+        onOpenPhotoshopTour={() => setShowPhotoshopTour(true)}
+        onOpenFeedback={() => setShowFeedback(true)}
         onSignIn={() => setShowSignIn(true)}
         onSignedOut={() => { /* state refresh happens via storage event */ }}
         advancedMode={advancedMode}
@@ -983,6 +994,12 @@ export default function App() {
       )}
       {showPhotoshopHealth && (
         <PhotoshopHealthCheckDialog onClose={() => setShowPhotoshopHealth(false)} />
+      )}
+      {showPhotoshopTour && (
+        <PhotoshopOnboardingTour onClose={() => setShowPhotoshopTour(false)} />
+      )}
+      {showFeedback && (
+        <FeedbackDialog onClose={() => setShowFeedback(false)} />
       )}
 
       {updateInfo && (
