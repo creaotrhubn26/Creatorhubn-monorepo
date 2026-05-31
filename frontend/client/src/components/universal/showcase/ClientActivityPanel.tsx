@@ -71,6 +71,8 @@ import {
   Star,
   PhotoCamera,
   Videocam,
+  MailOutline as MailOutlineIcon,
+  LocationOn as LocationOnIcon,
 } from '@mui/icons-material';
 
 interface ClientActivity {
@@ -1355,7 +1357,8 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             color: 'rgba(255, 255, 255, 0.6)',
                             mb: 1
                           }}>
-                            ✉️ {activity.clientEmail}
+                            <MailOutlineIcon sx={{ fontSize: 12, verticalAlign: 'middle', mr: 0.5 }} />
+                            {activity.clientEmail}
                           </Typography>
                         )}
                         {activity.message && (
@@ -1550,7 +1553,8 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             </Typography>
                             {activity.eventLocation && (
                               <Typography variant="caption" display="block" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                                📍 {activity.eventLocation}
+                                <LocationOnIcon sx={{ fontSize: 12, verticalAlign: 'middle', mr: 0.5 }} />
+                                {activity.eventLocation}
                               </Typography>
                             )}
                             {activity.message && (
