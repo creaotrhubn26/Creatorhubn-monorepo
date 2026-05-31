@@ -312,7 +312,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'files', label: 'Filer', icon: <FolderOpen /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','portrett','event','kommersiell'],
     stats: [
@@ -376,7 +376,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','reklame','dokumentar','musikkvideo'],
     stats: [
@@ -408,7 +408,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['album','singel','podcast','jingle'],
     stats: [
@@ -434,7 +434,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['utleie','salg','service','konsultasjon'],
     stats: [
@@ -468,7 +468,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','corporate','event','musikkvideo','portrett','reklame'],
     stats: [
