@@ -57,6 +57,7 @@ import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
 import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
+import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons";
@@ -132,6 +133,7 @@ export default function App() {
   const [showWatch, setShowWatch] = useState(false);
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
   const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
+  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
   // Auto-show Role Room sign-in on app launch when first-run is done but
   // the user hasn't authenticated yet. Suppressed during first-run since
@@ -652,6 +654,7 @@ export default function App() {
         onOpenWatch={() => setShowWatch(true)}
         onOpenPhotoshopBridge={() => setShowPhotoshopBridge(true)}
         onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
+        onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
         onSignIn={() => setShowSignIn(true)}
         onSignedOut={() => { /* state refresh happens via storage event */ }}
         advancedMode={advancedMode}
@@ -965,6 +968,9 @@ export default function App() {
       )}
       {showPhotoshopTemplates && (
         <PhotoshopTemplateDialog onClose={() => setShowPhotoshopTemplates(false)} />
+      )}
+      {showPhotoshopAgent && (
+        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
       )}
 
       {updateInfo && (
