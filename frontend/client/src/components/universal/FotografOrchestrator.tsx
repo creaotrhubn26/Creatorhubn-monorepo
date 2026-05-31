@@ -596,7 +596,7 @@ function FotografOrchestrator({
           lastRun: new Date(),
           completedActions: [],
           failedActions: [],
-          status: 'running'
+          status: 'queued'
         }
       }));
 
@@ -1514,11 +1514,27 @@ function FotografOrchestrator({
                 }}
               />
               <Typography variant="body2">
-                {orchestrationStates[selectedOrchestration]?.running ? 'Kjører' :
-                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'completed' ? 'Fullført' :
-                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'error' ? 'Feil' : 'Klar'}
+                {(() => {
+                  const s = orchestrationStates[selectedOrchestration] as Record<string, unknown> | undefined;
+                  const status = s?.status as string | undefined;
+                  if (status === 'queued') return 'Køet — venter på behandler';
+                  if (status === 'running') return 'Kjører';
+                  if (status === 'completed') return 'Fullført';
+                  if (status === 'partial') return 'Delvis fullført';
+                  if (status === 'expired') return 'Utløpt — ingen behandler plukket opp jobben';
+                  if (status === 'stopped') return 'Stoppet av bruker';
+                  if (status === 'failed' || status === 'error') return 'Feil';
+                  if (s?.running) return 'Kjører';
+                  return 'Klar';
+                })()}
               </Typography>
             </Box>
+
+            {(orchestrationStates[selectedOrchestration] as Record<string, unknown> | undefined)?.errorMessage && (
+              <Typography variant="caption" color="error.main" sx={{ mt: 0.5 }}>
+                {String((orchestrationStates[selectedOrchestration] as Record<string, unknown>).errorMessage)}
+              </Typography>
+            )}
 
             {orchestrationStates[selectedOrchestration]?.lastRun && (
               <Typography variant="caption" color="text.secondary">

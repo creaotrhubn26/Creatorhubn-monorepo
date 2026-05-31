@@ -16,120 +16,233 @@ export function setupOrchestrationRoutes(
 ): void {
   const { app, pool, db, requireUserSession } = deps;
 
-  // In-memory storage for orchestration state (in production, use Redis/DB)
-  const orchestrationStates: Record<string, Record<string, any>> = {};
+  // Custom workflow storage forblir in-memory for nå (fallback for
+  // editingWorkflows-tabellen håndteres lenger ned).
   const customWorkflows: Record<string, any[]> = {};
 
-  // Get orchestration status
-  app.get("/api/orchestration/status/:sessionId", (req, res) => {
-    const { sessionId } = req.params;
-    const state = orchestrationStates[sessionId] || {};
+  // Helper: mark eldre køede runs som 'expired' når de når expires_at.
+  // Kjøres ved hver status-query for å holde data ærlig uten egen cron.
+  const expireStaleRuns = async (): Promise<void> => {
+    try {
+      await pool.query(
+        `UPDATE orchestration_runs
+            SET status = 'expired',
+                updated_at = now(),
+                completed_at = now(),
+                error_message = COALESCE(error_message, 'Ingen worker plukket opp jobben innen tidsfristen')
+          WHERE status IN ('queued', 'running')
+            AND expires_at < now()`,
+      );
+    } catch (err) {
+      // Stille — vi vil ikke at en feilet UPDATE skal blokkere status-svaret
+      console.error("[orchestration] expireStaleRuns failed:", err);
+    }
+  };
 
-    res.json({
-      success: true,
-      sessionId,
-      orchestrations: {
-        nyKlient: {
-          running: state.nyKlient?.running || false,
-          lastRun: state.nyKlient?.lastRun || null,
-          completedActions: state.nyKlient?.completedActions || [],
-          failedActions: state.nyKlient?.failedActions || [],
-          status: state.nyKlient?.status || "idle",
-        },
-        aiPhotoEnhancement: {
-          running: state.aiPhotoEnhancement?.running || false,
-          lastRun: state.aiPhotoEnhancement?.lastRun || null,
-          completedActions: state.aiPhotoEnhancement?.completedActions || [],
-          failedActions: state.aiPhotoEnhancement?.failedActions || [],
-          status: state.aiPhotoEnhancement?.status || "idle",
-        },
-        weddingWorkflow: {
-          running: state.weddingWorkflow?.running || false,
-          lastRun: state.weddingWorkflow?.lastRun || null,
-          completedActions: state.weddingWorkflow?.completedActions || [],
-          failedActions: state.weddingWorkflow?.failedActions || [],
-          status: state.weddingWorkflow?.status || "idle",
-        },
-        postProductionWorkflow: {
-          running: state.postProductionWorkflow?.running || false,
-          lastRun: state.postProductionWorkflow?.lastRun || null,
-          completedActions: state.postProductionWorkflow?.completedActions || [],
-          failedActions: state.postProductionWorkflow?.failedActions || [],
-          status: state.postProductionWorkflow?.status || "idle",
-        },
-      },
-      timestamp: new Date().toISOString(),
-    });
+  // Get orchestration status — returnerer nå alle runs for session-id,
+  // ikke en hardkodet liste på 4. Bruker faktisk DB-state.
+  app.get("/api/orchestration/status/:sessionId", async (req, res) => {
+    const { sessionId } = req.params;
+
+    await expireStaleRuns();
+
+    try {
+      const result = await pool.query(
+        `SELECT
+           orchestration_id,
+           status,
+           trigger_data,
+           completed_actions,
+           failed_actions,
+           error_message,
+           started_at,
+           updated_at,
+           completed_at,
+           expires_at
+         FROM orchestration_runs
+         WHERE session_id = $1
+         ORDER BY started_at DESC`,
+        [sessionId],
+      );
+
+      // For hver orchestration_id: behold kun seneste run.
+      const latestPerOrchestration: Record<string, any> = {};
+      for (const row of result.rows) {
+        if (!latestPerOrchestration[row.orchestration_id]) {
+          latestPerOrchestration[row.orchestration_id] = {
+            running: row.status === "queued" || row.status === "running",
+            lastRun: row.started_at,
+            completedActions: row.completed_actions || [],
+            failedActions: row.failed_actions || [],
+            status: row.status,
+            errorMessage: row.error_message || null,
+            completedAt: row.completed_at,
+            expiresAt: row.expires_at,
+          };
+        }
+      }
+
+      res.json({
+        success: true,
+        sessionId,
+        orchestrations: latestPerOrchestration,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[orchestration] status query failed:", err);
+      res.status(500).json({
+        success: false,
+        error: "Kunne ikke hente orkesteringsstatus",
+      });
+    }
   });
 
-  // Trigger orchestration
-  app.post("/api/orchestration/trigger", (req, res) => {
+  // Trigger orchestration — persisterer til DB. Ingen fake completion.
+  // Status forblir 'queued' inntil en worker faktisk gjør jobben, eller
+  // til expires_at passerer (15 min default) og statusen settes til 'expired'.
+  app.post("/api/orchestration/trigger", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     const { orchestrationId, triggerData, sessionId } = req.body;
 
-    if (!orchestrationStates[sessionId]) {
-      orchestrationStates[sessionId] = {};
+    if (!orchestrationId || !sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: "orchestrationId og sessionId må sendes inn",
+      });
     }
 
-    // Simulate orchestration execution
-    orchestrationStates[sessionId][orchestrationId] = {
-      running: true,
-      lastRun: new Date().toISOString(),
-      completedActions: [],
-      failedActions: [],
-      status: "running",
-      triggerData,
-    };
+    const userId =
+      (req as any).session?.userId ||
+      (req as any).user?.id ||
+      "anonymous";
 
-    // Simulate async completion after 2 seconds
-    setTimeout(() => {
-      if (
-        orchestrationStates[sessionId] &&
-        orchestrationStates[sessionId][orchestrationId]
-      ) {
-        orchestrationStates[sessionId][orchestrationId] = {
-          ...orchestrationStates[sessionId][orchestrationId],
-          running: false,
-          status: "completed",
-          completedActions: ["step1", "step2", "step3"],
-          completedAt: new Date().toISOString(),
-        };
-      }
-    }, 2000);
+    try {
+      const insert = await pool.query(
+        `INSERT INTO orchestration_runs
+           (session_id, orchestration_id, user_id, status, trigger_data)
+         VALUES ($1, $2, $3, 'queued', $4)
+         RETURNING id, started_at, expires_at`,
+        [sessionId, orchestrationId, userId, triggerData || {}],
+      );
 
-    res.json({
-      success: true,
-      orchestrationId,
-      sessionId,
-      status: "started",
-      message: `Orchestration ${orchestrationId} started successfully`,
-      timestamp: new Date().toISOString(),
-    });
+      const row = insert.rows[0];
+
+      res.json({
+        success: true,
+        runId: row.id,
+        orchestrationId,
+        sessionId,
+        status: "queued",
+        message:
+          "Orkestreringen er køet. Statusen oppdateres når en behandler plukker opp jobben.",
+        startedAt: row.started_at,
+        expiresAt: row.expires_at,
+      });
+    } catch (err) {
+      console.error("[orchestration] trigger insert failed:", err);
+      res.status(500).json({
+        success: false,
+        error: "Kunne ikke kø orkestreringen",
+      });
+    }
   });
 
   // Stop orchestration
-  app.post("/api/orchestration/stop", (req, res) => {
+  app.post("/api/orchestration/stop", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     const { orchestrationId, sessionId } = req.body;
 
-    if (
-      orchestrationStates[sessionId] &&
-      orchestrationStates[sessionId][orchestrationId]
-    ) {
-      orchestrationStates[sessionId][orchestrationId] = {
-        ...orchestrationStates[sessionId][orchestrationId],
-        running: false,
-        status: "stopped",
-      };
-    }
+    try {
+      const result = await pool.query(
+        `UPDATE orchestration_runs
+            SET status = 'stopped',
+                updated_at = now(),
+                completed_at = now()
+          WHERE session_id = $1
+            AND orchestration_id = $2
+            AND status IN ('queued', 'running')
+          RETURNING id`,
+        [sessionId, orchestrationId],
+      );
 
-    res.json({
-      success: true,
-      orchestrationId,
-      sessionId,
-      status: "stopped",
-      message: `Orchestration ${orchestrationId} stopped`,
-    });
+      res.json({
+        success: true,
+        orchestrationId,
+        sessionId,
+        status: "stopped",
+        stopped: result.rowCount || 0,
+      });
+    } catch (err) {
+      console.error("[orchestration] stop failed:", err);
+      res.status(500).json({
+        success: false,
+        error: "Kunne ikke stoppe orkestreringen",
+      });
+    }
+  });
+
+  // Worker-API: gjør at en utfører kan oppdatere progresjonen på et run.
+  // Brukes når actions kjører ekte — vi har ingen workers enda, men endepunktet
+  // finnes så vi kan koble dem på uten å lyve om status.
+  app.post("/api/orchestration/runs/:runId/progress", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    const { runId } = req.params;
+    const { completedAction, failedAction, errorMessage, status } = req.body;
+
+    try {
+      const updates: string[] = ["updated_at = now()"];
+      const params: any[] = [];
+      let paramIdx = 1;
+
+      if (completedAction) {
+        updates.push(
+          `completed_actions = completed_actions || $${paramIdx}::jsonb`,
+        );
+        params.push(JSON.stringify([completedAction]));
+        paramIdx++;
+      }
+      if (failedAction) {
+        updates.push(
+          `failed_actions = failed_actions || $${paramIdx}::jsonb`,
+        );
+        params.push(JSON.stringify([failedAction]));
+        paramIdx++;
+      }
+      if (errorMessage) {
+        updates.push(`error_message = $${paramIdx}`);
+        params.push(errorMessage);
+        paramIdx++;
+      }
+      if (status) {
+        updates.push(`status = $${paramIdx}`);
+        params.push(status);
+        paramIdx++;
+        if (
+          status === "completed" ||
+          status === "partial" ||
+          status === "failed"
+        ) {
+          updates.push("completed_at = now()");
+        }
+      }
+
+      params.push(runId);
+
+      await pool.query(
+        `UPDATE orchestration_runs
+            SET ${updates.join(", ")}
+          WHERE id = $${paramIdx}`,
+        params,
+      );
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[orchestration] progress update failed:", err);
+      res.status(500).json({
+        success: false,
+        error: "Kunne ikke oppdatere progresjon",
+      });
+    }
   });
 
   // Get custom workflows - DB-first with in-memory fallback
