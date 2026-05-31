@@ -198,6 +198,31 @@ export const FormationView: React.FC<FormationViewProps> = ({
     window.addEventListener('dance:video-time', onVideoTime as EventListener);
     return () => window.removeEventListener('dance:video-time', onVideoTime as EventListener);
   }, [formations, activeFormationId]);
+
+  // Phase 2: lytt på `dance:export-formation` fra FormationHeaderBar.
+  // PNG = fabric.toDataURL snapshot. JSON = serialisert formations-array.
+  // PDF er stubbed (knapp disabled i headeren — Phase 6 lager renderer).
+  useEffect(() => {
+    const onExport = (e: Event): void => {
+      const detail = (e as CustomEvent<{ format?: 'png' | 'json' | 'pdf'; filename?: string }>).detail;
+      if (!detail) return;
+      void import('./formationExport').then((mod) => {
+        const filename = detail.filename ?? mod.defaultExportFilename(detail.format ?? 'png', formations);
+        if (detail.format === 'png') {
+          const canvas = fabricRef.current;
+          if (!canvas) return;
+          const dataUrl = canvas.toDataURL({ format: 'png', multiplier: 2 });
+          mod.downloadDataUrl(dataUrl, filename);
+        } else if (detail.format === 'json') {
+          const payload = mod.buildFormationExportPayload(formations);
+          mod.downloadJson(payload, filename);
+        }
+      });
+    };
+    window.addEventListener('dance:export-formation', onExport as EventListener);
+    return () => window.removeEventListener('dance:export-formation', onExport as EventListener);
+  }, [formations]);
+
   const [newFormationName, setNewFormationName] = useState('');
   const [animationProgress, setAnimationProgress] = useState<{ from: string; to: string } | null>(null);
 

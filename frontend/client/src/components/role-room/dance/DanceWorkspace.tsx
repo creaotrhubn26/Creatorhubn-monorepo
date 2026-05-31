@@ -59,6 +59,10 @@ const FormationViewConnected = React.lazy(() =>
   import('./FormationViewConnected').then((m) => ({ default: m.FormationViewConnected })),
 );
 import DanceFlowShell from './DanceFlowShell';
+import FormationHeaderBar, {
+  type FormationSubTab,
+  type FormationSaveStatus,
+} from './FormationHeaderBar';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -168,6 +172,72 @@ const ComingSoonCard: React.FC<PlaceholderProps> = ({ title, body, feature }) =>
     </Card>
   </Box>
 );
+
+/**
+ * FormationsTabBody — egen sub-komponent så vi får hooks-state for sub-tab,
+ * save-status og breadcrumbs uten å forurense DanceWorkspace's hooks-rad.
+ * Wrappes i DanceFlowShell m/ FormationHeaderBar (Phase 2).
+ */
+interface FormationsTabBodyProps {
+  projectId: string | null;
+}
+
+const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
+  const [subTab, setSubTab] = React.useState<FormationSubTab>('formation');
+  const [saveStatus, setSaveStatus] = React.useState<FormationSaveStatus>('idle');
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  const handleSaveStatusChange = React.useCallback(
+    (status: FormationSaveStatus, error: string | null) => {
+      setSaveStatus(status);
+      setSaveError(error);
+    },
+    [],
+  );
+
+  // Phase 3 vil koble breadcrumbs til ekte prosjekt-navn fra context.
+  const breadcrumbs = React.useMemo(
+    () => [
+      { label: 'Dans' },
+      { label: 'Formasjoner', ariaLabel: 'Formasjoner — aktiv visning' },
+    ],
+    [],
+  );
+
+  return (
+    <DanceFlowShell
+      header={
+        <FormationHeaderBar
+          breadcrumbs={breadcrumbs}
+          activeSubTab={subTab}
+          onSubTabChange={setSubTab}
+          saveStatus={saveStatus}
+          saveError={saveError}
+        />
+      }
+    >
+      {subTab === 'formation' ? (
+        <Box sx={{ p: { xs: 1, md: 2 }, minHeight: '100%' }}>
+          <FormationViewConnected
+            projectId={projectId}
+            hideSavePill
+            onSaveStatusChange={handleSaveStatusChange}
+          />
+        </Box>
+      ) : (
+        // Annotate er den eneste sub-tab'en uten forward — viser placeholder
+        // inntil Phase 6 lager drawer. Dancers/Analysis/Review bytter top-level
+        // tab via dance:set-tab og lander aldri her.
+        <Box sx={{ p: { xs: 2, md: 3 }, color: '#9ca3af' }}>
+          <Typography variant="body2">
+            Annotate-drawer kommer i Phase 6 (frihånd-tegning over scenen +
+            tekst-pins per posisjon).
+          </Typography>
+        </Box>
+      )}
+    </DanceFlowShell>
+  );
+};
 
 const PLACEHOLDER_BODIES: Record<string, string> = {
   classes: 'Studio-elever og semester-registrering. Henter betalingsstatus fra Fiken/Tripletex og kobler mot KID-betaling.',
@@ -391,17 +461,9 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           </Box>
         );
       case 'formations':
-        // Phase 1: wrap i DanceFlowShell. Side-slots (clipsSidebar/details) er
-        // tomme i Phase 1 — Phase 2 wirer header, Phase 3 wirer ClipsSidebar.
-        // Eksisterende FormationViewConnected/FormationView beholder sin egen
-        // inner-grid (Roster | Stage | Details) inntil videre.
-        return (
-          <DanceFlowShell>
-            <Box sx={{ p: { xs: 1, md: 2 }, minHeight: '100%' }}>
-              <FormationViewConnected projectId={projectId ?? null} />
-            </Box>
-          </DanceFlowShell>
-        );
+        // Phase 2: FormationsTabBody owner shell+header+sub-tab-state.
+        // FormationViewConnected wrappes m/ hideSavePill — headeren eier pillen.
+        return <FormationsTabBody projectId={projectId ?? null} />;
       case 'rehearsal_log':
         return (
           <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>

@@ -48,9 +48,13 @@ export interface FormationViewConnectedProps {
   projectId: string | null;
   /** Valgfri callback for double-click på en danser-puck. */
   onDancerClick?: (dancerId: string) => void;
+  /** Phase 2: når true, skjul intern save-pill (FormationHeaderBar viser den). */
+  hideSavePill?: boolean;
+  /** Phase 2: bobler opp save-status så parent (DanceWorkspace) kan vise pill i header. */
+  onSaveStatusChange?: (status: SaveStatus, error: string | null) => void;
 }
 
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface LoadState {
   phase: 'loading' | 'ready' | 'error';
@@ -88,12 +92,19 @@ function emptyStarterFormation(): Formation {
 export function FormationViewConnected({
   projectId,
   onDancerClick,
+  hideSavePill = false,
+  onSaveStatusChange,
 }: FormationViewConnectedProps): React.ReactElement {
   const [load, setLoad] = React.useState<LoadState>({ phase: 'loading' });
   const [dancers, setDancers] = React.useState<Dancer[]>([]);
   const [initialFormations, setInitialFormations] = React.useState<Formation[] | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  // Phase 2: bobler save-state opp så header kan vise pillen.
+  React.useEffect(() => {
+    onSaveStatusChange?.(saveStatus, saveError);
+  }, [saveStatus, saveError, onSaveStatusChange]);
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstChangeRef = React.useRef(true);
@@ -203,37 +214,39 @@ export function FormationViewConnected({
 
   return (
     <Box sx={{ position: 'relative' }}>
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1}
-        sx={{ position: 'absolute', top: 12, right: 16, zIndex: 5 }}
-      >
-        {saveStatus === 'saving' ? (
-          <Chip
-            icon={<SavingIcon sx={{ fontSize: 16 }} />}
-            label="Lagrer…"
-            size="small"
-            sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: '#a78bfa', fontWeight: 600 }}
-          />
-        ) : null}
-        {saveStatus === 'saved' ? (
-          <Chip
-            icon={<SavedIcon sx={{ fontSize: 16 }} />}
-            label="Lagret"
-            size="small"
-            sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 600 }}
-          />
-        ) : null}
-        {saveStatus === 'error' ? (
-          <Chip
-            icon={<ErrorIcon sx={{ fontSize: 16 }} />}
-            label={saveError ?? 'Lagring feilet'}
-            size="small"
-            sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 600 }}
-          />
-        ) : null}
-      </Stack>
+      {!hideSavePill ? (
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{ position: 'absolute', top: 12, right: 16, zIndex: 5 }}
+        >
+          {saveStatus === 'saving' ? (
+            <Chip
+              icon={<SavingIcon sx={{ fontSize: 16 }} />}
+              label="Lagrer…"
+              size="small"
+              sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: '#a78bfa', fontWeight: 600 }}
+            />
+          ) : null}
+          {saveStatus === 'saved' ? (
+            <Chip
+              icon={<SavedIcon sx={{ fontSize: 16 }} />}
+              label="Lagret"
+              size="small"
+              sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 600 }}
+            />
+          ) : null}
+          {saveStatus === 'error' ? (
+            <Chip
+              icon={<ErrorIcon sx={{ fontSize: 16 }} />}
+              label={saveError ?? 'Lagring feilet'}
+              size="small"
+              sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 600 }}
+            />
+          ) : null}
+        </Stack>
+      ) : null}
       {dancers.length === 0 ? (
         <Alert severity="info" sx={{ m: 2 }}>
           Ingen danserprofiler i prosjektet ennå. Legg til dansere under "Studenter"-fanen
