@@ -200,10 +200,10 @@ export async function checkDriveQuota(
   driveApi: any,
   minBytesNeeded: number = 0,
 ): Promise<DriveQuota> {
-  const result = await withDriveRetry(() =>
+  const result = await withDriveRetry<any>(() =>
     driveApi.about.get({ fields: "storageQuota" }),
   );
-  const sq = result.data?.storageQuota || {};
+  const sq = result?.data?.storageQuota || {};
   const limit = sq.limit ? Number(sq.limit) : null;
   const usage = sq.usage ? Number(sq.usage) : 0;
   const free = limit === null ? null : Math.max(0, limit - usage);
@@ -223,18 +223,18 @@ export async function ensureDriveFolder(
     ? `name='${escaped}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
     : `name='${escaped}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
 
-  const list = await withDriveRetry(() =>
+  const list = await withDriveRetry<any>(() =>
     driveApi.files.list({
       q,
       fields: "files(id, name)",
       spaces: "drive",
     }),
   );
-  if ((list.data.files ?? []).length > 0) {
+  if ((list?.data?.files ?? []).length > 0) {
     return list.data.files[0].id;
   }
 
-  const created = await withDriveRetry(() =>
+  const created = await withDriveRetry<any>(() =>
     driveApi.files.create({
       requestBody: {
         name,
@@ -244,7 +244,7 @@ export async function ensureDriveFolder(
       fields: "id",
     }),
   );
-  return created.data.id;
+  return created?.data?.id;
 }
 
 // Map en hvilken som helst Drive-feil til en HTTP-status + meldingstekst.

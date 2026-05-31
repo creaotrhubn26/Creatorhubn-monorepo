@@ -314,7 +314,7 @@ export function setupGoogleDriveSyncRoutes(
             }
 
             // Last opp til Drive med retry
-            const driveRes = await withDriveRetry(
+            const driveRes = await withDriveRetry<any>(
               () =>
                 driveApi.files.create({
                   requestBody: {
@@ -332,8 +332,8 @@ export function setupGoogleDriveSyncRoutes(
               id: itemId,
               fileName: row.file_name,
               status: "uploaded",
-              driveFileId: driveRes.data.id ?? undefined,
-              driveFileUrl: driveRes.data.webViewLink ?? undefined,
+              driveFileId: driveRes?.data?.id ?? undefined,
+              driveFileUrl: driveRes?.data?.webViewLink ?? undefined,
             });
           } catch (err: any) {
             const mapped = mapDriveError(err);
