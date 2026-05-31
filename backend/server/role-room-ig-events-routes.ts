@@ -36,7 +36,7 @@ export interface SetupIgEventsRoutesDeps {
   requireAdminOrDemoBypass: (req: Request, res: Response) => boolean;
 }
 
-const EVENT_FIELDS = "id,name,start_time,end_time,description,place,attending_count,interested_count,ticket_uri,cover{source}";
+const EVENT_FIELDS = "id,title,start_time,end_time,description,venue";
 
 function resolveAccessToken(req: Request, fallback?: unknown): string {
   const fromQuery = typeof req.query.accessToken === "string" ? req.query.accessToken.trim() : "";
@@ -70,7 +70,7 @@ export function setupIgEventsRoutes(deps: SetupIgEventsRoutesDeps): void {
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/events?${params.toString()}`,
+        `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/upcoming_events?${params.toString()}`,
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {
@@ -121,26 +121,33 @@ export function setupIgEventsRoutes(deps: SetupIgEventsRoutesDeps): void {
       return;
     }
     if (!startTime) {
-      res.status(400).json({ error: "startTime is required (ISO 8601)" });
+      res.status(400).json({ error: "startTime is required (ISO 8601 or Unix timestamp)" });
       return;
     }
+    // Meta v21 upcoming_events requires Unix epoch seconds for start_time/end_time.
+    // Accept ISO 8601 as input for ergonomics and convert.
+    const toUnix = (s: string): string => {
+      if (/^\d+$/.test(s)) return s;
+      const ms = Date.parse(s);
+      return Number.isFinite(ms) ? String(Math.floor(ms / 1000)) : s;
+    };
     const form = new URLSearchParams({
-      name,
-      start_time: startTime,
+      title: name,
+      start_time: toUnix(startTime),
       access_token: accessToken,
     });
     if (typeof body.endTime === "string" && body.endTime.trim()) {
-      form.set("end_time", body.endTime.trim());
+      form.set("end_time", toUnix(body.endTime.trim()));
     }
     if (typeof body.description === "string" && body.description.trim()) {
       form.set("description", body.description.trim());
     }
     if (typeof body.placeName === "string" && body.placeName.trim()) {
-      form.set("place", JSON.stringify({ name: body.placeName.trim() }));
+      form.set("venue_name", body.placeName.trim());
     }
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/events`,
+        `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/upcoming_events`,
         {
           method: "POST",
           body: form,
