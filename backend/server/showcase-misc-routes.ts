@@ -52,8 +52,146 @@ import {
   readStringArray,
   normalizeJsonObjectField,
 } from "./_shared";
+import { sendTransactionalEmail } from "./transactional-email-service.js";
 
 type Db = NodePgDatabase<typeof schema>;
+
+// Daily cron-trigger som finner galleries med selectionDeadline om
+// 3 eller 1 dag og som ikke har fått reminder for den aktuelle stagen
+// ennå. Idempotent via gallery_settings.reminderSentFor (verdi: '3d'|'1d').
+// Eksportert så index.ts kan registrere setInterval; kalles også manuelt
+// via /api/showcase/run-deadline-sweep.
+export async function runDeadlineReminderSweep(pool: Pool): Promise<{
+  scanned: number;
+  sent: number;
+  errors: number;
+}> {
+  let scanned = 0;
+  let sent = 0;
+  let errors = 0;
+
+  // 3-dagers reminder
+  const three = await pool.query(
+    `SELECT g.id, g.client_email, g.client_name, g.project_title, g.access_token,
+            g.photographer_id, g.gallery_settings
+       FROM photographer_client_galleries g
+      WHERE g.status = 'active'
+        AND (g.gallery_settings ->> 'selectionDeadline') IS NOT NULL
+        AND (g.gallery_settings ->> 'selectionDeadline')::timestamptz
+              BETWEEN NOW() + INTERVAL '2.5 days' AND NOW() + INTERVAL '3.5 days'
+        AND COALESCE(g.gallery_settings ->> 'reminderSentFor', '') NOT IN ('3d', '1d')
+      LIMIT 200`,
+  );
+  scanned += three.rowCount ?? 0;
+  for (const row of three.rows) {
+    try {
+      await sendDeadlineReminderEmail(pool, row, '3d');
+      await pool.query(
+        `UPDATE photographer_client_galleries
+            SET gallery_settings = gallery_settings || jsonb_build_object('reminderSentFor', '3d', 'reminder3dAt', NOW()::text),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [row.id],
+      );
+      sent++;
+    } catch (err) {
+      errors++;
+      console.warn(`[deadline-sweep] 3d send failed for ${row.id}:`, err);
+    }
+  }
+
+  // 1-dags reminder (har høyere prioritet — oppdaterer reminderSentFor selv om 3d er satt)
+  const one = await pool.query(
+    `SELECT g.id, g.client_email, g.client_name, g.project_title, g.access_token,
+            g.photographer_id, g.gallery_settings
+       FROM photographer_client_galleries g
+      WHERE g.status = 'active'
+        AND (g.gallery_settings ->> 'selectionDeadline') IS NOT NULL
+        AND (g.gallery_settings ->> 'selectionDeadline')::timestamptz
+              BETWEEN NOW() + INTERVAL '0.5 days' AND NOW() + INTERVAL '1.5 days'
+        AND COALESCE(g.gallery_settings ->> 'reminderSentFor', '') <> '1d'
+      LIMIT 200`,
+  );
+  scanned += one.rowCount ?? 0;
+  for (const row of one.rows) {
+    try {
+      await sendDeadlineReminderEmail(pool, row, '1d');
+      await pool.query(
+        `UPDATE photographer_client_galleries
+            SET gallery_settings = gallery_settings || jsonb_build_object('reminderSentFor', '1d', 'reminder1dAt', NOW()::text),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [row.id],
+      );
+      sent++;
+    } catch (err) {
+      errors++;
+      console.warn(`[deadline-sweep] 1d send failed for ${row.id}:`, err);
+    }
+  }
+
+  return { scanned, sent, errors };
+}
+
+async function sendDeadlineReminderEmail(
+  pool: Pool,
+  row: any,
+  stage: '3d' | '1d',
+): Promise<void> {
+  const settings = (row.gallery_settings ?? {}) as Record<string, unknown>;
+  const deadlineRaw = String(settings.selectionDeadline ?? '');
+  const deadlineDate = new Date(deadlineRaw);
+  const deadlineLabel = Number.isFinite(deadlineDate.getTime())
+    ? deadlineDate.toLocaleDateString('nb-NO', { day: 'numeric', month: 'long' })
+    : 'snart';
+
+  const baseUrl = (
+    process.env.PUBLIC_APP_URL ||
+    process.env.APP_BASE_URL ||
+    'https://creatorhubn.com'
+  ).replace(/\/+$/, '');
+  const shareUrl = `${baseUrl}/client/gallery/${row.access_token}`;
+
+  const photographerName = String(settings.photographerName ?? 'fotografen');
+  const subject = stage === '1d'
+    ? `Påminnelse — utvalg utløper i morgen for "${row.project_title}"`
+    : `Påminnelse — utvalg utløper ${deadlineLabel} for "${row.project_title}"`;
+  const greeting = `Hei ${row.client_name},`;
+  const body = stage === '1d'
+    ? `Bare en kort påminnelse om at fristen for å gjøre ditt utvalg på "${row.project_title}" er i morgen.`
+    : `Bare en kort påminnelse om at fristen for å gjøre ditt utvalg på "${row.project_title}" er ${deadlineLabel}.`;
+
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#fafafa;">
+      <h2 style="color:#1a1a1a;margin:0 0 12px;font-size:20px;">${row.project_title}</h2>
+      <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${greeting}</p>
+      <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${body}</p>
+      <p style="margin:24px 0;">
+        <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+          Fortsett utvalget
+        </a>
+      </p>
+      <p style="font-size:13px;color:#888;margin:24px 0 0;">
+        Send fra ${photographerName} via Creatorhubn.
+      </p>
+    </div>
+  `;
+  const text = `${greeting}\n\n${body}\n\nFortsett utvalget: ${shareUrl}\n`;
+
+  const result = await sendTransactionalEmail({
+    to: row.client_email,
+    subject,
+    html,
+    text,
+    fromLabel: photographerName,
+    kind: `showcase_deadline_${stage}`,
+    sentByUserId: row.photographer_id,
+    pool,
+  });
+  if (!result.sent) {
+    throw new Error(result.reason ?? 'send_failed');
+  }
+}
 
 interface ShowcasePricingShape {
   contractedBase: number;
@@ -199,6 +337,72 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
     } catch (error) {
       console.error("Error sending showcase email:", error);
       res.status(500).json({ error: "Kunne ikke sende e-post" });
+    }
+  });
+
+  // POST /api/showcase/run-deadline-sweep — Manuell trigger av deadline-
+  // cron. Cron registreres i index.ts som daily setInterval.
+  app.post("/api/showcase/run-deadline-sweep", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    try {
+      const result = await runDeadlineReminderSweep(pool);
+      res.json(result);
+    } catch (error) {
+      console.error("[deadline-sweep] feilet", error);
+      res.status(500).json({ error: "sweep_failed" });
+    }
+  });
+
+  // PATCH /api/showcase/galleries/:id/deadline — Sett/oppdater
+  // selectionDeadline. Resetter reminderSentFor så cron sender ny
+  // reminder hvis ny deadline er i 3/1d-vinduet.
+  app.patch("/api/showcase/galleries/:id/deadline", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const galleryId = String(req.params.id || "").trim();
+    if (!galleryId) return res.status(400).json({ error: "manglende_gallery_id" });
+    const deadlineRaw = readString((req.body || {}).deadline);
+    // Null/tom string → clear deadline.
+    if (deadlineRaw && !Number.isFinite(new Date(deadlineRaw).getTime())) {
+      return res.status(400).json({ error: "ugyldig_deadline" });
+    }
+    try {
+      const owner = await pool.query(
+        `SELECT photographer_id, gallery_settings, project_title
+           FROM photographer_client_galleries
+          WHERE id = $1 LIMIT 1`,
+        [galleryId],
+      );
+      const row = owner.rows[0];
+      if (!row) return res.status(404).json({ error: "galleri_ikke_funnet" });
+      if (row.photographer_id !== session.userId) {
+        return res.status(403).json({ error: "ikke_eier_av_galleri" });
+      }
+      const current = (row.gallery_settings ?? {}) as Record<string, unknown>;
+      const nextSettings = {
+        ...current,
+        selectionDeadline: deadlineRaw ?? null,
+        // Reset reminder-tag så ny deadline kan trigge nye reminders.
+        reminderSentFor: null,
+      };
+      await pool.query(
+        `UPDATE photographer_client_galleries
+            SET gallery_settings = $1::jsonb,
+                updated_at = NOW()
+          WHERE id = $2`,
+        [JSON.stringify(nextSettings), galleryId],
+      );
+      res.json({
+        success: true,
+        galleryId,
+        selectionDeadline: deadlineRaw ?? null,
+        message: deadlineRaw
+          ? `Deadline satt på "${row.project_title}". Klient får påminnelse 3 og 1 dag før.`
+          : `Deadline fjernet på "${row.project_title}".`,
+      });
+    } catch (error) {
+      console.error("[showcase-deadline-patch] feilet", error);
+      res.status(500).json({ error: "kunne_ikke_oppdatere_deadline" });
     }
   });
 

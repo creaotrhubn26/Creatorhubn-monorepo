@@ -5716,7 +5716,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       photographerName: user?.name || '',
       photographerCompany: '',
       projectState: 'in_review' as 'delivered' | 'in_review',
-      projectId: null as string | null
+      projectId: null as string | null,
+      selectionDeadline: '' as string,
     });
 
     // Update projectId when showcase is selected
@@ -5734,7 +5735,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         const showcase = showcases.find((s: any) => s.id === shareForm.selectedShowcase);
         if (!showcase) return;
 
-        await shareShowcaseMutation.mutateAsync({
+        const shareResult: any = await shareShowcaseMutation.mutateAsync({
           showcaseId: shareForm.selectedShowcase,
           clientEmail: shareForm.clientEmail,
           clientName: shareForm.clientName,
@@ -5742,9 +5743,30 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           photographerName: shareForm.photographerName,
           photographerCompany: shareForm.photographerCompany,
           projectState: shareForm.projectState,
-          projectId: showcase.projectId || shareForm.projectId
+          projectId: showcase.projectId || shareForm.projectId,
+          // Deadline persisteres til gallery_settings når PR #75-share-
+          // endpointet leser feltet; ellers patches under via /deadline.
+          selectionDeadline: shareForm.selectionDeadline || null,
         });
-        
+
+        // Persister deadline via PATCH /deadline om backend ga oss en
+        // galleryId og det finnes deadline å sette. Idempotent — backend
+        // resetter reminderSentFor automatisk.
+        if (shareForm.selectionDeadline && shareResult?.galleryId) {
+          try {
+            await apiRequest(
+              `/api/showcase/galleries/${shareResult.galleryId}/deadline`,
+              {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deadline: shareForm.selectionDeadline }),
+              },
+            );
+          } catch (deadlineErr) {
+            console.warn('[share] kunne ikke sette deadline:', deadlineErr);
+          }
+        }
+
         onClose();
       } catch (error) {
         console.error('Error sharing showcase:', error);
@@ -5843,6 +5865,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               value={shareForm.message}
               onChange={(e) => setShareForm(prev => ({ ...prev, message: e.target.value }))}
               placeholder="Add a personal message to include with the showcase..."
+              sx={{ mb: 3 }}
+            />
+
+            {/* Selection deadline — utløser automatiske reminders 3 og 1 dag før. */}
+            <TextField
+              fullWidth
+              type="date"
+              label="Frist for klient-utvalg (valgfritt)"
+              value={shareForm.selectionDeadline}
+              onChange={(e) => setShareForm(prev => ({ ...prev, selectionDeadline: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+              helperText="Klient får automatisk påminnelse på e-post 3 dager og 1 dag før fristen."
               sx={{ mb: 3 }}
             />
 
