@@ -90,6 +90,7 @@ interface Props {
   onOpenPhotoshopBridge: () => void;
   onOpenPhotoshopTemplates: () => void;
   onOpenPsdGallery: () => void;
+  onOpenPhotoshopHealth: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -131,6 +132,7 @@ export function HeaderBar({
   onOpenPhotoshopBridge,
   onOpenPhotoshopTemplates,
   onOpenPsdGallery,
+  onOpenPhotoshopHealth,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -197,6 +199,17 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenWatch(); }}>
                   <IconEye /> Watch Folder
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenPhotoshopHealth(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(74,212,138,0.18), rgba(34,180,90,0.18))",
+                    border: "1px solid rgba(74,212,138,0.40)",
+                    color: "#dafce6",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ Helse-sjekk Photoshop…
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopBridge(); }}>
                   Photoshop Bridge…
