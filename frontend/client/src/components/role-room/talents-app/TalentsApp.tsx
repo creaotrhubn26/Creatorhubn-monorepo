@@ -21,6 +21,7 @@ import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import AuditPage from './pages/AuditPage';
 import SettingsPage from './pages/SettingsPage';
+import TalentRegistryPage from './pages/TalentRegistryPage';
 import { palette } from './theme';
 
 const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
@@ -112,6 +113,8 @@ export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
     <TalentsAppShell active={page} onNavigate={handleNavigate} onLogout={demoMode ? undefined : onLogout}>
       {page === 'dashboard' ? (
         <DashboardPage demoMode={demoMode} onNavigate={handleNavigate} />
+      ) : page === 'registry' ? (
+        <TalentRegistryPage demoMode={demoMode} />
       ) : page === 'partners' ? (
         <PartnersCollaborationPage />
       ) : page === 'profiles' ? (

@@ -240,6 +240,64 @@ const roleRoomTalentsService = {
     return payload.talent as RoleRoomMaskedTalent;
   },
 
+  // ── Phase 7: Talent Registry (agency-search) ──────────────────────
+  async searchTalents(filters: TalentSearchFilters): Promise<TalentSearchResult> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v == null || v === '') return;
+      if (Array.isArray(v)) {
+        if (v.length > 0) params.set(k, v.join(','));
+      } else if (typeof v === 'boolean') {
+        if (v) params.set(k, '1');
+      } else {
+        params.set(k, String(v));
+      }
+    });
+    const r = await authFetch(`${AGENCY_BASE}/agency/talents/search?${params.toString()}`);
+    if (!r.ok) return { agency: null, filters, total: 0, talents: [] };
+    return await r.json();
+  },
+
+  async fetchRegistryOverview(): Promise<RegistryOverview> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/registry-overview`);
+    if (!r.ok) return { agency: null, total_visible: 0, new_30d: 0, available_now: 0 };
+    return await r.json();
+  },
+
+  async fetchSavedSearches(): Promise<SavedSearch[]> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/saved-searches`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return Array.isArray(payload?.searches) ? payload.searches : [];
+  },
+
+  async createSavedSearch(input: {
+    name: string;
+    filters: TalentSearchFilters;
+    shared?: boolean;
+    estimated_count?: number;
+  }): Promise<SavedSearch | { error: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/saved-searches`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Kunne ikke lagre' };
+    return payload.search as SavedSearch;
+  },
+
+  async deleteSavedSearch(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/saved-searches/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Kunne ikke slette' };
+    }
+    return { ok: true };
+  },
+
   // ── Phase 2 e2e ──────────────────────────────────────────────────
   async fetchPartnersOverview(opts?: { demo?: boolean }): Promise<PartnersOverview> {
     const qs = opts?.demo ? '?demo=1' : '';
@@ -499,6 +557,72 @@ export interface RoleRoomPartnerInvite {
   token: string;
   acceptUrl?: string;
   maskedEmail?: string;
+}
+
+export interface TalentSearchFilters {
+  q?: string;
+  location?: string;
+  gender?: string;
+  age_min?: number;
+  age_max?: number;
+  languages?: string[];
+  skills?: string[];
+  dialects?: string[];
+  availability?: string;
+  has_selftape?: boolean;
+  representation?: 'represented' | 'independent' | 'any';
+  sort?: 'recent' | 'name' | 'available_first';
+  limit?: number;
+  offset?: number;
+}
+
+export interface TalentSearchHit {
+  id: string;
+  display_name: string;
+  city: string | null;
+  country: string | null;
+  bio: string | null;
+  represented: boolean;
+  granted_scopes: RoleRoomTalentConsentScope[];
+  skills: Array<{ id: string; label: string }>;
+  languages: Array<{ code: string; label: string; level?: string }>;
+  dialects: string[];
+  // maskerte felter (kun hvis scope er gitt):
+  headshot_url?: string | null;
+  showreel_url?: string | null;
+  has_showreel?: boolean;
+  playing_age_min?: number | null;
+  playing_age_max?: number | null;
+  gender?: string | null;
+  availability_status?: 'open' | 'limited' | 'unavailable';
+  agency_name?: string | null;
+}
+
+export interface TalentSearchResult {
+  agency: { id: string; name: string; type: string } | null;
+  filters: TalentSearchFilters;
+  total: number;
+  talents: TalentSearchHit[];
+}
+
+export interface RegistryOverview {
+  agency: { id: string; name: string } | null;
+  total_visible: number;
+  new_30d: number;
+  available_now: number;
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  filters: TalentSearchFilters;
+  estimated_count: number | null;
+  estimated_at: string | null;
+  shared: boolean;
+  created_at: string;
+  updated_at: string;
+  last_run_at: string | null;
+  owner_user_id: string;
 }
 
 export interface UploadConfig {

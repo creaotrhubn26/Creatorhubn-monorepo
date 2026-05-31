@@ -1,3 +1,35 @@
+# Talent Registry (mockup #2) — pixel-spec
+
+Sannhetskilde for `/talents/registry`. Mockup re-sendt 2026-05-31.
+
+## 7 hovedregioner
+1. Sidebar (samme som Partners — Talent Registry aktiv)
+2. Topbar (placeholder: "Search talents by name, skills, languages, city…")
+3. Page header + Grid/List toggle
+4. Advanced Filters card (2 rader × 5 felter + "More filters")
+5. Featured Talents karusell (5 horisontal-cards + venstre/høyre-piler)
+6. Talent-grid (4-kolonner, bookmark/video/eye-actions)
+7. Right sidebar (Saved Searches + Registry Overview + sparkline)
+
+## Advanced Filters
+- Row 1: Location · Playing age · Languages · Dialects · Skills
+- Row 2: Gender · Availability · Representation · Self-tape status · [More filters]
+
+## Saved Searches eksempel
+- Oslo 20-30 Drama (142)
+- Bergen 30+ Nordic look (86)
+- Trondheim Young Talent (67)
+- English speaking actors (213)
+- Comedic actors (128)
+- Bunn: "+ Save new search"
+
+## Registry Overview
+- 1,247 Visible talents
+- +87 New signups Last 30 days
+- Sparkline
+
+---
+
 # Partners & Collaboration — pixel-spec
 
 Kilde: Mockup #11 sendt 2026-05-30 av Daniel. **Sannhetskilde** for
