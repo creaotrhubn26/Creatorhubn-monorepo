@@ -5,7 +5,11 @@
 
 **Status:** Offline-resiliens (prosjekt-opprett, brief, timeline/economy/reviews lesing+skriving via replay-kø) er levert i PR #45. Denne auditen dekker GJENVÆRENDE klarhetsgap.
 
-Fikset i commit ee494425: stille mutasjons-feil i Economy/Timeline (#1/#19/#20), delt offline-aware feilmelding-helper, stepper-status-klarhet (#30/#40).
+**Fikset så langt:**
+- Bolk 1 (commit ee494425): stille mutasjons-feil i Economy/Timeline (#1/#19/#20), delt offline-aware feilmelding-helper (`describeProducerError`), stepper-status-klarhet (#30/#40).
+- Bolk 2 (commit 3dac5eb9): handlingsorientert «X mangler»-chip + låst beslutnings-kort (#14), Facebook-publisering statusspesifikke feil + fb-sider-feiltilstand (#18/#2), Levering/eksport offline-aware feil (#10/#12/#21).
+
+**Gjenstår (prioritert):** offline-meldinger for vault/Google Workspace/marketing-plan (#8/#9/#11/#35), fire-and-forget sync-synlighet (#3/#4/#22), account-tile-CTA-er (#31), empty-states (#32/#42), stepper delivery/economy-fullføring (#23 — krever pålitelig «levert»-signal som ikke finnes i dag).
 
 ## Sammendrag per dimensjon
 
