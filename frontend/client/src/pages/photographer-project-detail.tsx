@@ -208,7 +208,13 @@ export default function PhotographerProjectDetail() {
   });
 
   const createInvoice = useMutation<
-    { invoiceId: string; invoiceNumber: string | null; alreadyInvoiced?: boolean },
+    {
+      salesOrderId: string;
+      salesOrderNumber: number | string | null;
+      sendStatus?: string | null;
+      async?: boolean;
+      alreadyInvoiced?: boolean;
+    },
     Error,
     void
   >({
@@ -939,8 +945,11 @@ export default function PhotographerProjectDetail() {
             })()}
             {createInvoice.isSuccess && createInvoice.data && (
               <Alert severity="success">
-                Faktura opprettet: #{createInvoice.data.invoiceNumber ?? createInvoice.data.invoiceId}
-                {createInvoice.data.alreadyInvoiced && ' (allerede fakturert)'}
+                {createInvoice.data.alreadyInvoiced
+                  ? `Allerede fakturert (salgsordre ${createInvoice.data.salesOrderNumber ?? createInvoice.data.salesOrderId.slice(0, 8)})`
+                  : createInvoice.data.salesOrderNumber
+                    ? `Faktura sendt til kunde via PowerOffice (salgsordre #${createInvoice.data.salesOrderNumber}). Fakturanummer tildeles av PO ved postering.`
+                    : 'Faktura er sendt til kunde via PowerOffice. Du finner den i PowerOffice GO under Salg → Salgsordre.'}
               </Alert>
             )}
           </Stack>

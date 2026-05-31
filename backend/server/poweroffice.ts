@@ -1,20 +1,30 @@
 /**
  * server/poweroffice.ts
  *
- * Port av Tidsflyt sin PowerOffice Go v2-klient, tilpasset Creatorhubn
- * sin photographer e2e (faktura-push for prosjekt-oppdrag).
+ * PowerOffice Go v2-klient for Creatorhubn fotograf-faktura.
  *
- * Auth er OAuth 2.0 client_credentials (RFC 6749 §4.4):
+ * Auth: OAuth 2.0 client_credentials (RFC 6749 §4.4)
  *   POST {AUTH_URL}
  *     Authorization: Basic base64(APPLICATION_KEY:CLIENT_KEY)
  *     Ocp-Apim-Subscription-Key: {SUBSCRIPTION_KEY}
  *     body: grant_type=client_credentials
  *
- * Access-token har 20-min TTL og caches per tenant (per photographer-id
- * sin clientKey). APPLICATION_KEY og SUBSCRIPTION_KEY er developer-shared
- * (ENV); clientKey er per-tenant (limt inn av fotograf i innstillinger).
+ * Access-token har 20-min TTL og caches per tenant. APPLICATION_KEY og
+ * SUBSCRIPTION_KEY er developer-shared (ENV); clientKey er per-tenant.
  *
- * Docs: https://developer.poweroffice.net/documentation/authentication
+ * Faktura-flow (PO Go v2 har INGEN POST /OutgoingInvoices — den er
+ * read-only). Vi bruker SalesOrders + CreateAndSendInvoice:
+ *
+ *   1. ensureCustomer    → POST /Customers (eller GET-finn eksisterende) → customerId
+ *   2. ensureProduct     → POST /Products (eller GET-finn eksisterende) → productId
+ *   3. createSalesOrder  → POST /SalesOrders med CustomerId → salesOrderId
+ *   4. addLines          → POST /SalesOrders/{id}/Lines (én per linje)
+ *   5. sendInvoice       → POST /SalesOrders/{id}/CreateAndSendInvoice
+ *                          (returnerer 202 Accepted — asynkron)
+ *
+ * Docs:
+ *   https://developer.poweroffice.net/documentation
+ *   Swagger: https://prdm0go0stor0apiv20eurw.z6.web.core.windows.net/
  */
 
 const APPLICATION_KEY = process.env.POWEROFFICE_APPLICATION_KEY || '';
@@ -23,7 +33,6 @@ const SUBSCRIPTION_KEY_SECONDARY = process.env.POWEROFFICE_SUBSCRIPTION_KEY_SECO
 const AUTH_URL = process.env.POWEROFFICE_AUTH_URL || 'https://goapi.poweroffice.net/Demo/OAuth/Token';
 const BASE_URL = process.env.POWEROFFICE_BASE_URL || 'https://goapi.poweroffice.net/demo/v2';
 
-// APIM-rotering — primary brukes først, rotér til secondary ved 401/403.
 let activeSubscriptionKey: 'primary' | 'secondary' = 'primary';
 
 function currentSubscriptionKey(): string {
@@ -145,7 +154,7 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
   body?: unknown;
-  query?: Record<string, string | number | undefined>;
+  query?: Record<string, string | number | undefined | null>;
 }
 
 export async function call<T = unknown>(clientKey: string, opts: RequestOptions): Promise<T> {
@@ -156,7 +165,7 @@ export async function call<T = unknown>(clientKey: string, opts: RequestOptions)
   const url = new URL(BASE_URL.replace(/\/$/, '') + opts.path);
   if (opts.query) {
     for (const [k, v] of Object.entries(opts.query)) {
-      if (v !== undefined) url.searchParams.set(k, String(v));
+      if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     }
   }
 
@@ -203,124 +212,299 @@ export async function call<T = unknown>(clientKey: string, opts: RequestOptions)
   }
 
   if (res.status === 204) return undefined as T;
+  // PO Go v2 GET-collection returnerer noen ganger { items: [...], totalCount }
+  // og noen ganger bare en bar array; POST/single returnerer DTO direkte.
   return res.json() as Promise<T>;
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Photographer-spesifikke invoice-helpers
-// ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// PowerOffice Go v2 DTO-typer (kun feltene vi bruker)
+// ─────────────────────────────────────────────────────────────────────
 
-export interface InvoiceLine {
+interface CustomerDto {
+  Id: number;
+  Number?: number;
+  Name?: string | null;
+  FirstName?: string | null;
+  LastName?: string | null;
+  EmailAddress?: string | null;
+}
+
+interface ProductDto {
+  Id: number;
+  Code?: string | null;
+  Name?: string | null;
+}
+
+interface SalesOrderDto {
+  Id: string;            // uuid
+  SalesOrderNo?: number;
+  CustomerId?: number;
+}
+
+interface SendInvoiceRequestDto {
+  Id?: string;
+  Status?: string;
+  // Andre felt finnes; vi bruker ikke dem.
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Domene-input fra invoice-route
+// ─────────────────────────────────────────────────────────────────────
+
+export type CustomerType = 'person' | 'company';
+
+export interface InvoiceLineInput {
   description: string;
   quantity: number;
-  unitPrice: number;    // eks MVA
-  vatRate?: number;     // % (25, 12, 0)
+  unitPriceNet: number;   // eks MVA — PO bruker dette som ProductUnitPrice
 }
 
 export interface CreateInvoiceInput {
   clientKey: string;
-  clientName: string;
-  clientEmail: string;
-  invoiceDate?: string;        // YYYY-MM-DD, default i dag
-  dueDate?: string;            // YYYY-MM-DD, default +14d
-  reference?: string;          // prosjekt-tittel eller intern referanse
-  lines: InvoiceLine[];
+  /** Lagret PO-product-id fra forrige tilkobling. null hvis vi må opprette. */
+  cachedProductId: number | null;
+  customer: {
+    type: CustomerType;
+    /** For person: full name vi splitter til first/last. For company: brukes som Name. */
+    name: string;
+    email: string;
+    organizationNumber?: string | null;  // bare company
+    phone?: string | null;
+  };
+  reference?: string | null;             // ekstern kunde-referanse (prosjekt-tittel)
+  lines: InvoiceLineInput[];
+  /** PdfByEmail | Auto | EHF | Efaktura | AvtaleGiro | PdfPrintForDownload */
+  deliveryType?: 'Auto' | 'PdfByEmail' | 'EHF' | 'Efaktura' | 'AvtaleGiro' | 'PdfPrintForDownload';
 }
 
 export interface CreateInvoiceResult {
-  invoiceId: string;
-  invoiceNumber: string | null;
-  status: string | null;
+  /** PO sin SalesOrder Id (uuid). Lagres som external_invoice_id. */
+  salesOrderId: string;
+  /** SalesOrderNo (autogen, før sending). null hvis ikke returnert. */
+  salesOrderNumber: number | null;
+  /** Produkt-id vi (kanskje) opprettet — caller skal lagre denne tilbake. */
+  productId: number;
+  /** True hvis vi opprettet produktet i denne kjøringen (caller bør lagre default_product_id). */
+  productJustCreated: boolean;
+  /** Status fra send-request. Den faktiske fakturanummer kommer asynkront i PO. */
+  sendStatus: string | null;
 }
 
-function addDaysIso(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+// ─────────────────────────────────────────────────────────────────────
+// Customer
+// ─────────────────────────────────────────────────────────────────────
+
+function splitName(full: string): { first: string; last: string } {
+  const trimmed = full.trim();
+  if (!trimmed) return { first: '', last: '' };
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return { first: parts[0], last: '' };
+  return {
+    first: parts.slice(0, -1).join(' '),
+    last: parts[parts.length - 1],
+  };
 }
 
-/**
- * Sikrer at en kunde finnes i PowerOffice (matcher på email/navn) og
- * returnerer customerCode. PowerOffice Go API gir POST /Customers og
- * GET /Customers?email=... — vi prøver lookup først, ellers create.
- */
-async function ensureCustomerCode(input: { clientKey: string; clientName: string; clientEmail: string }): Promise<string> {
-  // Lookup via email
-  try {
-    const lookup = await call<{ data?: Array<{ code?: string; emailAddress?: string }> }>(input.clientKey, {
-      method: 'GET',
-      path: '/Customers',
-      query: { '$filter': `emailAddress eq '${input.clientEmail.replace(/'/g, "''")}'`, '$top': 1 },
-    });
-    const existing = lookup?.data?.[0]?.code;
-    if (existing) return String(existing);
-  } catch (err) {
-    // Lookup-failure er ikke fatal — vi prøver create.
-    console.warn('[poweroffice] customer lookup failed, falling back to create:', err);
-  }
-
-  // Create — PowerOffice Go forventer minimum name + emailAddress.
-  const created = await call<{ code?: string; data?: { code?: string } }>(input.clientKey, {
-    method: 'POST',
+async function findCustomerByEmail(clientKey: string, email: string): Promise<CustomerDto | null> {
+  // PO Go v2 GET /Customers støtter ?emailAddresses=<email>&PageSize=1.
+  // Respons-shape varierer (noen endepunkter wrapper i { items }, andre er bare array).
+  type Resp = CustomerDto[] | { items?: CustomerDto[] };
+  const res = await call<Resp>(clientKey, {
+    method: 'GET',
     path: '/Customers',
-    body: {
-      name: input.clientName,
-      emailAddress: input.clientEmail,
-      isPerson: true,
-    },
-  });
-  const code = created?.code ?? created?.data?.code;
-  if (!code) throw new PowerOfficeApiError('Customer create returnerte ikke code', 500, created);
-  return String(code);
+    query: { emailAddresses: email, PageSize: 1 },
+  }).catch(() => null);
+  if (!res) return null;
+  const arr = Array.isArray(res) ? res : (res.items ?? []);
+  return arr[0] ?? null;
 }
 
-/**
- * Opprett faktura i PowerOffice Go. Returnerer invoice-id/nummer som
- * lagres på prosjektet vårt for å unngå dobbel-fakturering.
- *
- * Endepunkt: POST /OutgoingInvoices (PowerOffice Go v2). Field-navnene
- * matcher PowerOffice sin OutgoingInvoice-modell; om en tenant har
- * tilpasset feltene, returneres en 400 med detalj som vi videresender.
- */
-export async function createOutgoingInvoice(input: CreateInvoiceInput): Promise<CreateInvoiceResult> {
-  const customerCode = await ensureCustomerCode({
-    clientKey: input.clientKey,
-    clientName: input.clientName,
-    clientEmail: input.clientEmail,
-  });
+async function ensureCustomer(clientKey: string, c: CreateInvoiceInput['customer']): Promise<number> {
+  const existing = await findCustomerByEmail(clientKey, c.email);
+  if (existing?.Id) return existing.Id;
 
-  const invoiceDate = input.invoiceDate || new Date().toISOString().slice(0, 10);
-  const dueDate = input.dueDate || addDaysIso(14);
-
-  const payload = {
-    customerCode,
-    invoiceDate,
-    dueDate,
-    yourReference: input.reference?.slice(0, 100) ?? null,
-    invoiceLines: input.lines.map((l) => ({
-      description: l.description.slice(0, 200),
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      vatRate: l.vatRate ?? 25,
-    })),
+  const body: Record<string, unknown> = {
+    EmailAddress: c.email,
+    InvoiceEmailAddress: c.email,
+    PhoneNumber: c.phone ?? undefined,
+    IsPerson: c.type === 'person',
   };
 
-  const created = await call<{ id?: string | number; invoiceNumber?: string | number; status?: string; data?: any }>(
-    input.clientKey,
-    { method: 'POST', path: '/OutgoingInvoices', body: payload },
-  );
-
-  const data = created?.data ?? created;
-  const invoiceId = data?.id != null ? String(data.id) : null;
-  const invoiceNumber = data?.invoiceNumber != null ? String(data.invoiceNumber) : null;
-
-  if (!invoiceId) {
-    throw new PowerOfficeApiError('PowerOffice returnerte ikke invoice-id', 502, created);
+  if (c.type === 'person') {
+    const { first, last } = splitName(c.name);
+    body.FirstName = first || c.name;
+    // PO krever LastName når IsPerson=true. Fallback til '-' hvis brukeren
+    // bare ga ett ord (PO godtar dette og gir bedre signal enn å feile).
+    body.LastName = last || '-';
+  } else {
+    body.Name = c.name;
+    if (c.organizationNumber) body.OrganizationNumber = c.organizationNumber;
   }
 
+  const created = await call<CustomerDto>(clientKey, {
+    method: 'POST',
+    path: '/Customers',
+    body,
+  });
+  if (!created?.Id) {
+    throw new PowerOfficeApiError('Customer create returnerte ikke Id', 502, created);
+  }
+  return created.Id;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Product (auto-opprett "Creatorhubn fotograf-tjeneste" per tenant)
+// ─────────────────────────────────────────────────────────────────────
+
+const DEFAULT_PRODUCT_CODE = 'CHUB-FOTO';
+const DEFAULT_PRODUCT_NAME = 'Creatorhubn fotograf-tjeneste';
+// 3000 = "Salgsinntekter, avgiftspliktig" i norsk standardkontoplan.
+// Eksisterer i alle PO Go-tenants som standardkonto for tjeneste-salg.
+const DEFAULT_SALES_ACCOUNT = 3000;
+
+async function findProductByCode(clientKey: string, code: string): Promise<ProductDto | null> {
+  type Resp = ProductDto[] | { items?: ProductDto[] };
+  const res = await call<Resp>(clientKey, {
+    method: 'GET',
+    path: '/Products',
+    query: { codes: code, PageSize: 1 },
+  }).catch(() => null);
+  if (!res) return null;
+  const arr = Array.isArray(res) ? res : (res.items ?? []);
+  return arr[0] ?? null;
+}
+
+/** Returnerer { productId, justCreated }. Validerer cachedProductId mot tenant. */
+async function ensureProduct(
+  clientKey: string,
+  cachedProductId: number | null,
+): Promise<{ productId: number; justCreated: boolean }> {
+  if (cachedProductId) {
+    // Vi har en cached id. Anta at den er gyldig — om den er arkivert
+    // eller feil, vil POST /Lines feile og caller får 502 m. tydelig
+    // feilmelding. Sparing av et GET /Products/{id}-kall per faktura.
+    return { productId: cachedProductId, justCreated: false };
+  }
+
+  // Først: finn eksisterende ved code (idempotent ved gjentatt connect).
+  const existing = await findProductByCode(clientKey, DEFAULT_PRODUCT_CODE);
+  if (existing?.Id) return { productId: existing.Id, justCreated: true };
+
+  const created = await call<ProductDto>(clientKey, {
+    method: 'POST',
+    path: '/Products',
+    body: {
+      Code: DEFAULT_PRODUCT_CODE,
+      Name: DEFAULT_PRODUCT_NAME,
+      Description: 'Auto-opprettet av Creatorhubn ved første faktura-push',
+      ProductType: 'Service',
+      UnitOfMeasureCode: 'EA',
+      StandardSalesAccount: DEFAULT_SALES_ACCOUNT,
+      IsStockItem: false,
+    },
+  });
+  if (!created?.Id) {
+    throw new PowerOfficeApiError('Product create returnerte ikke Id', 502, created);
+  }
+  return { productId: created.Id, justCreated: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SalesOrder + Lines + Send
+// ─────────────────────────────────────────────────────────────────────
+
+async function createSalesOrder(
+  clientKey: string,
+  customerId: number,
+  reference?: string | null,
+): Promise<SalesOrderDto> {
+  const today = new Date().toISOString().slice(0, 10);
+  const body = {
+    CustomerId: customerId,
+    SalesOrderDate: today,
+    CurrencyCode: 'NOK',
+    CustomerReference: reference?.slice(0, 100) ?? null,
+  };
+  const created = await call<SalesOrderDto>(clientKey, {
+    method: 'POST',
+    path: '/SalesOrders',
+    body,
+  });
+  if (!created?.Id) {
+    throw new PowerOfficeApiError('SalesOrder create returnerte ikke Id', 502, created);
+  }
+  return created;
+}
+
+async function addSalesOrderLine(
+  clientKey: string,
+  salesOrderId: string,
+  productId: number,
+  line: InvoiceLineInput,
+  sortOrder: number,
+): Promise<void> {
+  await call(clientKey, {
+    method: 'POST',
+    path: `/SalesOrders/${encodeURIComponent(salesOrderId)}/Lines`,
+    body: {
+      LineType: 'Normal',
+      ProductId: productId,
+      Description: line.description.slice(0, 500),
+      Quantity: line.quantity,
+      ProductUnitPrice: line.unitPriceNet,
+      UnitOfMeasureCode: 'EA',
+      SortOrder: sortOrder,
+    },
+  });
+}
+
+async function sendInvoice(
+  clientKey: string,
+  salesOrderId: string,
+  emailAddress: string,
+  deliveryType: NonNullable<CreateInvoiceInput['deliveryType']>,
+): Promise<SendInvoiceRequestDto> {
+  // 202 Accepted — async. Body er SendInvoiceRequestPostDto. Bare
+  // DeliveryType + EmailAddress er nødvendig; resten arves fra ordren.
+  const res = await call<SendInvoiceRequestDto>(clientKey, {
+    method: 'POST',
+    path: `/SalesOrders/${encodeURIComponent(salesOrderId)}/CreateAndSendInvoice`,
+    body: {
+      DeliveryType: deliveryType,
+      EmailAddress: emailAddress,
+    },
+  });
+  return res ?? {};
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Public entry-point
+// ─────────────────────────────────────────────────────────────────────
+
+export async function createInvoiceViaSalesOrder(input: CreateInvoiceInput): Promise<CreateInvoiceResult> {
+  const { productId, justCreated } = await ensureProduct(input.clientKey, input.cachedProductId);
+  const customerId = await ensureCustomer(input.clientKey, input.customer);
+  const so = await createSalesOrder(input.clientKey, customerId, input.reference);
+
+  // Legg til linjer sekvensielt — PO støtter ikke batch.
+  let i = 0;
+  for (const line of input.lines) {
+    await addSalesOrderLine(input.clientKey, so.Id, productId, line, i++);
+  }
+
+  const sendReq = await sendInvoice(
+    input.clientKey,
+    so.Id,
+    input.customer.email,
+    input.deliveryType ?? 'Auto',
+  );
+
   return {
-    invoiceId,
-    invoiceNumber,
-    status: data?.status ?? null,
+    salesOrderId: so.Id,
+    salesOrderNumber: so.SalesOrderNo ?? null,
+    productId,
+    productJustCreated: justCreated,
+    sendStatus: sendReq.Status ?? null,
   };
 }
