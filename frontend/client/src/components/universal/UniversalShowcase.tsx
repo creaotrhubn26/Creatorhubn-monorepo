@@ -5729,12 +5729,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       }
     }, [shareForm.selectedShowcase, showcases]);
 
+    const [shareResult, setShareResult] = useState<
+      | { type: 'success'; shareUrl: string; emailSent: boolean; message: string }
+      | { type: 'error'; message: string }
+      | null
+    >(null);
+
     const handleShareShowcase = async () => {
+      setShareResult(null);
       try {
         const showcase = showcases.find((s: any) => s.id === shareForm.selectedShowcase);
-        if (!showcase) return;
+        if (!showcase) {
+          setShareResult({ type: 'error', message: 'Showcaset finnes ikke lenger. Last inn siden og prøv på nytt.' });
+          return;
+        }
 
-        await shareShowcaseMutation.mutateAsync({
+        const result: any = await shareShowcaseMutation.mutateAsync({
           showcaseId: shareForm.selectedShowcase,
           clientEmail: shareForm.clientEmail,
           clientName: shareForm.clientName,
@@ -5744,10 +5754,34 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           projectState: shareForm.projectState,
           projectId: showcase.projectId || shareForm.projectId
         });
-        
-        onClose();
+
+        // Backend returnerer {success, emailSent, shareUrl, message}. Hvis
+        // e-posten feilet beholder vi dialogen åpen så Fredrik kan kopiere
+        // lenken manuelt.
+        const shareUrl = typeof result?.shareUrl === 'string' ? result.shareUrl : '';
+        const emailSent = result?.emailSent !== false;
+        if (shareUrl) {
+          setShareResult({
+            type: 'success',
+            shareUrl,
+            emailSent,
+            message: result?.message ?? (emailSent
+              ? `Showcaset er sendt til ${shareForm.clientName}.`
+              : 'Galleriet er opprettet — kopier lenken under og send manuelt.'),
+          });
+          if (emailSent) {
+            setTimeout(() => onClose(), 2500);
+          }
+        } else {
+          onClose();
+        }
       } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
         console.error('Error sharing showcase:', error);
+        setShareResult({
+          type: 'error',
+          message: `Kunne ikke dele showcaset: ${msg}. Sjekk e-post-adressen og prøv igjen.`,
+        });
       }
     };
 
@@ -5952,17 +5986,61 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Typography>
               </Paper>
             )}
+
+            {shareResult?.type === 'error' && (
+              <Alert severity="error" sx={{ mt: 2 }} onClose={() => setShareResult(null)}>
+                {shareResult.message}
+              </Alert>
+            )}
+            {shareResult?.type === 'success' && (
+              <Alert
+                severity={shareResult.emailSent ? 'success' : 'warning'}
+                sx={{ mt: 2 }}
+                onClose={() => setShareResult(null)}
+              >
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                  {shareResult.message}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Typography
+                    variant="caption"
+                    component="code"
+                    sx={{
+                      flex: 1,
+                      minWidth: 200,
+                      fontFamily: 'monospace',
+                      bgcolor: 'rgba(0,0,0,0.05)',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 0.5,
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {shareResult.shareUrl}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(shareResult.shareUrl);
+                    }}
+                  >
+                    Kopier lenke
+                  </Button>
+                </Box>
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose} disabled={shareShowcaseMutation.isPending}>Avbryt</Button>
           <Button onClick={handleShareShowcase}
             variant="contained"
             color="primary"
             disabled={shareShowcaseMutation.isPending || !shareForm.selectedShowcase || !shareForm.clientEmail || !shareForm.clientName}
             sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67c00' } }}
           >
-            {shareShowcaseMutation.isPending ? 'Sending...' : `Share ${getTerm('showcase')}`}
+            {shareShowcaseMutation.isPending ? `Sender til ${shareForm.clientName || 'klient'}…` : `Send ${getTerm('showcase').toLowerCase()}`}
           </Button>
         </DialogActions>
       </Dialog>

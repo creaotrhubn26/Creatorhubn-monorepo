@@ -52,6 +52,24 @@ import {
   readStringArray,
   normalizeJsonObjectField,
 } from "./_shared";
+import { sendTransactionalEmail } from "./transactional-email-service";
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function resolvePublicAppUrl(): string {
+  const raw =
+    process.env.PUBLIC_APP_URL ||
+    process.env.APP_BASE_URL ||
+    "https://creatorhubn.com";
+  return raw.replace(/\/+$/, "");
+}
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -188,17 +206,258 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
     }
   });
 
-  // POST /api/showcase/email — Share showcase via email
+  // POST /api/showcase/email — Share showcase med klient via lenke + e-post.
+  // Oppretter en photographer_client_galleries-rad (med fersk accessToken),
+  // speiler tilhørende showcase_items inn i client_gallery_images, og sender
+  // en transaksjonell e-post med public-lenken. Lenken løses i frontend av
+  // /client/gallery/:accessToken — som allerede er bygget på samme tabell.
   app.post("/api/showcase/email", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
+
+    const payload = (req.body ?? {}) as Record<string, unknown>;
+    const showcaseId = readString(payload.showcaseId);
+    const clientEmail = readString(payload.clientEmail);
+    const clientName = readString(payload.clientName);
+    const message = readString(payload.message) ?? "";
+    const photographerName =
+      readString(payload.photographerName) ?? session.name ?? "Creatorhubn";
+    const photographerCompany = readString(payload.photographerCompany) ?? "";
+    const projectStateRaw = readString(payload.projectState) ?? "in_review";
+    const projectState =
+      projectStateRaw === "delivered" ? "delivered" : "in_review";
+    const explicitProjectId = readString(payload.projectId);
+
+    if (!clientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+      return res.status(400).json({ error: "ugyldig_klient_epost" });
+    }
+    if (!clientName) {
+      return res.status(400).json({ error: "manglende_klientnavn" });
+    }
+    if (!showcaseId) {
+      return res.status(400).json({ error: "manglende_showcase_id" });
+    }
+
     try {
-      const { to, subject } = req.body;
-      console.log(`[Showcase Email] Sending to ${to}: ${subject}`);
-      // In production, this would send via email service
-      res.json({ success: true, message: `E-post sendt til ${to}` });
+      // Slå opp seed-itemet for å hente projectId/userId/profession.
+      const seedRes = await pool.query(
+        `SELECT id, user_id, project_id, title, profession
+           FROM showcase_items
+          WHERE id = $1
+          LIMIT 1`,
+        [showcaseId],
+      );
+      const seed = seedRes.rows[0];
+      if (!seed) {
+        return res.status(404).json({ error: "showcase_ikke_funnet" });
+      }
+      if (seed.user_id !== session.userId) {
+        return res.status(403).json({ error: "ikke_eier_av_showcase" });
+      }
+
+      const projectId = explicitProjectId ?? seed.project_id ?? null;
+
+      // Samle alle items som hører til samme gallery: enten samme projectId
+      // hvis seed har en, ellers fall tilbake til samme bruker (legacy
+      // ungrupperte items). Bare aktive items.
+      const itemsRes = projectId
+        ? await pool.query(
+            `SELECT id, title, description, media_type, media_url, thumbnail_url, sort_order
+               FROM showcase_items
+              WHERE user_id = $1 AND project_id = $2
+              ORDER BY COALESCE(sort_order, 0) ASC, created_at ASC`,
+            [session.userId, projectId],
+          )
+        : await pool.query(
+            `SELECT id, title, description, media_type, media_url, thumbnail_url, sort_order
+               FROM showcase_items
+              WHERE id = $1`,
+            [showcaseId],
+          );
+      const items = itemsRes.rows;
+      if (items.length === 0) {
+        return res.status(404).json({ error: "ingen_items_i_showcase" });
+      }
+
+      // Public-lenken: 24-byte hex = 48 tegn, ikke gjettbart.
+      const accessToken = crypto.randomBytes(24).toString("hex");
+      const projectTitle =
+        readString(payload.projectTitle) ??
+        (typeof seed.title === "string" && seed.title.trim()
+          ? seed.title.trim()
+          : "Showcase");
+
+      // gallery_settings rommer alt en showcase trenger som ikke fins
+      // som dedikerte kolonner: showcase-kontekst, state-gating,
+      // download/watermark-policy, melding fra fotograf, og 30-dagers
+      // utløp. Landing-API (client-gallery-routes.ts:115) leser disse
+      // for å vise password-prompt / expired-state riktig.
+      const expiresAt = new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const gallerySettings: Record<string, unknown> = {
+        source: "showcase",
+        showcaseId,
+        projectId,
+        projectState,
+        message,
+        photographerName,
+        photographerCompany,
+        allowDownloads: projectState === "delivered",
+        watermarkEnabled: projectState !== "delivered",
+        allowComments: projectState !== "delivered",
+        expiresAt,
+        createdVia: "showcase-share",
+      };
+
+      const galleryId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO photographer_client_galleries
+           (id, photographer_id, client_name, client_email, project_title,
+            access_token, gallery_settings, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'active', NOW(), NOW())`,
+        [
+          galleryId,
+          session.userId,
+          clientName,
+          clientEmail,
+          projectTitle,
+          accessToken,
+          JSON.stringify(gallerySettings),
+        ],
+      );
+
+      // Speil items inn i client_gallery_images. fullSizeUrl er påkrevd
+      // (NOT NULL), så vi bruker media_url for begge når thumbnail mangler.
+      // imageMetadata bærer showcaseItemId så vi kan korrelere tilbake til
+      // showcase-systemet for analytics/comments senere.
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const fullUrl =
+          typeof item.media_url === "string" && item.media_url.trim()
+            ? item.media_url
+            : "";
+        if (!fullUrl) continue;
+        const thumb =
+          typeof item.thumbnail_url === "string" && item.thumbnail_url.trim()
+            ? item.thumbnail_url
+            : fullUrl;
+        await pool.query(
+          `INSERT INTO client_gallery_images
+             (id, gallery_id, photographer_id, image_title, image_description,
+              thumbnail_url, full_size_url, image_metadata, sort_order,
+              is_visible, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::jsonb, $8,
+                   true, NOW(), NOW())`,
+          [
+            galleryId,
+            session.userId,
+            (item.title as string) ?? "Bilde",
+            (item.description as string) ?? null,
+            thumb,
+            fullUrl,
+            JSON.stringify({
+              showcaseItemId: item.id,
+              mediaType: item.media_type ?? null,
+              source: "showcase",
+            }),
+            typeof item.sort_order === "number" ? item.sort_order : i,
+          ],
+        );
+      }
+
+      const baseUrl = resolvePublicAppUrl();
+      const shareUrl = `${baseUrl}/client/gallery/${accessToken}`;
+
+      const greetingLine = `Hei ${escapeHtml(clientName)},`;
+      const senderLabel = photographerCompany
+        ? `${photographerName} (${photographerCompany})`
+        : photographerName;
+      const messageBlock = message.trim()
+        ? `<p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${escapeHtml(message.trim()).replace(/\n/g, "<br/>")}</p>`
+        : "";
+      const stateLine =
+        projectState === "delivered"
+          ? "Bildene er klare for nedlasting."
+          : "Se gjennom utvalget — du kan kommentere og velge favoritter.";
+
+      const html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#fafafa;">
+          <h2 style="color:#1a1a1a;margin:0 0 12px;font-size:22px;">${escapeHtml(projectTitle)}</h2>
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${greetingLine}</p>
+          ${messageBlock}
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">
+            ${escapeHtml(senderLabel)} har delt et showcase med deg.
+            ${escapeHtml(stateLine)}
+          </p>
+          <p style="margin:24px 0;">
+            <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+              Åpne showcase
+            </a>
+          </p>
+          <p style="font-size:13px;line-height:1.5;color:#888;margin:0 0 6px;">
+            Eller kopier lenken: <br/>
+            <span style="word-break:break-all;color:#555;">${shareUrl}</span>
+          </p>
+          <p style="font-size:12px;color:#aaa;margin:24px 0 0;">
+            Lenken er gyldig i 30 dager. Du trenger ikke konto for å åpne den.
+          </p>
+        </div>
+      `;
+
+      const text =
+        `${greetingLine.replace("Hei ", "Hei ")}\n\n` +
+        (message.trim() ? `${message.trim()}\n\n` : "") +
+        `${senderLabel} har delt et showcase med deg: ${projectTitle}.\n` +
+        `${stateLine}\n\n` +
+        `Åpne: ${shareUrl}\n\n` +
+        `Lenken er gyldig i 30 dager.\n`;
+
+      const emailResult = await sendTransactionalEmail({
+        to: clientEmail,
+        subject: `${projectTitle} — Showcase fra ${senderLabel}`,
+        html,
+        text,
+        replyTo: session.email ?? null,
+        fromLabel: senderLabel,
+        kind: "showcase_share",
+        projectId: projectId ?? null,
+        sentByUserId: session.userId,
+        pool,
+      });
+
+      if (!emailResult.sent) {
+        console.warn("[showcase-share] e-post ikke sendt", {
+          reason: emailResult.reason,
+          errorMessage: emailResult.errorMessage,
+        });
+        // Returner share-lenken uansett — galleriet finnes, klienten kan
+        // kontaktes manuelt. Frontend tolker emailSent=false.
+        return res.status(200).json({
+          success: true,
+          emailSent: false,
+          emailReason: emailResult.reason,
+          galleryId,
+          accessToken,
+          shareUrl,
+          message: `Galleriet er opprettet, men e-posten kunne ikke sendes (${emailResult.reason ?? "ukjent feil"}). Du kan kopiere lenken og sende manuelt.`,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        emailSent: true,
+        galleryId,
+        accessToken,
+        shareUrl,
+        message: `Showcaset er sendt til ${clientName} (${clientEmail}).`,
+      });
     } catch (error) {
-      console.error("Error sending showcase email:", error);
-      res.status(500).json({ error: "Kunne ikke sende e-post" });
+      console.error("[showcase-share] feilet", error);
+      return res.status(500).json({
+        error: "kunne_ikke_dele_showcase",
+        detail: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
