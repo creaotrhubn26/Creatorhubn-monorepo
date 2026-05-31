@@ -117,6 +117,12 @@ export interface FormationViewProps {
   timelineNotes?: readonly { id: string; text: string; startSec: number; endSec: number }[];
   /** G18: time-anchored movements på timeline. */
   timelineMovements?: readonly { id: string; label: string; startSec: number; endSec: number }[];
+  /**
+   * Audit H1: read-only-modus. Pucks ikke draggable, ingen 'Ny formasjon'-knapp,
+   * ingen lock/delete-handlers, ingen template-apply. Skjuler ARIA-mutation-
+   * controls samt.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -142,6 +148,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
   videoPanelSlot,
   timelineNotes,
   timelineMovements,
+  readOnly = false,
 }, ref) => {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
@@ -496,10 +503,12 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         hiddenDancerIds, showPaths, showIds,
         prevFormation: prev, nextFormation: next,
         // Audit G14: pucks blir read-only når formasjonen er låst.
-        locked: activeFormation.locked === true,
+        // Audit H1: read-only-modus tilsvarer per-formasjon-lås (read-only
+        // hele veien). Disjunksjon dekker begge.
+        locked: activeFormation.locked === true || readOnly,
       },
     );
-  }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds]);
+  }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds, readOnly]);
 
   // Persister via callback når formations endres
   useEffect(() => {
@@ -653,6 +662,20 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
       data-testid="formation-view-wrapper"
       sx={{ bgcolor: '#0a0a0a', color: '#e5e7eb', display: 'flex', flexDirection: 'column' }}
     >
+    {/* Audit H1: read-only-banner. Vises i toppen så bruker vet hvorfor
+        ingen knapper svarer. */}
+    {readOnly ? (
+      <Box
+        data-testid="formation-view-readonly-banner"
+        sx={{
+          px: 2, py: 0.75, fontSize: 11, fontWeight: 600,
+          color: '#fbbf24', bgcolor: 'rgba(251,191,36,0.10)',
+          borderBottom: '1px solid rgba(251,191,36,0.25)',
+        }}
+      >
+        👁 Visningsmodus — du kan se men ikke redigere. Be eier om skriverettigheter.
+      </Box>
+    ) : null}
     <Box
       data-testid="formation-view"
       sx={{

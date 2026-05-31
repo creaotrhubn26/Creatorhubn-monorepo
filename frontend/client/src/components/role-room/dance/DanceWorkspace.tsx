@@ -67,6 +67,8 @@ import ClipsSidebar from './ClipsSidebar';
 import FormationVideoPanel from './FormationVideoPanel';
 import DanceFlowNavRail from './DanceFlowNavRail';
 import { useDanceCheatSheet } from './DanceCheatSheet';
+import { isDanceReadOnlyRole } from './danceRoleUtils';
+import { useAuth } from '../../../hooks/useAuth';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -187,6 +189,9 @@ interface FormationsTabBodyProps {
 }
 
 const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
+  // Audit H1: detect read-only-modus via session.role
+  const auth = useAuth();
+  const readOnly = isDanceReadOnlyRole(auth.user?.role);
   const [subTab, setSubTab] = React.useState<FormationSubTab>('formation');
   const [saveStatus, setSaveStatus] = React.useState<FormationSaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -284,6 +289,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             hideSavePill
             onSaveStatusChange={handleSaveStatusChange}
             videoPanelSlot={<FormationVideoPanel />}
+            readOnly={readOnly}
           />
         </Box>
       ) : (

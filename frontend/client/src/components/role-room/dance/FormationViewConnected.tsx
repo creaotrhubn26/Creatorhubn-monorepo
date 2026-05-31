@@ -66,6 +66,11 @@ export interface FormationViewConnectedProps {
   onSaveStatusChange?: (status: SaveStatus, error: string | null, lastSavedAt: number | null) => void;
   /** Phase 4: video-panel-slot videresendes til FormationView. */
   videoPanelSlot?: React.ReactNode;
+  /**
+   * Audit H1: read-only-modus. Skip autosave, disable drag/CTAs.
+   * Detekteres typisk fra session.role via danceRoleUtils.
+   */
+  readOnly?: boolean;
 }
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -109,6 +114,7 @@ export function FormationViewConnected({
   hideSavePill = false,
   onSaveStatusChange,
   videoPanelSlot,
+  readOnly = false,
 }: FormationViewConnectedProps): React.ReactElement {
   const [load, setLoad] = React.useState<LoadState>({ phase: 'loading' });
   const [dancers, setDancers] = React.useState<Dancer[]>([]);
@@ -293,6 +299,9 @@ export function FormationViewConnected({
         isFirstChangeRef.current = false;
         return;
       }
+      // Audit H1: read-only-modus skipper ALL save. Lokal state kan
+      // fortsatt endres (drag/edit), men ingenting persistert.
+      if (readOnly) return;
       // G_1: ID-reconcile-only-endring → ikke trigge ny save (state er
       // identisk med backend).
       if (skipNextChangeRef.current) {
@@ -304,7 +313,7 @@ export function FormationViewConnected({
         void performSave(next);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-    [performSave],
+    [performSave, readOnly],
   );
 
   React.useEffect(() => () => {
@@ -434,6 +443,7 @@ export function FormationViewConnected({
         onFormationsChange={handleFormationsChange}
         onDancerClick={onDancerClick}
         videoPanelSlot={videoPanelSlot}
+        readOnly={readOnly}
         timelineNotes={React.useMemo(
           () => timelineItems.filter((it) => it.kind === 'note').map((it) => ({
             id: it.id, text: it.label, startSec: it.startSec, endSec: it.endSec,
