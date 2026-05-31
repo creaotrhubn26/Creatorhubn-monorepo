@@ -47,6 +47,7 @@ import type {
   RoleRoomFeedTemplatePayload,
 } from '../../services/roleRoomAgentService';
 import { CONCEPT_LABELS, FEED_POST_CONCEPT_ORDER, buildFeedPost } from '../../utils/feedPlanner';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import FeedPostTile from './FeedPostTile';
 import GoogleDriveImagePicker from './GoogleDriveImagePicker';
 import FeedPostApprovalActions from './FeedPostApprovalActions';
@@ -419,7 +420,7 @@ export default function FeedPostDetailPanel({
         setAiError(message);
         onEntitlementBlocked?.(message);
       } else {
-        setAiError(caught instanceof Error ? caught.message : 'Kunne ikke hente AI-anbefaling.');
+        setAiError(describeProducerError(caught, 'hente AI-anbefalingen'));
       }
     } finally {
       setAiLoading(false);

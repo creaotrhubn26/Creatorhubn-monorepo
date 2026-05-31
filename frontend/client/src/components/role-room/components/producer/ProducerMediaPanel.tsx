@@ -170,6 +170,7 @@ import {
   type ProjectFileRecord,
 } from '../../utils/projectFiles';
 import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
@@ -2752,7 +2753,7 @@ export default function ProducerMediaPanel({
         projectId,
         message: vaultError instanceof Error ? vaultError.message : String(vaultError),
       });
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke hente Client Access Vault.');
+      setAccessVaultError(describeProducerError(vaultError, 'hente Client Access Vault'));
     } finally {
       setLoadingAccessVault(false);
     }
@@ -3595,7 +3596,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to save access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke lagre secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'lagre secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3609,7 +3610,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to revoke access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke tilbakekalle secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'tilbakekalle secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3726,7 +3727,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to decide access vault reveal', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke oppdatere reveal-forespørselen.');
+      setAccessVaultError(describeProducerError(vaultError, 'oppdatere reveal-forespørselen'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3746,7 +3747,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to reveal access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke åpne secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'åpne secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
