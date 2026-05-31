@@ -530,6 +530,9 @@ pub fn maybe_mirror_asset(
         let size = match download_to_cache(&url, &cache_file).await {
             Ok(s) => s,
             Err(err) => {
+                // Slett en evt. partiell cache-fil så vi ikke leaker disk
+                // på asset-er som aldri retries.
+                let _ = tokio::fs::remove_file(&cache_file).await;
                 let _ = app.emit(
                     "capture-mirror-event",
                     MirrorEvent {
