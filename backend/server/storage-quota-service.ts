@@ -290,6 +290,111 @@ export async function pushStorageUsageToStripe(
   }
 }
 
+/**
+ * Sikre at en Pro/Premium/Enterprise-subscription har et metered
+ * storage-overage-item attachet. Trygg å kalle gjentatt — idempotent.
+ *
+ * Brukes:
+ *   - Etter webhook-handling i dance-billing-service når en sub blir 'active'
+ *   - Fra admin-backfill-endepunktet for eksisterende subscriptions
+ *
+ * Krever env-var STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK (Stripe-pris med
+ * recurring.usage_type='metered'). Hvis ikke satt → no-op.
+ *
+ * Returnerer status så caller kan logge.
+ */
+export async function ensureStorageMeterAttached(
+  pool: Pool,
+  userId: string,
+  planSlug: string,
+  stripeSubscriptionId: string | null,
+): Promise<{
+  attached: boolean;
+  itemId?: string;
+  reason?: string;
+}> {
+  if (!stripeSubscriptionId) {
+    return { attached: false, reason: "no_stripe_subscription" };
+  }
+
+  const tier = normalizePlanTier(planSlug);
+  if (!PLAN_ALLOWS_OVERAGE[tier]) {
+    return { attached: false, reason: "plan_does_not_need_overage" };
+  }
+
+  const stripeKey =
+    process.env.STRIPE_SECRET_KEY ||
+    process.env.CREATORHUB_STRIPE_SECRET_KEY ||
+    process.env.STRIPE_API_KEY;
+  if (!stripeKey) {
+    return { attached: false, reason: "stripe_not_configured" };
+  }
+
+  const overagePriceId = process.env.STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK?.trim();
+  if (!overagePriceId) {
+    return { attached: false, reason: "overage_price_not_configured" };
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey);
+
+    const subscription = await stripe.subscriptions.retrieve(
+      stripeSubscriptionId,
+      { expand: ["items.data.price"] },
+    );
+
+    if (
+      subscription.status !== "active" &&
+      subscription.status !== "trialing" &&
+      subscription.status !== "past_due"
+    ) {
+      return {
+        attached: false,
+        reason: `subscription_not_billable: ${subscription.status}`,
+      };
+    }
+
+    const items = subscription.items?.data ?? [];
+    const existing = items.find(
+      (i: any) =>
+        typeof i.price?.id === "string" && i.price.id === overagePriceId,
+    );
+
+    let itemId: string;
+    if (existing) {
+      itemId = existing.id;
+    } else {
+      const created = await (stripe as any).subscriptionItems.create({
+        subscription: stripeSubscriptionId,
+        price: overagePriceId,
+        // metered prices skal ikke ha quantity ved create — quantity
+        // settes via createUsageRecord ved hver upload
+        proration_behavior: "none",
+      });
+      itemId = created.id;
+    }
+
+    // Lagre item-id på subscription-raden så pushStorageUsageToStripe
+    // finner den.
+    await pool.query(
+      `UPDATE subscriptions
+          SET stripe_storage_meter_item_id = $2,
+              updated_at = now()
+        WHERE user_id = $1 AND stripe_subscription_id = $3`,
+      [userId, itemId, stripeSubscriptionId],
+    );
+
+    return { attached: true, itemId };
+  } catch (err: any) {
+    console.error("[storage-quota] ensureStorageMeterAttached failed:", err);
+    return {
+      attached: false,
+      reason: `stripe_error: ${String(err?.message || err).slice(0, 200)}`,
+    };
+  }
+}
+
 export const STORAGE_QUOTA_INTERNAL = {
   PLAN_STORAGE_GB,
   PLAN_ALLOWS_OVERAGE,

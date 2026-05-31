@@ -171,6 +171,214 @@ export function setupStorageBillingAdminRoutes(
     },
   );
 
+  // GET /api/admin/storage-billing/stripe-catalog
+  // Lister alle aktive products + prices fra Stripe så admin ser hva som
+  // finnes uten å åpne Stripe-dashboard. Spesielt viktig for å finne
+  // riktig metered-price-ID for STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK.
+  app.get("/api/admin/storage-billing/stripe-catalog", async (req, res) => {
+    const adminSession = requireAdminSession(req, res);
+    if (!adminSession) return;
+
+    const stripeKey =
+      process.env.STRIPE_SECRET_KEY ||
+      process.env.CREATORHUB_STRIPE_SECRET_KEY ||
+      process.env.STRIPE_API_KEY;
+    if (!stripeKey) {
+      return res.status(412).json({
+        success: false,
+        error: "stripe_not_configured",
+        message: "STRIPE_SECRET_KEY mangler i env.",
+      });
+    }
+
+    try {
+      const { default: Stripe } = await import("stripe");
+      const stripe = new Stripe(stripeKey);
+
+      const [products, prices] = await Promise.all([
+        stripe.products.list({ active: true, limit: 100 }),
+        stripe.prices.list({ active: true, limit: 100, expand: ["data.product"] }),
+      ]);
+
+      const productMap = new Map<string, any>();
+      for (const p of products.data) {
+        productMap.set(p.id, {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          metadata: p.metadata,
+          prices: [] as any[],
+        });
+      }
+
+      for (const price of prices.data) {
+        const productId =
+          typeof price.product === "string"
+            ? price.product
+            : (price.product as any)?.id;
+        if (!productId || !productMap.has(productId)) continue;
+        productMap.get(productId).prices.push({
+          id: price.id,
+          nickname: price.nickname,
+          currency: price.currency,
+          unitAmount: price.unit_amount,
+          unitAmountDecimal: price.unit_amount_decimal,
+          recurring: price.recurring
+            ? {
+                interval: price.recurring.interval,
+                intervalCount: price.recurring.interval_count,
+                usageType: price.recurring.usage_type,
+                aggregateUsage:
+                  (price.recurring as any).aggregate_usage ?? null,
+              }
+            : null,
+          billingScheme: price.billing_scheme,
+          metadata: price.metadata,
+        });
+      }
+
+      const configured = {
+        STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK:
+          process.env.STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK ?? null,
+        CREATORHUB_STRIPE_PRICE_ID_BASIC:
+          process.env.CREATORHUB_STRIPE_PRICE_ID_BASIC ?? null,
+        CREATORHUB_STRIPE_PRICE_ID_PROFESSIONAL:
+          process.env.CREATORHUB_STRIPE_PRICE_ID_PROFESSIONAL ?? null,
+        CREATORHUB_STRIPE_PRICE_ID_PREMIUM:
+          process.env.CREATORHUB_STRIPE_PRICE_ID_PREMIUM ?? null,
+        CREATORHUB_STRIPE_PRICE_ID_ENTERPRISE:
+          process.env.CREATORHUB_STRIPE_PRICE_ID_ENTERPRISE ?? null,
+        ROLE_ROOM_STRIPE_PRICE_ID_CONTENT_PRODUCER:
+          process.env.ROLE_ROOM_STRIPE_PRICE_ID_CONTENT_PRODUCER ?? null,
+        ROLE_ROOM_STRIPE_PRICE_ID_PRODUCTION_TEAM:
+          process.env.ROLE_ROOM_STRIPE_PRICE_ID_PRODUCTION_TEAM ?? null,
+      };
+
+      // Hint: hvilke prices ser ut som de kunne være storage-meter?
+      const meteredHints: string[] = [];
+      for (const product of productMap.values()) {
+        for (const price of product.prices) {
+          if (
+            price.recurring?.usageType === "metered" &&
+            (product.name?.toLowerCase().includes("storage") ||
+              product.name?.toLowerCase().includes("lagring") ||
+              price.nickname?.toLowerCase().includes("gb"))
+          ) {
+            meteredHints.push(price.id);
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        products: Array.from(productMap.values()),
+        configuredEnvVars: configured,
+        meteredStorageCandidates: meteredHints,
+      });
+    } catch (err: any) {
+      console.error("[admin-storage-billing] catalog fetch failed:", err);
+      res.status(500).json({
+        success: false,
+        error: "stripe_fetch_failed",
+        message: String(err?.message || err).slice(0, 200),
+      });
+    }
+  });
+
+  // POST /api/admin/storage-billing/backfill-meter-items
+  // Går gjennom alle aktive Pro/Premium/Enterprise-subscriptions som
+  // mangler `stripe_storage_meter_item_id` og attach-er meter-itemet
+  // til hver. Trygt å re-kjøre — ensureStorageMeterAttached er idempotent.
+  //
+  // Returnerer summary med per-sub-status.
+  app.post(
+    "/api/admin/storage-billing/backfill-meter-items",
+    async (req, res) => {
+      const adminSession = requireAdminSession(req, res);
+      if (!adminSession) return;
+
+      const overagePriceId =
+        process.env.STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK?.trim();
+      if (!overagePriceId) {
+        return res.status(412).json({
+          success: false,
+          error: "overage_price_not_configured",
+          message:
+            "STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK må være satt i env før backfill.",
+        });
+      }
+
+      try {
+        // Finn kandidater: subscriptions med plan som tillater overage
+        // og som ikke allerede har meter-item satt.
+        const candidates = await pool.query<{
+          user_id: string;
+          plan_type: string;
+          stripe_subscription_id: string | null;
+        }>(
+          `SELECT user_id, plan_type, stripe_subscription_id
+             FROM subscriptions
+            WHERE status IN ('active', 'trialing', 'past_due')
+              AND stripe_subscription_id IS NOT NULL
+              AND stripe_storage_meter_item_id IS NULL
+              AND LOWER(plan_type) ~ 'pro|professional|premium|studio|enterprise'`,
+        );
+
+        const { ensureStorageMeterAttached } = await import(
+          "./storage-quota-service.js"
+        );
+
+        const results: Array<{
+          userId: string;
+          planType: string;
+          attached: boolean;
+          itemId?: string;
+          reason?: string;
+        }> = [];
+
+        for (const row of candidates.rows) {
+          const meterRes = await ensureStorageMeterAttached(
+            pool,
+            row.user_id,
+            row.plan_type,
+            row.stripe_subscription_id,
+          );
+          results.push({
+            userId: row.user_id,
+            planType: row.plan_type,
+            attached: meterRes.attached,
+            itemId: meterRes.itemId,
+            reason: meterRes.reason,
+          });
+        }
+
+        const summary = results.reduce(
+          (acc, r) => {
+            if (r.attached) acc.attached++;
+            else acc.skipped++;
+            return acc;
+          },
+          { attached: 0, skipped: 0 },
+        );
+
+        res.json({
+          success: true,
+          totalCandidates: candidates.rowCount,
+          attached: summary.attached,
+          skipped: summary.skipped,
+          results,
+        });
+      } catch (err: any) {
+        console.error("[admin-storage-billing] backfill failed:", err);
+        res.status(500).json({
+          success: false,
+          error: "backfill_failed",
+          message: String(err?.message || err).slice(0, 200),
+        });
+      }
+    },
+  );
+
   // POST /api/admin/storage-billing/users/:userId/recompute
   // Triggrer en re-aggregering av brukerens storage fra chunked_uploads.
   // Brukes hvis ledgeren er drifted bort fra faktiske R2/Stream-objektene.

@@ -673,6 +673,36 @@ export async function handleStripeWebhook(
       trialEndAt: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
       cancelAtPeriodEnd: sub.cancel_at_period_end === true,
     });
+
+    // Auto-attach storage-overage-meter for Pro/Premium/Enterprise.
+    // Idempotent: hopper over hvis allerede attachet, eller hvis planen
+    // ikke trenger overage. Trygt å kalle på hver subscription-event.
+    if (status === 'active' || status === 'trialing' || status === 'past_due') {
+      try {
+        const { ensureStorageMeterAttached } = await import('./storage-quota-service.js');
+        const meterRes = await ensureStorageMeterAttached(
+          pool,
+          userId,
+          planSlug,
+          sub.id,
+        );
+        if (meterRes.attached) {
+          console.log(
+            `[storage-meter] auto-attached for user ${userId} sub ${sub.id} → item ${meterRes.itemId}`,
+          );
+        } else if (
+          meterRes.reason !== 'plan_does_not_need_overage' &&
+          meterRes.reason !== 'overage_price_not_configured'
+        ) {
+          // Bare logg de "uventede" no-ops
+          console.warn(
+            `[storage-meter] not attached for user ${userId}: ${meterRes.reason}`,
+          );
+        }
+      } catch (err) {
+        console.error('[storage-meter] auto-attach threw:', err);
+      }
+    }
   };
 
   try {
