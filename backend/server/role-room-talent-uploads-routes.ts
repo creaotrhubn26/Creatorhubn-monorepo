@@ -151,6 +151,19 @@ async function fetchTalentForUser(pool: Pool, userId: string) {
   return r.rows[0] ?? null;
 }
 
+// ── Cloudflare Stream-config — for showreel-uploads ─────────────────
+function buildStreamConfig() {
+  const accountId = (process.env.CLOUDFLARE_R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  const apiToken = (process.env.CLOUDFLARE_STREAM_API_TOKEN || "").trim();
+  const subdomain = (process.env.CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN || "").trim();
+  return {
+    enabled: Boolean(accountId && apiToken && subdomain),
+    accountId,
+    apiToken,
+    subdomain,
+  };
+}
+
 export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRoutesDeps): void {
   const { app, pool, getActiveSession } = deps;
 
@@ -276,12 +289,105 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
     }
   });
 
+  // ── POST /me/uploads/sign-stream — Cloudflare Stream Direct Upload ─
+  // Bytter R2 for showreel: bedre kvalitet via Stream's adaptive bitrate,
+  // auto-transcoding, innebygd player, thumbnails. Frontend POSTer
+  // direkte til Stream's uploadURL (motstandsdyktig mot avbrudd via TUS).
+  app.post("/api/role-room/talents/me/uploads/sign-stream", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const streamCfg = buildStreamConfig();
+    if (!streamCfg.enabled) {
+      return res.status(503).json({
+        error: "Cloudflare Stream ikke konfigurert",
+        detail: "Sett CLOUDFLARE_R2_ACCOUNT_ID + CLOUDFLARE_STREAM_API_TOKEN + CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN",
+      });
+    }
+
+    const { maxDurationSeconds = 7200, allowedOrigins } = (req.body || {}) as {
+      maxDurationSeconds?: number;
+      allowedOrigins?: string[];
+    };
+
+    try {
+      const talent = await fetchTalentForUser(pool, session.userId);
+      if (!talent) {
+        return res.status(404).json({ error: "Opprett talent-profil først" });
+      }
+
+      // Direct Creator Upload — Stream genererer en one-shot upload-URL
+      const expiry = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 time
+      const cfRes = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${streamCfg.accountId}/stream/direct_upload`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${streamCfg.apiToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            maxDurationSeconds: Math.min(Math.max(maxDurationSeconds, 60), 21600), // 1 min – 6 timer
+            expiry,
+            requireSignedURLs: false, // public playback — partnere kan se uten signing
+            creator: String(session.userId),
+            meta: {
+              talent_id: String(talent.id),
+              uploaded_by: String(session.userId),
+              kind: "showreel",
+            },
+            allowedOrigins: allowedOrigins ?? [
+              "theroleroom.com",
+              "www.theroleroom.com",
+              "creatorhubn.com",
+              "localhost:5173",
+            ],
+          }),
+        },
+      );
+
+      const cfPayload = await cfRes.json().catch(() => null) as {
+        success?: boolean;
+        errors?: Array<{ message?: string }>;
+        result?: { uploadURL?: string; uid?: string };
+      } | null;
+
+      if (!cfRes.ok || !cfPayload?.success || !cfPayload.result?.uploadURL || !cfPayload.result?.uid) {
+        const errMsg = cfPayload?.errors?.[0]?.message || `Cloudflare HTTP ${cfRes.status}`;
+        console.error("[uploads/sign-stream] CF feilet:", errMsg, cfPayload);
+        return res.status(502).json({ error: "Cloudflare Stream feil", detail: errMsg });
+      }
+
+      const uid = cfPayload.result.uid;
+      const subdomain = streamCfg.subdomain;
+      const playbackBase = `https://customer-${subdomain}.cloudflarestream.com/${uid}`;
+      return res.json({
+        uploadUrl: cfPayload.result.uploadURL, // klient POST'er filen hit
+        uid,
+        // finalUrl: lagres i talent.showreel_url. Iframe-embed for player.
+        finalUrl: `${playbackBase}/iframe`,
+        // ekstra URL'er
+        hlsManifestUrl: `${playbackBase}/manifest/video.m3u8`,
+        dashManifestUrl: `${playbackBase}/manifest/video.mpd`,
+        thumbnailUrl: `${playbackBase}/thumbnails/thumbnail.jpg`,
+        previewMp4Url: `${playbackBase}/downloads/default.mp4`,
+        expiresAt: expiry,
+      });
+    } catch (err) {
+      console.error("[uploads/sign-stream] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å initiere video-opplastning", detail: String(err) });
+    }
+  });
+
   // ── GET /me/uploads/config — sjekk om upload er konfigurert ────────
   // Frontend bruker dette for å vise enten file-picker eller URL-fallback
   app.get("/api/role-room/talents/me/uploads/config", async (_req, res) => {
     const cfg = buildR2Config();
+    const streamCfg = buildStreamConfig();
     return res.json({
       enabled: cfg.enabled,
+      streamEnabled: streamCfg.enabled,
+      streamSubdomain: streamCfg.subdomain || null,
       maxBytes: {
         headshot: KIND_SPECS.headshot.maxBytes,
         showreel: KIND_SPECS.showreel.maxBytes,

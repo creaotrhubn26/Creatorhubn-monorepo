@@ -263,6 +263,47 @@ const roleRoomTalentsService = {
     return payload as UploadConfig;
   },
 
+  /**
+   * Stream-upload: ber Cloudflare Stream om en one-shot upload-URL,
+   * laster opp filen som multipart/form-data direkte til Stream.
+   * Returnerer finalUrl (iframe-embed) ved suksess.
+   */
+  async uploadShowreelToStream(
+    file: File,
+    onProgress?: (pct: number) => void,
+  ): Promise<{ ok: true; result: StreamUploadSignResult } | { ok: false; error: string }> {
+    const signRes = await authFetch(`${BASE}/me/uploads/sign-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const signed = await signRes.json().catch(() => null) as StreamUploadSignResult | { error: string };
+    if (!signRes.ok || !signed || 'error' in signed) {
+      return { ok: false, error: (signed as { error?: string })?.error || 'Kunne ikke initiere Stream-upload' };
+    }
+
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', signed.uploadUrl);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ ok: true, result: signed });
+        } else {
+          resolve({ ok: false, error: `Stream-upload feilet (HTTP ${xhr.status})` });
+        }
+      };
+      xhr.onerror = () => resolve({ ok: false, error: 'Nettverksfeil ved Stream-upload' });
+      const form = new FormData();
+      form.append('file', file, file.name);
+      xhr.send(form);
+    });
+  },
+
   /** Signerer en presigned PUT-URL for direkte R2-opplastning. */
   async signUpload(input: {
     kind: 'headshot' | 'showreel' | 'resume' | 'alt_photo';
@@ -462,8 +503,21 @@ export interface RoleRoomPartnerInvite {
 
 export interface UploadConfig {
   enabled: boolean;
+  streamEnabled?: boolean;
+  streamSubdomain?: string | null;
   maxBytes: Partial<Record<'headshot' | 'showreel' | 'resume' | 'alt_photo', number>>;
   allowedTypes: Partial<Record<'headshot' | 'showreel' | 'resume' | 'alt_photo', string[]>>;
+}
+
+export interface StreamUploadSignResult {
+  uploadUrl: string;     // klient POST'er filen hit (multipart/form-data, field: 'file')
+  uid: string;
+  finalUrl: string;      // /iframe — lagres i talent.showreel_url
+  hlsManifestUrl: string;
+  dashManifestUrl: string;
+  thumbnailUrl: string;
+  previewMp4Url: string;
+  expiresAt: string;
 }
 
 export interface UploadSignResult {
