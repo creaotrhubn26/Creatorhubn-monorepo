@@ -817,15 +817,40 @@ export default function ClientGallery({}: ClientGalleryProps) {
           p: 2,
       }}
       >
-        {/* Logo/Brand */}
+        {/* Logo/Brand — fotografens egen branding, fallback til profesjons-default */}
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar sx={{ bgcolor: config.primaryColor, width: 40, height: 40 }}>
-            {config.icon}
-          </Avatar>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff' }}>
+          {gallery?.branding?.logoUrl ? (
+            <Avatar
+              src={gallery.branding.logoUrl}
+              alt={gallery.branding.companyName || 'Studio'}
+              sx={{
+                bgcolor: gallery.branding.primaryColor || config.primaryColor,
+                width: 48,
+                height: 48,
+                '& img': { objectFit: 'contain' },
+              }}
+            />
+          ) : (
+            <Avatar sx={{ bgcolor: gallery?.branding?.primaryColor || config.primaryColor, width: 40, height: 40 }}>
+              {config.icon}
+            </Avatar>
+          )}
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>
               {gallery?.projectTitle || 'Fotogalleri'}
             </Typography>
+            {gallery?.branding?.companyName ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  color: gallery.branding.primaryColor || 'rgba(255,255,255,0.7)',
+                  fontWeight: 600,
+                  display: 'block',
+                }}
+              >
+                {gallery.branding.companyName}
+              </Typography>
+            ) : null}
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
               Klient: {gallery?.clientName}
             </Typography>

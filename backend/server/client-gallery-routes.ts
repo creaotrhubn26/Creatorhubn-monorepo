@@ -152,17 +152,78 @@ export function setupClientGalleryRoutes(
       // lyd-galleri, bilder / klipp / spor). Failure to look this up is
       // non-fatal; viewer falls back to photographer-flavoured copy.
       let photographerProfession: string | null = null;
+      // Branded landing — gjør klient-galleriet til Fredriks studio,
+      // ikke generisk Creatorhubn. Joiner showcase_configurations
+      // (per-profession config: logo, primaryColor) med users (fallback
+      // til companyName + profileImageUrl). Bare felter som er trygge
+      // for offentlig visning sendes.
+      let branding: {
+        companyName: string | null;
+        logoUrl: string | null;
+        primaryColor: string | null;
+        secondaryColor: string | null;
+        website: string | null;
+      } = {
+        companyName: null,
+        logoUrl: null,
+        primaryColor: null,
+        secondaryColor: null,
+        website: null,
+      };
       try {
         if (gallery.photographerId) {
-          const profRow = await pool.query(
-            'SELECT profession FROM users WHERE id = $1 LIMIT 1',
+          const brandRow = await pool.query(
+            `SELECT
+               u.company_name,
+               u.profile_image_url,
+               u.website,
+               u.profession,
+               sc.logo_url   AS sc_logo_url,
+               sc.primary_color,
+               sc.secondary_color
+             FROM users u
+             LEFT JOIN showcase_configurations sc
+                    ON sc.user_id = u.id
+                   AND sc.is_active = true
+                   AND (u.profession IS NULL OR sc.profession = u.profession)
+             WHERE u.id = $1
+             ORDER BY sc.updated_at DESC NULLS LAST
+             LIMIT 1`,
             [gallery.photographerId],
           );
-          const raw = profRow.rows[0]?.profession;
-          if (typeof raw === 'string' && raw.trim()) photographerProfession = raw.trim();
+          const row = brandRow.rows[0];
+          if (row) {
+            if (typeof row.profession === 'string' && row.profession.trim()) {
+              photographerProfession = row.profession.trim();
+            }
+            const companyName = typeof row.company_name === 'string' && row.company_name.trim()
+              ? row.company_name.trim()
+              : null;
+            const logoUrl = typeof row.sc_logo_url === 'string' && row.sc_logo_url.trim()
+              ? row.sc_logo_url.trim()
+              : (typeof row.profile_image_url === 'string' && row.profile_image_url.trim()
+                  ? row.profile_image_url.trim()
+                  : null);
+            const primaryColor = typeof row.primary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(row.primary_color)
+              ? row.primary_color
+              : null;
+            const secondaryColor = typeof row.secondary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(row.secondary_color)
+              ? row.secondary_color
+              : null;
+            const website = typeof row.website === 'string' && row.website.trim()
+              ? row.website.trim()
+              : null;
+            branding = {
+              companyName,
+              logoUrl,
+              primaryColor,
+              secondaryColor,
+              website,
+            };
+          }
         }
       } catch (lookupErr) {
-        console.warn('[client-gallery] profession lookup failed', lookupErr);
+        console.warn('[client-gallery] profession/branding lookup failed', lookupErr);
       }
 
       return res.json({
@@ -177,6 +238,8 @@ export function setupClientGalleryRoutes(
         captureSessionId: gallery.captureSessionId,
         // Slice 9P — drives client-gallery viewer terminology.
         photographerProfession,
+        // Branded landing — viewer rendrer fotografens logo + farger.
+        branding,
         // Slice 9.4 — gate hints. Viewer reads these BEFORE attempting
         // to fetch images so it can render password-prompt or
         // expired-state cleanly.
