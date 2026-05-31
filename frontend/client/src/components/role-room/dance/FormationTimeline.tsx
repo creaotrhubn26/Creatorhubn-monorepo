@@ -63,10 +63,18 @@ export interface FormationTimelineProps {
    * `dance:video-seek` med detail.timeSec. Sett false for å skru av i tester.
    */
   enableVideoSync?: boolean;
+  /**
+   * Workflow-audit G16: BPM for counts-display. Koreografer tenker i
+   * 1-2-3-4-5-6-7-8, ikke HH:MM:SS:FF. Default 120 BPM = 2 beats/sek.
+   * Settes per prosjekt/choreografi senere.
+   */
+  bpm?: number;
 }
 
 const VIDEO_SEEK_EVENT = 'dance:video-seek' as const;
 const VIDEO_TIME_EVENT_NAME = 'dance:video-time';
+/** Workflow-audit G11: dobbeltklikk på timeline = opprett formasjon ved tid. */
+const CREATE_FORMATION_AT_EVENT = 'dance:create-formation-at' as const;
 
 export function FormationTimeline({
   formations,
@@ -78,6 +86,7 @@ export function FormationTimeline({
   musicUrl = null,
   dancersTrackSlot = null,
   enableVideoSync = true,
+  bpm = 120,
 }: FormationTimelineProps): React.ReactElement {
   const [zoomPct, setZoomPct] = React.useState<number>(100);
 
@@ -196,6 +205,22 @@ export function FormationTimeline({
               new CustomEvent(VIDEO_SEEK_EVENT, { detail: { timeSec } }),
             );
           }}
+          onDoubleClick={(e) => {
+            // Workflow-audit G11: dobbeltklikk på bakgrunnen = opprett
+            // formasjon ved klikket tid (FCP/Premiere-konvensjon).
+            // Stopper propagation/preventDefault for å unngå tekstvalg.
+            const rect = e.currentTarget.getBoundingClientRect();
+            const xWithinWrapper = e.clientX - rect.left;
+            const labelOffset = LABEL_WIDTH + 8;
+            if (xWithinWrapper < labelOffset) return;
+            const trackWidth = rect.width - labelOffset;
+            const ratio = (xWithinWrapper - labelOffset) / trackWidth;
+            const timeSec = Math.max(0, Math.min(computedDuration, ratio * computedDuration));
+            e.preventDefault();
+            window.dispatchEvent(
+              new CustomEvent(CREATE_FORMATION_AT_EVENT, { detail: { timeSec } }),
+            );
+          }}
         >
           <Stack spacing={0.5}>
             {/* FORMATION-spor */}
@@ -284,9 +309,9 @@ export function FormationTimeline({
             ) : null}
           </Stack>
 
-          {/* Phase 5: playhead-cursor — vertikal linje på currentTime.
-              Offset for label-bredde (LABEL_WIDTH + 8px Stack-gap) så cursoren
-              treffer track-startet, ikke labelen. */}
+          {/* Phase 5 + workflow-audit G16: playhead-cursor m/ tids-callout.
+              Vertikal linje på currentTime + lavender pill-label over toppen
+              som viser HH:MM:SS:FF (matches DanceFlow-mockup). */}
           {enableVideoSync && currentTimeSec != null && computedDuration > 0 ? (
             <Box
               data-testid="formation-timeline-playhead"
@@ -302,18 +327,65 @@ export function FormationTimeline({
                 boxShadow: '0 0 8px rgba(251,191,36,0.5)',
                 zIndex: 5,
               }}
-            />
+            >
+              <Box
+                data-testid="formation-timeline-playhead-callout"
+                sx={{
+                  position: 'absolute',
+                  top: -18,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  bgcolor: danceFlowColors.lavender,
+                  color: danceFlowColors.bgBase,
+                  fontSize: 9,
+                  fontWeight: 700,
+                  px: 0.75,
+                  py: 0.25,
+                  borderRadius: 0.5,
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: 0.5,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                }}
+              >
+                {formatTimecode(currentTimeSec)}
+              </Box>
+            </Box>
           ) : null}
         </Box>
       </Box>
 
-      {/* F5-11: Zoom + Fit to Timeline */}
+      {/* F5-11: Zoom + Fit + Counts-display (workflow-audit G16) */}
       <Stack
         direction="row"
         alignItems="center"
         spacing={1}
         sx={{ mt: 0.75, pt: 0.5, borderTop: '1px solid rgba(255,255,255,0.04)' }}
       >
+        {/* Counts ved playhead — koreografer tenker 1-2-3-4-5-6-7-8.
+            Default 120 BPM = 2 beats/sek. Vises bare når video-sync er på
+            og vi har en current time. */}
+        {enableVideoSync && currentTimeSec != null ? (
+          <Typography
+            data-testid="formation-timeline-counts"
+            sx={{
+              fontSize: 10,
+              color: danceFlowColors.gold,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              fontVariantNumeric: 'tabular-nums',
+              minWidth: 88,
+            }}
+          >
+            Count {Math.floor((currentTimeSec * bpm) / 60) + 1}
+            <Box
+              component="span"
+              sx={{ ml: 0.5, color: danceFlowColors.textDisabled, fontSize: 9, fontWeight: 500 }}
+            >
+              @ {bpm} BPM
+            </Box>
+          </Typography>
+        ) : null}
         <Typography sx={{ fontSize: 10, color: 'rgba(229,231,235,0.55)' }}>Zoom</Typography>
         <input
           type="range"

@@ -207,6 +207,32 @@ export const FormationView: React.FC<FormationViewProps> = ({
     return () => window.removeEventListener('dance:video-time', onVideoTime as EventListener);
   }, [formations, activeFormationId]);
 
+  // Workflow-audit G11: dobbeltklikk på timeline-bakgrunn fra FormationTimeline
+  // → opprett ny formasjon ved klikket tid. Kopierer posisjoner fra aktiv
+  // formasjon (eller starter tomt), setter startSec/endSec og auto-selecter.
+  useEffect(() => {
+    const onCreateAt = (e: Event): void => {
+      const detail = (e as CustomEvent<{ timeSec?: number }>).detail;
+      if (!detail || typeof detail.timeSec !== 'number') return;
+      const timeSec = Math.max(0, detail.timeSec);
+      const seed = formations.find((f) => f.id === activeFormationId) ?? formations[0] ?? null;
+      const snapshot: Formation = {
+        id: `f-tmp-${Date.now()}`,
+        name: `Formasjon ${formations.length + 1}`,
+        positions: seed ? seed.positions.map((p) => ({ ...p })) : [],
+        notes: '',
+        startSec: timeSec,
+        endSec: timeSec + 4,
+        createdAt: new Date().toISOString(),
+        tags: [],
+      };
+      setFormations((prev) => [...prev, snapshot]);
+      setActiveFormationId(snapshot.id);
+    };
+    window.addEventListener('dance:create-formation-at', onCreateAt as EventListener);
+    return () => window.removeEventListener('dance:create-formation-at', onCreateAt as EventListener);
+  }, [formations, activeFormationId, setFormations]);
+
   // Phase 5: lytt på `dance:select-clip` fra ClipsSidebar slik at MUSIC-track
   // i FormationTimeline kan rendre waveform fra valgt clip's signedUrl.
   // Holdes lokalt så vi ikke trenger å bobble selection-state opp.
@@ -1040,6 +1066,34 @@ export const FormationView: React.FC<FormationViewProps> = ({
         <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1, mt: activeFormation ? 1.5 : 0 }}>
           FORMASJONER ({formations.length})
         </Typography>
+
+        {/* Workflow-audit G10: tom-state CTA. Når ingen formasjoner finnes,
+            er det ikke åpenbart hvordan man kommer i gang. Vis tydelig hint
+            om begge inngangs-mønstrene: dobbeltklikk timeline ELLER skriv
+            navn under. */}
+        {formations.length === 0 ? (
+          <Box
+            data-testid="formations-empty-state"
+            sx={{
+              p: 1.5,
+              mb: 1,
+              borderRadius: 1,
+              border: '1px dashed #2a3142',
+              bgcolor: 'rgba(167,139,250,0.04)',
+              textAlign: 'center',
+            }}
+          >
+            <Typography sx={{ fontSize: 11, color: '#e5e7eb', fontWeight: 600, mb: 0.5 }}>
+              Ingen formasjoner ennå
+            </Typography>
+            <Typography sx={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.5 }}>
+              <strong style={{ color: '#a78bfa' }}>Dobbeltklikk på tidslinjen</strong>{' '}
+              under for å opprette en ved en spesifikk tid,
+              <br />
+              eller skriv et navn under og trykk «Lagre».
+            </Typography>
+          </Box>
+        ) : null}
 
         <Stack spacing={0.5}>
           {formations.map((f) => {
