@@ -8,8 +8,9 @@
 **Fikset så langt:**
 - Bolk 1 (commit ee494425): stille mutasjons-feil i Economy/Timeline (#1/#19/#20), delt offline-aware feilmelding-helper (`describeProducerError`), stepper-status-klarhet (#30/#40).
 - Bolk 2 (commit 3dac5eb9): handlingsorientert «X mangler»-chip + låst beslutnings-kort (#14), Facebook-publisering statusspesifikke feil + fb-sider-feiltilstand (#18/#2), Levering/eksport offline-aware feil (#10/#12/#21).
+- Bolk 3 (commit 711695ba): offline-aware feil på marketing-plan-redigering (#11), feed-strategi-refresh (#34), AI-anbefaling (#35), Google Workspace auto-oppsett (#9, villedende→skiller offline/ekte), og alle 5 Client Access Vault-operasjoner (#8).
 
-**Gjenstår (prioritert):** offline-meldinger for vault/Google Workspace/marketing-plan (#8/#9/#11/#35), fire-and-forget sync-synlighet (#3/#4/#22), account-tile-CTA-er (#31), empty-states (#32/#42), stepper delivery/economy-fullføring (#23 — krever pålitelig «levert»-signal som ikke finnes i dag).
+**Gjenstår (prioritert):** fire-and-forget sync-synlighet (#3/#4/#22 — trenger subtil «synk venter»-indikator), account-tile-CTA-er (#31), empty-states (#32/#42), success-feedback ved feed-lagring (#36), client-material upload-feedback (#27), stepper delivery/economy-fullføring (#23 — krever pålitelig «levert»-signal som ikke finnes i dag). De fleste gjenværende er MEDIUM/LOW.
 
 ## Sammendrag per dimensjon
 
