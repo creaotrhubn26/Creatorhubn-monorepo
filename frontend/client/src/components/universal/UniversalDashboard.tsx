@@ -151,6 +151,10 @@ import {
   AdminPanelSettings,
   Close,
   VideoLibrary,
+  LocationOn as LocationOnIcon,
+  Star as StarIcon,
+  PhotoCamera as PhotoCameraIcon,
+  WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 
 // Import profession-specific components
@@ -5281,9 +5285,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         <WbSunny sx={{ color: '#F59E0B' }} />
                         Lokasjonsintelligens
                         {detectedLocation && (
-                          <Chip 
-                            label={locationPermissionDenied ? '📍 Oslo (standard)' : '📍 Din posisjon'} 
-                            size="small" 
+                          <Chip
+                            icon={<LocationOnIcon sx={{ fontSize: 14 }} />}
+                            label={locationPermissionDenied ? 'Oslo (standard)' : 'Din posisjon'}
+                            size="small"
                             sx={{ 
                               ml: 1,
                               bgcolor: locationPermissionDenied ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
@@ -7382,9 +7387,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           
                           {/* Featured App: NextRole by CreatorHub */}
                           <Box sx={{ mb: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-                              ⭐ Featured App
-                            </Typography>
+                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+                              <StarIcon sx={{ color: theming.colors.primary, fontSize: 18 }} />
+                              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                                Anbefalt app
+                              </Typography>
+                            </Stack>
                             <CreatorHubMarketplace 
                               profession={profession}
                               userId={userId}
@@ -8631,17 +8639,23 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               borderRadius: 2,
               border: '1px solid rgba(2, 4, 4, 67, 54, 0.3)'
             }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                📸 {selectedProject!.title || selectedProject!.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <PhotoCameraIcon fontSize="small" />
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  {selectedProject!.title || selectedProject!.name}
+                </Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 Klient: {selectedProject!.clientName || 'Ikke angitt'}
               </Typography>
             </Box>
           )}
-          <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 600}}>
-            ⚠️ Dette kan ikke angres!
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 2 }}>
+            <WarningAmberIcon color="error" fontSize="small" />
+            <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+              Dette kan ikke angres
+            </Typography>
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button 
