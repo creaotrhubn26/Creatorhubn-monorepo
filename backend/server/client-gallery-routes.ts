@@ -2002,7 +2002,45 @@ export function setupClientGalleryRoutes(
       if (picked.length === 0) {
         return res.status(404).json({ error: "no_matching_images" });
       }
-      const watermarked = settings.watermarkEnabled === true;
+      // Bruk policy-helperen (samme som i comments/download-gating) for å
+      // unngå avvik mellom hva som er tillatt og hva som faktisk leveres.
+      const watermarked = policy.watermarked;
+
+      // Sharp-pipeline for on-the-fly watermark. Importeres dynamisk så
+      // vi unngår å laste ~50MB av sharp's binær når galleriet ikke
+      // krever det. Cached på første call.
+      let sharpModulePromise: Promise<typeof import('sharp')> | null = null;
+      const getSharp = () => {
+        if (!sharpModulePromise) {
+          sharpModulePromise = import('sharp').then((m) => (m as any).default ?? m);
+        }
+        return sharpModulePromise;
+      };
+      const watermarkText = String(
+        settings.watermarkText ?? gallery.projectTitle ?? 'PROOF',
+      ).slice(0, 60);
+      const watermarkOpacity = Math.max(
+        0.05,
+        Math.min(1, Number(settings.watermarkOpacity ?? 0.55)),
+      );
+      const escapeXml = (v: string): string =>
+        v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      const buildWatermarkSvg = (width: number, height: number): Buffer => {
+        // Størrelse skalerer med bildets bredde så watermarket er synlig
+        // på både full-res RAW og web-thumbs. ~5% av bredden ≈ leselig.
+        const fontSize = Math.max(28, Math.round(width * 0.05));
+        const padding = Math.round(fontSize * 0.6);
+        const safeText = escapeXml(watermarkText);
+        return Buffer.from(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+            <style>
+              .wm { fill: rgba(255,255,255,${watermarkOpacity}); font-family: Helvetica, Arial, sans-serif; font-weight: 700; font-size: ${fontSize}px; text-shadow: 2px 2px 4px rgba(0,0,0,0.6); }
+            </style>
+            <text x="${width - padding}" y="${height - padding}" text-anchor="end" class="wm">${safeText}</text>
+          </svg>`,
+        );
+      };
 
       const zipFilename = `gallery-${gallery.id.slice(0, 8)}-${Date.now()}.zip`;
       res.setHeader('Content-Type', 'application/zip');
@@ -2019,27 +2057,64 @@ export function setupClientGalleryRoutes(
       archive.pipe(res);
 
       // Pull each image as a node-fetch stream and append. archiver
-      // handles back-pressure so we only buffer one in flight at a
-      // time (the connection drives consumption).
+      // handles back-pressure så vi kun har én in flight om gangen.
+      //
+      // Watermark-strategi (3 nivåer, billigst først):
+      //   1. Pre-rendret watermarkedUrl finnes → bare server den (gratis)
+      //   2. Ingen pre-rendret variant, men policy krever watermark →
+      //      buffrer hele bildet, kjør sharp.composite(SVG-tekst),
+      //      append'er bufferet i stedet. Koster RAM+CPU per bilde men
+      //      garanterer at original-pikslene ikke når klienten.
+      //   3. Ikke watermarked → server originalen som stream (gratis).
       let appended = 0;
       for (const img of picked) {
-        const sourceUrl = watermarked && img.watermarkedUrl
+        const preWatermarkedUrl = watermarked && img.watermarkedUrl
           ? img.watermarkedUrl
-          : (img.autoCleanedUrl ?? img.fullSizeUrl);
+          : null;
+        const sourceUrl = preWatermarkedUrl
+          ?? img.autoCleanedUrl
+          ?? img.fullSizeUrl;
+        const safeName = `${img.imageTitle.replace(/[\\/:*?"<>|]/g, '_')}.jpg`;
         try {
           const fetchRes = await fetch(sourceUrl);
           if (!fetchRes.ok || !fetchRes.body) {
             console.warn(`[client-gallery] zip skip ${img.id}: ${fetchRes.status}`);
             continue;
           }
-          // node-fetch v3 returns a web ReadableStream; archiver wants a
-          // Node Readable. The Node-native fetch gives us .body as a
-          // web stream too — convert via Readable.fromWeb.
-          const { Readable } = await import('node:stream');
-          const nodeStream = Readable.fromWeb(fetchRes.body as never);
-          const safeName = `${img.imageTitle.replace(/[\\/:*?"<>|]/g, '_')}.jpg`;
-          archive.append(nodeStream, { name: safeName });
-          appended++;
+
+          const needsOnTheFlyWatermark = watermarked && !preWatermarkedUrl;
+          if (needsOnTheFlyWatermark) {
+            // Buffrer + transformerer. Vi ofrer streaming for å garantere
+            // at klienten ALDRI får original uten watermark — selv hvis
+            // sharp feiler hopper vi over bildet (logg + skip).
+            try {
+              const sourceBuffer = Buffer.from(await fetchRes.arrayBuffer());
+              const sharp = await getSharp();
+              const meta = await sharp(sourceBuffer).metadata();
+              const w = meta.width ?? 1600;
+              const h = meta.height ?? 1200;
+              const overlay = buildWatermarkSvg(w, h);
+              const watermarkedBuffer = await sharp(sourceBuffer)
+                .composite([{ input: overlay, gravity: 'southeast', blend: 'over' }])
+                .jpeg({ quality: 90 })
+                .toBuffer();
+              archive.append(watermarkedBuffer, { name: safeName });
+              appended++;
+            } catch (sharpErr) {
+              console.warn(
+                `[client-gallery] watermark composite failed for ${img.id} — SKIPPING for safety:`,
+                sharpErr,
+              );
+              // Skip-på-feil er sikkerhetsdekk: bedre tomt zip-entry
+              // enn å lekke original-piksler ved sharp-krasj.
+            }
+          } else {
+            // Pass-through stream — uendret originaloppførsel.
+            const { Readable } = await import('node:stream');
+            const nodeStream = Readable.fromWeb(fetchRes.body as never);
+            archive.append(nodeStream, { name: safeName });
+            appended++;
+          }
         } catch (err) {
           console.warn(`[client-gallery] zip fetch failed ${img.id}:`, err);
         }
