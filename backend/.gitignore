@@ -20,6 +20,7 @@ node_modules/
 .env.pages-cta.demo.local
 .env.page-public-content.demo.local
 .env.page-mentions.demo.local
+.env.page-metadata.demo.local
 
 # Logs
 logs/
