@@ -87,6 +87,8 @@ interface Props {
   onOpenSettings: () => void;
   onOpenDependencies: () => void;
   onOpenWatch: () => void;
+  onOpenPhotoshopBridge: () => void;
+  onOpenPhotoshopTemplates: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -125,6 +127,8 @@ export function HeaderBar({
   onOpenSettings,
   onOpenDependencies,
   onOpenWatch,
+  onOpenPhotoshopBridge,
+  onOpenPhotoshopTemplates,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -191,6 +195,12 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenWatch(); }}>
                   <IconEye /> Watch Folder
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopBridge(); }}>
+                  Photoshop Bridge…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTemplates(); }}>
+                  Photoshop Templates…
                 </button>
                 <div className="header-menu-divider" />
                 <button onClick={() => { setMenuOpen(false); onConnect(); }} disabled={busy}>

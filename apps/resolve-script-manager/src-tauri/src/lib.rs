@@ -7,6 +7,7 @@ mod cull;
 mod folder_watcher;
 mod history;
 mod media_probe;
+mod photoshop_bridge;
 mod python;
 mod role_room_api;
 
@@ -22,7 +23,9 @@ use card_watcher::{CardWatcherState, MountedCard};
 use cull::CullSession;
 use folder_watcher::{FolderWatcherState, WatchedFolder};
 use history::HistoryRecord;
+use photoshop_bridge::PhotoshopBridgeState;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use python::{python_root, spawn_python, AppSettings, RunSummary, RunningScriptsState};
 
@@ -582,6 +585,7 @@ pub fn run() {
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
         .manage(FolderWatcherState::default())
+        .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
             // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
@@ -620,9 +624,15 @@ pub fn run() {
                     eprintln!("Failed to emit deep-link event: {}", err);
                 }
             });
-            if let Err(err) = card_watcher::spawn_watcher(handle) {
+            if let Err(err) = card_watcher::spawn_watcher(handle.clone()) {
                 eprintln!("Failed to start card watcher: {}", err);
             }
+            // Start lokal WS-server for Photoshop UXP-plugin (port 1733).
+            let bridge_state = app
+                .state::<Arc<PhotoshopBridgeState>>()
+                .inner()
+                .clone();
+            photoshop_bridge::spawn_server(handle, bridge_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -666,6 +676,8 @@ pub fn run() {
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
+            photoshop_bridge::photoshop_send_command,
+            photoshop_bridge::photoshop_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
