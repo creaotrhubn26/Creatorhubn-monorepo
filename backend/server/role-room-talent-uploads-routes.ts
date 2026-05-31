@@ -23,7 +23,7 @@
 import type express from "express";
 import type { Pool } from "pg";
 import crypto from "node:crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 interface SessionLike {
@@ -113,6 +113,7 @@ function buildR2Config() {
   const publicUrlBase = firstNonEmpty(
     process.env.TALENTS_R2_PUBLIC_URL_BASE,
     process.env.CMS_R2_PUBLIC_URL_BASE,
+    process.env.CLOUDFLARE_R2_PUBLIC_BASE, // ← matcher eksisterende casting-video-service-konvensjon
     process.env.R2_PUBLIC_URL_BASE,
   );
   return {
@@ -224,9 +225,12 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       });
 
       const uploadUrl = await getSignedUrl(client, command, { expiresIn: PRESIGN_TTL });
+      // finalUrl er hva som lagres i talents-tabellen. Hvis bucket har public
+      // base → bruk direkte; ellers → bruk vår signed-GET-proxy som genererer
+      // en ny signed URL ved hver visning (auth-gated, ingen public R2-exposure).
       const finalUrl = cfg.publicUrlBase
         ? `${cfg.publicUrlBase.replace(/\/+$/, "")}/${key}`
-        : `${cfg.endpoint!.replace(/\/+$/, "")}/${cfg.bucket}/${key}`;
+        : `/api/role-room/talents/media-proxy?key=${encodeURIComponent(key)}`;
 
       return res.json({
         uploadUrl,
@@ -240,6 +244,35 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
     } catch (err) {
       console.error("[uploads/sign] failed", err);
       return res.status(500).json({ error: "Klarte ikke å generere upload-URL", detail: String(err) });
+    }
+  });
+
+  // ── GET /talents/media-proxy?key=... — signed-GET redirect ────────
+  // Brukes når bucket ikke har public base. Genererer signed URL ved hver
+  // visning + 302-redirect. TTL 6 timer (lang nok for HLS-streaming, kort
+  // nok for sikkerhet hvis lenken lekkes).
+  app.get("/api/role-room/talents/media-proxy", async (req, res) => {
+    const key = String(req.query.key || "").trim();
+    if (!key || !key.startsWith("talents/")) {
+      return res.status(400).json({ error: "Ugyldig key" });
+    }
+    const cfg = buildR2Config();
+    const client = getR2Client();
+    if (!client || !cfg.bucket) {
+      return res.status(503).json({ error: "Storage ikke konfigurert" });
+    }
+    try {
+      const signed = await getSignedUrl(
+        client,
+        new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
+        { expiresIn: 6 * 60 * 60 },
+      );
+      // Cache-headers: rull seg over hver time
+      res.set("Cache-Control", "private, max-age=3600");
+      return res.redirect(302, signed);
+    } catch (err) {
+      console.error("[media-proxy] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å generere visnings-URL" });
     }
   });
 
