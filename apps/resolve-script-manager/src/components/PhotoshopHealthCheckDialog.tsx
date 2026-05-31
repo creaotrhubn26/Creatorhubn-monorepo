@@ -23,6 +23,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { photoshop, getStatus } from "../services/photoshopBridgeService";
 import { indexDirectory } from "../services/psdIndexerService";
 import { loadSettings } from "./SettingsModal";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
+import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
+import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
+import CircularProgress from "@mui/material/CircularProgress";
 
 interface Props {
   onClose: () => void;
@@ -243,11 +250,30 @@ export function PhotoshopHealthCheckDialog({ onClose }: Props) {
                 : someFailed
                 ? bannerRed
                 : bannerAmber),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
             }}
           >
-            {allGreen && `✓ ALT FUNGERER — ${okCount} av ${CHECKS.length} sjekker grønne`}
-            {someFailed && `⚠ ${failCount} sjekk${failCount === 1 ? "" : "er"} feiler — se under for fix`}
-            {!someFailed && warnCount > 0 && `△ ${warnCount} advarsel${warnCount === 1 ? "" : "er"}, men ingen kritiske feil`}
+            {allGreen && (
+              <>
+                <CheckCircleOutlinedIcon sx={{ fontSize: 18 }} />
+                ALT FUNGERER — {okCount} av {CHECKS.length} sjekker grønne
+              </>
+            )}
+            {someFailed && (
+              <>
+                <ErrorOutlineIcon sx={{ fontSize: 18 }} />
+                {failCount} sjekk{failCount === 1 ? "" : "er"} feiler — se under for fix
+              </>
+            )}
+            {!someFailed && warnCount > 0 && (
+              <>
+                <WarningAmberOutlinedIcon sx={{ fontSize: 18 }} />
+                {warnCount} advarsel{warnCount === 1 ? "" : "er"}, men ingen kritiske feil
+              </>
+            )}
           </div>
         )}
 
@@ -316,7 +342,7 @@ export function PhotoshopHealthCheckDialog({ onClose }: Props) {
           </button>
           {completed && (
             <div style={{ fontSize: 11, color: "#888" }}>
-              ✓ {okCount}  ·  △ {warnCount}  ·  ✗ {failCount}  av {CHECKS.length}
+              <CheckIcon sx={{ fontSize: 12, verticalAlign: "text-bottom", color: "#4ad48a" }} /> {okCount}  ·  <WarningAmberOutlinedIcon sx={{ fontSize: 12, verticalAlign: "text-bottom", color: "#f59e0b" }} /> {warnCount}  ·  <CloseIcon sx={{ fontSize: 12, verticalAlign: "text-bottom", color: "#ef4f6f" }} /> {failCount}  av {CHECKS.length}
             </div>
           )}
         </footer>
@@ -325,13 +351,13 @@ export function PhotoshopHealthCheckDialog({ onClose }: Props) {
   );
 }
 
-function iconFor(state: CheckState): string {
+function iconFor(state: CheckState): React.ReactNode {
   switch (state) {
-    case "ok": return "✓";
-    case "warn": return "△";
-    case "fail": return "✗";
-    case "running": return "…";
-    default: return "·";
+    case "ok": return <CheckIcon sx={{ fontSize: 16 }} />;
+    case "warn": return <WarningAmberOutlinedIcon sx={{ fontSize: 16 }} />;
+    case "fail": return <CloseIcon sx={{ fontSize: 16 }} />;
+    case "running": return <CircularProgress size={12} sx={{ color: "#60a5fa" }} />;
+    default: return <FiberManualRecordIcon sx={{ fontSize: 8 }} />;
   }
 }
 

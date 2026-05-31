@@ -11,6 +11,10 @@
 import { useCallback, useState } from "react";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { photoshop } from "../services/photoshopBridgeService";
+import AccessibilityNewIcon from "@mui/icons-material/AccessibilityNew";
+import TheaterComedyIcon from "@mui/icons-material/TheaterComedy";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import type { SvgIconComponent } from "@mui/icons-material";
 
 interface Props {
   onClose: () => void;
@@ -26,7 +30,7 @@ interface Preset {
   id: string;
   name: string;
   description: string;
-  emoji: string;
+  Icon: SvgIconComponent;
   width: number;
   height: number;
   background_color: { red: number; green: number; blue: number };
@@ -39,7 +43,7 @@ const PRESETS: Preset[] = [
     id: "dance-performance-poster",
     name: "Forestillings-plakat",
     description: "Vertikalt 9:16 — for Instagram Story / printed poster",
-    emoji: "💃",
+    Icon: AccessibilityNewIcon,
     width: 1080,
     height: 1920,
     background_color: { red: 22, green: 22, blue: 30 },
@@ -59,7 +63,7 @@ const PRESETS: Preset[] = [
     id: "audition-flyer",
     name: "Audition-flyer",
     description: "Kvadratisk 1:1 — for Instagram-post / Facebook",
-    emoji: "🎭",
+    Icon: TheaterComedyIcon,
     width: 1080,
     height: 1080,
     background_color: { red: 250, green: 245, blue: 240 },
@@ -78,7 +82,7 @@ const PRESETS: Preset[] = [
     id: "class-schedule-card",
     name: "Time-plan-kort",
     description: "4:5 — for ukentlig timeplan på Instagram",
-    emoji: "📅",
+    Icon: CalendarMonthIcon,
     width: 1080,
     height: 1350,
     background_color: { red: 240, green: 230, blue: 250 },
@@ -186,7 +190,9 @@ export function PhotoshopScaffoldDialog({ onClose }: Props) {
                   }}
                   onClick={() => setSelected(preset)}
                 >
-                  <div style={{ fontSize: 32, flexShrink: 0 }}>{preset.emoji}</div>
+                  <div style={{ flexShrink: 0 }}>
+                    <preset.Icon sx={{ fontSize: 36, color: "#a78bfa" }} />
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={presetTitle}>{preset.name}</div>
                     <div style={presetDesc}>{preset.description}</div>

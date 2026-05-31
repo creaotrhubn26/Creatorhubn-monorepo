@@ -11,6 +11,10 @@ import { useState } from "react";
 import SETUP_GUIDE from "../docs/setup-guide-irene.md?raw";
 import TEMPLATES_COOKBOOK from "../docs/photoshop-templates-cookbook.md?raw";
 import AGENT_PROMPTS from "../docs/photoshop-agent-prompts.md?raw";
+import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
+import type { SvgIconComponent } from "@mui/icons-material";
 
 interface Props {
   onClose: () => void;
@@ -19,20 +23,20 @@ interface Props {
 
 type DocKey = "setup" | "templates" | "prompts";
 
-const DOCS: Record<DocKey, { title: string; emoji: string; body: string }> = {
+const DOCS: Record<DocKey, { title: string; Icon: SvgIconComponent; body: string }> = {
   setup: {
     title: "Kom i gang",
-    emoji: "🚀",
+    Icon: RocketLaunchIcon,
     body: SETUP_GUIDE,
   },
   templates: {
     title: "Lag templater",
-    emoji: "📄",
+    Icon: ArticleOutlinedIcon,
     body: TEMPLATES_COOKBOOK,
   },
   prompts: {
     title: "Agent-prompts",
-    emoji: "🎨",
+    Icon: BrushOutlinedIcon,
     body: AGENT_PROMPTS,
   },
 };
@@ -63,7 +67,10 @@ export function HelpDialog({ onClose, initialDoc = "setup" }: Props) {
                 ...(active === key ? tabActive : null),
               }}
             >
-              <span style={{ marginRight: 6 }}>{DOCS[key].emoji}</span>
+              {(() => {
+                const Icon = DOCS[key].Icon;
+                return <Icon sx={{ fontSize: 14, marginRight: "6px", verticalAlign: "text-bottom" }} />;
+              })()}
               {DOCS[key].title}
             </button>
           ))}

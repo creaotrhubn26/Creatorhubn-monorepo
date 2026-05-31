@@ -3764,7 +3764,7 @@ ${ctxLines.join("\n")}`;
                 marginLeft: "auto",
               }}
             >
-              <span className="ce-agent-tab-icon">🎨</span>
+              <span className="ce-agent-tab-icon"><BrushIcon style={{ fontSize: 14 }} /></span>
               <span className="ce-agent-tab-name">Photoshop</span>
             </button>
           </div>

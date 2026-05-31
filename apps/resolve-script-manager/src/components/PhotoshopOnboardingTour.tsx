@@ -8,6 +8,14 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import WavingHandOutlinedIcon from "@mui/icons-material/WavingHandOutlined";
+import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
+import CableIcon from "@mui/icons-material/Cable";
+import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
+import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import type { SvgIconComponent } from "@mui/icons-material";
 
 const STORAGE_KEY = "trrpa.photoshopTourCompleted";
 
@@ -33,14 +41,14 @@ interface Props {
 
 interface Step {
   title: string;
-  emoji: string;
+  Icon: SvgIconComponent;
   body: React.ReactNode;
 }
 
 const STEPS: Step[] = [
   {
     title: "Velkommen!",
-    emoji: "👋",
+    Icon: WavingHandOutlinedIcon,
     body: (
       <>
         <p>
@@ -56,7 +64,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Helse-sjekk Photoshop",
-    emoji: "✓",
+    Icon: CheckCircleOutlinedIcon,
     body: (
       <>
         <p>
@@ -72,7 +80,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Photoshop Bridge",
-    emoji: "🌉",
+    Icon: CableIcon,
     body: (
       <>
         <p>
@@ -88,7 +96,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Photoshop Templates",
-    emoji: "📄",
+    Icon: ArticleOutlinedIcon,
     body: (
       <>
         <p>
@@ -107,8 +115,8 @@ const STEPS: Step[] = [
     ),
   },
   {
-    title: "🎨 Photoshop Agent",
-    emoji: "🎨",
+    title: "Photoshop Agent",
+    Icon: BrushOutlinedIcon,
     body: (
       <>
         <p>
@@ -127,7 +135,7 @@ const STEPS: Step[] = [
   },
   {
     title: "PSD-galleri",
-    emoji: "🖼",
+    Icon: ImageOutlinedIcon,
     body: (
       <>
         <p>
@@ -143,7 +151,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Du er klar!",
-    emoji: "🚀",
+    Icon: RocketLaunchIcon,
     body: (
       <>
         <p>
@@ -201,7 +209,9 @@ export function PhotoshopOnboardingTour({ onClose }: Props) {
           ))}
         </div>
 
-        <div style={emojiArea}>{current.emoji}</div>
+        <div style={iconArea}>
+          <current.Icon sx={{ fontSize: 56, color: "#a78bfa" }} />
+        </div>
 
         <h2 style={titleStyle}>{current.title}</h2>
 
@@ -274,7 +284,7 @@ const dot: React.CSSProperties = {
   transition: "background 0.2s",
 };
 
-const emojiArea: React.CSSProperties = {
+const iconArea: React.CSSProperties = {
   textAlign: "center",
   fontSize: 56,
   marginBottom: 8,
