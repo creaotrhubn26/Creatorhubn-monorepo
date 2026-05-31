@@ -23,6 +23,7 @@ node_modules/
 .env.page-metadata.demo.local
 .env.ig-public.demo.local
 .env.leads-retrieval.demo.local
+.env.ig-events.demo.local
 
 # Logs
 logs/
