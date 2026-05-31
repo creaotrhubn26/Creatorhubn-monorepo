@@ -4,6 +4,13 @@ import { IconGear, IconBox, IconEye, IconMagicCut } from "./Icons";
 import { UserProfile } from "./UserProfile";
 import { useDepHealth, type DepHealth } from "../hooks/useDepHealth";
 import { PhotoshopStatusPill } from "./PhotoshopStatusPill";
+import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
+import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
+import AddIcon from "@mui/icons-material/Add";
+import WavingHandOutlinedIcon from "@mui/icons-material/WavingHandOutlined";
+import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
+import FeedbackOutlinedIcon from "@mui/icons-material/FeedbackOutlined";
 
 function DepHealthPill({ onOpen }: { onOpen: () => void }) {
   const { state } = useDepHealth();
@@ -223,7 +230,7 @@ export function HeaderBar({
                     fontWeight: 600,
                   }}
                 >
-                  ✓ Helse-sjekk Photoshop…
+                  <CheckCircleOutlinedIcon fontSize="small" /> Helse-sjekk Photoshop…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenPhotoshopSetup(); }}
@@ -234,7 +241,7 @@ export function HeaderBar({
                     fontWeight: 600,
                   }}
                 >
-                  🛠 Photoshop-oppsett (kom i gang)
+                  <BuildOutlinedIcon fontSize="small" /> Photoshop-oppsett (kom i gang)
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopBridge(); }}>
                   Photoshop Bridge…
@@ -243,7 +250,7 @@ export function HeaderBar({
                   Photoshop Templates…
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopScaffold(); }}>
-                  + Lag template fra startpunkt…
+                  <AddIcon fontSize="small" /> Lag template fra startpunkt…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
@@ -254,19 +261,19 @@ export function HeaderBar({
                     fontWeight: 600,
                   }}
                 >
-                  🎨 Photoshop Agent…
+                  <BrushOutlinedIcon fontSize="small" /> Photoshop Agent…
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPsdGallery(); }}>
                   PSD-galleri…
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTour(); }}>
-                  👋 Vis Photoshop-tour på nytt
+                  <WavingHandOutlinedIcon fontSize="small" /> Vis Photoshop-tour på nytt
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenHelp(); }}>
-                  ❓ Hjelp + dokumentasjon
+                  <HelpOutlineOutlinedIcon fontSize="small" /> Hjelp + dokumentasjon
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenFeedback(); }}>
-                  📨 Send feedback
+                  <FeedbackOutlinedIcon fontSize="small" /> Send feedback
                 </button>
                 <div className="header-menu-divider" />
                 <button onClick={() => { setMenuOpen(false); onConnect(); }} disabled={busy}>

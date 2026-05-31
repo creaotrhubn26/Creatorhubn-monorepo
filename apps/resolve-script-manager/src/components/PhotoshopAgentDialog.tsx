@@ -13,6 +13,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import {
   PHOTOSHOP_TOOLS,
   runAllPhotoshopTools,
@@ -275,7 +278,9 @@ function ToolUseBlock({ block }: { block: ClaudeToolUseBlock }) {
   return (
     <div style={toolCardUse}>
       <div style={toolHeader}>
-        <span style={{ color: "#a78bfa", fontWeight: 600 }}>🔧 {block.name}</span>
+        <span style={{ color: "#a78bfa", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <BuildOutlinedIcon sx={{ fontSize: 14 }} /> {block.name}
+        </span>
       </div>
       <pre style={toolJson}>{JSON.stringify(block.input, null, 2)}</pre>
     </div>
@@ -292,8 +297,24 @@ function ToolResultBlock({ block }: { block: ClaudeToolResultBlock }) {
       }}
     >
       <div style={toolHeader}>
-        <span style={{ color: isErr ? "#f85149" : "#3fb950", fontWeight: 600 }}>
-          {isErr ? "⚠ tool error" : "✓ tool result"}
+        <span
+          style={{
+            color: isErr ? "#f85149" : "#3fb950",
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {isErr ? (
+            <>
+              <ErrorOutlineIcon sx={{ fontSize: 14 }} /> tool error
+            </>
+          ) : (
+            <>
+              <CheckCircleOutlinedIcon sx={{ fontSize: 14 }} /> tool result
+            </>
+          )}
         </span>
       </div>
       <pre style={toolJson}>{block.content}</pre>
