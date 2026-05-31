@@ -153,10 +153,10 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3, gap: 2 }}>
           <Box>
             <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15 }}>
-              Talent Registry
+              Talent-register
             </Typography>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem', mt: 0.6 }}>
-              Discover and connect with actors across Norway.
+              Finn og koble deg til skuespillere over hele Norge.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1.4} alignItems="center">
@@ -191,8 +191,8 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
                 },
               }}
             >
-              <ToggleButton value="grid"><GridViewIcon sx={{ mr: 0.6, fontSize: 18 }} /> Grid</ToggleButton>
-              <ToggleButton value="list"><ViewListIcon sx={{ mr: 0.6, fontSize: 18 }} /> List</ToggleButton>
+              <ToggleButton value="grid"><GridViewIcon sx={{ mr: 0.6, fontSize: 18 }} /> Rutenett</ToggleButton>
+              <ToggleButton value="list"><ViewListIcon sx={{ mr: 0.6, fontSize: 18 }} /> Liste</ToggleButton>
               <ToggleButton value="proposals">
                 Forslag{pendingProposalsCount ? ` (${pendingProposalsCount})` : ''}
               </ToggleButton>
@@ -211,18 +211,18 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
         <Box sx={{ ...cardSx, mb: 3 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
             <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
-            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Advanced Filters</Typography>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Avanserte filtre</Typography>
           </Stack>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 1.4 }}>
-            <FilterField label="Location" value={filters.location || ''} onChange={(v) => setFilters({ ...filters, location: v || undefined })} options={['', ...NORWEGIAN_CITIES]} placeholder="All locations" />
+            <FilterField label="By" value={filters.location || ''} onChange={(v) => setFilters({ ...filters, location: v || undefined })} options={['', ...NORWEGIAN_CITIES]} placeholder="Alle byer" />
             <PlayingAgeField filters={filters} onChange={(f) => setFilters({ ...filters, ...f })} />
-            <MultiField label="Languages" values={filters.languages} options={LANGUAGE_OPTIONS} onChange={(v) => setFilters({ ...filters, languages: v.length ? v : undefined })} />
-            <MultiField label="Dialects" values={filters.dialects} options={DIALECT_OPTIONS} onChange={(v) => setFilters({ ...filters, dialects: v.length ? v : undefined })} />
-            <MultiField label="Skills" values={filters.skills} options={SKILL_OPTIONS} onChange={(v) => setFilters({ ...filters, skills: v.length ? v : undefined })} />
-            <FilterField label="Gender" value={filters.gender || ''} onChange={(v) => setFilters({ ...filters, gender: v || undefined })} options={['', 'female', 'male', 'non-binary', 'other']} placeholder="All genders" />
-            <FilterField label="Availability" value={filters.availability || ''} onChange={(v) => setFilters({ ...filters, availability: v || undefined })} options={['', 'open', 'limited', 'unavailable']} placeholder="Any" />
-            <FilterField label="Representation" value={filters.representation || ''} onChange={(v) => setFilters({ ...filters, representation: (v as TalentSearchFilters['representation']) || undefined })} options={['', 'represented', 'independent']} placeholder="Any" />
-            <FilterField label="Self-tape status" value={filters.has_selftape ? 'yes' : ''} onChange={(v) => setFilters({ ...filters, has_selftape: v === 'yes' || undefined })} options={['', 'yes']} optionsLabel={{ '': 'Any', 'yes': 'Has self-tape' }} placeholder="Any" />
+            <MultiField label="Språk" values={filters.languages} options={LANGUAGE_OPTIONS} onChange={(v) => setFilters({ ...filters, languages: v.length ? v : undefined })} />
+            <MultiField label="Dialekter" values={filters.dialects} options={DIALECT_OPTIONS} onChange={(v) => setFilters({ ...filters, dialects: v.length ? v : undefined })} />
+            <MultiField label="Ferdigheter" values={filters.skills} options={SKILL_OPTIONS} onChange={(v) => setFilters({ ...filters, skills: v.length ? v : undefined })} />
+            <FilterField label="Kjønn" value={filters.gender || ''} onChange={(v) => setFilters({ ...filters, gender: v || undefined })} options={['', 'female', 'male', 'non-binary', 'other']} optionsLabel={{ '': 'Alle', 'female': 'Kvinne', 'male': 'Mann', 'non-binary': 'Ikke-binær', 'other': 'Annet' }} placeholder="Alle" />
+            <FilterField label="Tilgjengelighet" value={filters.availability || ''} onChange={(v) => setFilters({ ...filters, availability: v || undefined })} options={['', 'open', 'limited', 'unavailable']} optionsLabel={{ '': 'Alle', 'open': 'Tilgjengelig', 'limited': 'Begrenset', 'unavailable': 'Ikke tilgjengelig' }} placeholder="Alle" />
+            <FilterField label="Representasjon" value={filters.representation || ''} onChange={(v) => setFilters({ ...filters, representation: (v as TalentSearchFilters['representation']) || undefined })} options={['', 'represented', 'independent']} optionsLabel={{ '': 'Alle', 'represented': 'Med agent', 'independent': 'Uten agent' }} placeholder="Alle" />
+            <FilterField label="Self-tape" value={filters.has_selftape ? 'yes' : ''} onChange={(v) => setFilters({ ...filters, has_selftape: v === 'yes' || undefined })} options={['', 'yes']} optionsLabel={{ '': 'Alle', 'yes': 'Har self-tape' }} placeholder="Alle" />
             <Button
               startIcon={<FilterListIcon />}
               onClick={() => setFilters({ sort: 'recent', limit: 50 })}
@@ -233,7 +233,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
                 fontWeight: 600, fontSize: '0.85rem',
               }}
             >
-              More filters
+              Nullstill filtre
             </Button>
           </Box>
         </Box>
@@ -243,7 +243,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
           <Box sx={{ ...cardSx, mb: 3, position: 'relative' }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
               <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
-              <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Featured Talents</Typography>
+              <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Fremhevede talenter</Typography>
             </Stack>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 1.4 }}>
               {featured.map((t) => <FeaturedCard key={t.id} talent={t} />)}
@@ -255,19 +255,19 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Typography sx={{ color: palette.textPrimary, fontSize: '1rem' }}>
             <strong>{loading ? '…' : (searchResult?.total ?? 0).toLocaleString('nb-NO')}</strong>{' '}
-            <Box component="span" sx={{ color: palette.textMuted }}>talents match your filters</Box>
+            <Box component="span" sx={{ color: palette.textMuted }}>talenter matcher filtrene</Box>
           </Typography>
           <Stack direction="row" spacing={1.4} alignItems="center">
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem' }}>Sort by</Typography>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem' }}>Sortér etter</Typography>
             <Select
               value={filters.sort ?? 'recent'}
               size="small"
               onChange={(e) => setFilters({ ...filters, sort: e.target.value as TalentSearchFilters['sort'] })}
               sx={{ color: palette.textPrimary, fontSize: '0.85rem', minWidth: 160, bgcolor: palette.bgCard, ...fieldSx['& .MuiOutlinedInput-root'] }}
             >
-              <MenuItem value="recent">Recently active</MenuItem>
-              <MenuItem value="available_first">Available first</MenuItem>
-              <MenuItem value="name">Name (A-Å)</MenuItem>
+              <MenuItem value="recent">Nylig aktive</MenuItem>
+              <MenuItem value="available_first">Tilgjengelig først</MenuItem>
+              <MenuItem value="name">Navn (A-Å)</MenuItem>
             </Select>
           </Stack>
         </Stack>
@@ -301,15 +301,15 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
 
       {/* ─── Right sidebar ─── */}
       <Box sx={{ width: 320, flexShrink: 0, p: 3, pl: 0, display: { xs: 'none', lg: 'flex' }, flexDirection: 'column', gap: 2 }}>
-        {/* Saved Searches */}
+        {/* Lagrede søk */}
         <Box sx={cardSx}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Saved Searches</Typography>
-            <Button sx={{ color: palette.accentBright, fontSize: '0.82rem', textTransform: 'none', minWidth: 0, p: 0 }}>View all</Button>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Lagrede søk</Typography>
+            <Button sx={{ color: palette.accentBright, fontSize: '0.82rem', textTransform: 'none', minWidth: 0, p: 0 }}>Se alle</Button>
           </Stack>
           {savedSearches.length === 0 ? (
             <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem', mb: 2 }}>
-              Ingen lagrede søk ennå. Bygg et søk og klikk "Save new search" under.
+              Ingen lagrede søk ennå. Bygg et søk og klikk "Lagre nytt søk" under.
             </Typography>
           ) : (
             <Stack spacing={1} sx={{ mb: 2 }}>
@@ -332,29 +332,29 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
             }}
           >
-            Save new search
+            Lagre nytt søk
           </Button>
         </Box>
 
-        {/* Registry Overview */}
+        {/* Register-oversikt */}
         {overview ? (
           <Box sx={cardSx}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
-              <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Registry Overview</Typography>
-              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>This view ▾</Typography>
+              <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Register-oversikt</Typography>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>Dette view ▾</Typography>
             </Stack>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
               <Box>
                 <Typography sx={{ color: palette.textPrimary, fontSize: '2.2rem', fontWeight: 800, lineHeight: 1 }}>
                   {overview.total_visible.toLocaleString('nb-NO')}
                 </Typography>
-                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.4 }}>Visible talents</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.4 }}>Synlige talenter</Typography>
               </Box>
               <Box>
                 <Typography sx={{ color: '#ec4899', fontSize: '1.4rem', fontWeight: 800, lineHeight: 1 }}>
                   +{overview.new_30d}
                 </Typography>
-                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.4 }}>New signups<br />Last 30 days</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.4 }}>Nye registreringer<br />siste 30 dager</Typography>
               </Box>
             </Box>
             <Box sx={{ mt: 2, height: 60, borderRadius: radius.sm, bgcolor: 'rgba(168,85,247,0.04)', position: 'relative', overflow: 'hidden' }}>
@@ -495,12 +495,12 @@ function FilterField({ label, value, onChange, options, placeholder, optionsLabe
         value={value}
         displayEmpty
         onChange={(e) => onChange(e.target.value)}
-        renderValue={(v) => (v ? (optionsLabel?.[v] ?? v) : (placeholder || 'Any'))}
+        renderValue={(v) => (v ? (optionsLabel?.[v] ?? v) : (placeholder || 'Alle'))}
         sx={{ color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm, ...fieldSx['& .MuiOutlinedInput-root'] }}
       >
         {options.map((opt) => (
           <MenuItem key={opt || '__empty__'} value={opt}>
-            {opt ? (optionsLabel?.[opt] ?? opt) : (placeholder || 'Any')}
+            {opt ? (optionsLabel?.[opt] ?? opt) : (placeholder || 'Alle')}
           </MenuItem>
         ))}
       </Select>
@@ -512,7 +512,7 @@ function PlayingAgeField({ filters, onChange }: { filters: TalentSearchFilters; 
   const range = filters.age_min && filters.age_max ? `${filters.age_min}–${filters.age_max}` : filters.age_min ? `${filters.age_min}+` : '18–60+';
   return (
     <Box>
-      <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mb: 0.5 }}>Playing age</Typography>
+      <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mb: 0.5 }}>Spille-alder</Typography>
       <Select
         fullWidth size="small"
         value={range}
@@ -547,7 +547,7 @@ function MultiField({ label, values, options, onChange }: { label: string; value
         displayEmpty
         renderValue={(selected) => {
           const s = selected as string[];
-          if (s.length === 0) return 'Any';
+          if (s.length === 0) return 'Alle';
           if (s.length === 1) return s[0];
           return `${s.length} valgt`;
         }}
@@ -576,7 +576,7 @@ function FeaturedCard({ talent }: { talent: TalentSearchHit }) {
         {talent.availability_status === 'open' ? (
           <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mt: 0.6 }}>
             <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: palette.success }} />
-            <Typography sx={{ color: palette.success, fontSize: '0.72rem', fontWeight: 600 }}>Available</Typography>
+            <Typography sx={{ color: palette.success, fontSize: '0.72rem', fontWeight: 600 }}>Tilgjengelig</Typography>
           </Stack>
         ) : null}
       </Stack>
@@ -609,7 +609,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
           {talent.city ? (
             <Stack direction="row" spacing={0.4} alignItems="center">
               <LocationOnOutlinedIcon sx={{ color: palette.textMuted, fontSize: 14 }} />
-              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{talent.city}{talent.country && talent.country !== 'NO' ? `, ${talent.country}` : ', Norway'}</Typography>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{talent.city}{talent.country && talent.country !== 'NO' ? `, ${talent.country}` : ', Norge'}</Typography>
             </Stack>
           ) : null}
         </Stack>
@@ -623,7 +623,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
         {talent.availability_status === 'open' ? (
           <Stack direction="row" alignItems="center" spacing={0.6}>
             <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: palette.success }} />
-            <Typography sx={{ color: palette.success, fontSize: '0.74rem', fontWeight: 600 }}>Available</Typography>
+            <Typography sx={{ color: palette.success, fontSize: '0.74rem', fontWeight: 600 }}>Tilgjengelig</Typography>
           </Stack>
         ) : talent.availability_status ? (
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 500 }}>{talent.availability_status}</Typography>
@@ -646,7 +646,7 @@ function TalentListRow({ talent }: { talent: TalentSearchHit }) {
         <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>{talent.display_name}</Typography>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{talent.city || '—'} · {(talent.languages ?? []).map((l) => l.label).join(', ') || 'Ingen språk'}</Typography>
       </Stack>
-      {talent.availability_status === 'open' ? <Chip label="Available" size="small" sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: palette.success }} /> : null}
+      {talent.availability_status === 'open' ? <Chip label="Tilgjengelig" size="small" sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: palette.success }} /> : null}
       <IconButton sx={{ color: palette.textMuted }}><VisibilityIcon fontSize="small" /></IconButton>
     </Box>
   );
