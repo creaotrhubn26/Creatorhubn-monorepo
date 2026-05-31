@@ -37,6 +37,7 @@ import { SELECT_CLIP_EVENT, type SelectClipDetail } from './ClipsSidebar';
 import { danceFlowColors } from './danceFlowTheme';
 
 const VIDEO_TIME_EVENT = 'dance:video-time' as const;
+const VIDEO_SEEK_EVENT = 'dance:video-seek' as const;
 const DIRECT_VIDEO_PATTERN = /\.(mp4|webm|mov|m4v)(\?|$)/i;
 const HLS_MANIFEST_PATTERN = /\.m3u8(\?|$)/i;
 /** Maks 10 events per sekund (100ms throttle) — synkron nok for Fabric-canvas. */
@@ -199,6 +200,25 @@ export default function FormationVideoPanel({
     };
     window.addEventListener(SELECT_CLIP_EVENT, onSelect as EventListener);
     return () => window.removeEventListener(SELECT_CLIP_EVENT, onSelect as EventListener);
+  }, []);
+
+  // Phase 5: lytt på 'dance:video-seek' fra FormationTimeline (ruler-klikk).
+  // Setter video.currentTime — onTimeUpdate vil deretter dispatche
+  // dance:video-time som lukker syklusen og oppdaterer playhead-cursor.
+  React.useEffect(() => {
+    const onSeek = (e: Event): void => {
+      const detail = (e as CustomEvent<{ timeSec?: number }>).detail;
+      const video = videoElRef.current;
+      if (!video || !detail || typeof detail.timeSec !== 'number') return;
+      // Tvinge gjennom seek selv om videoen ikke har metadata ennå.
+      try {
+        video.currentTime = Math.max(0, detail.timeSec);
+      } catch {
+        // Noen formater nekter seek før metadata er lastet — ignorer trygt.
+      }
+    };
+    window.addEventListener(VIDEO_SEEK_EVENT, onSeek as EventListener);
+    return () => window.removeEventListener(VIDEO_SEEK_EVENT, onSeek as EventListener);
   }, []);
 
   const handleTimeUpdate = React.useCallback((): void => {

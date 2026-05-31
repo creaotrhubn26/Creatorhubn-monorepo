@@ -50,7 +50,22 @@ export interface FormationTimelineProps {
   notes?: readonly FormationTimelineNoteItem[];
   /** F5-10: musikk-URL — om satt rendres en waveform-strek. */
   musicUrl?: string | null;
+  /**
+   * Phase 5: DancerPathsView (eller annen DANCERS-track-komponent) rendres
+   * som siste rad i timeline-stacken (etter NOTES). Holder layout-kompositt
+   * uten å hardkode DancerPathsView-import her.
+   */
+  dancersTrackSlot?: React.ReactNode;
+  /**
+   * Phase 5: når true (default), lytter timeline på `dance:video-time` og
+   * tegner en vertikal playhead-cursor. Klikk på ruler-bakgrunnen dispatcher
+   * `dance:video-seek` med detail.timeSec. Sett false for å skru av i tester.
+   */
+  enableVideoSync?: boolean;
 }
+
+const VIDEO_SEEK_EVENT = 'dance:video-seek' as const;
+const VIDEO_TIME_EVENT_NAME = 'dance:video-time';
 
 export function FormationTimeline({
   formations,
@@ -60,8 +75,25 @@ export function FormationTimeline({
   movements = [],
   notes = [],
   musicUrl = null,
+  dancersTrackSlot = null,
+  enableVideoSync = true,
 }: FormationTimelineProps): React.ReactElement {
   const [zoomPct, setZoomPct] = React.useState<number>(100);
+
+  // Phase 5: playhead-cursor — lytter på dance:video-time fra
+  // FormationVideoPanel og holder local state med current time.
+  const [currentTimeSec, setCurrentTimeSec] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!enableVideoSync) return;
+    const onTime = (e: Event): void => {
+      const detail = (e as CustomEvent<{ currentTime?: number }>).detail;
+      if (detail && typeof detail.currentTime === 'number') {
+        setCurrentTimeSec(detail.currentTime);
+      }
+    };
+    window.addEventListener(VIDEO_TIME_EVENT_NAME, onTime as EventListener);
+    return () => window.removeEventListener(VIDEO_TIME_EVENT_NAME, onTime as EventListener);
+  }, [enableVideoSync]);
 
   const placed = React.useMemo(() => {
     let cursor = 0;
@@ -145,7 +177,25 @@ export function FormationTimeline({
     >
       {/* Indre wrapper som skalerer med zoom. Overflow-x scroller. */}
       <Box sx={{ overflowX: 'auto', overflowY: 'hidden' }}>
-        <Box sx={{ width: `${100 * zoomFactor}%`, minWidth: '100%' }}>
+        <Box
+          sx={{ width: `${100 * zoomFactor}%`, minWidth: '100%', position: 'relative' }}
+          onClick={(e) => {
+            // Phase 5: seek-på-bakgrunnsklikk. Vi sjekker at click-target IKKE
+            // er en formasjon-blokk (de stopper propagation via egen onClick).
+            // X-posisjon innen wrapperen → tid.
+            if (!enableVideoSync) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const xWithinWrapper = e.clientX - rect.left;
+            const labelOffset = LABEL_WIDTH + 8; // label-bredde + Stack-gap
+            if (xWithinWrapper < labelOffset) return;
+            const trackWidth = rect.width - labelOffset;
+            const ratio = (xWithinWrapper - labelOffset) / trackWidth;
+            const timeSec = Math.max(0, Math.min(computedDuration, ratio * computedDuration));
+            window.dispatchEvent(
+              new CustomEvent(VIDEO_SEEK_EVENT, { detail: { timeSec } }),
+            );
+          }}
+        >
           <Stack spacing={0.5}>
             {/* FORMATION-spor */}
             <Stack direction="row" alignItems="center" spacing={1}>
@@ -171,7 +221,12 @@ export function FormationTimeline({
                         role="button"
                         tabIndex={0}
                         aria-pressed={isActive}
-                        onClick={() => onSelect?.(formation.id)}
+                        onClick={(e) => {
+                          // Phase 5: stop propagation så wrapper-seek ikke fyrer
+                          // når brukeren klikker på en formasjon-blokk.
+                          e.stopPropagation();
+                          onSelect?.(formation.id);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
@@ -219,7 +274,35 @@ export function FormationTimeline({
 
             {/* NOTES-spor (F5-9) */}
             {notes.length > 0 ? renderBlockTrack('NOTES', '#60a5fa', notes.map((n) => ({ id: n.id, label: n.text, startSec: n.startSec, endSec: n.endSec })), 'formation-timeline-note') : null}
+
+            {/* Phase 5: DANCERS-track-slot (typisk <DancerPathsView/>) */}
+            {dancersTrackSlot ? (
+              <Box data-testid="formation-timeline-dancers-slot" sx={{ mt: 0.5 }}>
+                {dancersTrackSlot}
+              </Box>
+            ) : null}
           </Stack>
+
+          {/* Phase 5: playhead-cursor — vertikal linje på currentTime.
+              Offset for label-bredde (LABEL_WIDTH + 8px Stack-gap) så cursoren
+              treffer track-startet, ikke labelen. */}
+          {enableVideoSync && currentTimeSec != null && computedDuration > 0 ? (
+            <Box
+              data-testid="formation-timeline-playhead"
+              aria-hidden
+              sx={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: `calc(${LABEL_WIDTH + 8}px + (100% - ${LABEL_WIDTH + 8}px) * ${Math.min(1, Math.max(0, currentTimeSec / computedDuration))})`,
+                width: 0,
+                borderLeft: '1.5px solid #fbbf24',
+                pointerEvents: 'none',
+                boxShadow: '0 0 8px rgba(251,191,36,0.5)',
+                zIndex: 5,
+              }}
+            />
+          ) : null}
         </Box>
       </Box>
 

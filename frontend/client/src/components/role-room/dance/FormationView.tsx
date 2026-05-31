@@ -206,6 +206,20 @@ export const FormationView: React.FC<FormationViewProps> = ({
     return () => window.removeEventListener('dance:video-time', onVideoTime as EventListener);
   }, [formations, activeFormationId]);
 
+  // Phase 5: lytt på `dance:select-clip` fra ClipsSidebar slik at MUSIC-track
+  // i FormationTimeline kan rendre waveform fra valgt clip's signedUrl.
+  // Holdes lokalt så vi ikke trenger å bobble selection-state opp.
+  const [selectedClipUrl, setSelectedClipUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const onSelectClip = (e: Event): void => {
+      const detail = (e as CustomEvent<{ signedUrl?: string | null }>).detail;
+      if (!detail) return;
+      setSelectedClipUrl(typeof detail.signedUrl === 'string' ? detail.signedUrl : null);
+    };
+    window.addEventListener('dance:select-clip', onSelectClip as EventListener);
+    return () => window.removeEventListener('dance:select-clip', onSelectClip as EventListener);
+  }, []);
+
   // Phase 2: lytt på `dance:export-formation` fra FormationHeaderBar.
   // PNG = fabric.toDataURL snapshot. JSON = serialisert formations-array.
   // PDF er stubbed (knapp disabled i headeren — Phase 6 lager renderer).
@@ -968,14 +982,17 @@ export const FormationView: React.FC<FormationViewProps> = ({
         </Box>
       </Box>
     </Box>
-    {/* DanceFlow-paritet: tids-akse for formasjons-rekkefølge */}
+    {/* DanceFlow-paritet: tids-akse for formasjons-rekkefølge.
+        Phase 5: musicUrl wired fra valgt clip; DancerPathsView mountet INNI
+        timeline-skallet via dancersTrackSlot. */}
     <Box sx={{ p: 1.5, borderTop: '1px solid #1e2536', display: 'flex', flexDirection: 'column', gap: 1 }}>
       <FormationTimeline
         formations={formations}
         activeFormationId={activeFormationId}
         onSelect={setActiveFormationId}
+        musicUrl={selectedClipUrl}
+        dancersTrackSlot={<DancerPathsView formations={formations} dancers={dancers} />}
       />
-      <DancerPathsView formations={formations} dancers={dancers} />
     </Box>
     </Box>
   );
