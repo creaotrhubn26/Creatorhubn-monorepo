@@ -119,6 +119,7 @@ import { setupPagePublicContentRoutes } from "./role-room-page-public-content-ro
 import { setupPageMentionsRoutes } from "./role-room-page-mentions-routes.js";
 import { setupPageMetadataRoutes } from "./role-room-page-metadata-routes.js";
 import { setupIgPublicRoutes } from "./role-room-ig-public-routes.js";
+import { setupLeadsRetrievalRoutes } from "./role-room-leads-retrieval-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31529,6 +31530,9 @@ setupPageMetadataRoutes({ app, requireAdminOrDemoBypass });
 
 // Meta App Review demo for Instagram Public Content Access — hashtag + discovery.
 setupIgPublicRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for leads_retrieval — Lead Ads form-submissions ingest.
+setupLeadsRetrievalRoutes({ app, requireAdminOrDemoBypass });
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-

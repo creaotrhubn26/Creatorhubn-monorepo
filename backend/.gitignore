@@ -22,6 +22,7 @@ node_modules/
 .env.page-mentions.demo.local
 .env.page-metadata.demo.local
 .env.ig-public.demo.local
+.env.leads-retrieval.demo.local
 
 # Logs
 logs/
