@@ -208,6 +208,9 @@ export default function FormationHeaderBar({
         alignItems="center"
         sx={{ flex: { md: '0 0 auto' }, justifyContent: 'flex-end' }}
       >
+        {/* Audit E1: engelsk header-tekst matcher mockup-spec
+            (Annotate/Formation/Dancers/Analysis/Review). Norsk for
+            content-tekster (placeholders, helper-text, snackbar). */}
         {onShare ? (
           <Button
             size="small"
@@ -226,7 +229,7 @@ export default function FormationHeaderBar({
             }}
             variant="outlined"
           >
-            Del
+            Share
           </Button>
         ) : null}
 
@@ -255,7 +258,7 @@ export default function FormationHeaderBar({
           }}
           variant="outlined"
         >
-          Eksporter
+          Export
         </Button>
         <Menu
           anchorEl={exportAnchor}

@@ -220,6 +220,19 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
   // Audit I2: ?-keybind for cheat-sheet modal med alle keybinds + tips.
   const cheatSheet = useDanceCheatSheet();
 
+  // Audit K2: lytt på 'dance:toast' og resirkuler eksisterende
+  // share-snackbar for diskret feedback ('Forbi klipp-lengden' etc.)
+  React.useEffect(() => {
+    const onToast = (e: Event): void => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (detail && typeof detail.message === 'string') {
+        setShareMessage(detail.message);
+      }
+    };
+    window.addEventListener('dance:toast', onToast as EventListener);
+    return () => window.removeEventListener('dance:toast', onToast as EventListener);
+  }, []);
+
   // Phase 3 vil koble breadcrumbs til ekte prosjekt-navn fra context.
   const breadcrumbs = React.useMemo(
     () => [

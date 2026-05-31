@@ -200,7 +200,17 @@ export function FormationTimeline({
             if (xWithinWrapper < labelOffset) return;
             const trackWidth = rect.width - labelOffset;
             const ratio = (xWithinWrapper - labelOffset) / trackWidth;
-            const timeSec = Math.max(0, Math.min(computedDuration, ratio * computedDuration));
+            const rawTimeSec = ratio * computedDuration;
+            // Audit K2: hvis brukeren klikker utenfor faktisk lengde, vis
+            // varsel i stedet for stille klamping.
+            if (rawTimeSec > computedDuration) {
+              window.dispatchEvent(
+                new CustomEvent('dance:toast', {
+                  detail: { message: 'Forbi klipp-lengden', kind: 'info' },
+                }),
+              );
+            }
+            const timeSec = Math.max(0, Math.min(computedDuration, rawTimeSec));
             window.dispatchEvent(
               new CustomEvent(VIDEO_SEEK_EVENT, { detail: { timeSec } }),
             );

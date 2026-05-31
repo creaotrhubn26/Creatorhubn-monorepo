@@ -70,6 +70,13 @@ export interface Formation {
   tags?: string[];
   /** F5-13B: eksplisitte bezier-baner FRA denne formasjonen TIL neste, én per danser. */
   transitionPaths?: ReadonlyArray<DancerTransitionPath>;
+  /**
+   * Workflow-audit G14: lås mot uhellsendringer. Pucks kan ikke flyttes
+   * og delete-handler refuserer. Foreløpig client-side state (lagres ikke
+   * i backend før migration får et locked-felt — sjekkboksen gjelder
+   * sesjonen og resetter ved reload).
+   */
+  locked?: boolean;
 }
 
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────

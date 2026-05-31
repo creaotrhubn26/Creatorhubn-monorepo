@@ -346,12 +346,18 @@ export const FormationView: React.FC<FormationViewProps> = ({
     const wrapper = canvasEl.parentElement;
     if (!wrapper) return;
 
-    let rafId: number | null = null;
+    // Audit F3: debounce 100ms + bare resize hvis bredden faktisk endret > 5px.
+    // Tidligere brukte vi rAF-throttle, som triggerte setDimensions hver frame
+    // under window-drag — 60 re-renders/sek av alle pucks ble for tregt.
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let lastWidth = 0;
     const recompute = (): void => {
-      if (rafId !== null) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
         const containerWidth = wrapper.clientWidth || STAGE_WIDTH;
+        if (Math.abs(containerWidth - lastWidth) < 5) return;
+        lastWidth = containerWidth;
         const targetRatio = Math.max(0.5, Math.min(2, containerWidth / STAGE_WIDTH));
         const targetWidth = STAGE_WIDTH * targetRatio;
         const targetHeight = STAGE_HEIGHT * targetRatio;
@@ -363,7 +369,7 @@ export const FormationView: React.FC<FormationViewProps> = ({
         current.setDimensions({ width: targetWidth, height: targetHeight });
         current.setZoom(targetRatio);
         current.requestRenderAll();
-      });
+      }, 100);
     };
 
     recompute(); // initial sync (parent kan endre seg under første render)
@@ -372,7 +378,7 @@ export const FormationView: React.FC<FormationViewProps> = ({
     observer.observe(wrapper);
     return () => {
       observer.disconnect();
-      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      if (timeoutId !== null) clearTimeout(timeoutId);
     };
   }, []);
 
@@ -443,6 +449,8 @@ export const FormationView: React.FC<FormationViewProps> = ({
         snapStep, symmetry,
         hiddenDancerIds, showPaths, showIds,
         prevFormation: prev, nextFormation: next,
+        // Audit G14: pucks blir read-only når formasjonen er låst.
+        locked: activeFormation.locked === true,
       },
     );
   }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds]);
@@ -513,6 +521,8 @@ export const FormationView: React.FC<FormationViewProps> = ({
   const deleteFormation = useCallback((id: string) => {
     setFormations((prev) => {
       const removed = prev.find((f) => f.id === id);
+      // Audit G14: refuser å slette låste formasjoner
+      if (removed?.locked) return prev;
       const next = prev.filter((f) => f.id !== id);
       // Audit K3: hvis vi slettet aktiv formasjon, velg nærmeste basert på
       // startSec (ikke bare første i lista — det føles ulogisk når 12 av 20
@@ -1509,9 +1519,41 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
       data-testid="formation-details-panel"
       sx={{ pb: 1.5, mb: 1.5, borderBottom: '1px solid #1e2536' }}
     >
-      <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700, mb: 0.75 }}>
-        AKTIV FORMASJON
-      </Typography>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ mb: 0.75 }}
+      >
+        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700 }}>
+          AKTIV FORMASJON
+        </Typography>
+        {/* Audit G14: lock-toggle. Klient-side state inntil migration. */}
+        <Tooltip
+          title={
+            formation.locked
+              ? 'Lås opp — tillat redigering'
+              : 'Lås formasjonen — forhindrer endring/sletting'
+          }
+        >
+          <IconButton
+            size="small"
+            onClick={() => onChange({ locked: !formation.locked })}
+            data-testid="formation-details-lock-toggle"
+            aria-pressed={formation.locked === true}
+            sx={{
+              color: formation.locked ? '#fbbf24' : '#6b7280',
+              p: 0.25,
+              '&:hover': { color: formation.locked ? '#fbbf24' : '#a78bfa' },
+            }}
+          >
+            {/* Bruker enkle Unicode-symboler så vi slipper ekstra import */}
+            <Box component="span" sx={{ fontSize: 14, fontWeight: 700 }}>
+              {formation.locked ? '🔒' : '🔓'}
+            </Box>
+          </IconButton>
+        </Tooltip>
+      </Stack>
 
       {/* F5-12: 2D/3D stage-mode toggle */}
       <Stack direction="row" spacing={0.5} sx={{ mb: 1 }} data-testid="formation-stage-mode-toggle">
@@ -1979,6 +2021,8 @@ interface DrawFormationOptions {
   /** Forrige + neste formasjon brukes til path-rendering. */
   prevFormation?: Formation | null;
   nextFormation?: Formation | null;
+  /** Audit G14: formasjonen er låst — pucks kan ikke flyttes. */
+  locked?: boolean;
 }
 
 function drawFormation(
@@ -2138,6 +2182,12 @@ function drawFormation(
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
+      // Audit G14: når formasjonen er låst, pucks kan ikke dras eller velges.
+      selectable: !options.locked,
+      evented: !options.locked,
+      lockMovementX: options.locked === true,
+      lockMovementY: options.locked === true,
+      hoverCursor: options.locked ? 'not-allowed' : 'move',
     });
     // Tag gruppen for clean removal + identifisering
     (group as { dancerId?: string }).dancerId = dancer.id;
