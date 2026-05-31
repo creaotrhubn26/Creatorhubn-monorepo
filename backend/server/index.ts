@@ -434,6 +434,7 @@ import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-r
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
+import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -25724,6 +25725,13 @@ setupRoleRoomTalentsRoutes({
 // B2B2Talent Phase 1.5 — agency-perspektivet. Stella/NSF/produsenter ser
 // talents kun via consent. Migrasjon 211 (agency_orgs + users.agency_org_id).
 setupRoleRoomAgenciesRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 2 — alt-i-ett partners-overview + bulk-set + invite-flow.
+// Migrasjon 213 (talent_partner_invites). E2E-data for /talents/partners-siden.
+setupRoleRoomTalentPartnersRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
