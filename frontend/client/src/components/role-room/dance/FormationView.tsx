@@ -241,6 +241,11 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
 
+  // Audit B1: keyboard-navigation state — declared early så useEffect
+  // senere kan referere det. Effekten registreres etter updateDancerPosition
+  // er definert (TDZ-defensiv).
+  const [keyboardPuckIdx, setKeyboardPuckIdx] = useState<number | null>(null);
+
   // F5-15: Video + stage-map sync. Hør på 'dance:video-time'-CustomEvent
   // som video-spilleren dispatcher når playheaden flytter seg. Velg
   // formasjonen hvis tidsrom inneholder gjeldende currentTime.
@@ -506,14 +511,67 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         // Audit H1: read-only-modus tilsvarer per-formasjon-lås (read-only
         // hele veien). Disjunksjon dekker begge.
         locked: activeFormation.locked === true || readOnly,
+        // Audit B1: hvilken puck er keyboard-aktiv (index i positions-array).
+        keyboardActiveIdx: keyboardPuckIdx,
       },
     );
-  }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds, readOnly]);
+  }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds, readOnly, keyboardPuckIdx]);
 
   // Persister via callback når formations endres
   useEffect(() => {
     onFormationsChange?.(formations);
   }, [formations, onFormationsChange]);
+
+  // Audit B1: keyboard-navigation for Fabric pucks. Skjermlesere +
+  // tastatur-only-brukere kan tab gjennom pucks og flytte dem 1% av stage
+  // per piltrykk (5% med Shift). Read-only skipper.
+  useEffect(() => {
+    if (readOnly) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const active = formations.find((f) => f.id === activeFormationId);
+      if (!active || active.positions.length === 0) return;
+      const positions = active.positions;
+
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        setKeyboardPuckIdx((cur) => {
+          if (cur == null) return e.shiftKey ? positions.length - 1 : 0;
+          const next = e.shiftKey ? cur - 1 : cur + 1;
+          if (next < 0 || next >= positions.length) return null;
+          return next;
+        });
+        return;
+      }
+      if (e.key === 'Escape' && keyboardPuckIdx != null) {
+        e.preventDefault();
+        setKeyboardPuckIdx(null);
+        return;
+      }
+      if (keyboardPuckIdx == null) return;
+
+      const step = e.shiftKey ? 0.05 : 0.01;
+      let dx = 0, dy = 0;
+      switch (e.key) {
+        case 'ArrowLeft':  dx = -step; break;
+        case 'ArrowRight': dx = step;  break;
+        case 'ArrowUp':    dy = -step; break;
+        case 'ArrowDown':  dy = step;  break;
+        default: return;
+      }
+      e.preventDefault();
+      const pos = positions[keyboardPuckIdx];
+      if (!pos) return;
+      const newX = Math.max(0, Math.min(1, pos.x + dx));
+      const newY = Math.max(0, Math.min(1, pos.y + dy));
+      // Gjenbruker eksisterende updateDancerPosition (samme path som drag)
+      // så ARIA-live-region kunngjør endringen.
+      updateDancerPosition(pos.dancerId, newX, newY);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readOnly, formations, activeFormationId, keyboardPuckIdx, updateDancerPosition]);
 
   // ─── Add/remove dancer fra aktiv formasjon ─────────
 
@@ -1202,6 +1260,10 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
 
         <Typography sx={{ fontSize: 10, color: '#6b7280', textAlign: 'center', mt: -0.5 }}>
           Drag dansere på scenen for å plassere. Posisjonen lagres automatisk i aktiv formasjon.
+          {/* Audit B1: keyboard-hint */}
+          <Box component="span" sx={{ display: 'block', mt: 0.25, fontSize: 9, color: '#6b7280' }}>
+            Eller bruk <strong>Tab</strong> + piltaster — pucks flyttes 1% per trykk (Shift = 5%).
+          </Box>
         </Typography>
       </Box>
       </Box>
@@ -2144,6 +2206,8 @@ interface DrawFormationOptions {
   nextFormation?: Formation | null;
   /** Audit G14: formasjonen er låst — pucks kan ikke flyttes. */
   locked?: boolean;
+  /** Audit B1: index av keyboard-aktiv puck — tykkere ring + ARIA-fokus. */
+  keyboardActiveIdx?: number | null;
 }
 
 function drawFormation(
@@ -2200,12 +2264,15 @@ function drawFormation(
     const cy = STAGE_PADDING + pos.y * innerHeight;
     const color = dancer.color ?? '#3b82f6';
 
-    // Sirkel for danser-puck
+    // Sirkel for danser-puck.
+    // Audit B1: hvis keyboard-aktiv, render lavender ring + tykkere stroke
+    // som visuell focus-indikator.
+    const isKbActive = options.keyboardActiveIdx === idx;
     const circle = new Circle({
       radius: PUCK_RADIUS,
       fill: color,
-      stroke: pos.isLead ? '#fbbf24' : 'rgba(255,255,255,0.4)',
-      strokeWidth: pos.isLead ? 3 : 1.5,
+      stroke: isKbActive ? '#a78bfa' : (pos.isLead ? '#fbbf24' : 'rgba(255,255,255,0.4)'),
+      strokeWidth: isKbActive ? 4 : (pos.isLead ? 3 : 1.5),
       originX: 'center',
       originY: 'center',
     });
