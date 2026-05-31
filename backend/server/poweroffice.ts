@@ -289,6 +289,14 @@ export interface CreateInvoiceResult {
   productJustCreated: boolean;
   /** Status fra send-request. Den faktiske fakturanummer kommer asynkront i PO. */
   sendStatus: string | null;
+  /**
+   * Hvis send-stegen feilet (typisk "Missing privilege" på demo-tier),
+   * settes denne. Salgsordren er fortsatt opprettet i PO — caller bør
+   * lagre external_invoice_id og rapportere send-feilen til fotograf
+   * uten å rulle tilbake. Fotografen kan da sende manuelt fra
+   * PowerOffice GO → Salg → Salgsordrer.
+   */
+  sendError: { status: number; detail?: unknown } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -457,14 +465,29 @@ async function createSalesOrderWithLines(
   return created;
 }
 
+/**
+ * Send salgsordre som faktura.
+ *
+ * Returnerer 202 Accepted — sending er asynkron i PO. Fakturanummer
+ * tildeles av PO ETTER at den er postert; vi får aldri den her.
+ *
+ * KJENT EDGE-CASE: Hvis tenantet returnerer 400 "Missing privilege to
+ * send invoices" — dette skjer typisk på `starter-demo`-subscription
+ * eller hvis Custom Extension-aktiveringen ikke ga send-privilegiet.
+ * Salgsordren ER allerede opprettet (caller har commitet
+ * `external_invoice_id`), så fotografen kan manuelt sende den fra
+ * PowerOffice GO → Salg → Salgsordrer. Caller bør håndtere
+ * PowerOfficeApiError med status 400 og melde dette til fotograf
+ * uten å trekke tilbake invoice_provider-koblingen.
+ *
+ * Verifisert 2026-05-31 mot creatorhubn-Demo (starter-demo tier).
+ */
 async function sendInvoice(
   clientKey: string,
   salesOrderId: string,
   emailAddress: string,
   deliveryType: NonNullable<CreateInvoiceInput['deliveryType']>,
 ): Promise<SendInvoiceRequestDto> {
-  // 202 Accepted — async. Body er SendInvoiceRequestPostDto. Bare
-  // DeliveryType + EmailAddress er nødvendig; resten arves fra ordren.
   const res = await call<SendInvoiceRequestDto>(clientKey, {
     method: 'POST',
     path: `/SalesOrders/${encodeURIComponent(salesOrderId)}/CreateAndSendInvoice`,
@@ -493,18 +516,37 @@ export async function createInvoiceViaSalesOrder(input: CreateInvoiceInput): Pro
     input.reference,
   );
 
-  const sendReq = await sendInvoice(
-    input.clientKey,
-    so.Id,
-    input.customer.email,
-    input.deliveryType ?? 'Auto',
-  );
+  // Send-stegen kan feile (typisk "Missing privilege" på demo-tier),
+  // men salgsordren er allerede opprettet i PO. Vi returnerer
+  // sendError så caller kan committe external_invoice_id likevel
+  // (unngår at retry skaper duplikate ordrer). Auth-feil (token
+  // ugyldig) propageres som vanlig så caller markerer integrasjonen
+  // som invalid.
+  let sendStatus: string | null = null;
+  let sendError: CreateInvoiceResult['sendError'] = null;
+  try {
+    const sendReq = await sendInvoice(
+      input.clientKey,
+      so.Id,
+      input.customer.email,
+      input.deliveryType ?? 'Auto',
+    );
+    sendStatus = sendReq.Status ?? null;
+  } catch (err) {
+    if (err instanceof PowerOfficeAuthError) throw err;
+    if (err instanceof PowerOfficeApiError) {
+      sendError = { status: err.status, detail: err.body };
+    } else {
+      throw err;
+    }
+  }
 
   return {
     salesOrderId: so.Id,
     salesOrderNumber: so.SalesOrderNo ?? null,
     productId,
     productJustCreated: justCreated,
-    sendStatus: sendReq.Status ?? null,
+    sendStatus,
+    sendError,
   };
 }

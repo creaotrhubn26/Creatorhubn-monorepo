@@ -212,6 +212,7 @@ export default function PhotographerProjectDetail() {
       salesOrderId: string;
       salesOrderNumber: number | string | null;
       sendStatus?: string | null;
+      sendError?: { status: number; detail?: unknown } | null;
       async?: boolean;
       alreadyInvoiced?: boolean;
     },
@@ -944,13 +945,23 @@ export default function PhotographerProjectDetail() {
               );
             })()}
             {createInvoice.isSuccess && createInvoice.data && (
-              <Alert severity="success">
-                {createInvoice.data.alreadyInvoiced
-                  ? `Allerede fakturert (salgsordre ${createInvoice.data.salesOrderNumber ?? createInvoice.data.salesOrderId.slice(0, 8)})`
-                  : createInvoice.data.salesOrderNumber
-                    ? `Faktura sendt til kunde via PowerOffice (salgsordre #${createInvoice.data.salesOrderNumber}). Fakturanummer tildeles av PO ved postering.`
-                    : 'Faktura er sendt til kunde via PowerOffice. Du finner den i PowerOffice GO under Salg → Salgsordre.'}
-              </Alert>
+              createInvoice.data.sendError ? (
+                <Alert severity="warning">
+                  Salgsordre #{createInvoice.data.salesOrderNumber ?? createInvoice.data.salesOrderId.slice(0, 8)} er
+                  opprettet i PowerOffice, men automatisk faktura-sending ble blokkert
+                  ({createInvoice.data.sendError.status}). Du må sende fakturaen manuelt fra
+                  PowerOffice GO → Salg → Salgsordre. Kontakt PO support hvis det skyldes
+                  manglende privilegium på tenant-nivå.
+                </Alert>
+              ) : (
+                <Alert severity="success">
+                  {createInvoice.data.alreadyInvoiced
+                    ? `Allerede fakturert (salgsordre ${createInvoice.data.salesOrderNumber ?? createInvoice.data.salesOrderId.slice(0, 8)})`
+                    : createInvoice.data.salesOrderNumber
+                      ? `Faktura sendt til kunde via PowerOffice (salgsordre #${createInvoice.data.salesOrderNumber}). Fakturanummer tildeles av PO ved postering.`
+                      : 'Faktura er sendt til kunde via PowerOffice. Du finner den i PowerOffice GO under Salg → Salgsordre.'}
+                </Alert>
+              )
             )}
           </Stack>
         )}

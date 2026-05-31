@@ -1137,8 +1137,10 @@ export function setupPhotographerProjectsRoutes(
       }
 
       // Lagre invoice-koblingen på prosjektet (external_invoice_id = SalesOrder UUID).
-      // Merk: SalesOrderNo er null inntil PO posterer fakturaen (async),
-      // men vi lagrer den hvis returnert.
+      // VIKTIG: vi committer dette ALLTID når SalesOrderen er opprettet i PO,
+      // selv om send-stegen feilet — ellers vil retry skape en duplikat-ordre.
+      // SalesOrderNo er null inntil PO posterer fakturaen, men vi lagrer den
+      // hvis returnert.
       await pool.query(
         `UPDATE projects SET
            invoice_provider = 'poweroffice',
@@ -1151,21 +1153,29 @@ export function setupPhotographerProjectsRoutes(
       );
 
       // Persistér nyopprettet PO-product-id (gjenbrukes for senere fakturaer).
+      // Lagrer også sendError som last_error så fotograf ser feilen i status.
+      const lastErrorForIntegration = result.sendError
+        ? `Send blokkert (${result.sendError.status}): ${JSON.stringify(result.sendError.detail).slice(0, 400)}`
+        : null;
       if (result.productJustCreated) {
         await pool.query(
           `UPDATE photographer_integrations
               SET default_product_id = $2,
                   default_product_synced_at = NOW(),
-                  last_used_at = NOW(), last_error = NULL, updated_at = NOW()
+                  last_used_at = NOW(),
+                  last_error = $3,
+                  updated_at = NOW()
             WHERE photographer_id = $1 AND provider = 'poweroffice'`,
-          [photographerId, result.productId],
+          [photographerId, result.productId, lastErrorForIntegration],
         );
       } else {
         await pool.query(
           `UPDATE photographer_integrations
-              SET last_used_at = NOW(), last_error = NULL, updated_at = NOW()
+              SET last_used_at = NOW(),
+                  last_error = $2,
+                  updated_at = NOW()
             WHERE photographer_id = $1 AND provider = 'poweroffice'`,
-          [photographerId],
+          [photographerId, lastErrorForIntegration],
         );
       }
 
@@ -1173,6 +1183,10 @@ export function setupPhotographerProjectsRoutes(
         salesOrderId: result.salesOrderId,
         salesOrderNumber: result.salesOrderNumber,
         sendStatus: result.sendStatus,
+        // Hvis sett: SalesOrderen er opprettet, men send-stegen feilet i PO
+        // (typisk "Missing privilege"). Fotograf kan sende manuelt fra
+        // PowerOffice GO → Salg → Salgsordrer.
+        sendError: result.sendError,
         provider: 'poweroffice',
         // Indikerer at faktura-sending er asynkron i PO og det endelige
         // fakturanummeret tildeles av PO etter postering.
