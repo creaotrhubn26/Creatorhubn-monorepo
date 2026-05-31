@@ -5730,7 +5730,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       selectedShowcase: '',
       clientEmail: prefilledClient?.email || '',
       clientName: prefilledClient?.name || '',
-      message: prefilledClient ? `Hei ${prefilledClient.name}! Takk for din interesse. Her er ditt ${getTerm('showcase').toLowerCase()} som du kan se og laste ned.` : ',',
+      message: prefilledClient ? `Hei ${prefilledClient.name}! Takk for din interesse. Her er ditt ${getTerm('showcase').toLowerCase()} som du kan se og laste ned.` : '',
       photographerName: user?.name || '',
       photographerCompany: '',
       projectState: 'in_review' as 'delivered' | 'in_review',
@@ -5747,10 +5747,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       }
     }, [shareForm.selectedShowcase, showcases]);
 
+    const [shareError, setShareError] = useState<string | null>(null);
+
     const handleShareShowcase = async () => {
+      setShareError(null);
       try {
         const showcase = showcases.find((s: any) => s.id === shareForm.selectedShowcase);
-        if (!showcase) return;
+        if (!showcase) {
+          setShareError('Showcaset finnes ikke lenger. Last inn siden og prøv på nytt.');
+          return;
+        }
 
         await shareShowcaseMutation.mutateAsync({
           showcaseId: shareForm.selectedShowcase,
@@ -5762,10 +5768,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           projectState: shareForm.projectState,
           projectId: showcase.projectId || shareForm.projectId
         });
-        
+
+        addNotification({
+          message: `Showcaset er sendt til ${shareForm.clientName} (${shareForm.clientEmail}).`,
+          type: 'success',
+        });
         onClose();
       } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
         console.error('Error sharing showcase:', error);
+        setShareError(
+          `Kunne ikke sende showcaset: ${msg}. ${shareForm.clientEmail ? `Sjekk at e-post-adressen «${shareForm.clientEmail}» er gyldig og prøv igjen.` : 'Prøv igjen om litt.'}`
+        );
       }
     };
 
@@ -5989,16 +6003,25 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </Paper>
             )}
           </Box>
+          {shareError && (
+            <Alert
+              severity="error"
+              onClose={() => setShareError(null)}
+              sx={{ mt: 2 }}
+            >
+              {shareError}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose} disabled={shareShowcaseMutation.isPending}>Avbryt</Button>
           <Button onClick={handleShareShowcase}
             variant="contained"
             color="primary"
             disabled={shareShowcaseMutation.isPending || !shareForm.selectedShowcase || !shareForm.clientEmail || !shareForm.clientName}
             sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67c00' } }}
           >
-            {shareShowcaseMutation.isPending ? 'Sending...' : `Share ${getTerm('showcase')}`}
+            {shareShowcaseMutation.isPending ? `Sender til ${shareForm.clientName || 'klient'}…` : `Send ${getTerm('showcase').toLowerCase()}`}
           </Button>
         </DialogActions>
       </Dialog>
