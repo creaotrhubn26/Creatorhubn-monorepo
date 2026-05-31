@@ -58,22 +58,51 @@ struct RootView: View {
     private let launchArguments = ProcessInfo.processInfo.arguments
 
     var body: some View {
-        switch resolvedSurface {
-        case .legacyCapture:
-            LiveCaptureView()
-        case .onboardingForced:
-            // Dev/test-only: wipe the persisted flag so the flow
-            // runs even on a previously-completed install. ``.task``
-            // runs once when the view mounts, so screenshot
-            // recorders can count on the reset happening before
-            // the first snapshot.
-            OnboardingView(onFinish: finishOnboarding)
-                .task { OnboardingCompletionFlag().reset() }
-        case .onboarding:
-            OnboardingView(onFinish: finishOnboarding)
-        case .mainShell:
-            CreatorHubOneRootView()
+        Group {
+            switch resolvedSurface {
+            case .legacyCapture:
+                LiveCaptureView()
+            case .onboardingForced:
+                // Dev/test-only: wipe the persisted flag so the flow
+                // runs even on a previously-completed install. ``.task``
+                // runs once when the view mounts, so screenshot
+                // recorders can count on the reset happening before
+                // the first snapshot.
+                OnboardingView(onFinish: finishOnboarding)
+                    .task { OnboardingCompletionFlag().reset() }
+            case .onboarding:
+                OnboardingView(onFinish: finishOnboarding)
+            case .mainShell:
+                CreatorHubOneRootView()
+            }
         }
+        // Globalt overlegg som dukker opp uansett hvilken surface som
+        // er aktiv. Drives av PairingRequestStore.shared som
+        // PairingConnection setter ved innkommende Desk-pair-request.
+        .sheet(item: pairingBinding) { request in
+            PairWithDeskPromptView(
+                request: request,
+                onAccept: { PairingRequestStore.shared.accept() },
+                onReject: { PairingRequestStore.shared.reject() },
+            )
+        }
+    }
+
+    /// SwiftUI .sheet(item:) krever Identifiable — wrappes så
+    /// activeRequest blir bundet via dens id (deskId).
+    private var pairingBinding: Binding<IdentifiablePairRequest?> {
+        Binding(
+            get: {
+                PairingRequestStore.shared.activeRequest.map(IdentifiablePairRequest.init)
+            },
+            set: { new in
+                if new == nil {
+                    // Sheet dismissed uten knapp — behandle som avvist
+                    // for protokoll-konsistens.
+                    PairingRequestStore.shared.reject(reason: "dismissed")
+                }
+            },
+        )
     }
 
     // MARK: - Routing
@@ -97,5 +126,26 @@ struct RootView: View {
 
     private func finishOnboarding() {
         hasOnboarded = true
+    }
+}
+
+/// PairRequest er ikke Identifiable selv (struct fra protokoll-laget).
+/// Wrapper'en gir den en id slik at SwiftUI .sheet(item:) kan binde
+/// den, og pairingBinding kan oversette mellom store og sheet-API.
+private struct IdentifiablePairRequest: Identifiable {
+    let request: PairingProtocol.PairRequest
+    var id: String { request.deskId }
+    init(_ request: PairingProtocol.PairRequest) {
+        self.request = request
+    }
+}
+
+extension PairWithDeskPromptView {
+    fileprivate init(
+        request: IdentifiablePairRequest,
+        onAccept: @escaping () -> Void,
+        onReject: @escaping () -> Void,
+    ) {
+        self.init(request: request.request, onAccept: onAccept, onReject: onReject)
     }
 }
