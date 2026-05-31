@@ -344,7 +344,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','commercial','portrett','produkt'],
     stats: [
