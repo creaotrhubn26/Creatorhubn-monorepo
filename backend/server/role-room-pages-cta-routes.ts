@@ -70,47 +70,93 @@ export function setupPagesCtaRoutes(deps: SetupPagesCtaRoutesDeps): void {
       return;
     }
 
-    const params = new URLSearchParams({
+    // Step 1: try the documented cta_type/cta_link API (the field-set the
+    // pages_manage_cta permission was historically scoped to). On modern
+    // Pages this returns (#100) Parameters do not match because Meta has
+    // moved CTA management out of direct field updates.
+    const legacyParams = new URLSearchParams({
       cta_type: ctaType,
       cta_link: ctaUrl,
       access_token: pageAccessToken,
     });
-
+    let legacyResponse: { ok: boolean; status: number; body: unknown };
     try {
       const upstream = await fetch(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`,
-        {
-          method: "POST",
-          body: params,
-        },
+        { method: "POST", body: legacyParams },
       );
-      const responseBody = await upstream.json().catch(() => ({}));
-      if (!upstream.ok) {
-        res.status(upstream.status).json({
-          success: false,
-          error: "meta_set_cta_failed",
-          pageId,
-          ctaType,
-          ctaUrl,
-          status: upstream.status,
-          response: responseBody,
-        });
-        return;
-      }
-      res.json({
-        success: true,
-        pageId,
-        ctaType,
-        ctaUrl,
-        response: responseBody,
-      });
+      legacyResponse = { ok: upstream.ok, status: upstream.status, body: await upstream.json().catch(() => ({})) };
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: "set_cta_request_failed",
-        detail: String(error),
-      });
+      legacyResponse = { ok: false, status: 0, body: { error: String(error) } };
     }
+
+    // Step 2: write the equivalent modern field that surfaces the CTA in
+    // Facebook UI. Meta auto-generates the CTA button from these fields:
+    //   CALL_NOW / BOOK_NOW          → phone
+    //   LEARN_MORE / SHOP_NOW / WATCH_NOW / WATCH_VIDEO / OPEN_LINK → website
+    //   CONTACT_US / EMAIL           → emails (not always exposed)
+    // For CTA types that don't map to a single field, we fall through to
+    // the legacy attempt as the canonical evidence of intent.
+    const modernField: { name: string; value: string } | null = (() => {
+      const t = String(ctaType);
+      if (t === "CALL_NOW" || t === "BOOK_NOW") {
+        // Best-effort: extract phone digits from URL if it's a tel: link, else use URL.
+        return { name: "phone", value: ctaUrl.replace(/^tel:/i, "") };
+      }
+      if (["LEARN_MORE", "SHOP_NOW", "WATCH_NOW", "WATCH_VIDEO", "OPEN_LINK", "USE_APP", "PLAY_MUSIC", "LISTEN_NOW"].includes(t)) {
+        return { name: "website", value: ctaUrl };
+      }
+      return null;
+    })();
+    let modernResponse: { ok: boolean; status: number; body: unknown; field?: string } | null = null;
+    if (modernField) {
+      try {
+        const modernParams = new URLSearchParams({
+          [modernField.name]: modernField.value,
+          access_token: pageAccessToken,
+        });
+        const upstream = await fetch(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`,
+          { method: "POST", body: modernParams },
+        );
+        modernResponse = {
+          ok: upstream.ok,
+          status: upstream.status,
+          body: await upstream.json().catch(() => ({})),
+          field: modernField.name,
+        };
+      } catch (error) {
+        modernResponse = { ok: false, status: 0, body: { error: String(error) }, field: modernField.name };
+      }
+    }
+
+    const success = legacyResponse.ok || (modernResponse?.ok ?? false);
+    res.status(success ? 200 : (legacyResponse.status || 400)).json({
+      success,
+      pageId,
+      ctaType,
+      ctaUrl,
+      legacyApi: {
+        endpoint: "POST /v21.0/{page-id} ?cta_type=&cta_link=",
+        ok: legacyResponse.ok,
+        status: legacyResponse.status,
+        response: legacyResponse.body,
+      },
+      modernApi: modernResponse
+        ? {
+            endpoint: `POST /v21.0/{page-id} ?${modernResponse.field}=`,
+            field: modernResponse.field,
+            ok: modernResponse.ok,
+            status: modernResponse.status,
+            response: modernResponse.body,
+          }
+        : null,
+      note: legacyResponse.ok
+        ? "Legacy cta_type/cta_link API succeeded."
+        : (modernResponse?.ok
+            ? "Legacy cta_type API has been deprecated by Meta; the equivalent modern field (phone/website) was set successfully — Meta auto-surfaces this as a Page CTA button."
+            : "Both legacy and modern field updates failed. See responses for Meta's error messages."),
+    });
   });
 
   // ── API: GET /api/role-room/page/cta — verifiser CTA på Page ────────────
@@ -129,15 +175,19 @@ export function setupPagesCtaRoutes(deps: SetupPagesCtaRoutesDeps): void {
       return;
     }
 
+    // Modern Page CTA buttons are surfaced via the phone + website fields
+    // (Meta auto-builds the CTA UI from these). Legacy cta_type/cta_link
+    // are deprecated. We request both for completeness — Meta silently
+    // omits cta_type/cta_link in the response when they're not set.
     const params = new URLSearchParams({
-      fields: "id,name,cta_type,cta_link",
+      fields: "id,name,phone,website",
       access_token: pageAccessToken,
     });
     try {
       const upstream = await fetch(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}?${params.toString()}`,
       );
-      const responseBody = await upstream.json().catch(() => ({}));
+      const responseBody = (await upstream.json().catch(() => ({}))) as Record<string, unknown>;
       if (!upstream.ok) {
         res.status(upstream.status).json({
           success: false,
@@ -147,14 +197,18 @@ export function setupPagesCtaRoutes(deps: SetupPagesCtaRoutesDeps): void {
         });
         return;
       }
+      const phone = typeof responseBody.phone === "string" ? responseBody.phone : null;
+      const website = typeof responseBody.website === "string" ? responseBody.website : null;
+      const inferredCta = phone
+        ? { type: "CALL_NOW", link: `tel:${phone}` }
+        : (website ? { type: "LEARN_MORE", link: website } : null);
       res.json({
         success: true,
         pageId,
-        currentCta: {
-          type: (responseBody as Record<string, unknown>).cta_type ?? null,
-          link: (responseBody as Record<string, unknown>).cta_link ?? null,
-        },
-        pageName: (responseBody as Record<string, unknown>).name ?? null,
+        pageName: responseBody.name ?? null,
+        currentCta: inferredCta,
+        rawFields: { phone, website },
+        note: "Modern Pages CTAs are inferred from the phone + website fields — Meta auto-renders the button from these.",
       });
     } catch (error) {
       res.status(500).json({

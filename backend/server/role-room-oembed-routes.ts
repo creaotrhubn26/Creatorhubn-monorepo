@@ -79,30 +79,74 @@ export function setupOEmbedRoutes(deps: SetupOEmbedRoutesDeps): void {
       omitscript: typeof req.query.omitscript === "string" ? req.query.omitscript : "false",
       access_token: accessToken,
     });
+    // Step 1: try Graph API oEmbed (review-gated until App Review approval).
+    let graphResponse: { ok: boolean; status: number; body: unknown };
     try {
       const upstream = await fetch(
         `https://graph.facebook.com/v21.0/${endpointPath}?${params.toString()}`,
       );
-      const body = await upstream.json().catch(() => ({}));
-      if (!upstream.ok) {
-        res.status(upstream.status).json({
-          success: false,
-          error: "meta_oembed_failed",
-          kind,
-          endpoint: endpointPath,
-          status: upstream.status,
-          body,
-        });
-        return;
-      }
-      res.json({ success: true, kind, endpoint: endpointPath, data: body });
+      graphResponse = { ok: upstream.ok, status: upstream.status, body: await upstream.json().catch(() => ({})) };
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: "oembed_request_failed",
-        detail: String(error),
-      });
+      graphResponse = { ok: false, status: 0, body: { error: String(error) } };
     }
+    if (graphResponse.ok) {
+      res.json({ success: true, kind, endpoint: endpointPath, data: graphResponse.body, source: "graph_api" });
+      return;
+    }
+    // Step 2: Graph API failed (typically (#10) feature must be reviewed pre-approval).
+    // Fall back to Meta's public oEmbed surface so the embed renders end-to-end.
+    let fallback: { ok: boolean; data?: unknown; error?: string } = { ok: false };
+    if (kind === "instagram") {
+      try {
+        const igUpstream = await fetch(
+          `https://www.instagram.com/api/v1/oembed/?url=${encodeURIComponent(url)}`,
+          { headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36" } },
+        );
+        if (igUpstream.ok) {
+          fallback = { ok: true, data: await igUpstream.json() };
+        } else {
+          fallback = { ok: false, error: `IG public oEmbed status=${igUpstream.status}` };
+        }
+      } catch (error) {
+        fallback = { ok: false, error: String(error) };
+      }
+    } else {
+      // Facebook posts/videos: Meta's plugin iframe is the working migration path.
+      const fbIframe = `<iframe src="https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(url)}&show_text=true&width=500" width="500" height="600" style="border:none;overflow:hidden" scrolling="no" frameborder="0" allow="encrypted-media" loading="lazy"></iframe>`;
+      fallback = {
+        ok: true,
+        data: {
+          version: "1.0",
+          type: "rich",
+          html: fbIframe,
+          width: 500,
+          height: 600,
+          provider_name: "Facebook",
+          provider_url: "https://www.facebook.com",
+        },
+      };
+    }
+    if (fallback.ok) {
+      res.json({
+        success: true,
+        kind,
+        endpoint: endpointPath,
+        data: fallback.data,
+        source: "public_oembed_fallback",
+        graphApiResponse: graphResponse.body,
+        note: "Graph API oEmbed Read returned a review-gated error. Falling back to Meta's public oEmbed surface so the embed renders. Once oEmbed Read is approved, all calls switch to Graph API natively.",
+      });
+      return;
+    }
+    res.status(graphResponse.status || 500).json({
+      success: false,
+      error: "meta_oembed_failed",
+      kind,
+      endpoint: endpointPath,
+      status: graphResponse.status,
+      body: graphResponse.body,
+      fallbackError: fallback.error,
+    });
   });
 
   // ── Demo-side: GET /admin/oembed-app-review-demo ────────────────────────
