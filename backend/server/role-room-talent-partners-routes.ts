@@ -328,10 +328,8 @@ export function setupRoleRoomTalentPartnersRoutes(
               WHERE talent_id = $1 AND status = 'pending' AND expires_at > now()`,
         [talent.id],
       );
-      // I demo-modus: legg 2 mockede pending-rader til den ene seedet for å matche mockup-tallet 3
-      const pendingRequests = demo
-        ? Math.max(3, pendingResult.rows[0]?.n ?? 0)
-        : (pendingResult.rows[0]?.n ?? 0);
+      // Ekte pending — ingen forcing. Mockup-spec og ekte data kan avvike.
+      const pendingRequests = pendingResult.rows[0]?.n ?? 0;
 
       // Feed: kombiner audit + invite-events + consent-events (siste ~20)
       const feedSqlWithIsDemo = `SELECT * FROM (

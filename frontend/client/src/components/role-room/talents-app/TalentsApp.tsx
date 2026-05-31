@@ -1,34 +1,46 @@
 /**
  * TalentsApp.tsx — root for "The Role Room Talents"-appen.
  *
- * Binder TalentsAppShell + active page sammen. URL-mapping:
- *   /talents          → dashboard (placeholder)
- *   /talents/partners → PartnersCollaborationPage (Phase 2 første ferdig-side)
- *   /talents/registry → placeholder (kommer i neste PR)
- *   ...
+ * URL-mapping (?demo=1 bevares uansett):
+ *   /talents          → Hjem (Dashboard)
+ *   /talents/partners → Partners & Collaboration
+ *   /talents/profiles → Min profil + onboarding-wizard
+ *   /talents/audit    → Hvem har sett meg?
+ *   /talents/settings → Innstillinger
  *
- * Phase 2 plan: én side om gangen, etter mockup-spec og Daniels prioriteringsvalg.
+ * Phase 3 (Irlin-UX): defensive design — sidebar disabler ikke-ferdige
+ * sider, alle handlinger har klar feedback, demo-modus er strengt isolert.
  */
 
 import { Box, Typography } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import TalentsAppShell, { type TalentsAppPage } from './TalentsAppShell';
 import PartnersCollaborationPage from './pages/PartnersCollaborationPage';
 import PartnerInviteAcceptPage from './pages/PartnerInviteAcceptPage';
+import DashboardPage from './pages/DashboardPage';
+import ProfilePage from './pages/ProfilePage';
+import AuditPage from './pages/AuditPage';
+import SettingsPage from './pages/SettingsPage';
 import { palette } from './theme';
 
 const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
   '': 'dashboard',
   'dashboard': 'dashboard',
+  'hjem': 'dashboard',
   'registry': 'registry',
   'profiles': 'profiles',
+  'profil': 'profiles',
   'selftapes': 'selftapes',
   'self-tapes': 'selftapes',
   'auditions': 'auditions',
   'partners': 'partners',
+  'partnere': 'partners',
   'collaboration': 'partners',
-  'permissions': 'permissions',
+  'audit': 'audit',
+  'aktivitet': 'audit',
+  'permissions': 'audit',  // legacy alias → audit
   'settings': 'settings',
+  'innstillinger': 'settings',
 };
 
 const PAGE_TO_ROUTE: Record<TalentsAppPage, string> = {
@@ -38,7 +50,8 @@ const PAGE_TO_ROUTE: Record<TalentsAppPage, string> = {
   selftapes: 'self-tapes',
   auditions: 'auditions',
   partners: 'partners',
-  permissions: 'permissions',
+  audit: 'audit',
+  permissions: 'audit',
   settings: 'settings',
 };
 
@@ -60,8 +73,19 @@ export function isPartnerInviteAcceptPath(): boolean {
 
 export { PartnerInviteAcceptPage };
 
-export default function TalentsApp({ initialPage }: { initialPage?: TalentsAppPage }) {
-  const [page, setPage] = useState<TalentsAppPage>(initialPage ?? 'partners');
+interface TalentsAppProps {
+  initialPage?: TalentsAppPage;
+  onLogout?: () => void;
+}
+
+export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
+  const [page, setPage] = useState<TalentsAppPage>(initialPage ?? 'dashboard');
+
+  // Demo-modus: leses fra URL én gang ved mount + persisteres ved navigasjon
+  const demoMode = useMemo(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1',
+    [],
+  );
 
   // Synk URL ↔ state — historikk-knapp støtter.
   useEffect(() => {
@@ -73,19 +97,29 @@ export default function TalentsApp({ initialPage }: { initialPage?: TalentsAppPa
     return () => window.removeEventListener('popstate', sync);
   }, []);
 
-  const handleNavigate = (next: TalentsAppPage) => {
+  const handleNavigate = useCallback((next: TalentsAppPage) => {
     setPage(next);
     const route = PAGE_TO_ROUTE[next];
-    const newPath = route ? `/talents/${route}` : '/talents';
-    if (window.location.pathname !== newPath) {
+    // Bevar ?demo=1 ved navigasjon (kritisk for at demo-state holder)
+    const search = demoMode ? '?demo=1' : '';
+    const newPath = route ? `/talents/${route}${search}` : `/talents${search}`;
+    if (window.location.pathname + window.location.search !== newPath) {
       window.history.pushState({}, '', newPath);
     }
-  };
+  }, [demoMode]);
 
   return (
-    <TalentsAppShell active={page} onNavigate={handleNavigate}>
-      {page === 'partners' ? (
+    <TalentsAppShell active={page} onNavigate={handleNavigate} onLogout={demoMode ? undefined : onLogout}>
+      {page === 'dashboard' ? (
+        <DashboardPage demoMode={demoMode} onNavigate={handleNavigate} />
+      ) : page === 'partners' ? (
         <PartnersCollaborationPage />
+      ) : page === 'profiles' ? (
+        <ProfilePage demoMode={demoMode} />
+      ) : page === 'audit' || page === 'permissions' ? (
+        <AuditPage demoMode={demoMode} />
+      ) : page === 'settings' ? (
+        <SettingsPage />
       ) : (
         <ComingSoonPage page={page} />
       )}
@@ -95,14 +129,20 @@ export default function TalentsApp({ initialPage }: { initialPage?: TalentsAppPa
 
 function ComingSoonPage({ page }: { page: TalentsAppPage }) {
   const titles: Record<TalentsAppPage, string> = {
-    dashboard: 'Dashboard',
+    dashboard: 'Hjem',
     registry: 'Talent Registry',
-    profiles: 'Profiles',
+    profiles: 'Min profil',
     selftapes: 'Self-Tape Studio',
     auditions: 'Auditions',
-    partners: 'Partners & Collaboration',
-    permissions: 'Permissions',
-    settings: 'Settings',
+    partners: 'Partnere',
+    audit: 'Hvem har sett meg?',
+    permissions: 'Tilganger',
+    settings: 'Innstillinger',
+  };
+  const descriptions: Partial<Record<TalentsAppPage, string>> = {
+    registry: 'Bla i andre talenter og bygg ditt nettverk. Kommer i Phase 4.',
+    selftapes: 'Spille inn, redigere og dele self-tapes direkte. Kommer i Phase 4.',
+    auditions: 'Kanban-oversikt over alle auditions du har søkt på. Kommer i Phase 4.',
   };
   return (
     <Box
@@ -120,8 +160,8 @@ function ComingSoonPage({ page }: { page: TalentsAppPage }) {
       <Typography sx={{ color: palette.textPrimary, fontSize: '1.6rem', fontWeight: 800 }}>
         {titles[page]}
       </Typography>
-      <Typography sx={{ color: palette.textMuted, fontSize: '0.95rem' }}>
-        Denne siden bygges i neste Phase 2-iterasjon. Følg mockup-rekkefølgen.
+      <Typography sx={{ color: palette.textMuted, fontSize: '0.95rem', maxWidth: 480, textAlign: 'center' }}>
+        {descriptions[page] ?? 'Denne siden bygges i neste fase. Si fra hvis du vil vi skal prioritere den.'}
       </Typography>
     </Box>
   );

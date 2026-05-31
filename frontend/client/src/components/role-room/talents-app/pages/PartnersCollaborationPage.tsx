@@ -104,10 +104,10 @@ function formatRelative(iso: string): string {
 
 function accessChip(access: PartnerOverviewRow['access_level']) {
   const map: Record<PartnerOverviewRow['access_level'], { label: string; fg: string; Icon: React.ComponentType<{ sx?: object }> }> = {
-    full:      { label: 'Full Access',    fg: '#4ade80', Icon: CheckCircleIcon },
-    limited:   { label: 'Limited Access', fg: '#fbbf24', Icon: HourglassEmptyIcon },
-    custom:    { label: 'Custom Access',  fg: '#c084fc', Icon: ShieldIcon },
-    view_only: { label: 'View Only',      fg: '#7dd3fc', Icon: VisibilityOutlinedIcon },
+    full:      { label: 'Full tilgang',     fg: '#4ade80', Icon: CheckCircleIcon },
+    limited:   { label: 'Begrenset',        fg: '#fbbf24', Icon: HourglassEmptyIcon },
+    custom:    { label: 'Tilpasset',        fg: '#c084fc', Icon: ShieldIcon },
+    view_only: { label: 'Kun visning',      fg: '#7dd3fc', Icon: VisibilityOutlinedIcon },
   };
   const { label, fg, Icon } = map[access];
   return (
@@ -138,6 +138,7 @@ export default function PartnersCollaborationPage() {
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [editPartner, setEditPartner] = useState<PartnerOverviewRow | null>(null);
 
   // Demo-modus: ?demo=1 i URL → isolert demo-talent (read-only).
   // Forhindrer at hovedstrøm-data noensinne blandes med demo.
@@ -201,11 +202,18 @@ export default function PartnersCollaborationPage() {
         setError(result.error);
         await reload();
       } else {
-        setSnack(`Tillatelse oppdatert for ${row.display_name}`);
+        const labels: Record<keyof PartnerOverviewRow['perms'], string> = {
+          profiles: 'profil',
+          selftapes: 'self-tapes',
+          workshops: 'workshops',
+          auditions: 'audition-invites',
+        };
+        const action = next[key] ? 'kan nå se' : 'ser ikke lenger';
+        setSnack(`${row.display_name} ${action} ${labels[key]}`);
         await reload();
       }
     },
-    [reload],
+    [reload, demoMode],
   );
 
   if (loading) {
@@ -243,9 +251,16 @@ export default function PartnersCollaborationPage() {
               size="small"
               sx={{ bgcolor: palette.accent, color: '#fff', fontWeight: 800, letterSpacing: '0.12em' }}
             />
-            <Typography sx={{ color: palette.textSecondary, fontSize: '0.85rem' }}>
-              Du ser isolert demo-data (talent: Ingrid Nilsen). Ingen handlinger lagres. Fjern <code>?demo=1</code> fra URL for å se ekte data.
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.85rem', flexGrow: 1 }}>
+              Du ser et eksempel — Ingrid Nilsen sin profil. Ingen handlinger lagres.
             </Typography>
+            <Button
+              href="/talents/partners"
+              size="small"
+              sx={{ textTransform: 'none', color: palette.accentBright, fontWeight: 600, fontSize: '0.82rem' }}
+            >
+              Gå til min ekte profil →
+            </Button>
           </Box>
         ) : null}
 
@@ -258,11 +273,11 @@ export default function PartnersCollaborationPage() {
         >
           <Box>
             <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15 }}>
-              Partners &amp; Collaboration
+              Partnere
             </Typography>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem', mt: 0.6, maxWidth: 720 }}>
-              Collaborate securely with casting partners and professional centers. Share talent,
-              resources, and opportunities.
+              Du eier profilen din. Velg hvilke casting-byråer, sentre og produsenter som får se hva.
+              Du kan trekke tilgangen når som helst.
             </Typography>
           </Box>
           <Button
@@ -289,18 +304,17 @@ export default function PartnersCollaborationPage() {
               '&.Mui-disabled': { opacity: 0.55, color: '#fff' },
             }}
           >
-            Invite Partner
+            Inviter partner
           </Button>
         </Stack>
 
         {error ? <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert> : null}
 
-        {/* ─── 4 stat-cards ─── */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
-          <StatCard label="Active Partners" value={String(overview.stats.activePartners)} desc="Partners with active access" Icon={GroupIcon} />
-          <StatCard label="Shared Talent Pools" value={String(overview.stats.sharedTalentPools)} desc="Pools shared across partners" Icon={PeopleOutlineOutlinedIcon} />
-          <StatCard label="Pending Requests" value={String(overview.stats.pendingRequests)} desc="Awaiting your approval" Icon={HourglassEmptyIcon} />
-          <StatCard label="GDPR-Compliant Permissions" value={`${overview.stats.gdprCompliantPercent}%`} desc="All data access is controlled" Icon={ShieldIcon} />
+        {/* ─── 3 stat-cards (fjernet Shared Talent Pools — ikke implementert) ─── */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 3 }}>
+          <StatCard label="Aktive partnere" value={String(overview.stats.activePartners)} desc="Har tilgang til profilen din" Icon={GroupIcon} />
+          <StatCard label="Ventende invitasjoner" value={String(overview.stats.pendingRequests)} desc="Sendt, ikke svart ennå" Icon={HourglassEmptyIcon} />
+          <StatCard label="GDPR-trygg" value={`${overview.stats.gdprCompliantPercent}%`} desc="All datatilgang er styrt av samtykke" Icon={ShieldIcon} />
         </Box>
 
         {/* ─── Tabs + søk/filter ─── */}
@@ -322,19 +336,23 @@ export default function PartnersCollaborationPage() {
               '& .MuiTabs-indicator': { backgroundColor: palette.accent, height: 2.5 },
             }}
           >
-            <Tab label={`All Partners (${overview.partners.length})`} />
-            <Tab label="Casting Partners" />
-            <Tab label="Professional Centers" />
-            <Tab label={`Invitations${overview.stats.pendingRequests ? ` (${overview.stats.pendingRequests})` : ''}`} />
+            <Tab label={`Alle (${overview.partners.length})`} />
+            <Tab label="Casting-byråer" />
+            <Tab label="Sentre & skoler" />
+            <Tab label={`Invitasjoner${overview.stats.pendingRequests ? ` (${overview.stats.pendingRequests})` : ''}`} />
           </Tabs>
           <Stack direction="row" spacing={1.2}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.6, py: 0.7, bgcolor: palette.bgCard, border: `1px solid ${palette.borderSubtle}`, borderRadius: radius.sm, minWidth: 240 }}>
               <SearchIcon sx={{ color: palette.textMuted, fontSize: 18 }} />
-              <InputBase placeholder="Search partners…" sx={{ flexGrow: 1, color: palette.textPrimary, fontSize: '0.85rem' }} />
+              <InputBase placeholder="Søk i partnere…" sx={{ flexGrow: 1, color: palette.textPrimary, fontSize: '0.85rem' }} />
             </Box>
-            <Button startIcon={<TuneIcon />} endIcon={<ChevronRightIcon sx={{ transform: 'rotate(90deg)' }} />} sx={{ textTransform: 'none', color: palette.textPrimary, bgcolor: palette.bgCard, border: `1px solid ${palette.borderSubtle}`, borderRadius: radius.sm, px: 1.6, fontWeight: 600, fontSize: '0.85rem' }}>
-              Filters
-            </Button>
+            <Tooltip title="Filtre kommer i neste oppdatering">
+              <span>
+                <Button startIcon={<TuneIcon />} disabled sx={{ textTransform: 'none', color: palette.textPrimary, bgcolor: palette.bgCard, border: `1px solid ${palette.borderSubtle}`, borderRadius: radius.sm, px: 1.6, fontWeight: 600, fontSize: '0.85rem', '&.Mui-disabled': { color: palette.textMuted, opacity: 0.6 } }}>
+                  Filtre
+                </Button>
+              </span>
+            </Tooltip>
           </Stack>
         </Stack>
 
@@ -349,9 +367,9 @@ export default function PartnersCollaborationPage() {
               <Box sx={{ display: 'grid', gridTemplateColumns: '36px 1.6fr 1fr 1fr 1fr 36px', gap: 1.2, px: 2, py: 1.4, borderBottom: `1px solid ${palette.borderSubtle}`, color: palette.textMuted, fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 <Box />
                 <Box>Partner</Box>
-                <Box>Role</Box>
-                <Box>Access Level</Box>
-                <Box>Last Activity</Box>
+                <Box>Type</Box>
+                <Box>Tilgang</Box>
+                <Box>Sist sett</Box>
                 <Box />
               </Box>
               {filteredPartners.map((p) => {
@@ -389,50 +407,60 @@ export default function PartnersCollaborationPage() {
                       </Box>
                     </Stack>
                     <Box>
-                      <Chip label={p.role_label} size="small" sx={{ bgcolor: 'rgba(168, 85, 247, 0.12)', color: palette.accentBright, fontWeight: 600, fontSize: '0.72rem', height: 22 }} />
+                      <Tooltip title={p.role_label === 'Casting Partner' ? 'Caster roller for film/TV/teater' : 'Tilbyr workshops, etterutdanning eller catalog'}>
+                        <Chip label={p.role_label === 'Casting Partner' ? 'Casting' : 'Senter'} size="small" sx={{ bgcolor: 'rgba(168, 85, 247, 0.12)', color: palette.accentBright, fontWeight: 600, fontSize: '0.72rem', height: 22, cursor: 'help' }} />
+                      </Tooltip>
                     </Box>
                     <Box>{accessChip(p.access_level)}</Box>
                     <Stack direction="row" alignItems="center" spacing={0.7}>
                       <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: palette.success }} />
                       <Typography sx={{ color: palette.textSecondary, fontSize: '0.83rem' }}>{formatRelative(p.last_activity)}</Typography>
                     </Stack>
-                    <IconButton size="small" sx={{ color: palette.textMuted }} onClick={(e) => e.stopPropagation()}>
-                      <MoreHorizIcon />
-                    </IconButton>
+                    <PartnerRowMenu
+                      partner={p}
+                      demoMode={demoMode}
+                      onChanged={() => { void reload(); }}
+                      onSnack={(msg) => setSnack(msg)}
+                    />
+
                   </Box>
                 );
               })}
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 2, py: 1.6, borderTop: `1px solid ${palette.borderSubtle}` }}>
-                <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-                  Showing 1–{filteredPartners.length} of {filteredPartners.length} partners
-                </Typography>
-                <Stack direction="row" spacing={0.6}>
-                  <PageBtn><ChevronLeftIcon sx={{ fontSize: 16 }} /></PageBtn>
-                  <PageBtn active>1</PageBtn>
-                  <PageBtn><ChevronRightIcon sx={{ fontSize: 16 }} /></PageBtn>
+              {filteredPartners.length > 0 ? (
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 2, py: 1.6, borderTop: `1px solid ${palette.borderSubtle}` }}>
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                    {filteredPartners.length} {filteredPartners.length === 1 ? 'partner' : 'partnere'}
+                  </Typography>
+                  {filteredPartners.length > 25 ? (
+                    <Stack direction="row" spacing={0.6}>
+                      <PageBtn><ChevronLeftIcon sx={{ fontSize: 16 }} /></PageBtn>
+                      <PageBtn active>1</PageBtn>
+                      <PageBtn><ChevronRightIcon sx={{ fontSize: 16 }} /></PageBtn>
+                    </Stack>
+                  ) : null}
                 </Stack>
-              </Stack>
+              ) : null}
             </Box>
 
             {/* Permissions Matrix */}
             <Box sx={cardSx}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
                 <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.02rem' }}>
-                  Permissions Matrix
+                  Tilgangs-matrise
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mb: 2 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-                  What partners can view and access
+                  Hva hver partner kan se. Klikk en celle for å endre.
                 </Typography>
-                <Tooltip title="Klikk en celle for å gi eller trekke tilgang. Endring lagres umiddelbart.">
-                  <InfoOutlinedIcon sx={{ color: palette.textMuted, fontSize: 14 }} />
+                <Tooltip title="Profil = headshot, bio, skills. Self-tapes = videoer du har lastet opp. Workshops = arrangementer du har deltatt på. Auditions = direkte rolle-invitasjoner.">
+                  <InfoOutlinedIcon sx={{ color: palette.textMuted, fontSize: 14, cursor: 'help' }} />
                 </Tooltip>
               </Stack>
               <Box sx={{ display: 'grid', gridTemplateColumns: '60px repeat(4, 1fr)', gap: 0, rowGap: 1.2, alignItems: 'center' }}>
                 <Box />
-                <MatrixHeader Icon={PersonOutlineIcon} label="Profiles" />
-                <MatrixHeader Icon={PlayCircleOutlineIcon} label="Self-Tapes" />
+                <MatrixHeader Icon={PersonOutlineIcon} label="Profil" />
+                <MatrixHeader Icon={PlayCircleOutlineIcon} label="Self-tape" />
                 <MatrixHeader Icon={SchoolOutlinedIcon} label="Workshops" />
                 <MatrixHeader Icon={EventNoteOutlinedIcon} label="Auditions" />
                 {filteredPartners.map((p) => {
@@ -452,26 +480,27 @@ export default function PartnersCollaborationPage() {
                 })}
               </Box>
               <Box sx={{ mt: 2.4, pt: 1.6, borderTop: `1px solid ${palette.borderSubtle}` }}>
-                <Button endIcon={<ChevronRightIcon />} sx={{ textTransform: 'none', color: palette.accentBright, fontWeight: 600, fontSize: '0.85rem', pl: 0, '&:hover': { bgcolor: 'transparent', color: palette.accent } }}>
-                  Manage global permission presets
-                </Button>
+                <Tooltip title="Lag forhåndsdefinerte tilgangsmaler — kommer i neste oppdatering">
+                  <span>
+                    <Button endIcon={<ChevronRightIcon />} disabled sx={{ textTransform: 'none', color: palette.accentBright, fontWeight: 600, fontSize: '0.85rem', pl: 0, '&.Mui-disabled': { color: palette.textMuted, opacity: 0.6 } }}>
+                      Tilgangsmaler (kommer)
+                    </Button>
+                  </span>
+                </Tooltip>
               </Box>
             </Box>
           </Box>
         )}
 
-        {/* ─── Collaboration Feed ─── */}
+        {/* ─── Aktivitet-feed ─── */}
         <Box sx={cardSx}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.6 }}>
-            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.02rem' }}>Collaboration Feed</Typography>
-            <Button sx={{ textTransform: 'none', color: palette.accentBright, fontWeight: 600, fontSize: '0.85rem', '&:hover': { bgcolor: 'transparent', color: palette.accent } }}>
-              View all activity
-            </Button>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.02rem' }}>Aktivitet</Typography>
           </Stack>
-          <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 2 }}>Recent activity across your partner network</Typography>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 2 }}>Hva partnerne dine har gjort siste 30 dager</Typography>
           {overview.feed.length === 0 ? (
             <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem', py: 2 }}>
-              Ingen partner-aktivitet ennå. Aktivitet vises her når en partner viser profilen din eller når du gjør endringer i tillatelser.
+              Ingen aktivitet ennå. Når en partner ser profilen din, dukker det opp her.
             </Typography>
           ) : (
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1.4 }}>
@@ -485,8 +514,20 @@ export default function PartnersCollaborationPage() {
 
       {/* ─── Right sidebar ─── */}
       <Box sx={{ width: 320, flexShrink: 0, p: 3, pl: 0, display: { xs: 'none', lg: 'block' } }}>
-        {selected ? <SelectedPartnerSidebar partner={selected} onInvite={() => setInviteOpen(true)} /> : null}
+        {selected ? <SelectedPartnerSidebar partner={selected} onInvite={() => {
+          if (demoMode) { setSnack('Demo-modus er read-only'); return; }
+          setInviteOpen(true);
+        }} onEdit={() => {
+          if (demoMode) { setSnack('Demo-modus er read-only'); return; }
+          setEditPartner(selected);
+        }} /> : null}
       </Box>
+
+      <EditAccessDialog
+        partner={editPartner}
+        onClose={() => setEditPartner(null)}
+        onSaved={() => { setEditPartner(null); setSnack('Tilgang oppdatert'); void reload(); }}
+      />
 
       {/* Invite-dialog */}
       <InvitePartnerDialog
@@ -611,15 +652,15 @@ function FeedCard({ event }: { event: FeedEvent }) {
   );
 }
 
-function SelectedPartnerSidebar({ partner, onInvite }: { partner: PartnerOverviewRow; onInvite: () => void }) {
+function SelectedPartnerSidebar({ partner, onInvite, onEdit }: { partner: PartnerOverviewRow; onInvite: () => void; onEdit: () => void }) {
   const color = colorForKey(partner.id);
   const vis = {
-    accessLevel: partner.access_level === 'full' ? 'Full Access' : partner.access_level === 'limited' ? 'Limited Access' : partner.access_level === 'custom' ? 'Custom Access' : 'View Only',
+    accessLevel: partner.access_level === 'full' ? 'Full tilgang' : partner.access_level === 'limited' ? 'Begrenset' : partner.access_level === 'custom' ? 'Tilpasset' : 'Kun visning',
     dataResidency: 'EU/EEA',
-    profiles: partner.perms.profiles ? 'All profiles' : 'No access',
-    selftapes: partner.perms.selftapes ? 'All self-tapes' : 'No access',
-    auditionInvites: partner.perms.auditions ? 'View & Send' : 'No access',
-    workshops: partner.perms.workshops ? 'View only' : 'No access',
+    profiles: partner.perms.profiles ? 'Ja' : 'Nei',
+    selftapes: partner.perms.selftapes ? 'Ja' : 'Nei',
+    auditionInvites: partner.perms.auditions ? 'Ja, kan også sende' : 'Nei',
+    workshops: partner.perms.workshops ? 'Kun visning' : 'Nei',
   };
   return (
     <Box sx={{ ...cardSx, position: 'sticky', top: 16 }}>
@@ -640,26 +681,23 @@ function SelectedPartnerSidebar({ partner, onInvite }: { partner: PartnerOvervie
       </Stack>
 
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.4 }}>
-        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>Visibility &amp; Access</Typography>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>Hva ser de?</Typography>
       </Stack>
       <Stack spacing={1.2} sx={{ mb: 2.4 }}>
-        <VisRow Icon={ShieldIcon} label="Access Level" value={vis.accessLevel} highlight />
-        <VisRow Icon={PublicIcon} label="Data Residency" value={vis.dataResidency} />
-        <VisRow Icon={PersonOutlineIcon} label="Profiles" value={vis.profiles} />
-        <VisRow Icon={PlayCircleOutlineIcon} label="Self-Tapes" value={vis.selftapes} />
-        <VisRow Icon={EventNoteOutlinedIcon} label="Audition Invites" value={vis.auditionInvites} />
+        <VisRow Icon={ShieldIcon} label="Tilgangsnivå" value={vis.accessLevel} highlight />
+        <VisRow Icon={PublicIcon} label="Datalagring" value={vis.dataResidency} />
+        <VisRow Icon={PersonOutlineIcon} label="Profil" value={vis.profiles} />
+        <VisRow Icon={PlayCircleOutlineIcon} label="Self-tapes" value={vis.selftapes} />
+        <VisRow Icon={EventNoteOutlinedIcon} label="Audition-invites" value={vis.auditionInvites} />
         <VisRow Icon={SchoolOutlinedIcon} label="Workshops" value={vis.workshops} />
       </Stack>
 
       <Stack spacing={1}>
-        <Button startIcon={<LockOutlinedIcon />} onClick={onInvite} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.88rem', py: 1.2, borderRadius: radius.sm, background: palette.accentGradient, color: '#fff', '&:hover': { filter: 'brightness(1.08)' }, boxShadow: '0 6px 18px rgba(168, 85, 247, 0.32)' }}>
-          Edit Access
+        <Button startIcon={<LockOutlinedIcon />} onClick={onEdit} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.88rem', py: 1.2, borderRadius: radius.sm, background: palette.accentGradient, color: '#fff', '&:hover': { filter: 'brightness(1.08)' }, boxShadow: '0 6px 18px rgba(168, 85, 247, 0.32)' }}>
+          Endre tilgang
         </Button>
         <Button startIcon={<PersonAddAltOutlinedIcon />} onClick={onInvite} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.85rem', py: 1.1, borderRadius: radius.sm, color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`, '&:hover': { bgcolor: 'rgba(168, 85, 247, 0.08)' } }}>
-          Send Invite
-        </Button>
-        <Button startIcon={<GroupIcon />} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.85rem', py: 1.1, borderRadius: radius.sm, color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`, '&:hover': { bgcolor: 'rgba(168, 85, 247, 0.08)' } }}>
-          View Shared Talents
+          Inviter ny partner
         </Button>
       </Stack>
     </Box>
@@ -684,6 +722,156 @@ function VisRow({ Icon, label, value, highlight = false }: { Icon: React.Compone
       </Stack>
       <Typography sx={{ color: highlight ? palette.accentBright : palette.textPrimary, fontSize: '0.82rem', fontWeight: highlight ? 700 : 500 }}>{value}</Typography>
     </Stack>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// PartnerRowMenu — 3-dots-meny per partner-row
+// ──────────────────────────────────────────────────────────────────
+
+import { Menu, MenuItem as MuiMenuItem, ListItemIcon } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+
+function PartnerRowMenu({ partner, demoMode, onChanged, onSnack }: {
+  partner: PartnerOverviewRow;
+  demoMode: boolean;
+  onChanged: () => void;
+  onSnack: (msg: string) => void;
+}) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const handleRevokeAll = async () => {
+    setAnchorEl(null);
+    if (demoMode) { onSnack('Demo-modus er read-only'); return; }
+    if (!window.confirm(`Trekke ALL tilgang fra ${partner.display_name}? Dette kan ikke angres uten å invitere på nytt.`)) return;
+    const result = await roleRoomTalentsService.bulkSetConsents({
+      partner_type: partner.partner_type,
+      partner_ref: partner.id,
+      partner_display_name: partner.display_name,
+      perms: { profiles: false, selftapes: false, workshops: false, auditions: false },
+    });
+    if ('error' in result) { onSnack(`Feil: ${result.error}`); return; }
+    onSnack(`${partner.display_name} har ikke lenger tilgang`);
+    onChanged();
+  };
+  return (
+    <>
+      <IconButton size="small" sx={{ color: palette.textMuted }} onClick={(e) => { e.stopPropagation(); setAnchorEl(e.currentTarget); }}>
+        <MoreHorizIcon />
+      </IconButton>
+      <Menu
+        open={!!anchorEl}
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{ sx: { bgcolor: palette.bgCard, border: `1px solid ${palette.border}` } }}
+      >
+        <MuiMenuItem
+          onClick={() => void handleRevokeAll()}
+          sx={{ color: '#f87171', fontSize: '0.88rem' }}
+        >
+          <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: '#f87171' }} /></ListItemIcon>
+          Trekk all tilgang
+        </MuiMenuItem>
+        <MuiMenuItem disabled sx={{ color: palette.textMuted, fontSize: '0.88rem' }}>
+          <ListItemIcon><PauseCircleOutlineIcon fontSize="small" sx={{ color: palette.textMuted }} /></ListItemIcon>
+          Pause i 30 dager (kommer)
+        </MuiMenuItem>
+        {partner.website ? (
+          <MuiMenuItem
+            onClick={() => { setAnchorEl(null); window.open(partner.website!.startsWith('http') ? partner.website! : `https://${partner.website}`, '_blank'); }}
+            sx={{ color: palette.textPrimary, fontSize: '0.88rem' }}
+          >
+            <ListItemIcon><OpenInNewIcon fontSize="small" sx={{ color: palette.textSecondary }} /></ListItemIcon>
+            Åpne {partner.website}
+          </MuiMenuItem>
+        ) : null}
+      </Menu>
+    </>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// EditAccessDialog — ekte scope-editor for eksisterende partner
+// ──────────────────────────────────────────────────────────────────
+
+function EditAccessDialog({ partner, onClose, onSaved }: {
+  partner: PartnerOverviewRow | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [perms, setPerms] = useState({ profiles: false, selftapes: false, workshops: false, auditions: false });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (partner) setPerms(partner.perms);
+  }, [partner]);
+
+  if (!partner) return null;
+
+  const handleSave = async () => {
+    setSaving(true);
+    const result = await roleRoomTalentsService.bulkSetConsents({
+      partner_type: partner.partner_type,
+      partner_ref: partner.id,
+      partner_display_name: partner.display_name,
+      perms,
+    });
+    setSaving(false);
+    if ('error' in result) return;
+    onSaved();
+  };
+
+  const scopeRows: Array<{ key: keyof typeof perms; label: string; desc: string; Icon: React.ComponentType<{ sx?: object }> }> = [
+    { key: 'profiles', label: 'Profil', desc: 'Headshot, bio, by, spille-alder', Icon: PersonOutlineIcon },
+    { key: 'selftapes', label: 'Self-tapes', desc: 'Videoer du har lastet opp', Icon: PlayCircleOutlineIcon },
+    { key: 'workshops', label: 'Workshops', desc: 'Arrangementer du har deltatt på', Icon: SchoolOutlinedIcon },
+    { key: 'auditions', label: 'Audition-invites', desc: `${partner.display_name} kan sende deg auditions direkte`, Icon: EventNoteOutlinedIcon },
+  ];
+
+  return (
+    <Dialog open={!!partner} onClose={onClose} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { bgcolor: palette.bgCard, color: palette.textPrimary, borderRadius: radius.lg, border: `1px solid ${palette.border}` } }}>
+      <DialogTitle sx={{ fontWeight: 800, borderBottom: `1px solid ${palette.borderSubtle}` }}>
+        Hva skal {partner.display_name} se?
+      </DialogTitle>
+      <DialogContent sx={{ pt: 2.4 }}>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem', mb: 2 }}>
+          Hak av det du vil dele. Endringer lagres når du klikker Lagre.
+        </Typography>
+        <Stack spacing={1.2}>
+          {scopeRows.map(({ key, label, desc, Icon }) => (
+            <Box
+              key={key}
+              onClick={() => setPerms({ ...perms, [key]: !perms[key] })}
+              sx={{
+                display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 1.4, alignItems: 'center',
+                p: 1.4, borderRadius: radius.sm, cursor: 'pointer',
+                border: `1px solid ${perms[key] ? palette.borderStrong : palette.borderSubtle}`,
+                bgcolor: perms[key] ? 'rgba(168,85,247,0.08)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(168,85,247,0.05)' },
+              }}
+            >
+              <Icon sx={{ color: perms[key] ? palette.accentBright : palette.textMuted, fontSize: 22 }} />
+              <Stack spacing={0.2}>
+                <Typography sx={{ color: palette.textPrimary, fontWeight: 600, fontSize: '0.92rem' }}>{label}</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{desc}</Typography>
+              </Stack>
+              <Checkbox checked={perms[key]} sx={{ color: palette.textMuted, '&.Mui-checked': { color: palette.accent } }} />
+            </Box>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.4, borderTop: `1px solid ${palette.borderSubtle}` }}>
+        <Button onClick={onClose} sx={{ color: palette.textMuted, textTransform: 'none' }}>Avbryt</Button>
+        <Button onClick={() => void handleSave()} disabled={saving} startIcon={saving ? <CircularProgress size={14} /> : null}
+          sx={{ textTransform: 'none', fontWeight: 700, px: 2.4, borderRadius: radius.sm, background: palette.accentGradient, color: '#fff' }}>
+          Lagre endringer
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -852,17 +1040,33 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
       <DialogContent sx={{ pt: 2.4 }}>
         {createdInvite ? (
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <Alert severity="success" sx={{ bgcolor: 'rgba(34, 197, 94, 0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.success } }}>
-              Invite sendt til <strong>{createdInvite.maskedEmail || createdInvite.partner_email}</strong>. Kopier lenken under og send den manuelt hvis du foretrekker det.
+            <Alert severity="warning" sx={{ bgcolor: 'rgba(245, 158, 11, 0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.warning } }}>
+              <strong>Vi sender ikke e-post automatisk ennå.</strong> Kopier lenken under og send den til {createdInvite.maskedEmail || createdInvite.partner_email} selv (SMS, WhatsApp, eller e-post).
             </Alert>
             <Box sx={{ p: 1.4, borderRadius: radius.sm, bgcolor: palette.bgCardElevated, border: `1px solid ${palette.borderSubtle}`, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography sx={{ flexGrow: 1, color: palette.textSecondary, fontSize: '0.82rem', wordBreak: 'break-all', fontFamily: 'monospace' }}>
                 {createdInvite.acceptUrl}
               </Typography>
-              <IconButton size="small" onClick={() => navigator.clipboard.writeText(createdInvite.acceptUrl || '')} sx={{ color: palette.accentBright }}>
-                <ContentCopyOutlinedIcon fontSize="small" />
-              </IconButton>
+              <Tooltip title="Kopier til utklippstavle">
+                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(createdInvite.acceptUrl || ''); }} sx={{ color: palette.accentBright }}>
+                  <ContentCopyOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Box>
+            <Button
+              href={`mailto:${createdInvite.partner_email}?subject=Invitasjon%20til%20The%20Role%20Room%20Talents&body=Hei%2C%0A%0AJeg%20har%20delt%20talent-profilen%20min%20med%20deg%20i%20The%20Role%20Room%20Talents.%20Klikk%20lenken%20under%20for%20%C3%A5%20akseptere%3A%0A%0A${encodeURIComponent(createdInvite.acceptUrl || '')}%0A%0AMvh`}
+              startIcon={<EmailOutlinedIcon />}
+              sx={{
+                textTransform: 'none', fontWeight: 600, py: 1, borderRadius: radius.sm,
+                color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`,
+                '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+              }}
+            >
+              Åpne i e-post
+            </Button>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
+              Når partneren klikker lenken og logger inn, ser du dem i partner-listen din. Du får varsel her.
+            </Typography>
           </Stack>
         ) : (
           <Stack spacing={2} sx={{ pt: 1 }}>
