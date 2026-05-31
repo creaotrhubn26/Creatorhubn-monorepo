@@ -327,7 +327,12 @@ $('set-btn').addEventListener('click', async () => {
     });
     const data = await resp.json();
     if (resp.ok && data.success) {
-      result.innerHTML = '<pre class="status-ok" data-testid="result-ok">✓ CTA set: ' + data.ctaType + ' → ' + data.ctaUrl + '\\n\\n' + JSON.stringify(data.response, null, 2) + '</pre>';
+      var summary = '✓ CTA set: ' + data.ctaType + ' → ' + data.ctaUrl;
+      if (data.modernApi && data.modernApi.field) {
+        summary += '\\n  (via modern field: ' + data.modernApi.field + ')';
+      }
+      if (data.note) summary += '\\n  ' + data.note;
+      result.innerHTML = '<pre class="status-ok" data-testid="result-ok">' + summary + '\\n\\n' + JSON.stringify(data, null, 2) + '</pre>';
     } else {
       result.innerHTML = '<pre class="status-err" data-testid="result-err">✗ Error\\n\\n' + JSON.stringify(data, null, 2) + '</pre>';
     }
