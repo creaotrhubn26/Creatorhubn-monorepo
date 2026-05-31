@@ -65,6 +65,8 @@ import {
   GridView,
   PlaylistAddCheck,
   RemoveDone as RemoveDoneIcon,
+  Visibility,
+  VisibilityOff,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useClientSession } from '@/contexts/ClientSessionContext';
@@ -162,6 +164,12 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [favoriteImages, setFavoriteImages] = useState<Set<string>>(new Set());
+  // Bilder klient eksplisitt har avvist. Filtreres bort fra grid-en
+  // som default (hideRejected = true) — klient kan toggle for å se
+  // og evt. angre. Backend tar uansett ikke med rejected i submit-
+  // utvalget. Gap #7 fra Irlin-UX-analyse.
+  const [rejectedImages, setRejectedImages] = useState<Set<string>>(new Set());
+  const [hideRejected, setHideRejected] = useState<boolean>(true);
   // Slice 9X.82 — submit-dialog state for "send mitt utvalg"-flyt
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   // Slice 9X.82 — slideshow-state
@@ -459,17 +467,21 @@ export default function ClientGallery({}: ClientGalleryProps) {
     if (selections?.selections) {
       const selected = new Set<string>();
       const favorites = new Set<string>();
+      const rejected = new Set<string>();
 
       selections.selections.forEach((selection: Selection) => {
         if (selection.selectionType === 'selected') {
           selected.add(selection.imageId);
       } else if (selection.selectionType === 'favorite') {
           favorites.add(selection.imageId);
+      } else if (selection.selectionType === 'rejected') {
+          rejected.add(selection.imageId);
       }
     });
 
       setSelectedImages(selected);
       setFavoriteImages(favorites);
+      setRejectedImages(rejected);
   }
 }, [selections]);
 
@@ -773,9 +785,15 @@ export default function ClientGallery({}: ClientGalleryProps) {
   }
 };
 
-  const filteredImages = showOnlySelected
-    ? images.filter((img: GalleryImage) => selectedImages.has(img.id) || favoriteImages.has(img.id))
+  // Bilder klient eksplisitt har avvist filtreres bort by default
+  // (hideRejected = true). Klient kan toggle for å se + angre via en
+  // chip i filter-bar-en.
+  const visibleImages = hideRejected
+    ? images.filter((img: GalleryImage) => !rejectedImages.has(img.id))
     : images;
+  const filteredImages = showOnlySelected
+    ? visibleImages.filter((img: GalleryImage) => selectedImages.has(img.id) || favoriteImages.has(img.id))
+    : visibleImages;
 
   if (galleryLoading || imagesLoading) {
     return (
@@ -1002,6 +1020,41 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 </Typography>
             }
             />
+
+            {/* Gap #7-fix: skjul-toggler for avviste bilder. Default på
+                så klient slipper å se skrap mens hun browser. Toggler
+                kun synlig hvis det FINNES avviste — ellers støy.
+                Ikon = VisibilityOff (skjult) / Visibility (vises) — MUI
+                per feedback no-emojis-use-mui-icons. */}
+            {rejectedImages.size > 0 && (
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={hideRejected}
+                    onChange={(e) => setHideRejected(e.target.checked)}
+                    size="small"
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: config.primaryColor,
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: config.primaryColor,
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                    {hideRejected
+                      ? <VisibilityOff sx={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }} />
+                      : <Visibility sx={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }} />}
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Skjul avviste ({rejectedImages.size})
+                    </Typography>
+                  </Stack>
+                }
+              />
+            )}
 
             <FormControlLabel
               control={
