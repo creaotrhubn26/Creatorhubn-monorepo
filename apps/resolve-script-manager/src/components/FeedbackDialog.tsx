@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getStatus, type PhotoshopBridgeStatus } from "../services/photoshopBridgeService";
+import { loadSettings } from "./SettingsModal";
 
 interface Props {
   onClose: () => void;
@@ -40,32 +41,68 @@ export function FeedbackDialog({ onClose }: Props) {
     getStatus().then(setPsStatus).catch(() => {});
   }, []);
 
-  const sendFeedback = useCallback(() => {
-    const userAgent = navigator.userAgent;
-    const platform = navigator.platform;
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  const sendFeedback = useCallback(async () => {
+    const s = loadSettings();
+    const token = s.RR_BEARER_TOKEN?.trim();
+    if (!token) {
+      setSendError("Du må være logget inn med Role Room for å sende feedback. Logg inn fra tannhjul → Settings.");
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    try {
+      const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+      const res = await fetch(`${base}/feedback`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          category,
+          message,
+          bridge_status: psStatus,
+          platform: navigator.platform,
+          user_agent: navigator.userAgent,
+          client_version: "0.2.5",
+        }),
+      });
+      if (!res.ok) {
+        // Backend ikke deployet enda — fall tilbake til mailto
+        if (res.status === 404) {
+          fallbackToMailto();
+          return;
+        }
+        throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      }
+      setSent(true);
+      setTimeout(onClose, 1500);
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  }, [category, message, psStatus, onClose]);
+
+  const fallbackToMailto = useCallback(() => {
     const psSummary = psStatus
       ? `Photoshop bridge: ${psStatus.connected ? "tilkoblet" : "frakoblet"}${
           psStatus.plugin_version ? ` (plugin v${psStatus.plugin_version})` : ""
         }${psStatus.photoshop_version ? `, PS ${psStatus.photoshop_version}` : ""}`
       : "Photoshop bridge: status ukjent";
-
     const subject = `Post Agent feedback — ${CATEGORIES.find((c) => c.value === category)?.label}`;
     const body = `${message}
 
 —
-Sendt fra Post Agent
+Sendt fra Post Agent (fallback fra in-app)
 ${psSummary}
-Plattform: ${platform}
-User agent: ${userAgent}
+Plattform: ${navigator.platform}
 Tidspunkt: ${new Date().toISOString()}`;
-
-    const mailto = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(
-      subject,
-    )}&body=${encodeURIComponent(body)}`;
-
-    window.location.href = mailto;
-
-    // Lukk dialogen kort etter — gir mail-klient tid til å åpne
+    window.location.href = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     setTimeout(onClose, 500);
   }, [category, message, psStatus, onClose]);
 
@@ -127,16 +164,43 @@ Tidspunkt: ${new Date().toISOString()}`;
           </div>
         </div>
 
+        {sendError && (
+          <div style={{
+            background: "rgba(248,81,73,0.1)",
+            border: "1px solid rgba(248,81,73,0.4)",
+            color: "#f85149",
+            borderRadius: 6,
+            padding: "8px 12px",
+            fontSize: 12,
+            margin: "0 18px 8px",
+          }}>
+            {sendError}
+          </div>
+        )}
+        {sent && (
+          <div style={{
+            background: "rgba(74,212,138,0.12)",
+            border: "1px solid rgba(74,212,138,0.4)",
+            color: "#4ad48a",
+            borderRadius: 6,
+            padding: "8px 12px",
+            fontSize: 12,
+            margin: "0 18px 8px",
+            fontWeight: 600,
+          }}>
+            ✓ Sendt! Vi får e-post med diagnostikk og svarer så raskt vi kan.
+          </div>
+        )}
         <footer style={footerBar}>
           <div style={{ fontSize: 11, color: "#888" }}>
-            Sender til: <code>{FEEDBACK_EMAIL}</code>
+            Sender direkte til {FEEDBACK_EMAIL} via backend
           </div>
           <button
             onClick={sendFeedback}
-            disabled={!message.trim()}
+            disabled={!message.trim() || sending || sent}
             style={primaryBtn}
           >
-            Åpne i e-post
+            {sending ? "Sender…" : sent ? "✓ Sendt" : "Send feedback"}
           </button>
         </footer>
       </div>

@@ -57,6 +57,14 @@ import {
   type TeamSeatRow,
 } from './post-agent-storage.js';
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 interface SessionData {
   userId: string;
   email: string;
@@ -458,6 +466,113 @@ export function createPostAgentRouter(
       companyName: degraded ? null : u.company_name,
       isAdministrator: u.is_administrator === true,
       schemaDegraded: degraded || undefined,
+    });
+  });
+
+  // ---- Feedback ----
+
+  /**
+   * POST /feedback — Irlin/Daniel sender bug/forslag/spørsmål direkte fra
+   * Post Agent's "📨 Send feedback"-dialog. Lagrer i DB + sender e-post
+   * til daniel@creatorhubn.com. Erstattet tidligere mailto:-fallback som
+   * krevde konfigurert mail-klient.
+   *
+   * Body: { category, message, bridge_status?, platform?, user_agent?, client_version? }
+   */
+  router.post('/feedback', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as {
+      category?: string;
+      message?: string;
+      bridge_status?: unknown;
+      platform?: string;
+      user_agent?: string;
+      client_version?: string;
+    };
+    const category = (body.category ?? 'other').toString().slice(0, 40);
+    const message = (body.message ?? '').toString().trim();
+    if (!message) {
+      res.status(400).json({ error: 'message_required' });
+      return;
+    }
+
+    // Lagre — DB-table opprettet i migration 215. Hvis table mangler,
+    // svelg feilen og fortsett med e-post slik at brukeren ikke får
+    // 500 mens migrate venter.
+    let feedbackId: number | null = null;
+    try {
+      const { rows } = await pool.query<{ id: number }>(
+        `INSERT INTO post_agent_feedback
+          (user_id, category, message, bridge_status, platform, user_agent, client_version)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+         RETURNING id`,
+        [
+          userId,
+          category,
+          message,
+          body.bridge_status ? JSON.stringify(body.bridge_status) : null,
+          body.platform ?? null,
+          body.user_agent ?? null,
+          body.client_version ?? null,
+        ],
+      );
+      feedbackId = rows[0]?.id ?? null;
+    } catch (err) {
+      console.warn('[post-agent feedback] DB insert failed:', (err as Error).message);
+    }
+
+    // Hent bruker-info for e-posten
+    let userEmail = 'ukjent';
+    try {
+      const { rows } = await pool.query<{ email: string }>(
+        `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      userEmail = rows[0]?.email ?? 'ukjent';
+    } catch {
+      /* non-critical */
+    }
+
+    // Send e-post — silent failure er ok (DB-raden er primær storage)
+    const subject = `Post Agent feedback [${category}] fra ${userEmail}`;
+    const text =
+`Fra: ${userEmail} (user_id ${userId})
+Kategori: ${category}
+${body.platform ? `Plattform: ${body.platform}` : ''}
+${body.client_version ? `Klient-versjon: ${body.client_version}` : ''}
+Feedback-ID: ${feedbackId ?? '(DB-feil)'}
+
+---
+${message}
+---
+
+Bridge-status: ${body.bridge_status ? JSON.stringify(body.bridge_status, null, 2) : '(ikke rapportert)'}
+User agent: ${body.user_agent ?? '(ikke rapportert)'}
+Tidspunkt: ${new Date().toISOString()}
+`;
+    const html = `<p><strong>Fra:</strong> ${escapeHtml(userEmail)} (user_id ${userId})</p>
+<p><strong>Kategori:</strong> ${escapeHtml(category)}</p>
+<p><strong>Feedback-ID:</strong> ${feedbackId ?? '(DB-feil)'}</p>
+<hr>
+<pre style="white-space:pre-wrap">${escapeHtml(message)}</pre>
+<hr>
+<details><summary>Diagnostikk</summary>
+<pre>${escapeHtml(text)}</pre>
+</details>`;
+
+    const emailResult = await sendEmail({
+      to: 'daniel@creatorhubn.com',
+      subject,
+      text,
+      html,
+      fromName: 'Post Agent Feedback',
+    });
+
+    res.json({
+      ok: true,
+      feedback_id: feedbackId,
+      emailed: emailResult.success,
+      email_error: emailResult.success ? undefined : emailResult.error,
     });
   });
 
