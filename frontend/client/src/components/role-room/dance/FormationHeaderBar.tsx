@@ -92,6 +92,12 @@ export interface FormationHeaderBarProps {
   onShare?: () => void;
   /** Audit G_2: disable Export-knapp (e.g. på tomt projekt). */
   disableExport?: boolean;
+  /** G25/J1: presence-users som vises som avatar-strip ved siden av save-pill. */
+  presenceUsers?: ReadonlyArray<{
+    userId: string;
+    displayName: string;
+    color: string;
+  }>;
   /** Test-id-override. */
   'data-testid'?: string;
 }
@@ -105,6 +111,7 @@ export default function FormationHeaderBar({
   lastSavedAt = null,
   onShare,
   disableExport = false,
+  presenceUsers,
   'data-testid': testId = 'formation-header-bar',
 }: FormationHeaderBarProps): React.ReactElement {
   const [exportAnchor, setExportAnchor] = React.useState<HTMLElement | null>(null);
@@ -285,6 +292,42 @@ export default function FormationHeaderBar({
             <ListItemText primary="Stage plot (PDF)" secondary="Print eller lagre — én side per formasjon" />
           </MenuItem>
         </Menu>
+
+        {/* G25/J1: presence-strip — viser hvem andre som er tilkoblet i
+            samme prosjekt. Hver avatar = en farget sirkel med initialer +
+            tooltip på hover. Max 5 vises; resten samles i '+N'-chip. */}
+        {presenceUsers && presenceUsers.length > 0 ? (
+          <Box
+            data-testid={`${testId}-presence`}
+            sx={{ display: 'flex', alignItems: 'center', mr: 0.5 }}
+          >
+            {presenceUsers.slice(0, 5).map((u) => (
+              <Box
+                key={u.userId}
+                title={`${u.displayName} ser denne flaten nå`}
+                data-testid={`${testId}-presence-${u.userId}`}
+                sx={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  bgcolor: u.color, color: '#0a0a0a',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 9, fontWeight: 700,
+                  border: `2px solid ${danceFlowColors.bgPanel}`,
+                  marginLeft: '-6px',
+                }}
+              >
+                {u.displayName.slice(0, 2).toUpperCase()}
+              </Box>
+            ))}
+            {presenceUsers.length > 5 ? (
+              <Box sx={{
+                ml: 0.5, fontSize: 10, fontWeight: 600,
+                color: danceFlowColors.textMuted,
+              }}>
+                +{presenceUsers.length - 5}
+              </Box>
+            ) : null}
+          </Box>
+        ) : null}
 
         {/* Save-pill (flyttet hit fra FormationViewConnected).
             Audit A5: 'idle' viser persistent 'Lagret kl HH:MM' når

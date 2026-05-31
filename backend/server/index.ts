@@ -709,6 +709,7 @@ import {
   syncNotebookLmWorkspaceForScope,
 } from "./notebooklm-workspace.js";
 import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
+import { createDanceRealtimeServer } from "./dance-realtime-server.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
 import { createYouTubeRouter } from "./youtube-routes.js";
 import {
@@ -76585,6 +76586,8 @@ app.all("/api/*", (req, res) => {
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
 createWebSocketServer(httpServer, db);
+// G25/J1: dance realtime presence + cursor sync på /ws/dance/realtime
+createDanceRealtimeServer(httpServer);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
 

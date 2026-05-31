@@ -69,6 +69,7 @@ import DanceFlowNavRail from './DanceFlowNavRail';
 import { useDanceCheatSheet } from './DanceCheatSheet';
 import { isDanceReadOnlyRole } from './danceRoleUtils';
 import { useAuth } from '../../../hooks/useAuth';
+import { useDanceRealtimePresence } from './danceRealtimeClient';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -192,6 +193,12 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
   // Audit H1: detect read-only-modus via session.role
   const auth = useAuth();
   const readOnly = isDanceReadOnlyRole(auth.user?.role);
+  // G25/J1: realtime presence — viser hvem andre som ser på samme prosjekt.
+  const realtime = useDanceRealtimePresence({
+    projectId: projectId ?? null,
+    userId: auth.user?.id ? String(auth.user.id) : undefined,
+    displayName: auth.user?.name ?? auth.user?.email ?? undefined,
+  });
   const [subTab, setSubTab] = React.useState<FormationSubTab>('formation');
   const [saveStatus, setSaveStatus] = React.useState<FormationSaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -278,6 +285,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           lastSavedAt={lastSavedAt}
           onShare={handleShare}
           disableExport={!hasFormations}
+          presenceUsers={realtime.users}
         />
       }
       clipsSidebar={<ClipsSidebar projectId={projectId} />}
