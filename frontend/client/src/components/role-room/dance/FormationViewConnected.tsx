@@ -187,6 +187,8 @@ export function FormationViewConnected({
               transitionNote: f.transitionNote ?? null,
               tags: f.tags ?? [],
               transitionPaths: f.transitionPaths ?? [],
+              // Migrasjon 214 (G14): persist lock-state.
+              locked: f.locked === true,
             })),
           });
           // Note: we don't replace local state with the server response

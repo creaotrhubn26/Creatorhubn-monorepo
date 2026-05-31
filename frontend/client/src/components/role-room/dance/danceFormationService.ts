@@ -27,6 +27,8 @@ export interface FormationRecord {
   tags: string[];
   /** F5-13B: bezier-baner mellom denne formasjonen og neste, én per danser. */
   transitionPaths: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
+  /** Migrasjon 214 (G14): låst formasjon — pucks ikke draggable, delete refuserer. */
+  locked: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,6 +47,8 @@ export interface FormationInput {
   transitionNote?: string | null;
   tags?: string[];
   transitionPaths?: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
+  /** Migrasjon 214 (G14). */
+  locked?: boolean;
 }
 
 export type FormationPatch = Partial<FormationInput>;
@@ -122,6 +126,8 @@ export async function replaceFormations(input: {
     transitionNote?: string | null;
     tags?: string[];
     transitionPaths?: ReadonlyArray<{ dancerId: string; controlPoints: ReadonlyArray<{ x: number; y: number }> }>;
+    /** Migrasjon 214 (G14). */
+    locked?: boolean;
   }>;
 }): Promise<FormationRecord[]> {
   const res = await fetch(BASE, {
@@ -149,6 +155,7 @@ export function recordToFormation(r: FormationRecord): Formation {
     transitionNote: r.transitionNote ?? null,
     tags: r.tags ?? [],
     transitionPaths: r.transitionPaths ?? [],
+    locked: r.locked === true,
   };
 }
 

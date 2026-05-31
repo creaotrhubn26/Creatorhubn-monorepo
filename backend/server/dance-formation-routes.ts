@@ -113,6 +113,8 @@ const createBodySchema = z.object({
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
+  // Migrasjon 214 (G14)
+  locked: z.boolean().optional(),
 });
 
 const patchBodySchema = z.object({
@@ -129,6 +131,7 @@ const patchBodySchema = z.object({
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
+  locked: z.boolean().optional(),
 });
 
 const replaceItemSchema = z.object({
@@ -145,6 +148,7 @@ const replaceItemSchema = z.object({
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
+  locked: z.boolean().optional(),
 });
 
 const replaceBodySchema = z.object({
@@ -235,9 +239,15 @@ export function createDanceFormationRouter(
       return;
     }
     const { userId } = req as AuthedRequest;
-    const ok = await deleteFormation(pool, userId, idParsed.data);
-    if (!ok) {
+    const result = await deleteFormation(pool, userId, idParsed.data);
+    if (result === 'not_found') {
       res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (result === 'locked') {
+      // Migrasjon 214 (G14): låste formasjoner kan ikke slettes uten å først
+      // låse opp via PATCH { locked: false }.
+      res.status(409).json({ error: 'formation_locked', message: 'Lås opp formasjonen før du sletter den.' });
       return;
     }
     res.json({ success: true });
