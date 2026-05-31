@@ -55,6 +55,8 @@ import {
   PushPinOutlined as PushPinOutlinedIcon,
   BarChart as StatsIcon,
   Person as PersonIcon,
+  KeyboardArrowUp as MoveUpIcon,
+  KeyboardArrowDown as MoveDownIcon,
 } from '@mui/icons-material';
 import type { SceneBreakdown } from '../models/casting';
 
@@ -92,9 +94,14 @@ interface SceneNavigatorSidebarProps {
   // Width
   width?: number;
   collapsedWidth?: number;
-  
+
   // Styling
   darkMode?: boolean;
+
+  // Reorder: flytt en scene i den globale (Fountain-tekst) rekkefølgen.
+  // Aktiveres kun for Fountain-baserte scener (ikke DB-scener), siden teksten
+  // er source-of-truth. fromIndex/toIndex er indekser i den globale scene-lista.
+  onReorderScenes?: (fromIndex: number, toIndex: number) => void;
 }
 
 // ── Stable scene identity ─────────────────────────────────────────────────
@@ -173,6 +180,52 @@ function parseScenes(content: string): ParsedScene[] {
   return scenes;
 }
 
+// Scene-heading-pattern (delt med parseScenes) for å finne scene-grenser.
+const SCENE_HEADING_LINE_RE = /^(\.)?((INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+)(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i;
+
+/**
+ * Flytter en scene-blokk i Fountain-teksten (Fountain er source-of-truth).
+ * En scene-blokk er alle linjer fra scene-overskriften til (men ikke med) neste
+ * scene-overskrift. Eventuell preamble (tittel-side e.l.) før første scene
+ * beholdes på toppen. Ren funksjon — testbar og uten side-effekter.
+ *
+ * @returns ny content-streng, eller uendret content hvis indeksene er ugyldige.
+ */
+export function reorderScenesInContent(
+  content: string,
+  fromIndex: number,
+  toIndex: number,
+): string {
+  if (!content || fromIndex === toIndex) return content;
+  const lines = content.split('\n');
+
+  // Finn start-linje (0-basert) for hver scene-overskrift.
+  const sceneStarts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (SCENE_HEADING_LINE_RE.test(lines[i].trim())) {
+      sceneStarts.push(i);
+    }
+  }
+  if (
+    sceneStarts.length < 2 ||
+    fromIndex < 0 || toIndex < 0 ||
+    fromIndex >= sceneStarts.length || toIndex >= sceneStarts.length
+  ) {
+    return content;
+  }
+
+  const preamble = lines.slice(0, sceneStarts[0]);
+  const blocks: string[][] = sceneStarts.map((start, idx) => {
+    const end = idx + 1 < sceneStarts.length ? sceneStarts[idx + 1] : lines.length;
+    return lines.slice(start, end);
+  });
+
+  const [moved] = blocks.splice(fromIndex, 1);
+  blocks.splice(toIndex, 0, moved);
+
+  return [...preamble, ...blocks.flat()].join('\n');
+}
+
 // Convert database SceneBreakdown to ParsedScene
 function convertDbScenes(dbScenes: SceneBreakdown[]): ParsedScene[] {
   return dbScenes.map((scene, index) => ({
@@ -199,10 +252,14 @@ interface SceneRowProps {
   isPinned: boolean;
   onPin: (id: string, e: React.MouseEvent) => void;
   onClick: (scene: ParsedScene) => void;
+  // Reorder (kun aktivt for Fountain-baserte scener — tekst er source-of-truth)
+  index?: number;
+  total?: number;
+  onMove?: (index: number, direction: -1 | 1) => void;
 }
 
 const SceneRow: React.FC<SceneRowProps> = React.memo((
-  { scene, isCurrent, intExtColor, accentColor, textColor, isPinned, onPin, onClick }
+  { scene, isCurrent, intExtColor, accentColor, textColor, isPinned, onPin, onClick, index, total, onMove }
 ) => (
   <ListItemButton
     id={`scene-nav-${scene.id}`}
@@ -260,6 +317,30 @@ const SceneRow: React.FC<SceneRowProps> = React.memo((
       </Stack>
     </Box>
 
+    {/* Flytt scene opp/ned (Fountain-tekst er source-of-truth) */}
+    {onMove && typeof index === 'number' && (
+      <Box sx={{ display: 'flex', flexDirection: 'column', flexShrink: 0, mr: 0.25 }}>
+        <IconButton
+          size="small"
+          disabled={index <= 0}
+          onClick={(e) => { e.stopPropagation(); onMove(index, -1); }}
+          aria-label={`Flytt scene ${scene.sceneNumber} opp`}
+          sx={{ p: 0, height: 16, opacity: 0.4, '&:hover': { opacity: 1 }, '&.Mui-disabled': { opacity: 0.12 } }}
+        >
+          <MoveUpIcon sx={{ fontSize: 15 }} />
+        </IconButton>
+        <IconButton
+          size="small"
+          disabled={typeof total === 'number' && index >= total - 1}
+          onClick={(e) => { e.stopPropagation(); onMove(index, 1); }}
+          aria-label={`Flytt scene ${scene.sceneNumber} ned`}
+          sx={{ p: 0, height: 16, opacity: 0.4, '&:hover': { opacity: 1 }, '&.Mui-disabled': { opacity: 0.12 } }}
+        >
+          <MoveDownIcon sx={{ fontSize: 15 }} />
+        </IconButton>
+      </Box>
+    )}
+
     {/* Pin toggle */}
     <IconButton
       size="small"
@@ -291,6 +372,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   onToggleCollapse,
   width = 280,
   collapsedWidth = 48,
+  onReorderScenes,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set(['1', '2', '3', 'pinned']));
@@ -308,6 +390,15 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
     }
     return parseScenes(content || '');
   }, [content, dbScenes]);
+
+  // Reorder kun for Fountain-baserte scener (tekst er source-of-truth) — ikke
+  // for DB-scener (de reorderes i produksjonsvisningen).
+  const reorderEnabled = Boolean(onReorderScenes) && !(dbScenes && dbScenes.length > 0);
+  const handleMoveScene = useCallback((index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (index < 0 || target < 0) return;
+    onReorderScenes?.(index, target);
+  }, [onReorderScenes]);
 
   // ── Pro statistics ───────────────────────────────────────────────────────
   const locationStats = useMemo(() => {
@@ -869,7 +960,8 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
                     {actScenes.filter(Boolean).map(scene => {
                       const isCurrent = currentScene?.id === scene.id;
                       const iec = scene.intExt === 'INT' ? intColor : scene.intExt === 'EXT' ? extColor : textColor;
-                      return <SceneRow key={scene.id} scene={scene} isCurrent={isCurrent} intExtColor={iec} accentColor={accentColor} textColor={textColor} isPinned={pinnedSceneIds.has(scene.id)} onPin={handlePinToggle} onClick={handleSceneClick} />;
+                      const globalIndex = reorderEnabled ? parsedScenes.findIndex(s => s.id === scene.id) : undefined;
+                      return <SceneRow key={scene.id} scene={scene} isCurrent={isCurrent} intExtColor={iec} accentColor={accentColor} textColor={textColor} isPinned={pinnedSceneIds.has(scene.id)} onPin={handlePinToggle} onClick={handleSceneClick} index={globalIndex} total={parsedScenes.length} onMove={reorderEnabled ? handleMoveScene : undefined} />;
                     })}
                   </List>
                 </Collapse>

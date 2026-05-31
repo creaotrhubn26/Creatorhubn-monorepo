@@ -54,7 +54,7 @@ import {
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
-import { SceneNavigatorSidebar, type ParsedScene } from './SceneNavigatorSidebar';
+import { SceneNavigatorSidebar, reorderScenesInContent, type ParsedScene } from './SceneNavigatorSidebar';
 import { BeatBoard } from './BeatBoard';
 import { TableReadPanel } from './TableReadPanel';
 import { ScriptAnalysisPanel } from './ScriptAnalysisPanel';
@@ -507,6 +507,16 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     onChange(newValue);
   }, [isReadOnly, onChange]);
 
+  // Scene-reorder: Fountain-teksten er source-of-truth, så vi flytter scenens
+  // linje-blokk i teksten og ruter gjennom handleChange (respekterer lås).
+  const handleReorderScenes = useCallback((fromIndex: number, toIndex: number) => {
+    const next = reorderScenesInContent(value, fromIndex, toIndex);
+    if (next !== value) {
+      handleChange(next);
+      setSnackbar({ open: true, message: 'Scene flyttet', severity: 'success' });
+    }
+  }, [value, handleChange]);
+
   const issueCount = analysis.characterConflicts.length + analysis.consistencyIssues.length;
 
   const handleFullscreenToggle = useCallback(() => {
@@ -932,6 +942,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               }}
               collapsed={false}
               onToggleCollapse={() => {}}
+              onReorderScenes={isReadOnly ? undefined : handleReorderScenes}
               width={responsive.sidebarWidth - 16}
               darkMode={true}
             />
@@ -945,6 +956,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             onSceneSelect={handleSceneSelect}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => dispatchUi({ type: 'TOGGLE_SIDEBAR' })}
+            onReorderScenes={isReadOnly ? undefined : handleReorderScenes}
             width={responsive.sidebarWidth}
             darkMode={true}
           />
