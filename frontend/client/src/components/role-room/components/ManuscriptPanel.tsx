@@ -3239,6 +3239,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                             <React.Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={20} /></Box>}>
                               <LazyScreenplayEditorWithNavigator
                                 editorKey={`${selectedManuscript.id}-production-split`}
+                                manuscriptId={selectedManuscript.id}
                                 storyLogicData={storyLogicData}
                                 value={content}
                                 onChange={onChange}
@@ -4620,6 +4621,7 @@ Anna går raskt gjennom regnet.
       }>
           <LazyScreenplayEditorWithNavigator
             editorKey={manuscript.id}
+            manuscriptId={manuscript.id}
             storyLogicData={storyLogicData}
             value={editorContent}
             onChange={handleScreenplayChange}

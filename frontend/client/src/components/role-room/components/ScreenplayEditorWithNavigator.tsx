@@ -52,9 +52,12 @@ import {
   AutoStories as StoryFoundationIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
 import { SceneNavigatorSidebar, reorderScenesInContent, type ParsedScene } from './SceneNavigatorSidebar';
+import { PostCommentLayer } from './PostCommentLayer';
+import authSessionService from '../services/authSessionService';
 import { BeatBoard } from './BeatBoard';
 import { TableReadPanel } from './TableReadPanel';
 import { ScriptAnalysisPanel } from './ScriptAnalysisPanel';
@@ -200,7 +203,7 @@ const getResponsiveValues = (tier: ScreenTier) => {
 };
 
 export type ScriptLockState = 'unlocked' | 'locked' | 'final';
-export type RightPanelType = 'none' | 'analysis' | 'beatboard' | 'tableread' | 'structure' | 'grammar' | 'storyboard';
+export type RightPanelType = 'none' | 'analysis' | 'beatboard' | 'tableread' | 'structure' | 'grammar' | 'storyboard' | 'comments';
 export type HeaderSaveState = 'saved' | 'saving' | 'unsaved' | 'error';
 
 export interface ScreenplayHeaderSummary {
@@ -264,6 +267,9 @@ export interface ScreenplayEditorWithNavigatorProps {
    * har historiens DNA synlig mens han skriver — i stedet for at det er borte.
    */
   storyLogicData?: StoryLogicState | null;
+
+  /** Manus-id — brukes som anker for kommentar-tråder i editoren. */
+  manuscriptId?: string;
 }
 
 const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorProps> = ({
@@ -293,6 +299,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   headerSummary = null,
   editorKey,
   storyLogicData = null,
+  manuscriptId,
 }) => {
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
   const [storyFoundationOpen, setStoryFoundationOpen] = useState(false);
@@ -894,6 +901,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <SpellcheckIcon sx={{ fontSize: responsive.iconSize }} />
               </Tooltip>
             </ToggleButton>
+            <ToggleButton value="comments" aria-label="comments">
+              <Tooltip title="Kommentarer & teamfeedback på manuset">
+                <CommentIcon sx={{ fontSize: responsive.iconSize }} />
+              </Tooltip>
+            </ToggleButton>
             {!isTablet && (
               <ToggleButton value="storyboard" aria-label="storyboard">
                 <Tooltip title="Storyboard">
@@ -1254,6 +1266,30 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   </Typography>
                 </Box>
               )}
+              {rightPanel === 'comments' && (() => {
+                const token = authSessionService.getSessionTokenSync();
+                if (!projectId || !token) {
+                  return (
+                    <Box sx={{ p: isMobile ? 2 : 3, textAlign: 'center', color: 'text.secondary' }}>
+                      <CommentIcon sx={{ fontSize: is4K ? 64 : 48, opacity: 0.5, mb: 2 }} />
+                      <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
+                        Logg inn og åpne et prosjekt for å se og legge til kommentarer på manuset.
+                      </Typography>
+                    </Box>
+                  );
+                }
+                return (
+                  <Box sx={{ p: 1.5, height: '100%', overflow: 'auto' }}>
+                    <PostCommentLayer
+                      projectId={projectId}
+                      anchorType="manuscript"
+                      anchorRef={manuscriptId || projectId}
+                      auth={{ kind: 'bearer', token }}
+                      readOnly={isReadOnly}
+                    />
+                  </Box>
+                );
+              })()}
             </Box>
           )
         )}
