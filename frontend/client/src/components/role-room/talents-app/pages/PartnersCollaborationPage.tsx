@@ -1056,30 +1056,29 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
       <DialogContent sx={{ pt: 2.4 }}>
         {createdInvite ? (
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <Alert severity="warning" sx={{ bgcolor: 'rgba(245, 158, 11, 0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.warning } }}>
-              <strong>Vi sender ikke e-post automatisk ennå.</strong> Kopier lenken under og send den til {createdInvite.maskedEmail || createdInvite.partner_email} selv (SMS, WhatsApp, eller e-post).
-            </Alert>
+            {(createdInvite as { emailSent?: boolean }).emailSent ? (
+              <Alert
+                severity="success"
+                icon={<EmailOutlinedIcon />}
+                sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.success } }}
+              >
+                <strong>E-post sendt til {createdInvite.maskedEmail || createdInvite.partner_email}</strong> — de får en lenke for å akseptere invitasjonen direkte.
+              </Alert>
+            ) : (
+              <Alert severity="warning" sx={{ bgcolor: 'rgba(245, 158, 11, 0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.warning } }}>
+                <strong>E-post-tjenesten ikke konfigurert akkurat nå.</strong> Kopier lenken under og send den til {createdInvite.maskedEmail || createdInvite.partner_email} selv.
+              </Alert>
+            )}
             <Box sx={{ p: 1.4, borderRadius: radius.sm, bgcolor: palette.bgCardElevated, border: `1px solid ${palette.borderSubtle}`, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography sx={{ flexGrow: 1, color: palette.textSecondary, fontSize: '0.82rem', wordBreak: 'break-all', fontFamily: 'monospace' }}>
                 {createdInvite.acceptUrl}
               </Typography>
-              <Tooltip title="Kopier til utklippstavle">
+              <Tooltip title="Kopier lenken">
                 <IconButton size="small" onClick={() => { navigator.clipboard.writeText(createdInvite.acceptUrl || ''); }} sx={{ color: palette.accentBright }}>
                   <ContentCopyOutlinedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             </Box>
-            <Button
-              href={`mailto:${createdInvite.partner_email}?subject=Invitasjon%20til%20The%20Role%20Room%20Talents&body=Hei%2C%0A%0AJeg%20har%20delt%20talent-profilen%20min%20med%20deg%20i%20The%20Role%20Room%20Talents.%20Klikk%20lenken%20under%20for%20%C3%A5%20akseptere%3A%0A%0A${encodeURIComponent(createdInvite.acceptUrl || '')}%0A%0AMvh`}
-              startIcon={<EmailOutlinedIcon />}
-              sx={{
-                textTransform: 'none', fontWeight: 600, py: 1, borderRadius: radius.sm,
-                color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`,
-                '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
-              }}
-            >
-              Åpne i e-post
-            </Button>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
               Når partneren klikker lenken og logger inn, ser du dem i partner-listen din. Du får varsel her.
             </Typography>

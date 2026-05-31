@@ -43,6 +43,11 @@ import roleRoomTalentsService, {
 } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
 
+interface ProposalResult extends TalentProposal {
+  emailSent?: boolean;
+  emailReason?: string;
+}
+
 const SCOPE_OPTIONS: Array<[RoleRoomTalentConsentScope, string, string]> = [
   ['basic_profile', 'Basis', 'Navn, by, bio'],
   ['media_portfolio', 'Media', 'Headshot, showreel, CV'],
@@ -70,7 +75,7 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<TalentProposal | null>(null);
+  const [created, setCreated] = useState<ProposalResult | null>(null);
 
   const reset = () => {
     setForm({
@@ -120,38 +125,34 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
       <DialogContent sx={{ pt: 2.4 }}>
         {created ? (
           <Stack spacing={2}>
-            <Alert
-              severity="success"
-              sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.success } }}
-            >
-              <strong>{form.proposed_display_name || form.proposed_email}</strong> får forslaget — de må eksplisitt godkjenne før profilen vises i ditt register.
-            </Alert>
-            <Typography sx={{ color: palette.textSecondary, fontSize: '0.88rem' }}>
-              <strong>Vi sender ikke e-post automatisk ennå.</strong> Kopier lenken under og send den til {form.proposed_email} selv (SMS, WhatsApp, eller e-post). Dette blir automatisk i en kommende oppdatering.
-            </Typography>
+            {created.emailSent ? (
+              <Alert
+                severity="success"
+                icon={<EmailOutlinedIcon />}
+                sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.success } }}
+              >
+                <strong>E-post sendt til {form.proposed_display_name || form.proposed_email}</strong> — de mottar nå et forslag med beskrivelse av hva du ber om og en lenke for å akseptere eller avslå.
+              </Alert>
+            ) : (
+              <Alert
+                severity="warning"
+                sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.warning } }}
+              >
+                <strong>E-post-tjenesten ikke konfigurert akkurat nå</strong>{created.emailReason ? ` (${created.emailReason})` : ''}. Kopier lenken under og send den til {form.proposed_email} selv (e-post, SMS, WhatsApp).
+              </Alert>
+            )}
             <Box sx={{ p: 1.4, borderRadius: radius.sm, bgcolor: palette.bgCardElevated, border: `1px solid ${palette.borderSubtle}`, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography sx={{ flexGrow: 1, color: palette.textSecondary, fontSize: '0.82rem', wordBreak: 'break-all', fontFamily: 'monospace' }}>
                 {created.acceptUrl}
               </Typography>
-              <Tooltip title="Kopier">
+              <Tooltip title="Kopier lenken">
                 <IconButton size="small" onClick={() => navigator.clipboard.writeText(created.acceptUrl || '')} sx={{ color: palette.accentBright }}>
                   <ContentCopyOutlinedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             </Box>
-            <Button
-              href={`mailto:${form.proposed_email}?subject=${encodeURIComponent('Forespørsel om å bli lagt til i casting-registret')}&body=${encodeURIComponent(`Hei,\n\nVi vil gjerne legge deg til i vårt casting-register på The Role Room. Du må selv godkjenne dette — vi henter ingen data uten ditt samtykke.\n\nKlikk lenken under for å se hva du blir bedt om å dele og bestemme deg:\n\n${created.acceptUrl}\n\nLenken er gyldig i 30 dager.\n\nMvh`)}`}
-              startIcon={<EmailOutlinedIcon />}
-              sx={{
-                textTransform: 'none', fontWeight: 600, py: 1, borderRadius: radius.sm,
-                color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`,
-                '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
-              }}
-            >
-              Åpne i e-post
-            </Button>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-              Status vises i "Mine forslag" — du får varsel her når talenten har svart.
+              Status vises i "Forslag"-tab i Talent Registry. Du får varsel her når {form.proposed_display_name || 'de'} har svart.
             </Typography>
           </Stack>
         ) : (
