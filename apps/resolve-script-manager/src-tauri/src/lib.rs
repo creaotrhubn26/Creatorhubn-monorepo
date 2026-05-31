@@ -8,6 +8,7 @@ mod folder_watcher;
 mod history;
 mod media_probe;
 mod photoshop_bridge;
+mod psd_indexer;
 mod python;
 mod role_room_api;
 
@@ -678,6 +679,8 @@ pub fn run() {
             media_probe::probe_media_files,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
+            psd_indexer::psd_index_directory,
+            psd_indexer::psd_get_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
