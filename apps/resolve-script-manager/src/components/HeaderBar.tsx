@@ -95,6 +95,7 @@ interface Props {
   onOpenPhotoshopHealth: () => void;
   onOpenPhotoshopTour: () => void;
   onOpenFeedback: () => void;
+  onOpenHelp: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -140,6 +141,7 @@ export function HeaderBar({
   onOpenPhotoshopHealth,
   onOpenPhotoshopTour,
   onOpenFeedback,
+  onOpenHelp,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -241,6 +243,9 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTour(); }}>
                   👋 Vis Photoshop-tour på nytt
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenHelp(); }}>
+                  ❓ Hjelp + dokumentasjon
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenFeedback(); }}>
                   📨 Send feedback

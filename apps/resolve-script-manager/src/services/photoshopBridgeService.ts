@@ -82,6 +82,24 @@ export interface TemplateScanResult {
   template_path: string;
   template: DocumentSummary | null;
   fields: TemplateField[];
+  /**
+   * Alle text- og smart-object-layers — uavhengig av om de matcher
+   * `{{key}}`-mønsteret. Bruk for å tilby auto-rename når Irlin har
+   * et template uten konvensjon.
+   */
+  all_candidates?: Array<{
+    layer_name: string;
+    type: "text" | "image";
+    has_field_pattern: boolean;
+    suggested_key: string;
+  }>;
+}
+
+export interface TemplateAutoRenameResult {
+  template_path: string;
+  output_path: string;
+  renamed: Array<{ old_name: string; new_key: string }>;
+  skipped: Array<{ layer_name: string; new_key: string; reason: string }>;
 }
 
 export interface TemplateRenderResult {
@@ -134,4 +152,10 @@ export const photoshop = {
     format: ExportFormat;
     quality?: number;
   }) => send<TemplateRenderResult>("template.render", params),
+
+  autoRenameTemplate: (params: {
+    template_path: string;
+    output_path: string;
+    mappings: Array<{ layer_name: string; new_key: string }>;
+  }) => send<TemplateAutoRenameResult>("template.autoRename", params),
 };
