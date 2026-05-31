@@ -24,6 +24,12 @@ struct CaptureAppMain: App {
                     if ProcessInfo.processInfo.arguments.contains("--record-session") {
                         _ = try? await CCAPISessionRecorder.shared.start(label: "launch")
                     }
+
+                    // Annonser denne iPad-en via Bonjour så Creatorhub
+                    // One Desk (Mac-companion) kan finne den under
+                    // shoot. Idempotent — multiple start()-kall no-op.
+                    // Spec: docs/capture/desk-pairing.md.
+                    PairingAdvertiser.shared.start()
                 }
         }
     }
