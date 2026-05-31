@@ -9,6 +9,7 @@ tools/*/src-tauri/target/
 .env.oembed.demo.local
 .env.pages-cta.demo.local
 .env.page-public-content.demo.local
+.env.page-mentions.demo.local
 .role-room-admin-state.json
 .role-room-demo-state.json
 .whatsapp-web-state.json
@@ -68,6 +69,7 @@ docs/
 !backend/docs/oembed-app-review-runbook.md
 !backend/docs/pages-manage-cta-app-review-runbook.md
 !backend/docs/page-public-content-app-review-runbook.md
+!backend/docs/page-mentions-app-review-runbook.md
 !backend/docs/dance-formation-pixel-perfect-roadmap.md
 !backend/docs/role-room-agent-ux.md
 !TheRoleRoom-Admin-Room-Operating-System.md

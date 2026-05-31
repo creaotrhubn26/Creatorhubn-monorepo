@@ -19,6 +19,7 @@ node_modules/
 .env.oembed.demo.local
 .env.pages-cta.demo.local
 .env.page-public-content.demo.local
+.env.page-mentions.demo.local
 
 # Logs
 logs/
