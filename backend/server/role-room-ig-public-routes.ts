@@ -44,7 +44,7 @@ function resolveAccessToken(req: Request): string {
   return "";
 }
 
-const IG_MEDIA_FIELDS = "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count,username";
+const IG_MEDIA_FIELDS = "id,caption,media_type,permalink,timestamp";
 
 export function setupIgPublicRoutes(deps: SetupIgPublicRoutesDeps): void {
   const { app, requireAdminOrDemoBypass } = deps;
