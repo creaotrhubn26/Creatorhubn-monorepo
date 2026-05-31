@@ -308,8 +308,11 @@ function splitName(full: string): { first: string; last: string } {
 
 async function findCustomerByEmail(clientKey: string, email: string): Promise<CustomerDto | null> {
   // PO Go v2 GET /Customers støtter ?emailAddresses=<email>&PageSize=1.
-  // Respons-shape varierer (noen endepunkter wrapper i { items }, andre er bare array).
-  type Resp = CustomerDto[] | { items?: CustomerDto[] };
+  // Returnerer:
+  //   200 + bare array av CustomerDto (verifisert mot demo)
+  //   204 No Content når ingen treff
+  //   evt. { items: [...] } i andre miljøer (defensiv)
+  type Resp = CustomerDto[] | { items?: CustomerDto[] } | undefined;
   const res = await call<Resp>(clientKey, {
     method: 'GET',
     path: '/Customers',
@@ -414,9 +417,17 @@ async function ensureProduct(
 // SalesOrder + Lines + Send
 // ─────────────────────────────────────────────────────────────────────
 
-async function createSalesOrder(
+/**
+ * Opprett salgsordre med alle linjer i ett enkelt kall.
+ *
+ * Merk: POST /SalesOrders finnes IKKE — vi må bruke /SalesOrders/Complete
+ * som tar SalesOrderLines inline. Verifisert mot demo-tenant 2026-05-31.
+ */
+async function createSalesOrderWithLines(
   clientKey: string,
   customerId: number,
+  productId: number,
+  lines: InvoiceLineInput[],
   reference?: string | null,
 ): Promise<SalesOrderDto> {
   const today = new Date().toISOString().slice(0, 10);
@@ -425,38 +436,25 @@ async function createSalesOrder(
     SalesOrderDate: today,
     CurrencyCode: 'NOK',
     CustomerReference: reference?.slice(0, 100) ?? null,
-  };
-  const created = await call<SalesOrderDto>(clientKey, {
-    method: 'POST',
-    path: '/SalesOrders',
-    body,
-  });
-  if (!created?.Id) {
-    throw new PowerOfficeApiError('SalesOrder create returnerte ikke Id', 502, created);
-  }
-  return created;
-}
-
-async function addSalesOrderLine(
-  clientKey: string,
-  salesOrderId: string,
-  productId: number,
-  line: InvoiceLineInput,
-  sortOrder: number,
-): Promise<void> {
-  await call(clientKey, {
-    method: 'POST',
-    path: `/SalesOrders/${encodeURIComponent(salesOrderId)}/Lines`,
-    body: {
+    SalesOrderLines: lines.map((line, idx) => ({
       LineType: 'Normal',
       ProductId: productId,
       Description: line.description.slice(0, 500),
       Quantity: line.quantity,
       ProductUnitPrice: line.unitPriceNet,
       UnitOfMeasureCode: 'EA',
-      SortOrder: sortOrder,
-    },
+      SortOrder: idx,
+    })),
+  };
+  const created = await call<SalesOrderDto>(clientKey, {
+    method: 'POST',
+    path: '/SalesOrders/Complete',
+    body,
   });
+  if (!created?.Id) {
+    throw new PowerOfficeApiError('SalesOrder create returnerte ikke Id', 502, created);
+  }
+  return created;
 }
 
 async function sendInvoice(
@@ -485,13 +483,15 @@ async function sendInvoice(
 export async function createInvoiceViaSalesOrder(input: CreateInvoiceInput): Promise<CreateInvoiceResult> {
   const { productId, justCreated } = await ensureProduct(input.clientKey, input.cachedProductId);
   const customerId = await ensureCustomer(input.clientKey, input.customer);
-  const so = await createSalesOrder(input.clientKey, customerId, input.reference);
 
-  // Legg til linjer sekvensielt — PO støtter ikke batch.
-  let i = 0;
-  for (const line of input.lines) {
-    await addSalesOrderLine(input.clientKey, so.Id, productId, line, i++);
-  }
+  // /SalesOrders/Complete oppretter ordre + alle linjer i ett kall.
+  const so = await createSalesOrderWithLines(
+    input.clientKey,
+    customerId,
+    productId,
+    input.lines,
+    input.reference,
+  );
 
   const sendReq = await sendInvoice(
     input.clientKey,
