@@ -261,10 +261,11 @@ export default function FormationHeaderBar({
           <MenuItem
             onClick={() => handleExport('pdf')}
             data-testid={`${testId}-export-pdf`}
-            disabled
           >
             <ListItemIcon><PdfIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="PDF" secondary="Kommer i Phase 6" />
+            {/* Workflow-audit G21: enabled — åpner print-overlay m/ stage-plot
+                for alle formasjoner. Bruker browser's print-to-PDF. */}
+            <ListItemText primary="Stage plot (PDF)" secondary="Print eller lagre — én side per formasjon" />
           </MenuItem>
         </Menu>
 

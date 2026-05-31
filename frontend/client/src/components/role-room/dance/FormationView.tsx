@@ -63,6 +63,7 @@ import {
 import { FormationTimeline } from './FormationTimeline';
 import { DancerPathsView } from './DancerPathsView';
 import { formatTimecode, parseTimecode } from './timecode';
+import StagePlotPrintOverlay from './StagePlotPrintOverlay';
 import { DancerPathPreview } from './DancerPathPreview';
 import { StageMap3D } from './StageMap3D';
 import { CurveOverlay } from './CurveOverlay';
@@ -247,13 +248,20 @@ export const FormationView: React.FC<FormationViewProps> = ({
     return () => window.removeEventListener('dance:select-clip', onSelectClip as EventListener);
   }, []);
 
-  // Phase 2: lytt på `dance:export-formation` fra FormationHeaderBar.
+  // Workflow-audit v1 G21: PDF = stage-plot-overlay m/ window.print().
+  const [printMode, setPrintMode] = useState<boolean>(false);
+
+  // Phase 2 + G21: lytt på `dance:export-formation` fra FormationHeaderBar.
   // PNG = fabric.toDataURL snapshot. JSON = serialisert formations-array.
-  // PDF er stubbed (knapp disabled i headeren — Phase 6 lager renderer).
+  // PDF = render StagePlotPrintOverlay som trigger window.print().
   useEffect(() => {
     const onExport = (e: Event): void => {
       const detail = (e as CustomEvent<{ format?: 'png' | 'json' | 'pdf'; filename?: string }>).detail;
       if (!detail) return;
+      if (detail.format === 'pdf') {
+        setPrintMode(true);
+        return;
+      }
       void import('./formationExport').then((mod) => {
         const filename = detail.filename ?? mod.defaultExportFilename(detail.format ?? 'png', formations);
         if (detail.format === 'png') {
@@ -1252,6 +1260,14 @@ export const FormationView: React.FC<FormationViewProps> = ({
         dancersTrackSlot={<DancerPathsView formations={formations} dancers={dancers} />}
       />
     </Box>
+    {/* Workflow-audit G21: print-overlay for PDF-eksport. */}
+    {printMode ? (
+      <StagePlotPrintOverlay
+        formations={formations}
+        dancers={dancers}
+        onClose={() => setPrintMode(false)}
+      />
+    ) : null}
     </Box>
   );
 };
