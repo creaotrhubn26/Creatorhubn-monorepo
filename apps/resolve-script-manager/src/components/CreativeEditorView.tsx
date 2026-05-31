@@ -40,6 +40,7 @@ import { StudioVsFreeDialog, useStudioVsFreeAutoShow } from "./StudioVsFreeDialo
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import type { UpcomingJob } from "../services/upcomingJobsService";
 import { ThumbnailCreator } from "./ThumbnailCreator";
+import { PhotoshopAgentDialog } from "./PhotoshopAgentDialog";
 import BrushIcon from "@mui/icons-material/Brush";
 import CoffeeIcon from "@mui/icons-material/Coffee";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -395,6 +396,9 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [playRate, setPlayRate] = useState(1);
   // Loop within focused pick (default) vs play full source continuously
   const [loopMode, setLoopMode] = useState<"pick" | "full">("pick");
+
+  // Photoshop Agent — modal-dialog state
+  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
 
   // Claude chat state — separate history per agent
   type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -3749,6 +3753,20 @@ ${ctxLines.join("\n")}`;
                 </button>
               );
             })}
+            <button
+              className="ce-agent-tab"
+              onClick={() => setShowPhotoshopAgent(true)}
+              title="Åpne Photoshop Agent — AI styrer Photoshop fra naturlig språk"
+              style={{
+                background: "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
+                borderColor: "rgba(167,139,250,0.40)",
+                color: "#d8c8ff",
+                marginLeft: "auto",
+              }}
+            >
+              <span className="ce-agent-tab-icon">🎨</span>
+              <span className="ce-agent-tab-name">Photoshop</span>
+            </button>
           </div>
           {(() => {
             const working = suggBusy || flowBusy || wishesBusy || chatBusy;
@@ -4787,6 +4805,10 @@ ${ctxLines.join("\n")}`;
           </div>
         </button>
       </footer>
+
+      {showPhotoshopAgent && (
+        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
+      )}
     </div>
   );
 }
