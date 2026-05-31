@@ -57,6 +57,7 @@ import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
 import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
+import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
 import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
 import { PhotoshopHealthCheckDialog } from "./components/PhotoshopHealthCheckDialog";
 import { MagicCutDialog } from "./components/MagicCutDialog";
@@ -134,6 +135,7 @@ export default function App() {
   const [showWatch, setShowWatch] = useState(false);
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
   const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
+  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   const [showPsdGallery, setShowPsdGallery] = useState(false);
   const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
@@ -656,6 +658,7 @@ export default function App() {
         onOpenWatch={() => setShowWatch(true)}
         onOpenPhotoshopBridge={() => setShowPhotoshopBridge(true)}
         onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
+        onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
         onOpenPsdGallery={() => setShowPsdGallery(true)}
         onOpenPhotoshopHealth={() => setShowPhotoshopHealth(true)}
         onSignIn={() => setShowSignIn(true)}
@@ -971,6 +974,9 @@ export default function App() {
       )}
       {showPhotoshopTemplates && (
         <PhotoshopTemplateDialog onClose={() => setShowPhotoshopTemplates(false)} />
+      )}
+      {showPhotoshopAgent && (
+        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
       )}
       {showPsdGallery && (
         <PsdGalleryDialog onClose={() => setShowPsdGallery(false)} />

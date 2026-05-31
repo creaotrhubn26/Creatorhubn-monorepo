@@ -90,6 +90,7 @@ interface Props {
   onOpenWatch: () => void;
   onOpenPhotoshopBridge: () => void;
   onOpenPhotoshopTemplates: () => void;
+  onOpenPhotoshopAgent: () => void;
   onOpenPsdGallery: () => void;
   onOpenPhotoshopHealth: () => void;
   onSignIn: () => void;
@@ -132,6 +133,7 @@ export function HeaderBar({
   onOpenWatch,
   onOpenPhotoshopBridge,
   onOpenPhotoshopTemplates,
+  onOpenPhotoshopAgent,
   onOpenPsdGallery,
   onOpenPhotoshopHealth,
   onSignIn,
@@ -218,6 +220,17 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTemplates(); }}>
                   Photoshop Templates…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
+                    border: "1px solid rgba(167,139,250,0.35)",
+                    color: "#e8e0ff",
+                    fontWeight: 600,
+                  }}
+                >
+                  🎨 Photoshop Agent…
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPsdGallery(); }}>
                   PSD-galleri…
