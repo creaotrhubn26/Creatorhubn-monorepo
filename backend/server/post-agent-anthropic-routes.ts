@@ -407,33 +407,58 @@ export function createPostAgentRouter(
    */
   router.get('/me', postAgentAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
+    // Robust mot databaser der profession/company_name-kolonnene ikke har
+    // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
+    // med "column ... does not exist", fall tilbake til minimum-set og
+    // returner profession/companyName som null — UI viser fortsatt
+    // brukeren som pålogget istedenfor "Token utløpt".
+    const fullCols = 'id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator';
+    const minCols  = 'id, email, first_name, last_name, role, profile_image_url, is_administrator';
+    let u: Record<string, unknown> | undefined;
+    let degraded = false;
     try {
       const { rows } = await pool.query(
-        `SELECT id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator
-         FROM users WHERE id = $1 LIMIT 1`,
+        `SELECT ${fullCols} FROM users WHERE id = $1 LIMIT 1`,
         [userId],
       );
-      const u = rows[0];
-      if (!u) {
-        res.status(404).json({ error: 'user_not_found' });
+      u = rows[0];
+    } catch (err) {
+      const msg = (err as Error).message || '';
+      if (/column .* does not exist/i.test(msg)) {
+        degraded = true;
+        try {
+          const { rows } = await pool.query(
+            `SELECT ${minCols} FROM users WHERE id = $1 LIMIT 1`,
+            [userId],
+          );
+          u = rows[0];
+        } catch (err2) {
+          res.status(500).json({ error: 'profile_lookup_failed', detail: (err2 as Error).message });
+          return;
+        }
+      } else {
+        res.status(500).json({ error: 'profile_lookup_failed', detail: msg });
         return;
       }
-      const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
-      res.json({
-        id: u.id,
-        email: u.email,
-        name: fullName || u.email?.split('@')[0] || 'Bruker',
-        firstName: u.first_name,
-        lastName: u.last_name,
-        role: u.role || 'user',
-        profileImageUrl: u.profile_image_url,
-        profession: u.profession,
-        companyName: u.company_name,
-        isAdministrator: u.is_administrator === true,
-      });
-    } catch (err) {
-      res.status(500).json({ error: 'profile_lookup_failed', detail: (err as Error).message });
     }
+    if (!u) {
+      res.status(404).json({ error: 'user_not_found' });
+      return;
+    }
+    const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    res.json({
+      id: u.id,
+      email: u.email,
+      name: fullName || (u.email as string | undefined)?.split('@')[0] || 'Bruker',
+      firstName: u.first_name,
+      lastName: u.last_name,
+      role: u.role || 'user',
+      profileImageUrl: u.profile_image_url,
+      profession: degraded ? null : u.profession,
+      companyName: degraded ? null : u.company_name,
+      isAdministrator: u.is_administrator === true,
+      schemaDegraded: degraded || undefined,
+    });
   });
 
   // ---- Creator Profile ----
