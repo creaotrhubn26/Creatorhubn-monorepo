@@ -505,6 +505,10 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         );
         if (cacheR.rowCount && cacheR.rowCount > 0) {
           const row = cacheR.rows[0];
+          const cachedPictures: Record<string, string | null> = {};
+          for (const c of competitors) {
+            cachedPictures[c.nickname] = (c as unknown as { pictureUrl?: string | null }).pictureUrl ?? null;
+          }
           res.json({
             ok: true,
             cached: true,
@@ -513,6 +517,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
             generatedWithModel: row.generated_with_model,
             costNok: row.cost_nok ? Number(row.cost_nok) : null,
             competitorCount: competitors.length,
+            competitorPictures: cachedPictures,
             report: row.report_json,
           });
           return;
