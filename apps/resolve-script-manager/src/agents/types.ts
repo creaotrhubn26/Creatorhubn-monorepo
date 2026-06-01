@@ -25,6 +25,12 @@ export interface ChapterDef {
   description: string;
   /** Hint til auto-pilot om hva som skal prioriteres (tempo, energi, fokus). */
   priorityHint: "high-energy" | "emotional-peak" | "atmospheric" | "informational" | "transitional";
+  /**
+   * Universell beat-mapping på tvers av prosjekttyper. Lar Story-fanen
+   * vise samme narrative-struktur uavhengig av om det er bryllup, dans-
+   * forestilling, dokumentar eller corporate. Valgfri (backward-compat).
+   */
+  narrativeBeat?: "hook" | "setup" | "build" | "peak" | "celebration" | "outro";
 }
 
 /** Signal-vekter brukt av auto-pilot's quality-scoring per pick. */

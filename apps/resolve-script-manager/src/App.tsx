@@ -37,6 +37,7 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
+import { StoryTestHarness } from "./components/story/StoryTestHarness";
 import { AgentEditorView } from "./components/AgentEditorView";
 import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
 import CORPORATE_AGENT_CONFIG from "./agents/corporate";
@@ -79,7 +80,22 @@ import { useProjectTemplate } from "./hooks/useProjectTemplate";
 
 const MAX_LOG_EVENTS = 500;
 
+/**
+ * Test-bypass: når URL har `?test=story`, eksporter vi en harness som
+ * direkte mounter StoryView med pre-loaded picks fra window.__POST_AGENT_TEST_PICKS__.
+ * Brukes av Playwright e2e — ingen prod-effekt fordi flagget kun
+ * finnes når Playwright setter det.
+ */
+function isStoryTestMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("test") === "story";
+}
+
 export default function App() {
+  if (isStoryTestMode()) {
+    return <StoryTestHarness />;
+  }
+
   const [registry, setRegistry] = useState<Registry | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowMap>({});
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
