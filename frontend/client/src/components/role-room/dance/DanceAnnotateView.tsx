@@ -40,6 +40,7 @@ import AnnotateCategoryToolsPanel from './AnnotateCategoryToolsPanel';
 import AnnotateCommonLabelsPanel from './AnnotateCommonLabelsPanel';
 import AnnotateFormPanel from './AnnotateFormPanel';
 import AnnotateShortcutsPanel from './AnnotateShortcutsPanel';
+import AnnotationExportOverlay from './AnnotationExportOverlay';
 import {
   listAnnotations,
   createAnnotation,
@@ -80,6 +81,14 @@ export default function DanceAnnotateView({
   const [playheadSec, setPlayheadSec] = React.useState<number>(0);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [rightTab, setRightTab] = React.useState<AnnotateRightTab>('annotate');
+  const [exportOpen, setExportOpen] = React.useState<boolean>(false);
+
+  // Lytt på 'dance:export-annotation' fra DanceAnnotateLayout Export-knapp.
+  React.useEffect(() => {
+    const onExport = (): void => setExportOpen(true);
+    window.addEventListener('dance:export-annotation', onExport as EventListener);
+    return () => window.removeEventListener('dance:export-annotation', onExport as EventListener);
+  }, []);
 
   const selected = React.useMemo(
     () => annotations.find((a) => a.id === selectedId) ?? null,
@@ -446,7 +455,18 @@ export default function DanceAnnotateView({
               </Box>
             ) : null}
           </>
-        ) : (
+        ) : null}
+
+        {/* AnnotationExportOverlay — viss via dance:export-annotation event */}
+        <AnnotationExportOverlay
+          open={exportOpen}
+          annotations={annotations}
+          clipTitle={clipTitle}
+          dancerOptions={dancerOptions}
+          onClose={() => setExportOpen(false)}
+        />
+
+        {rightTab === 'review' ? (
           // Review-tab: read-only sammendrag per kategori + total-tall.
           <Box
             data-testid="dance-annotate-review-summary"
@@ -497,7 +517,7 @@ export default function DanceAnnotateView({
               </Box>
             </Stack>
           </Box>
-        )}
+        ) : null}
       </Stack>
     </Box>
   );
