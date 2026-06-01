@@ -1626,6 +1626,34 @@ export function LocationManagementPanel({
       return;
     }
 
+    // Sørg for REELLE koordinater: hvis adresse er satt men koordinater mangler
+    // (eller er 0,0), geokod via Kartverket (autoritativ). Uten koordinater
+    // virker ikke vær, reiseavstand, kart og call-sheets — så vi varsler.
+    const hasRealCoords = (c?: { lat: number; lng: number } | null): boolean =>
+      !!c && Number.isFinite(c.lat) && Number.isFinite(c.lng) && !(c.lat === 0 && c.lng === 0);
+    let resolvedCoordinates = formData.coordinates;
+    let resolvedAddress = formData.address;
+    let resolvedPropertyId = formData.propertyId;
+    if (!hasRealCoords(resolvedCoordinates) && formData.address?.trim()) {
+      try {
+        const geo = await externalDataService.getKartverketAddress(formData.address.trim());
+        if (geo?.coordinates && hasRealCoords(geo.coordinates)) {
+          resolvedCoordinates = geo.coordinates;
+          resolvedAddress = geo.address || resolvedAddress;
+          resolvedPropertyId = geo.propertyId || resolvedPropertyId;
+        }
+      } catch {
+        /* best-effort — varsles under hvis fortsatt uten koordinater */
+      }
+    }
+    if (!hasRealCoords(resolvedCoordinates)) {
+      showWarning(
+        formData.address?.trim()
+          ? 'Adressen kunne ikke geokodes — lokasjonen lagres uten verifiserte koordinater. Vær, reiseavstand og kart vil ikke fungere før adressen rettes.'
+          : 'Lokasjonen lagres uten adresse/koordinater. Legg til en adresse for vær, reiseavstand, kart og call-sheets.',
+      );
+    }
+
     try {
       const isCreating = !editingLocation;
       const nowIso = new Date().toISOString();
@@ -1634,6 +1662,10 @@ export function LocationManagementPanel({
         ? {
             ...editingLocation,
             ...formData,
+            // Geokodede verdier overstyrer (ekte koordinater fra Kartverket).
+            address: resolvedAddress,
+            coordinates: resolvedCoordinates,
+            propertyId: resolvedPropertyId,
             ...(notesText
               ? {
                   notesAuthorName: noteActorLabel,
@@ -1646,7 +1678,7 @@ export function LocationManagementPanel({
         : {
             id: `location-${Date.now()}`,
             name: formData.name || '',
-            address: formData.address || '',
+            address: resolvedAddress || '',
             type: formData.type || 'indoor',
             capacity: formData.capacity,
             facilities: formData.facilities || [],
@@ -1654,8 +1686,8 @@ export function LocationManagementPanel({
             assignedScenes: formData.assignedScenes || [],
             contactInfo: formData.contactInfo,
             notes: formData.notes,
-            coordinates: formData.coordinates,
-            propertyId: formData.propertyId,
+            coordinates: resolvedCoordinates,
+            propertyId: resolvedPropertyId,
             ...(notesText
               ? {
                   notesAuthorName: noteActorLabel,
