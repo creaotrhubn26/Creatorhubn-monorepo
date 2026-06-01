@@ -367,6 +367,7 @@ export default function DanceAnnotateView({
             annotations={annotations}
             durationSec={durationSec}
             playheadSec={playheadSec}
+            selectedAnnotationId={selectedId}
             onSeek={(sec) => {
               // Dispatch dance:video-seek så FormationVideoPanel setter currentTime
               window.dispatchEvent(new CustomEvent('dance:video-seek', { detail: { timeSec: sec } }));

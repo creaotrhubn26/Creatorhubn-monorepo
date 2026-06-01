@@ -39,6 +39,11 @@ export interface AnnotationTimelineProps {
    * prosjekt-spesifikk kategori). Når undefined, skjules knappen.
    */
   onAddTrack?: () => void;
+  /**
+   * ID til valgt annotation — driver lavender outline + boost-bgcolor
+   * (matcher mockup hvor "Chassé" er aktiv-highlighted i Steps-sporet).
+   */
+  selectedAnnotationId?: string | null;
 }
 
 export function AnnotationTimeline({
@@ -49,6 +54,7 @@ export function AnnotationTimeline({
   onSelectAnnotation,
   onResize,
   onAddTrack,
+  selectedAnnotationId = null,
 }: AnnotationTimelineProps): React.ReactElement {
   const safeDuration = Math.max(durationSec, 1);
   const tracks = React.useMemo(() => {
@@ -187,6 +193,7 @@ export function AnnotationTimeline({
                       currentEnd: a.endSec ?? a.timestampSec + 2,
                     });
                   };
+                  const isSelected = selectedAnnotationId === a.id;
                   return (
                     <Tooltip key={a.id} title={a.body || '(uten tekst)'}>
                       <Box
@@ -194,6 +201,7 @@ export function AnnotationTimeline({
                         role="button"
                         tabIndex={0}
                         aria-label={a.body || 'kommentar'}
+                        aria-pressed={isSelected}
                         onClick={() => {
                           if (isDragged) return;
                           onSeek?.(a.timestampSec);
@@ -213,10 +221,15 @@ export function AnnotationTimeline({
                           left: `${startPct}%`,
                           width: `${widthPct}%`,
                           minWidth: 6,
-                          bgcolor: `${track.color}66`,
-                          border: `1px solid ${track.color}`,
+                          bgcolor: isSelected ? `${track.color}cc` : `${track.color}66`,
+                          border: isSelected
+                            ? `2px solid #fff`
+                            : `1px solid ${track.color}`,
                           borderRadius: 0.5,
                           cursor: 'pointer',
+                          boxShadow: isSelected
+                            ? `0 0 0 1px ${track.color}, 0 0 8px ${track.color}55`
+                            : 'none',
                           '&:hover': { bgcolor: `${track.color}99` },
                           '&:focus-visible': { outline: `2px solid ${track.color}` },
                         }}

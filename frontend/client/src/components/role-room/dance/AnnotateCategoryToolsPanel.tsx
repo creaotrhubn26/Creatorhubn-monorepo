@@ -55,6 +55,20 @@ export default function AnnotateCategoryToolsPanel({
   const [editing, setEditing] = React.useState<AnnotationCategoryRecord | null>(null);
   const [hoverId, setHoverId] = React.useState<string | null>(null);
 
+  // '+ Add Track'-knappen i AnnotationTimeline (under timeline-tracks) er
+  // funksjonelt det samme som '+ Add Category'-knappen i denne panelet —
+  // begge oppretter en ny kategori (= track). Vi lytter på dance:add-track
+  // og åpner samme dialog så bruker-flowen er konsistent.
+  React.useEffect(() => {
+    if (readOnly) return;
+    const handler = (): void => {
+      setEditing(null);
+      setDialogOpen(true);
+    };
+    window.addEventListener('dance:add-track', handler);
+    return () => window.removeEventListener('dance:add-track', handler);
+  }, [readOnly]);
+
   const existingShortcuts = React.useMemo(
     () => categories.map((c) => c.shortcut),
     [categories],
