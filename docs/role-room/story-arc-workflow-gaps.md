@@ -33,11 +33,12 @@ Fjerde runde (tidligere utsatte — nå bygget etter beslutninger):
 - ✅ **Inline kommentar-panel** — `PostCommentLayer` montert som «Kommentarer»-høyrepanel i editoren (anchorType=manuscript), med polling/composer/tråder.
 - ✅ **Presence** — poller manus-låsen og viser aktiv redaktør i headeren («Du redigerer» / «<navn> redigerer»).
 
-**Fortsatt åpent (mindre oppfølginger):**
-- Per-linje margin-markører for kommentarer (panel på manus-nivå er på plass).
-- Vennlig navne-oppslag for presence (lockedBy er en bruker-id for andre enn deg selv).
-- Full multi-viewer passiv presence (krever dedikert presence-endepunkt; nåværende presence dekker den aktive redaktøren i enkelt-skriver-låsemodellen).
-- Fix 9 workflow-breadcrumb, undo-tooltips, BeatBoard-snarvei-hjelp (lav verdi nå).
+Femte runde (de tre oppfølgingene — nå bygget):
+- ✅ **Per-linje margin-markører** — gul dott i linjenummer-gutteren på kommenterte linjer; klikk åpner linje-tråden. Panel-linjemodus: «Kommenter linje X», «Vis hele manuset», «Gå til linje». Markører hentes/polles (anchorRef `<manusId>#<linje>`).
+- ✅ **Vennlig navne-oppslag** — henter prosjekt-medlemmer (`roleRoomProjectMembersService`) og resolver lås-eierens bruker-id → navn i «Låst av»-banneret.
+- ✅ **Full multi-viewer presence** — dedikert presence-endepunkt (POST/GET `/manuscripts/:id/presence`, in-memory + 45s TTL). Klienten pinger hvert 20s med visningsnavn; «N andre her»-chip viser alle aktive (ikke bare lås-holderen).
+
+**Fortsatt åpent (lav verdi):** Fix 9 workflow-breadcrumb, undo-tooltips, BeatBoard-snarvei-hjelp.
 
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).
