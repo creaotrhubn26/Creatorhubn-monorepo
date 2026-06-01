@@ -161,6 +161,15 @@ export function setupPriceAdministrationRoutes(
       const hasFeaturesInput = Object.prototype.hasOwnProperty.call(body, "features");
       const hasPublicPriceLabelInput = Object.prototype.hasOwnProperty.call(body, "publicPriceLabel");
       const hasCtaLabelInput = Object.prototype.hasOwnProperty.call(body, "ctaLabel");
+      const hasMaxStorageGbInput = Object.prototype.hasOwnProperty.call(body, "maxStorageGB");
+      const hasAllowsStorageOverageInput = Object.prototype.hasOwnProperty.call(
+        body,
+        "allowsStorageOverage",
+      );
+      const hasStorageOveragePriceInput = Object.prototype.hasOwnProperty.call(
+        body,
+        "storageOveragePricePerGbNok",
+      );
 
       const nextMonthlyPrice = hasMonthlyPriceInput
         ? readNumber(body.monthlyPrice ?? body.price)
@@ -170,6 +179,13 @@ export function setupPriceAdministrationRoutes(
       const nextDisplayName = hasDisplayNameInput ? readString(body.displayName) : null;
       const nextDescription = hasDescriptionInput ? readString(body.description) : null;
       const nextFeatures = hasFeaturesInput ? readStringArray(body.features) : null;
+      const nextMaxStorageGB = hasMaxStorageGbInput ? readNumber(body.maxStorageGB) : null;
+      const nextAllowsStorageOverage = hasAllowsStorageOverageInput
+        ? readBoolean(body.allowsStorageOverage)
+        : null;
+      const nextStorageOveragePrice = hasStorageOveragePriceInput
+        ? readNumber(body.storageOveragePricePerGbNok)
+        : null;
 
       if (hasMonthlyPriceInput && (nextMonthlyPrice === null || nextMonthlyPrice < 0)) {
         return res.status(400).json({ error: "Ugyldig månedspris." });
@@ -181,6 +197,28 @@ export function setupPriceAdministrationRoutes(
 
       if (hasActiveInput && nextIsActive === null) {
         return res.status(400).json({ error: "Ugyldig aktiv-status." });
+      }
+
+      if (
+        hasMaxStorageGbInput &&
+        (nextMaxStorageGB === null || nextMaxStorageGB < 0 || nextMaxStorageGB > 100_000)
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Ugyldig storage-cap (må være 0–100 000 GB)." });
+      }
+
+      if (hasAllowsStorageOverageInput && nextAllowsStorageOverage === null) {
+        return res.status(400).json({ error: "Ugyldig allowsStorageOverage." });
+      }
+
+      if (
+        hasStorageOveragePriceInput &&
+        (nextStorageOveragePrice === null || nextStorageOveragePrice < 0)
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Ugyldig storageOveragePricePerGbNok." });
       }
 
       const existingOverride = getCompatPlatformSubscriptionPlanOverride(planId) || null;
@@ -228,15 +266,85 @@ export function setupPriceAdministrationRoutes(
         nextOverride.ctaLabel = readString(body.ctaLabel);
       }
 
+      if (hasMaxStorageGbInput && nextMaxStorageGB !== null) {
+        nextOverride.maxStorageGB = nextMaxStorageGB;
+      }
+
+      if (hasAllowsStorageOverageInput && nextAllowsStorageOverage !== null) {
+        nextOverride.allowsStorageOverage = nextAllowsStorageOverage;
+      }
+
+      if (hasStorageOveragePriceInput && nextStorageOveragePrice !== null) {
+        nextOverride.storageOveragePricePerGbNok = nextStorageOveragePrice;
+      }
+
+      // Auto-justering: hvis admin har bedt om at månedsprisen skal følge
+      // storage-cap, regn ut ny pris basert på Cloudflare-kost + margin.
+      const autoAdjustRequested = readBoolean(body.autoAdjustMonthlyPrice) === true;
+      let autoAdjustResult: ReturnType<
+        typeof import("./storage-cost-model.js").suggestAutoAdjustedMonthlyPrice
+      > = null;
+      if (autoAdjustRequested && hasMaxStorageGbInput && nextMaxStorageGB !== null) {
+        const { suggestAutoAdjustedMonthlyPrice } = await import(
+          "./storage-cost-model.js"
+        );
+        autoAdjustResult = suggestAutoAdjustedMonthlyPrice(
+          currentPlan.limits.maxStorageGB,
+          (currentPlan.monthlyPrice ?? currentPlan.price) || 0,
+          nextMaxStorageGB,
+        );
+        if (autoAdjustResult) {
+          nextOverride.price = autoAdjustResult.newMonthlyPriceNok;
+          nextOverride.monthlyPrice = autoAdjustResult.newMonthlyPriceNok;
+        }
+      }
+
       compatPlatformSubscriptionPlanOverridesStore.set(planId, nextOverride);
       await compatStoreSet(
         COMPAT_PLATFORM_SUBSCRIPTION_PLAN_OVERRIDES_STORE_KEY,
         serializeCompatPlatformSubscriptionPlanOverrides(),
       );
 
+      // Invalider storage-quota-service-cachen så neste upload-quota-check
+      // ser den nye verdien umiddelbart.
+      try {
+        const { clearStorageQuotaPlanCache } = await import(
+          "./storage-quota-service.js"
+        );
+        clearStorageQuotaPlanCache();
+      } catch (err) {
+        console.warn("[admin-plan-update] cache invalidation failed:", err);
+      }
+
+      // Beregn ferskt cost-overslag for ny storage-cap så frontend kan
+      // vise margin-info i sanntid uten ekstra request.
+      const updatedPlan = getCompatPlatformSubscriptionPlan(planId);
+      const { calculateStorageCostBreakdown } = await import(
+        "./storage-cost-model.js"
+      );
+      const costBreakdown = calculateStorageCostBreakdown(
+        updatedPlan?.limits?.maxStorageGB ?? 0,
+      );
+      const monthlyPrice = updatedPlan?.monthlyPrice ?? updatedPlan?.price ?? 0;
+      const creatorHubMarginNok = Math.max(0, monthlyPrice - costBreakdown.monthlyCostNok);
+      const marginFraction =
+        monthlyPrice > 0 ? creatorHubMarginNok / monthlyPrice : 0;
+
       return res.json({
         success: true,
-        plan: getCompatPlatformSubscriptionPlan(planId),
+        plan: updatedPlan,
+        autoAdjust: autoAdjustResult,
+        cost: {
+          storageGB: costBreakdown.storageGB,
+          monthlyCostNok: costBreakdown.monthlyCostNok,
+          monthlyPriceNok: monthlyPrice,
+          creatorHubMarginNok,
+          marginFraction,
+          suggestedMonthlyPriceNok: costBreakdown.suggestedMonthlyPriceNok,
+          suggestedOveragePricePerGbNok:
+            costBreakdown.suggestedOveragePricePerGbNok,
+          notes: costBreakdown.notes,
+        },
       });
     } catch (error) {
       console.error("Error updating admin platform subscription plan:", error);

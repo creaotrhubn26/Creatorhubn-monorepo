@@ -574,26 +574,21 @@ function FotografOrchestrator({
     staleTime: 5000
   });
 
-  // Trigger orchestration with better error handling
+  // Trigger orchestration — feil propagerer til onError så bruker ser ekte status,
+  // ikke en simulert "completed" som dekker over at API-et var nede.
   const triggerOrchestration = useMutation({
     mutationFn: async ({ orchestrationId, triggerData }: { orchestrationId: string, triggerData: any }) => {
       setTriggeringStates(prev => ({ ...prev, [orchestrationId]: true }));
-      try {
-        const response = await apiRequest(`/api/orchestration/trigger`, {
-          headers: {
-            "Content-Type" : "application/json"
-          },
-          method: 'POST',
-          body: JSON.stringify({ orchestrationId, triggerData, sessionId: effectiveSessionId })
-        });
-        return response;
-      } catch (error) {
-        // Fallback: simulate local execution if API fails
-        console.warn('API trigger failed:', error instanceof Error ? error.message : String(error), '– simulating locally:', orchestrationId);
-        return { success: true, local: true, orchestrationId };
-      }
+      const response = await apiRequest(`/api/orchestration/trigger`, {
+        headers: {
+          "Content-Type" : "application/json"
+        },
+        method: 'POST',
+        body: JSON.stringify({ orchestrationId, triggerData, sessionId: effectiveSessionId })
+      });
+      return response;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       setOrchestrationStates(prev => ({
         ...prev,
         [variables.orchestrationId]: {
@@ -601,25 +596,10 @@ function FotografOrchestrator({
           lastRun: new Date(),
           completedActions: [],
           failedActions: [],
-          status: 'running'
+          status: 'queued'
         }
       }));
-      
-      // Simulate completion after 2 seconds for local execution
-      if (data?.local) {
-        setTimeout(() => {
-          setOrchestrationStates(prev => ({
-            ...prev,
-            [variables.orchestrationId]: {
-              ...prev[variables.orchestrationId],
-              running: false,
-              status: 'completed',
-              completedActions: ['step1', 'step2', 'step3']
-            }
-          }));
-        }, 2000);
-      }
-      
+
       queryClient.invalidateQueries({ queryKey: ['orchestration-status'] });
       setTriggeringStates(prev => ({ ...prev, [variables.orchestrationId]: false }));
     },
@@ -1534,11 +1514,27 @@ function FotografOrchestrator({
                 }}
               />
               <Typography variant="body2">
-                {orchestrationStates[selectedOrchestration]?.running ? 'Kjører' :
-                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'completed' ? 'Fullført' :
-                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'error' ? 'Feil' : 'Klar'}
+                {(() => {
+                  const s = orchestrationStates[selectedOrchestration] as Record<string, unknown> | undefined;
+                  const status = s?.status as string | undefined;
+                  if (status === 'queued') return 'Køet — venter på behandler';
+                  if (status === 'running') return 'Kjører';
+                  if (status === 'completed') return 'Fullført';
+                  if (status === 'partial') return 'Delvis fullført';
+                  if (status === 'expired') return 'Utløpt — ingen behandler plukket opp jobben';
+                  if (status === 'stopped') return 'Stoppet av bruker';
+                  if (status === 'failed' || status === 'error') return 'Feil';
+                  if (s?.running) return 'Kjører';
+                  return 'Klar';
+                })()}
               </Typography>
             </Box>
+
+            {(orchestrationStates[selectedOrchestration] as Record<string, unknown> | undefined)?.errorMessage && (
+              <Typography variant="caption" color="error.main" sx={{ mt: 0.5 }}>
+                {String((orchestrationStates[selectedOrchestration] as Record<string, unknown>).errorMessage)}
+              </Typography>
+            )}
 
             {orchestrationStates[selectedOrchestration]?.lastRun && (
               <Typography variant="caption" color="text.secondary">

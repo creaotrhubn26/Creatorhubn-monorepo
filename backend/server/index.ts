@@ -660,6 +660,14 @@ import {
   ensurePhotographerProjectsSchemaShared,
 } from "./photographer-projects-routes";
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
+import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
+import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
+import { setupUploadsRoutes } from "./uploads-routes";
+import { setupStorageStatusRoutes } from "./storage-status-routes";
+import { setupStorageBillingAdminRoutes } from "./storage-billing-admin-routes";
+import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
+import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
+import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
@@ -1010,6 +1018,11 @@ const projectFileUpload = multer({
     cb(new Error("Ugyldig prosjektfilformat."));
   },
 });
+
+// Installer log-redaction FØR app instansieres så alle påfølgende
+// console.* går gjennom maskeringen. Idempotent — trygt å re-importere.
+import { installSecretRedactor } from "./log-redaction.js";
+installSecretRedactor();
 
 const app = express();
 
@@ -18488,6 +18501,9 @@ type CompatPlatformSubscriptionPlan = {
   contactSalesOnly?: boolean;
   publicPriceLabel?: string | null;
   ctaLabel?: string | null;
+  // Storage-billing eksponert til admin-UI og frontend-billing-flows.
+  allowsStorageOverage?: boolean | null;
+  storageOveragePricePerGbNok?: number | null;
   trialDays: number;
   createdAt: string;
   updatedAt: string;
@@ -18504,6 +18520,10 @@ type CompatPlatformSubscriptionPlanOverride = {
   isActive?: boolean | null;
   publicPriceLabel?: string | null;
   ctaLabel?: string | null;
+  // Storage-konfig (lagt til 2026-05-31 — gjør lagrings-cap editerbar fra admin)
+  maxStorageGB?: number | null;
+  allowsStorageOverage?: boolean | null;
+  storageOveragePricePerGbNok?: number | null;
   updatedAt: string;
   updatedBy?: string | null;
 };
@@ -18820,6 +18840,18 @@ async function ensureCompatPlatformSubscriptionPlanOverridesLoaded() {
             Object.prototype.hasOwnProperty.call(rawOverride, "ctaLabel")
               ? readString(rawOverride.ctaLabel)
               : undefined,
+          maxStorageGB:
+            Object.prototype.hasOwnProperty.call(rawOverride, "maxStorageGB")
+              ? readNumber(rawOverride.maxStorageGB)
+              : undefined,
+          allowsStorageOverage:
+            Object.prototype.hasOwnProperty.call(rawOverride, "allowsStorageOverage")
+              ? readBoolean(rawOverride.allowsStorageOverage)
+              : undefined,
+          storageOveragePricePerGbNok:
+            Object.prototype.hasOwnProperty.call(rawOverride, "storageOveragePricePerGbNok")
+              ? readNumber(rawOverride.storageOveragePricePerGbNok)
+              : undefined,
           updatedAt,
           updatedBy: readString(rawOverride.updatedBy),
         });
@@ -18879,6 +18911,25 @@ function applyCompatPlatformSubscriptionPlanOverride(
         ? override.publicPriceLabel
         : plan.publicPriceLabel,
     ctaLabel: override.ctaLabel !== undefined ? override.ctaLabel : plan.ctaLabel,
+    // Storage-felter: lagres på plan.limits.maxStorageGB (eksisterende felt),
+    // mens allowsStorageOverage + storageOveragePricePerGbNok eksponeres som
+    // nye toppnivå-felter på plan-objektet.
+    limits: {
+      ...plan.limits,
+      maxStorageGB:
+        typeof override.maxStorageGB === "number" && Number.isFinite(override.maxStorageGB)
+          ? override.maxStorageGB
+          : plan.limits.maxStorageGB,
+    },
+    allowsStorageOverage:
+      typeof override.allowsStorageOverage === "boolean"
+        ? override.allowsStorageOverage
+        : (plan as any).allowsStorageOverage,
+    storageOveragePricePerGbNok:
+      typeof override.storageOveragePricePerGbNok === "number" &&
+      Number.isFinite(override.storageOveragePricePerGbNok)
+        ? override.storageOveragePricePerGbNok
+        : (plan as any).storageOveragePricePerGbNok,
     updatedAt: override.updatedAt || plan.updatedAt,
   };
 }
@@ -67709,6 +67760,46 @@ setupPhotographerMiscRoutes({
   pool,
   requireUserSession,
   ensurePrintStoreSchema,
+});
+setupGoogleDriveSyncRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupChunkedUploadRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupUploadsRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupStorageStatusRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupStorageBillingAdminRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminStorageCostRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminFileAuditRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminSecretsRotationRoutes({
+  app,
+  pool,
+  requireAdminSession,
 });
 setupClientGalleryRoutes({
   app,
