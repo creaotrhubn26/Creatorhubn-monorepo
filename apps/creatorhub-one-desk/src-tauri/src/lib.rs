@@ -13,6 +13,7 @@ mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
+mod session_log;
 
 use std::sync::Arc;
 
@@ -128,6 +129,33 @@ fn cancel_copy_session(
 #[tauri::command]
 fn list_copy_sessions(state: tauri::State<Arc<CopySessionState>>) -> Vec<SessionStatus> {
     state.list()
+}
+
+// ── Crash-recovery (session_log) ─────────────────────────────────────
+// Tre Tauri-commands som lar UI vise interrupted-sessions ved app-
+// startup, og enten resume eller forkaste dem.
+
+#[tauri::command]
+fn list_interrupted_sessions() -> Result<Vec<session_log::InterruptedSession>, String> {
+    // Best-effort cleanup samtidig — sletter logger >30d gamle slik at
+    // sessions-mappen ikke vokser over tid. Kjøres lazy så vi ikke
+    // blokker app-startup på filsystem-IO.
+    session_log::cleanup_old_logs();
+    session_log::list_interrupted_sessions()
+}
+
+#[tauri::command]
+async fn resume_interrupted_session(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<CopySessionState>>,
+    session_id: String,
+) -> Result<String, String> {
+    copy_session::resume_session(app, state.inner().clone(), session_id).await
+}
+
+#[tauri::command]
+fn discard_interrupted_session(session_id: String) -> Result<(), String> {
+    session_log::discard_session(&session_id)
 }
 
 #[tauri::command]
@@ -312,6 +340,9 @@ pub fn run() {
             start_copy_session,
             cancel_copy_session,
             list_copy_sessions,
+            list_interrupted_sessions,
+            resume_interrupted_session,
+            discard_interrupted_session,
             list_discovered_ipads,
             list_paired_ipads,
             current_pairing_pin,

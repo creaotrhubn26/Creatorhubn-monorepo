@@ -140,6 +140,29 @@ export async function listCopySessions(): Promise<SessionStatus[]> {
   return invoke<SessionStatus[]>("list_copy_sessions");
 }
 
+// ── Crash-recovery (session_log) ─────────────────────────────────────
+export interface InterruptedSession {
+  session_id: string;
+  started_at_ms: number;
+  mount_path: string;
+  volume_label: string;
+  total_files: number;
+  files_completed_per_dest: [string, number][];
+  last_event_ms: number;
+}
+
+export async function listInterruptedSessions(): Promise<InterruptedSession[]> {
+  return invoke<InterruptedSession[]>("list_interrupted_sessions");
+}
+
+export async function resumeInterruptedSession(sessionId: string): Promise<string> {
+  return invoke<string>("resume_interrupted_session", { sessionId });
+}
+
+export async function discardInterruptedSession(sessionId: string): Promise<void> {
+  return invoke<void>("discard_interrupted_session", { sessionId });
+}
+
 // Copy-event payloads from Rust
 export interface CopySessionStartedEvent {
   session_id: string;
