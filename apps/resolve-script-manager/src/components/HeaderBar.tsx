@@ -107,6 +107,7 @@ interface Props {
   onOpenPhotoshopSetup: () => void;
   onOpenPhotoshopScaffold: () => void;
   onOpenAiImage: () => void;
+  onOpenArtDirector: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -156,6 +157,7 @@ export function HeaderBar({
   onOpenPhotoshopSetup,
   onOpenPhotoshopScaffold,
   onOpenAiImage,
+  onOpenArtDirector,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -257,6 +259,17 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenAiImage(); }}>
                   <AutoAwesomeIcon fontSize="small" /> AI image generation…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenArtDirector(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(167,139,250,0.22), rgba(110,63,199,0.22))",
+                    border: "1px solid rgba(167,139,250,0.45)",
+                    color: "#e8e0ff",
+                    fontWeight: 600,
+                  }}
+                >
+                  <AutoAwesomeIcon fontSize="small" /> AI Creative Director…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
