@@ -41,6 +41,7 @@ import {
   Tooltip,
   Alert,
   Badge,
+  Snackbar,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -6492,6 +6493,8 @@ type RoleRoomProjectWorkspaceState = {
     [contentProducerPlannerSurface, producerMediaFocus?.workspace],
   );
 
+  const [stepChangeToast, setStepChangeToast] = useState<string | null>(null);
+
   const completedWorkflowSteps = useMemo(
     () => deriveCompletedWorkflowSteps(
       currentProject?.producerWorkflowStatus,
@@ -6522,6 +6525,17 @@ type RoleRoomProjectWorkspaceState = {
   }, [currentProject]);
 
   const handleSelectWorkflowStep = useCallback((step: WorkflowStepKey) => {
+    // Lett bekreftelse på at man byttet steg — stepperen highlighter også, men
+    // en kort toast fanger oppmerksomheten hvis man er distrahert.
+    const stepToastLabels: Record<WorkflowStepKey, string> = {
+      brief: 'Brief',
+      story: 'Story',
+      storyboard: 'Storyboard',
+      approval: 'Klient',
+      delivery: 'Levering',
+      economy: 'Økonomi',
+    };
+    setStepChangeToast(`Nå i: ${stepToastLabels[step]}`);
     switch (step) {
       case 'brief':
         openContentProducerPlannerSurface('project_room', {
@@ -9353,6 +9367,25 @@ type RoleRoomProjectWorkspaceState = {
             </Box>
           );
         })()}
+
+      {/* #121: kort bekreftelse ved steg-bytte i workflow-stepperen. */}
+      <Snackbar
+        open={stepChangeToast !== null}
+        autoHideDuration={1800}
+        onClose={() => setStepChangeToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={stepChangeToast ?? ''}
+        ContentProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(124,58,237,0.4)',
+            fontWeight: 700,
+            fontSize: '0.82rem',
+            minWidth: 'auto',
+          },
+        }}
+      />
 
       {/* Tabs */}
       <Box

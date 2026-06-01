@@ -18,6 +18,9 @@
 - Bolk 6 (#23/#91/#109 — stepper Levering/Økonomi-fullføring): Levering og Økonomi har ingen pålitelig avledet «ferdig»-signal (deliveryWorkflow er ren konfig, økonomi lever utenfor planning) — så produsenten markerer dem nå EKSPLISITT. Nytt top-nivå `producerPhaseCompletion: {delivery?, economy?}` (ISO-tidspunkt) på CastingProject; `deriveCompletedWorkflowSteps(status, phaseCompletion)` inkluderer dem; en fullføring-bar under stepperen (vises når Levering/Økonomi er aktivt steg) med «Marker som fullført»/«Angre». Stepperen viser da check-ikon. saveProject er offline-resilient. 3 nye vitest (14 grønne).
   - BEVISST IKKE gjort: #97 (workflow-status-enum utvidet forbi 'approved') — ville rippet bredt gjennom status-avledning/UI; den synlige stepper-problemet er løst i stedet. #103 (disable steg ut av rekkefølge) — egen vurderingssak.
 
+- Bolk 7 (#121 — kosmetisk): kort «Nå i: \<steg\>»-toast (MUI Snackbar, 1,8 s) ved steg-bytte i workflow-stepperen, så et bytte fanges opp selv om man er distrahert. Stepperen highlighter fortsatt aktivt steg som før.
+  - Etter denne runden er backlogen reelt ferdig: gjenværende poster er enten allerede håndtert (#83 har CTA-knapper, #32/#42/#239 dekket per tidligere triage) eller tested-as-intended (#115 — `'brief'`-default er assertet i smoke-testen).
+
 **Vurdert og bevisst ikke endret (etter nærlesing):**
 - Fire-and-forget sync (#3/#4/#22): effektene re-kjører ofte og synk-kallene er nå offline-resiliente (kø/speil); en per-feil-banner ville støye. Den brukerinitierte lagre-stien (ProducerClientPlanningPanel handleSave) viser allerede synk-status.
 - Empty-states (#32/#42): teksten refererer allerede neste handling («Bruk Skriv leveransearbeidsområde»; sidebar viser produksjons-handlinger når grunnlaget er klart).
