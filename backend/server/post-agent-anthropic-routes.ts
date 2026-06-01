@@ -576,6 +576,119 @@ Tidspunkt: ${new Date().toISOString()}
     });
   });
 
+  // ---- AI image generation ----
+
+  /**
+   * POST /ai/generate-image — proxer mot fal.ai Flux 1.1 Pro for å lage
+   * et bilde fra et prompt. Brukes av Post Agent som Phase 2 av
+   * "AI-to-editable-PSD"-pipelinen. Resultatet er en URL eller base64
+   * som klienten henter ned og lagrer som en fil for å bruke som
+   * smart-object-innhold i scaffolded PSD.
+   *
+   * Body: { prompt, options?: { width?, height?, image_size? } }
+   * Returns: { image_url, model, seed? }
+   */
+  router.post('/ai/generate-image', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as {
+      prompt?: string;
+      options?: {
+        image_size?: string;       // "square_hd" | "portrait_16_9" | "landscape_16_9" | ...
+        num_inference_steps?: number;
+        guidance_scale?: number;
+        seed?: number | null;
+      };
+    };
+    const prompt = (body.prompt ?? '').toString().trim();
+    if (!prompt) {
+      res.status(400).json({ error: 'prompt_required' });
+      return;
+    }
+
+    const falKey = process.env.FAL_KEY?.trim();
+    if (!falKey) {
+      res.status(503).json({
+        error: 'image_provider_not_configured',
+        detail: 'FAL_KEY env var er ikke satt på serveren. Sett FAL_KEY i Render env og restart.',
+      });
+      return;
+    }
+
+    const opts = body.options ?? {};
+    const falBody = {
+      prompt,
+      image_size: opts.image_size ?? 'square_hd',
+      num_inference_steps: opts.num_inference_steps ?? 28,
+      guidance_scale: opts.guidance_scale ?? 3.5,
+      ...(opts.seed != null ? { seed: opts.seed } : {}),
+    };
+
+    try {
+      const r = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
+        method: 'POST',
+        headers: {
+          Authorization: `Key ${falKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(falBody),
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        res.status(r.status).json({
+          error: 'image_provider_failed',
+          status: r.status,
+          detail: txt.slice(0, 500),
+        });
+        return;
+      }
+      const data = await r.json() as {
+        images?: Array<{ url?: string; width?: number; height?: number }>;
+        seed?: number;
+        timings?: unknown;
+      };
+      const firstImage = data.images?.[0];
+      if (!firstImage?.url) {
+        res.status(502).json({ error: 'no_image_in_response', detail: JSON.stringify(data).slice(0, 500) });
+        return;
+      }
+
+      // Audit-log: lagre en rad så vi har historikk på hva brukerne genererer.
+      // Best-effort — hvis tabellen mangler, fortsett uten.
+      try {
+        await pool.query(
+          `CREATE TABLE IF NOT EXISTS post_agent_ai_image_log (
+            id          SERIAL PRIMARY KEY,
+            user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            prompt      TEXT NOT NULL,
+            image_url   TEXT NOT NULL,
+            seed        BIGINT,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )`,
+        );
+        await pool.query(
+          `INSERT INTO post_agent_ai_image_log (user_id, prompt, image_url, seed)
+           VALUES ($1, $2, $3, $4)`,
+          [userId, prompt, firstImage.url, data.seed ?? null],
+        );
+      } catch (logErr) {
+        console.warn('[post-agent ai/generate-image] log insert failed:', (logErr as Error).message);
+      }
+
+      res.json({
+        image_url: firstImage.url,
+        width: firstImage.width ?? null,
+        height: firstImage.height ?? null,
+        model: 'black-forest-labs/flux-pro-1.1',
+        seed: data.seed ?? null,
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: 'image_provider_error',
+        detail: (err as Error).message,
+      });
+    }
+  });
+
   // ---- Creator Profile ----
   //
   // Per-bruker preferanser + learnings som Creative Editor auto-anvender
