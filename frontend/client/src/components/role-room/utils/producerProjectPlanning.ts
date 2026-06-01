@@ -1705,6 +1705,24 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
       layout: 'focus',
     },
   );
+  // Markedsplanen (pillars, post-kalender, KPI) er en førsteklasses
+  // produsent-flate, men lå tidligere KUN tilgjengelig via Role Room
+  // Agent-dialogen. Egen seksjon her gjør den til en stående fane. Fordi
+  // det er en separat seksjon med en surface (marketing-plan) som ikke
+  // finnes i eksisterende prosjekters lagrede nav, plukker
+  // normalizeProducerWorkspaceNavigation den opp automatisk for dem også.
+  const marketingSection = createProducerWorkspaceSection(
+    'Markedsføring',
+    [
+      createProducerWorkspacePage('marketing-plan', { id: 'workspace-page-marketing-plan', pinned: true, order: 0 }),
+    ],
+    {
+      id: 'workspace-section-marketing',
+      color: '#ec4899',
+      order: 2,
+      layout: 'focus',
+    },
+  );
   const deliverySection = createProducerWorkspaceSection(
     'Retning, tilgang og levering',
     [
@@ -1715,7 +1733,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     {
       id: 'workspace-section-delivery',
       color: '#a855f7',
-      order: 2,
+      order: 3,
       layout: 'focus',
     },
   );
@@ -1727,7 +1745,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     {
       id: 'workspace-section-meetings',
       color: '#f97316',
-      order: 3,
+      order: 4,
       layout: 'focus',
     },
   );
@@ -1738,7 +1756,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     navigationPinned: true,
     activeSectionId: foundationSection.id,
     activePageId: foundationSection.pages[0]?.id,
-    sections: [foundationSection, editorialSection, deliverySection, meetingsSection],
+    sections: [foundationSection, editorialSection, marketingSection, deliverySection, meetingsSection],
   };
 };
 
