@@ -41,6 +41,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  AutoAwesome as AutoGenerateIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   CalendarToday as CalendarIcon,
@@ -262,6 +263,54 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     };
     loadData();
   }, [projectId]);
+
+  // Generer produksjonsdager fra lokasjoner (bransjestandard: skyt alt på én
+  // location samlet). Ikke-destruktiv — hopper over lokasjoner som allerede har
+  // en dag. Bruker location.assignedScenes så dagen knyttes til scenene, og
+  // location.id så dagen arver ekte koordinater/adresse (vær/reise/kart virker).
+  const [generatingDays, setGeneratingDays] = useState(false);
+  const handleGenerateDaysFromLocations = useCallback(async () => {
+    if (!projectId) return;
+    const existingLocationIds = new Set(
+      productionDays.map((d) => d.locationId).filter((id): id is string => Boolean(id)),
+    );
+    const candidates = locations.filter((loc) => loc.id && !existingLocationIds.has(loc.id));
+    if (candidates.length === 0) {
+      showInfo('Alle lokasjoner har allerede en produksjonsdag.');
+      return;
+    }
+    setGeneratingDays(true);
+    try {
+      const nowIso = new Date().toISOString();
+      let created = 0;
+      for (const loc of candidates) {
+        const day: ProductionDay = {
+          id: `day-${Date.now()}-${created}`,
+          projectId,
+          date: '',
+          locationId: loc.id,
+          scenes: Array.isArray(loc.assignedScenes) ? loc.assignedScenes : [],
+          crew: [],
+          props: [],
+          notes: `Auto-generert fra lokasjon: ${loc.name}`,
+          status: 'planned',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        await productionPlanningService.saveProductionDay(projectId, day);
+        created += 1;
+      }
+      const days = await productionPlanningService.getProductionDays(projectId);
+      setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
+      showSuccess(`Genererte ${created} produksjonsdag(er) — én per lokasjon. Sett dato og call-time på hver.`);
+      onUpdate?.();
+    } catch (error) {
+      console.error('Generate production days failed:', error);
+      showError('Kunne ikke generere produksjonsdager.');
+    } finally {
+      setGeneratingDays(false);
+    }
+  }, [projectId, productionDays, locations, normalizeProductionDay, showInfo, showSuccess, showError, onUpdate]);
 
   // Load day-specific data (scenes, crew, props, validation) for each production day
   useEffect(() => {
@@ -2241,6 +2290,27 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               <AddIcon />
               {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>Legg til dag</Box>}
             </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="Generer én produksjonsdag per lokasjon (gruppert etter sted), med scenene som er knyttet til lokasjonen">
+            <span>
+              <Button
+                variant="outlined"
+                onClick={handleGenerateDaysFromLocations}
+                disabled={locations.length === 0 || generatingDays}
+                aria-label="Generer produksjonsdager fra lokasjoner"
+                sx={{
+                  color: '#ce93d8',
+                  borderColor: 'rgba(206,147,216,0.5)',
+                  fontWeight: 600,
+                  minHeight: TOUCH_TARGET_SIZE,
+                  ...focusVisibleStyles,
+                  '&:hover': { borderColor: '#ce93d8', bgcolor: 'rgba(206,147,216,0.12)' },
+                }}
+              >
+                <AutoGenerateIcon />
+                {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>{generatingDays ? 'Genererer…' : 'Generer fra lokasjoner'}</Box>}
+              </Button>
             </span>
           </Tooltip>
         </Box>

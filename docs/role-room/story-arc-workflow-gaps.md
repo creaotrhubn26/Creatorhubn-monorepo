@@ -51,7 +51,12 @@ Syvende runde — synkronisering manus → nedstrøms (etter sync-gjennomgang):
 - ✅ **Stabile scene-ID-er** — `stableSceneId` bruker per-heading forekomst-ordinal i stedet for global indeks, så ID-er overlever reorder (duplikat-headinger disambigueres 0,1,2…).
 - ✅ **Scene-bevisst kommentar-remapping** — ved reorder beregnes en gammel→ny linje-mapping (`reorderScenesWithLineMap`) og linje-ankrede kommentarer PATCH-es til ny linje (backend PATCH tillater nå `anchorRef`). Enhetstest dekker reorder + mapping.
 
-**Kjent gjenstående (inherent):** typing-indusert linje-drift for kommentarer (kun reorder re-mappes; vilkårlig skriving er en grunnleggende begrensning ved absolutt-linje-anker). Auto-sync av timeline/økonomi/produksjonsdager fra manus er fortsatt bevisst manuelt.
+Åttende runde — «resten» (drift-eliminering + manus→produksjon):
+- ✅ **Scene-relativ kommentar-forankring** — per-linje-kommentarer ankres nå til sceneId + offset, ikke absolutt linje. Markører utledes live fra innhold, så de følger både skriving over scener OG reorder. Residual: kun intra-scene-skriving rett over kommentar-linja (bundet, minimal). Erstatter reorder-remap-PATCH.
+- ✅ **Reelle koordinater på lokasjoner** — ved lagring geokodes adresse via Kartverket (ws.geonorge.no) hvis koordinater mangler; varsel hvis det ikke lykkes (vær/reise/kart/call-sheets krever ekte koords).
+- ✅ **Produksjonsdager fra lokasjoner** — «Generer fra lokasjoner» i ProductionDayView lager én dag per (geokodet) location med tilknyttede scener, ikke-destruktivt (hopper over lokasjoner som alt har dag). Bransjestandard location-gruppering.
+
+**Fortsatt bevisst manuelt (krever domeneregler):** dato-tildeling på timeline og økonomi/budsjett-auto-skalering fra manus — disse trenger reelle produksjons-/budsjett-formler og bør ikke autogenereres med oppdiktede regler.
 
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).
