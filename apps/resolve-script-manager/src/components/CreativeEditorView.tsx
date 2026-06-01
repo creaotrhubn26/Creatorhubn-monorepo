@@ -41,6 +41,25 @@ import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import type { UpcomingJob } from "../services/upcomingJobsService";
 import { ThumbnailCreator } from "./ThumbnailCreator";
 import { PhotoshopAgentDialog } from "./PhotoshopAgentDialog";
+import { StoryView } from "./story/StoryView";
+import type { ChapterDef } from "../agents/types";
+
+/**
+ * Wedding-chapters med universal narrative-beat-mapping for Story-fanen.
+ * Bryllup-spesifikk vokabular, men beats er agnostiske så Story-fanen
+ * fungerer likt for andre prosjekttyper når vi senere wire'r inn deres
+ * agent-configs.
+ */
+const WEDDING_CHAPTERS_FOR_STORY: ChapterDef[] = [
+  { id: "forberedelser", label: "Forberedelser", description: "Bruden og brudgom forbereder seg", priorityHint: "atmospheric", narrativeBeat: "hook" },
+  { id: "details", label: "Detaljer", description: "Ringer, sko, kjole, blomster", priorityHint: "atmospheric", narrativeBeat: "setup" },
+  { id: "first-look", label: "Første blikk", description: "Førstemøte etter forberedelser", priorityHint: "emotional-peak", narrativeBeat: "build" },
+  { id: "ceremony", label: "Vielse", description: "Selve seremonien", priorityHint: "emotional-peak", narrativeBeat: "peak" },
+  { id: "speeches", label: "Taler", description: "Taler, latter og tårer", priorityHint: "emotional-peak", narrativeBeat: "celebration" },
+  { id: "dance", label: "Første dans", description: "Brudevals og første dans", priorityHint: "high-energy", narrativeBeat: "celebration" },
+  { id: "party", label: "Fest", description: "Dans, jubel, gjester", priorityHint: "high-energy", narrativeBeat: "celebration" },
+  { id: "outro", label: "Avslutning", description: "Stille øyeblikk, nattbilder", priorityHint: "atmospheric", narrativeBeat: "outro" },
+];
 import BrushIcon from "@mui/icons-material/Brush";
 import CoffeeIcon from "@mui/icons-material/Coffee";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -2939,6 +2958,42 @@ ${ctxLines.join("\n")}`;
             <button className={`ce-tab ${activeTab === "story" ? "active" : ""}`} onClick={() => setActiveTab("story")}>Story</button>
           </div>
 
+          {activeTab === "story" && (
+            <StoryView
+              picks={filteredPicks}
+              chapters={WEDDING_CHAPTERS_FOR_STORY}
+              focusedPickIndex={focusedPick?.index ?? null}
+              onFocusPick={(idx) => {
+                if (idx == null) return;
+                const i = filteredPicks.findIndex((p) => p.index === idx);
+                if (i >= 0) setFocusedPickIdx(i);
+              }}
+              projectInfo={{
+                project: projectTitle || "Uten navn",
+                client: projectPurpose || "—",
+                duration: projectTargetMin > 0 ? `${projectTargetMin} min` : "—",
+                format: aspectRatio === "16:9" ? "16:9 (FHD)" : aspectRatio,
+                created: "—",
+                updated: new Date().toLocaleString("nb-NO", {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              }}
+              intentStyle={{
+                label: "Cinematic / Emotional",
+                description:
+                  "En tidløs, emosjonell highlight med fokus på ekte øyeblikk og relasjoner.",
+                tags: ["Emosjonell", "Cinematisk", "Tidløs", "Naturlig", "Varm fargetone"],
+              }}
+              onBackToProject={onClose}
+              onStartEditing={() => setActiveTab("rediger")}
+            />
+          )}
+
+          {activeTab === "rediger" && <>
+
           {/* Live preview — height styres av brukerens drag-handle nedenfor.
               For 9:16/1:1: lock aspect for å unngå ekstreme portrait/square. */}
           <div
@@ -3696,6 +3751,8 @@ ${ctxLines.join("\n")}`;
               <button onClick={() => setExportError(null)}>×</button>
             </div>
           )}
+
+          </>}
         </main>
 
         {/* ─── Right: Claude assistant + agent-tabs ─── */}
