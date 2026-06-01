@@ -373,6 +373,24 @@ export function FormationViewConnected({
     setTimelineItems((prev) => prev.filter((it) => it.id !== id));
   }, []);
 
+  // 🚨 React rules-of-hooks: disse useMemo-ene må deklareres FØR early-returns
+  // under (load.phase === 'loading' / 'error'). Tidligere lå de inline i JSX
+  // på render-stien og ble bare kalt i 'ready'-fasen — som forårsaket
+  // "Rendered more hooks than during the previous render" når load gikk fra
+  // loading→ready. Flyttet ut.
+  const timelineNotes = React.useMemo(
+    () => timelineItems.filter((it) => it.kind === 'note').map((it) => ({
+      id: it.id, text: it.label, startSec: it.startSec, endSec: it.endSec,
+    })),
+    [timelineItems],
+  );
+  const timelineMovements = React.useMemo(
+    () => timelineItems.filter((it) => it.kind === 'movement').map((it) => ({
+      id: it.id, label: it.label, startSec: it.startSec, endSec: it.endSec,
+    })),
+    [timelineItems],
+  );
+
   if (load.phase === 'loading') {
     return (
       <Stack
@@ -446,18 +464,8 @@ export function FormationViewConnected({
         onDancerClick={onDancerClick}
         videoPanelSlot={videoPanelSlot}
         readOnly={readOnly}
-        timelineNotes={React.useMemo(
-          () => timelineItems.filter((it) => it.kind === 'note').map((it) => ({
-            id: it.id, text: it.label, startSec: it.startSec, endSec: it.endSec,
-          })),
-          [timelineItems],
-        )}
-        timelineMovements={React.useMemo(
-          () => timelineItems.filter((it) => it.kind === 'movement').map((it) => ({
-            id: it.id, label: it.label, startSec: it.startSec, endSec: it.endSec,
-          })),
-          [timelineItems],
-        )}
+        timelineNotes={timelineNotes}
+        timelineMovements={timelineMovements}
       />
       {/* G18: modal for create/edit/delete av timeline-items */}
       <TimelineItemModal
