@@ -303,6 +303,9 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
 }) => {
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
   const [storyFoundationOpen, setStoryFoundationOpen] = useState(false);
+  // Per-linje kommentarer: hvilke linjer har tråder (for marg-markør) + valgt linje.
+  const [commentLineSet, setCommentLineSet] = useState<Set<number>>(new Set());
+  const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
   const storyFoundationLogline = storyLogicData?.logline?.fullLogline?.trim() || '';
   const hasStoryFoundation = Boolean(
     storyFoundationLogline ||
@@ -523,6 +526,42 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
       setSnackbar({ open: true, message: 'Scene flyttet', severity: 'success' });
     }
   }, [value, handleChange]);
+
+  // Hent linje-ankrede kommentarer for dette manuset → marg-markører. Poll så
+  // markører oppdateres når teamet kommenterer. anchorRef-format: `<manusId>#<linje>`.
+  useEffect(() => {
+    const token = authSessionService.getSessionTokenSync();
+    if (!projectId || !manuscriptId || !token) {
+      setCommentLineSet(new Set());
+      return;
+    }
+    let cancelled = false;
+    const prefix = `${manuscriptId}#`;
+    const fetchLines = async () => {
+      try {
+        const res = await fetch(`/api/role-room/editor-comments?projectId=${encodeURIComponent(projectId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const items: Array<{ anchorType?: string; anchorRef?: string | null }> =
+          Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
+        const lines = new Set<number>();
+        for (const c of items) {
+          if (c.anchorType === 'screenplay_line' && typeof c.anchorRef === 'string' && c.anchorRef.startsWith(prefix)) {
+            const n = parseInt(c.anchorRef.slice(prefix.length), 10);
+            if (Number.isFinite(n) && n > 0) lines.add(n);
+          }
+        }
+        if (!cancelled) setCommentLineSet(lines);
+      } catch {
+        /* best-effort */
+      }
+    };
+    void fetchLines();
+    const timer = setInterval(fetchLines, 20000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [projectId, manuscriptId]);
 
   const issueCount = analysis.characterConflicts.length + analysis.consistencyIssues.length;
 
@@ -1067,6 +1106,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             showLineNumbers={showLineNumbers && !isMobile}
             onCursorChange={handleCursorChange}
             spellCheck={enableSpellcheck}
+            commentLines={commentLineSet}
+            onCommentLineClick={(line) => {
+              setActiveCommentLine(line);
+              dispatchUi({ type: 'SET_RIGHT_PANEL', payload: 'comments' });
+            }}
           />
           </Box>
         </Box>
@@ -1278,12 +1322,40 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     </Box>
                   );
                 }
+                const lineMode = activeCommentLine != null && Boolean(manuscriptId);
                 return (
                   <Box sx={{ p: 1.5, height: '100%', overflow: 'auto' }}>
+                    {/* Modus-bryter: hele manuset vs. en konkret linje */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                      {lineMode ? (
+                        <>
+                          <Chip
+                            size="small"
+                            color="warning"
+                            label={`Linje ${activeCommentLine}`}
+                            onClick={() => activeCommentLine != null && gotoLine(activeCommentLine)}
+                          />
+                          <Button size="small" onClick={() => setActiveCommentLine(null)}>
+                            Vis hele manuset
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<CommentIcon sx={{ fontSize: 16 }} />}
+                          disabled={isReadOnly}
+                          onClick={() => setActiveCommentLine(currentLine || 1)}
+                        >
+                          Kommenter linje {currentLine || 1}
+                        </Button>
+                      )}
+                    </Box>
                     <PostCommentLayer
+                      key={lineMode ? `line-${activeCommentLine}` : 'manuscript'}
                       projectId={projectId}
-                      anchorType="manuscript"
-                      anchorRef={manuscriptId || projectId}
+                      anchorType={lineMode ? 'screenplay_line' : 'manuscript'}
+                      anchorRef={lineMode ? `${manuscriptId}#${activeCommentLine}` : (manuscriptId || projectId)}
                       auth={{ kind: 'bearer', token }}
                       readOnly={isReadOnly}
                     />
