@@ -53,6 +53,8 @@ import { danceFlowColors } from './danceFlowTheme';
 export interface DanceAnnotateViewProps {
   /** Valgt clip-ID. Null = empty-state vises (be om å velge clip i ClipsSidebar). */
   clipId: string | null;
+  /** Tittel på valgt clip — vises som tittel-bar over video. */
+  clipTitle?: string;
   /** Total varighet av clip (sek) — krever for timeline-skalering. */
   durationSec: number;
   dancerOptions: Array<{ id: string; label: string }>;
@@ -60,10 +62,13 @@ export interface DanceAnnotateViewProps {
   readOnly?: boolean;
 }
 
+type AnnotateRightTab = 'annotate' | 'review';
+
 const PURPLE = '#a78bfa';
 
 export default function DanceAnnotateView({
   clipId,
+  clipTitle,
   durationSec,
   dancerOptions,
   readOnly = false,
@@ -74,6 +79,7 @@ export default function DanceAnnotateView({
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [playheadSec, setPlayheadSec] = React.useState<number>(0);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [rightTab, setRightTab] = React.useState<AnnotateRightTab>('annotate');
 
   const selected = React.useMemo(
     () => annotations.find((a) => a.id === selectedId) ?? null,
@@ -250,6 +256,20 @@ export default function DanceAnnotateView({
     >
       {/* ── Senter: video + timeline + bottom-paneler ── */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+        {/* Video tittel-bar — matcher mockup: 'Routine_01.mp4' øverst */}
+        {clipTitle ? (
+          <Box
+            data-testid="dance-annotate-clip-title"
+            sx={{
+              fontSize: 13, fontWeight: 700,
+              color: danceFlowColors.textPrimary,
+              px: 0.5, py: 0.25,
+            }}
+          >
+            {clipTitle}
+          </Box>
+        ) : null}
+
         {/* Video player m/ transport-bar (FormationVideoPanel gjenbrukt) */}
         <Box sx={{ position: 'relative', flex: '0 0 auto' }}>
           <FormationVideoPanel data-testid="dance-annotate-video" />
@@ -286,6 +306,13 @@ export default function DanceAnnotateView({
             onSelectAnnotation={(ann) => setSelectedId(ann.id)}
             onResize={readOnly ? undefined : (ann, newStart, newEnd) => {
               void handlePatch(ann.id, { timestampSec: newStart, endSec: newEnd });
+            }}
+            onAddTrack={readOnly ? undefined : () => {
+              // Stub: dispatch event slik at en fremtidig kategori-modal
+              // kan lyttes på fra parent. For nå er knappen synlig som
+              // pixel-perfect-match, men full UI (modal) kommer i egen
+              // commit når kategori-migrasjon legges til.
+              window.dispatchEvent(new CustomEvent('dance:add-track'));
             }}
           />
         </Box>
@@ -328,7 +355,7 @@ export default function DanceAnnotateView({
         ) : null}
       </Box>
 
-      {/* ── Høyre kolonne: Category Tools + Common Labels + Selected Annotation ── */}
+      {/* ── Høyre kolonne: Annotate/Review-tabs + paneler ── */}
       <Stack
         spacing={1.5}
         sx={{
@@ -337,46 +364,140 @@ export default function DanceAnnotateView({
           display: { xs: 'none', md: 'flex' },
         }}
       >
-        <Box sx={{
-          p: 1.5,
-          bgcolor: danceFlowColors.bgPanel,
-          border: `1px solid ${danceFlowColors.borderStrong}`,
-          borderRadius: 1,
-        }}>
-          <AnnotateCategoryToolsPanel
-            activeCategoryId={activeCategoryId}
-            onSelectCategory={setActiveCategoryId}
-          />
+        {/* Annotate / Review tabs — mockup viser dem øverst i høyre kolonne. */}
+        <Box
+          data-testid="dance-annotate-right-tabs"
+          sx={{
+            display: 'flex', gap: 0.5,
+            borderBottom: `1px solid ${danceFlowColors.borderStrong}`,
+            pb: 0.5,
+          }}
+        >
+          {(['annotate', 'review'] as const).map((id) => {
+            const isActive = rightTab === id;
+            return (
+              <Box
+                key={id}
+                component="button"
+                type="button"
+                onClick={() => setRightTab(id)}
+                data-testid={`dance-annotate-right-tab-${id}`}
+                aria-pressed={isActive}
+                sx={{
+                  flex: 1, textAlign: 'center', cursor: 'pointer',
+                  py: 0.75, fontSize: 12, fontWeight: 700,
+                  textTransform: 'capitalize',
+                  bgcolor: 'transparent', border: 'none',
+                  color: isActive ? danceFlowColors.lavender : danceFlowColors.textMuted,
+                  borderBottom: isActive
+                    ? `2px solid ${danceFlowColors.lavender}`
+                    : '2px solid transparent',
+                  marginBottom: '-1px',
+                  fontFamily: 'inherit',
+                  '&:hover': { color: danceFlowColors.lavender },
+                }}
+              >
+                {id}
+              </Box>
+            );
+          })}
         </Box>
 
-        <Box sx={{
-          p: 1.5,
-          bgcolor: danceFlowColors.bgPanel,
-          border: `1px solid ${danceFlowColors.borderStrong}`,
-          borderRadius: 1,
-        }}>
-          <AnnotateCommonLabelsPanel
-            activeCategoryId={activeCategoryId}
-            activeLabel={activeLabel}
-            onSelectLabel={setActiveLabel}
-          />
-        </Box>
+        {rightTab === 'annotate' ? (
+          <>
+            <Box sx={{
+              p: 1.5,
+              bgcolor: danceFlowColors.bgPanel,
+              border: `1px solid ${danceFlowColors.borderStrong}`,
+              borderRadius: 1,
+            }}>
+              <AnnotateCategoryToolsPanel
+                activeCategoryId={activeCategoryId}
+                onSelectCategory={setActiveCategoryId}
+              />
+            </Box>
 
-        {selected ? (
-          <Box sx={{
-            bgcolor: danceFlowColors.bgPanel,
-            border: `1px solid ${danceFlowColors.borderStrong}`,
-            borderRadius: 1,
-          }}>
-            <AnnotationDetailsPanel
-              annotation={selected}
-              dancerOptions={dancerOptions}
-              onClose={() => setSelectedId(null)}
-              onDelete={() => { void handleDelete(selected.id); }}
-              onPatch={(patch) => { void handlePatch(selected.id, patch); }}
-            />
+            <Box sx={{
+              p: 1.5,
+              bgcolor: danceFlowColors.bgPanel,
+              border: `1px solid ${danceFlowColors.borderStrong}`,
+              borderRadius: 1,
+            }}>
+              <AnnotateCommonLabelsPanel
+                activeCategoryId={activeCategoryId}
+                activeLabel={activeLabel}
+                onSelectLabel={setActiveLabel}
+              />
+            </Box>
+
+            {selected ? (
+              <Box sx={{
+                bgcolor: danceFlowColors.bgPanel,
+                border: `1px solid ${danceFlowColors.borderStrong}`,
+                borderRadius: 1,
+              }}>
+                <AnnotationDetailsPanel
+                  annotation={selected}
+                  dancerOptions={dancerOptions}
+                  onClose={() => setSelectedId(null)}
+                  onDelete={() => { void handleDelete(selected.id); }}
+                  onPatch={(patch) => { void handlePatch(selected.id, patch); }}
+                />
+              </Box>
+            ) : null}
+          </>
+        ) : (
+          // Review-tab: read-only sammendrag per kategori + total-tall.
+          <Box
+            data-testid="dance-annotate-review-summary"
+            sx={{
+              p: 1.5,
+              bgcolor: danceFlowColors.bgPanel,
+              border: `1px solid ${danceFlowColors.borderStrong}`,
+              borderRadius: 1,
+            }}
+          >
+            <Typography
+              variant="overline"
+              sx={{
+                display: 'block', mb: 1,
+                color: danceFlowColors.textMuted,
+                fontWeight: 700, letterSpacing: 1.2, fontSize: 11,
+              }}
+            >
+              Review Summary
+            </Typography>
+            <Stack spacing={0.5}>
+              {(['steps', 'arms', 'body', 'jumps', 'turns'] as const).map((cid) => {
+                const cnt = annotations.filter((a) => a.category === cid).length;
+                const cat = ['#a78bfa', '#34d399', '#fbbf24', '#60a5fa', '#f472b6'][
+                  ['steps', 'arms', 'body', 'jumps', 'turns'].indexOf(cid)
+                ];
+                return (
+                  <Stack key={cid} direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: cat, flexShrink: 0 }} />
+                    <Typography sx={{ flex: 1, fontSize: 12, color: danceFlowColors.textSecondary, textTransform: 'capitalize' }}>
+                      {cid}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: danceFlowColors.textPrimary }}>
+                      {cnt}
+                    </Typography>
+                  </Stack>
+                );
+              })}
+              <Box sx={{ borderTop: `1px solid ${danceFlowColors.borderStrong}`, mt: 0.5, pt: 0.5 }}>
+                <Stack direction="row">
+                  <Typography sx={{ flex: 1, fontSize: 11, color: danceFlowColors.textMuted, fontWeight: 600 }}>
+                    TOTAL
+                  </Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 700, color: danceFlowColors.lavender }}>
+                    {annotations.length}
+                  </Typography>
+                </Stack>
+              </Box>
+            </Stack>
           </Box>
-        ) : null}
+        )}
       </Stack>
     </Box>
   );

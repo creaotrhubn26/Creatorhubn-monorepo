@@ -33,6 +33,12 @@ export interface AnnotationTimelineProps {
   onSeek?: (sec: number) => void;
   onSelectAnnotation?: (annotation: VideoAnnotation) => void;
   onResize?: (annotation: VideoAnnotation, newStartSec: number, newEndSec: number) => void;
+  /**
+   * DanceAnnotate mockup-paritet: '+ Add Track'-knapp under siste spor.
+   * Når satt, vises knapp; click trigger handler (typisk for å opprette
+   * prosjekt-spesifikk kategori). Når undefined, skjules knappen.
+   */
+  onAddTrack?: () => void;
 }
 
 export function AnnotationTimeline({
@@ -42,6 +48,7 @@ export function AnnotationTimeline({
   onSeek,
   onSelectAnnotation,
   onResize,
+  onAddTrack,
 }: AnnotationTimelineProps): React.ReactElement {
   const safeDuration = Math.max(durationSec, 1);
   const tracks = React.useMemo(() => {
@@ -265,6 +272,33 @@ export function AnnotationTimeline({
           pointerEvents: 'none',
         }}
       />
+      {/* DanceAnnotate mockup-paritet: '+ Add Track'-knapp under siste spor. */}
+      {onAddTrack ? (
+        <Box
+          component="button"
+          type="button"
+          onClick={onAddTrack}
+          data-testid="annotation-timeline-add-track"
+          sx={{
+            mt: 1, ml: `${LABEL_WIDTH + 8}px`,
+            display: 'inline-flex', alignItems: 'center', gap: 0.5,
+            px: 1.25, py: 0.5,
+            border: '1px dashed rgba(255,255,255,0.18)',
+            borderRadius: 1,
+            bgcolor: 'transparent',
+            color: 'rgba(229,231,235,0.65)',
+            fontSize: 11, fontWeight: 600,
+            cursor: 'pointer', font: 'inherit',
+            '&:hover': {
+              color: '#a78bfa',
+              borderColor: '#a78bfa',
+              bgcolor: 'rgba(167,139,250,0.06)',
+            },
+          }}
+        >
+          + Add Track
+        </Box>
+      ) : null}
     </Box>
   );
 }
