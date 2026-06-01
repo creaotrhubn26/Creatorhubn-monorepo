@@ -268,6 +268,44 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         action: "proposed",
         details: { proposed_by: proposedBy },
       });
+
+      // Fire-and-forget e-postvarsel til motparten. Aldri blokker
+      // partnership-aksjonen hvis e-post feiler.
+      void (async () => {
+        try {
+          const detail = await pool.query(
+            `SELECT a.name AS agency_name, a.logo_url AS agency_logo_url, a.contact_email,
+                    prod.email AS production_email,
+                    prod.first_name || ' ' || prod.last_name AS production_name,
+                    proposer.first_name || ' ' || proposer.last_name AS proposer_name
+               FROM agency_production_partnerships p
+               JOIN agency_orgs a ON a.id = p.agency_org_id
+               JOIN users prod ON prod.id = p.production_user_id
+               LEFT JOIN users proposer ON proposer.id = p.proposed_by_user_id
+              WHERE p.id = $1`,
+            [partnership.id],
+          );
+          const d = detail.rows[0];
+          if (!d) return;
+          const recipientEmail = proposedBy === "agency" ? d.production_email : d.contact_email;
+          if (!recipientEmail) return;
+          const { sendPartnershipProposed } = await import("./role-room-partnerships-emails");
+          await sendPartnershipProposed(pool, {
+            partnershipId: partnership.id,
+            proposedBy,
+            agencyName: d.agency_name,
+            agencyLogoUrl: d.agency_logo_url,
+            productionName: d.production_name || d.production_email,
+            proposerName: d.proposer_name || (proposedBy === "agency" ? d.agency_name : d.production_name),
+            message: partnership.message,
+            recipientEmail,
+            sentByUserId: session.userId,
+          });
+        } catch (mailErr) {
+          console.error("[partnerships/propose] e-post feilet (uten å blokkere)", mailErr);
+        }
+      })();
+
       return res.status(201).json({ partnership });
     } catch (err) {
       console.error("[partnerships/propose] failed", err);
@@ -385,6 +423,41 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         action: accept ? "accepted" : "declined",
         details: { reason: reason ?? null },
       });
+
+      // Fire-and-forget e-postvarsel til proposeren ved aksept
+      if (accept) {
+        void (async () => {
+          try {
+            const detail = await pool.query(
+              `SELECT a.name AS agency_name, a.contact_email,
+                      prod.email AS production_email,
+                      prod.first_name || ' ' || prod.last_name AS production_name
+                 FROM agency_production_partnerships p
+                 JOIN agency_orgs a ON a.id = p.agency_org_id
+                 JOIN users prod ON prod.id = p.production_user_id
+                WHERE p.id = $1`,
+              [partnership.id],
+            );
+            const d = detail.rows[0];
+            if (!d) return;
+            // Proposeren er motpart av accepter-rollen
+            const accepterRole: "agency" | "production" = isAgencyResponder ? "agency" : "production";
+            const recipientEmail = accepterRole === "agency" ? d.production_email : d.contact_email;
+            if (!recipientEmail) return;
+            const { sendPartnershipAccepted } = await import("./role-room-partnerships-emails");
+            await sendPartnershipAccepted(pool, {
+              partnershipId: partnership.id,
+              agencyName: d.agency_name,
+              productionName: d.production_name || d.production_email,
+              accepterRole,
+              recipientEmail,
+              sentByUserId: session.userId,
+            });
+          } catch (mailErr) {
+            console.error("[partnerships/respond] e-post feilet (uten å blokkere)", mailErr);
+          }
+        })();
+      }
 
       return res.json({ partnership: r.rows[0] });
     } catch (err) {
@@ -676,7 +749,46 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         details: { casting_project_id, role_ids: role_ids ?? null },
       });
 
-      return res.status(201).json({ invitation: r.rows[0] });
+      // Fire-and-forget e-postvarsel til byrå-admin
+      const invitation = r.rows[0];
+      void (async () => {
+        try {
+          const detail = await pool.query(
+            `SELECT a.name AS agency_name, a.contact_email,
+                    prod.first_name || ' ' || prod.last_name AS production_name,
+                    proj.name AS project_name, proj.project_type,
+                    proj.start_date, proj.end_date
+               FROM agency_production_partnerships p
+               JOIN agency_orgs a ON a.id = p.agency_org_id
+               JOIN users prod ON prod.id = p.production_user_id
+               JOIN casting_projects proj ON proj.id = $1
+              WHERE p.id = $2`,
+            [casting_project_id, partnership.id],
+          );
+          const d = detail.rows[0];
+          if (!d || !d.contact_email) return;
+          const { sendProjectInvitationSent } = await import("./role-room-partnerships-emails");
+          await sendProjectInvitationSent(pool, {
+            invitationId: invitation.id,
+            partnershipId: partnership.id,
+            agencyName: d.agency_name,
+            productionName: d.production_name || "Produksjonsteam",
+            projectName: d.project_name,
+            projectType: d.project_type ?? null,
+            startDate: d.start_date ? String(d.start_date) : null,
+            endDate: d.end_date ? String(d.end_date) : null,
+            roleCount: Array.isArray(role_ids) ? role_ids.length : null,
+            notes: notes ?? null,
+            expiresAt: computedExpires,
+            recipientEmail: d.contact_email,
+            sentByUserId: session.userId,
+          });
+        } catch (mailErr) {
+          console.error("[partnerships/invite-project] e-post feilet (uten å blokkere)", mailErr);
+        }
+      })();
+
+      return res.status(201).json({ invitation });
     } catch (err) {
       console.error("[partnerships/invite-project] failed", err);
       return res.status(500).json({ error: "Klarte ikke å invitere prosjekt", detail: String(err) });
@@ -764,6 +876,38 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         actorUserId: session.userId,
         action: accept ? "project_invitation_accepted" : "project_invitation_declined",
       });
+
+      // Fire-and-forget e-postvarsel til produksjon ved aksept
+      if (accept) {
+        void (async () => {
+          try {
+            const detail = await pool.query(
+              `SELECT a.name AS agency_name,
+                      prod.email AS production_email,
+                      proj.name AS project_name
+                 FROM partnership_project_invitations i
+                 JOIN agency_production_partnerships p ON p.id = i.partnership_id
+                 JOIN agency_orgs a ON a.id = p.agency_org_id
+                 JOIN users prod ON prod.id = p.production_user_id
+                 JOIN casting_projects proj ON proj.id = i.casting_project_id
+                WHERE i.id = $1`,
+              [inv.id],
+            );
+            const d = detail.rows[0];
+            if (!d || !d.production_email) return;
+            const { sendProjectInvitationAccepted } = await import("./role-room-partnerships-emails");
+            await sendProjectInvitationAccepted(pool, {
+              invitationId: inv.id,
+              agencyName: d.agency_name,
+              projectName: d.project_name,
+              recipientEmail: d.production_email,
+              sentByUserId: session.userId,
+            });
+          } catch (mailErr) {
+            console.error("[partnerships/invitations/respond] e-post feilet (uten å blokkere)", mailErr);
+          }
+        })();
+      }
 
       return res.json({ invitation: r.rows[0] });
     } catch (err) {
