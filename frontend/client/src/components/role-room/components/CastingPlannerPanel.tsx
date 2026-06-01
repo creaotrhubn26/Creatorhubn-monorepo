@@ -12894,18 +12894,27 @@ type RoleRoomProjectWorkspaceState = {
                             sx={{ mx: 0.5, borderColor: branding.colors.border }}
                           />
                           <StoryWriterIcon sx={{ color: branding.colors.primary, flexShrink: 0 }} />
-                          <Typography
-                            variant="subtitle1"
-                            sx={{
-                              fontWeight: 600,
-                              color: branding.colors.textPrimary,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {branding.tokens.labels.storyWriterHeader}
-                          </Typography>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{ color: branding.colors.textSecondary, display: 'block', lineHeight: 1.1, whiteSpace: 'nowrap' }}
+                            >
+                              Role Room Studio › Story
+                            </Typography>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: 600,
+                                color: branding.colors.textPrimary,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              {branding.tokens.labels.storyWriterHeader}
+                            </Typography>
+                          </Box>
                         </Box>
                       }
                     />

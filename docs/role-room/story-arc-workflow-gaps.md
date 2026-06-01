@@ -38,7 +38,12 @@ Femte runde (de tre oppfølgingene — nå bygget):
 - ✅ **Vennlig navne-oppslag** — henter prosjekt-medlemmer (`roleRoomProjectMembersService`) og resolver lås-eierens bruker-id → navn i «Låst av»-banneret.
 - ✅ **Full multi-viewer presence** — dedikert presence-endepunkt (POST/GET `/manuscripts/:id/presence`, in-memory + 45s TTL). Klienten pinger hvert 20s med visningsnavn; «N andre her»-chip viser alle aktive (ikke bare lås-holderen).
 
-**Fortsatt åpent (lav verdi):** Fix 9 workflow-breadcrumb, undo-tooltips, BeatBoard-snarvei-hjelp.
+Sjette runde (de siste lav-verdi-restene):
+- ✅ **Fix 9 — workflow-breadcrumb** «Role Room Studio › Story» i manus-headeren.
+- ✅ **BeatBoard-snarvei-hjelp** — Keyboard-ikon i toolbaren med tooltip som lister snarveiene (Enter / Cmd+→ / Cmd+↑↓ / Cmd+D), som tidligere kun lå i en kode-kommentar.
+- ✅ **undo-tooltips** — tydeligere tekst («Angre siste endring i manuset» / «Gjør om endringen du angret»). Merk: per-handlings-etiketter («Angre: satte inn scene») ble bevisst IKKE laget — history-stacken er content-snapshots uten handlings-metadata, så det ville krevd å spore edit-type per steg.
+
+**Alle punktene fra gap-rapporten er nå adressert** (bygget eller bevisst avgrenset med begrunnelse).
 
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).

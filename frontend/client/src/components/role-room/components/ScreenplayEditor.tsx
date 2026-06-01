@@ -1576,7 +1576,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           {!isMobile && <Divider orientation="vertical" flexItem />}
           
           {/* Undo/Redo */}
-          <Tooltip title="Angre (Ctrl+Z)">
+          <Tooltip title="Angre siste endring i manuset (Ctrl+Z)">
             <span>
               <IconButton 
                 size={responsive.buttonSize}
@@ -1598,7 +1598,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Gjør om (Ctrl+Y)">
+          <Tooltip title="Gjør om endringen du angret (Ctrl+Y)">
             <span>
               <IconButton 
                 size={responsive.buttonSize}
