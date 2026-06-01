@@ -176,6 +176,19 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
     if (typeof body.imageBrief === 'string')   { fields.push(`image_brief = $${idx++}`); values.push(body.imageBrief); }
     if (typeof body.ctaText === 'string')      { fields.push(`cta_text = $${idx++}`); values.push(body.ctaText); }
     if (typeof body.ctaLink === 'string')      { fields.push(`cta_link = $${idx++}`); values.push(body.ctaLink); }
+    if ('suggestedPublishTime' in body) {
+      // null = unschedule. String = ISO 8601 → parse to Date.
+      const raw = body.suggestedPublishTime;
+      if (raw === null) {
+        fields.push(`suggested_publish_time = NULL`);
+      } else if (typeof raw === 'string' && raw.trim()) {
+        const parsed = new Date(raw);
+        if (Number.isFinite(parsed.getTime())) {
+          fields.push(`suggested_publish_time = $${idx++}`);
+          values.push(parsed);
+        }
+      }
+    }
     if (fields.length === 0) {
       res.status(400).json({ ok: false, error: 'no updatable fields' });
       return;
@@ -204,6 +217,96 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
     try {
       const r = await pool.query('DELETE FROM marketing_post_drafts WHERE id = $1', [id]);
       res.json({ ok: true, deleted: r.rowCount ?? 0 });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // ── GET content-calendar ─────────────────────────────────────────────────
+  // Returnerer drafts + publiserte posts i et dato-vindu pluss en separat
+  // "unscheduled"-bucket (drafts uten suggested_publish_time).
+  app.get('/api/role-room/marketing-cockpit/content-calendar', async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    const brandKey = typeof req.query.brandKey === 'string' && req.query.brandKey.trim()
+      ? req.query.brandKey.trim() : 'theroleroom';
+    const fromStr = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+    const toStr = typeof req.query.to === 'string' ? req.query.to.trim() : '';
+
+    // Default: 30 dager bakover + 30 dager fram
+    const now = Date.now();
+    const from = fromStr ? new Date(fromStr) : new Date(now - 30 * 86_400_000);
+    const to = toStr ? new Date(toStr) : new Date(now + 30 * 86_400_000);
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) {
+      res.status(400).json({ ok: false, error: 'invalid from/to date' });
+      return;
+    }
+
+    try {
+      // 1. Drafts med scheduled-time i vindu (eller publiserte i vindu)
+      const scheduled = await pool.query(
+        `SELECT id, platform, status, caption, hashtags, image_brief,
+                cta_text, cta_link, source_insight, suggested_publish_time,
+                published_at, external_post_id, generated_at,
+                (SELECT row_to_json(s)
+                 FROM (
+                   SELECT engagement_rate, reach, reactions_total, comments_count
+                   FROM post_engagement_snapshots
+                   WHERE draft_id = marketing_post_drafts.id AND fetch_error IS NULL
+                   ORDER BY snapshot_at DESC LIMIT 1
+                 ) s) AS latest_engagement
+         FROM marketing_post_drafts
+         WHERE brand_key = $1
+           AND (
+             (suggested_publish_time IS NOT NULL AND suggested_publish_time BETWEEN $2 AND $3)
+             OR (published_at IS NOT NULL AND published_at BETWEEN $2 AND $3)
+           )
+         ORDER BY COALESCE(published_at, suggested_publish_time) ASC`,
+        [brandKey, from, to],
+      );
+
+      // 2. Unscheduled drafts (ingen suggested_publish_time, ikke publisert ennå)
+      const unscheduled = await pool.query(
+        `SELECT id, platform, status, caption, hashtags, image_brief,
+                cta_text, cta_link, source_insight, generated_at
+         FROM marketing_post_drafts
+         WHERE brand_key = $1
+           AND suggested_publish_time IS NULL
+           AND status IN ('draft', 'edited')
+         ORDER BY generated_at DESC
+         LIMIT 50`,
+        [brandKey],
+      );
+
+      const mapRow = (row: Record<string, unknown>) => ({
+        id: Number(row.id),
+        platform: row.platform,
+        status: row.status,
+        caption: row.caption,
+        hashtags: row.hashtags || [],
+        imageBrief: row.image_brief,
+        ctaText: row.cta_text,
+        ctaLink: row.cta_link,
+        sourceInsight: row.source_insight,
+        suggestedPublishTime: row.suggested_publish_time,
+        publishedAt: row.published_at,
+        externalPostId: row.external_post_id,
+        generatedAt: row.generated_at,
+        latestEngagement: row.latest_engagement || null,
+      });
+
+      res.json({
+        ok: true,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        brandKey,
+        scheduled: scheduled.rows.map(mapRow),
+        unscheduled: unscheduled.rows.map(mapRow),
+        counts: {
+          scheduled: scheduled.rowCount ?? 0,
+          unscheduled: unscheduled.rowCount ?? 0,
+          published: scheduled.rows.filter((r) => r.status === 'published').length,
+        },
+      });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }
