@@ -34,7 +34,7 @@ const DEMO_DURATION = 10; // BBB 10s WebM sample
 const MOCK_CLIP = {
   id: DEMO_CLIP_ID, ownerUserId: 'demo-user', projectId: 'demo-project',
   choreographyId: null, segmentId: null, kind: 'rehearsal',
-  title: 'Ballet — Studio Demo (Mixkit CC)', storageKey: 'demo/dance.mp4',
+  title: 'Big Buck Bunny — CC-BY Blender (WebM)', storageKey: 'demo/dance.webm',
   signedUrl: DANCE_VIDEO_URL, durationSec: DEMO_DURATION, mime: 'video/mp4',
   sourceUserId: 'demo-user',
   capturedAt: '2026-06-01T19:15:00Z', createdAt: '2026-06-01T19:30:00Z', updatedAt: '2026-06-01T19:30:00Z',
