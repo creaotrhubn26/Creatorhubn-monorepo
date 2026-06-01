@@ -31,7 +31,7 @@ async function ensureDraftExists() {
   const r = await fetch(`${BASE}/api/role-room/agent/compose-post-from-insight?token=${TOKEN}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      brandKey: 'theroleroom-cal-test',
+      brandKey: 'theroleroom',  // match getCal default brandKey
       platform: 'linkedin',
       insightTitle: 'E2E calendar test insight',
       insightBody: 'En kort body for å lage en draft som vi kan bruke til schedule-test.',
