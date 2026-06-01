@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Stack,
+  Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress, Stack,
   Typography, TextField, IconButton, Tooltip, Divider, Switch, FormControlLabel,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -30,6 +30,7 @@ interface LatestSnapshot {
   recent_post_count_30d: number | null;
   snapshot_at: string;
   fetch_error: string | null;
+  picture_url: string | null;
 }
 
 interface Competitor {
@@ -124,7 +125,19 @@ function CompetitorRow({
   return (
     <Box sx={{ borderBottom: '1px solid rgba(148,163,184,0.10)' }} data-testid={`competitor-row-${competitor.id}`}>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ py: 1 }}>
-        <GroupIcon sx={{ color: '#a78bfa', fontSize: 18 }} />
+        <Avatar
+          src={competitor.latestSnapshot?.picture_url || undefined}
+          alt={competitor.nickname}
+          sx={{
+            width: 32, height: 32,
+            background: 'rgba(2,6,23,0.6)',
+            border: '1px solid rgba(148,163,184,0.18)',
+            fontSize: '0.78rem',
+            color: '#e2e8f0',
+          }}
+        >
+          {competitor.latestSnapshot?.picture_url ? null : <GroupIcon sx={{ color: '#a78bfa', fontSize: 18 }} />}
+        </Avatar>
         <Stack sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography sx={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.92rem' }}>
