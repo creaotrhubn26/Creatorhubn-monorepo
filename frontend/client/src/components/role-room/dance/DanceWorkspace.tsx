@@ -71,6 +71,7 @@ import { isDanceReadOnlyRole } from './danceRoleUtils';
 import { useAuth } from '../../../hooks/useAuth';
 import { useDanceRealtimePresence } from './danceRealtimeClient';
 import DanceAnnotateView from './DanceAnnotateView';
+import DanceAnnotateLayout from './DanceAnnotateLayout';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -295,6 +296,60 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
     return () => clearTimeout(t);
   }, [shareMessage]);
 
+  // DanceAnnotate-flate (mockup #2) bruker EGEN shell — distinct branding,
+  // simplifisert nav-rail, dedikert top-bar (Save/Export-knapper).
+  if (subTab === 'annotate') {
+    return (
+      <DanceAnnotateLayout
+        projectName={projectId ?? 'Untitled Project'}
+        onSave={handleShare}
+        onExport={() => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('dance:export-annotation'));
+          }
+        }}
+        user={{
+          name: auth.user?.name ?? auth.user?.email ?? undefined,
+          avatarUrl: typeof auth.user?.picture === 'string' ? auth.user.picture : undefined,
+        }}
+        projectId={projectId}
+      >
+        <DanceAnnotateView
+          clipId={annotateClipId}
+          clipTitle={annotateClipTitle}
+          durationSec={annotateDuration}
+          dancerOptions={[
+            { id: 'd1', label: 'Dancer 1' },
+            { id: 'd2', label: 'Dancer 2' },
+            { id: 'd3', label: 'Dancer 3' },
+            { id: 'd4', label: 'Dancer 4' },
+            { id: 'd5', label: 'Dancer 5' },
+          ]}
+          readOnly={readOnly}
+        />
+        {/* Cheat-sheet + share-snackbar bevart fra eksisterende parent-flyt */}
+        {cheatSheet.CheatSheet}
+        {shareMessage ? (
+          <Box
+            role="status"
+            data-testid="dance-flow-share-snackbar"
+            sx={{
+              position: 'fixed', bottom: 16, left: '50%',
+              transform: 'translateX(-50%)',
+              bgcolor: '#1e2536', color: '#a78bfa',
+              border: '1px solid #a78bfa', borderRadius: 1,
+              px: 2, py: 1, fontSize: 12, fontWeight: 600,
+              zIndex: 2000,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            }}
+          >
+            {shareMessage}
+          </Box>
+        ) : null}
+      </DanceAnnotateLayout>
+    );
+  }
+
   return (
     <DanceFlowShell
       header={
@@ -322,25 +377,8 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             readOnly={readOnly}
           />
         </Box>
-      ) : subTab === 'annotate' ? (
-        // DanceAnnotate-flate — pixel-perfect mot mockup #2.
-        // ClipsSidebar dispatcher dance:select-clip → vi tracker clipId
-        // + title + durationSec her og passer ned. Dancer-options kan
-        // utvides når dancer-service kobles inn (foreløpig stub D1-D5).
-        <DanceAnnotateView
-          clipId={annotateClipId}
-          clipTitle={annotateClipTitle}
-          durationSec={annotateDuration}
-          dancerOptions={[
-            { id: 'd1', label: 'Dancer 1' },
-            { id: 'd2', label: 'Dancer 2' },
-            { id: 'd3', label: 'Dancer 3' },
-            { id: 'd4', label: 'Dancer 4' },
-            { id: 'd5', label: 'Dancer 5' },
-          ]}
-          readOnly={readOnly}
-        />
       ) : (
+        // Annotate håndteres av tidlig-return m/ DanceAnnotateLayout over.
         // Dancers/Analysis/Review forward via dance:set-tab og lander
         // aldri her. Fallback-tekst hvis ny sub-tab introduseres uten
         // handler.
