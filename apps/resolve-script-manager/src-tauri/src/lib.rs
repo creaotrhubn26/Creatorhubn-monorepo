@@ -8,6 +8,7 @@ mod cull;
 mod folder_watcher;
 mod history;
 mod media_probe;
+mod mockup_render;
 mod photoshop_bridge;
 mod psd_indexer;
 mod python;
@@ -906,6 +907,7 @@ pub fn run() {
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
+            mockup_render::mockup_render_video,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,

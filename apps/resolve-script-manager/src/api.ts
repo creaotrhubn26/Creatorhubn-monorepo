@@ -61,6 +61,32 @@ export async function openScriptFolder(): Promise<string> {
   return invoke<string>("open_script_folder");
 }
 
+/**
+ * MockupConfig speiler frontend/.../mockup-video/mockupConfig.ts. Holdt som
+ * en åpen Record her så Tauri-frontenden ikke trenger å duplisere hele typen
+ * — UI-en bygger objektet og sender det rått til Rust-broen.
+ */
+export type MockupConfig = Record<string, unknown>;
+
+/**
+ * Render en mockup-video via den native pipelinen (scripts/mockup-polish-pro.mts).
+ * Fremdrift kommer som "script-event" (bruk onScriptEvent). Resolver med
+ * RunSummary når ferdig; result-eventet inneholder { outputPath, format }.
+ */
+export async function mockupRenderVideo(
+  config: MockupConfig,
+  clips: string[],
+  outputPath: string,
+  musicPath?: string | null,
+): Promise<RunSummary> {
+  return invoke<RunSummary>("mockup_render_video", {
+    config,
+    clips,
+    outputPath,
+    musicPath: musicPath ?? null,
+  });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }
