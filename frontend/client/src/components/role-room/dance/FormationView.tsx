@@ -51,7 +51,7 @@ import {
   Undo as UndoIcon,
   Redo as RedoIcon,
 } from '@mui/icons-material';
-import { ToggleButton, ToggleButtonGroup, MenuItem } from '@mui/material';
+import { ToggleButton, ToggleButtonGroup, MenuItem, Autocomplete } from '@mui/material';
 import { Canvas, Circle, Rect, Textbox, Line, Group, FabricImage } from 'fabric';
 import {
   DEMO_DANCERS,
@@ -62,6 +62,8 @@ import {
 } from './formationTypes';
 import { FormationTimeline } from './FormationTimeline';
 import { DancerPathsView } from './DancerPathsView';
+import { formatTimecode, parseTimecode } from './timecode';
+import StagePlotPrintOverlay from './StagePlotPrintOverlay';
 import { DancerPathPreview } from './DancerPathPreview';
 import { StageMap3D } from './StageMap3D';
 import { CurveOverlay } from './CurveOverlay';
@@ -105,16 +107,49 @@ export interface FormationViewProps {
    * funksjonell endring (eksisterende drag/click-flyt urørt).
    */
   onDancerClick?: (dancerId: string) => void;
+  /**
+   * Phase 4: valgfri video-panel-slot. Når satt, splittes stage-kolonnen i
+   * to ([video | stage]) under lg. Når undefined: ingen visuell endring fra
+   * pre-Phase-4-layout.
+   */
+  videoPanelSlot?: React.ReactNode;
+  /** G18: time-anchored notes på timeline (fra dance-formation-timeline-items). */
+  timelineNotes?: readonly { id: string; text: string; startSec: number; endSec: number }[];
+  /** G18: time-anchored movements på timeline. */
+  timelineMovements?: readonly { id: string; label: string; startSec: number; endSec: number }[];
+  /**
+   * Audit H1: read-only-modus. Pucks ikke draggable, ingen 'Ny formasjon'-knapp,
+   * ingen lock/delete-handlers, ingen template-apply. Skjuler ARIA-mutation-
+   * controls samt.
+   */
+  readOnly?: boolean;
+}
+
+/**
+ * G_1: imperativ handle som FormationViewConnected bruker for å reconcile
+ * client-temp-IDs (`f-tmp-…`) med server-tildelte IDs etter at autosave
+ * returnerer. Bruk: `viewRef.current?.applyIdMapping(new Map([['f-tmp-1', 'fmt_abc']]))`.
+ * Oppdaterer KUN id-feltet — andre felter (positions, name, etc.) forblir
+ * brukerens current state slik at vi ikke trår over senere drag.
+ */
+export interface FormationViewHandle {
+  applyIdMapping: (mapping: Map<string, string>) => void;
+  /** A2: oppdater version-counter etter save. ID-keyed (post-reconcile). */
+  applyVersionMapping: (mapping: Map<string, number>) => void;
 }
 
 // ─── Komponent ────────────────────────────────────────────────────────────
 
-export const FormationView: React.FC<FormationViewProps> = ({
+export const FormationView = React.forwardRef<FormationViewHandle, FormationViewProps>(({
   dancers = DEMO_DANCERS,
   initialFormations = DEMO_FORMATIONS,
   onFormationsChange,
   onDancerClick,
-}) => {
+  videoPanelSlot,
+  timelineNotes,
+  timelineMovements,
+  readOnly = false,
+}, ref) => {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
 
@@ -161,6 +196,33 @@ export const FormationView: React.FC<FormationViewProps> = ({
     });
     setTimeout(() => { skipHistoryRef.current = false; }, 0);
   }, []);
+
+  // G_1: imperativ handle for FormationViewConnected. Erstatter client-temp-
+  // IDs (`f-tmp-*`) med server-IDs etter autosave-success. skipHistoryRef
+  // gjør at vi ikke forurenser undo-stacken — ID-mapping er ikke en
+  // brukerendring.
+  React.useImperativeHandle(ref, () => ({
+    applyIdMapping: (mapping: Map<string, string>): void => {
+      if (mapping.size === 0) return;
+      skipHistoryRef.current = true;
+      _setFormations((prev) => prev.map((f) => {
+        const next = mapping.get(f.id);
+        return next ? { ...f, id: next } : f;
+      }));
+      // Hvis aktiv formasjon hadde en temp-ID, oppdater referansen.
+      setActiveFormationId((cur) => (cur && mapping.has(cur) ? mapping.get(cur) ?? cur : cur));
+      setTimeout(() => { skipHistoryRef.current = false; }, 0);
+    },
+    applyVersionMapping: (mapping: Map<string, number>): void => {
+      if (mapping.size === 0) return;
+      skipHistoryRef.current = true;
+      _setFormations((prev) => prev.map((f) => {
+        const next = mapping.get(f.id);
+        return next != null ? { ...f, version: next } : f;
+      }));
+      setTimeout(() => { skipHistoryRef.current = false; }, 0);
+    },
+  }), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const t = e.target as HTMLElement | null;
@@ -178,6 +240,52 @@ export const FormationView: React.FC<FormationViewProps> = ({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
+
+  // Audit B1: keyboard-navigation state — declared early så useEffect
+  // senere kan referere det. Effekten registreres etter updateDancerPosition
+  // er definert (TDZ-defensiv).
+  const [keyboardPuckIdx, setKeyboardPuckIdx] = useState<number | null>(null);
+
+  // Audit C1: pinch-zoom på touch-enheter. Lytter på canvas-elementets
+  // touch-events og skalerer Fabric-canvas via canvas.setZoom. Bevarer
+  // ResizeObserver-baseline (Phase 6c) — vi multipliserer på toppen.
+  useEffect(() => {
+    const canvasEl = canvasElRef.current;
+    const canvas = fabricRef.current;
+    if (!canvasEl || !canvas) return;
+    let initialDistance = 0;
+    let initialZoom = 1;
+    const onTouchStart = (e: TouchEvent): void => {
+      if (e.touches.length !== 2) return;
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      initialDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      initialZoom = canvas.getZoom();
+    };
+    const onTouchMove = (e: TouchEvent): void => {
+      if (e.touches.length !== 2 || initialDistance === 0) return;
+      e.preventDefault();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const scale = dist / initialDistance;
+      const nextZoom = Math.max(0.5, Math.min(2, initialZoom * scale));
+      canvas.setZoom(nextZoom);
+      canvas.requestRenderAll();
+    };
+    const onTouchEnd = (): void => { initialDistance = 0; };
+    // passive: false så vi kan preventDefault på pinch
+    canvasEl.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvasEl.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvasEl.addEventListener('touchend', onTouchEnd);
+    canvasEl.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      canvasEl.removeEventListener('touchstart', onTouchStart);
+      canvasEl.removeEventListener('touchmove', onTouchMove);
+      canvasEl.removeEventListener('touchend', onTouchEnd);
+      canvasEl.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
 
   // F5-15: Video + stage-map sync. Hør på 'dance:video-time'-CustomEvent
   // som video-spilleren dispatcher når playheaden flytter seg. Velg
@@ -198,6 +306,90 @@ export const FormationView: React.FC<FormationViewProps> = ({
     window.addEventListener('dance:video-time', onVideoTime as EventListener);
     return () => window.removeEventListener('dance:video-time', onVideoTime as EventListener);
   }, [formations, activeFormationId]);
+
+  // Audit G_2: rapporter formasjons-antall opp via CustomEvent så
+  // DanceWorkspace kan disable Export-knappen på tomt projekt uten å
+  // koble ref-callbacks gjennom flere lag.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent('dance:formations-count', {
+        detail: { count: formations.length },
+      }),
+    );
+  }, [formations.length]);
+
+  // Workflow-audit G11: dobbeltklikk på timeline-bakgrunn fra FormationTimeline
+  // → opprett ny formasjon ved klikket tid. Kopierer posisjoner fra aktiv
+  // formasjon (eller starter tomt), setter startSec/endSec og auto-selecter.
+  useEffect(() => {
+    const onCreateAt = (e: Event): void => {
+      const detail = (e as CustomEvent<{ timeSec?: number }>).detail;
+      if (!detail || typeof detail.timeSec !== 'number') return;
+      const timeSec = Math.max(0, detail.timeSec);
+      const seed = formations.find((f) => f.id === activeFormationId) ?? formations[0] ?? null;
+      const snapshot: Formation = {
+        id: `f-tmp-${Date.now()}`,
+        name: `Formasjon ${formations.length + 1}`,
+        positions: seed ? seed.positions.map((p) => ({ ...p })) : [],
+        notes: '',
+        startSec: timeSec,
+        endSec: timeSec + 4,
+        createdAt: new Date().toISOString(),
+        tags: [],
+      };
+      setFormations((prev) => [...prev, snapshot]);
+      setActiveFormationId(snapshot.id);
+    };
+    window.addEventListener('dance:create-formation-at', onCreateAt as EventListener);
+    return () => window.removeEventListener('dance:create-formation-at', onCreateAt as EventListener);
+  }, [formations, activeFormationId, setFormations]);
+
+  // Phase 5: lytt på `dance:select-clip` fra ClipsSidebar slik at MUSIC-track
+  // i FormationTimeline kan rendre waveform fra valgt clip's signedUrl.
+  // Holdes lokalt så vi ikke trenger å bobble selection-state opp.
+  const [selectedClipUrl, setSelectedClipUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const onSelectClip = (e: Event): void => {
+      const detail = (e as CustomEvent<{ signedUrl?: string | null }>).detail;
+      if (!detail) return;
+      setSelectedClipUrl(typeof detail.signedUrl === 'string' ? detail.signedUrl : null);
+    };
+    window.addEventListener('dance:select-clip', onSelectClip as EventListener);
+    return () => window.removeEventListener('dance:select-clip', onSelectClip as EventListener);
+  }, []);
+
+  // Workflow-audit v1 G21: PDF = stage-plot-overlay m/ window.print().
+  const [printMode, setPrintMode] = useState<boolean>(false);
+
+  // Phase 2 + G21: lytt på `dance:export-formation` fra FormationHeaderBar.
+  // PNG = fabric.toDataURL snapshot. JSON = serialisert formations-array.
+  // PDF = render StagePlotPrintOverlay som trigger window.print().
+  useEffect(() => {
+    const onExport = (e: Event): void => {
+      const detail = (e as CustomEvent<{ format?: 'png' | 'json' | 'pdf'; filename?: string }>).detail;
+      if (!detail) return;
+      if (detail.format === 'pdf') {
+        setPrintMode(true);
+        return;
+      }
+      void import('./formationExport').then((mod) => {
+        const filename = detail.filename ?? mod.defaultExportFilename(detail.format ?? 'png', formations);
+        if (detail.format === 'png') {
+          const canvas = fabricRef.current;
+          if (!canvas) return;
+          const dataUrl = canvas.toDataURL({ format: 'png', multiplier: 2 });
+          mod.downloadDataUrl(dataUrl, filename);
+        } else if (detail.format === 'json') {
+          const payload = mod.buildFormationExportPayload(formations);
+          mod.downloadJson(payload, filename);
+        }
+      });
+    };
+    window.addEventListener('dance:export-formation', onExport as EventListener);
+    return () => window.removeEventListener('dance:export-formation', onExport as EventListener);
+  }, [formations]);
+
   const [newFormationName, setNewFormationName] = useState('');
   const [animationProgress, setAnimationProgress] = useState<{ from: string; to: string } | null>(null);
 
@@ -232,12 +424,66 @@ export const FormationView: React.FC<FormationViewProps> = ({
       backgroundColor: '#0d1218',
       selection: false,
       preserveObjectStacking: true,
+      // Audit C1: Fabric v6 har native touch-event-støtte. Vi setter
+      // allowTouchScrolling=false slik at bevegelse på en puck blir drag
+      // (ikke page-scroll). Pinch-zoom håndteres av Fabric når enableRetinaScaling
+      // er aktiv (default).
+      allowTouchScrolling: false,
+      enableRetinaScaling: true,
     });
     fabricRef.current = canvas;
 
     return () => {
       void canvas.dispose();
       fabricRef.current = null;
+    };
+  }, []);
+
+  // Phase 6c: ResizeObserver gjør Fabric-canvas responsive til container-
+  // bredden. Internal coordinate system holdes på STAGE_WIDTH × STAGE_HEIGHT
+  // (pucks/drag-logikk er uendret) — vi skalerer DOM-size + setZoom slik at
+  // alt rendres pro-rata. Clamp [0.5, 2.0] så pucks ikke blir ubrukelig små
+  // på mobil eller ubrukelig store på 4K-skjermer. Throttlet via requestAnimationFrame.
+  useEffect(() => {
+    const canvasEl = canvasElRef.current;
+    const canvas = fabricRef.current;
+    if (!canvasEl || !canvas) return;
+    const wrapper = canvasEl.parentElement;
+    if (!wrapper) return;
+
+    // Audit F3: debounce 100ms + bare resize hvis bredden faktisk endret > 5px.
+    // Tidligere brukte vi rAF-throttle, som triggerte setDimensions hver frame
+    // under window-drag — 60 re-renders/sek av alle pucks ble for tregt.
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let lastWidth = 0;
+    const recompute = (): void => {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        const containerWidth = wrapper.clientWidth || STAGE_WIDTH;
+        if (Math.abs(containerWidth - lastWidth) < 5) return;
+        lastWidth = containerWidth;
+        const targetRatio = Math.max(0.5, Math.min(2, containerWidth / STAGE_WIDTH));
+        const targetWidth = STAGE_WIDTH * targetRatio;
+        const targetHeight = STAGE_HEIGHT * targetRatio;
+        const current = fabricRef.current;
+        if (!current) return;
+        // setDimensions skriver canvas.width/height (DOM) + interne props;
+        // setZoom skalerer rendering-konteksten så objekter holder
+        // relative posisjoner.
+        current.setDimensions({ width: targetWidth, height: targetHeight });
+        current.setZoom(targetRatio);
+        current.requestRenderAll();
+      }, 100);
+    };
+
+    recompute(); // initial sync (parent kan endre seg under første render)
+
+    const observer = new ResizeObserver(recompute);
+    observer.observe(wrapper);
+    return () => {
+      observer.disconnect();
+      if (timeoutId !== null) clearTimeout(timeoutId);
     };
   }, []);
 
@@ -308,14 +554,71 @@ export const FormationView: React.FC<FormationViewProps> = ({
         snapStep, symmetry,
         hiddenDancerIds, showPaths, showIds,
         prevFormation: prev, nextFormation: next,
+        // Audit G14: pucks blir read-only når formasjonen er låst.
+        // Audit H1: read-only-modus tilsvarer per-formasjon-lås (read-only
+        // hele veien). Disjunksjon dekker begge.
+        locked: activeFormation.locked === true || readOnly,
+        // Audit B1: hvilken puck er keyboard-aktiv (index i positions-array).
+        keyboardActiveIdx: keyboardPuckIdx,
       },
     );
-  }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds]);
+  }, [activeFormation, formations, dancersById, updateDancerPosition, snapStep, symmetry, hiddenDancerIds, showPaths, showIds, readOnly, keyboardPuckIdx]);
 
   // Persister via callback når formations endres
   useEffect(() => {
     onFormationsChange?.(formations);
   }, [formations, onFormationsChange]);
+
+  // Audit B1: keyboard-navigation for Fabric pucks. Skjermlesere +
+  // tastatur-only-brukere kan tab gjennom pucks og flytte dem 1% av stage
+  // per piltrykk (5% med Shift). Read-only skipper.
+  useEffect(() => {
+    if (readOnly) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const active = formations.find((f) => f.id === activeFormationId);
+      if (!active || active.positions.length === 0) return;
+      const positions = active.positions;
+
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        setKeyboardPuckIdx((cur) => {
+          if (cur == null) return e.shiftKey ? positions.length - 1 : 0;
+          const next = e.shiftKey ? cur - 1 : cur + 1;
+          if (next < 0 || next >= positions.length) return null;
+          return next;
+        });
+        return;
+      }
+      if (e.key === 'Escape' && keyboardPuckIdx != null) {
+        e.preventDefault();
+        setKeyboardPuckIdx(null);
+        return;
+      }
+      if (keyboardPuckIdx == null) return;
+
+      const step = e.shiftKey ? 0.05 : 0.01;
+      let dx = 0, dy = 0;
+      switch (e.key) {
+        case 'ArrowLeft':  dx = -step; break;
+        case 'ArrowRight': dx = step;  break;
+        case 'ArrowUp':    dy = -step; break;
+        case 'ArrowDown':  dy = step;  break;
+        default: return;
+      }
+      e.preventDefault();
+      const pos = positions[keyboardPuckIdx];
+      if (!pos) return;
+      const newX = Math.max(0, Math.min(1, pos.x + dx));
+      const newY = Math.max(0, Math.min(1, pos.y + dy));
+      // Gjenbruker eksisterende updateDancerPosition (samme path som drag)
+      // så ARIA-live-region kunngjør endringen.
+      updateDancerPosition(pos.dancerId, newX, newY);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readOnly, formations, activeFormationId, keyboardPuckIdx, updateDancerPosition]);
 
   // ─── Add/remove dancer fra aktiv formasjon ─────────
 
@@ -377,9 +680,35 @@ export const FormationView: React.FC<FormationViewProps> = ({
 
   const deleteFormation = useCallback((id: string) => {
     setFormations((prev) => {
+      const removed = prev.find((f) => f.id === id);
+      // Audit G14: refuser å slette låste formasjoner
+      if (removed?.locked) return prev;
       const next = prev.filter((f) => f.id !== id);
-      if (next.length === 0 || activeFormationId === id) {
-        setActiveFormationId(next[0]?.id ?? null);
+      // Audit K3: hvis vi slettet aktiv formasjon, velg nærmeste basert på
+      // startSec (ikke bare første i lista — det føles ulogisk når 12 av 20
+      // formasjoner er over tid 0:30 og brukeren sletter ved 0:24).
+      if (next.length === 0) {
+        setActiveFormationId(null);
+      } else if (activeFormationId === id) {
+        const target = removed?.startSec;
+        if (typeof target === 'number') {
+          // Finn naboen med minst tids-avstand
+          let bestId = next[0].id;
+          let bestDist = Number.POSITIVE_INFINITY;
+          next.forEach((f) => {
+            const dist = typeof f.startSec === 'number'
+              ? Math.abs(f.startSec - target)
+              : Number.POSITIVE_INFINITY;
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestId = f.id;
+            }
+          });
+          setActiveFormationId(bestId);
+        } else {
+          // Slettet formasjon hadde ingen tid — velg første gjenværende
+          setActiveFormationId(next[0].id);
+        }
       }
       return next;
     });
@@ -438,6 +767,20 @@ export const FormationView: React.FC<FormationViewProps> = ({
       data-testid="formation-view-wrapper"
       sx={{ bgcolor: '#0a0a0a', color: '#e5e7eb', display: 'flex', flexDirection: 'column' }}
     >
+    {/* Audit H1: read-only-banner. Vises i toppen så bruker vet hvorfor
+        ingen knapper svarer. */}
+    {readOnly ? (
+      <Box
+        data-testid="formation-view-readonly-banner"
+        sx={{
+          px: 2, py: 0.75, fontSize: 11, fontWeight: 600,
+          color: '#fbbf24', bgcolor: 'rgba(251,191,36,0.10)',
+          borderBottom: '1px solid rgba(251,191,36,0.25)',
+        }}
+      >
+        👁 Visningsmodus — du kan se men ikke redigere. Be eier om skriverettigheter.
+      </Box>
+    ) : null}
     <Box
       data-testid="formation-view"
       sx={{
@@ -484,6 +827,54 @@ export const FormationView: React.FC<FormationViewProps> = ({
         <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1 }}>
           DANSE-ROSTER ({dancers.length})
         </Typography>
+        {/* Workflow-audit G3: hvis ingen ekte dansere er lagt til (kun
+            DEMO_DANCERS via default prop med d- prefiks), vis tydelig CTA
+            som leder til Dancers-fanen. */}
+        {dancers.length === 0 || dancers.every((d) => d.id.startsWith('d-')) ? (
+          <Box
+            data-testid="formation-roster-empty"
+            sx={{
+              p: 1.25,
+              mb: 1,
+              borderRadius: 1,
+              border: '1px dashed #2a3142',
+              bgcolor: 'rgba(167,139,250,0.04)',
+            }}
+          >
+            <Typography sx={{ fontSize: 10, color: '#e5e7eb', fontWeight: 600, mb: 0.5 }}>
+              Demo-dansere vises
+            </Typography>
+            <Typography sx={{ fontSize: 9, color: '#9ca3af', mb: 1, lineHeight: 1.4 }}>
+              Legg til dine egne dansere i Dancers-fanen for å bruke ekte navn.
+            </Typography>
+            <Box
+              component="button"
+              type="button"
+              data-testid="formation-roster-empty-cta"
+              onClick={() => {
+                if (typeof window === 'undefined') return;
+                window.dispatchEvent(
+                  new CustomEvent('dance:set-tab', { detail: { tabId: 'students' } }),
+                );
+              }}
+              sx={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#a78bfa',
+                bgcolor: 'transparent',
+                border: '1px solid #a78bfa',
+                borderRadius: 0.5,
+                px: 1,
+                py: 0.4,
+                cursor: 'pointer',
+                font: 'inherit',
+                '&:hover': { bgcolor: 'rgba(167,139,250,0.12)' },
+              }}
+            >
+              Gå til Dancers →
+            </Box>
+          </Box>
+        ) : null}
         <Stack spacing={0.5}>
           {dancers.map((d) => {
             const inFormation = isDancerInFormation(d.id);
@@ -538,6 +929,28 @@ export const FormationView: React.FC<FormationViewProps> = ({
       </Box>
 
       {/* ─── Stage canvas (sentralt) ───────────────── */}
+      {/* Phase 4: når videoPanelSlot er satt, splittes senter-kolonnen i
+          [video | stage]. Når undefined faller layouten tilbake til
+          pre-Phase-4-stagen (flat column-stack). */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: videoPanelSlot
+            ? { xs: '1fr', lg: 'minmax(280px, 1fr) auto' }
+            : '1fr',
+          gap: videoPanelSlot ? 1 : 0,
+          bgcolor: '#0a0a0a',
+        }}
+        data-testid="formation-stage-center-grid"
+      >
+        {videoPanelSlot ? (
+          <Box
+            sx={{ p: 2, display: 'flex', alignItems: 'stretch', minWidth: 0 }}
+            data-testid="formation-video-slot"
+          >
+            {videoPanelSlot}
+          </Box>
+        ) : null}
       <Box
         data-testid="formation-stage-wrapper"
         sx={{
@@ -667,7 +1080,15 @@ export const FormationView: React.FC<FormationViewProps> = ({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={curveMode ? 'Slå av kurve-modus' : 'Tegn kurve mellom dansere'}>
+          {/* Workflow-audit G15: tydeliggjør curve-mode med rikere tooltip */}
+          <Tooltip
+            title={
+              curveMode
+                ? 'Slå av kurve-modus (klikk på en danser for å avbryte)'
+                : 'Buet bevegelses-sti — klikk to dansere for å koble dem med en kurve i stedet for rett linje'
+            }
+            placement="bottom"
+          >
             <ToggleButton
               size="small"
               value="curve"
@@ -719,7 +1140,11 @@ export const FormationView: React.FC<FormationViewProps> = ({
             boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
             opacity: stageOpacity,
             transition: 'opacity 0.2s',
-            minHeight: STAGE_HEIGHT,
+            // Phase 6c: Box tilpasser seg canvas-størrelsen som
+            // ResizeObserver bestemmer. minWidth = STAGE_WIDTH * 0.5 så
+            // boksen ikke krymper under min-clamp i observer-throttlen.
+            width: '100%',
+            minWidth: STAGE_WIDTH * 0.5,
           }}
         >
           {/* 2D canvas — alltid mountert (Fabric.js krever det), men skjult
@@ -744,22 +1169,54 @@ export const FormationView: React.FC<FormationViewProps> = ({
           ) : null}
           {stageMode === '2d' ? (
             <>
+              {/* Lag C-1: DanceFlow-konvensjons-labels (Upstage/Downstage/Left/Right)
+                  matcher dans-mockup-spec. Beholder MIRROR·BACK WALL-undertekst som
+                  brukerhint for produsenter som ikke kjenner teaterterminologien. */}
               <Typography
+                data-testid="formation-stage-label-upstage"
                 sx={{
                   position: 'absolute', top: 6, left: 0, right: 0, textAlign: 'center',
-                  fontSize: 9, color: '#6b7280', letterSpacing: 1.5, pointerEvents: 'none',
-                }}
-              >
-                ↑ MIRROR · BACK WALL
-              </Typography>
-              <Typography
-                sx={{
-                  position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center',
-                  fontSize: 9, color: '#fbbf24', letterSpacing: 1.5, pointerEvents: 'none',
+                  fontSize: 11, color: '#9ca3af', letterSpacing: 2, pointerEvents: 'none',
                   fontWeight: 700,
                 }}
               >
-                ↓ AUDIENCE · FRONT
+                Upstage
+                <Box component="span" sx={{ display: 'block', fontSize: 8, color: '#6b7280', mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
+                  ↑ Mirror · Back Wall
+                </Box>
+              </Typography>
+              <Typography
+                data-testid="formation-stage-label-downstage"
+                sx={{
+                  position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center',
+                  fontSize: 11, color: '#fbbf24', letterSpacing: 2, pointerEvents: 'none',
+                  fontWeight: 700,
+                }}
+              >
+                Downstage
+                <Box component="span" sx={{ display: 'block', fontSize: 8, color: '#9ca3af', mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
+                  ↓ Audience · Front
+                </Box>
+              </Typography>
+              <Typography
+                data-testid="formation-stage-label-left"
+                sx={{
+                  position: 'absolute', top: '50%', left: 4, transform: 'translateY(-50%) rotate(-90deg)',
+                  transformOrigin: 'center', fontSize: 9, color: '#6b7280',
+                  letterSpacing: 1.5, pointerEvents: 'none', fontWeight: 600,
+                }}
+              >
+                Left
+              </Typography>
+              <Typography
+                data-testid="formation-stage-label-right"
+                sx={{
+                  position: 'absolute', top: '50%', right: 4, transform: 'translateY(-50%) rotate(90deg)',
+                  transformOrigin: 'center', fontSize: 9, color: '#6b7280',
+                  letterSpacing: 1.5, pointerEvents: 'none', fontWeight: 600,
+                }}
+              >
+                Right
               </Typography>
               {/* F5-13B: bezier-curve-overlay i 2D-modus. */}
               {activeFormation ? (() => {
@@ -779,9 +1236,83 @@ export const FormationView: React.FC<FormationViewProps> = ({
           ) : null}
         </Box>
 
+        {/* Lag C-1: Stage Controls — Opacity + Show Paths + Show IDs UNDER
+            stagen (matcher DanceFlow-mockup). Slider og toggles styrer SAMME
+            state som FormationDetailsPanel-controlsene; begge UI'er er i sync. */}
+        <Stack
+          direction="row"
+          spacing={1.5}
+          alignItems="center"
+          data-testid="formation-stage-controls"
+          sx={{
+            width: '100%',
+            px: 1,
+            py: 0.75,
+            bgcolor: 'rgba(255,255,255,0.02)',
+            borderRadius: 1,
+            border: '1px solid #1e2536',
+          }}
+        >
+          <Typography sx={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, letterSpacing: 0.5, flexShrink: 0 }}>
+            Opacity
+          </Typography>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(stageOpacity * 100)}
+            onChange={(e) => setStageOpacity(Number(e.target.value) / 100)}
+            data-testid="formation-stage-opacity"
+            aria-label="Stage opacity"
+            style={{ flex: 1, maxWidth: 180, accentColor: '#a78bfa' }}
+          />
+          <Typography sx={{ fontSize: 10, color: '#a78bfa', fontWeight: 600, minWidth: 32 }}>
+            {Math.round(stageOpacity * 100)}%
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Box
+            component="label"
+            sx={{
+              display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 11,
+              color: '#e5e7eb', fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showPaths}
+              onChange={() => setShowPaths((v) => !v)}
+              data-testid="formation-stage-show-paths"
+              style={{ accentColor: '#a78bfa' }}
+            />
+            Show Paths
+          </Box>
+          <Box
+            component="label"
+            sx={{
+              display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 11,
+              color: '#e5e7eb', fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showIds}
+              onChange={() => setShowIds((v) => !v)}
+              data-testid="formation-stage-show-ids"
+              style={{ accentColor: '#a78bfa' }}
+            />
+            Show IDs
+          </Box>
+        </Stack>
+
         <Typography sx={{ fontSize: 10, color: '#6b7280', textAlign: 'center', mt: -0.5 }}>
           Drag dansere på scenen for å plassere. Posisjonen lagres automatisk i aktiv formasjon.
+          {/* Audit B1: keyboard-hint */}
+          <Box component="span" sx={{ display: 'block', mt: 0.25, fontSize: 9, color: '#6b7280' }}>
+            Eller bruk <strong>Tab</strong> + piltaster — pucks flyttes 1% per trykk (Shift = 5%).
+          </Box>
         </Typography>
+      </Box>
       </Box>
 
       {/* ─── Formations-liste (høyre) ──────────────── */}
@@ -824,12 +1355,61 @@ export const FormationView: React.FC<FormationViewProps> = ({
           FORMASJONER ({formations.length})
         </Typography>
 
+        {/* Workflow-audit G10: tom-state CTA. Når ingen formasjoner finnes,
+            er det ikke åpenbart hvordan man kommer i gang. Vis tydelig hint
+            om begge inngangs-mønstrene: dobbeltklikk timeline ELLER skriv
+            navn under. */}
+        {formations.length === 0 ? (
+          <Box
+            data-testid="formations-empty-state"
+            sx={{
+              p: 1.5,
+              mb: 1,
+              borderRadius: 1,
+              border: '1px dashed #2a3142',
+              bgcolor: 'rgba(167,139,250,0.04)',
+              textAlign: 'center',
+            }}
+          >
+            <Typography sx={{ fontSize: 11, color: '#e5e7eb', fontWeight: 600, mb: 0.5 }}>
+              Ingen formasjoner ennå
+            </Typography>
+            <Typography sx={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.5 }}>
+              <strong style={{ color: '#a78bfa' }}>Dobbeltklikk på tidslinjen</strong>{' '}
+              under for å opprette en ved en spesifikk tid,
+              <br />
+              eller skriv et navn under og trykk «Lagre».
+            </Typography>
+          </Box>
+        ) : null}
+
         <Stack spacing={0.5}>
-          {formations.map((f) => {
+          {formations.map((f, idx) => {
             const isActive = f.id === activeFormationId;
-            return (
+            // G26: vis section-header når sectionName endrer seg mellom
+            // forrige og denne. Beholder flat .map-struktur — bruker
+            // React.Fragment for å rendre header + item som søsken.
+            const prevSection = idx > 0 ? formations[idx - 1].sectionName ?? null : null;
+            const curSection = f.sectionName ?? null;
+            const showHeader = curSection !== prevSection;
+            const headerEl = showHeader && curSection ? (
               <Box
-                key={f.id}
+                key={`section-${idx}-${curSection}`}
+                data-testid={`formation-section-header-${curSection}`}
+                sx={{
+                  px: 0.5, py: 0.5, mt: idx > 0 ? 0.75 : 0,
+                  fontSize: 9, letterSpacing: 1.5, fontWeight: 700,
+                  color: '#fbbf24', textTransform: 'uppercase',
+                  borderBottom: '1px solid rgba(251,191,36,0.2)',
+                }}
+              >
+                {curSection}
+              </Box>
+            ) : null;
+            return (
+              <React.Fragment key={f.id}>
+              {headerEl}
+              <Box
                 data-testid={`formation-item-${f.id}`}
                 sx={{
                   p: 0.75,
@@ -877,6 +1457,7 @@ export const FormationView: React.FC<FormationViewProps> = ({
                   )}
                 </Stack>
               </Box>
+              </React.Fragment>
             );
           })}
         </Stack>
@@ -913,18 +1494,33 @@ export const FormationView: React.FC<FormationViewProps> = ({
         </Box>
       </Box>
     </Box>
-    {/* DanceFlow-paritet: tids-akse for formasjons-rekkefølge */}
+    {/* DanceFlow-paritet: tids-akse for formasjons-rekkefølge.
+        Phase 5: musicUrl wired fra valgt clip; DancerPathsView mountet INNI
+        timeline-skallet via dancersTrackSlot. */}
     <Box sx={{ p: 1.5, borderTop: '1px solid #1e2536', display: 'flex', flexDirection: 'column', gap: 1 }}>
       <FormationTimeline
         formations={formations}
         activeFormationId={activeFormationId}
         onSelect={setActiveFormationId}
+        musicUrl={selectedClipUrl}
+        movements={timelineMovements}
+        notes={timelineNotes}
+        dancersTrackSlot={<DancerPathsView formations={formations} dancers={dancers} />}
       />
-      <DancerPathsView formations={formations} dancers={dancers} />
     </Box>
+    {/* Workflow-audit G21: print-overlay for PDF-eksport. */}
+    {printMode ? (
+      <StagePlotPrintOverlay
+        formations={formations}
+        dancers={dancers}
+        onClose={() => setPrintMode(false)}
+      />
+    ) : null}
     </Box>
   );
-};
+});
+
+FormationView.displayName = 'FormationView';
 
 // ═══════════════════════ FORMATION TEMPLATES (F5-6) ═══════════════════════
 
@@ -978,6 +1574,106 @@ interface FormationDetailsPanelProps {
   onChange: (patch: Partial<Formation>) => void;
 }
 
+/**
+ * Lag D-1 + audit A3: TimecodeInput — kontrollert HH:MM:SS:FF input som
+ * committer parsed sekunder til parent. Lokal draft-state mens brukeren
+ * skriver så cursor ikke hopper. parseTimecode godtar både HH:MM:SS og
+ * HH:MM:SS:FF.
+ *
+ * A3-validering: min/max-sekunder klemmer verdien inn i lovlig range.
+ * Hvis brukeren prøver å sette end <= start (eller start >= end), settes
+ * verdien til min/max + error-state vises som hjelpetekst.
+ */
+const TimecodeInput: React.FC<{
+  label: string;
+  valueSec: number | null;
+  onCommit: (sec: number | null) => void;
+  testId: string;
+  /** A3: nedre grense (eksklusiv). Brukt for end-input: må være > start. */
+  minSec?: number | null;
+  /** A3: øvre grense (eksklusiv). Brukt for start-input: må være < end. */
+  maxSec?: number | null;
+  /** Hjelpetekst som vises i error-state. */
+  invalidHint?: string;
+}> = ({ label, valueSec, onCommit, testId, minSec = null, maxSec = null, invalidHint }) => {
+  const formatted = valueSec != null && Number.isFinite(valueSec)
+    ? formatTimecode(valueSec)
+    : '';
+  const [draft, setDraft] = useState<string>(formatted);
+  const [hasFocus, setHasFocus] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Sync når parent-verdien endres OG vi ikke holder fokus (unngå overwrite
+  // mens brukeren skriver).
+  React.useEffect(() => {
+    if (!hasFocus) {
+      setDraft(formatted);
+      setErrorMessage(null);
+    }
+  }, [formatted, hasFocus]);
+
+  const commit = (raw: string): void => {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      setErrorMessage(null);
+      onCommit(null);
+      return;
+    }
+    const parsed = parseTimecode(trimmed);
+    if (parsed == null) {
+      // Ugyldig format — tilbakestill til siste gyldig
+      setDraft(formatted);
+      setErrorMessage('Ugyldig format. Bruk HH:MM:SS:FF');
+      setTimeout(() => setErrorMessage(null), 2500);
+      return;
+    }
+    // A3: respekt min/max-grenser
+    if (minSec != null && parsed <= minSec) {
+      setDraft(formatted);
+      setErrorMessage(invalidHint ?? `Må være etter ${formatTimecode(minSec)}`);
+      setTimeout(() => setErrorMessage(null), 2500);
+      return;
+    }
+    if (maxSec != null && parsed >= maxSec) {
+      setDraft(formatted);
+      setErrorMessage(invalidHint ?? `Må være før ${formatTimecode(maxSec)}`);
+      setTimeout(() => setErrorMessage(null), 2500);
+      return;
+    }
+    setErrorMessage(null);
+    onCommit(parsed);
+  };
+
+  return (
+    <TextField
+      size="small"
+      label={label}
+      value={draft}
+      error={Boolean(errorMessage)}
+      helperText={errorMessage || undefined}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setHasFocus(true)}
+      onBlur={(e) => {
+        setHasFocus(false);
+        commit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      placeholder="00:00:00:00"
+      inputProps={{ 'data-testid': testId, spellCheck: false }}
+      sx={{
+        flex: 1,
+        '& .MuiInputBase-input': { fontSize: 11, fontVariantNumeric: 'tabular-nums' },
+        '& .MuiInputLabel-root': { fontSize: 11 },
+        '& .MuiFormHelperText-root': { fontSize: 9, mt: 0.25, mx: 0.5 },
+      }}
+    />
+  );
+};
+
 const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
   formation, formations, dancers,
   hiddenDancerIds, onToggleHidden,
@@ -1027,9 +1723,41 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
       data-testid="formation-details-panel"
       sx={{ pb: 1.5, mb: 1.5, borderBottom: '1px solid #1e2536' }}
     >
-      <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700, mb: 0.75 }}>
-        AKTIV FORMASJON
-      </Typography>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ mb: 0.75 }}
+      >
+        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700 }}>
+          AKTIV FORMASJON
+        </Typography>
+        {/* Audit G14: lock-toggle. Klient-side state inntil migration. */}
+        <Tooltip
+          title={
+            formation.locked
+              ? 'Lås opp — tillat redigering'
+              : 'Lås formasjonen — forhindrer endring/sletting'
+          }
+        >
+          <IconButton
+            size="small"
+            onClick={() => onChange({ locked: !formation.locked })}
+            data-testid="formation-details-lock-toggle"
+            aria-pressed={formation.locked === true}
+            sx={{
+              color: formation.locked ? '#fbbf24' : '#6b7280',
+              p: 0.25,
+              '&:hover': { color: formation.locked ? '#fbbf24' : '#a78bfa' },
+            }}
+          >
+            {/* Bruker enkle Unicode-symboler så vi slipper ekstra import */}
+            <Box component="span" sx={{ fontSize: 14, fontWeight: 700 }}>
+              {formation.locked ? '🔒' : '🔓'}
+            </Box>
+          </IconButton>
+        </Tooltip>
+      </Stack>
 
       {/* F5-12: 2D/3D stage-mode toggle */}
       <Stack direction="row" spacing={0.5} sx={{ mb: 1 }} data-testid="formation-stage-mode-toggle">
@@ -1057,57 +1785,125 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
         ))}
       </Stack>
 
-      {/* F5-6: Template-dropdown */}
-      <TextField
-        select
+      {/* Spor C: FORMATION som Autocomplete-Combobox matching DanceFlow-
+          mockup. Type-ahead viser FORMATION_TEMPLATES (V-Shape, Circle,
+          Line, Diamond, Split Groups). Velger fra liste → applyTemplate +
+          sett navn. Fri tekst → bare oppdater navn. */}
+      <Autocomplete
         size="small"
-        fullWidth
-        label="Template"
-        value=""
-        onChange={(e) => applyTemplate(e.target.value)}
-        SelectProps={{ displayEmpty: true }}
-        inputProps={{ 'data-testid': 'formation-template-select' }}
-        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
-      >
-        <MenuItem value="" sx={{ fontSize: 11, color: '#6b7280' }}>— velg template —</MenuItem>
-        {FORMATION_TEMPLATES.map((t) => (
-          <MenuItem key={t.id} value={t.id} sx={{ fontSize: 11 }}>{t.label}</MenuItem>
-        ))}
-      </TextField>
-      <TextField
-        size="small"
-        fullWidth
+        freeSolo
+        options={FORMATION_TEMPLATES}
+        getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.label)}
         value={formation.name}
-        onChange={(e) => onChange({ name: e.target.value })}
-        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 12, color: '#fff', fontWeight: 600 } }}
+        inputValue={formation.name}
+        onInputChange={(_, value) => onChange({ name: value })}
+        onChange={(_, value) => {
+          if (typeof value === 'string') {
+            onChange({ name: value });
+          } else if (value) {
+            // Mockup-paritet: velger fra dropdown anvender BÅDE template-
+            // posisjoner OG setter navnet.
+            applyTemplate(value.id);
+            onChange({ name: value.label });
+          }
+        }}
         data-testid="formation-details-name"
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Formation"
+            placeholder="V-Shape, Circle, eller skriv eget navn…"
+            sx={{
+              '& .MuiInputBase-input': { fontSize: 12, color: '#fff', fontWeight: 600 },
+              '& .MuiInputLabel-root': { fontSize: 11 },
+            }}
+          />
+        )}
+        renderOption={(props, option) => (
+          <MenuItem {...props} key={option.id} sx={{ fontSize: 12 }}>
+            <Box>
+              <Box sx={{ fontWeight: 600 }}>{option.label}</Box>
+              <Box sx={{ fontSize: 9, color: '#9ca3af' }}>
+                Anvender mal på {formation.positions.length} dansere
+              </Box>
+            </Box>
+          </MenuItem>
+        )}
+        sx={{ mb: 1 }}
       />
+      {/* G26: Section-input. Frittekst — koreografer skriver Intro/Vers 1/etc.
+          Autocomplete-options samles fra formations.sectionName. */}
+      <Autocomplete
+        size="small"
+        freeSolo
+        options={Array.from(new Set(formations.map((f) => f.sectionName).filter((s): s is string => !!s)))}
+        value={formation.sectionName ?? ''}
+        onChange={(_, value) => onChange({ sectionName: typeof value === 'string' && value.trim() ? value.trim() : null })}
+        onInputChange={(_, value) => {
+          onChange({ sectionName: value.trim() ? value.trim() : null });
+        }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Section (valgfri)"
+            placeholder="Intro, Vers 1, Refreng…"
+            sx={{
+              '& .MuiInputBase-input': { fontSize: 11, color: '#e5e7eb' },
+              '& .MuiInputLabel-root': { fontSize: 11 },
+            }}
+          />
+        )}
+        sx={{ mb: 1 }}
+        data-testid="formation-details-section"
+      />
+
+      {/* Lag D-1: HH:MM:SS:FF tids-inputs (DanceFlow-mockup-paritet).
+          TimecodeInput holder lokal state mens brukeren skriver — committer
+          parsed sekunder til onChange ved blur eller Enter. Ugyldig input
+          tilbakestilles til siste gyldig verdi. */}
       <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
-        <TextField
-          size="small"
-          type="number"
-          label="Start (s)"
-          value={formation.startSec ?? ''}
-          onChange={(e) => {
-            const v = e.target.value === '' ? null : Number(e.target.value);
-            onChange({ startSec: Number.isFinite(v as number) ? (v as number) : null });
-          }}
-          inputProps={{ min: 0, step: 0.5, 'data-testid': 'formation-details-start-sec' }}
-          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        <TimecodeInput
+          label="Start Time"
+          valueSec={formation.startSec ?? null}
+          onCommit={(sec) => onChange({ startSec: sec })}
+          testId="formation-details-start-sec"
+          maxSec={formation.endSec ?? null}
+          invalidHint="Start må være før slutt"
         />
-        <TextField
-          size="small"
-          type="number"
-          label="Slutt (s)"
-          value={formation.endSec ?? ''}
-          onChange={(e) => {
-            const v = e.target.value === '' ? null : Number(e.target.value);
-            onChange({ endSec: Number.isFinite(v as number) ? (v as number) : null });
-          }}
-          inputProps={{ min: 0, step: 0.5, 'data-testid': 'formation-details-end-sec' }}
-          sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 11 }, '& .MuiInputLabel-root': { fontSize: 11 } }}
+        <TimecodeInput
+          label="End Time"
+          valueSec={formation.endSec ?? null}
+          onCommit={(sec) => onChange({ endSec: sec })}
+          testId="formation-details-end-sec"
+          minSec={formation.startSec ?? null}
+          invalidHint="Slutt må være etter start"
         />
       </Stack>
+      {/* Phase 6: Duration-computed under start/end så koreografen ser
+          intervallen uten å regne i hodet. Null hvis enten start eller end
+          mangler, eller hvis end ≤ start. */}
+      {(() => {
+        const start = formation.startSec;
+        const end = formation.endSec;
+        if (typeof start !== 'number' || typeof end !== 'number' || end <= start) {
+          return null;
+        }
+        const durationSec = end - start;
+        return (
+          <Typography
+            data-testid="formation-details-duration"
+            sx={{
+              fontSize: 10,
+              color: 'rgba(167,139,250,0.85)',
+              mt: -0.5,
+              mb: 1,
+              ml: 0.5,
+            }}
+          >
+            Varighet: {formatTimecode(durationSec)} ({durationSec.toFixed(1)}s)
+          </Typography>
+        );
+      })()}
       <TextField
         size="small"
         fullWidth
@@ -1455,6 +2251,10 @@ interface DrawFormationOptions {
   /** Forrige + neste formasjon brukes til path-rendering. */
   prevFormation?: Formation | null;
   nextFormation?: Formation | null;
+  /** Audit G14: formasjonen er låst — pucks kan ikke flyttes. */
+  locked?: boolean;
+  /** Audit B1: index av keyboard-aktiv puck — tykkere ring + ARIA-fokus. */
+  keyboardActiveIdx?: number | null;
 }
 
 function drawFormation(
@@ -1502,7 +2302,7 @@ function drawFormation(
     drawPath(formation, options.nextFormation as Formation | null | undefined ?? null!, colorFor);
   }
 
-  formation.positions.forEach((pos) => {
+  formation.positions.forEach((pos, idx) => {
     if (hidden.has(pos.dancerId)) return;
     const dancer = dancersById.get(pos.dancerId);
     if (!dancer) return;
@@ -1511,12 +2311,15 @@ function drawFormation(
     const cy = STAGE_PADDING + pos.y * innerHeight;
     const color = dancer.color ?? '#3b82f6';
 
-    // Sirkel for danser-puck
+    // Sirkel for danser-puck.
+    // Audit B1: hvis keyboard-aktiv, render lavender ring + tykkere stroke
+    // som visuell focus-indikator.
+    const isKbActive = options.keyboardActiveIdx === idx;
     const circle = new Circle({
       radius: PUCK_RADIUS,
       fill: color,
-      stroke: pos.isLead ? '#fbbf24' : 'rgba(255,255,255,0.4)',
-      strokeWidth: pos.isLead ? 3 : 1.5,
+      stroke: isKbActive ? '#a78bfa' : (pos.isLead ? '#fbbf24' : 'rgba(255,255,255,0.4)'),
+      strokeWidth: isKbActive ? 4 : (pos.isLead ? 3 : 1.5),
       originX: 'center',
       originY: 'center',
     });
@@ -1585,11 +2388,15 @@ function drawFormation(
     const groupChildren = [arrow, circle, initials, nameLabel];
     if (leadStar) groupChildren.push(leadStar);
     if (options.showIds) {
-      const idLabel = new Textbox(pos.dancerId, {
-        fontSize: 9,
+      // Phase 6: ordinal D1/D2/D3... — leselig vs full UUID. Idx er stabil
+      // innen samme formasjon siden positions-arrayen vedlikeholdes av
+      // brukeren.
+      const idLabel = new Textbox(`D${idx + 1}`, {
+        fontSize: 11,
         fontFamily: '-apple-system, sans-serif',
-        fill: 'rgba(255,255,255,0.55)',
-        width: 80,
+        fill: 'rgba(255,255,255,0.75)',
+        fontWeight: '700',
+        width: 40,
         textAlign: 'center',
         originX: 'center',
         originY: 'center',
@@ -1610,6 +2417,12 @@ function drawFormation(
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
+      // Audit G14: når formasjonen er låst, pucks kan ikke dras eller velges.
+      selectable: !options.locked,
+      evented: !options.locked,
+      lockMovementX: options.locked === true,
+      lockMovementY: options.locked === true,
+      hoverCursor: options.locked ? 'not-allowed' : 'move',
     });
     // Tag gruppen for clean removal + identifisering
     (group as { dancerId?: string }).dancerId = dancer.id;
@@ -1708,6 +2521,16 @@ function drawFormation(
  * Animer alle dansere fra deres posisjoner i `from`-formation til `to`-formation.
  * Bruker Fabric sin innebygde tween-animasjon.
  */
+/**
+ * Audit B4: prefers-reduced-motion-detektor. Brukeren har «Reduce motion»
+ * på i OS-en — vi hopper instant i stedet for tween, både for puck-
+ * animasjon og CSS-transitions.
+ */
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function animateFormationTransition(
   canvas: Canvas,
   from: Formation,
@@ -1717,7 +2540,9 @@ function animateFormationTransition(
 ): void {
   const innerWidth = STAGE_WIDTH - 2 * STAGE_PADDING;
   const innerHeight = STAGE_HEIGHT - 2 * STAGE_PADDING;
-  const duration = 1500; // ms
+  // Audit B4: 0ms duration når reduced-motion er på (fortsatt 1 frame for at
+  // onComplete-callbacks fyrer korrekt — Fabric håndterer 0 som "snap").
+  const duration = prefersReducedMotion() ? 0 : 1500;
   const groups = canvas.getObjects().filter((o) => (o as { dancerId?: string }).dancerId) as (Group & { dancerId: string })[];
 
   let animationsRemaining = 0;
@@ -1729,6 +2554,18 @@ function animateFormationTransition(
     animationsRemaining++;
     const targetX = STAGE_PADDING + targetPos.x * innerWidth;
     const targetY = STAGE_PADDING + targetPos.y * innerHeight;
+
+    if (duration === 0) {
+      // Reduced-motion path: bare sett verdiene + render
+      group.set({ left: targetX, top: targetY });
+      group.setCoords();
+      completedCount++;
+      if (completedCount >= animationsRemaining) {
+        canvas.requestRenderAll();
+        onComplete();
+      }
+      return;
+    }
 
     group.animate({ left: targetX, top: targetY }, {
       duration,

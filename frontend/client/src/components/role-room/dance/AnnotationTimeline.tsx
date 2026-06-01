@@ -33,6 +33,17 @@ export interface AnnotationTimelineProps {
   onSeek?: (sec: number) => void;
   onSelectAnnotation?: (annotation: VideoAnnotation) => void;
   onResize?: (annotation: VideoAnnotation, newStartSec: number, newEndSec: number) => void;
+  /**
+   * DanceAnnotate mockup-paritet: '+ Add Track'-knapp under siste spor.
+   * Når satt, vises knapp; click trigger handler (typisk for å opprette
+   * prosjekt-spesifikk kategori). Når undefined, skjules knappen.
+   */
+  onAddTrack?: () => void;
+  /**
+   * ID til valgt annotation — driver lavender outline + boost-bgcolor
+   * (matcher mockup hvor "Chassé" er aktiv-highlighted i Steps-sporet).
+   */
+  selectedAnnotationId?: string | null;
 }
 
 export function AnnotationTimeline({
@@ -42,6 +53,8 @@ export function AnnotationTimeline({
   onSeek,
   onSelectAnnotation,
   onResize,
+  onAddTrack,
+  selectedAnnotationId = null,
 }: AnnotationTimelineProps): React.ReactElement {
   const safeDuration = Math.max(durationSec, 1);
   const tracks = React.useMemo(() => {
@@ -180,6 +193,7 @@ export function AnnotationTimeline({
                       currentEnd: a.endSec ?? a.timestampSec + 2,
                     });
                   };
+                  const isSelected = selectedAnnotationId === a.id;
                   return (
                     <Tooltip key={a.id} title={a.body || '(uten tekst)'}>
                       <Box
@@ -187,6 +201,7 @@ export function AnnotationTimeline({
                         role="button"
                         tabIndex={0}
                         aria-label={a.body || 'kommentar'}
+                        aria-pressed={isSelected}
                         onClick={() => {
                           if (isDragged) return;
                           onSeek?.(a.timestampSec);
@@ -206,10 +221,15 @@ export function AnnotationTimeline({
                           left: `${startPct}%`,
                           width: `${widthPct}%`,
                           minWidth: 6,
-                          bgcolor: `${track.color}66`,
-                          border: `1px solid ${track.color}`,
+                          bgcolor: isSelected ? `${track.color}cc` : `${track.color}66`,
+                          border: isSelected
+                            ? `2px solid #fff`
+                            : `1px solid ${track.color}`,
                           borderRadius: 0.5,
                           cursor: 'pointer',
+                          boxShadow: isSelected
+                            ? `0 0 0 1px ${track.color}, 0 0 8px ${track.color}55`
+                            : 'none',
                           '&:hover': { bgcolor: `${track.color}99` },
                           '&:focus-visible': { outline: `2px solid ${track.color}` },
                         }}
@@ -265,6 +285,33 @@ export function AnnotationTimeline({
           pointerEvents: 'none',
         }}
       />
+      {/* DanceAnnotate mockup-paritet: '+ Add Track'-knapp under siste spor. */}
+      {onAddTrack ? (
+        <Box
+          component="button"
+          type="button"
+          onClick={onAddTrack}
+          data-testid="annotation-timeline-add-track"
+          sx={{
+            mt: 1, ml: `${LABEL_WIDTH + 8}px`,
+            display: 'inline-flex', alignItems: 'center', gap: 0.5,
+            px: 1.25, py: 0.5,
+            border: '1px dashed rgba(255,255,255,0.18)',
+            borderRadius: 1,
+            bgcolor: 'transparent',
+            color: 'rgba(229,231,235,0.65)',
+            fontSize: 11, fontWeight: 600,
+            cursor: 'pointer', font: 'inherit',
+            '&:hover': {
+              color: '#a78bfa',
+              borderColor: '#a78bfa',
+              bgcolor: 'rgba(167,139,250,0.06)',
+            },
+          }}
+        >
+          + Add Track
+        </Box>
+      ) : null}
     </Box>
   );
 }

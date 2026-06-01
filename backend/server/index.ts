@@ -129,6 +129,11 @@ import { createDanceChoreographyRouter } from "./dance-choreography-routes.js";
 import { createDancerProfileRouter } from "./dancer-profile-routes.js";
 import { createDancerInjuryLogRouter } from "./dancer-injury-log-routes.js";
 import { createDanceFormationRouter } from "./dance-formation-routes.js";
+import { createDanceFormationTimelineItemRouter } from "./dance-formation-timeline-item-routes.js";
+import {
+  createDanceAnnotationCategoriesRouter,
+  createDanceAnnotationLabelsRouter,
+} from "./dance-annotation-catalog-routes.js";
 import { createDanceRehearsalRouter } from "./dance-rehearsal-routes.js";
 import { createDanceVideoRouter } from "./dance-video-routes.js";
 import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
@@ -744,6 +749,7 @@ import {
   syncNotebookLmWorkspaceForScope,
 } from "./notebooklm-workspace.js";
 import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
+import { createDanceRealtimeServer } from "./dance-realtime-server.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
 import { createYouTubeRouter } from "./youtube-routes.js";
 import {
@@ -1849,6 +1855,18 @@ app.use(
 app.use(
   "/api/dance/formations",
   createDanceFormationRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/formation-timeline-items",
+  createDanceFormationTimelineItemRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/annotation-categories",
+  createDanceAnnotationCategoriesRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/annotation-labels",
+  createDanceAnnotationLabelsRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/dance/rehearsals",
@@ -76800,6 +76818,8 @@ app.all("/api/*", (req, res) => {
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
 createWebSocketServer(httpServer, db);
+// G25/J1: dance realtime presence + cursor sync på /ws/dance/realtime
+createDanceRealtimeServer(httpServer);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
 

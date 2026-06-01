@@ -58,6 +58,23 @@ const ChoreographyBuilderConnected = React.lazy(() =>
 const FormationViewConnected = React.lazy(() =>
   import('./FormationViewConnected').then((m) => ({ default: m.FormationViewConnected })),
 );
+import DanceFlowShell from './DanceFlowShell';
+import FormationHeaderBar, {
+  type FormationSubTab,
+  type FormationSaveStatus,
+} from './FormationHeaderBar';
+import ClipsSidebar from './ClipsSidebar';
+import FormationVideoPanel from './FormationVideoPanel';
+import DanceFlowNavRail from './DanceFlowNavRail';
+import { useDanceCheatSheet } from './DanceCheatSheet';
+import { isDanceReadOnlyRole } from './danceRoleUtils';
+import { useAuth } from '../../../hooks/useAuth';
+import { useDanceRealtimePresence } from './danceRealtimeClient';
+import DanceAnnotateView, { type AnnotateSaveStatus } from './DanceAnnotateView';
+import DanceAnnotateLayout, { type DanceAnnotateActiveView } from './DanceAnnotateLayout';
+import DanceProjectSwitcherDialog from './DanceProjectSwitcherDialog';
+import DanceAnnotationsListView from './DanceAnnotationsListView';
+import DanceStatisticsView from './DanceStatisticsView';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -172,6 +189,341 @@ const ComingSoonCard: React.FC<PlaceholderProps> = ({ title, body, feature }) =>
     </Card>
   </Box>
 );
+
+/**
+ * FormationsTabBody — egen sub-komponent så vi får hooks-state for sub-tab,
+ * save-status og breadcrumbs uten å forurense DanceWorkspace's hooks-rad.
+ * Wrappes i DanceFlowShell m/ FormationHeaderBar (Phase 2).
+ */
+interface FormationsTabBodyProps {
+  projectId: string | null;
+}
+
+const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
+  // Audit H1: detect read-only-modus via session.role
+  const auth = useAuth();
+  const readOnly = isDanceReadOnlyRole(auth.user?.role);
+  // G25/J1: realtime presence — viser hvem andre som ser på samme prosjekt.
+  const realtime = useDanceRealtimePresence({
+    projectId: projectId ?? null,
+    userId: auth.user?.id ? String(auth.user.id) : undefined,
+    displayName: auth.user?.name ?? auth.user?.email ?? undefined,
+  });
+  // DanceAnnotate: track valgt clip + tittel + duration for annotate-flate.
+  const [annotateClipId, setAnnotateClipId] = React.useState<string | null>(null);
+  const [annotateClipTitle, setAnnotateClipTitle] = React.useState<string>('');
+  const [annotateDuration, setAnnotateDuration] = React.useState<number>(60);
+  // Annotate save-status fra child + project-switcher state.
+  const [annotateSaveStatus, setAnnotateSaveStatus] = React.useState<AnnotateSaveStatus>('idle');
+  const [annotateLastSaved, setAnnotateLastSaved] = React.useState<number | null>(null);
+  const [annotateSaveError, setAnnotateSaveError] = React.useState<string | null>(null);
+  const [projectSwitcherOpen, setProjectSwitcherOpen] = React.useState<boolean>(false);
+  // Aktiv sub-view i DanceAnnotateLayout (annotate/annotations/statistics).
+  const [annotateActiveView, setAnnotateActiveView] = React.useState<DanceAnnotateActiveView>('annotate');
+
+  // Default dancer-options brukt av flere views.
+  const annotateDancerOptions = React.useMemo(() => [
+    { id: 'd1', label: 'Dancer 1' },
+    { id: 'd2', label: 'Dancer 2' },
+    { id: 'd3', label: 'Dancer 3' },
+    { id: 'd4', label: 'Dancer 4' },
+    { id: 'd5', label: 'Dancer 5' },
+  ], []);
+
+  // Naviger fra Annotations-list-row → Annotate-flate m/ valgt clip.
+  const handleOpenAnnotationInEditor = React.useCallback((
+    clipId: string,
+    annotationId: string,
+    clipTitle: string,
+    durationSec: number,
+  ): void => {
+    setAnnotateClipId(clipId);
+    setAnnotateClipTitle(clipTitle);
+    setAnnotateDuration(durationSec);
+    setAnnotateActiveView('annotate');
+    // Dispatch select-clip event så FormationVideoPanel + andre listeners
+    // også reagerer på bytte
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dance:select-clip', {
+        detail: { clipId, title: clipTitle, durationSec },
+      }));
+      // Liten delay for at view skal mountes før vi setter selectedId
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('dance:select-annotation', {
+          detail: { annotationId },
+        }));
+      }, 100);
+    }
+  }, []);
+
+  const handleAnnotateSaveStatus = React.useCallback(
+    (status: AnnotateSaveStatus, lastSavedAt: number | null, error: string | null) => {
+      setAnnotateSaveStatus(status);
+      setAnnotateLastSaved(lastSavedAt);
+      setAnnotateSaveError(error);
+    },
+    [],
+  );
+
+  const handleSwitchProject = React.useCallback((nextProjectId: string): void => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('projectId', nextProjectId);
+    // Trigger full reload for å re-mount alle subscribers (clips, formations,
+    // annotations etc.) m/ ny project-scope. Pragmatisk for nå — full SPA-
+    // bytte-flyt krever mer arbeid.
+    window.location.href = url.toString();
+  }, []);
+  React.useEffect(() => {
+    const onSelect = (e: Event): void => {
+      const detail = (e as CustomEvent<{
+        clipId?: string;
+        title?: string;
+        durationSec?: number;
+      }>).detail;
+      if (!detail || typeof detail.clipId !== 'string') return;
+      setAnnotateClipId(detail.clipId);
+      if (typeof detail.title === 'string') setAnnotateClipTitle(detail.title);
+      if (typeof detail.durationSec === 'number' && detail.durationSec > 0) {
+        setAnnotateDuration(detail.durationSec);
+      }
+      // Mockup-paritet: klikk på clip i sidebar = navigér tilbake til
+      // Annotate-flaten (Annotations/Statistics er ikke clip-scoped).
+      setAnnotateActiveView('annotate');
+    };
+    window.addEventListener('dance:select-clip', onSelect as EventListener);
+    return () => window.removeEventListener('dance:select-clip', onSelect as EventListener);
+  }, []);
+  const [subTab, setSubTab] = React.useState<FormationSubTab>('formation');
+  const [saveStatus, setSaveStatus] = React.useState<FormationSaveStatus>('idle');
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  // Audit A5: persistent sist-lagret-tid for header-pillen.
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
+  // Audit G_2: vet om vi har noen formasjoner — disable Export på tomt projekt.
+  const [hasFormations, setHasFormations] = React.useState<boolean>(false);
+
+  const handleSaveStatusChange = React.useCallback(
+    (status: FormationSaveStatus, error: string | null, ts: number | null) => {
+      setSaveStatus(status);
+      setSaveError(error);
+      if (ts != null) setLastSavedAt(ts);
+    },
+    [],
+  );
+
+  // G_2: lytt på FormationView's 'dance:formations-count'-event
+  // (dispatched når formations.length endres).
+  React.useEffect(() => {
+    const onCount = (e: Event): void => {
+      const detail = (e as CustomEvent<{ count?: number }>).detail;
+      if (detail && typeof detail.count === 'number') {
+        setHasFormations(detail.count > 0);
+      }
+    };
+    window.addEventListener('dance:formations-count', onCount as EventListener);
+    return () => window.removeEventListener('dance:formations-count', onCount as EventListener);
+  }, []);
+
+  // Audit I2: ?-keybind for cheat-sheet modal med alle keybinds + tips.
+  const cheatSheet = useDanceCheatSheet();
+
+  // Audit K2: lytt på 'dance:toast' og resirkuler eksisterende
+  // share-snackbar for diskret feedback ('Forbi klipp-lengden' etc.)
+  React.useEffect(() => {
+    const onToast = (e: Event): void => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (detail && typeof detail.message === 'string') {
+        setShareMessage(detail.message);
+      }
+    };
+    window.addEventListener('dance:toast', onToast as EventListener);
+    return () => window.removeEventListener('dance:toast', onToast as EventListener);
+  }, []);
+
+  // Phase 3 vil koble breadcrumbs til ekte prosjekt-navn fra context.
+  const breadcrumbs = React.useMemo(
+    () => [
+      { label: 'Dans' },
+      { label: 'Formasjoner', ariaLabel: 'Formasjoner — aktiv visning' },
+    ],
+    [],
+  );
+
+  // Workflow-audit G19: Share-knapp wired. Kopier nåværende URL til
+  // clipboard + vis snackbar. Senere kan vi utvide til delbare lenker
+  // med token-basert read-only-tilgang (audit-v2 H1).
+  const handleShare = React.useCallback(async (): Promise<void> => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setShareMessage('Lenke kopiert til utklippstavle');
+    } catch {
+      setShareMessage('Kunne ikke kopiere lenke');
+    }
+  }, []);
+  const [shareMessage, setShareMessage] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!shareMessage) return;
+    const t = setTimeout(() => setShareMessage(null), 2200);
+    return () => clearTimeout(t);
+  }, [shareMessage]);
+
+  // DanceAnnotate-flate (mockup #2) bruker EGEN shell — distinct branding,
+  // simplifisert nav-rail, dedikert top-bar (Save/Export-knapper).
+  if (subTab === 'annotate') {
+    return (
+      <DanceAnnotateLayout
+        projectName={projectId ?? 'Untitled Project'}
+        onSave={() => {
+          // Save-knapp manuelt — flush blur via document.activeElement
+          // for å committe pending form-edits, deretter trigger refresh-event.
+          if (typeof document !== 'undefined') {
+            const el = document.activeElement as HTMLElement | null;
+            if (el && typeof el.blur === 'function') el.blur();
+          }
+          // Hvis ingen mutations er underveis, vis 'saved'-status uansett
+          // for visuell bekreftelse på at staten er ren.
+          if (annotateSaveStatus === 'idle') {
+            setAnnotateLastSaved(Date.now());
+            setAnnotateSaveStatus('saved');
+          }
+        }}
+        saveStatus={annotateSaveStatus}
+        lastSavedAt={annotateLastSaved}
+        saveError={annotateSaveError}
+        onExport={() => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('dance:export-annotation'));
+          }
+        }}
+        onOpenProjectSwitcher={() => setProjectSwitcherOpen(true)}
+        user={{
+          name: auth.user?.name ?? auth.user?.email ?? undefined,
+          avatarUrl: typeof auth.user?.picture === 'string' ? auth.user.picture : undefined,
+        }}
+        projectId={projectId}
+        activeView={annotateActiveView}
+        onViewChange={(view) => setAnnotateActiveView(view)}
+      >
+        {annotateActiveView === 'annotations' ? (
+          <DanceAnnotationsListView
+            projectId={projectId}
+            dancerOptions={annotateDancerOptions}
+            onOpenAnnotation={handleOpenAnnotationInEditor}
+          />
+        ) : annotateActiveView === 'statistics' ? (
+          <DanceStatisticsView
+            projectId={projectId}
+            dancerOptions={annotateDancerOptions}
+          />
+        ) : (
+          <DanceAnnotateView
+            clipId={annotateClipId}
+            clipTitle={annotateClipTitle}
+            durationSec={annotateDuration}
+            projectId={projectId}
+            dancerOptions={annotateDancerOptions}
+            readOnly={readOnly}
+            onSaveStatusChange={handleAnnotateSaveStatus}
+          />
+        )}
+        <DanceProjectSwitcherDialog
+          open={projectSwitcherOpen}
+          currentProjectId={projectId}
+          onClose={() => setProjectSwitcherOpen(false)}
+          onSwitch={handleSwitchProject}
+        />
+        {/* Cheat-sheet + share-snackbar bevart fra eksisterende parent-flyt */}
+        {cheatSheet.CheatSheet}
+        {shareMessage ? (
+          <Box
+            role="status"
+            data-testid="dance-flow-share-snackbar"
+            sx={{
+              position: 'fixed', bottom: 16, left: '50%',
+              transform: 'translateX(-50%)',
+              bgcolor: '#1e2536', color: '#a78bfa',
+              border: '1px solid #a78bfa', borderRadius: 1,
+              px: 2, py: 1, fontSize: 12, fontWeight: 600,
+              zIndex: 2000,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            }}
+          >
+            {shareMessage}
+          </Box>
+        ) : null}
+      </DanceAnnotateLayout>
+    );
+  }
+
+  return (
+    <DanceFlowShell
+      header={
+        <FormationHeaderBar
+          breadcrumbs={breadcrumbs}
+          activeSubTab={subTab}
+          onSubTabChange={setSubTab}
+          saveStatus={saveStatus}
+          saveError={saveError}
+          lastSavedAt={lastSavedAt}
+          onShare={handleShare}
+          disableExport={!hasFormations}
+          presenceUsers={realtime.users}
+        />
+      }
+      clipsSidebar={<ClipsSidebar projectId={projectId} />}
+    >
+      {subTab === 'formation' ? (
+        <Box sx={{ p: { xs: 1, md: 2 }, minHeight: '100%' }}>
+          <FormationViewConnected
+            projectId={projectId}
+            hideSavePill
+            onSaveStatusChange={handleSaveStatusChange}
+            videoPanelSlot={<FormationVideoPanel />}
+            readOnly={readOnly}
+          />
+        </Box>
+      ) : (
+        // Annotate håndteres av tidlig-return m/ DanceAnnotateLayout over.
+        // Dancers/Analysis/Review forward via dance:set-tab og lander
+        // aldri her. Fallback-tekst hvis ny sub-tab introduseres uten
+        // handler.
+        <Box sx={{ p: { xs: 2, md: 3 }, color: '#9ca3af' }}>
+          <Typography variant="body2">
+            Velg en sub-tab over.
+          </Typography>
+        </Box>
+      )}
+      {/* Audit I2: cheat-sheet modal — vises ved ? eller programmatisk */}
+      {cheatSheet.CheatSheet}
+      {/* Workflow-audit G19: share-feedback snackbar */}
+      {shareMessage ? (
+        <Box
+          role="status"
+          data-testid="dance-flow-share-snackbar"
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bgcolor: '#1e2536',
+            color: '#a78bfa',
+            border: '1px solid #a78bfa',
+            borderRadius: 1,
+            px: 2,
+            py: 1,
+            fontSize: 12,
+            fontWeight: 600,
+            zIndex: 2000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          }}
+        >
+          {shareMessage}
+        </Box>
+      ) : null}
+    </DanceFlowShell>
+  );
+};
 
 const PLACEHOLDER_BODIES: Record<string, string> = {
   classes: 'Studio-elever og semester-registrering. Henter betalingsstatus fra Fiken/Tripletex og kobler mot KID-betaling.',
@@ -295,6 +647,22 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     });
   }, [activeTabId, mode]);
 
+  // Audit D1: hold siste video-tid på window-prop så ⌘K's 'Opprett
+  // formasjon ved nåværende tid' kan lese den uten å re-rendere
+  // tre-nivåer-ned-komponenter. Stateløs ref-pattern.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as Window & { __dancePlayhead?: number };
+    const onTime = (e: Event): void => {
+      const detail = (e as CustomEvent<{ currentTime?: number }>).detail;
+      if (detail && typeof detail.currentTime === 'number') {
+        w.__dancePlayhead = detail.currentTime;
+      }
+    };
+    window.addEventListener('dance:video-time', onTime as EventListener);
+    return () => window.removeEventListener('dance:video-time', onTime as EventListener);
+  }, []);
+
   // Multi-team membership + active-team-bytter (URL ?team=<orgId>)
   const { memberships, refresh: refreshMemberships } = useMyMemberships();
   const initialActiveTeam = useMemo(() => {
@@ -416,11 +784,9 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           </Box>
         );
       case 'formations':
-        return (
-          <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-            <FormationViewConnected projectId={projectId ?? null} />
-          </Box>
-        );
+        // Phase 2: FormationsTabBody owner shell+header+sub-tab-state.
+        // FormationViewConnected wrappes m/ hideSavePill — headeren eier pillen.
+        return <FormationsTabBody projectId={projectId ?? null} />;
       case 'rehearsal_log':
         return (
           <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
@@ -636,6 +1002,10 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           scrollButtons="auto"
           allowScrollButtonsMobile
           sx={{
+            // Phase 3b: skjul horisontal Tabs på lg+; NavRail tar over.
+            // Mobile/tablet beholder horisontal-Tabs siden rail tar for mye
+            // plass på smal skjerm.
+            display: { xs: 'flex', lg: 'none' },
             minHeight: 48,
             px: 1,
             '& .MuiTab-root': {
@@ -659,48 +1029,128 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           ))}
         </Tabs>
       </Box>
-      <Box
-        role="tabpanel"
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-        sx={{ flex: 1, minHeight: 0 }}
-      >
-        <React.Suspense
-          fallback={
-            <Box
-              data-testid="dance-tab-loading"
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                py: 6,
-                color: '#a78bfa',
-                fontSize: 12,
-                letterSpacing: 1.5,
-                fontWeight: 700,
-              }}
-            >
-              LASTER…
-            </Box>
-          }
+      {/* Phase 3b: NavRail på lg+ ved siden av tabpanel. Under lg er rail
+          skjult (display none via sx-breakpoint i komponenten — wrapping
+          Box må derfor være row uansett, ellers brytes flex-flow). */}
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <Box
+          sx={{
+            display: { xs: 'none', lg: 'block' },
+            flex: '0 0 auto',
+          }}
         >
-          {renderTabBody(activeTab)}
-        </React.Suspense>
+          <DanceFlowNavRail
+            items={visibleTabs.map((t) => ({
+              id: t.id,
+              label: labels[t.labelToken] ?? t.id,
+              feature: t.feature,
+            }))}
+            activeId={activeTab.id}
+            onSelect={setActiveTabId}
+          />
+        </Box>
+        <Box
+          role="tabpanel"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
+        >
+          <React.Suspense
+            fallback={
+              <Box
+                data-testid="dance-tab-loading"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  py: 6,
+                  color: '#a78bfa',
+                  fontSize: 12,
+                  letterSpacing: 1.5,
+                  fontWeight: 700,
+                }}
+              >
+                LASTER…
+              </Box>
+            }
+          >
+            {renderTabBody(activeTab)}
+          </React.Suspense>
+        </Box>
       </Box>
 
       {/* Cmd+K command palette — søk og hopp mellom 18 paneler */}
       <CommandPalette
-        commands={visibleTabs.map((t) => {
-          const tabLabel = labels[t.labelToken] ?? t.id;
-          return {
-            id: `tab-${t.id}`,
-            label: tabLabel,
-            description: t.descriptionToken ? labels[t.descriptionToken] : undefined,
-            category: 'Hopp til',
-            keywords: [t.id, tabLabel.toLowerCase()],
-            onSelect: () => setActiveTabId(t.id),
-          };
-        })}
+        commands={[
+          ...visibleTabs.map((t) => {
+            const tabLabel = labels[t.labelToken] ?? t.id;
+            return {
+              id: `tab-${t.id}`,
+              label: tabLabel,
+              description: t.descriptionToken ? labels[t.descriptionToken] : undefined,
+              category: 'Hopp til' as const,
+              keywords: [t.id, tabLabel.toLowerCase()],
+              onSelect: () => setActiveTabId(t.id),
+            };
+          }),
+          // Audit D1: formation-actions tilgjengelig fra ⌘K palette.
+          // Dispatch CustomEvents — FormationView/Timeline lytter.
+          {
+            id: 'formation-create-at-now',
+            label: 'Opprett formasjon ved nåværende tid',
+            description: 'Bruker video-playhead som start-tid',
+            category: 'Kreativt' as const,
+            keywords: ['ny', 'opprett', 'create', 'formasjon'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              // Dispatchen leses av FormationView's create-listener.
+              // Bruker 0 hvis ingen video — bedre enn å gjøre ingenting.
+              const vTime = (window as Window & { __dancePlayhead?: number }).__dancePlayhead ?? 0;
+              window.dispatchEvent(
+                new CustomEvent('dance:create-formation-at', { detail: { timeSec: vTime } }),
+              );
+            },
+          },
+          {
+            id: 'formation-export-pdf',
+            label: 'Eksporter stage plot (PDF)',
+            description: 'Print eller lagre som PDF',
+            category: 'Handling' as const,
+            keywords: ['pdf', 'print', 'stage', 'plot', 'export'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              window.dispatchEvent(
+                new CustomEvent('dance:export-formation', { detail: { format: 'pdf' } }),
+              );
+            },
+          },
+          {
+            id: 'formation-export-png',
+            label: 'Eksporter scene som PNG',
+            description: 'Snapshot av nåværende formasjon',
+            category: 'Handling' as const,
+            keywords: ['png', 'bilde', 'snapshot', 'export'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              window.dispatchEvent(
+                new CustomEvent('dance:export-formation', { detail: { format: 'png' } }),
+              );
+            },
+          },
+          {
+            id: 'formation-export-backup',
+            label: 'Eksporter backup-fil (JSON)',
+            description: 'For re-import / deling',
+            category: 'Handling' as const,
+            keywords: ['json', 'backup', 'export'],
+            onSelect: () => {
+              setActiveTabId('formations');
+              window.dispatchEvent(
+                new CustomEvent('dance:export-formation', { detail: { format: 'json' } }),
+              );
+            },
+          },
+        ]}
       />
 
       {/* Persistent help-knapp nederst-høyre.

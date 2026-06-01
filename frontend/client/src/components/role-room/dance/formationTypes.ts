@@ -70,6 +70,24 @@ export interface Formation {
   tags?: string[];
   /** F5-13B: eksplisitte bezier-baner FRA denne formasjonen TIL neste, én per danser. */
   transitionPaths?: ReadonlyArray<DancerTransitionPath>;
+  /**
+   * Workflow-audit G14: lås mot uhellsendringer. Pucks kan ikke flyttes
+   * og delete-handler refuserer. Migrasjon 214 persisterer feltet.
+   */
+  locked?: boolean;
+  /**
+   * Migrasjon 215 (audit A2): optimistic concurrency-version. Bumpes ved
+   * hver UPDATE på server. Klient sender expectedVersion i save så
+   * concurrent edits oppdager konflikt (409) i stedet for stillegått siste-
+   * skriver-vinner.
+   */
+  version?: number;
+  /**
+   * Migrasjon 216 (audit G26): gruppe-label for å samle formasjoner i
+   * 'Intro / Vers 1 / Refreng / Bridge / Outro'. NULL/undefined = ingen
+   * seksjon.
+   */
+  sectionName?: string | null;
 }
 
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────
