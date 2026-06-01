@@ -1971,6 +1971,9 @@ export default function ProducerMediaPanel({
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [loadingRoleRoomAgentAccess, setLoadingRoleRoomAgentAccess] = useState(false);
   const [roleRoomAgentDialogOpen, setRoleRoomAgentDialogOpen] = useState(false);
+  // Bumpes når Agent-dialogen lukkes, så Markedsplan-fanen re-henter en plan
+  // som kan ha blitt generert inne i dialogen.
+  const [marketingReloadNonce, setMarketingReloadNonce] = useState(0);
   const [roleRoomAgentDialogInitialTab, setRoleRoomAgentDialogInitialTab] =
     useState<'research' | 'marketing-plan'>('research');
   const [roleRoomAgentGenerating, setRoleRoomAgentGenerating] = useState(false);
@@ -3150,6 +3153,7 @@ export default function ProducerMediaPanel({
       savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
       setRoleRoomAgentResult(result);
       setRoleRoomAgentDialogOpen(false);
+      setMarketingReloadNonce((n) => n + 1);
       setRoleRoomAgentNotice('The Role Room Agent fylte nå brief, branding-utkast og story logikk i prosjektet.');
     } catch (agentError) {
       console.error('[ProducerMediaPanel] Failed to apply Role Room Agent result', agentError);
@@ -3256,6 +3260,7 @@ export default function ProducerMediaPanel({
       },
     });
     setRoleRoomAgentDialogOpen(false);
+    setMarketingReloadNonce((n) => n + 1);
     setRoleRoomAgentNotice('Prosjektmodalen er forhåndsutfylt med Brreg-data og agentens avtaleforslag. Kontroller kontaktfelt og lagre prosjektet.');
   }, [onCreateProjectFromAgent]);
 
@@ -14487,6 +14492,7 @@ export default function ProducerMediaPanel({
           {!showClientWorkspaceEmptyState && activeWorkspace === 'marketing-plan' ? (
             <MarketingPlanWorkspace
               projectId={projectId}
+              reloadSignal={marketingReloadNonce}
               onOpenAdvancedEditor={() => {
                 setRoleRoomAgentDialogInitialTab('marketing-plan');
                 setRoleRoomAgentDialogOpen(true);
@@ -16451,7 +16457,7 @@ export default function ProducerMediaPanel({
       </Menu>
       <RoleRoomAgentDialog
         open={roleRoomAgentDialogOpen}
-        onClose={() => setRoleRoomAgentDialogOpen(false)}
+        onClose={() => { setRoleRoomAgentDialogOpen(false); setMarketingReloadNonce((n) => n + 1); }}
         projectId={projectId}
         projectName={projectName}
         currentUserId={currentRoleRoomUserId || undefined}

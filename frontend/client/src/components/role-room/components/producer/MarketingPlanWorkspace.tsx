@@ -48,6 +48,12 @@ interface Props {
   onOpenAdvancedEditor?: () => void;
   /** Klient-modus: skjul "Endre plan", VersionPicker og PostEditDialog. */
   readOnly?: boolean;
+  /**
+   * Bump denne for å tvinge en re-henting (f.eks. når Agent-dialogen lukkes
+   * etter at en plan ble generert der). Uten dette ville en tom, allerede
+   * mountet fane ikke fanget opp en plan generert i en annen flate.
+   */
+  reloadSignal?: number;
 }
 
 const STATUS_LABELS: Record<MarketingPlanPost['status'], string> = {
@@ -74,7 +80,7 @@ const FORMAT_LABELS: Record<MarketingPlanPost['format'], string> = {
   youtube_short: 'YT Short',
 };
 
-export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOnly = false }: Props) {
+export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOnly = false, reloadSignal }: Props) {
   const [plan, setPlan] = useState<MarketingPlan | null>(null);
   const [posts, setPosts] = useState<MarketingPlanPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +120,13 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
   }, [projectId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Re-hent når et eksternt signal bumpes (Agent-dialogen lukket etter
+  // generering). Hopper over første render (reloadSignal udefinert/0).
+  useEffect(() => {
+    if (!reloadSignal) return;
+    void load();
+  }, [reloadSignal, load]);
 
   // Real-time polling — sjekker etter endrede posts hvert 7. sek slik
   // at klient + team ser hverandres redigeringer live. Etter en run
