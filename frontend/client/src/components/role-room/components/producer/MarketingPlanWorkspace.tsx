@@ -697,8 +697,9 @@ function PostRow({ post, pillar, onEdit }: {
 }
 
 function PostThumbnail({ post }: { post: MarketingPlanPost }) {
-  const thumb = (post as MarketingPlanPost & { previewStreamThumbnailUrl?: string | null })
-    .previewStreamThumbnailUrl;
+  // previewStreamThumbnailUrl er nå et felt på MarketingPlanPost (ikke lenger
+  // en cast-hack) — backend har alltid sendt det.
+  const thumb = post.previewStreamThumbnailUrl;
   const Icon = STATUS_COLORS[post.status].icon;
   if (thumb) {
     return (

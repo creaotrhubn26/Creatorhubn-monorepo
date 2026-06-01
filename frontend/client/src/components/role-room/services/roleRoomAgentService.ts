@@ -3472,6 +3472,13 @@ export interface MarketingPlanPost {
    *  farget badge i Markedsplan-dashboardet så det er klart hvem
    *  som endret. */
   lastEditedByKind?: 'team' | 'client' | null;
+  /** Preview-content (Cloudflare Stream primær, R2 fallback). Sendes allerede
+   *  av backend — brukes til å vise små thumbnails i kalender/tabell når innhold
+   *  er produsert. */
+  previewStreamThumbnailUrl?: string | null;
+  previewStreamPlaybackUrl?: string | null;
+  previewStreamReady?: boolean;
+  previewVideoR2Url?: string | null;
 }
 
 export default roleRoomAgentService;
