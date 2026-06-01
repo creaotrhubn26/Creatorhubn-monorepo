@@ -109,7 +109,6 @@ import ProfessionModeChip from '../shared/ProfessionModeChip';
 import HelpButton, { type WhatsNewItem } from '../shared/HelpButton';
 import FirstTimeTour from '../shared/FirstTimeTour';
 import RoleRoomMobileProfileSheet from '../components/RoleRoomMobileProfileSheet';
-import { useAuth } from '../../../hooks/useAuth';
 import { useRoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import {
   EmojiPeople as WelcomeIcon,
