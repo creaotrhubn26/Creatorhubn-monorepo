@@ -2066,6 +2066,24 @@ class ManuscriptService {
   }
 
   /**
+   * Presence-ping: registrerer at denne brukeren har manuset åpent, og
+   * returnerer de ANDRE som er aktive nå (multi-viewer presence). Best-effort.
+   */
+  async pingManuscriptPresence(
+    manuscriptId: string,
+    displayName: string,
+  ): Promise<Array<{ userId: string; displayName: string; lastSeenAt: string }>> {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/presence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName }),
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as { presence?: Array<{ userId: string; displayName: string; lastSeenAt: string }> };
+    return Array.isArray(data.presence) ? data.presence : [];
+  }
+
+  /**
    * Delete a manuscript
    */
   async deleteManuscript(id: string): Promise<void> {

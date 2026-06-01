@@ -396,6 +396,7 @@ import {
   ArrowDropDown as ArrowDropDownIcon,
   Timer as TimerIcon,
   WarningAmber as WarningAmberIcon,
+  Group as GroupIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
@@ -427,6 +428,7 @@ import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, Man
 import type { StoryLogicState } from '../services/storyLogicService';
 import { manuscriptService } from '../services/manuscriptService';
 import authSessionService from '../services/authSessionService';
+import { roleRoomProjectMembersService } from '../services/roleRoomProjectMembersService';
 import { RichTextEditor } from './RichTextEditor';
 import { ScriptDiffViewer } from './ScriptDiffViewer';
 import { TimelineView } from './TimelineView';
@@ -604,8 +606,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   // Når en ANNEN i produksjonsteamet holder manus-låsen avvises lagring (409).
   // Vi viser hvem som låste i stedet for en generisk "Lagringsfeil".
   const [manuscriptLockConflict, setManuscriptLockConflict] = useState<{ lockedBy: string | null; lockedAt: string | null } | null>(null);
-  // Presence: hvem som har manus-låsen (aktiv redaktør) akkurat nå.
-  const [manuscriptActiveEditor, setManuscriptActiveEditor] = useState<{ label: string; isSelf: boolean } | null>(null);
+  // Presence: ANDRE som har manuset åpent nå (multi-viewer, med vennlig navn).
+  const [manuscriptViewers, setManuscriptViewers] = useState<Array<{ userId: string; displayName: string }>>([]);
+  // userId → vennlig navn (fra prosjekt-medlemmer) for å resolve lås-eier.
+  const [memberNameMap, setMemberNameMap] = useState<Record<string, string>>({});
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
@@ -1102,24 +1106,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       }
     })();
 
-    // Presence: poll låsen så vi viser hvem som er aktiv redaktør nå.
+    // Presence (multi-viewer): ping at JEG har manuset åpent, og hent de andre
+    // aktive. Pinger godt under TTL (45s) så oppføringer ikke utløper.
     const session = authSessionService.getSessionSync();
-    const selfId = session.currentUserId || (session.adminUser?.id != null ? String(session.adminUser.id) : null);
     const selfName =
       session.adminUser?.display_name?.trim() ||
       session.adminUser?.name?.trim() ||
       session.adminUser?.email?.trim() ||
-      'Deg';
+      'Et teammedlem';
     const refreshPresence = () => {
-      void manuscriptService.getManuscriptLock(manuscriptId)
-        .then((lock) => {
+      void manuscriptService.pingManuscriptPresence(manuscriptId, selfName)
+        .then((others) => {
           if (cancelled) return;
-          if (lock.held && lock.lockedBy) {
-            const isSelf = selfId != null && String(lock.lockedBy) === String(selfId);
-            setManuscriptActiveEditor({ label: isSelf ? selfName : String(lock.lockedBy), isSelf });
-          } else {
-            setManuscriptActiveEditor(null);
-          }
+          setManuscriptViewers(others.map((o) => ({ userId: o.userId, displayName: o.displayName })));
         })
         .catch(() => { /* best-effort */ });
     };
@@ -1128,21 +1127,39 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Hold låsen i live mens vinduet er åpent + oppdater presence.
     const heartbeat = setInterval(() => {
       void manuscriptService.heartbeatManuscriptLock(manuscriptId).catch(() => { /* best-effort */ });
-      refreshPresence();
     }, 30000);
-    const presenceTimer = setInterval(refreshPresence, 15000);
+    const presenceTimer = setInterval(refreshPresence, 20000);
 
     return () => {
       cancelled = true;
       clearInterval(heartbeat);
       clearInterval(presenceTimer);
-      setManuscriptActiveEditor(null);
+      setManuscriptViewers([]);
       void manuscriptService.releaseManuscriptLock(manuscriptId).catch(() => { /* best-effort */ });
     };
     // Kun re-kjør når et ANNET manus åpnes (id), ikke ved hver innholdsendring
     // (handleScriptChangeFromSplitView lager nye objekter med samme id).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedManuscript?.id, showWarning]);
+
+  // Hent prosjekt-medlemmer for å resolve bruker-id → vennlig navn (brukes til
+  // å vise hvem som holder skrive-låsen med navn i stedet for rå id).
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void roleRoomProjectMembersService.list(projectId, 'active')
+      .then((res) => {
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const m of res.members) {
+          const name = m.displayName?.trim() || m.email?.trim();
+          if (m.userId && name) map[String(m.userId)] = name;
+        }
+        setMemberNameMap(map);
+      })
+      .catch(() => { /* best-effort — fall tilbake til rå id */ });
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   useEffect(() => {
     setSelectedShot(null);
@@ -2207,15 +2224,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           >
             {selectedManuscript && (
               <>
-                {manuscriptActiveEditor && (
-                  <Tooltip title={manuscriptActiveEditor.isSelf
-                    ? 'Du har manuset åpent for redigering (låst for andre)'
-                    : `${manuscriptActiveEditor.label} redigerer manuset nå`}>
+                {manuscriptViewers.length > 0 && (
+                  <Tooltip title={`Også her nå: ${manuscriptViewers.map((v) => v.displayName).join(', ')}`}>
                     <Chip
                       size="small"
-                      icon={<EditIcon sx={{ fontSize: 14 }} />}
-                      color={manuscriptActiveEditor.isSelf ? 'default' : 'warning'}
-                      label={manuscriptActiveEditor.isSelf ? 'Du redigerer' : `${manuscriptActiveEditor.label} redigerer`}
+                      icon={<GroupIcon sx={{ fontSize: 14 }} />}
+                      color="info"
+                      label={manuscriptViewers.length === 1
+                        ? `${manuscriptViewers[0].displayName} er her`
+                        : `${manuscriptViewers.length} andre her`}
                       sx={{ fontSize: responsive.captionFontSize }}
                     />
                   </Tooltip>
@@ -2398,7 +2415,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             sx={{ mt: responsive.spacing }}
           >
             {manuscriptLockConflict.lockedBy
-              ? `${manuscriptLockConflict.lockedBy} redigerer dette manuset nå`
+              ? `${memberNameMap[String(manuscriptLockConflict.lockedBy)] || manuscriptLockConflict.lockedBy} redigerer dette manuset nå`
               : 'En annen i teamet redigerer dette manuset nå'}
             {manuscriptLockConflict.lockedAt
               ? ` (siden ${new Date(manuscriptLockConflict.lockedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })})`
