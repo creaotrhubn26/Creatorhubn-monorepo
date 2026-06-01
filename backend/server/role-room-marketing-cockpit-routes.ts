@@ -245,6 +245,139 @@ export function setupMarketingCockpitRoutes(deps: SetupMarketingCockpitDeps): vo
     });
   });
 
+  // ── POST /api/role-room/marketing-cockpit/actions/set-cta ───────────────
+  // Convenience wrapper that uses THEROLERROOM env-tokens to set both the
+  // legacy cta_type/cta_link fields (returns documented deprecation error)
+  // AND the modern equivalent (phone for CALL_NOW, website for LEARN_MORE)
+  // that Meta auto-renders as the CTA button.
+  app.post("/api/role-room/marketing-cockpit/actions/set-cta", async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const ctaType = typeof body.ctaType === "string" ? body.ctaType.trim() : "";
+    const ctaUrl = typeof body.ctaUrl === "string" ? body.ctaUrl.trim() : "";
+    if (!ctaType || !ctaUrl) {
+      res.status(400).json({ ok: false, error: "ctaType + ctaUrl required" });
+      return;
+    }
+    const pageId = (process.env.THEROLERROOM_PAGE_ID || "").trim();
+    const pageToken = (process.env.THEROLERROOM_PAGE_ACCESS_TOKEN || "").trim();
+    if (!pageId || !pageToken) {
+      res.status(503).json({ ok: false, error: "THEROLERROOM_PAGE_ID/TOKEN not configured" });
+      return;
+    }
+
+    // Modern field mapping (same as pages-cta route does internally).
+    const modernField: { name: string; value: string } | null = (() => {
+      if (ctaType === "CALL_NOW" || ctaType === "BOOK_NOW") {
+        return { name: "phone", value: ctaUrl.replace(/^tel:/i, "") };
+      }
+      if (["LEARN_MORE", "SHOP_NOW", "WATCH_NOW", "WATCH_VIDEO", "OPEN_LINK", "USE_APP", "PLAY_MUSIC", "LISTEN_NOW"].includes(ctaType)) {
+        return { name: "website", value: ctaUrl };
+      }
+      return null;
+    })();
+
+    // Step 1: legacy attempt (auditable evidence we used the documented permission).
+    const legacyParams = new URLSearchParams({ cta_type: ctaType, cta_link: ctaUrl, access_token: pageToken });
+    let legacy: { ok: boolean; status: number; body: unknown };
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`, {
+        method: "POST", body: legacyParams,
+      });
+      legacy = { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
+    } catch (e) { legacy = { ok: false, status: 0, body: { error: String(e) } }; }
+
+    // Step 2: modern equivalent (the call that actually surfaces a CTA button).
+    let modern: { ok: boolean; status: number; body: unknown; field?: string } | null = null;
+    if (modernField) {
+      try {
+        const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`, {
+          method: "POST",
+          body: new URLSearchParams({ [modernField.name]: modernField.value, access_token: pageToken }),
+        });
+        modern = { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})), field: modernField.name };
+      } catch (e) { modern = { ok: false, status: 0, body: { error: String(e) }, field: modernField.name }; }
+    }
+
+    const success = legacy.ok || (modern?.ok ?? false);
+    res.status(success ? 200 : (legacy.status || 400)).json({
+      ok: success,
+      ctaType,
+      ctaUrl,
+      legacyApi: { ok: legacy.ok, status: legacy.status, response: legacy.body },
+      modernApi: modern ? { field: modern.field, ok: modern.ok, status: modern.status, response: modern.body } : null,
+      note: legacy.ok
+        ? "Legacy cta_type/cta_link API succeeded."
+        : (modern?.ok
+            ? `Meta deprecated cta_type. Modern equivalent (${modern.field}) succeeded — Meta auto-renders as CTA button.`
+            : "Both legacy and modern updates failed."),
+    });
+  });
+
+  // ── POST /api/role-room/marketing-cockpit/actions/publish-event ─────────
+  // Convenience wrapper for instagram_manage_events. Uses THEROLERROOM env-
+  // tokens. Body accepts ISO 8601 start_time/end_time; converts to Unix epoch
+  // as Meta v21 /upcoming_events requires.
+  app.post("/api/role-room/marketing-cockpit/actions/publish-event", async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const startTime = typeof body.startTime === "string" ? body.startTime.trim() : "";
+    const endTime = typeof body.endTime === "string" ? body.endTime.trim() : "";
+    const venueName = typeof body.venueName === "string" ? body.venueName.trim() : "";
+    const description = typeof body.description === "string" ? body.description.trim() : "";
+
+    if (!title || !startTime) {
+      res.status(400).json({ ok: false, error: "title + startTime required" });
+      return;
+    }
+
+    const igUserId = (process.env.THEROLERROOM_IG_USER_ID || "").trim();
+    const pageToken = (process.env.THEROLERROOM_PAGE_ACCESS_TOKEN || "").trim();
+    if (!igUserId || !pageToken) {
+      res.status(503).json({ ok: false, error: "THEROLERROOM_IG_USER_ID/TOKEN not configured" });
+      return;
+    }
+
+    const toUnix = (s: string): string => {
+      if (/^\d+$/.test(s)) return s;
+      const ms = Date.parse(s);
+      return Number.isFinite(ms) ? String(Math.floor(ms / 1000)) : s;
+    };
+
+    const form = new URLSearchParams({
+      title,
+      start_time: toUnix(startTime),
+      access_token: pageToken,
+    });
+    if (endTime) form.set("end_time", toUnix(endTime));
+    if (venueName) form.set("venue_name", venueName);
+    if (description) form.set("description", description);
+
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/upcoming_events`, {
+        method: "POST", body: form,
+      });
+      const responseBody = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!r.ok) {
+        const err = responseBody.error as Record<string, unknown> | undefined;
+        res.status(r.status).json({
+          ok: false,
+          error: typeof err?.message === "string" ? err.message : `status ${r.status}`,
+          response: responseBody,
+        });
+        return;
+      }
+      res.json({
+        ok: true,
+        eventId: typeof responseBody.id === "string" ? responseBody.id : null,
+        title, startTime, endTime, venueName,
+      });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e) });
+    }
+  });
+
   // Health-probe — fast yes/no whether at least profile is reachable.
   app.get("/api/role-room/marketing-cockpit/health", async (req, res) => {
     if (!requireAdminOrDemoBypass(req, res)) return;

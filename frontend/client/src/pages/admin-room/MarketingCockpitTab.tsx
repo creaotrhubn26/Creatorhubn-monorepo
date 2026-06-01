@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Card, CardContent, Chip, CircularProgress, Stack, Typography,
-  Button, Divider, Link as MuiLink,
+  Button, Divider, Link as MuiLink, TextField, MenuItem,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FacebookIcon from '@mui/icons-material/Facebook';
@@ -25,6 +25,7 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import EventIcon from '@mui/icons-material/Event';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 
 interface Section<T> { ok: boolean; data: T | null; error?: string; status?: number; }
 
@@ -111,6 +112,187 @@ function ErrorBody({ section }: { section: Section<unknown> }) {
     <Box sx={{ p: 1.5, background: 'rgba(239,68,68,0.08)', borderRadius: 1, fontSize: '0.78rem', color: '#fca5a5' }}>
       {section.error || 'Section failed.'}
       {section.status ? ` (status ${section.status})` : ''}
+    </Box>
+  );
+}
+
+const CTA_TYPES = [
+  'BOOK_NOW', 'CALL_NOW', 'CONTACT_US', 'LEARN_MORE',
+  'MESSAGE_PAGE', 'SHOP_NOW', 'SIGN_UP', 'USE_APP', 'WATCH_NOW',
+] as const;
+
+function CampaignActionsPanel({ onAction }: { onAction: () => void }) {
+  // CTA-flipper state
+  const [ctaType, setCtaType] = useState<string>('LEARN_MORE');
+  const [ctaUrl, setCtaUrl] = useState<string>('https://theroleroom.com');
+  const [ctaBusy, setCtaBusy] = useState(false);
+  const [ctaNotice, setCtaNotice] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
+
+  // Event-publisher state
+  const defaultStart = useMemo(() => {
+    const d = new Date(Date.now() + 24 * 3600 * 1000);
+    d.setMinutes(0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  }, []);
+  const [evtTitle, setEvtTitle] = useState<string>('');
+  const [evtStart, setEvtStart] = useState<string>(defaultStart);
+  const [evtEnd, setEvtEnd] = useState<string>('');
+  const [evtVenue, setEvtVenue] = useState<string>('');
+  const [evtDescription, setEvtDescription] = useState<string>('');
+  const [evtBusy, setEvtBusy] = useState(false);
+  const [evtNotice, setEvtNotice] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
+
+  const applyCta = useCallback(async () => {
+    setCtaBusy(true); setCtaNotice(null);
+    try {
+      const r = await fetch('/api/role-room/marketing-cockpit/actions/set-cta', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ctaType, ctaUrl }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setCtaNotice({ kind: 'success', msg: `CTA ${ctaType} → ${ctaUrl} satt på Page-en. ${d.note || ''}` });
+        onAction();
+      } else {
+        setCtaNotice({ kind: 'error', msg: d.error || d.note || 'Set CTA failed' });
+      }
+    } catch (err) {
+      setCtaNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setCtaBusy(false);
+    }
+  }, [ctaType, ctaUrl, onAction]);
+
+  const publishEvent = useCallback(async () => {
+    if (!evtTitle.trim() || !evtStart) {
+      setEvtNotice({ kind: 'error', msg: 'Title + start-time påkrevd.' });
+      return;
+    }
+    setEvtBusy(true); setEvtNotice(null);
+    try {
+      const r = await fetch('/api/role-room/marketing-cockpit/actions/publish-event', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: evtTitle.trim(),
+          startTime: new Date(evtStart).toISOString(),
+          endTime: evtEnd ? new Date(evtEnd).toISOString() : undefined,
+          venueName: evtVenue.trim() || undefined,
+          description: evtDescription.trim() || undefined,
+        }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setEvtNotice({ kind: 'success', msg: `Event publisert på @theroleroom IG. ID: ${d.eventId}` });
+        setEvtTitle(''); setEvtVenue(''); setEvtDescription('');
+        onAction();
+      } else {
+        setEvtNotice({ kind: 'error', msg: d.error || 'Publish event failed' });
+      }
+    } catch (err) {
+      setEvtNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setEvtBusy(false);
+    }
+  }, [evtTitle, evtStart, evtEnd, evtVenue, evtDescription, onAction]);
+
+  return (
+    <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+      {/* CTA-flipper */}
+      <Card sx={{ background: 'rgba(2,6,23,0.42)', border: '1px solid rgba(251,191,36,0.32)', color: '#e2e8f0' }} data-testid="panel-cta-action">
+        <CardContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+            <CampaignIcon sx={{ color: '#fbbf24', fontSize: 20 }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Sett CTA på Page</Typography>
+          </Stack>
+          <Stack spacing={1.5}>
+            <TextField
+              select size="small" label="CTA-type" value={ctaType} onChange={(e) => setCtaType(e.target.value)}
+              data-testid="cta-type-select" SelectProps={{ inputProps: { 'data-testid': 'cta-type-input' } }}
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' }, '& .MuiInputLabel-root': { color: 'rgba(203,213,225,0.6)' } }}
+            >
+              {CTA_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+            </TextField>
+            <TextField
+              size="small" label="CTA-link" value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)}
+              placeholder="https://theroleroom.com/audition/lead"
+              data-testid="cta-url-input"
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' }, '& .MuiInputLabel-root': { color: 'rgba(203,213,225,0.6)' } }}
+            />
+            <Button
+              variant="contained" startIcon={<RocketLaunchIcon />}
+              onClick={() => void applyCta()} disabled={ctaBusy}
+              data-testid="cta-apply-button"
+              sx={{ background: 'rgba(251,191,36,0.25)', color: '#fde68a', '&:hover': { background: 'rgba(251,191,36,0.4)' } }}
+            >
+              {ctaBusy ? 'Setter…' : 'Sett CTA på The Role Room Page'}
+            </Button>
+          </Stack>
+          {ctaNotice && (
+            <Alert severity={ctaNotice.kind} sx={{ mt: 1.5 }} onClose={() => setCtaNotice(null)} data-testid="cta-notice">
+              {ctaNotice.msg}
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Event-publisher */}
+      <Card sx={{ background: 'rgba(2,6,23,0.42)', border: '1px solid rgba(249,115,22,0.32)', color: '#e2e8f0' }} data-testid="panel-event-action">
+        <CardContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+            <EventIcon sx={{ color: '#f97316', fontSize: 20 }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Publiser IG event</Typography>
+          </Stack>
+          <Stack spacing={1.2}>
+            <TextField
+              size="small" label="Event title" value={evtTitle} onChange={(e) => setEvtTitle(e.target.value)}
+              placeholder="Open Casting Call — Nordlys Lead"
+              data-testid="event-title-input"
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' }, '& .MuiInputLabel-root': { color: 'rgba(203,213,225,0.6)' } }}
+            />
+            <Stack direction="row" spacing={1}>
+              <TextField
+                size="small" type="datetime-local" label="Start" value={evtStart}
+                onChange={(e) => setEvtStart(e.target.value)} fullWidth
+                InputLabelProps={{ shrink: true }} data-testid="event-start-input"
+                sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' }, '& .MuiInputLabel-root': { color: 'rgba(203,213,225,0.6)' } }}
+              />
+              <TextField
+                size="small" type="datetime-local" label="End (optional)" value={evtEnd}
+                onChange={(e) => setEvtEnd(e.target.value)} fullWidth
+                InputLabelProps={{ shrink: true }} data-testid="event-end-input"
+                sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' }, '& .MuiInputLabel-root': { color: 'rgba(203,213,225,0.6)' } }}
+              />
+            </Stack>
+            <TextField
+              size="small" label="Venue (optional)" value={evtVenue} onChange={(e) => setEvtVenue(e.target.value)}
+              placeholder="Filmens Hus, Oslo"
+              data-testid="event-venue-input"
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' }, '& .MuiInputLabel-root': { color: 'rgba(203,213,225,0.6)' } }}
+            />
+            <TextField
+              size="small" multiline minRows={2} label="Description (optional)"
+              value={evtDescription} onChange={(e) => setEvtDescription(e.target.value)}
+              data-testid="event-description-input"
+              sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' }, '& .MuiInputLabel-root': { color: 'rgba(203,213,225,0.6)' } }}
+            />
+            <Button
+              variant="contained" startIcon={<RocketLaunchIcon />}
+              onClick={() => void publishEvent()} disabled={evtBusy}
+              data-testid="event-publish-button"
+              sx={{ background: 'rgba(249,115,22,0.25)', color: '#fed7aa', '&:hover': { background: 'rgba(249,115,22,0.4)' } }}
+            >
+              {evtBusy ? 'Publiserer…' : 'Publiser til @theroleroom IG'}
+            </Button>
+          </Stack>
+          {evtNotice && (
+            <Alert severity={evtNotice.kind} sx={{ mt: 1.5 }} onClose={() => setEvtNotice(null)} data-testid="event-notice">
+              {evtNotice.msg}
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
     </Box>
   );
 }
@@ -393,6 +575,13 @@ export default function MarketingCockpitTab() {
               )}
             </CardContent>
           </Card>
+
+          <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
+            <Chip label="CAMPAIGN ACTIONS" size="small"
+              sx={{ background: 'rgba(168,85,247,0.15)', color: '#c4b5fd', fontSize: '0.7rem' }} />
+          </Divider>
+
+          <CampaignActionsPanel onAction={() => void load()} />
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }} />
           <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.4)', textAlign: 'center' }}>
