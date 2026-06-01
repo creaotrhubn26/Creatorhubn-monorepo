@@ -1851,8 +1851,10 @@ export default function ProducerClientReviewPanel({
                     'Sanntid med klienten: del en magic-link fra et godkjenningspunkt (kopier invitasjon / '
                     + 'send e-post). Klienten åpner klientportalen og kan godkjenne, be om endringer eller '
                     + 'kommentere — uten innlogging. Beslutninger og kommentarer dukker opp her automatisk '
-                    + 'innen ~15 sek, så du slipper å laste på nytt. For live samskriving: del et Google-'
-                    + 'dokument; for samtale: opprett en Meet-lenke i møteflaten.'
+                    + 'innen ~15 sek, så du slipper å laste på nytt. For live samskriving: del et Google Drive-'
+                    + 'dokument med skrive- eller kommentartilgang fra Google-samarbeid-flaten (krever at '
+                    + 'prosjektet er koblet til Google Workspace) — samredigeringen skjer i Google sin egen '
+                    + 'editor. For samtale: opprett en Meet-lenke i møteflaten.'
                   }
                 >
                   <Box
