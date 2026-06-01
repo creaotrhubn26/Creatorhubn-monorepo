@@ -450,6 +450,7 @@ import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-rou
 import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
 import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-routes";
 import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
+import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -25759,6 +25760,13 @@ setupRoleRoomAgenciesRoutes({
 // juridisk gyldig signering. Strengere barn-handling planlagt (ROADMAP.md).
 // Migrasjon 218 (agency_talent_proposals).
 setupRoleRoomAgencyProposalsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Agency ↔ Production team partnership-system. Per-prosjekt scope.
+// Migrasjon 222 (agency_production_partnerships + invitations + audit).
+setupRoleRoomPartnershipsRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
