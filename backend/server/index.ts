@@ -652,6 +652,7 @@ import { setupStorageBillingAdminRoutes } from "./storage-billing-admin-routes";
 import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
 import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
 import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
+import { setupGalleryMagicLinkRoutes } from "./gallery-magic-link-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
@@ -67709,6 +67710,11 @@ setupAdminSecretsRotationRoutes({
   app,
   pool,
   requireAdminSession,
+});
+setupGalleryMagicLinkRoutes({
+  app,
+  pool,
+  requireUserSession,
 });
 setupClientGalleryRoutes({
   app,
