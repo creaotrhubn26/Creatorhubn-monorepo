@@ -8,6 +8,7 @@ import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
 import AddIcon from "@mui/icons-material/Add";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import WavingHandOutlinedIcon from "@mui/icons-material/WavingHandOutlined";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import FeedbackOutlinedIcon from "@mui/icons-material/FeedbackOutlined";
@@ -105,6 +106,7 @@ interface Props {
   onOpenHelp: () => void;
   onOpenPhotoshopSetup: () => void;
   onOpenPhotoshopScaffold: () => void;
+  onOpenAiImage: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -153,6 +155,7 @@ export function HeaderBar({
   onOpenHelp,
   onOpenPhotoshopSetup,
   onOpenPhotoshopScaffold,
+  onOpenAiImage,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -251,6 +254,9 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPhotoshopScaffold(); }}>
                   <AddIcon fontSize="small" /> Lag template fra startpunkt…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenAiImage(); }}>
+                  <AutoAwesomeIcon fontSize="small" /> AI image generation…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}

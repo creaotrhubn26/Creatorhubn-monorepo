@@ -322,6 +322,116 @@ async fn reveal_photoshop_plugin_manifest() -> Result<String, String> {
     Ok(manifest)
 }
 
+/// AI image generation — kaller Role Room-backend som proxer mot fal.ai
+/// for Flux 1.1 Pro, henter ned bildet og lagrer det lokalt så det kan
+/// brukes som smart-object i template.scaffold. Phase 2 av
+/// "AI-to-editable-PSD"-pipelinen.
+#[derive(serde::Serialize)]
+pub struct AiImageResult {
+    pub image_path: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub model: String,
+    pub seed: Option<i64>,
+}
+
+#[tauri::command]
+async fn ai_generate_image(
+    app: AppHandle,
+    prompt: String,
+    image_size: Option<String>,
+    seed: Option<i64>,
+) -> Result<AiImageResult, String> {
+    let (bearer, base_url) = if let Some(settings) = app.try_state::<AppSettings>() {
+        let snap = settings.snapshot();
+        (
+            snap.get("RR_BEARER_TOKEN").cloned().unwrap_or_default(),
+            snap.get("RR_POST_AGENT_BASE_URL")
+                .cloned()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
+        )
+    } else {
+        (String::new(), "https://creatorhubn.com/api/post-agent".to_string())
+    };
+    if bearer.is_empty() {
+        return Err(
+            "Ikke logget inn til Role Room. AI image generation krever bearer-token \
+             så vi kan spore bruk per konto. Logg inn fra Settings."
+                .to_string(),
+        );
+    }
+
+    let trimmed_base = base_url.trim_end_matches('/');
+    let body = serde_json::json!({
+        "prompt": prompt,
+        "options": {
+            "image_size": image_size.unwrap_or_else(|| "square_hd".to_string()),
+            "seed": seed,
+        },
+    });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/ai/generate-image", trimmed_base))
+        .header("Authorization", format!("Bearer {}", bearer))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Backend request failed: {}", e))?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| format!("Read response: {}", e))?;
+    if !status.is_success() {
+        return Err(format!("Backend {} — {}", status, text));
+    }
+    let data: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("Parse response: {}", e))?;
+    let image_url = data
+        .get("image_url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "image_url mangler i backend-response".to_string())?
+        .to_string();
+    let model = data
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let seed_out = data.get("seed").and_then(|v| v.as_i64());
+    let width = data.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
+    let height = data.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
+
+    // Last ned bildet og lagre det lokalt
+    let img_resp = client
+        .get(&image_url)
+        .send()
+        .await
+        .map_err(|e| format!("Download image: {}", e))?;
+    if !img_resp.status().is_success() {
+        return Err(format!("Image download {}: failed", img_resp.status()));
+    }
+    let bytes = img_resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Read image bytes: {}", e))?;
+
+    let dir = std::path::PathBuf::from(
+        std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?,
+    )
+    .join("Library/Application Support/no.creatorhubn.roleroom-post-agent/generated-images");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Create dir: {}", e))?;
+    let filename = format!("{}.png", Uuid::new_v4());
+    let out_path = dir.join(&filename);
+    std::fs::write(&out_path, &bytes).map_err(|e| format!("Write file: {}", e))?;
+
+    Ok(AiImageResult {
+        image_path: out_path.display().to_string(),
+        width,
+        height,
+        model,
+        seed: seed_out,
+    })
+}
+
 /// Activate Resolve and send cmd+, via osascript to open the Preferences dialog.
 #[tauri::command]
 async fn open_resolve_preferences() -> Result<String, String> {
@@ -802,6 +912,7 @@ pub fn run() {
             photoshop_setup_status,
             open_udt,
             reveal_photoshop_plugin_manifest,
+            ai_generate_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
