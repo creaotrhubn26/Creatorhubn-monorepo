@@ -126,6 +126,23 @@ async function safeQueryFirst(
 }
 
 /**
+ * Prosjekteierens bruker-ID (lead-produsent). Brukes både for å lese
+ * connection-status og for å binde en klient-initiert OAuth-kobling til
+ * riktig produsent slik at produsenten faktisk kan publisere.
+ */
+export async function getProjectProducerUserId(
+  pool: Pool,
+  projectId: string,
+): Promise<string | null> {
+  const ownerRow = await safeQueryFirst(
+    pool,
+    `SELECT created_by AS "accountName" FROM casting_projects WHERE id = $1 LIMIT 1`,
+    [projectId],
+  );
+  return ownerRow && typeof ownerRow.accountName === "string" ? ownerRow.accountName : null;
+}
+
+/**
  * Leser de autoritative connection-tabellene og bygger en klient-vennlig
  * liste over koblede plattformer for et prosjekt. Produsenten finnes via
  * casting_projects.created_by (prosjekteier / lead-produsent).
@@ -136,13 +153,7 @@ export async function loadConnectedPlatforms(
   now: Date = new Date(),
 ): Promise<ConnectedPlatform[]> {
   // Produsentens bruker-ID (de fleste connection-tabellene er bruker-scopet).
-  const ownerRow = await safeQueryFirst(
-    pool,
-    `SELECT created_by AS "accountName" FROM casting_projects WHERE id = $1 LIMIT 1`,
-    [projectId],
-  );
-  const producerUserId =
-    ownerRow && typeof ownerRow.accountName === "string" ? ownerRow.accountName : null;
+  const producerUserId = await getProjectProducerUserId(pool, projectId);
 
   // LinkedIn — bruker-scopet, unik på user_id.
   const linkedin = producerUserId

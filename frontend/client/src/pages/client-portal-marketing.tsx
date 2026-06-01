@@ -20,6 +20,7 @@ import PostVideoPreview from '@/components/role-room/components/PostVideoPreview
 import {
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
   Container,
@@ -520,9 +521,46 @@ const PLATFORM_STATUS_META: Record<
  * produsenten tilgang til å publisere på, og status på hver kobling. Henter
  * fra det autoritative connection-endepunktet — aldri tokens, kun status.
  */
+// Plattformer der klienten selv kan starte OAuth fra portalen. Meta dekker
+// både Instagram og Facebook (samme tilkobling). LinkedIn/Google kobles
+// fortsatt produsent-side i dag.
+const CLIENT_CONNECTABLE: Record<string, { endpoint: string; method: 'GET' | 'POST'; label: string }> = {
+  instagram: { endpoint: 'instagram', method: 'GET', label: 'Koble til Instagram' },
+  facebook: { endpoint: 'instagram', method: 'GET', label: 'Koble til (Meta)' },
+  tiktok: { endpoint: 'tiktok', method: 'POST', label: 'Koble til TikTok' },
+};
+
 function ConnectedPlatformsCard({ token }: { token: string }) {
   const [platforms, setPlatforms] = useState<ConnectedPlatform[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  const handleConnect = async (platform: string) => {
+    const cfg = CLIENT_CONNECTABLE[platform];
+    if (!cfg) return;
+    setConnecting(platform);
+    setConnectError(null);
+    try {
+      const res = await fetch(
+        `/api/client/portal/oauth/${cfg.endpoint}/start?token=${encodeURIComponent(token)}`,
+        { method: cfg.method },
+      );
+      const json = await res.json();
+      const url = json?.url || json?.authorizationUrl;
+      if (json?.success && typeof url === 'string') {
+        // Send klienten til plattformens consent-skjerm. Etter godkjenning
+        // lander koblingen via den delte callbacken og vises her ved retur.
+        window.location.href = url;
+        return;
+      }
+      setConnectError(json?.error || 'Kunne ikke starte tilkobling akkurat nå.');
+    } catch {
+      setConnectError('Kunne ikke starte tilkobling akkurat nå.');
+    } finally {
+      setConnecting(null);
+    }
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -560,7 +598,35 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
 
   const list = platforms ?? [];
   const active = list.filter((p) => p.status !== 'not_connected');
-  const missing = list.filter((p) => p.status === 'not_connected');
+  // Facebook avledes av Meta-koblingen (samme som Instagram) — vi viser den
+  // ikke som en egen «koble til», Instagram-knappen dekker Meta.
+  const notConnected = list.filter((p) => p.status === 'not_connected' && p.platform !== 'facebook');
+  const connectable = notConnected.filter((p) => CLIENT_CONNECTABLE[p.platform]);
+  const producerOnly = notConnected.filter((p) => !CLIENT_CONNECTABLE[p.platform]);
+
+  const connectButton = (platform: string, variant: 'primary' | 'small') => {
+    const cfg = CLIENT_CONNECTABLE[platform];
+    if (!cfg) return null;
+    return (
+      <Button
+        size="small"
+        variant={variant === 'primary' ? 'contained' : 'outlined'}
+        disabled={connecting !== null}
+        onClick={() => void handleConnect(platform)}
+        sx={{
+          flexShrink: 0,
+          textTransform: 'none',
+          fontWeight: 700,
+          fontSize: '0.74rem',
+          ...(variant === 'primary'
+            ? { bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }
+            : { color: '#c4b5fd', borderColor: 'rgba(167,139,250,0.5)' }),
+        }}
+      >
+        {connecting === platform ? 'Åpner…' : variant === 'primary' ? cfg.label : 'Koble på nytt'}
+      </Button>
+    );
+  };
 
   return (
     <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
@@ -568,20 +634,27 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
         Koblede kontoer
       </Typography>
       <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.8rem', mb: 1.6 }}>
-        Plattformene du har gitt produsenten tilgang til å publisere på.
+        Plattformene du har gitt produsenten tilgang til å publisere på. Du kan
+        koble dem til selv her.
       </Typography>
 
-      {active.length === 0 ? (
+      {connectError ? (
+        <Alert severity="error" sx={{ mb: 1.4, fontSize: '0.82rem' }} onClose={() => setConnectError(null)}>
+          {connectError}
+        </Alert>
+      ) : null}
+
+      {active.length === 0 && connectable.length === 0 ? (
         <Box sx={{ p: 1.6, borderRadius: 2, bgcolor: 'rgba(148,163,184,0.08)', border: '1px dashed rgba(148,163,184,0.25)' }}>
           <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.86rem' }}>
-            Ingen kontoer er koblet på ennå. Produsenten kobler kontoene dine når
-            dere er klare til å publisere.
+            Ingen kontoer er koblet på ennå.
           </Typography>
         </Box>
       ) : (
         <Stack spacing={0.9}>
           {active.map((p) => {
             const meta = PLATFORM_STATUS_META[p.status];
+            const needsReconnect = p.status !== 'connected' && !!CLIENT_CONNECTABLE[p.platform] && p.platform !== 'facebook';
             return (
               <Box
                 key={p.platform}
@@ -606,20 +679,49 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
                     </Typography>
                   ) : null}
                 </Box>
-                <Chip
-                  size="small"
-                  label={meta.label}
-                  sx={{ bgcolor: `${meta.color}1f`, color: meta.color, fontWeight: 700, fontSize: '0.7rem', flexShrink: 0 }}
-                />
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexShrink: 0 }}>
+                  <Chip
+                    size="small"
+                    label={meta.label}
+                    sx={{ bgcolor: `${meta.color}1f`, color: meta.color, fontWeight: 700, fontSize: '0.7rem' }}
+                  />
+                  {needsReconnect ? connectButton(p.platform, 'small') : null}
+                </Stack>
               </Box>
             );
           })}
+
+          {connectable.map((p) => (
+            <Box
+              key={p.platform}
+              sx={{
+                p: 1.2,
+                borderRadius: 2,
+                bgcolor: 'rgba(124,58,237,0.06)',
+                border: '1px dashed rgba(167,139,250,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>
+                  {PLATFORM_DISPLAY[p.platform] ?? p.label}
+                </Typography>
+                <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem' }}>
+                  Ikke tilkoblet ennå
+                </Typography>
+              </Box>
+              {connectButton(p.platform, 'primary')}
+            </Box>
+          ))}
         </Stack>
       )}
 
-      {missing.length > 0 ? (
+      {producerOnly.length > 0 ? (
         <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.76rem', mt: 1.4 }}>
-          Ikke tilkoblet ennå: {missing.map((p) => PLATFORM_DISPLAY[p.platform] ?? p.label).join(', ')}
+          Kobles av produsenten: {producerOnly.map((p) => PLATFORM_DISPLAY[p.platform] ?? p.label).join(', ')}
         </Typography>
       ) : null}
     </Box>

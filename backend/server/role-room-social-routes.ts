@@ -52,6 +52,8 @@ import { listManagedCompaniesForUser } from "./social-publisher-linkedin.js";
 import { listYouTubeChannels } from "./social-publisher-youtube.js";
 import { generateYouTubeChannelPlan } from "./social-publisher-youtube-channel-plan.js";
 import { getTikTokConnectionSummary } from "./social-publisher-tiktok.js";
+import { resolveClientPortalSession } from "./role-room-client-portal.js";
+import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
 import {
   startTikTokOauth,
   completeTikTokOauthCallback,
@@ -247,6 +249,43 @@ export function setupRoleRoomSocialRoutes(
       return res.json({ success: true, authorizationUrl: result.authorizationUrl });
     } catch (error) {
       console.error("[tiktok-oauth-start] failed", error);
+      return res
+        .status(500)
+        .json({ success: false, error: (error as Error).message || "Kunne ikke starte TikTok OAuth." });
+    }
+  });
+
+  // Klient-initiert TikTok-kobling fra portalen. Samme prinsipp som
+  // Instagram: produsentens userId + prosjektet bindes inn i state, den
+  // delte callbacken lagrer koblingen. Klienten gir consent med egen konto.
+  app.post("/api/client/portal/oauth/tiktok/start", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ success: false, error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ success: false, error: "invalid_or_expired_token" });
+    const config = getTikTokConfig();
+    if (!config.configured) {
+      return res
+        .status(400)
+        .json({ success: false, error: "TikTok ikke konfigurert", missing: config.missing });
+    }
+    const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+    if (!producerUserId) {
+      return res.status(409).json({
+        success: false,
+        error: "Prosjektet mangler en produsent å koble kontoen til.",
+      });
+    }
+    try {
+      const result = startTikTokOauth({
+        userId: producerUserId,
+        projectId: session.projectId,
+        returnPath: null,
+        browserOrigin: typeof req.body?.browserOrigin === "string" ? req.body.browserOrigin : null,
+      });
+      return res.json({ success: true, authorizationUrl: result.authorizationUrl });
+    } catch (error) {
+      console.error("[tiktok-oauth-start-client] failed", error);
       return res
         .status(500)
         .json({ success: false, error: (error as Error).message || "Kunne ikke starte TikTok OAuth." });
