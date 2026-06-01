@@ -70,6 +70,7 @@ import {
   type ShowcaseTerminology,
 } from '@/utils/showcaseTerminology';
 import { useCmsContent } from '@/hooks/useCmsContent';
+import AttachUploadsDialog from './AttachUploadsDialog';
 
 interface GallerySettings {
   maxSelections?: number;
@@ -173,6 +174,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   const [settingsOpenFor, setSettingsOpenFor] = useState<PhotographerGallery | null>(null);
   const [eventsOpenFor, setEventsOpenFor] = useState<PhotographerGallery | null>(null);
   const [feedbackOpenFor, setFeedbackOpenFor] = useState<PhotographerGallery | null>(null);
+  const [attachUploadsOpenFor, setAttachUploadsOpenFor] = useState<PhotographerGallery | null>(null);
   // Slice 9X.85 — live broadcast: ny klient-kommentar / utvalg-submit dukker
   // opp som toast med klikkbar handling. Stine slipper å refresh-e.
   const [liveToast, setLiveToast] = useState<{
@@ -305,6 +307,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
               onSettings={() => setSettingsOpenFor(g)}
               onEvents={() => setEventsOpenFor(g)}
               onFeedback={() => setFeedbackOpenFor(g)}
+              onAttachUploads={() => setAttachUploadsOpenFor(g)}
             />
           </Grid>
         ))}
@@ -384,6 +387,22 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
           onClose={() => setFeedbackOpenFor(null)}
         />
       )}
+      {attachUploadsOpenFor && (
+        <AttachUploadsDialog
+          open
+          galleryId={attachUploadsOpenFor.id}
+          galleryTitle={
+            attachUploadsOpenFor.projectTitle ?? attachUploadsOpenFor.clientName
+          }
+          onClose={() => setAttachUploadsOpenFor(null)}
+          onSuccess={() => {
+            // Re-fetch galleries så imageCount oppdateres på kortet
+            queryClient.invalidateQueries({
+              queryKey: ['/api/photographer/galleries'],
+            });
+          }}
+        />
+      )}
 
       <Snackbar
         open={Boolean(liveToast)}
@@ -426,7 +445,8 @@ const GalleryCard: React.FC<{
   onSettings: () => void;
   onEvents: () => void;
   onFeedback: () => void;
-}> = ({ gallery, terms, onSettings, onEvents, onFeedback }) => {
+  onAttachUploads: () => void;
+}> = ({ gallery, terms, onSettings, onEvents, onFeedback, onAttachUploads }) => {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const totalEvents =
@@ -586,6 +606,16 @@ const GalleryCard: React.FC<{
             Hendelser ({totalEvents})
           </Button>
         </Stack>
+        <Button
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={onAttachUploads}
+          fullWidth
+          variant="outlined"
+          sx={{ mt: 1 }}
+        >
+          Legg til fra opplastinger
+        </Button>
         <Button
           size="small"
           startIcon={<CommentIcon />}

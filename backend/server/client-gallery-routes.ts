@@ -420,7 +420,111 @@ export function setupClientGalleryRoutes(
     },
   );
 
-  // POST /api/client/gallery/:galleryId/attach-uploads
+  // GET /api/photographer/chunked-uploads
+  // Lister innlogget fotografs ferdig-opplastede filer slik at frontend
+  // kan vise en picker for å legge dem til i et galleri.
+  //
+  // Query params:
+  //   ?search=substring     (matcher mot file_name, case-insensitive)
+  //   ?mimePrefix=image/    (filter på MIME, eks "image/" eller "video/")
+  //   ?encryptedOnly=true   (kun encryptedAtRest=true filer)
+  //   ?cursor=ISO_TIMESTAMP (paginering — created_at < cursor)
+  //   ?limit=N              (1–200, default 50)
+  app.get("/api/photographer/chunked-uploads", async (req, res) => {
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "not_authenticated" });
+    }
+    const search =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const mimePrefix =
+      typeof req.query.mimePrefix === "string"
+        ? req.query.mimePrefix.trim()
+        : "";
+    const encryptedOnly = req.query.encryptedOnly === "true";
+    const cursor =
+      typeof req.query.cursor === "string" && req.query.cursor.trim()
+        ? req.query.cursor.trim()
+        : null;
+    const limit = Math.min(
+      200,
+      Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
+    );
+
+    const where: string[] = [
+      "user_id = $1",
+      "status = 'completed'",
+      "final_file_id IS NOT NULL",
+    ];
+    const params: any[] = [session.userId];
+    let i = 2;
+    if (search) {
+      where.push(`file_name ILIKE $${i++}`);
+      params.push(`%${search}%`);
+    }
+    if (mimePrefix) {
+      where.push(`mime_type LIKE $${i++}`);
+      params.push(`${mimePrefix}%`);
+    }
+    if (encryptedOnly) {
+      where.push(`(metadata->>'encryptedAtRest')::boolean = true`);
+    }
+    if (cursor) {
+      where.push(`created_at < $${i++}`);
+      params.push(cursor);
+    }
+
+    try {
+      const r = await pool.query<{
+        final_file_id: string;
+        file_name: string;
+        mime_type: string | null;
+        file_size: string | number | null;
+        created_at: string;
+        metadata: Record<string, unknown> | null;
+      }>(
+        `SELECT final_file_id, file_name, mime_type, file_size, created_at, metadata
+           FROM chunked_uploads
+          WHERE ${where.join(" AND ")}
+          ORDER BY created_at DESC
+          LIMIT ${limit}`,
+        params,
+      );
+
+      const rows = r.rows.map((row) => {
+        const md = row.metadata || {};
+        return {
+          fileId: row.final_file_id,
+          fileName: row.file_name,
+          mimeType: row.mime_type,
+          size: Number(row.file_size ?? 0),
+          createdAt: row.created_at,
+          encryptedAtRest: md.encryptedAtRest === true,
+          storageBackend: md.storageBackend ?? null,
+          isVideo:
+            (row.mime_type ?? "").startsWith("video/") ||
+            md.storageBackend === "cloudflare_stream",
+        };
+      });
+
+      const nextCursor =
+        rows.length === limit ? rows[rows.length - 1].createdAt : null;
+
+      res.json({
+        success: true,
+        files: rows,
+        nextCursor,
+      });
+    } catch (err: any) {
+      console.error("[photographer-chunked-uploads] list failed", err);
+      res.status(500).json({
+        error: "list_failed",
+        message: String(err?.message || err).slice(0, 200),
+      });
+    }
+  });
+
+  // POST /api/photographer/galleries/:galleryId/attach-uploads
   // Owner-endepunkt: koble chunked_uploads (krypterte eller ikke) inn
   // som client_gallery_images. Brukes når fotograf vil legge til
   // krypterte filer i et eksisterende galleri uten å gå via
@@ -429,7 +533,7 @@ export function setupClientGalleryRoutes(
   // Body: { fileIds: string[], titles?: string[] }
   // Returnerer { added: number, skipped: number, imageIds: string[] }
   app.post(
-    "/api/client/gallery/:galleryId/attach-uploads",
+    "/api/photographer/galleries/:galleryId/attach-uploads",
     async (req, res) => {
       const session = getActiveSessionFromRequest(req);
       if (!session?.userId) {
