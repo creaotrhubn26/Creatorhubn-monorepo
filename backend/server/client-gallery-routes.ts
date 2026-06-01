@@ -205,7 +205,9 @@ export function setupClientGalleryRoutes(
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
         });
       }
-      const images = await listClientGalleryImages(db, access.gallery.id);
+      const images = await listClientGalleryImages(db, access.gallery.id, {
+        accessToken,
+      });
       return res.json({
         galleryId: access.gallery.id,
         images,
@@ -218,6 +220,330 @@ export function setupClientGalleryRoutes(
       return res.status(500).json({ error: "gallery_images_failed" });
     }
   });
+
+  // GET /api/client/gallery/:accessToken/files/:imageId/download
+  // Token-gated decrypt-proxy for chunked-upload-bilder. Validerer
+  // accessToken via samme gate som /images, slår opp imageId mot
+  // client_gallery_images + chunked_uploads, og piper plaintext til
+  // klienten. Stream-videoer kan ikke serveres her (Cloudflare må
+  // kunne lese for transcoding) — returnerer 409 i så fall.
+  app.get(
+    "/api/client/gallery/:accessToken/files/:imageId/download",
+    async (req, res) => {
+      const accessToken = String(req.params.accessToken || "").trim();
+      const imageId = String(req.params.imageId || "").trim();
+      if (!accessToken || !imageId) {
+        return res.status(400).json({ error: "missing_params" });
+      }
+
+      try {
+        const access = await gateGalleryAccess(
+          accessToken,
+          readGalleryPasswordHeader(req),
+        );
+        if (!access.ok) {
+          return res.status(access.status).json({
+            error: access.error,
+            ...(access.requiresPassword ? { requiresPassword: true } : {}),
+          });
+        }
+
+        // Slå opp galleri-bildet for å finne chunkedUploadId
+        const imgRes = await pool.query(
+          `SELECT id, gallery_id, image_metadata, photographer_id
+             FROM client_gallery_images
+            WHERE id = $1 AND gallery_id = $2 AND is_visible = TRUE`,
+          [imageId, access.gallery.id],
+        );
+        if ((imgRes.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "image_not_found" });
+        }
+        const imgRow = imgRes.rows[0];
+        const md =
+          imgRow.image_metadata && typeof imgRow.image_metadata === "object"
+            ? imgRow.image_metadata
+            : {};
+        const chunkedUploadId =
+          typeof md.chunkedUploadId === "string" ? md.chunkedUploadId : null;
+        if (!chunkedUploadId) {
+          return res.status(404).json({
+            error: "no_chunked_upload",
+            message:
+              "Dette bildet er ikke en chunked-upload (har ingen chunkedUploadId).",
+          });
+        }
+
+        // Slå opp chunked_uploads med eier-sjekk mot fotografens user_id.
+        // Defense-in-depth: selv om accessToken validerte, sikrer vi at
+        // fila tilhører galleriets eier.
+        const chunkedRes = await pool.query(
+          `SELECT user_id, file_name, mime_type, final_file_path, metadata, file_size
+             FROM chunked_uploads
+            WHERE final_file_id = $1 AND status = 'completed'`,
+          [chunkedUploadId],
+        );
+        if ((chunkedRes.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "file_not_found" });
+        }
+        const chunkedRow = chunkedRes.rows[0];
+        if (chunkedRow.user_id !== imgRow.photographer_id) {
+          // Owner-mismatch — sett aldri tilgang. Lagger denne som
+          // mistenkelig fordi det betyr at noen har tuklet med
+          // image_metadata på en eksisterende rad.
+          console.warn(
+            `[client-gallery] owner-mismatch på file ${chunkedUploadId} for image ${imageId}`,
+          );
+          return res.status(403).json({ error: "owner_mismatch" });
+        }
+
+        const metadata =
+          chunkedRow.metadata && typeof chunkedRow.metadata === "object"
+            ? chunkedRow.metadata
+            : {};
+        const backend = metadata.storageBackend as string | undefined;
+        const isEncrypted = metadata.encryptedAtRest === true;
+        const mime = chunkedRow.mime_type || "application/octet-stream";
+
+        if (backend === "cloudflare_stream") {
+          return res.status(409).json({
+            error: "video_in_stream",
+            message:
+              "Videoen ligger i Cloudflare Stream og kan ikke lastes ned som fil. Bruk preview-funksjonen i stedet.",
+          });
+        }
+
+        // Last encryption-helpers dynamisk
+        let dek: Buffer | null = null;
+        let DecryptStream: any = null;
+        let ciphertextSize = 0;
+        if (isEncrypted) {
+          const enc = await import("./file-encryption.js");
+          if (!enc.isEncryptionAvailable()) {
+            return res.status(503).json({
+              error: "encryption_key_missing",
+              message: "Master-KEK mangler — kan ikke dekryptere fila.",
+            });
+          }
+          try {
+            const userKek = enc.deriveUserKek(chunkedRow.user_id);
+            dek = enc.decryptDek(String(metadata.encryptedDek), userKek);
+          } catch (err) {
+            console.error("[client-gallery] DEK decrypt failed", err);
+            return res.status(500).json({ error: "decrypt_failed" });
+          }
+          ciphertextSize = Number(metadata.ciphertextSize ?? 0);
+          if (ciphertextSize <= 0) {
+            return res.status(500).json({ error: "ciphertext_size_missing" });
+          }
+          DecryptStream = enc.DecryptStream;
+        }
+
+        res.setHeader("Content-Type", mime);
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${(chunkedRow.file_name || "fil").replace(/"/g, "")}"`,
+        );
+
+        // R2-pathen
+        if (backend === "r2" && metadata.r2Key) {
+          const { S3Client, GetObjectCommand } = await import(
+            "@aws-sdk/client-s3"
+          );
+          const r2 = new S3Client({
+            region: "auto",
+            endpoint:
+              process.env.GENERIC_UPLOADS_R2_ENDPOINT ||
+              process.env.CLOUDFLARE_R2_ENDPOINT ||
+              process.env.R2_ENDPOINT,
+            credentials: {
+              accessKeyId:
+                process.env.GENERIC_UPLOADS_R2_ACCESS_KEY_ID ||
+                process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
+                process.env.R2_ACCESS_KEY_ID ||
+                "",
+              secretAccessKey:
+                process.env.GENERIC_UPLOADS_R2_SECRET_ACCESS_KEY ||
+                process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+                process.env.R2_SECRET_ACCESS_KEY ||
+                "",
+            },
+          });
+          const bucket =
+            process.env.GENERIC_UPLOADS_R2_BUCKET ||
+            process.env.CLOUDFLARE_R2_BUCKET ||
+            process.env.R2_BUCKET ||
+            "";
+          if (!bucket) {
+            return res.status(503).json({ error: "r2_not_configured" });
+          }
+          const obj = await r2.send(
+            new GetObjectCommand({
+              Bucket: bucket,
+              Key: String(metadata.r2Key),
+            }),
+          );
+          if (!obj.Body) {
+            return res.status(502).json({ error: "r2_empty_body" });
+          }
+          const source = obj.Body as NodeJS.ReadableStream;
+          if (isEncrypted) {
+            const ds = new DecryptStream(dek!, ciphertextSize);
+            source.pipe(ds).pipe(res);
+          } else {
+            source.pipe(res);
+          }
+          return;
+        }
+
+        // Filesystem-pathen
+        const path = await import("path");
+        const os = await import("os");
+        const fsSync = await import("fs");
+        const UPLOAD_ROOT =
+          process.env.CHUNKED_UPLOAD_DIR ||
+          path.join(os.tmpdir(), "creatorhub-chunked-uploads");
+        const fullPath = path.join(UPLOAD_ROOT, chunkedRow.final_file_path);
+        if (!fullPath.startsWith(UPLOAD_ROOT)) {
+          return res.status(403).json({ error: "path_traversal_blocked" });
+        }
+        const readStream = fsSync.createReadStream(fullPath);
+        if (isEncrypted) {
+          const ds = new DecryptStream(dek!, ciphertextSize);
+          readStream.pipe(ds).pipe(res);
+        } else {
+          readStream.pipe(res);
+        }
+      } catch (err: any) {
+        console.error("[client-gallery] download failed:", err);
+        return res.status(500).json({ error: "download_failed" });
+      }
+    },
+  );
+
+  // POST /api/client/gallery/:galleryId/attach-uploads
+  // Owner-endepunkt: koble chunked_uploads (krypterte eller ikke) inn
+  // som client_gallery_images. Brukes når fotograf vil legge til
+  // krypterte filer i et eksisterende galleri uten å gå via
+  // photo-delivery-service eller capture-bridge.
+  //
+  // Body: { fileIds: string[], titles?: string[] }
+  // Returnerer { added: number, skipped: number, imageIds: string[] }
+  app.post(
+    "/api/client/gallery/:galleryId/attach-uploads",
+    async (req, res) => {
+      const session = getActiveSessionFromRequest(req);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "not_authenticated" });
+      }
+      const { galleryId } = req.params;
+      const fileIds: string[] = Array.isArray(req.body?.fileIds)
+        ? req.body.fileIds.filter((s: any) => typeof s === "string")
+        : [];
+      const titles: string[] | null = Array.isArray(req.body?.titles)
+        ? req.body.titles
+        : null;
+      if (fileIds.length === 0) {
+        return res.status(400).json({
+          error: "missing_file_ids",
+          message: "fileIds må være en array med minst én chunked_upload final_file_id.",
+        });
+      }
+      if (fileIds.length > 5000) {
+        return res
+          .status(400)
+          .json({ error: "too_many_files", message: "Max 5000 filer per kall." });
+      }
+
+      try {
+        // 1. Verifiser at galleriet tilhører innlogget bruker
+        const galleryRes = await pool.query(
+          `SELECT id, photographer_id
+             FROM photographer_client_galleries
+            WHERE id = $1`,
+          [galleryId],
+        );
+        if ((galleryRes.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "gallery_not_found" });
+        }
+        if (galleryRes.rows[0].photographer_id !== session.userId) {
+          return res.status(403).json({ error: "not_gallery_owner" });
+        }
+
+        // 2. Verifiser eierskap på alle filene
+        const owned = await pool.query<{
+          final_file_id: string;
+          file_name: string;
+        }>(
+          `SELECT final_file_id, file_name
+             FROM chunked_uploads
+            WHERE final_file_id = ANY($1::text[])
+              AND user_id = $2
+              AND status = 'completed'`,
+          [fileIds, session.userId],
+        );
+        const ownedMap = new Map(owned.rows.map((r) => [r.final_file_id, r]));
+        const missing = fileIds.filter((id) => !ownedMap.has(id));
+        if (missing.length > 0) {
+          return res.status(403).json({
+            error: "file_not_owned",
+            message: `Du eier ikke ${missing.length} av filene.`,
+            missing,
+          });
+        }
+
+        // 3. Insert client_gallery_images-rader
+        const inserted: string[] = [];
+        const skipped: string[] = [];
+        for (let i = 0; i < fileIds.length; i++) {
+          const fileId = fileIds[i];
+          const fileRow = ownedMap.get(fileId)!;
+          const title =
+            titles && typeof titles[i] === "string" && titles[i].trim()
+              ? titles[i]
+              : fileRow.file_name;
+          try {
+            const ins = await pool.query<{ id: string }>(
+              `INSERT INTO client_gallery_images
+                 (gallery_id, photographer_id, image_title, image_description,
+                  thumbnail_url, full_size_url, image_metadata, sort_order,
+                  is_visible)
+               VALUES ($1, $2, $3, NULL, '', '',
+                       jsonb_build_object(
+                         'chunkedUploadId', $4::text,
+                         'encryptedAtRest', TRUE,
+                         'attachedBy', $2,
+                         'attachedAt', now()::text
+                       ),
+                       $5, TRUE)
+               RETURNING id`,
+              [galleryId, session.userId, title, fileId, i],
+            );
+            inserted.push(ins.rows[0].id);
+          } catch (err) {
+            console.warn(
+              `[client-gallery] insert failed for ${fileId}:`,
+              err,
+            );
+            skipped.push(fileId);
+          }
+        }
+
+        res.json({
+          success: true,
+          added: inserted.length,
+          skipped: skipped.length,
+          imageIds: inserted,
+          skippedFileIds: skipped,
+        });
+      } catch (err: any) {
+        console.error("[client-gallery] attach-uploads failed", err);
+        res.status(500).json({
+          error: "attach_failed",
+          message: String(err?.message || err).slice(0, 200),
+        });
+      }
+    },
+  );
 
   // ── Client-facing interactions ─────────────────────────────────────────
   // The gallery viewer (frontend/client/src/pages/client-gallery.tsx) has
