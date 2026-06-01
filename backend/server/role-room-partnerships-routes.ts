@@ -931,7 +931,9 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   });
 
   // ── GET /invitations/incoming ────────────────────────────────────
-  // Bryå ser alle prosjekt-invitasjoner som er pending for dem.
+  // Bryå ser prosjekt-invitasjoner.
+  // ?status=pending|accepted|pending,accepted (default: 'pending,accepted'
+  //  så byrå-admin også ser akseptede prosjekter for å foreslå talenter).
   app.get("/api/role-room/partnerships/invitations/incoming", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -939,6 +941,13 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
     if (!ctx.agencyOrgId) {
       return res.json({ invitations: [] });
     }
+    const statusParam = (req.query.status as string) || "pending,accepted";
+    const allowedStatus = new Set(["pending", "accepted", "declined", "completed", "revoked", "expired"]);
+    const wantedStatuses = statusParam
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => allowedStatus.has(s));
+    if (wantedStatuses.length === 0) wantedStatuses.push("pending");
     try {
       const r = await pool.query(
         `SELECT i.*, p.production_user_id, u.first_name || ' ' || u.last_name AS production_name,
@@ -948,10 +957,10 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
            JOIN users u ON u.id = p.production_user_id
            JOIN casting_projects proj ON proj.id = i.casting_project_id
           WHERE p.agency_org_id = $1::uuid
-            AND i.status = 'pending'
+            AND i.status = ANY($2::text[])
             AND p.status = 'accepted'
           ORDER BY i.invited_at DESC`,
-        [ctx.agencyOrgId],
+        [ctx.agencyOrgId, wantedStatuses],
       );
       return res.json({ invitations: r.rows });
     } catch (err) {

@@ -270,8 +270,8 @@ export function respondToProjectInvitation(invId: string, accept: boolean): Prom
   return api(`/invitations/${invId}/respond`, { method: 'POST', body: JSON.stringify({ accept }) });
 }
 
-export function incomingInvitations(): Promise<{ invitations: ProjectInvitation[] }> {
-  return api('/invitations/incoming');
+export function incomingInvitations(status?: string): Promise<{ invitations: ProjectInvitation[] }> {
+  return api('/invitations/incoming', { method: 'GET', params: { status } });
 }
 
 // ── Discoverable agencies (for produksjon-perspektivet) ────────────
