@@ -289,7 +289,7 @@ pub fn run() {
         .manage(Arc::new(CopySessionState::default()))
         .manage(Arc::new(IpadPairingState::default()))
         .manage(Arc::new(CaptureSubscriberState::default()))
-        .manage(Arc::new(MirrorState::default()))
+        .manage(Arc::new(MirrorState::new_loaded()))
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(err) = mount_watcher::spawn_watcher(handle.clone()) {
