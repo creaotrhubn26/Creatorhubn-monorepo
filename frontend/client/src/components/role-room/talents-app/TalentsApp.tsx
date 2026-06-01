@@ -23,6 +23,7 @@ import AuditPage from './pages/AuditPage';
 import SettingsPage from './pages/SettingsPage';
 import TalentRegistryPage from './pages/TalentRegistryPage';
 import TalentProposalAcceptPage from './pages/TalentProposalAcceptPage';
+import AgencyPartnershipsPage from './pages/AgencyPartnershipsPage';
 import { palette } from './theme';
 
 const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
@@ -43,6 +44,8 @@ const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
   'permissions': 'audit',  // legacy alias → audit
   'settings': 'settings',
   'innstillinger': 'settings',
+  'partnerships': 'partnerships',
+  'samarbeid': 'partnerships',
 };
 
 const PAGE_TO_ROUTE: Record<TalentsAppPage, string> = {
@@ -55,6 +58,7 @@ const PAGE_TO_ROUTE: Record<TalentsAppPage, string> = {
   audit: 'audit',
   permissions: 'audit',
   settings: 'settings',
+  partnerships: 'partnerships',
 };
 
 /** Parse /talents/<segment> til en TalentsAppPage. */
@@ -131,6 +135,8 @@ export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
         <AuditPage demoMode={demoMode} />
       ) : page === 'settings' ? (
         <SettingsPage />
+      ) : page === 'partnerships' ? (
+        <AgencyPartnershipsPage />
       ) : (
         <ComingSoonPage page={page} />
       )}
@@ -149,6 +155,7 @@ function ComingSoonPage({ page }: { page: TalentsAppPage }) {
     audit: 'Hvem har sett meg?',
     permissions: 'Tilganger',
     settings: 'Innstillinger',
+    partnerships: 'Partnerships',
   };
   const descriptions: Partial<Record<TalentsAppPage, string>> = {
     registry: 'Bla i andre talenter og bygg ditt nettverk. Kommer i Phase 4.',
