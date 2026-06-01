@@ -18,6 +18,7 @@ import CheckCircle from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 import {
   cancelCopySession,
+  CopyDestDisabledEvent,
   CopyFileCompletedEvent,
   CopyFileProgressEvent,
   CopyFileStartedEvent,
@@ -39,10 +40,21 @@ interface FileState {
   totalDests: number;
 }
 
+interface DisabledDestInfo {
+  dest_id: string;
+  dest_label: string;
+  reason_code: string;
+  reason_message: string;
+}
+
 export default function CopyProgressView() {
   const [sessions, setSessions] = useState<SessionStatus[]>([]);
   const [currentFiles, setCurrentFiles] = useState<Record<string, FileState>>({});
   const [recentErrors, setRecentErrors] = useState<string[]>([]);
+  // Per-session liste over destinasjoner som ble deaktivert pga
+  // vedvarende feil. Nullstilles ikke automatisk — Fredrik kan se hva
+  // som skjedde selv etter sesjonen er ferdig.
+  const [disabledDests, setDisabledDests] = useState<Record<string, DisabledDestInfo[]>>({});
 
   useEffect(() => {
     void listCopySessions().then(setSessions).catch(() => {});
@@ -124,6 +136,34 @@ export default function CopyProgressView() {
       void listCopySessions().then(setSessions);
     }).then((un) => unlisteners.push(un));
 
+    listen<CopyDestDisabledEvent>("copy-dest-disabled", (e) => {
+      setDisabledDests((prev) => {
+        const existing = prev[e.payload.session_id] ?? [];
+        // Idempotent — backend emit'er bare én gang per (session, dest)
+        // men dobbelt-sikring her i tilfelle reconnect/replay.
+        if (existing.some((d) => d.dest_id === e.payload.dest_id)) return prev;
+        return {
+          ...prev,
+          [e.payload.session_id]: [
+            ...existing,
+            {
+              dest_id: e.payload.dest_id,
+              dest_label: e.payload.dest_label,
+              reason_code: e.payload.reason_code,
+              reason_message: e.payload.reason_message,
+            },
+          ],
+        };
+      });
+      // Også vis i recentErrors så det er synlig fra log-strømmen
+      setRecentErrors((prev) =>
+        [
+          `[${e.payload.dest_label}] DEAKTIVERT for resten av sesjonen: ${e.payload.reason_message}`,
+          ...prev,
+        ].slice(0, 10),
+      );
+    }).then((un) => unlisteners.push(un));
+
     return () => {
       for (const un of unlisteners) un();
     };
@@ -178,6 +218,20 @@ export default function CopyProgressView() {
               <Typography variant="caption" color="text.secondary">
                 {s.succeeded} ✓ · {s.failed} ✗ · {bytesToHumanGb(s.total_bytes)} totalt
               </Typography>
+              {/* Per-dest-recovery: vis hvilke destinasjoner som ble
+                  deaktivert pga vedvarende feil. Andre destinasjoner
+                  fortsetter — sesjonen er IKKE død bare fordi én disk
+                  ble full. */}
+              {(disabledDests[s.session_id] ?? []).map((d) => (
+                <Chip
+                  key={d.dest_id}
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label={`${d.dest_label} — ${d.reason_code === "DEST_NO_SPACE" ? "full" : "ingen tilgang"}`}
+                  sx={{ mt: 0.5, mr: 0.5 }}
+                />
+              ))}
             </Box>
           );
         })}

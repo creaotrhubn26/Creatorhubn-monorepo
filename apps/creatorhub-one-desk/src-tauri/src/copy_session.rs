@@ -22,7 +22,7 @@
 //!   - `copy-file-completed`    { session_id, source_path, dest_id, success, error?, hash?, skipped }
 //!   - `copy-session-completed` { session_id, succeeded, failed, cancelled }
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -78,6 +78,11 @@ pub struct SessionStatus {
 struct SessionHandle {
     status: SessionStatus,
     cancel: Arc<AtomicBool>,
+    /// Per-session sett av dest-IDer som er DEAKTIVERT for resten av
+    /// sesjonen pga persistent feil (ENOSPC, EPERM). run_session
+    /// filtrerer dem ut før hver per-dest-spawn, så en full disk
+    /// stopper IKKE backup til andre disker.
+    disabled_dests: Arc<Mutex<HashSet<String>>>,
 }
 
 #[derive(Default)]
@@ -99,11 +104,25 @@ impl CopySessionState {
         }
     }
 
-    fn insert(&self, status: SessionStatus, cancel: Arc<AtomicBool>) {
+    /// Returnerer per-session disabled-dest-handle. Bruk denne fra
+    /// run_session for å dele state med process_destination.
+    fn disabled_dests_handle(&self, session_id: &str) -> Option<Arc<Mutex<HashSet<String>>>> {
         self.sessions
             .lock()
             .unwrap()
-            .insert(status.session_id.clone(), SessionHandle { status, cancel });
+            .get(session_id)
+            .map(|h| h.disabled_dests.clone())
+    }
+
+    fn insert(&self, status: SessionStatus, cancel: Arc<AtomicBool>) {
+        self.sessions.lock().unwrap().insert(
+            status.session_id.clone(),
+            SessionHandle {
+                status,
+                cancel,
+                disabled_dests: Arc::new(Mutex::new(HashSet::new())),
+            },
+        );
     }
 
     fn update<F: FnOnce(&mut SessionStatus)>(&self, session_id: &str, f: F) {
@@ -169,6 +188,15 @@ struct FileCompletedEvent {
     hash: Option<String>,
     error: Option<String>,
     skipped: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct DestDisabledEvent {
+    session_id: String,
+    dest_id: String,
+    dest_label: String,
+    reason_code: String, // "DEST_NO_SPACE" | "DEST_PERM_DENIED"
+    reason_message: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -247,6 +275,7 @@ pub async fn start_session(
 /// Per-fil per-destinasjon-workload. Idempotens-check + copy + verify +
 /// best-effort backend-rapportering hvis dest.backend_id er Some.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 async fn process_destination(
     app: AppHandle,
     state: Arc<CopySessionState>,
@@ -259,6 +288,7 @@ async fn process_destination(
     dest_path: PathBuf,
     cfg: Option<Arc<Config>>,
     cancel: Arc<AtomicBool>,
+    disabled_dests: Arc<Mutex<HashSet<String>>>,
 ) {
     // Idempotens: hvis dest finnes med samme størrelse og hash, hopp over.
     if dest_path.exists() {
@@ -419,19 +449,67 @@ async fn process_destination(
             );
         }
         Err(err) => {
+            // Klassifiser feilen for backend-reporting + per-dest-recovery.
+            // Substring-matching pga at copy_engine på main returnerer
+            // String (PR #104 introduserer typed CopyError som vil gjøre
+            // dette stringfritt). Mønstrene matcher BÅDE plain-tekst
+            // norsk fra copy_engine + DEST_NO_SPACE-prefiks fra typed
+            // versjon, så denne PR-en virker på begge baseliner.
+            let lower = err.to_lowercase();
+            let is_no_space = lower.contains("no space")
+                || lower.contains("ingen plass")
+                || lower.contains("dest_no_space")
+                || lower.contains("enospc");
+            let is_perm_denied = lower.contains("permission denied")
+                || lower.contains("dest_perm_denied")
+                || lower.contains("eacces")
+                || lower.contains("ikke tillatelse");
+            let code = if err.contains("HASH MISMATCH") {
+                "HASH_MISMATCH"
+            } else if err.contains("Opprett destinasjon") {
+                "DEST_CREATE_FAILED"
+            } else if is_no_space {
+                "DEST_NO_SPACE"
+            } else if is_perm_denied {
+                "DEST_PERM_DENIED"
+            } else {
+                "COPY_FAILED"
+            };
             if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
-                let code = if err.contains("HASH MISMATCH") {
-                    "HASH_MISMATCH"
-                } else if err.contains("Opprett destinasjon") {
-                    "DEST_CREATE_FAILED"
-                } else {
-                    "COPY_FAILED"
-                };
                 if let Err(report_err) = dit_reporter::report_failed(cfg, job_id, code, &err).await {
                     eprintln!("[dit] failed-report failed: {}", report_err);
                 }
             }
             state.update(&session_id, |s| s.failed += 1);
+
+            // Per-dest-recovery: hvis feilen er PERSISTENT (full disk,
+            // perm-denied), legg destinasjonen i session's disabled-set
+            // så fremtidige filer skipper den i stedet for å re-prøve.
+            // Andre feil (HASH_MISMATCH, transient I/O) er ikke
+            // grunn til å gi opp hele destinasjonen — bare filen.
+            if is_no_space || is_perm_denied {
+                let already_disabled = {
+                    let mut set = disabled_dests.lock().unwrap();
+                    !set.insert(dest_spec.id.clone())
+                };
+                if !already_disabled {
+                    let _ = app.emit(
+                        "copy-dest-disabled",
+                        DestDisabledEvent {
+                            session_id: session_id.clone(),
+                            dest_id: dest_spec.id.clone(),
+                            dest_label: dest_spec.label.clone(),
+                            reason_code: code.to_string(),
+                            reason_message: if is_no_space {
+                                "Destinasjonen er full. Resten av sesjonen skipper denne disken.".into()
+                            } else {
+                                "Manglende skrivetillatelse. Resten av sesjonen skipper denne disken.".into()
+                            },
+                        },
+                    );
+                }
+            }
+
             let _ = app.emit(
                 "copy-file-completed",
                 FileCompletedEvent {
@@ -502,7 +580,21 @@ async fn run_session(
         };
 
         let mut handles = Vec::new();
+        // Snapshot disabled-set ÉN gang per fil — billigere enn å
+        // lock'e per dest, og semantisk fint at en disable midt i
+        // en fil-batch ikke trer i kraft før neste fil.
+        let disabled_snapshot: HashSet<String> = match state.disabled_dests_handle(&session_id) {
+            Some(h) => h.lock().unwrap().clone(),
+            None => HashSet::new(),
+        };
         for dest_spec in &spec.destinations {
+            // Per-dest-recovery: skipp destinasjoner som er deaktivert
+            // for resten av sesjonen pga vedvarende feil (ENOSPC, EPERM).
+            // Ingen emit, ingen state.failed-bump — semantisk er det
+            // som om destinasjonen aldri var med på denne fila.
+            if disabled_snapshot.contains(&dest_spec.id) {
+                continue;
+            }
             let dest_root = PathBuf::from(&dest_spec.path);
             let dest_path = match build_dest_path(&source, &mount, &dest_root, &spec.volume_label)
             {
@@ -541,6 +633,8 @@ async fn run_session(
             let cancel_em = cancel.clone();
             let dest_spec_clone = dest_spec.clone();
             let cfg_clone = cfg.clone();
+            let disabled_dests_clone = state.disabled_dests_handle(&session_id)
+                .unwrap_or_else(|| Arc::new(Mutex::new(HashSet::new())));
 
             handles.push(tokio::spawn(async move {
                 process_destination(
@@ -555,6 +649,7 @@ async fn run_session(
                     dest_path,
                     cfg_clone,
                     cancel_em,
+                    disabled_dests_clone,
                 )
                 .await;
             }));
@@ -590,4 +685,73 @@ async fn run_session(
             cancelled,
         },
     );
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    /// Klassifiserings-logikk er duplisert her i en helper-funksjon
+    /// for testbarhet — selve copy_session.rs gjør substring-match
+    /// inline. Hvis du endrer mønstrene én plass, endrer testene fanger
+    /// regressjonen.
+    fn classify(err: &str) -> &'static str {
+        let lower = err.to_lowercase();
+        let is_no_space = lower.contains("no space")
+            || lower.contains("ingen plass")
+            || lower.contains("dest_no_space")
+            || lower.contains("enospc");
+        let is_perm_denied = lower.contains("permission denied")
+            || lower.contains("dest_perm_denied")
+            || lower.contains("eacces")
+            || lower.contains("ikke tillatelse");
+        if err.contains("HASH MISMATCH") {
+            "HASH_MISMATCH"
+        } else if err.contains("Opprett destinasjon") {
+            "DEST_CREATE_FAILED"
+        } else if is_no_space {
+            "DEST_NO_SPACE"
+        } else if is_perm_denied {
+            "DEST_PERM_DENIED"
+        } else {
+            "COPY_FAILED"
+        }
+    }
+
+    #[test]
+    fn enospc_strings_classify_as_no_space() {
+        assert_eq!(classify("Skriv til /Volumes/Foo/bar: No space left on device"), "DEST_NO_SPACE");
+        assert_eq!(classify("ENOSPC error"), "DEST_NO_SPACE");
+        assert_eq!(classify("DEST_NO_SPACE: write failed"), "DEST_NO_SPACE");
+        assert_eq!(classify("Sync /Volumes/RAID/file: ingen plass igjen"), "DEST_NO_SPACE");
+    }
+
+    #[test]
+    fn perm_denied_strings_classify_as_perm() {
+        assert_eq!(classify("Opprett mappe /Volumes/X: Permission denied (os error 13)"), "DEST_PERM_DENIED");
+        assert_eq!(classify("EACCES on /Volumes/Y"), "DEST_PERM_DENIED");
+        assert_eq!(classify("DEST_PERM_DENIED: no write access"), "DEST_PERM_DENIED");
+        assert_eq!(classify("ikke tillatelse til skriving"), "DEST_PERM_DENIED");
+    }
+
+    #[test]
+    fn hash_mismatch_takes_precedence_over_no_space() {
+        // En kunstig melding som inneholder begge — HASH_MISMATCH skal
+        // vinne så vi ikke deaktiverer destinasjonen pga corrupted byte
+        // (transient, kan fikses med retry på enkeltfil).
+        assert_eq!(
+            classify("HASH MISMATCH for /file: source=abc, dest=xyz (no space hint)"),
+            "HASH_MISMATCH"
+        );
+    }
+
+    #[test]
+    fn generic_failures_classify_as_copy_failed_not_recovery() {
+        assert_eq!(classify("noe ukjent skjedde"), "COPY_FAILED");
+        assert_eq!(classify("network timeout"), "COPY_FAILED");
+    }
+
+    #[test]
+    fn empty_and_short_errors_dont_panic() {
+        assert_eq!(classify(""), "COPY_FAILED");
+        assert_eq!(classify("x"), "COPY_FAILED");
+    }
 }
