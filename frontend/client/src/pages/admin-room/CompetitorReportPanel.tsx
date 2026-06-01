@@ -10,7 +10,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Avatar, Box, Button, Card, CardContent, Chip, Stack, Typography, Divider,
+  Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress, IconButton,
+  Menu, MenuItem, Stack, Tooltip, Typography, Divider,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -20,6 +21,11 @@ import GavelIcon from '@mui/icons-material/Gavel';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import RocketLaunchOutlinedIcon from '@mui/icons-material/RocketLaunchOutlined';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import EditNoteIcon from '@mui/icons-material/EditNote';
+import FacebookIcon from '@mui/icons-material/Facebook';
+import InstagramIcon from '@mui/icons-material/Instagram';
+import LinkedInIcon from '@mui/icons-material/LinkedIn';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import { adminTokens, adminSx, statusChipSx } from './styles';
 
 const THEROLERROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
@@ -78,7 +84,90 @@ function SectionLabel({ children, icon }: { children: React.ReactNode; icon?: Re
   );
 }
 
-function InsightCard({ ins }: { ins: Insight }) {
+function ComposeButton({
+  ins, step, reportId,
+}: { ins: Insight; step: string; reportId: number | null }) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
+
+  const platforms: Array<{ id: 'facebook' | 'instagram' | 'linkedin' | 'tiktok'; label: string; icon: React.ReactElement; color: string }> = [
+    { id: 'facebook',  label: 'Facebook',  icon: <FacebookIcon sx={{ fontSize: 16 }} />, color: adminTokens.platforms.facebook },
+    { id: 'instagram', label: 'Instagram', icon: <InstagramIcon sx={{ fontSize: 16 }} />, color: adminTokens.platforms.instagram },
+    { id: 'linkedin',  label: 'LinkedIn',  icon: <LinkedInIcon sx={{ fontSize: 16 }} />, color: adminTokens.platforms.linkedin },
+    { id: 'tiktok',    label: 'TikTok',    icon: <MusicNoteIcon sx={{ fontSize: 16 }} />, color: adminTokens.platforms.tiktok },
+  ];
+
+  const compose = async (platform: string) => {
+    setAnchorEl(null);
+    setBusy(platform);
+    setNotice(null);
+    try {
+      const r = await fetch('/api/role-room/agent/compose-post-from-insight', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandKey: 'theroleroom',
+          platform,
+          insightTitle: ins.title,
+          insightBody: ins.body,
+          insightCategory: ins.category,
+          actionableStep: step,
+          sourceReportId: reportId,
+        }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setNotice({ kind: 'success', msg: `Draft skrevet for ${platform}. Se Post-drafts-panelet under.` });
+        window.dispatchEvent(new CustomEvent('role-room:draft-composed', { detail: { draftId: d.draftId } }));
+      } else {
+        setNotice({ kind: 'error', msg: d.error || 'Compose failed' });
+      }
+    } catch (err) {
+      setNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <Tooltip title="Skriv dette innlegget med Claude (~0.12 NOK)">
+        <Button
+          size="small"
+          startIcon={busy ? <CircularProgress size={12} /> : <EditNoteIcon sx={{ fontSize: 14 }} />}
+          onClick={(e) => setAnchorEl(e.currentTarget)}
+          disabled={!!busy}
+          data-testid={`compose-button-${step.slice(0, 20)}`}
+          sx={{
+            textTransform: 'none', fontSize: '0.7rem', minHeight: 24, py: 0.25, px: 1,
+            color: adminTokens.primary.textBright,
+            border: `1px solid ${adminTokens.border.accent}`,
+            '&:hover': { background: adminTokens.primary.softer },
+          }}
+        >
+          {busy ? `Skriver til ${busy}…` : 'Skriv dette innlegget'}
+        </Button>
+      </Tooltip>
+      <Menu anchorEl={anchorEl} open={!!anchorEl} onClose={() => setAnchorEl(null)}
+        slotProps={{ paper: { sx: { background: adminTokens.bg.overlay, color: adminTokens.text.body } } }}>
+        {platforms.map((p) => (
+          <MenuItem key={p.id} onClick={() => void compose(p.id)} sx={{ color: adminTokens.text.body }}>
+            <Box sx={{ color: p.color, mr: 1, display: 'flex' }}>{p.icon}</Box>
+            {p.label}
+          </MenuItem>
+        ))}
+      </Menu>
+      {notice && (
+        <Alert severity={notice.kind} sx={{ mt: 0.75, py: 0.25 }} onClose={() => setNotice(null)}>
+          <Typography variant="caption">{notice.msg}</Typography>
+        </Alert>
+      )}
+    </>
+  );
+}
+
+function InsightCard({ ins, reportId }: { ins: Insight; reportId: number | null }) {
   const meta = CATEGORY_META[ins.category];
   const status = adminTokens.status[meta.status];
   const isHighPriority = ins.priority === 'high';
@@ -116,12 +205,16 @@ function InsightCard({ ins }: { ins: Insight }) {
       {ins.actionableSteps.length > 0 && (
         <Box sx={{ mb: ins.relatedCompetitors?.length ? 0.75 : 0 }}>
           <Typography sx={{ ...adminSx.sectionSubHeader, mb: 0.5 }}>Handlinger</Typography>
-          <Stack spacing={0.4}>
+          <Stack spacing={0.6}>
             {ins.actionableSteps.map((s, i) => (
-              <Typography key={i} variant="body2"
-                sx={{ color: adminTokens.text.body, pl: 1.2, borderLeft: `2px solid ${status.base}`, fontSize: '0.86rem' }}>
-                {s}
-              </Typography>
+              <Box key={i} sx={{
+                pl: 1.2, borderLeft: `2px solid ${status.base}`,
+              }}>
+                <Typography variant="body2" sx={{ color: adminTokens.text.body, fontSize: '0.86rem', mb: 0.4 }}>
+                  {s}
+                </Typography>
+                <ComposeButton ins={ins} step={s} reportId={reportId} />
+              </Box>
             ))}
           </Stack>
         </Box>
@@ -139,7 +232,7 @@ function InsightCard({ ins }: { ins: Insight }) {
 
 export default function CompetitorReportPanel() {
   const [report, setReport] = useState<Report | null>(null);
-  const [reportMeta, setReportMeta] = useState<{ generatedAt: string; cached: boolean; costNok: number | null; competitorCount: number } | null>(null);
+  const [reportMeta, setReportMeta] = useState<{ generatedAt: string; cached: boolean; costNok: number | null; competitorCount: number; reportId: number | null } | null>(null);
   const [competitorPictures, setCompetitorPictures] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +247,7 @@ export default function CompetitorReportPanel() {
           setReportMeta({
             generatedAt: d.generatedAt, cached: true,
             costNok: d.costNok, competitorCount: d.competitorCount,
+            reportId: d.reportId ?? null,
           });
           setCompetitorPictures(d.competitorPictures || {});
         }
@@ -177,6 +271,7 @@ export default function CompetitorReportPanel() {
       setReportMeta({
         generatedAt: d.generatedAt, cached: !!d.cached,
         costNok: d.costNok, competitorCount: d.competitorCount,
+        reportId: d.reportId ?? null,
       });
       setCompetitorPictures(d.competitorPictures || {});
     } catch (err) {
@@ -288,7 +383,8 @@ export default function CompetitorReportPanel() {
                   Insights · {sortedInsights.length}
                 </SectionLabel>
                 <Stack spacing={1.25}>
-                  {sortedInsights.map((ins, i) => <InsightCard key={i} ins={ins} />)}
+                  {sortedInsights.map((ins, i) =>
+                    <InsightCard key={i} ins={ins} reportId={reportMeta?.reportId ?? null} />)}
                 </Stack>
               </Box>
             )}
