@@ -40,6 +40,7 @@ import Avatar from '@mui/material/Avatar';
 import Tooltip from '@mui/material/Tooltip';
 import {
   Dashboard as DashboardIcon,
+  Edit as AnnotateIcon,
   Comment as AnnotationsIcon,
   BarChart as StatisticsIcon,
   Group as DancersIcon,
@@ -54,6 +55,9 @@ import ClipsSidebar from './ClipsSidebar';
 import { danceFlowColors } from './danceFlowTheme';
 
 export type DanceAnnotateSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+/** Hvilken sub-flate som vises i main-content-area. */
+export type DanceAnnotateActiveView = 'annotate' | 'annotations' | 'statistics' | 'dashboard' | 'dancers' | 'settings';
 
 export interface DanceAnnotateLayoutProps {
   /** Prosjekt-navn til topp-center 'Project: <name>'. */
@@ -76,6 +80,10 @@ export interface DanceAnnotateLayoutProps {
   projectId: string | null;
   /** Innhold (typisk DanceAnnotateView). */
   children: React.ReactNode;
+  /** Aktiv view — driver hvilken nav-item som er highlighted. */
+  activeView?: DanceAnnotateActiveView;
+  /** Når satt, kalles ved nav-item-click i stedet for fallback dance:set-tab. */
+  onViewChange?: (view: DanceAnnotateActiveView) => void;
   /** Test-id-override. */
   'data-testid'?: string;
 }
@@ -93,6 +101,7 @@ type NavItem = {
 
 const PRIMARY_NAV: readonly NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon sx={{ fontSize: 18 }} /> },
+  { id: 'annotate',  label: 'Annotate',  icon: <AnnotateIcon sx={{ fontSize: 18 }} /> },
 ];
 
 const SECONDARY_NAV: readonly NavItem[] = [
@@ -113,22 +122,29 @@ export default function DanceAnnotateLayout({
   user,
   projectId,
   children,
+  activeView = 'annotate',
+  onViewChange,
   'data-testid': testId = 'dance-annotate-layout',
 }: DanceAnnotateLayoutProps): React.ReactElement {
   const handleNavClick = React.useCallback((id: string): void => {
+    // Lokal view-bytte for items som har dedikert flate i DanceAnnotateLayout:
+    // 'annotations' og 'statistics' (og 'annotate' tilbake til hoved-flaten).
+    // Andre items routes til top-level dance-tabs.
+    if (onViewChange && (id === 'annotate' || id === 'annotations' || id === 'statistics' || id === 'dashboard' || id === 'dancers' || id === 'settings')) {
+      onViewChange(id as DanceAnnotateActiveView);
+      return;
+    }
     if (typeof window === 'undefined') return;
-    // Map til eksisterende top-level dance-tabs der mulig.
     const mapping: Record<string, string> = {
       dashboard: 'dashboard',
       dancers: 'students',
-      statistics: 'analysis',
       settings: 'admin_settings',
     };
     const tabId = mapping[id];
     if (tabId) {
       window.dispatchEvent(new CustomEvent('dance:set-tab', { detail: { tabId } }));
     }
-  }, []);
+  }, [onViewChange]);
 
   const handleHelp = React.useCallback((): void => {
     if (typeof window === 'undefined') return;
@@ -136,39 +152,46 @@ export default function DanceAnnotateLayout({
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
   }, []);
 
-  const renderNavItem = (item: NavItem): React.ReactElement => (
-    <Box
-      key={item.id}
-      component="button"
-      type="button"
-      onClick={() => handleNavClick(item.id)}
-      data-testid={`${testId}-nav-${item.id}`}
-      sx={{
-        display: 'flex', alignItems: 'center', gap: 1.5,
-        width: '100%', px: 1.5, py: 1,
-        border: 'none', borderRadius: 1,
-        cursor: 'pointer', font: 'inherit',
-        bgcolor: 'transparent',
-        color: danceFlowColors.textSecondary,
-        textAlign: 'left',
-        fontSize: 13, fontWeight: 500,
-        transition: 'background-color 120ms, color 120ms',
-        '&:hover': {
-          bgcolor: 'rgba(167,139,250,0.08)',
-          color: danceFlowColors.lavender,
-        },
-        '&:focus-visible': {
-          outline: `2px solid ${danceFlowColors.lavender}`,
-          outlineOffset: -2,
-        },
-      }}
-    >
-      <Box sx={{ display: 'flex', color: danceFlowColors.textMuted }}>
-        {item.icon}
+  const renderNavItem = (item: NavItem): React.ReactElement => {
+    const isActive = item.id === activeView;
+    return (
+      <Box
+        key={item.id}
+        component="button"
+        type="button"
+        onClick={() => handleNavClick(item.id)}
+        data-testid={`${testId}-nav-${item.id}`}
+        aria-current={isActive ? 'page' : undefined}
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 1.5,
+          width: '100%', px: 1.5, py: 1,
+          border: 'none', borderRadius: 1,
+          cursor: 'pointer', font: 'inherit',
+          bgcolor: isActive ? 'rgba(167,139,250,0.12)' : 'transparent',
+          color: isActive ? danceFlowColors.lavender : danceFlowColors.textSecondary,
+          textAlign: 'left',
+          fontSize: 13, fontWeight: isActive ? 700 : 500,
+          transition: 'background-color 120ms, color 120ms',
+          '&:hover': {
+            bgcolor: isActive ? 'rgba(167,139,250,0.16)' : 'rgba(167,139,250,0.08)',
+            color: danceFlowColors.lavender,
+          },
+          '&:focus-visible': {
+            outline: `2px solid ${danceFlowColors.lavender}`,
+            outlineOffset: -2,
+          },
+        }}
+      >
+        <Box sx={{
+          display: 'flex',
+          color: isActive ? danceFlowColors.lavender : danceFlowColors.textMuted,
+        }}>
+          {item.icon}
+        </Box>
+        {item.label}
       </Box>
-      {item.label}
-    </Box>
-  );
+    );
+  };
 
   return (
     <Box

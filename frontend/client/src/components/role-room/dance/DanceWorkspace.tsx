@@ -71,8 +71,10 @@ import { isDanceReadOnlyRole } from './danceRoleUtils';
 import { useAuth } from '../../../hooks/useAuth';
 import { useDanceRealtimePresence } from './danceRealtimeClient';
 import DanceAnnotateView, { type AnnotateSaveStatus } from './DanceAnnotateView';
-import DanceAnnotateLayout from './DanceAnnotateLayout';
+import DanceAnnotateLayout, { type DanceAnnotateActiveView } from './DanceAnnotateLayout';
 import DanceProjectSwitcherDialog from './DanceProjectSwitcherDialog';
+import DanceAnnotationsListView from './DanceAnnotationsListView';
+import DanceStatisticsView from './DanceStatisticsView';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -211,6 +213,43 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
   const [annotateLastSaved, setAnnotateLastSaved] = React.useState<number | null>(null);
   const [annotateSaveError, setAnnotateSaveError] = React.useState<string | null>(null);
   const [projectSwitcherOpen, setProjectSwitcherOpen] = React.useState<boolean>(false);
+  // Aktiv sub-view i DanceAnnotateLayout (annotate/annotations/statistics).
+  const [annotateActiveView, setAnnotateActiveView] = React.useState<DanceAnnotateActiveView>('annotate');
+
+  // Default dancer-options brukt av flere views.
+  const annotateDancerOptions = React.useMemo(() => [
+    { id: 'd1', label: 'Dancer 1' },
+    { id: 'd2', label: 'Dancer 2' },
+    { id: 'd3', label: 'Dancer 3' },
+    { id: 'd4', label: 'Dancer 4' },
+    { id: 'd5', label: 'Dancer 5' },
+  ], []);
+
+  // Naviger fra Annotations-list-row → Annotate-flate m/ valgt clip.
+  const handleOpenAnnotationInEditor = React.useCallback((
+    clipId: string,
+    annotationId: string,
+    clipTitle: string,
+    durationSec: number,
+  ): void => {
+    setAnnotateClipId(clipId);
+    setAnnotateClipTitle(clipTitle);
+    setAnnotateDuration(durationSec);
+    setAnnotateActiveView('annotate');
+    // Dispatch select-clip event så FormationVideoPanel + andre listeners
+    // også reagerer på bytte
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dance:select-clip', {
+        detail: { clipId, title: clipTitle, durationSec },
+      }));
+      // Liten delay for at view skal mountes før vi setter selectedId
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('dance:select-annotation', {
+          detail: { annotationId },
+        }));
+      }, 100);
+    }
+  }, []);
 
   const handleAnnotateSaveStatus = React.useCallback(
     (status: AnnotateSaveStatus, lastSavedAt: number | null, error: string | null) => {
@@ -355,22 +394,31 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           avatarUrl: typeof auth.user?.picture === 'string' ? auth.user.picture : undefined,
         }}
         projectId={projectId}
+        activeView={annotateActiveView}
+        onViewChange={(view) => setAnnotateActiveView(view)}
       >
-        <DanceAnnotateView
-          clipId={annotateClipId}
-          clipTitle={annotateClipTitle}
-          durationSec={annotateDuration}
-          projectId={projectId}
-          dancerOptions={[
-            { id: 'd1', label: 'Dancer 1' },
-            { id: 'd2', label: 'Dancer 2' },
-            { id: 'd3', label: 'Dancer 3' },
-            { id: 'd4', label: 'Dancer 4' },
-            { id: 'd5', label: 'Dancer 5' },
-          ]}
-          readOnly={readOnly}
-          onSaveStatusChange={handleAnnotateSaveStatus}
-        />
+        {annotateActiveView === 'annotations' ? (
+          <DanceAnnotationsListView
+            projectId={projectId}
+            dancerOptions={annotateDancerOptions}
+            onOpenAnnotation={handleOpenAnnotationInEditor}
+          />
+        ) : annotateActiveView === 'statistics' ? (
+          <DanceStatisticsView
+            projectId={projectId}
+            dancerOptions={annotateDancerOptions}
+          />
+        ) : (
+          <DanceAnnotateView
+            clipId={annotateClipId}
+            clipTitle={annotateClipTitle}
+            durationSec={annotateDuration}
+            projectId={projectId}
+            dancerOptions={annotateDancerOptions}
+            readOnly={readOnly}
+            onSaveStatusChange={handleAnnotateSaveStatus}
+          />
+        )}
         <DanceProjectSwitcherDialog
           open={projectSwitcherOpen}
           currentProjectId={projectId}

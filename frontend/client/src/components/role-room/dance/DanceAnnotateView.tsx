@@ -136,6 +136,19 @@ export default function DanceAnnotateView({
     return () => window.removeEventListener('dance:export-annotation', onExport as EventListener);
   }, []);
 
+  // Lytt på 'dance:select-annotation' fra DanceAnnotationsListView → auto-velg
+  // den valgte raden (etter clip-bytte fra Annotations-list).
+  React.useEffect(() => {
+    const onSelect = (e: Event): void => {
+      const detail = (e as CustomEvent<{ annotationId?: string }>).detail;
+      if (detail && typeof detail.annotationId === 'string') {
+        setSelectedId(detail.annotationId);
+      }
+    };
+    window.addEventListener('dance:select-annotation', onSelect as EventListener);
+    return () => window.removeEventListener('dance:select-annotation', onSelect as EventListener);
+  }, []);
+
   const selected = React.useMemo(
     () => annotations.find((a) => a.id === selectedId) ?? null,
     [annotations, selectedId],
