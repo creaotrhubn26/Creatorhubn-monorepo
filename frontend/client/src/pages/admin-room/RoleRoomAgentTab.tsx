@@ -25,6 +25,7 @@ import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import CampaignIcon from '@mui/icons-material/Campaign';
 
 interface ProfileRecommendations {
   platforms: {
@@ -199,6 +200,7 @@ export default function RoleRoomAgentTab() {
   const [publishLog, setPublishLog] = useState<PublishLogEntry[]>([]);
   const [publishBusy, setPublishBusy] = useState<string | null>(null);
   const [publishNotice, setPublishNotice] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
+  const [ctaApplyBusy, setCtaApplyBusy] = useState(false);
 
   const loadLatest = useCallback(async () => {
     try {
@@ -251,6 +253,34 @@ export default function RoleRoomAgentTab() {
       setLoading(false);
     }
   }, []);
+
+  const applyRecommendedCta = useCallback(async () => {
+    if (!recs?.platforms?.facebook) return;
+    const { ctaType, ctaLink } = recs.platforms.facebook;
+    if (!ctaType || !ctaLink) return;
+    setCtaApplyBusy(true);
+    setPublishNotice(null);
+    try {
+      const r = await fetch('/api/role-room/marketing-cockpit/actions/set-cta', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ctaType, ctaUrl: ctaLink }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setPublishNotice({
+          kind: 'success',
+          msg: `CTA satt på Page: ${ctaType} → ${ctaLink}. ${d.note || ''}`,
+        });
+      } else {
+        setPublishNotice({ kind: 'error', msg: d.error || 'Set CTA failed' });
+      }
+    } catch (err) {
+      setPublishNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setCtaApplyBusy(false);
+    }
+  }, [recs]);
 
   const publish = useCallback(async (platform: string, field: string, value: string) => {
     if (!recommendationId) return;
@@ -377,7 +407,24 @@ export default function RoleRoomAgentTab() {
                   <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.5 }}>
                     <Chip label={recs.platforms.facebook.ctaType} size="small"
                       sx={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontWeight: 600 }} />
-                    <Typography variant="caption" sx={{ color: '#cbd5e1' }}>→ {recs.platforms.facebook.ctaLink}</Typography>
+                    <Typography variant="caption" sx={{ color: '#cbd5e1', flex: 1 }}>→ {recs.platforms.facebook.ctaLink}</Typography>
+                    <Tooltip title="Sett CTA på The Role Room Page via Meta API">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={ctaApplyBusy ? <CircularProgress size={12} /> : <CampaignIcon sx={{ fontSize: 14 }} />}
+                        onClick={() => void applyRecommendedCta()}
+                        disabled={ctaApplyBusy}
+                        data-testid="apply-recommended-cta"
+                        sx={{
+                          background: 'rgba(251,191,36,0.25)', color: '#fde68a',
+                          textTransform: 'none', fontSize: '0.72rem',
+                          '&:hover': { background: 'rgba(251,191,36,0.4)' },
+                        }}
+                      >
+                        {ctaApplyBusy ? 'Setter…' : 'Apply til Page'}
+                      </Button>
+                    </Tooltip>
                   </Stack>
                   <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)', display: 'block', mt: 0.5, fontStyle: 'italic' }}>
                     {recs.platforms.facebook.ctaReasoning}
