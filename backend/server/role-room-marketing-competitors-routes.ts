@@ -35,16 +35,70 @@ export interface SetupCompetitorsRoutesDeps {
 }
 
 interface SnapshotData {
-  fanCount: number | null;
+  fanCount: number | null;          // FB fan_count ELLER IG followers_count
   name: string | null;
   category: string | null;
   website: string | null;
-  about: string | null;
+  about: string | null;              // FB about ELLER IG biography
   recentPostCount7d: number | null;
   recentPostCount30d: number | null;
   rawProfile: unknown;
   rawPosts: unknown;
   fetchError: string | null;
+}
+
+async function fetchInstagramSnapshot(
+  igUsername: string,
+  callerIgUserId: string,
+  accessToken: string,
+): Promise<SnapshotData> {
+  const empty: SnapshotData = {
+    fanCount: null, name: null, category: null, website: null, about: null,
+    recentPostCount7d: null, recentPostCount30d: null, rawProfile: null, rawPosts: null,
+    fetchError: null,
+  };
+  try {
+    // business_discovery henter offentlig IG-profil + 50 nyeste media for activity
+    const params = new URLSearchParams({
+      fields: `business_discovery.username(${igUsername}){username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website,media.limit(50){id,timestamp}}`,
+      access_token: accessToken,
+    });
+    const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(callerIgUserId)}?${params.toString()}`);
+    const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok || !body.business_discovery) {
+      const err = body.error as Record<string, unknown> | undefined;
+      return { ...empty, rawProfile: body, fetchError: typeof err?.message === 'string' ? err.message : `status ${r.status}` };
+    }
+    const bd = body.business_discovery as Record<string, unknown>;
+    // Count recent media in last 7d / 30d
+    let count7 = 0, count30 = 0;
+    const media = (bd.media as Record<string, unknown> | undefined)?.data;
+    const now = Date.now();
+    if (Array.isArray(media)) {
+      for (const m of media as Array<Record<string, unknown>>) {
+        const created = typeof m.timestamp === 'string' ? Date.parse(m.timestamp) : NaN;
+        if (!Number.isFinite(created)) continue;
+        const ageDays = (now - created) / 86_400_000;
+        if (ageDays < 7) count7++;
+        if (ageDays < 30) count30++;
+      }
+    }
+    return {
+      fanCount: typeof bd.followers_count === 'number' ? bd.followers_count : null,
+      name: typeof bd.name === 'string' ? bd.name : null,
+      // IG har ikke FB-style 'category' — bruk null
+      category: null,
+      website: typeof bd.website === 'string' ? bd.website : null,
+      about: typeof bd.biography === 'string' ? bd.biography : null,
+      recentPostCount7d: count7,
+      recentPostCount30d: count30,
+      rawProfile: bd,
+      rawPosts: null,
+      fetchError: null,
+    };
+  } catch (err) {
+    return { ...empty, fetchError: String(err) };
+  }
 }
 
 async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<SnapshotData> {
@@ -116,13 +170,16 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const r = await pool.query(
         `SELECT
            p.id, p.page_id, p.nickname, p.category, p.notes, p.active, p.added_at,
-           p.auto_snapshot, p.last_snapshot_at,
+           p.auto_snapshot, p.last_snapshot_at, p.account_type, p.ig_username,
            (
              SELECT row_to_json(s)
              FROM (
                SELECT fan_count, name, category, website, recent_post_count_7d, recent_post_count_30d,
                       snapshot_at, fetch_error,
-                      raw_profile_json->'picture'->'data'->>'url' AS picture_url
+                      COALESCE(
+                        raw_profile_json->'picture'->'data'->>'url',
+                        raw_profile_json->>'profile_picture_url'
+                      ) AS picture_url
                FROM marketing_competitor_snapshots
                WHERE competitor_id = p.id
                ORDER BY snapshot_at DESC LIMIT 1
@@ -146,6 +203,8 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           addedAt: row.added_at,
           autoSnapshot: row.auto_snapshot ?? false,
           lastSnapshotAt: row.last_snapshot_at,
+          accountType: row.account_type || 'facebook',
+          igUsername: row.ig_username,
           latestSnapshot: row.latest_snapshot,
         })),
       });
@@ -159,21 +218,51 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
     if (!requireAdminOrDemoBypass(req, res)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const brandKey = typeof body.brandKey === 'string' && body.brandKey.trim() ? body.brandKey.trim() : 'theroleroom';
-    const pageId = typeof body.pageId === 'string' ? body.pageId.trim() : '';
+    const accountType = typeof body.accountType === 'string' ? body.accountType.trim().toLowerCase() : 'facebook';
     const nickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
     const notes = typeof body.notes === 'string' ? body.notes.trim() : null;
-    if (!pageId || !nickname) {
-      res.status(400).json({ ok: false, error: 'pageId + nickname required' });
+
+    if (!['facebook', 'instagram'].includes(accountType)) {
+      res.status(400).json({ ok: false, error: 'accountType must be facebook|instagram' });
       return;
     }
+    if (!nickname) {
+      res.status(400).json({ ok: false, error: 'nickname required' });
+      return;
+    }
+
+    let pageId = '';
+    let igUsername: string | null = null;
+
+    if (accountType === 'facebook') {
+      pageId = typeof body.pageId === 'string' ? body.pageId.trim() : '';
+      if (!pageId) {
+        res.status(400).json({ ok: false, error: 'pageId required for facebook account-type' });
+        return;
+      }
+    } else {
+      // For IG: aksepter @handle eller bare username
+      const handleInput = typeof body.igUsername === 'string' ? body.igUsername.trim()
+        : (typeof body.pageId === 'string' ? body.pageId.trim() : '');
+      igUsername = handleInput.replace(/^@/, '').toLowerCase();
+      if (!igUsername) {
+        res.status(400).json({ ok: false, error: 'igUsername required for instagram account-type' });
+        return;
+      }
+      // page_id-feltet får IG-username som unique-konfliktbase (kunne hentet IG user_id, men det krever
+      // ekstra API-call; username er unikt på IG og fungerer som stabil identifikator)
+      pageId = `ig:${igUsername}`;
+    }
+
     try {
       const r = await pool.query(
-        `INSERT INTO marketing_competitor_pages (brand_key, page_id, nickname, notes, added_by)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO marketing_competitor_pages (brand_key, page_id, nickname, notes, added_by, account_type, ig_username)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (brand_key, page_id) DO UPDATE
-           SET nickname = EXCLUDED.nickname, notes = EXCLUDED.notes, active = true
-         RETURNING id, page_id, nickname, added_at`,
-        [brandKey, pageId, nickname, notes, 'admin'],
+           SET nickname = EXCLUDED.nickname, notes = EXCLUDED.notes, active = true,
+               account_type = EXCLUDED.account_type, ig_username = EXCLUDED.ig_username
+         RETURNING id, page_id, nickname, added_at, account_type, ig_username`,
+        [brandKey, pageId, nickname, notes, 'admin', accountType, igUsername],
       );
       res.json({
         ok: true,
@@ -181,6 +270,8 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           id: Number(r.rows[0].id),
           pageId: r.rows[0].page_id,
           nickname: r.rows[0].nickname,
+          accountType: r.rows[0].account_type,
+          igUsername: r.rows[0].ig_username,
           addedAt: r.rows[0].added_at,
         },
       });
@@ -280,14 +371,30 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
     }
 
     try {
-      const compR = await pool.query('SELECT page_id FROM marketing_competitor_pages WHERE id = $1', [id]);
+      const compR = await pool.query(
+        'SELECT page_id, account_type, ig_username FROM marketing_competitor_pages WHERE id = $1',
+        [id],
+      );
       if (!compR.rowCount || compR.rowCount === 0) {
         res.status(404).json({ ok: false, error: 'competitor not found' });
         return;
       }
-      const pageId = compR.rows[0].page_id as string;
+      const row = compR.rows[0];
+      const pageId = row.page_id as string;
+      const accountType = String(row.account_type || 'facebook');
+      const igUsername = row.ig_username as string | null;
 
-      const snapshot = await fetchPageSnapshot(pageId, accessToken);
+      let snapshot: SnapshotData;
+      if (accountType === 'instagram' && igUsername) {
+        const callerIgUserId = (process.env.THEROLERROOM_IG_USER_ID || '').trim();
+        if (!callerIgUserId) {
+          res.status(503).json({ ok: false, error: 'THEROLERROOM_IG_USER_ID required for IG snapshots' });
+          return;
+        }
+        snapshot = await fetchInstagramSnapshot(igUsername, callerIgUserId, accessToken);
+      } else {
+        snapshot = await fetchPageSnapshot(pageId, accessToken);
+      }
 
       // Get previous snapshot for diff.
       const prevR = await pool.query(

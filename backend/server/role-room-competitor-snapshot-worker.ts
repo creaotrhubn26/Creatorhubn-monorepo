@@ -85,12 +85,60 @@ async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<S
   }
 }
 
+async function fetchInstagramSnapshot(
+  igUsername: string,
+  callerIgUserId: string,
+  accessToken: string,
+): Promise<SnapshotData> {
+  const empty: SnapshotData = {
+    fanCount: null, name: null, category: null, website: null, about: null,
+    recentPostCount7d: null, recentPostCount30d: null, rawProfile: null, rawPosts: null,
+    fetchError: null,
+  };
+  try {
+    const params = new URLSearchParams({
+      fields: `business_discovery.username(${igUsername}){username,name,followers_count,media_count,biography,website,media.limit(50){id,timestamp}}`,
+      access_token: accessToken,
+    });
+    const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(callerIgUserId)}?${params}`);
+    const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok || !body.business_discovery) {
+      const err = body.error as Record<string, unknown> | undefined;
+      return { ...empty, rawProfile: body, fetchError: typeof err?.message === 'string' ? err.message : `status ${r.status}` };
+    }
+    const bd = body.business_discovery as Record<string, unknown>;
+    let c7 = 0, c30 = 0;
+    const media = (bd.media as Record<string, unknown> | undefined)?.data;
+    const now = Date.now();
+    if (Array.isArray(media)) {
+      for (const m of media as Array<Record<string, unknown>>) {
+        const created = typeof m.timestamp === 'string' ? Date.parse(m.timestamp) : NaN;
+        if (!Number.isFinite(created)) continue;
+        const ageDays = (now - created) / 86_400_000;
+        if (ageDays < 7) c7++;
+        if (ageDays < 30) c30++;
+      }
+    }
+    return {
+      fanCount: typeof bd.followers_count === 'number' ? bd.followers_count : null,
+      name: typeof bd.name === 'string' ? bd.name : null,
+      category: null,
+      website: typeof bd.website === 'string' ? bd.website : null,
+      about: typeof bd.biography === 'string' ? bd.biography : null,
+      recentPostCount7d: c7, recentPostCount30d: c30,
+      rawProfile: bd, rawPosts: null, fetchError: null,
+    };
+  } catch (err) {
+    return { ...empty, fetchError: String(err) };
+  }
+}
+
 async function runOnce(pool: Pool, accessToken: string): Promise<{ checked: number; snapshotted: number; errors: number }> {
   const cutoff = new Date(Date.now() - SNAPSHOT_FRESHNESS_MS).toISOString();
-  let due: Array<{ id: number; pageId: string; brandKey: string }> = [];
+  let due: Array<{ id: number; pageId: string; brandKey: string; accountType: string; igUsername: string | null }> = [];
   try {
     const r = await pool.query(
-      `SELECT id, page_id, brand_key
+      `SELECT id, page_id, brand_key, account_type, ig_username
        FROM marketing_competitor_pages
        WHERE auto_snapshot = true AND active = true
          AND (last_snapshot_at IS NULL OR last_snapshot_at < $1)`,
@@ -98,15 +146,20 @@ async function runOnce(pool: Pool, accessToken: string): Promise<{ checked: numb
     );
     due = r.rows.map((row) => ({
       id: Number(row.id), pageId: row.page_id, brandKey: row.brand_key,
+      accountType: String(row.account_type || 'facebook'),
+      igUsername: row.ig_username as string | null,
     }));
   } catch (err) {
     console.error('[competitor-worker] query failed', err);
     return { checked: 0, snapshotted: 0, errors: 1 };
   }
+  const callerIgUserId = (process.env.THEROLERROOM_IG_USER_ID || '').trim();
   let snapshotted = 0, errors = 0;
   for (const c of due) {
     try {
-      const snapshot = await fetchPageSnapshot(c.pageId, accessToken);
+      const snapshot = c.accountType === 'instagram' && c.igUsername && callerIgUserId
+        ? await fetchInstagramSnapshot(c.igUsername, callerIgUserId, accessToken)
+        : await fetchPageSnapshot(c.pageId, accessToken);
       await pool.query(
         `INSERT INTO marketing_competitor_snapshots
            (competitor_id, fan_count, name, category, website, about,
