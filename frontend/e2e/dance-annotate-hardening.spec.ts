@@ -128,13 +128,18 @@ test.describe('dance annotate — Annotations-list-view', () => {
     await expect(page.getByTestId('dance-annotations-header-category')).toBeVisible();
   });
 
-  test('Tilbake til Annotate via nav-rail', async ({ page }) => {
+  test('Tilbake til Annotate via clip-klikk i sidebar', async ({ page }) => {
+    // Mockup-paritet: Annotate er IKKE et separat nav-item — du kommer tilbake
+    // til Annotate-flaten ved å velge en clip.
     await openAnnotate(page);
     await page.getByTestId('dance-annotate-layout-nav-annotations').click();
     await expect(page.getByTestId('dance-annotations-list-view')).toBeVisible();
-    // Klikk Annotate nav-item
-    await page.getByTestId('dance-annotate-layout-nav-annotate').click();
-    // DanceAnnotateView monteres (empty-state hvis ingen clip valgt)
+    const firstClip = page.locator('[data-testid^="clips-sidebar-clip-"]').first();
+    if (!(await firstClip.isVisible().catch(() => false))) {
+      test.skip(true, 'Ingen clips i mock-data');
+      return;
+    }
+    await firstClip.click();
     const emptyOrView = page.getByTestId('dance-annotate-empty').or(page.getByTestId('dance-annotate-view'));
     await expect(emptyOrView).toBeVisible({ timeout: 5_000 });
   });
@@ -157,14 +162,17 @@ test.describe('dance annotate — Statistics-view', () => {
 test.describe('dance annotate — nav-rail active-state', () => {
   test('Aktiv view har lavender highlight', async ({ page }) => {
     await openAnnotate(page);
-    // Standard er Annotate
-    const annotateNav = page.getByTestId('dance-annotate-layout-nav-annotate');
-    await expect(annotateNav).toHaveAttribute('aria-current', 'page');
-
-    // Bytt til Statistics
-    await page.getByTestId('dance-annotate-layout-nav-statistics').click();
+    // Standard er Annotate — ingen nav-item har aria-current siden Annotate
+    // ikke er et nav-item lenger (mockup-paritet). Annotations-/Statistics-
+    // items er ikke aktive initielt.
+    const annotationsNav = page.getByTestId('dance-annotate-layout-nav-annotations');
     const statsNav = page.getByTestId('dance-annotate-layout-nav-statistics');
+    await expect(annotationsNav).not.toHaveAttribute('aria-current', 'page');
+    await expect(statsNav).not.toHaveAttribute('aria-current', 'page');
+
+    // Bytt til Statistics — markøren flyttes
+    await statsNav.click();
     await expect(statsNav).toHaveAttribute('aria-current', 'page');
-    await expect(annotateNav).not.toHaveAttribute('aria-current', 'page');
+    await expect(annotationsNav).not.toHaveAttribute('aria-current', 'page');
   });
 });

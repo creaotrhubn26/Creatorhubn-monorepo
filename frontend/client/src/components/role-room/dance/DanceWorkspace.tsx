@@ -282,6 +282,9 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
       if (typeof detail.durationSec === 'number' && detail.durationSec > 0) {
         setAnnotateDuration(detail.durationSec);
       }
+      // Mockup-paritet: klikk på clip i sidebar = navigér tilbake til
+      // Annotate-flaten (Annotations/Statistics er ikke clip-scoped).
+      setAnnotateActiveView('annotate');
     };
     window.addEventListener('dance:select-clip', onSelect as EventListener);
     return () => window.removeEventListener('dance:select-clip', onSelect as EventListener);

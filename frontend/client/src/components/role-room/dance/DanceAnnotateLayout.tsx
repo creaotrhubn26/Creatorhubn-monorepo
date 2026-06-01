@@ -101,8 +101,10 @@ type NavItem = {
 
 const PRIMARY_NAV: readonly NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon sx={{ fontSize: 18 }} /> },
-  { id: 'annotate',  label: 'Annotate',  icon: <AnnotateIcon sx={{ fontSize: 18 }} /> },
 ];
+// Mockup-paritet: 'Annotate' er IKKE et nav-item — brukeren navigerer tilbake
+// til Annotate-flaten ved å klikke en clip i CLIPS-section. AnnotateIcon
+// importen beholdes for fremtidig bruk.
 
 const SECONDARY_NAV: readonly NavItem[] = [
   { id: 'annotations', label: 'Annotations', icon: <AnnotationsIcon sx={{ fontSize: 18 }} /> },
