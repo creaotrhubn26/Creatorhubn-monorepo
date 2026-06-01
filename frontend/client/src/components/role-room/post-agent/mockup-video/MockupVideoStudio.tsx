@@ -50,10 +50,18 @@ import {
   toRenderOptions,
   type MockupConfig,
 } from './mockupConfig';
+import { isTauri, renderNative } from './tauriBridge';
 
 export default function MockupVideoStudio() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [cfg, setCfg] = useState<MockupConfig>(DEFAULT_MOCKUP_CONFIG);
+  // Filer brukeren har valgt — trengs for native render (absolutte stier).
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [musicFile, setMusicFile] = useState<File | null>(null);
+  // Native (Post Agent / Tauri) render-status.
+  const [nativeStatus, setNativeStatus] = useState<string | null>(null);
+  const [nativeBusy, setNativeBusy] = useState(false);
+  const native = isTauri();
 
   const sourceRef = useRef<HTMLVideoElement | null>(null);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
@@ -110,6 +118,7 @@ export default function MockupVideoStudio() {
   const onPickFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setVideoFile(file);
     const url = URL.createObjectURL(file);
     setVideoUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -117,6 +126,7 @@ export default function MockupVideoStudio() {
     });
   }, []);
 
+  // Nettleser-eksport (preview-kvalitet, ingen avansert lyd/alfa).
   const onExport = useCallback(() => {
     const source = sourceRef.current;
     if (!source) return;
@@ -128,7 +138,38 @@ export default function MockupVideoStudio() {
     });
   }, [exporter, renderOpts, cfg.export, cfg.audio.enabled]);
 
-  const busy = exporter.state !== 'idle';
+  // Native eksport (Post Agent/Tauri): hele pipelinen — alfa, noise gate,
+  // two-pass loudness, polish, ducking, auto-zoom.
+  const onExportNative = useCallback(async () => {
+    const path = (videoFile as unknown as { path?: string } | null)?.path;
+    if (!path) {
+      setNativeStatus('Fant ikke filsti — velg videoen på nytt i Post Agent.');
+      return;
+    }
+    const ext = cfg.export.format === 'prores4444' ? 'mov' : 'mp4';
+    const outputPath = path.replace(/\.[^/.]+$/, '') + `-mockup.${ext}`;
+    const musicPath = cfg.music.enabled
+      ? (musicFile as unknown as { path?: string } | null)?.path ?? null
+      : null;
+    setNativeBusy(true);
+    setNativeStatus('Starter…');
+    try {
+      const res = await renderNative(
+        { config: cfg, clips: [path], outputPath, musicPath },
+        (ev) => {
+          if (ev.type === 'progress' && ev.label) setNativeStatus(ev.label);
+          else if (ev.type === 'error') setNativeStatus(`Feil: ${ev.message ?? 'ukjent'}`);
+        },
+      );
+      setNativeStatus(res.succeeded ? `Ferdig → ${res.outputPath ?? outputPath}` : 'Render feilet');
+    } catch (e) {
+      setNativeStatus(`Feil: ${(e as Error).message}`);
+    } finally {
+      setNativeBusy(false);
+    }
+  }, [videoFile, musicFile, cfg]);
+
+  const busy = exporter.state !== 'idle' || nativeBusy;
 
   return (
     <Box sx={{ p: 3, maxWidth: 1000, mx: 'auto' }}>
@@ -212,6 +253,11 @@ export default function MockupVideoStudio() {
               onChange={(e) => setVisual('fadeSeconds', e.target.checked ? 0.5 : 0)} />}
             label="Fade inn/ut"
           />
+          <FormControlLabel
+            control={<Switch checked={cfg.visual.autoZoom} disabled={busy}
+              onChange={(e) => setVisual('autoZoom', e.target.checked)} />}
+            label="Auto-zoom på handling"
+          />
 
           <Divider />
 
@@ -249,9 +295,13 @@ export default function MockupVideoStudio() {
           />
           {cfg.music.enabled && (
             <Button component="label" variant="outlined" size="small" startIcon={<UploadFileIcon />} disabled={busy}>
-              {cfg.music.source ? 'Bytt sang' : 'Velg sang'}
+              {cfg.music.source ? `Sang: ${cfg.music.source}` : 'Velg sang'}
               <input hidden type="file" accept="audio/*"
-                onChange={(e) => setMusic('source', e.target.files?.[0]?.name ?? null)} />
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setMusicFile(f);
+                  setMusic('source', f?.name ?? null);
+                }} />
             </Button>
           )}
           <FormControlLabel
@@ -264,34 +314,55 @@ export default function MockupVideoStudio() {
 
           {/* Eksport */}
           <Stack spacing={1}>
-            <Button
-              variant="contained" startIcon={<MovieCreationIcon />} onClick={onExport}
-              disabled={!videoUrl || busy || !exporter.isSupported}
-            >
-              {exporter.state === 'recording'
-                ? `Eksporterer… ${Math.round(exporter.progress * 100)}%`
-                : 'Eksporter video'}
-            </Button>
-            {busy && <LinearProgress variant="determinate" value={exporter.progress * 100} />}
-            {exporter.lastBlob && !busy && (
-              <Button variant="outlined" startIcon={<DownloadIcon />}
-                onClick={() => exporter.downloadLastBlob(`mockup-${cfg.visual.device}.webm`)}>
-                Last ned resultat
-              </Button>
-            )}
-            {isTransparent && (
-              <Typography variant="caption" sx={{ color: 'info.main' }}>
-                Transparent + avansert lyd (noise gate, two-pass, polish) krever den native
-                pipelinen i Post Agent. Nettleser-eksporten viser preview uten alfa.
-              </Typography>
-            )}
-            {!exporter.isSupported && (
-              <Typography variant="caption" sx={{ color: 'warning.main' }}>
-                Nettleseren støtter ikke MediaRecorder-eksport.
-              </Typography>
-            )}
-            {exporter.error && (
-              <Typography variant="caption" sx={{ color: 'error.main' }}>{exporter.error}</Typography>
+            {/* I Post Agent (Tauri): full pipeline. Ellers: nettleser-eksport. */}
+            {native ? (
+              <>
+                <Button
+                  variant="contained" startIcon={<MovieCreationIcon />} onClick={onExportNative}
+                  disabled={!videoFile || busy}
+                >
+                  {nativeBusy ? 'Renderer…' : `Render (${cfg.export.format === 'prores4444' ? 'ProRes alfa' : 'MP4'})`}
+                </Button>
+                {nativeBusy && <LinearProgress />}
+                {nativeStatus && (
+                  <Typography variant="caption" sx={{ color: nativeStatus.startsWith('Feil') ? 'error.main' : 'text.secondary' }}>
+                    {nativeStatus}
+                  </Typography>
+                )}
+                <Typography variant="caption" sx={{ color: 'success.main' }}>
+                  Full pipeline aktiv: alfa, noise gate, two-pass loudness, polish, ducking, auto-zoom.
+                </Typography>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="contained" startIcon={<MovieCreationIcon />} onClick={onExport}
+                  disabled={!videoUrl || busy || !exporter.isSupported}
+                >
+                  {exporter.state === 'recording'
+                    ? `Eksporterer… ${Math.round(exporter.progress * 100)}%`
+                    : 'Eksporter video (preview)'}
+                </Button>
+                {busy && <LinearProgress variant="determinate" value={exporter.progress * 100} />}
+                {exporter.lastBlob && !busy && (
+                  <Button variant="outlined" startIcon={<DownloadIcon />}
+                    onClick={() => exporter.downloadLastBlob(`mockup-${cfg.visual.device}.webm`)}>
+                    Last ned resultat
+                  </Button>
+                )}
+                <Typography variant="caption" sx={{ color: 'info.main' }}>
+                  Avanserte steg (transparent/alfa, noise gate, two-pass, polish, ducking, auto-zoom)
+                  kjøres av den native pipelinen i Post Agent. Her i nettleseren får du en preview.
+                </Typography>
+                {!exporter.isSupported && (
+                  <Typography variant="caption" sx={{ color: 'warning.main' }}>
+                    Nettleseren støtter ikke MediaRecorder-eksport.
+                  </Typography>
+                )}
+                {exporter.error && (
+                  <Typography variant="caption" sx={{ color: 'error.main' }}>{exporter.error}</Typography>
+                )}
+              </>
             )}
           </Stack>
         </Stack>

@@ -24,6 +24,8 @@ export interface MockupVisualConfig {
   statusBarCrop: number;
   /** Fade inn/ut på video (sekunder, 0 = av). */
   fadeSeconds: number;
+  /** Auto-zoom på handling (bevegelse → mykt inn-zoom). */
+  autoZoom: boolean;
 }
 
 /** Lyd-valg. Hver er en selvstendig på/av- eller verdi-bryter. */
@@ -92,6 +94,7 @@ export const DEFAULT_MOCKUP_CONFIG: MockupConfig = {
     shadow: true,
     statusBarCrop: 0.045,
     fadeSeconds: 0.5,
+    autoZoom: false,
   },
   audio: {
     enabled: true,

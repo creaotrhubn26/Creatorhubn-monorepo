@@ -53,6 +53,12 @@ export interface MockupRenderOptions {
    * Default på når det er bakgrunn, av ellers. Sett `false` for å skru av.
    */
   shadow?: boolean;
+  /**
+   * Auto-zoom: zoom inn mot et senterpunkt i kilden. scale=1 → ingen zoom.
+   * cx/cy er normaliserte [0..1] i kilden. Settes per frame av auto-zoom-sporet
+   * (se autoZoom.ts). Anvendes ETTER statuslinje-crop.
+   */
+  zoom?: { scale: number; cx: number; cy: number };
 }
 
 /** Tegn et avrundet rektangel som path (uten å fylle). */
@@ -204,10 +210,24 @@ export function renderMockupFrame(
     const bottom = (sourceInset?.bottom ?? 0) * full.height;
     const left = (sourceInset?.left ?? 0) * full.width;
     const right = (sourceInset?.right ?? 0) * full.width;
-    const srcX = left;
-    const srcY = top;
-    const srcW = Math.max(1, full.width - left - right);
-    const srcH = Math.max(1, full.height - top - bottom);
+    let srcX = left;
+    let srcY = top;
+    let srcW = Math.max(1, full.width - left - right);
+    let srcH = Math.max(1, full.height - top - bottom);
+
+    // Auto-zoom: krymp kilde-rektangelet rundt et senterpunkt (cx/cy er
+    // normalisert i det allerede-kroppede vinduet), klemt innenfor kanten.
+    const z = options.zoom;
+    if (z && z.scale > 1) {
+      const zw = srcW / z.scale;
+      const zh = srcH / z.scale;
+      const cx = srcX + Math.min(Math.max(z.cx, 0), 1) * srcW;
+      const cy = srcY + Math.min(Math.max(z.cy, 0), 1) * srcH;
+      srcX = Math.min(Math.max(cx - zw / 2, srcX), srcX + srcW - zw);
+      srcY = Math.min(Math.max(cy - zh / 2, srcY), srcY + srcH - zh);
+      srcW = zw;
+      srcH = zh;
+    }
 
     const draw = fitRect({ width: srcW, height: srcH }, g.screen, fit);
     try {

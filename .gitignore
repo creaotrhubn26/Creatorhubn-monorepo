@@ -169,3 +169,4 @@ decks/screenshots/
 
 # Design mockup screenshots (regenerable via scripts/capture-design-mockups.mjs)
 mockups/*.png
+out-videos/
