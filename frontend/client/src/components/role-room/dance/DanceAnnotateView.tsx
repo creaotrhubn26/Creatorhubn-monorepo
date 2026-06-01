@@ -53,6 +53,8 @@ import {
 // shortcut-lookup mot catalog (1-9 brukerdefinerte snarveier).
 import { danceFlowColors } from './danceFlowTheme';
 
+export type AnnotateSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 export interface DanceAnnotateViewProps {
   /** Valgt clip-ID. Null = empty-state vises (be om å velge clip i ClipsSidebar). */
   clipId: string | null;
@@ -65,6 +67,11 @@ export interface DanceAnnotateViewProps {
   dancerOptions: Array<{ id: string; label: string }>;
   /** Read-only-modus skipper alle mutations. */
   readOnly?: boolean;
+  /**
+   * Bobler save-status + sist-lagret-timestamp opp til parent (typisk
+   * DanceAnnotateLayout som rendrer Save-knappen).
+   */
+  onSaveStatusChange?: (status: AnnotateSaveStatus, lastSavedAt: number | null, error: string | null) => void;
 }
 
 type AnnotateRightTab = 'annotate' | 'review';
@@ -78,6 +85,7 @@ export default function DanceAnnotateView({
   projectId,
   dancerOptions,
   readOnly = false,
+  onSaveStatusChange,
 }: DanceAnnotateViewProps): React.ReactElement {
   // Catalog: categories + labels (auto-seedet defaults + brukerens egne).
   const catalog = useDanceAnnotationCatalog({ projectId });
@@ -90,6 +98,36 @@ export default function DanceAnnotateView({
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [rightTab, setRightTab] = React.useState<AnnotateRightTab>('annotate');
   const [exportOpen, setExportOpen] = React.useState<boolean>(false);
+  // Save-status tracking — bobles til parent (DanceAnnotateLayout's Save-knapp).
+  const [saveStatus, setSaveStatus] = React.useState<AnnotateSaveStatus>('idle');
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
+  const inFlightCountRef = React.useRef<number>(0);
+
+  React.useEffect(() => {
+    onSaveStatusChange?.(saveStatus, lastSavedAt, saveError);
+  }, [saveStatus, lastSavedAt, saveError, onSaveStatusChange]);
+
+  /** Wrap mutations m/ in-flight-counter så saveStatus reflekterer aktivitet. */
+  const trackMutation = React.useCallback(async <T,>(fn: () => Promise<T>): Promise<T> => {
+    inFlightCountRef.current += 1;
+    setSaveStatus('saving');
+    setSaveError(null);
+    try {
+      const result = await fn();
+      inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1);
+      if (inFlightCountRef.current === 0) {
+        setSaveStatus('saved');
+        setLastSavedAt(Date.now());
+      }
+      return result;
+    } catch (err) {
+      inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1);
+      setSaveStatus('error');
+      setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+      throw err;
+    }
+  }, []);
 
   // Lytt på 'dance:export-annotation' fra DanceAnnotateLayout Export-knapp.
   React.useEffect(() => {
@@ -145,18 +183,18 @@ export default function DanceAnnotateView({
     const start = Math.max(0, playheadSec);
     const end = Math.min(durationSec, start + 2);
     try {
-      const created = await createAnnotation(clipId, {
+      const created = await trackMutation(() => createAnnotation(clipId, {
         body: label,
         timestampSec: start,
         endSec: end,
         category: cat,
-      });
+      }));
       setAnnotations((prev) => [...prev, created]);
       setSelectedId(created.id);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Kunne ikke opprette annotation');
     }
-  }, [readOnly, clipId, activeLabel, activeCategoryId, playheadSec, durationSec]);
+  }, [readOnly, clipId, activeLabel, activeCategoryId, playheadSec, durationSec, trackMutation]);
 
   // ─── Patch / delete handlers ──────────────────────────────────────
   const handlePatch = React.useCallback(async (
@@ -165,23 +203,23 @@ export default function DanceAnnotateView({
   ): Promise<void> => {
     if (readOnly) return;
     try {
-      const updated = await patchAnnotation(id, patch);
+      const updated = await trackMutation(() => patchAnnotation(id, patch));
       setAnnotations((prev) => prev.map((a) => (a.id === id ? updated : a)));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Kunne ikke oppdatere annotation');
     }
-  }, [readOnly]);
+  }, [readOnly, trackMutation]);
 
   const handleDelete = React.useCallback(async (id: string): Promise<void> => {
     if (readOnly) return;
     try {
-      await deleteAnnotation(id);
+      await trackMutation(() => deleteAnnotation(id));
       setAnnotations((prev) => prev.filter((a) => a.id !== id));
       if (selectedId === id) setSelectedId(null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Kunne ikke slette annotation');
     }
-  }, [readOnly, selectedId]);
+  }, [readOnly, selectedId, trackMutation]);
 
   // ─── Keyboard: A=Add, D=Delete, S=Split, 1-5=Category, Space=Play/Pause ─
   React.useEffect(() => {

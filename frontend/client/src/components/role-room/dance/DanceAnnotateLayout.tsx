@@ -53,13 +53,23 @@ import {
 import ClipsSidebar from './ClipsSidebar';
 import { danceFlowColors } from './danceFlowTheme';
 
+export type DanceAnnotateSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 export interface DanceAnnotateLayoutProps {
   /** Prosjekt-navn til topp-center 'Project: <name>'. */
   projectName?: string;
   /** Callback ved klikk Save (top-right). */
   onSave?: () => void;
+  /** Save-status fra child (DanceAnnotateView). Driver Save-knapp-label. */
+  saveStatus?: DanceAnnotateSaveStatus;
+  /** Sist-lagret-timestamp (ms-epoch). Vises som 'Saved kl 14:32'. */
+  lastSavedAt?: number | null;
+  /** Save-feilmelding (vises som tooltip på Save-knappen). */
+  saveError?: string | null;
   /** Callback ved klikk Export (top-right lavender). */
   onExport?: () => void;
+  /** Callback ved klikk på Project-dropdown. Åpner project-switcher. */
+  onOpenProjectSwitcher?: () => void;
   /** Bruker-navn + foto for top-right avatar. */
   user?: { name?: string; avatarUrl?: string };
   /** Prosjekt-ID for ClipsSidebar (videresendt). */
@@ -95,7 +105,11 @@ const SECONDARY_NAV: readonly NavItem[] = [
 export default function DanceAnnotateLayout({
   projectName = 'Untitled Project',
   onSave,
+  saveStatus = 'idle',
+  lastSavedAt = null,
+  saveError = null,
   onExport,
+  onOpenProjectSwitcher,
   user,
   projectId,
   children,
@@ -221,8 +235,10 @@ export default function DanceAnnotateLayout({
             },
           }}
           onClick={() => {
-            // Stub: full dropdown krever prosjekt-bytte-modal.
-            if (typeof window !== 'undefined') {
+            if (onOpenProjectSwitcher) {
+              onOpenProjectSwitcher();
+            } else if (typeof window !== 'undefined') {
+              // Fallback: dispatch event hvis parent ikke har bundet handler
               window.dispatchEvent(new CustomEvent('dance:open-project-switcher'));
             }
           }}
@@ -238,27 +254,61 @@ export default function DanceAnnotateLayout({
 
         {/* Top-right: Save + Export + avatar */}
         <Stack direction="row" spacing={1} alignItems="center">
-          <Button
-            size="small"
-            startIcon={<SaveIcon sx={{ fontSize: 16 }} />}
-            onClick={onSave}
-            disabled={!onSave}
-            data-testid={`${testId}-save`}
-            variant="outlined"
-            sx={{
-              textTransform: 'none',
-              color: danceFlowColors.textSecondary,
-              borderColor: danceFlowColors.borderStrong,
-              fontWeight: 600, fontSize: 12,
-              '&:hover': {
-                bgcolor: 'rgba(167,139,250,0.08)',
-                color: danceFlowColors.lavender,
-                borderColor: danceFlowColors.lavender,
-              },
-            }}
-          >
-            Save
-          </Button>
+          {/* Save-knapp m/ live status-label:
+              idle = 'Save' (default)
+              saving = 'Saving…' (lavender)
+              saved = '✓ Saved kl HH:MM' (grønn)
+              error = '⚠ Save failed' (rød, m/ tooltip) */}
+          <Tooltip title={saveStatus === 'error' && saveError ? saveError : ''}>
+            <span>
+              <Button
+                size="small"
+                startIcon={
+                  saveStatus === 'saving'
+                    ? null
+                    : <SaveIcon sx={{ fontSize: 16 }} />
+                }
+                onClick={onSave}
+                disabled={!onSave || saveStatus === 'saving'}
+                data-testid={`${testId}-save`}
+                variant="outlined"
+                aria-busy={saveStatus === 'saving'}
+                sx={{
+                  textTransform: 'none',
+                  color: saveStatus === 'saved'
+                    ? '#34d399'
+                    : saveStatus === 'error'
+                      ? '#f87171'
+                      : saveStatus === 'saving'
+                        ? danceFlowColors.lavender
+                        : danceFlowColors.textSecondary,
+                  borderColor: saveStatus === 'saved'
+                    ? '#34d39955'
+                    : saveStatus === 'error'
+                      ? '#f8717155'
+                      : saveStatus === 'saving'
+                        ? danceFlowColors.lavender
+                        : danceFlowColors.borderStrong,
+                  fontWeight: 600, fontSize: 12,
+                  minWidth: 140,
+                  fontVariantNumeric: 'tabular-nums',
+                  '&:hover': saveStatus === 'idle' ? {
+                    bgcolor: 'rgba(167,139,250,0.08)',
+                    color: danceFlowColors.lavender,
+                    borderColor: danceFlowColors.lavender,
+                  } : undefined,
+                }}
+              >
+                {saveStatus === 'saving' ? 'Saving…'
+                  : saveStatus === 'saved' && lastSavedAt
+                    ? `Saved kl ${new Date(lastSavedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`
+                    : saveStatus === 'error' ? 'Save failed'
+                      : lastSavedAt
+                        ? `Saved kl ${new Date(lastSavedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`
+                        : 'Save'}
+              </Button>
+            </span>
+          </Tooltip>
           <Button
             size="small"
             startIcon={<ExportIcon sx={{ fontSize: 16 }} />}

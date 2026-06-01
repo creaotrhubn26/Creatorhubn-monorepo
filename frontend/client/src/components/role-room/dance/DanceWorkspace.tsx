@@ -70,8 +70,9 @@ import { useDanceCheatSheet } from './DanceCheatSheet';
 import { isDanceReadOnlyRole } from './danceRoleUtils';
 import { useAuth } from '../../../hooks/useAuth';
 import { useDanceRealtimePresence } from './danceRealtimeClient';
-import DanceAnnotateView from './DanceAnnotateView';
+import DanceAnnotateView, { type AnnotateSaveStatus } from './DanceAnnotateView';
 import DanceAnnotateLayout from './DanceAnnotateLayout';
+import DanceProjectSwitcherDialog from './DanceProjectSwitcherDialog';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -205,6 +206,30 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
   const [annotateClipId, setAnnotateClipId] = React.useState<string | null>(null);
   const [annotateClipTitle, setAnnotateClipTitle] = React.useState<string>('');
   const [annotateDuration, setAnnotateDuration] = React.useState<number>(60);
+  // Annotate save-status fra child + project-switcher state.
+  const [annotateSaveStatus, setAnnotateSaveStatus] = React.useState<AnnotateSaveStatus>('idle');
+  const [annotateLastSaved, setAnnotateLastSaved] = React.useState<number | null>(null);
+  const [annotateSaveError, setAnnotateSaveError] = React.useState<string | null>(null);
+  const [projectSwitcherOpen, setProjectSwitcherOpen] = React.useState<boolean>(false);
+
+  const handleAnnotateSaveStatus = React.useCallback(
+    (status: AnnotateSaveStatus, lastSavedAt: number | null, error: string | null) => {
+      setAnnotateSaveStatus(status);
+      setAnnotateLastSaved(lastSavedAt);
+      setAnnotateSaveError(error);
+    },
+    [],
+  );
+
+  const handleSwitchProject = React.useCallback((nextProjectId: string): void => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('projectId', nextProjectId);
+    // Trigger full reload for å re-mount alle subscribers (clips, formations,
+    // annotations etc.) m/ ny project-scope. Pragmatisk for nå — full SPA-
+    // bytte-flyt krever mer arbeid.
+    window.location.href = url.toString();
+  }, []);
   React.useEffect(() => {
     const onSelect = (e: Event): void => {
       const detail = (e as CustomEvent<{
@@ -302,12 +327,29 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
     return (
       <DanceAnnotateLayout
         projectName={projectId ?? 'Untitled Project'}
-        onSave={handleShare}
+        onSave={() => {
+          // Save-knapp manuelt — flush blur via document.activeElement
+          // for å committe pending form-edits, deretter trigger refresh-event.
+          if (typeof document !== 'undefined') {
+            const el = document.activeElement as HTMLElement | null;
+            if (el && typeof el.blur === 'function') el.blur();
+          }
+          // Hvis ingen mutations er underveis, vis 'saved'-status uansett
+          // for visuell bekreftelse på at staten er ren.
+          if (annotateSaveStatus === 'idle') {
+            setAnnotateLastSaved(Date.now());
+            setAnnotateSaveStatus('saved');
+          }
+        }}
+        saveStatus={annotateSaveStatus}
+        lastSavedAt={annotateLastSaved}
+        saveError={annotateSaveError}
         onExport={() => {
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('dance:export-annotation'));
           }
         }}
+        onOpenProjectSwitcher={() => setProjectSwitcherOpen(true)}
         user={{
           name: auth.user?.name ?? auth.user?.email ?? undefined,
           avatarUrl: typeof auth.user?.picture === 'string' ? auth.user.picture : undefined,
@@ -327,6 +369,13 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             { id: 'd5', label: 'Dancer 5' },
           ]}
           readOnly={readOnly}
+          onSaveStatusChange={handleAnnotateSaveStatus}
+        />
+        <DanceProjectSwitcherDialog
+          open={projectSwitcherOpen}
+          currentProjectId={projectId}
+          onClose={() => setProjectSwitcherOpen(false)}
+          onSwitch={handleSwitchProject}
         />
         {/* Cheat-sheet + share-snackbar bevart fra eksisterende parent-flyt */}
         {cheatSheet.CheatSheet}
