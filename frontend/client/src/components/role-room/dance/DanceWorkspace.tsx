@@ -318,6 +318,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
           clipId={annotateClipId}
           clipTitle={annotateClipTitle}
           durationSec={annotateDuration}
+          projectId={projectId}
           dancerOptions={[
             { id: 'd1', label: 'Dancer 1' },
             { id: 'd2', label: 'Dancer 2' },

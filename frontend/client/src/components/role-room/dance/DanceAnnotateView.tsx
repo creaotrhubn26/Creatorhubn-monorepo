@@ -41,6 +41,7 @@ import AnnotateCommonLabelsPanel from './AnnotateCommonLabelsPanel';
 import AnnotateFormPanel from './AnnotateFormPanel';
 import AnnotateShortcutsPanel from './AnnotateShortcutsPanel';
 import AnnotationExportOverlay from './AnnotationExportOverlay';
+import { useDanceAnnotationCatalog } from './useDanceAnnotationCatalog';
 import {
   listAnnotations,
   createAnnotation,
@@ -48,7 +49,8 @@ import {
   deleteAnnotation,
   type VideoAnnotation,
 } from './danceVideoService';
-import { categoryByShortcut } from './danceMovementCategories';
+// categoryByShortcut fra danceMovementCategories er erstattet av dynamisk
+// shortcut-lookup mot catalog (1-9 brukerdefinerte snarveier).
 import { danceFlowColors } from './danceFlowTheme';
 
 export interface DanceAnnotateViewProps {
@@ -58,6 +60,8 @@ export interface DanceAnnotateViewProps {
   clipTitle?: string;
   /** Total varighet av clip (sek) — krever for timeline-skalering. */
   durationSec: number;
+  /** Prosjekt-scope for categories/labels-catalog. */
+  projectId: string | null;
   dancerOptions: Array<{ id: string; label: string }>;
   /** Read-only-modus skipper alle mutations. */
   readOnly?: boolean;
@@ -71,9 +75,13 @@ export default function DanceAnnotateView({
   clipId,
   clipTitle,
   durationSec,
+  projectId,
   dancerOptions,
   readOnly = false,
 }: DanceAnnotateViewProps): React.ReactElement {
+  // Catalog: categories + labels (auto-seedet defaults + brukerens egne).
+  const catalog = useDanceAnnotationCatalog({ projectId });
+
   const [annotations, setAnnotations] = React.useState<VideoAnnotation[]>([]);
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
   const [activeLabel, setActiveLabel] = React.useState<string | null>(null);
@@ -182,11 +190,11 @@ export default function DanceAnnotateView({
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
-      // Number-keys 1-5 → set category
-      const numCat = categoryByShortcut(e.key);
-      if (numCat) {
+      // Number-keys 1-9 → set category (dynamisk via catalog.categories)
+      const matchedCat = catalog.categories.find((c) => c.shortcut === e.key);
+      if (matchedCat) {
         e.preventDefault();
-        setActiveCategoryId((cur) => (cur === numCat.id ? null : numCat.id));
+        setActiveCategoryId((cur) => (cur === matchedCat.id ? null : matchedCat.id));
         return;
       }
       switch (e.key.toLowerCase()) {
@@ -227,7 +235,7 @@ export default function DanceAnnotateView({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [readOnly, clipId, selectedId, selected, playheadSec, handleAddAnnotation, handleDelete, handlePatch]);
+  }, [readOnly, clipId, selectedId, selected, playheadSec, handleAddAnnotation, handleDelete, handlePatch, catalog.categories]);
 
   // ─── Render ───────────────────────────────────────────────────────
   if (!clipId) {
@@ -421,8 +429,13 @@ export default function DanceAnnotateView({
               borderRadius: 1,
             }}>
               <AnnotateCategoryToolsPanel
+                categories={catalog.categories}
                 activeCategoryId={activeCategoryId}
                 onSelectCategory={setActiveCategoryId}
+                onCreate={async (input) => { await catalog.createCategory(input); }}
+                onPatch={async (id, patch) => { await catalog.patchCategory(id, patch); }}
+                onDelete={(id) => catalog.deleteCategory(id)}
+                readOnly={readOnly}
               />
             </Box>
 
@@ -433,9 +446,15 @@ export default function DanceAnnotateView({
               borderRadius: 1,
             }}>
               <AnnotateCommonLabelsPanel
+                categories={catalog.categories}
+                labels={catalog.labels}
                 activeCategoryId={activeCategoryId}
                 activeLabel={activeLabel}
                 onSelectLabel={setActiveLabel}
+                onCreate={async (input) => { await catalog.createLabel(input); }}
+                onPatch={async (id, patch) => { await catalog.patchLabel(id, patch); }}
+                onDelete={(id) => catalog.deleteLabel(id)}
+                readOnly={readOnly}
               />
             </Box>
 

@@ -130,6 +130,10 @@ import { createDancerProfileRouter } from "./dancer-profile-routes.js";
 import { createDancerInjuryLogRouter } from "./dancer-injury-log-routes.js";
 import { createDanceFormationRouter } from "./dance-formation-routes.js";
 import { createDanceFormationTimelineItemRouter } from "./dance-formation-timeline-item-routes.js";
+import {
+  createDanceAnnotationCategoriesRouter,
+  createDanceAnnotationLabelsRouter,
+} from "./dance-annotation-catalog-routes.js";
 import { createDanceRehearsalRouter } from "./dance-rehearsal-routes.js";
 import { createDanceVideoRouter } from "./dance-video-routes.js";
 import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
@@ -1814,6 +1818,14 @@ app.use(
 app.use(
   "/api/dance/formation-timeline-items",
   createDanceFormationTimelineItemRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/annotation-categories",
+  createDanceAnnotationCategoriesRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/annotation-labels",
+  createDanceAnnotationLabelsRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/dance/rehearsals",

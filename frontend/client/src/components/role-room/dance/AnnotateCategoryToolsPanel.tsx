@@ -1,35 +1,84 @@
 /**
  * AnnotateCategoryToolsPanel — CATEGORY TOOLS-panel i DanceAnnotate-mockup.
  *
- * Liste over de 5 kategoriene (Steps/Arms/Body/Jumps/Turns) med keybind-
- * snarvei (1-5) + "+ Add Category"-knapp. Klikk aktiverer kategori for
- * neste annotation som lages.
+ * Nå dynamisk via dance-annotation-catalog (migrasjon 217). 5 defaults
+ * (steps/arms/body/jumps/turns) auto-seedes ved første access; brukeren
+ * kan legge til, redigere navn/farge, og slette egne (defaults er
+ * server-side protected).
  *
- * Categories er definert i danceMovementCategories.ts. Add Category er
- * UI-stub inntil prosjekt-spesifikke kategorier får migrasjon.
+ * Klikk på rad: aktiver kategori for neste annotation.
+ * Hover/right-click på rad: 'Rediger'-ikon vises (åpner dialog).
+ * '+ Add Category': åpner dialog i create-modus.
  */
 import React from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import { Add as AddIcon } from '@mui/icons-material';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
+import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
 
-import { DANCE_MOVEMENT_CATEGORIES } from './danceMovementCategories';
+import type { AnnotationCategoryRecord } from './danceAnnotationCatalogService';
+import AnnotateCategoryDialog from './AnnotateCategoryDialog';
 import { danceFlowColors } from './danceFlowTheme';
 
 export interface AnnotateCategoryToolsPanelProps {
+  categories: readonly AnnotationCategoryRecord[];
   activeCategoryId: string | null;
   onSelectCategory: (id: string | null) => void;
-  /** Stub-handler inntil add-category-flyt er bygd. */
-  onAddCategory?: () => void;
+  onCreate: (input: {
+    name: string;
+    color: string;
+    shortcut: string | null;
+  }) => Promise<void>;
+  onPatch: (id: string, patch: {
+    name?: string;
+    color?: string;
+    shortcut?: string | null;
+  }) => Promise<void>;
+  onDelete: (id: string) => Promise<boolean>;
+  /** Read-only-modus skjuler edit/add/delete. */
+  readOnly?: boolean;
 }
 
 export default function AnnotateCategoryToolsPanel({
+  categories,
   activeCategoryId,
   onSelectCategory,
-  onAddCategory,
+  onCreate,
+  onPatch,
+  onDelete,
+  readOnly = false,
 }: AnnotateCategoryToolsPanelProps): React.ReactElement {
+  const [dialogOpen, setDialogOpen] = React.useState<boolean>(false);
+  const [editing, setEditing] = React.useState<AnnotationCategoryRecord | null>(null);
+  const [hoverId, setHoverId] = React.useState<string | null>(null);
+
+  const existingShortcuts = React.useMemo(
+    () => categories.map((c) => c.shortcut),
+    [categories],
+  );
+
+  const openCreate = (): void => { setEditing(null); setDialogOpen(true); };
+  const openEdit = (c: AnnotationCategoryRecord): void => {
+    setEditing(c); setDialogOpen(true);
+  };
+
+  const handleSave = async (input: {
+    name: string; color: string; shortcut: string | null;
+  }): Promise<void> => {
+    if (editing) {
+      await onPatch(editing.id, input);
+    } else {
+      await onCreate(input);
+    }
+  };
+
+  const handleDeleteFromDialog = editing && !editing.isDefault
+    ? async (): Promise<void> => { await onDelete(editing.id); }
+    : undefined;
+
   return (
     <Box data-testid="annotate-category-tools">
       <Typography
@@ -43,85 +92,125 @@ export default function AnnotateCategoryToolsPanel({
         Category Tools
       </Typography>
       <Stack spacing={0.5}>
-        {DANCE_MOVEMENT_CATEGORIES.map((cat) => {
+        {categories.map((cat) => {
           const isActive = activeCategoryId === cat.id;
+          const isHover = hoverId === cat.id;
           return (
             <Box
               key={cat.id}
-              component="button"
-              type="button"
               data-testid={`annotate-category-${cat.id}`}
-              aria-pressed={isActive}
-              onClick={() => onSelectCategory(isActive ? null : cat.id)}
+              onMouseEnter={() => setHoverId(cat.id)}
+              onMouseLeave={() => setHoverId((cur) => (cur === cat.id ? null : cur))}
               sx={{
                 display: 'flex', alignItems: 'center', gap: 1,
                 px: 1.25, py: 0.75,
-                border: 'none', borderRadius: 1,
-                cursor: 'pointer', font: 'inherit', width: '100%',
+                borderRadius: 1,
                 bgcolor: isActive ? `${cat.color}1f` : 'rgba(255,255,255,0.03)',
                 color: isActive ? cat.color : danceFlowColors.textSecondary,
                 transition: 'background-color 120ms',
                 '&:hover': {
                   bgcolor: `${cat.color}14`,
                 },
-                '&:focus-visible': {
-                  outline: `2px solid ${cat.color}`,
-                  outlineOffset: 1,
-                },
               }}
             >
-              {/* Color-dot */}
               <Box
+                component="button"
+                type="button"
+                onClick={() => onSelectCategory(isActive ? null : cat.id)}
+                aria-pressed={isActive}
                 sx={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  bgcolor: cat.color, flexShrink: 0,
-                }}
-              />
-              <Box sx={{
-                flex: 1, textAlign: 'left', fontSize: 13, fontWeight: 600,
-              }}>
-                {cat.label}
-              </Box>
-              <Box
-                sx={{
-                  fontSize: 10, fontWeight: 700,
-                  bgcolor: 'rgba(255,255,255,0.06)',
-                  color: danceFlowColors.textMuted,
-                  px: 0.75, py: 0.125,
-                  borderRadius: 0.5, fontFamily: 'ui-monospace, monospace',
-                  minWidth: 18, textAlign: 'center',
+                  flex: 1, display: 'flex', alignItems: 'center', gap: 1,
+                  border: 'none', bgcolor: 'transparent',
+                  cursor: 'pointer', font: 'inherit',
+                  color: 'inherit',
+                  textAlign: 'left',
+                  '&:focus-visible': {
+                    outline: `2px solid ${cat.color}`,
+                    outlineOffset: 1,
+                  },
                 }}
               >
-                {cat.shortcut}
+                <Box
+                  sx={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    bgcolor: cat.color, flexShrink: 0,
+                  }}
+                />
+                <Box sx={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                  {cat.name}
+                </Box>
               </Box>
+
+              {!readOnly && isHover ? (
+                <Tooltip title={cat.isDefault ? 'Rediger navn/farge (default kan ikke slettes)' : 'Rediger'}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); openEdit(cat); }}
+                    data-testid={`annotate-category-${cat.id}-edit`}
+                    sx={{
+                      p: 0.25,
+                      color: danceFlowColors.textMuted,
+                      '&:hover': { color: cat.color },
+                    }}
+                  >
+                    <EditIcon sx={{ fontSize: 12 }} />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
+
+              {cat.shortcut ? (
+                <Box
+                  sx={{
+                    fontSize: 10, fontWeight: 700,
+                    bgcolor: 'rgba(255,255,255,0.06)',
+                    color: danceFlowColors.textMuted,
+                    px: 0.75, py: 0.125,
+                    borderRadius: 0.5, fontFamily: 'ui-monospace, monospace',
+                    minWidth: 18, textAlign: 'center',
+                  }}
+                >
+                  {cat.shortcut}
+                </Box>
+              ) : null}
             </Box>
           );
         })}
-        <Button
-          size="small"
-          startIcon={<AddIcon sx={{ fontSize: 14 }} />}
-          onClick={onAddCategory}
-          disabled={!onAddCategory}
-          data-testid="annotate-category-add"
-          sx={{
-            mt: 0.5,
-            justifyContent: 'flex-start',
-            textTransform: 'none',
-            color: danceFlowColors.textMuted,
-            fontSize: 12, fontWeight: 600,
-            border: `1px dashed ${danceFlowColors.borderStrong}`,
-            borderRadius: 1,
-            px: 1.25, py: 0.75,
-            '&:hover': {
-              color: danceFlowColors.lavender,
-              borderColor: danceFlowColors.lavender,
-              bgcolor: 'rgba(167,139,250,0.06)',
-            },
-          }}
-        >
-          Add Category
-        </Button>
+
+        {!readOnly ? (
+          <Button
+            size="small"
+            startIcon={<AddIcon sx={{ fontSize: 14 }} />}
+            onClick={openCreate}
+            data-testid="annotate-category-add"
+            sx={{
+              mt: 0.5,
+              justifyContent: 'flex-start',
+              textTransform: 'none',
+              color: danceFlowColors.textMuted,
+              fontSize: 12, fontWeight: 600,
+              border: `1px dashed ${danceFlowColors.borderStrong}`,
+              borderRadius: 1,
+              px: 1.25, py: 0.75,
+              '&:hover': {
+                color: danceFlowColors.lavender,
+                borderColor: danceFlowColors.lavender,
+                bgcolor: 'rgba(167,139,250,0.06)',
+              },
+            }}
+          >
+            Add Category
+          </Button>
+        ) : null}
       </Stack>
+
+      <AnnotateCategoryDialog
+        open={dialogOpen}
+        editing={editing}
+        existingShortcuts={existingShortcuts}
+        onClose={() => setDialogOpen(false)}
+        onSave={handleSave}
+        onDelete={handleDeleteFromDialog}
+      />
     </Box>
   );
 }
