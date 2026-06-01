@@ -60,7 +60,10 @@ Niende runde — timeline-datoer + økonomi-kobling:
 - ✅ **Sekvensielle datoer** på genererte produksjonsdager — starter dagen etter siste planlagte dag (ellers i dag), én skytedag per location etter hverandre (bransje-default). Justerbart per dag eller via «Forskyv dager».
 - ✅ **Økonomi-kobling (uten oppdiktede kr)** — `ProjectEconomyHub` driver allerede `plannedShootDays` fra `productionDays.length`; med datérte, location-grupperte dager er nå manus→produksjon→økonomi-kjeden reell. Budsjett-BELØP autogenereres bevisst ikke (krever ekte dag-rater/satser produsenten setter).
 
-**Gjenstår kun:** faktiske budsjett-satser (dag-rate, utstyrsleie etc.) er produsent-input, ikke noe systemet skal finne på. Alt annet i gap-rapporten + sync-gjennomgangen er levert.
+Tiende runde — bestemor-enkelt budsjett-overslag:
+- ✅ **SimpleBudgetEstimator** — eget, rent kort øverst i Økonomi → Oversikt. Produsenten setter prisene (per opptaksdag, per lokasjon, andre faste kostnader); systemet henter ANTALLENE automatisk fra planen (opptaksdager fra produksjonsdager, lokasjoner fra location-listen) og viser et transparent regnestykke per linje («5 dager × 15 000 kr = 75 000 kr») med levende totalsum. Plain-språk-hjelp, auto-fra-planen-chip, tomme-tilstander, og tips om å generere produksjonsdager når antallet er 0. Satser persisteres på prosjektet (`budgetRates`, schemaless). Systemet finner ALDRI på beløp — kun produsentens egne priser × ekte drivere.
+
+**Status:** hele gap-rapporten + sync-gjennomgangen + alle dine presiseringer (reelle koordinater, full sync, bestemor-enkel UX) er levert og verifisert. Manus→scener→lokasjoner(geokodet)→produksjonsdager(datert)→økonomi-kjeden er komplett og levende.
 
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).

@@ -1809,6 +1809,16 @@ export interface CastingProject {
    * man sender til godkjenning. Persisteres på prosjektet (schemaless compat-store).
    */
   targetDurationMinutes?: number;
+  /**
+   * Enkle budsjett-satser produsenten selv setter. Systemet regner et
+   * transparent overslag fra de ekte driverne (opptaksdager, lokasjoner) ×
+   * disse satsene — det finner ALDRI på beløp selv. Persisteres schemaless.
+   */
+  budgetRates?: {
+    perShootDay?: number;
+    perLocation?: number;
+    otherFixed?: number;
+  };
   startDate?: string;
   endDate?: string;
   budget?: number;
