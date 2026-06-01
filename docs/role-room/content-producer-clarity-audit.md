@@ -12,6 +12,9 @@
 
 - Bolk 4 (commit 36761b75): status-bevisst kontotilgang-flis-detalj (#31 — «Ikke startet/Venter på klienten/Invitasjon sendt/Koblet/Trukket tilbake»), offline-aware feed-auto-save-feil (#36).
 
+- Bolk 5: lagre-knapp-tilbakemelding i klientplan (#77 — tooltip «Alle endringer er lagret» / «Lagrer…» + label-bytte), offline-aware material-/logo-opplastingsfeil i ProducerMediaPanel (#283 + brand-logo — `describeProducerError`), Google Workspace status-sjekk ikke lenger helt stille (#289/#28 — diagnostikk-logg ved getStatus-feil i leveranse-arbeidsområdet).
+  - Verifisert allerede fikset (audit-doc'en var utdatert): #141 (FeedPostDetailPanel rå HTTP-koder → status-spesifikke 401/403/429/5xx-meldinger), #253 (FB Pages stille load-feil → `setFbPagesError`-banner), #171 (feed-strategi 'ukjent feil' → meningsfull fallback).
+
 **Vurdert og bevisst ikke endret (etter nærlesing):**
 - Fire-and-forget sync (#3/#4/#22): effektene re-kjører ofte og synk-kallene er nå offline-resiliente (kø/speil); en per-feil-banner ville støye. Den brukerinitierte lagre-stien (ProducerClientPlanningPanel handleSave) viser allerede synk-status.
 - Empty-states (#32/#42): teksten refererer allerede neste handling («Bruk Skriv leveransearbeidsområde»; sidebar viser produksjons-handlinger når grunnlaget er klart).

@@ -13,6 +13,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -865,16 +866,30 @@ export default function ProducerClientPlanningPanel({
                 >
                   Fyll fra story logic
                 </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  startIcon={<SaveIcon />}
-                  onClick={() => { void handleSave(); }}
-                  disabled={saving || !dirty}
-                  sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#1d4ed8' }}
+                <Tooltip
+                  title={
+                    saving
+                      ? 'Lagrer endringene…'
+                      : !dirty
+                        ? 'Alle endringer er lagret'
+                        : 'Lagre endringene i klientplanen'
+                  }
+                  arrow
                 >
-                  Lagre plan
-                </Button>
+                  {/* span så tooltip vises også når knappen er disabled */}
+                  <span>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<SaveIcon />}
+                      onClick={() => { void handleSave(); }}
+                      disabled={saving || !dirty}
+                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#1d4ed8' }}
+                    >
+                      {saving ? 'Lagrer…' : 'Lagre plan'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Stack>
             ) : null}
           </Stack>

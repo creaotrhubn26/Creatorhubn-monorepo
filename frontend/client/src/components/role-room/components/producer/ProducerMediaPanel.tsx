@@ -2710,7 +2710,15 @@ export default function ProducerMediaPanel({
         useLocalAgreementFallback
           ? readLocalAgreements()
           : projectAgreementsApi.getAll(projectId),
-        googleWorkspaceApi.getStatus(projectId).catch(() => null),
+        googleWorkspaceApi.getStatus(projectId).catch((statusError) => {
+          // Ikke helt stille: en ekte Google-nedetid skal være sporbar i
+          // diagnostikk (artefakt-listen degraderer til tom uansett).
+          logRoleRoomDiagnostic('delivery-workspace-assets:google-status-failed', {
+            projectId,
+            message: statusError instanceof Error ? statusError.message : String(statusError),
+          });
+          return null;
+        }),
       ]);
       const normalizedProjectFiles = normalizeProjectFileRecords(projectFiles);
       setProjectFiles(normalizedProjectFiles);
@@ -5499,7 +5507,7 @@ export default function ProducerMediaPanel({
       setError(null);
     } catch (uploadError) {
       console.error('[ProducerMediaPanel] Failed to upload client material file', uploadError);
-      setError('Kunne ikke laste opp filen til prosjektet.');
+      setError(describeProducerError(uploadError, 'laste opp filen til prosjektet'));
     } finally {
       setUploadingMaterialFile(false);
     }
@@ -5571,7 +5579,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (brandLogoError) {
       console.error('[ProducerMediaPanel] Failed to upload or analyze brand logo', brandLogoError);
-      setError('Kunne ikke laste opp og analysere logoen.');
+      setError(describeProducerError(brandLogoError, 'laste opp og analysere logoen'));
     } finally {
       setUploadingBrandLogo(false);
       if (brandLogoFileInputRef.current) {
