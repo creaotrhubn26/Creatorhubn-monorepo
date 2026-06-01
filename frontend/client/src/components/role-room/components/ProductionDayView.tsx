@@ -282,12 +282,21 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     setGeneratingDays(true);
     try {
       const nowIso = new Date().toISOString();
+      const DAY_MS = 86_400_000;
+      // Startdato: dagen etter siste planlagte dag, ellers i dag. Sekvensielle
+      // skytedager (bransje-default) — produsenten kan flytte hele planen med
+      // "Forskyv dager" eller redigere hver dag.
+      const existingDateMs = productionDays
+        .map((d) => (d.date ? new Date(d.date).getTime() : NaN))
+        .filter((t) => Number.isFinite(t)) as number[];
+      const startMs = existingDateMs.length ? Math.max(...existingDateMs) + DAY_MS : Date.now();
       let created = 0;
       for (const loc of candidates) {
+        const dayDate = new Date(startMs + created * DAY_MS).toISOString().split('T')[0];
         const day: ProductionDay = {
           id: `day-${Date.now()}-${created}`,
           projectId,
-          date: '',
+          date: dayDate,
           locationId: loc.id,
           scenes: Array.isArray(loc.assignedScenes) ? loc.assignedScenes : [],
           crew: [],
@@ -302,7 +311,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       }
       const days = await productionPlanningService.getProductionDays(projectId);
       setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
-      showSuccess(`Genererte ${created} produksjonsdag(er) — én per lokasjon. Sett dato og call-time på hver.`);
+      showSuccess(`Genererte ${created} produksjonsdag(er) — én per lokasjon med sekvensielle datoer. Juster datoer/call-time eller forskyv hele planen ved behov.`);
       onUpdate?.();
     } catch (error) {
       console.error('Generate production days failed:', error);

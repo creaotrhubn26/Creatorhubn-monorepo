@@ -56,7 +56,11 @@ Syvende runde — synkronisering manus → nedstrøms (etter sync-gjennomgang):
 - ✅ **Reelle koordinater på lokasjoner** — ved lagring geokodes adresse via Kartverket (ws.geonorge.no) hvis koordinater mangler; varsel hvis det ikke lykkes (vær/reise/kart/call-sheets krever ekte koords).
 - ✅ **Produksjonsdager fra lokasjoner** — «Generer fra lokasjoner» i ProductionDayView lager én dag per (geokodet) location med tilknyttede scener, ikke-destruktivt (hopper over lokasjoner som alt har dag). Bransjestandard location-gruppering.
 
-**Fortsatt bevisst manuelt (krever domeneregler):** dato-tildeling på timeline og økonomi/budsjett-auto-skalering fra manus — disse trenger reelle produksjons-/budsjett-formler og bør ikke autogenereres med oppdiktede regler.
+Niende runde — timeline-datoer + økonomi-kobling:
+- ✅ **Sekvensielle datoer** på genererte produksjonsdager — starter dagen etter siste planlagte dag (ellers i dag), én skytedag per location etter hverandre (bransje-default). Justerbart per dag eller via «Forskyv dager».
+- ✅ **Økonomi-kobling (uten oppdiktede kr)** — `ProjectEconomyHub` driver allerede `plannedShootDays` fra `productionDays.length`; med datérte, location-grupperte dager er nå manus→produksjon→økonomi-kjeden reell. Budsjett-BELØP autogenereres bevisst ikke (krever ekte dag-rater/satser produsenten setter).
+
+**Gjenstår kun:** faktiske budsjett-satser (dag-rate, utstyrsleie etc.) er produsent-input, ikke noe systemet skal finne på. Alt annet i gap-rapporten + sync-gjennomgangen er levert.
 
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).
