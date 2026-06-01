@@ -153,6 +153,7 @@ import { setupIgEventsRoutes } from "./role-room-ig-events-routes.js";
 import { setupMetaReviewIndexRoutes } from "./role-room-meta-review-index-routes.js";
 import { setupMarketingCockpitRoutes } from "./role-room-marketing-cockpit-routes.js";
 import { setupRoleRoomAgentRoutes } from "./role-room-agent-routes.js";
+import { setupMarketingCompetitorsRoutes } from "./role-room-marketing-competitors-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31971,6 +31972,9 @@ setupMarketingCockpitRoutes({ app, requireAdminOrDemoBypass });
 // Role Room Agent — profile-recommendations (bio, cover, CTA per platform)
 // + publish-orchestration to Meta API + history log.
 setupRoleRoomAgentRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// Marketing-competitors — tracked-list + daily snapshots for konkurrent-monitor.
+setupMarketingCompetitorsRoutes({ app, pool, requireAdminOrDemoBypass });
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-

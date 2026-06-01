@@ -26,6 +26,7 @@ import EventIcon from '@mui/icons-material/Event';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import CompetitorsPanel from './CompetitorsPanel';
 
 interface Section<T> { ok: boolean; data: T | null; error?: string; status?: number; }
 
@@ -577,8 +578,15 @@ export default function MarketingCockpitTab() {
           </Card>
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
-            <Chip label="CAMPAIGN ACTIONS" size="small"
+            <Chip label="KONKURRENT-MONITOR" size="small"
               sx={{ background: 'rgba(168,85,247,0.15)', color: '#c4b5fd', fontSize: '0.7rem' }} />
+          </Divider>
+
+          <CompetitorsPanel />
+
+          <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
+            <Chip label="CAMPAIGN ACTIONS" size="small"
+              sx={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontSize: '0.7rem' }} />
           </Divider>
 
           <CampaignActionsPanel onAction={() => void load()} />
