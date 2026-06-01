@@ -308,27 +308,57 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
     }
     try {
       const demoFlag = demo ? "TRUE" : "FALSE";
-      const r = await pool.query(
-        `WITH visible AS (
-           SELECT DISTINCT t.id, t.created_at, t.availability_status
-             FROM talent_consent_registry c
-             JOIN talents t ON t.id = c.talent_id
-            WHERE c.partner_type = $1 AND c.partner_ref = $2
-              AND c.status = 'granted'
-              AND (c.expires_at IS NULL OR c.expires_at > now())
-              AND COALESCE(t.is_demo, FALSE) = ${demoFlag}
-              AND t.profile_status != 'archived'
-         )
-         SELECT
-           count(*)::int AS total_visible,
-           count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS new_30d,
-           count(*) FILTER (WHERE availability_status = 'open')::int AS available_now
-         FROM visible`,
-        [agency.type, agency.id],
-      );
+      const [aggregate, spark] = await Promise.all([
+        pool.query(
+          `WITH visible AS (
+             SELECT DISTINCT t.id, t.created_at, t.availability_status
+               FROM talent_consent_registry c
+               JOIN talents t ON t.id = c.talent_id
+              WHERE c.partner_type = $1 AND c.partner_ref = $2
+                AND c.status = 'granted'
+                AND (c.expires_at IS NULL OR c.expires_at > now())
+                AND COALESCE(t.is_demo, FALSE) = ${demoFlag}
+                AND t.profile_status != 'archived'
+           )
+           SELECT
+             count(*)::int AS total_visible,
+             count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS new_30d,
+             count(*) FILTER (WHERE availability_status = 'open')::int AS available_now
+           FROM visible`,
+          [agency.type, agency.id],
+        ),
+        // Sparkline: nye consent-grants per dag, siste 30 dager.
+        // generate_series sikrer at vi alltid får 30 punkter — også dager med 0.
+        pool.query(
+          `WITH days AS (
+             SELECT generate_series(
+               (now() AT TIME ZONE 'UTC')::date - interval '29 days',
+               (now() AT TIME ZONE 'UTC')::date,
+               interval '1 day'
+             )::date AS day
+           ),
+           counts AS (
+             SELECT DATE(c.granted_at AT TIME ZONE 'UTC') AS day,
+                    COUNT(DISTINCT t.id)::int AS n
+               FROM talent_consent_registry c
+               JOIN talents t ON t.id = c.talent_id
+              WHERE c.partner_type = $1 AND c.partner_ref = $2
+                AND c.status = 'granted'
+                AND COALESCE(t.is_demo, FALSE) = ${demoFlag}
+                AND c.granted_at >= now() - interval '30 days'
+              GROUP BY DATE(c.granted_at AT TIME ZONE 'UTC')
+           )
+           SELECT days.day::text AS day, COALESCE(counts.n, 0)::int AS n
+             FROM days
+             LEFT JOIN counts USING (day)
+            ORDER BY days.day`,
+          [agency.type, agency.id],
+        ),
+      ]);
       return res.json({
         agency: { id: agency.id, name: agency.name },
-        ...r.rows[0],
+        ...aggregate.rows[0],
+        sparkline: spark.rows,
       });
     } catch (err) {
       console.error("[registry-overview] failed", err);
