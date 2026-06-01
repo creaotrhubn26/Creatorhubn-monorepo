@@ -272,3 +272,114 @@ export async function sendProjectInvitationAccepted(
   });
   return { sent: r.sent, reason: r.reason ?? null };
 }
+
+// ── 5. talent_proposed_by_agency → produksjon ──────────────────────
+export async function sendTalentProposedByAgency(
+  pool: Pool,
+  args: {
+    proposalId: string;
+    talentDisplayName: string;
+    agencyName: string;
+    projectName: string;
+    roleName: string | null;
+    agencyNotes: string | null;
+    recipientEmail: string;
+    sentByUserId: string;
+  },
+): Promise<{ sent: boolean; reason: string | null }> {
+  const ctaUrl = `${appBaseUrl()}/talents/partnerships`;
+  const eyebrow = "Nytt talent-forslag";
+  const headline = `${args.agencyName} foreslår ${args.talentDisplayName}`;
+  const roleLine = args.roleName ? `Rolle: ${args.roleName}` : "Ingen spesifikk rolle valgt";
+  const intro = `Bryået har foreslått ${args.talentDisplayName} til ${args.projectName}. ${roleLine}.`;
+  const body = `
+    <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
+      ${escapeHtml(headline)}
+    </h1>
+    <p style="color: #c4b5fd; line-height: 1.6;">${escapeHtml(intro)}</p>
+    ${
+      args.agencyNotes
+        ? `<div style="margin: 16px 0; padding: 14px 18px; background: #1a0f3a; border-left: 3px solid #a855f7; border-radius: 0 8px 8px 0;">
+        <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Bryåets kommentar:</div>
+        <div style="color: #c4b5fd; font-style: italic; font-size: 15px;">"${escapeHtml(args.agencyNotes)}"</div>
+      </div>`
+        : ""
+    }
+    <a href="${escapeHtml(ctaUrl)}" style="${PRIMARY_BTN}">
+      Se forslaget
+    </a>
+  `;
+  const subject = `${args.agencyName} foreslår ${args.talentDisplayName} til ${args.projectName}`;
+  const text = `${headline}\n\n${intro}\n${args.agencyNotes ? `\nKommentar: ${args.agencyNotes}\n` : ""}\nÅpne: ${ctaUrl}`;
+
+  const r = await sendTransactionalEmail({
+    to: args.recipientEmail,
+    subject,
+    html: shellHtml(eyebrow, body),
+    text,
+    fromLabel: `${args.agencyName} via The Role Room`,
+    kind: "partnership_talent_proposed",
+    sentByUserId: args.sentByUserId,
+    pool,
+  });
+  return { sent: r.sent, reason: r.reason ?? null };
+}
+
+// ── 6. talent_proposal_responded → byrå ────────────────────────────
+export async function sendTalentProposalResponded(
+  pool: Pool,
+  args: {
+    proposalId: string;
+    accepted: boolean;
+    talentDisplayName: string;
+    projectName: string;
+    productionName: string;
+    productionNotes: string | null;
+    recipientEmail: string;
+    sentByUserId: string;
+  },
+): Promise<{ sent: boolean; reason: string | null }> {
+  const ctaUrl = `${appBaseUrl()}/talents/partnerships`;
+  const eyebrow = args.accepted ? "Forslag akseptert" : "Forslag avslått";
+  const headline = args.accepted
+    ? `${args.productionName} aksepterte ${args.talentDisplayName}`
+    : `${args.productionName} valgte å ikke gå videre med ${args.talentDisplayName}`;
+  const intro = args.accepted
+    ? `Produksjonsteamet har tatt ${args.talentDisplayName} videre i prosessen for ${args.projectName}. Følg opp med talenten i prosjektromsfanen.`
+    : `Produksjonsteamet valgte å ikke gå videre med ${args.talentDisplayName} for ${args.projectName} denne gangen.`;
+  const body = `
+    <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
+      ${escapeHtml(headline)}
+    </h1>
+    <p style="color: #c4b5fd; line-height: 1.6;">${escapeHtml(intro)}</p>
+    ${
+      args.productionNotes
+        ? `<div style="margin: 16px 0; padding: 14px 18px; background: #1a0f3a; border-left: 3px solid #a855f7; border-radius: 0 8px 8px 0;">
+        <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Tilbakemelding fra ${escapeHtml(args.productionName)}:</div>
+        <div style="color: #c4b5fd; font-style: italic; font-size: 15px;">"${escapeHtml(args.productionNotes)}"</div>
+      </div>`
+        : ""
+    }
+    <a href="${escapeHtml(ctaUrl)}" style="${PRIMARY_BTN}">
+      Åpne partnerships
+    </a>
+  `;
+  const subject = args.accepted
+    ? `${args.talentDisplayName} akseptert til ${args.projectName}`
+    : `${args.talentDisplayName} ikke valgt for ${args.projectName}`;
+  const text = `${headline}\n\n${intro}\n${args.productionNotes ? `\nTilbakemelding: ${args.productionNotes}\n` : ""}\nÅpne: ${ctaUrl}`;
+
+  const r = await sendTransactionalEmail({
+    to: args.recipientEmail,
+    subject,
+    html: shellHtml(eyebrow, body),
+    text,
+    fromLabel: "The Role Room",
+    kind: args.accepted
+      ? "partnership_talent_proposal_accepted"
+      : "partnership_talent_proposal_declined",
+    sentByUserId: args.sentByUserId,
+    pool,
+  });
+  return { sent: r.sent, reason: r.reason ?? null };
+}
