@@ -65,6 +65,28 @@ Tiende runde — bestemor-enkelt budsjett-overslag:
 
 **Status:** hele gap-rapporten + sync-gjennomgangen + alle dine presiseringer (reelle koordinater, full sync, bestemor-enkel UX) er levert og verifisert. Manus→scener→lokasjoner(geokodet)→produksjonsdager(datert)→økonomi-kjeden er komplett og levende.
 
+---
+
+## Gjenstående arbeid og kjente begrensninger
+
+Dette er bevisst utelatt eller delvis — dokumentert så neste økt vet hva som gjenstår.
+
+### Verifisering
+- **Adferds-E2E i browser gjenstår.** Verifisert: bygg passerer på Vercel (prod-konfig), skallene rendrer uten JS-feil, og enhetstester for reorder + scene-relative ankre (9/9). IKKE kjørt i browser mot ekte backend: lås mot to samtidige sesjoner, presence med flere brukere, kommentar-tråder, budsjett-input-persistering, Kartverket-geokoding live, generer-dager. Preview-en ligger bak Vercel SSO — bør verifiseres manuelt der (eller skru av Deployment Protection for automatisk Playwright-kjøring).
+- **Mangler E2E/smoke-tester** for de nye flytene (lås, presence, kommentarer, budsjett-overslag, generer-produksjonsdager). Kun enhetstester for scene-reorder/ankre finnes.
+
+### Bevisste design-grenser (ikke bugs)
+- **Budsjett-BELØP autogenereres ikke.** Produsenten setter satsene (dag-rate, location-gebyr, faste kostnader); systemet regner. Dette er med vilje — systemet skal ikke gjette kr.
+- **Produksjonsdag-generering bruker location-gruppering** (én dag per sted) + sekvensielle datoer. Mer avansert scheduling (fordel scener på dager, dag-load-balansering, helg-hopping) er ikke bygget.
+- **Per-linje-kommentarer:** scene-relativt anker eliminerer drift ved reorder + skriving over scener. Residual: skriving rett over kommentar-linja *innen samme scene* kan flytte den litt (krever tegn-nivå-anker for full presisjon).
+- **Presence:** lås-eier i transiente toasts kan vise rå bruker-id (det vedvarende banneret + presence-chip resolver til navn via prosjekt-medlemmer).
+
+### Ikke startet (naturlige neste features)
+- **Auto-call-sheets** fra produksjonsdager (dato + geokodet location + scener + vær/reise er nå på plass — `CallSheetGenerator` finnes).
+- **Budsjett-overslag → detaljert budsjettpakke → «send til klient»**-kobling.
+- **Inline kommentar-markører på tegn-/range-nivå** (utover linjenivå).
+- **Auto-sync av detaljert timeline** (utover produksjonsdagenes datoer).
+
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).
 - ✅ Fix 2 — Manus-lås tas ved åpning + heartbeat + frigis ved lukking; lås-konflikt-banner viser hvem som låste (`ManuscriptPanel.tsx`). Server håndhevet allerede 409; hullet var at ingen tok låsen.
