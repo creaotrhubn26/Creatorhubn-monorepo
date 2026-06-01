@@ -70,6 +70,7 @@ import { useDanceCheatSheet } from './DanceCheatSheet';
 import { isDanceReadOnlyRole } from './danceRoleUtils';
 import { useAuth } from '../../../hooks/useAuth';
 import { useDanceRealtimePresence } from './danceRealtimeClient';
+import DanceAnnotateView from './DanceAnnotateView';
 const VideoLibrary = React.lazy(() =>
   import('./VideoLibrary').then((m) => ({ default: m.VideoLibrary })),
 );
@@ -199,6 +200,24 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
     userId: auth.user?.id ? String(auth.user.id) : undefined,
     displayName: auth.user?.name ?? auth.user?.email ?? undefined,
   });
+  // DanceAnnotate: track valgt clip + duration for annotate-flate.
+  const [annotateClipId, setAnnotateClipId] = React.useState<string | null>(null);
+  const [annotateDuration, setAnnotateDuration] = React.useState<number>(60);
+  React.useEffect(() => {
+    const onSelect = (e: Event): void => {
+      const detail = (e as CustomEvent<{
+        clipId?: string;
+        durationSec?: number;
+      }>).detail;
+      if (!detail || typeof detail.clipId !== 'string') return;
+      setAnnotateClipId(detail.clipId);
+      if (typeof detail.durationSec === 'number' && detail.durationSec > 0) {
+        setAnnotateDuration(detail.durationSec);
+      }
+    };
+    window.addEventListener('dance:select-clip', onSelect as EventListener);
+    return () => window.removeEventListener('dance:select-clip', onSelect as EventListener);
+  }, []);
   const [subTab, setSubTab] = React.useState<FormationSubTab>('formation');
   const [saveStatus, setSaveStatus] = React.useState<FormationSaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -300,14 +319,30 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             readOnly={readOnly}
           />
         </Box>
+      ) : subTab === 'annotate' ? (
+        // DanceAnnotate-flate — pixel-perfect mot mockup #2.
+        // ClipsSidebar dispatcher dance:select-clip → vi tracker clipId
+        // + durationSec her og passer ned. Dancer-options kan utvides
+        // når dancer-service kobles inn (foreløpig stub D1-D5).
+        <DanceAnnotateView
+          clipId={annotateClipId}
+          durationSec={annotateDuration}
+          dancerOptions={[
+            { id: 'd1', label: 'Dancer 1' },
+            { id: 'd2', label: 'Dancer 2' },
+            { id: 'd3', label: 'Dancer 3' },
+            { id: 'd4', label: 'Dancer 4' },
+            { id: 'd5', label: 'Dancer 5' },
+          ]}
+          readOnly={readOnly}
+        />
       ) : (
-        // Annotate er den eneste sub-tab'en uten forward — viser placeholder
-        // inntil Phase 6 lager drawer. Dancers/Analysis/Review bytter top-level
-        // tab via dance:set-tab og lander aldri her.
+        // Dancers/Analysis/Review forward via dance:set-tab og lander
+        // aldri her. Fallback-tekst hvis ny sub-tab introduseres uten
+        // handler.
         <Box sx={{ p: { xs: 2, md: 3 }, color: '#9ca3af' }}>
           <Typography variant="body2">
-            Annotate-drawer kommer i Phase 6 (frihånd-tegning over scenen +
-            tekst-pins per posisjon).
+            Velg en sub-tab over.
           </Typography>
         </Box>
       )}
