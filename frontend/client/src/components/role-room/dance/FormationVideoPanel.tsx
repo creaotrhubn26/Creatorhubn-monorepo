@@ -48,6 +48,12 @@ type VideoSourceKind = 'hls' | 'direct' | 'embed' | 'unknown';
 export interface FormationVideoPanelProps {
   /** Test-id-override. */
   'data-testid'?: string;
+  /**
+   * Skjul panel-header med "Video"-label + tittel. Brukes i
+   * DanceAnnotate-context der videoens tittel allerede vises over rammen
+   * og panel-header duplikeres med tids-overlayet vårt.
+   */
+  hideHeader?: boolean;
 }
 
 interface SelectedClip {
@@ -185,6 +191,7 @@ function detectVideoSource(url: string | null): VideoSourceKind {
 
 export default function FormationVideoPanel({
   'data-testid': testId = 'formation-video-panel',
+  hideHeader = false,
 }: FormationVideoPanelProps): React.ReactElement {
   const [selected, setSelected] = React.useState<SelectedClip | null>(null);
   const videoElRef = React.useRef<HTMLVideoElement | null>(null);
@@ -251,7 +258,8 @@ export default function FormationVideoPanel({
         overflow: 'hidden',
       }}
     >
-      {/* Panel-header */}
+      {/* Panel-header — skjules i DanceAnnotate-context (hideHeader=true) */}
+      {hideHeader ? null : (
       <Box
         sx={{
           px: 1.25,
@@ -292,6 +300,7 @@ export default function FormationVideoPanel({
           </Typography>
         ) : null}
       </Box>
+      )}
 
       {/* Body */}
       <Box

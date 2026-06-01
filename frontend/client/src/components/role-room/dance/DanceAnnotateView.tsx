@@ -340,7 +340,7 @@ export default function DanceAnnotateView({
 
         {/* Video player m/ transport-bar (FormationVideoPanel gjenbrukt) */}
         <Box sx={{ position: 'relative', flex: '0 0 auto' }}>
-          <FormationVideoPanel data-testid="dance-annotate-video" />
+          <FormationVideoPanel data-testid="dance-annotate-video" hideHeader />
           {/* Tids-overlay øverst-venstre — mockup viser '00:00:24:13' */}
           <Box
             data-testid="dance-annotate-video-time-overlay"
