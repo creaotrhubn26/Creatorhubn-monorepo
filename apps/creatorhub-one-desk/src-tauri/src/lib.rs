@@ -13,6 +13,7 @@ mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
+mod prefs;
 
 use std::sync::Arc;
 
@@ -99,6 +100,60 @@ fn list_detected_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedM
 #[tauri::command]
 fn rescan_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
     mount_watcher::rescan(&state)
+}
+
+/// Eject et volum trygt via macOS' `diskutil eject`. Brukes etter
+/// vellykket backup når Fredrik har enabled "auto-eject"-preferansen.
+/// Validerer at path peker til /Volumes/* så vi ikke kan trigge eject
+/// på vilkårlig disk via UI-injection.
+#[tauri::command]
+async fn eject_volume(mount_path: String) -> Result<(), String> {
+    use std::path::Path;
+    let path = Path::new(&mount_path);
+    // Defense-in-depth: aksepter kun macOS-mounts under /Volumes/.
+    // Forhindrer både path-traversal og misbruk for å unmounte rot-FS.
+    if !path.starts_with("/Volumes/") {
+        return Err(format!(
+            "Tryggetssjekk: kun /Volumes/* tillates, fikk {}",
+            mount_path
+        ));
+    }
+    // Ekstra validering: path skal ha eksakt ett segment etter /Volumes/.
+    // /Volumes/Foo OK; /Volumes/Foo/Bar avvises.
+    let segments: Vec<&std::ffi::OsStr> = path.iter().collect();
+    if segments.len() != 3 {
+        return Err(format!("Forventet /Volumes/<navn>, fikk {}", mount_path));
+    }
+    let output = tokio::process::Command::new("/usr/sbin/diskutil")
+        .args(["eject", &mount_path])
+        .output()
+        .await
+        .map_err(|e| format!("Kjøre diskutil: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "diskutil eject feilet (exit {}): {}{}",
+            output.status.code().unwrap_or(-1),
+            stderr,
+            stdout
+        ));
+    }
+    Ok(())
+}
+
+/// Returnerer auto_eject-preferansen fra ~/.creatorhub-one-desk/prefs.json.
+/// Hvis fila eller feltet ikke fins, returnerer false (opt-in).
+#[tauri::command]
+fn get_auto_eject_pref() -> Result<bool, String> {
+    prefs::load().map(|p| p.auto_eject)
+}
+
+#[tauri::command]
+fn set_auto_eject_pref(auto_eject: bool) -> Result<(), String> {
+    let mut p = prefs::load().unwrap_or_default();
+    p.auto_eject = auto_eject;
+    prefs::save(&p)
 }
 
 #[tauri::command]
@@ -309,6 +364,9 @@ pub fn run() {
             fetch_project_info,
             list_detected_mounts,
             rescan_mounts,
+            eject_volume,
+            get_auto_eject_pref,
+            set_auto_eject_pref,
             start_copy_session,
             cancel_copy_session,
             list_copy_sessions,

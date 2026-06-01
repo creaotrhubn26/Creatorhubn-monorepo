@@ -100,6 +100,19 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+// ── Auto-eject + manuell eject ───────────────────────────────────────
+export async function ejectVolume(mountPath: string): Promise<void> {
+  return invoke<void>("eject_volume", { mountPath });
+}
+
+export async function getAutoEjectPref(): Promise<boolean> {
+  return invoke<boolean>("get_auto_eject_pref");
+}
+
+export async function setAutoEjectPref(autoEject: boolean): Promise<void> {
+  return invoke<void>("set_auto_eject_pref", { autoEject });
+}
+
 export interface DestinationSpec {
   id: string;
   label: string;
@@ -174,6 +187,7 @@ export interface CopyFileCompletedEvent {
 
 export interface CopySessionCompletedEvent {
   session_id: string;
+  mount_path: string;
   succeeded: number;
   failed: number;
   cancelled: boolean;

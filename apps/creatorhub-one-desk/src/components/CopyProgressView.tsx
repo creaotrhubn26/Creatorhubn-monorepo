@@ -23,6 +23,8 @@ import {
   CopyFileStartedEvent,
   CopySessionCompletedEvent,
   CopySessionStartedEvent,
+  ejectVolume,
+  getAutoEjectPref,
   listCopySessions,
   SessionStatus,
 } from "../api";
@@ -120,8 +122,26 @@ export default function CopyProgressView() {
       void listCopySessions().then(setSessions);
     }).then((un) => unlisteners.push(un));
 
-    listen<CopySessionCompletedEvent>("copy-session-completed", () => {
+    listen<CopySessionCompletedEvent>("copy-session-completed", (e) => {
       void listCopySessions().then(setSessions);
+      // Auto-eject: kun ved 100% success (alle filer kopiert,
+      // ingen feilet, ikke avbrutt). Mislykkede/avbrutte sesjoner
+      // beholder kortet montert så Fredrik kan inspisere.
+      const { succeeded, failed, cancelled, mount_path } = e.payload;
+      if (cancelled || failed > 0 || succeeded === 0 || !mount_path) return;
+      void getAutoEjectPref()
+        .then((enabled) => {
+          if (!enabled) return;
+          return ejectVolume(mount_path).then(
+            () => {
+              console.log(`[auto-eject] ${mount_path} ejected`);
+            },
+            (err) => {
+              console.warn(`[auto-eject] feilet for ${mount_path}: ${err}`);
+            },
+          );
+        })
+        .catch((err) => console.warn("auto-eject pref read failed:", err));
     }).then((un) => unlisteners.push(un));
 
     return () => {

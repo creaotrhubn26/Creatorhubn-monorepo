@@ -9,6 +9,7 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
   Divider,
   FormControlLabel,
@@ -21,12 +22,47 @@ import {
 } from "@mui/material";
 import Add from "@mui/icons-material/Add";
 import Delete from "@mui/icons-material/Delete";
+import EjectIcon from "@mui/icons-material/Eject";
 import {
   DestinationSpec,
   DetectedMount,
   DitDestination,
+  getAutoEjectPref,
+  setAutoEjectPref,
   startCopySession,
 } from "../api";
+
+// Pre-confirm-grenser: trigger en ekstra "Er du sikker?"-dialog
+// hvis total transfer over disse er stort nok til å være ulykkelig
+// hvis Fredrik feilet på destinasjonsvalget. Tall valgt for å la
+// vanlige shoots (1-2 dest, 50-100GB SD-kort) gå rett gjennom.
+const CONFIRM_TOTAL_BYTES_THRESHOLD = 100 * 1024 * 1024 * 1024; // 100 GB
+const CONFIRM_DEST_COUNT_THRESHOLD = 3;
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 ** 4) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  return `${(bytes / 1024 / 1024 / 1024 / 1024).toFixed(2)} TB`;
+}
+
+/// Heuristisk tidsestimat for kopi. Antar 200 MB/s SSD-write som
+/// konservativ baseline. Ved nett-disker eller HDD blir det tregere,
+/// men UI-en understreker "estimat" så Fredrik vet det er en pekepinn.
+function estimateMinutes(totalBytes: number): number {
+  const bytesPerSec = 200 * 1024 * 1024;
+  return Math.ceil(totalBytes / bytesPerSec / 60);
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 1) return "under et minutt";
+  if (minutes < 60) return `~${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (mins === 0) return `~${hours} t`;
+  return `~${hours} t ${mins} min`;
+}
 
 interface Props {
   open: boolean;
@@ -55,6 +91,8 @@ export default function BackupDialog({
   const [localDests, setLocalDests] = useState<PendingLocalDest[]>([]);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoEject, setAutoEject] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Pre-velg alle planlagte destinasjoner med en path satt (in-place "original"
   // destinasjoner uten path er ikke relevante for Desk)
@@ -64,6 +102,11 @@ export default function BackupDialog({
         plannedDestinations.filter((d) => d.path && d.destination_type !== "original").map((d) => d.id),
       );
       setCheckedPlanned(initial);
+      // Hent preferanse fra disk når dialogen åpner. Best-effort —
+      // hvis prefs-fil mangler defaulter vi til false (opt-in).
+      void getAutoEjectPref()
+        .then(setAutoEject)
+        .catch(() => setAutoEject(false));
     }
   }, [isOpen, plannedDestinations]);
 
@@ -72,6 +115,7 @@ export default function BackupDialog({
     setCheckedPlanned(new Set());
     setStarting(false);
     setError(null);
+    setConfirmOpen(false);
   };
 
   const handleClose = () => {
@@ -128,10 +172,37 @@ export default function BackupDialog({
     return [...planned, ...local];
   }, [plannedDestinations, checkedPlanned, localDests]);
 
-  const handleStart = async () => {
+  // Beregner total transfer-størrelse (kilde × destinasjoner) for å
+  // gi Fredrik et estimat før han trykker start. Brukes også til å
+  // avgjøre om vi viser pre-confirm.
+  const sourceBytes = mount ? (mount.photo_bytes + mount.video_bytes) : 0;
+  const totalTransferBytes = sourceBytes * finalSpecs.length;
+  const needsConfirm =
+    totalTransferBytes >= CONFIRM_TOTAL_BYTES_THRESHOLD ||
+    finalSpecs.length >= CONFIRM_DEST_COUNT_THRESHOLD;
+
+  const handleStartClick = () => {
     if (!mount || finalSpecs.length === 0) return;
+    if (needsConfirm) {
+      setConfirmOpen(true);
+      return;
+    }
+    void runStart();
+  };
+
+  const runStart = async () => {
+    if (!mount || finalSpecs.length === 0) return;
+    setConfirmOpen(false);
     setStarting(true);
     setError(null);
+    // Persister auto-eject-preferansen FØR vi starter — så hvis Fredrik
+    // huket den av og lukker dialogen med X mens backup kjører, neste
+    // gang han åpner den er valget husket.
+    try {
+      await setAutoEjectPref(autoEject);
+    } catch (e) {
+      console.warn("auto-eject pref save failed:", e);
+    }
     try {
       const sessionId = await startCopySession({
         mountPath: mount.mount_path,
@@ -260,6 +331,50 @@ export default function BackupDialog({
             )}
           </Box>
 
+          {/* Live transfer-summary — vises så fort minst én dest er valgt */}
+          {finalSpecs.length > 0 && mount && sourceBytes > 0 && (
+            <Box
+              sx={{
+                bgcolor: "rgba(245, 166, 35, 0.06)",
+                border: "1px solid rgba(245, 166, 35, 0.20)",
+                borderRadius: 1,
+                p: 1.5,
+              }}
+            >
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                Total transfer
+              </Typography>
+              <Typography variant="body2">
+                <strong>{formatBytes(sourceBytes)}</strong> × {finalSpecs.length} dest ={" "}
+                <strong>{formatBytes(totalTransferBytes)}</strong>{" "}
+                <Typography component="span" variant="caption" color="text.secondary">
+                  · {formatDuration(estimateMinutes(totalTransferBytes))} ved 200 MB/s
+                </Typography>
+              </Typography>
+            </Box>
+          )}
+
+          {/* Auto-eject-preferanse — opt-in. Vises selv uten dest så
+              Fredrik kan huke av før han velger. */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                size="small"
+                checked={autoEject}
+                onChange={(e) => setAutoEject(e.target.checked)}
+                disabled={starting}
+              />
+            }
+            label={
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <EjectIcon fontSize="small" />
+                <Typography variant="body2">
+                  Eject kortet automatisk når backup er ferdig
+                </Typography>
+              </Stack>
+            }
+          />
+
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
@@ -269,7 +384,7 @@ export default function BackupDialog({
         </Button>
         <Button
           variant="contained"
-          onClick={handleStart}
+          onClick={handleStartClick}
           disabled={starting || finalSpecs.length === 0 || !mount}
         >
           {starting
@@ -277,6 +392,47 @@ export default function BackupDialog({
             : `Start backup (${finalSpecs.length} destinasjoner)`}
         </Button>
       </DialogActions>
+
+      {/* Pre-confirm når total-transfer er stor nok til at en feilvalgt
+          destinasjon ville kostet timer å oppdage. */}
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Bekreft stor backup-jobb</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Du er i ferd med å kopiere{" "}
+            <strong>{formatBytes(sourceBytes)}</strong> til{" "}
+            <strong>{finalSpecs.length} destinasjoner</strong> — totalt{" "}
+            <strong>{formatBytes(totalTransferBytes)}</strong> som tar{" "}
+            <strong>{formatDuration(estimateMinutes(totalTransferBytes))}</strong> ved
+            ~200 MB/s skrivehastighet.
+          </DialogContentText>
+          <Box
+            component="ul"
+            sx={{ mt: 2, pl: 2, "& li": { fontSize: 13, lineHeight: 1.6 } }}
+          >
+            {finalSpecs.map((d) => (
+              <li key={d.id}>
+                <strong>{d.label}</strong> — <code>{d.path}</code>
+              </li>
+            ))}
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            Tregere disker (HDD/nett) tar lenger tid. Sesjonen kan
+            avbrytes når som helst.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>Avbryt</Button>
+          <Button variant="contained" color="primary" onClick={runStart}>
+            Bekreft &amp; start
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
