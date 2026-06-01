@@ -11,7 +11,7 @@
  * CollaborationSidebar — én delt strøm, to UI-er.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'wouter';
 import ClientPortalRequestsSection from '@/components/role-room/client-portal/ClientPortalRequestsSection';
 import ClientPortalRegisterCard from '@/components/role-room/client-portal/ClientPortalRegisterCard';
@@ -252,6 +252,7 @@ export default function ClientPortalMarketingPage() {
           <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
           <ProgressSection progress={data.progress!} plan={data.plan!} />
           <ConnectedPlatformsCard token={token} />
+          <ClientMaterialUploadCard token={token} />
           <UpcomingSection upcoming={data.upcoming!} projectId={data.project?.id ?? null} clientToken={token} />
           <PublishedContentCard posts={data.posts!} projectId={data.project?.id ?? null} clientToken={token} />
           <StrategyCard plan={data.plan!} />
@@ -820,6 +821,188 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
           </Button>
         </DialogActions>
       </Dialog>
+    </Box>
+  );
+}
+
+interface ClientUploadedFile {
+  id: string;
+  entryType: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  file: { originalName: string | null; mimeType: string | null; fileSize: number | null } | null;
+}
+
+const MATERIAL_CATEGORIES: Array<{ key: string; label: string }> = [
+  { key: 'brand_asset', label: 'Logo / brand' },
+  { key: 'document', label: 'Dokument' },
+  { key: 'reference', label: 'Referanse' },
+];
+
+function formatFileSize(bytes: number | null): string {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Klient-filopplasting: lar klienten sende logo, brand-filer og brief direkte
+ * fra portalen. Filene havner i produsentens klientgrunnlag (ingen e-post
+ * frem og tilbake). Bruker den eksisterende upload-infraen backend-side.
+ */
+function ClientMaterialUploadCard({ token }: { token: string }) {
+  const [items, setItems] = useState<ClientUploadedFile[]>([]);
+  const [category, setCategory] = useState('brand_asset');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [title, setTitle] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const loadItems = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/role-room/client-portal/materials?token=${encodeURIComponent(token)}`);
+      const json = await res.json();
+      if (Array.isArray(json?.items)) setItems(json.items as ClientUploadedFile[]);
+    } catch {
+      /* stille — opplasting er fortsatt mulig */
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (token) void loadItems();
+  }, [token, loadItems]);
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.set('file', selectedFile);
+      fd.set('entryType', category);
+      if (title.trim()) fd.set('title', title.trim());
+      const res = await fetch(
+        `/api/role-room/client-portal/materials?token=${encodeURIComponent(token)}`,
+        { method: 'POST', body: fd },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j?.error || 'Kunne ikke laste opp filen.');
+      } else {
+        setSelectedFile(null);
+        setTitle('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        await loadItems();
+      }
+    } catch {
+      setError('Kunne ikke laste opp filen akkurat nå.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
+      <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.04rem', mb: 0.4 }}>
+        Send filer til produsenten
+      </Typography>
+      <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.8rem', mb: 1.6 }}>
+        Last opp logo, brand-filer eller brief direkte her — så slipper dere e-post frem og tilbake.
+      </Typography>
+
+      {error ? (
+        <Alert severity="error" sx={{ mb: 1.4, fontSize: '0.82rem' }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      ) : null}
+
+      <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap sx={{ mb: 1.2 }}>
+        {MATERIAL_CATEGORIES.map((cat) => (
+          <Chip
+            key={cat.key}
+            label={cat.label}
+            onClick={() => setCategory(cat.key)}
+            size="small"
+            sx={{
+              fontWeight: 700,
+              fontSize: '0.74rem',
+              cursor: 'pointer',
+              bgcolor: category === cat.key ? 'rgba(124,58,237,0.25)' : 'rgba(148,163,184,0.1)',
+              color: category === cat.key ? '#ddd6fe' : 'rgba(203,213,225,0.8)',
+              border: category === cat.key ? '1px solid rgba(167,139,250,0.55)' : '1px solid transparent',
+            }}
+          />
+        ))}
+      </Stack>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null;
+          setSelectedFile(f);
+          if (f && !title.trim()) setTitle(f.name);
+        }}
+      />
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+        <Button
+          variant="outlined"
+          onClick={() => fileInputRef.current?.click()}
+          sx={{ textTransform: 'none', fontWeight: 700, color: '#c4b5fd', borderColor: 'rgba(167,139,250,0.5)', flexShrink: 0 }}
+        >
+          {selectedFile ? 'Bytt fil' : 'Velg fil'}
+        </Button>
+        <Typography sx={{ color: 'rgba(226,232,240,0.85)', fontSize: '0.84rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedFile ? `${selectedFile.name} (${formatFileSize(selectedFile.size)})` : 'Ingen fil valgt'}
+        </Typography>
+        <Button
+          variant="contained"
+          disabled={!selectedFile || uploading}
+          onClick={() => void handleUpload()}
+          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' }, flexShrink: 0 }}
+        >
+          {uploading ? 'Laster opp…' : 'Last opp'}
+        </Button>
+      </Stack>
+
+      {items.length > 0 ? (
+        <Stack spacing={0.7} sx={{ mt: 1.8 }}>
+          <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.03em' }}>
+            SENDT ({items.length})
+          </Typography>
+          {items.map((item) => (
+            <Box
+              key={item.id}
+              sx={{
+                p: 1.1,
+                borderRadius: 2,
+                bgcolor: 'rgba(15,23,42,0.7)',
+                border: '1px solid rgba(148,163,184,0.14)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {item.file?.originalName || item.title}
+                </Typography>
+                <Typography sx={{ color: 'rgba(148,163,184,0.75)', fontSize: '0.72rem' }}>
+                  {MATERIAL_CATEGORIES.find((c) => c.key === item.entryType)?.label ?? item.entryType}
+                  {item.file?.fileSize ? ` · ${formatFileSize(item.file.fileSize)}` : ''}
+                </Typography>
+              </Box>
+              <Chip size="small" label="Sendt" sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#86efac', fontWeight: 700, fontSize: '0.68rem', flexShrink: 0 }} />
+            </Box>
+          ))}
+        </Stack>
+      ) : null}
     </Box>
   );
 }

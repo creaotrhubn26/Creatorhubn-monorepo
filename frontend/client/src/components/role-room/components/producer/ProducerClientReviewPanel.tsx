@@ -25,6 +25,7 @@ import {
   RateReview as RateReviewIcon,
   Send as SendIcon,
   CheckCircle as CheckCircleIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type {
@@ -539,6 +540,32 @@ export default function ProducerClientReviewPanel({
     linkedin: 'LinkedIn',
     google: 'Google',
   };
+  // Filer klienten har lastet opp fra portalen (logo/brand/brief) — vises med
+  // nedlastingsknapp så produsenten får tak i dem uten e-post.
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
+  const clientUploadedFiles = useMemo(
+    () =>
+      clientMaterials.filter((material) => {
+        const meta = material.metadata as { uploadedByClient?: boolean; file?: unknown } | undefined;
+        return Boolean(meta?.uploadedByClient && meta?.file);
+      }),
+    [clientMaterials],
+  );
+  const handleDownloadClientFile = useCallback(
+    async (material: ProducerClientMaterial) => {
+      const meta = material.metadata as { file?: { originalName?: string } } | undefined;
+      const fileName = meta?.file?.originalName || material.title || 'fil';
+      setDownloadingFileId(material.id);
+      try {
+        await producerWorkflowService.downloadClientMaterialFile(projectId, material.id, fileName);
+      } catch {
+        /* nedlasting feilet stille — produsenten kan prøve igjen */
+      } finally {
+        setDownloadingFileId(null);
+      }
+    },
+    [projectId],
+  );
   const presentClientLabel = useMemo(() => {
     if (presentClients.length === 0) return null;
     const first = presentClients[0];
@@ -1994,6 +2021,38 @@ export default function ProducerClientReviewPanel({
                           fontSize: '0.68rem',
                           border: '1px solid rgba(52,211,153,0.35)',
                           cursor: 'help',
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                })}
+              </Stack>
+            ) : null}
+            {clientUploadedFiles.length > 0 ? (
+              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
+                <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600 }}>
+                  Filer fra klient:
+                </Typography>
+                {clientUploadedFiles.map((material) => {
+                  const meta = material.metadata as { file?: { originalName?: string } } | undefined;
+                  const name = meta?.file?.originalName || material.title;
+                  return (
+                    <Tooltip key={material.id} title={`Last ned ${name}`} arrow>
+                      <Chip
+                        size="small"
+                        clickable
+                        disabled={downloadingFileId === material.id}
+                        onClick={() => void handleDownloadClientFile(material)}
+                        icon={<DownloadIcon sx={{ fontSize: '0.85rem !important', color: '#93c5fd !important' }} />}
+                        label={name.length > 26 ? `${name.slice(0, 24)}…` : name}
+                        sx={{
+                          height: 20,
+                          bgcolor: 'rgba(59,130,246,0.14)',
+                          color: '#bfdbfe',
+                          fontWeight: 700,
+                          fontSize: '0.68rem',
+                          border: '1px solid rgba(59,130,246,0.35)',
+                          cursor: 'pointer',
                         }}
                       />
                     </Tooltip>

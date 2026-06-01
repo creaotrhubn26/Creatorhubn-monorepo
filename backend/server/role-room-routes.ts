@@ -762,6 +762,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
 const ROLE_ROOM_TALENT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-talent');
 const ROLE_ROOM_RECEIPT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-receipts');
+const ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-client-assets');
+const ROLE_ROOM_CLIENT_ASSET_MAX_BYTES = 50 * 1024 * 1024;
 const ROLE_ROOM_RECEIPT_OCR_CACHE_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-ocr-cache');
 const ROLE_ROOM_TALENT_UPLOAD_MAX_BYTES = 512 * 1024 * 1024;
 const ROLE_ROOM_RECEIPT_UPLOAD_MAX_BYTES = 35 * 1024 * 1024;
@@ -825,6 +827,32 @@ const roleRoomReceiptUpload = multer({
     }
 
     cb(new Error('Ugyldig kvitteringsformat. Bruk PDF, JPG, PNG, WebP, HEIC eller TIFF.'));
+  },
+});
+// Klient-asset-opplasting (logo, brand-filer, brief). Bredere format-tillatelse
+// enn kvitteringer siden logoer ofte er SVG/AI/EPS. Filene serveres alltid som
+// nedlasting (Content-Disposition: attachment), aldri inline — så SVG ikke kan
+// rendres som aktivt innhold i nettleseren.
+const roleRoomClientAssetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: ROLE_ROOM_CLIENT_ASSET_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const allowedExtensions = [
+      '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tif', '.tiff',
+      '.gif', '.svg', '.ai', '.eps', '.psd', '.zip', '.doc', '.docx', '.ppt', '.pptx',
+    ];
+    const blockedExtensions = ['.exe', '.sh', '.bat', '.cmd', '.js', '.app', '.dll', '.msi'];
+    if (blockedExtensions.includes(extension)) {
+      cb(new Error('Filtypen er ikke tillatt.'));
+      return;
+    }
+    if (mimetype.startsWith('image/') || mimetype === 'application/pdf' || allowedExtensions.includes(extension)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Ugyldig filformat for klient-opplasting.'));
   },
 });
 const ROLE_ROOM_GOOGLE_SCOPES = [
@@ -15189,6 +15217,154 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Producer client material create error:', error);
       res.status(500).json({ error: 'Kunne ikke opprette klientmateriale' });
+    }
+  });
+
+  // ── Klient-filopplasting fra portalen ────────────────────────────────────
+  // Klienten (Helene) laster opp logo/brand-filer/brief direkte fra portalen.
+  // Filen lagres på disk + en role_room_client_materials-rad (created_by_role
+  // = 'client', metadata.file) opprettes, slik at produsenten ser den i sin
+  // klientgrunnlag-visning og kan laste den ned. Klient-token gater opplasting.
+  router.post('/client-portal/materials', roleRoomClientAssetUpload.single('file'), async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const uploadedFile = (req as Request & { file?: Express.Multer.File }).file;
+    if (!uploadedFile) { res.status(400).json({ error: 'Mangler fil' }); return; }
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Klientmateriale er ikke tilgjengelig akkurat nå' });
+      return;
+    }
+    try {
+      const projectId = session.projectId;
+      const rawType = typeof req.body?.entryType === 'string' ? req.body.entryType.trim().toLowerCase() : '';
+      const allowedTypes = ['brand_asset', 'asset_link', 'reference', 'document', 'brief_note', 'feedback'];
+      const entryType = allowedTypes.includes(rawType) ? rawType : 'brand_asset';
+      const titleRaw = typeof req.body?.title === 'string' && req.body.title.trim()
+        ? req.body.title.trim()
+        : (uploadedFile.originalname || 'Klientfil');
+      const description = typeof req.body?.description === 'string' && req.body.description.trim()
+        ? req.body.description.trim()
+        : null;
+
+      const materialId = crypto.randomUUID();
+      const safeOriginalName = sanitizeRoleRoomTalentFileSegment(uploadedFile.originalname || 'fil');
+      const extension = path.extname(safeOriginalName) || '.bin';
+      const fileName = `${materialId}${extension}`;
+      const storageDirectory = path.join(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT, sanitizeRoleRoomTalentFileSegment(projectId));
+      await fs.mkdir(storageDirectory, { recursive: true });
+      const storagePath = path.join(storageDirectory, fileName);
+      await fs.writeFile(storagePath, uploadedFile.buffer);
+      const sha256 = crypto.createHash('sha256').update(uploadedFile.buffer).digest('hex');
+
+      const metadata = {
+        file: {
+          fileName,
+          originalName: uploadedFile.originalname || fileName,
+          mimeType: uploadedFile.mimetype || 'application/octet-stream',
+          fileSize: uploadedFile.size,
+          sha256,
+          storagePath,
+        },
+        uploadedByClient: true,
+        clientEmail: session.clientEmail,
+        clientName: session.clientName ?? null,
+      };
+
+      const result = await pool.query(
+        `INSERT INTO role_room_client_materials (
+          id, project_id, entry_type, title, description, external_url, phase,
+          linked_shot_list_id, status, metadata, created_by_user_id, created_by_role, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 'provided', $6::jsonb, $7, 'client', NOW(), NOW())
+        RETURNING id, entry_type AS "entryType", title, description, status, created_at AS "createdAt"`,
+        [materialId, projectId, entryType, titleRaw, description, JSON.stringify(metadata), session.clientEmail],
+      );
+      res.status(201).json({
+        item: {
+          ...result.rows[0],
+          file: {
+            originalName: metadata.file.originalName,
+            mimeType: metadata.file.mimeType,
+            fileSize: metadata.file.fileSize,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('[client-portal] material upload failed', error);
+      res.status(500).json({ error: 'Kunne ikke laste opp filen' });
+    }
+  });
+
+  // Klienten ser sine egne opplastede filer i portalen.
+  router.get('/client-portal/materials', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    if (!(await ensureProducerWorkflowTables())) { res.json({ items: [] }); return; }
+    try {
+      const result = await pool.query(
+        `SELECT id, entry_type AS "entryType", title, description, status, metadata, created_at AS "createdAt"
+           FROM role_room_client_materials
+          WHERE project_id = $1 AND created_by_role = 'client'
+          ORDER BY created_at DESC`,
+        [session.projectId],
+      );
+      const items = result.rows.map((row) => {
+        const meta = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as {
+          file?: { originalName?: string; mimeType?: string; fileSize?: number };
+        };
+        return {
+          id: row.id,
+          entryType: row.entryType,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          createdAt: row.createdAt,
+          file: meta.file
+            ? { originalName: meta.file.originalName ?? null, mimeType: meta.file.mimeType ?? null, fileSize: meta.file.fileSize ?? null }
+            : null,
+        };
+      });
+      res.json({ items });
+    } catch (error) {
+      console.error('[client-portal] material list failed', error);
+      res.json({ items: [] });
+    }
+  });
+
+  // Produsenten laster ned en klient-opplastet fil (auth-gated stream).
+  router.get('/projects/:projectId/producer/client-materials/:materialId/file', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const { projectId, materialId } = req.params;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til klientmateriale' });
+        return;
+      }
+      const result = await pool.query(
+        `SELECT metadata FROM role_room_client_materials WHERE id = $1 AND project_id = $2 LIMIT 1`,
+        [materialId, projectId],
+      );
+      const meta = (result.rows[0]?.metadata && typeof result.rows[0].metadata === 'object'
+        ? result.rows[0].metadata
+        : {}) as { file?: { storagePath?: string; originalName?: string; mimeType?: string } };
+      const file = meta.file;
+      if (!file?.storagePath) { res.status(404).json({ error: 'Fant ikke filen' }); return; }
+      // Sti-traversal-vern: filen MÅ ligge under klient-asset-roten.
+      const resolved = path.resolve(file.storagePath);
+      if (!resolved.startsWith(path.resolve(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT) + path.sep)) {
+        res.status(400).json({ error: 'Ugyldig fil-sti' });
+        return;
+      }
+      const buffer = await fs.readFile(resolved);
+      res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName || 'fil')}"`);
+      res.send(buffer);
+    } catch (error) {
+      console.error('[role-room] client material download failed', error);
+      res.status(500).json({ error: 'Kunne ikke laste ned filen' });
     }
   });
 

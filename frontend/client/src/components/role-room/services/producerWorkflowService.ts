@@ -3484,6 +3484,29 @@ export const producerWorkflowService = {
     }
   },
 
+  /**
+   * Laster ned en klient-opplastet fil (logo/brand/brief) — auth-gated stream
+   * fra backend. Trigger en blob-nedlasting i nettleseren.
+   */
+  async downloadClientMaterialFile(projectId: string, materialId: string, fileName: string): Promise<void> {
+    const response = await fetch(
+      `${API_BASE}/projects/${projectId}/producer/client-materials/${materialId}/file`,
+      { headers: buildAuthHeaders() },
+    );
+    if (!response.ok) {
+      throw new Error(`Kunne ikke laste ned filen (${response.status})`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName || 'fil';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
+
   async getNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
     return fetchNotifications(projectId);
   },
