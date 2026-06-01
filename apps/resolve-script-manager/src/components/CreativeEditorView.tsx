@@ -3002,6 +3002,15 @@ ${ctxLines.join("\n")}`;
                   "En tidløs, emosjonell highlight med fokus på ekte øyeblikk og relasjoner.",
                 tags: ["Emosjonell", "Cinematisk", "Tidløs", "Naturlig", "Varm fargetone"],
               }}
+              onAlternativeApplied={(result) => {
+                // Bruk første anbefaling fra alt-forslaget som rec-handling
+                const first = result.recommendations[0];
+                const indices = first?.pickIndices ?? [];
+                if (indices.length === 0) return;
+                const firstIdx = filteredPicks.findIndex((p) => p.index === indices[0]);
+                if (firstIdx >= 0) setFocusedPickIdx(firstIdx);
+                setRecHighlightedPicks(indices);
+              }}
               onBackToProject={onClose}
               onStartEditing={() => setActiveTab("rediger")}
             />

@@ -99,6 +99,15 @@ export function StoryTestHarness() {
               setFocused(indices[0]);
               setHighlighted(indices);
             }}
+            onAlternativeApplied={(result) => {
+              // Bruk første anbefaling fra alt-forslaget som rec-handling:
+              // focuser første pickIndex, highlight resten.
+              const first = result.recommendations[0];
+              const indices = first?.pickIndices ?? [];
+              if (indices.length === 0) return;
+              setFocused(indices[0]);
+              setHighlighted(indices);
+            }}
             projectInfo={{
               project: "Emma & Jonas — Bryllup",
               client: "Emma & Jonas",
