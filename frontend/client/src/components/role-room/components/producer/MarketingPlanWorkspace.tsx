@@ -41,6 +41,7 @@ import VersionPicker, { type VersionItem } from './VersionPicker';
 import PostEditDialog from './PostEditDialog';
 import MarketingPlanActivityFeed from './MarketingPlanActivityFeed';
 import MarketingPlanCalendarView from './MarketingPlanCalendarView';
+import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 
 interface Props {
   projectId: string;
@@ -483,6 +484,11 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
                 }}>
                 {generatingPosts ? 'Genererer posts …' : 'Generer 30 posts nå'}
               </Button>
+            )}
+            {generatingPosts && (
+              <Box sx={{ mt: 2, textAlign: 'left' }}>
+                <MarketingGenerationProgress active mode="posts" />
+              </Box>
             )}
             {generateError && (
               <Typography sx={{ color: '#ef4f6f', fontSize: '0.84rem', mt: 1.4 }}>

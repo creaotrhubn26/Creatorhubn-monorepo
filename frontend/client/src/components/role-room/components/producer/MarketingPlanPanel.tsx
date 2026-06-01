@@ -84,6 +84,7 @@ import Snackbar from '@mui/material/Snackbar';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
 import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
 import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
+import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -395,7 +396,7 @@ export default function MarketingPlanPanel({
         </Tooltip>
       </Stack>
 
-      {generating ? <LinearProgress sx={{ height: 2 }} /> : null}
+      {generating ? <MarketingGenerationProgress active mode="plan" /> : null}
 
       {error ? (
         <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca', border: '1px solid rgba(239,68,68,0.24)' }}>
@@ -1321,6 +1322,12 @@ function PostsSection({
           {generating ? 'Genererer posts…' : posts.length > 0 ? 'Regenerer posts' : 'Generer 30-dagers plan'}
         </Button>
       </Stack>
+
+      {generating && !(autoGenProgress && autoGenProgress.expected > 0) ? (
+        <Box sx={{ mt: 1.5 }}>
+          <MarketingGenerationProgress active mode="posts" />
+        </Box>
+      ) : null}
 
       {posts.length === 0 ? (
         autoGenProgress && autoGenProgress.expected > 0 ? (
