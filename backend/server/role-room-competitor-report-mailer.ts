@@ -282,10 +282,16 @@ export async function emailCompetitorReport(opts: MailReportOptions): Promise<{ 
     brandName: opts.brandName,
   });
   const subject = `${opts.brandName || 'The Role Room'} — Ukentlig konkurrent-rapport (${new Date(opts.generatedAt).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' })})`;
+  // Use env-configured from-address. Falls back to Resend's onboarding-
+  // test-domene hvis theroleroom.com ikke er DNS-verifisert ennå.
+  const fromAddress = (process.env.MARKETING_REPORT_FROM_EMAIL
+    || process.env.ROLE_ROOM_RESEND_FROM_EMAIL
+    || 'onboarding@resend.dev').trim();
   const result = await sendTransactionalEmail({
     to: opts.to,
     subject, html, text,
     fromLabel: 'The Role Room Marketing Cockpit',
+    fromAddress,
     kind: 'marketing_competitor_report',
     pool: opts.pool ?? null,
   });
