@@ -99,6 +99,10 @@ export function decryptInstagramToken(value: string | null | undefined): string 
 interface StateClaims {
   userId: string;
   projectId?: string | null;
+  // Valgfri retursti for klient-initierte koblinger: callbacken redirecter
+  // klienten tilbake hit (f.eks. /client/portal/<token>) i stedet for å vise
+  // en generisk success-side. Server-satt — aldri fra brukerinput.
+  returnPath?: string | null;
   nonce: string;
   iat: number;
 }

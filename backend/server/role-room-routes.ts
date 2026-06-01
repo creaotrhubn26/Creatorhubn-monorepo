@@ -22,7 +22,11 @@ import {
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
-import { getProjectProducerUserId } from './client-portal-connected-platforms.js';
+import {
+  getProjectProducerUserId,
+  loadProjectProducerInfo,
+  recordClientOauthConsent,
+} from './client-portal-connected-platforms.js';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -8995,7 +8999,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const stateId = crypto.randomUUID();
-      const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
+      // Redirect klienten tilbake til portalen etter kobling.
+      const returnPath = `/client/portal/${encodeURIComponent(token)}?connected=google`;
       const oauthStatePayload: RoleRoomGoogleOauthState = {
         mode: 'link',
         returnPath,
@@ -9716,7 +9721,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const stateId = crypto.randomUUID();
-      const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
+      // Redirect klienten tilbake til portalen etter kobling.
+      const returnPath = `/client/portal/${encodeURIComponent(token)}?connected=linkedin`;
       roleRoomLinkedInOauthStateStore.set(stateId, {
         returnPath,
         browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
@@ -15280,6 +15286,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         RETURNING id, entry_type AS "entryType", title, description, status, created_at AS "createdAt"`,
         [materialId, projectId, entryType, titleRaw, description, JSON.stringify(metadata), session.clientEmail],
       );
+
+      // Proaktivt varsel til produsent-teamet (push + inbox) — så de ser at
+      // klienten har sendt en fil uten å vente på poll.
+      try {
+        await notifyProducerTeamAboutClientMaterial(
+          projectId,
+          {
+            id: materialId,
+            title: titleRaw,
+            entry_type: entryType,
+            description,
+            phase: null,
+          } as unknown as ProducerClientMaterialRow,
+          session.clientEmail,
+          'client',
+          'created',
+        );
+      } catch (notifyError) {
+        console.warn('[client-portal] material-varsel feilet', notifyError);
+      }
+
       res.status(201).json({
         item: {
           ...result.rows[0],
@@ -15366,6 +15393,69 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       console.error('[role-room] client material download failed', error);
       res.status(500).json({ error: 'Kunne ikke laste ned filen' });
     }
+  });
+
+  // Klient-samtykke til OAuth-tilgang. Ligger her (ikke i client-portal-routes)
+  // for å kunne varsle produsent-teamet via upsertProducerProjectNotification.
+  // Logges FØR redirect → sporbart GDPR-bevis.
+  const CLIENT_OAUTH_CONSENT_SUMMARY: Record<string, string> = {
+    instagram: 'Publisere innlegg, reels og stories til Instagram (via Meta).',
+    facebook: 'Publisere innlegg til den tilkoblede Facebook-siden (via Meta).',
+    tiktok: 'Publisere videoer til TikTok-kontoen.',
+    linkedin: 'Publisere innlegg til LinkedIn på vegne av kontoen.',
+    google: 'Lese/skrive dokumenter og filer i Google Workspace knyttet til prosjektet.',
+  };
+  router.post('/client-portal/oauth-consent', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const platform = typeof req.body?.platform === 'string' ? req.body.platform.toLowerCase() : '';
+    if (!CLIENT_OAUTH_CONSENT_SUMMARY[platform]) { res.status(400).json({ error: 'invalid_platform' }); return; }
+    const producer = await loadProjectProducerInfo(pool, session.projectId);
+    if (!producer) { res.status(409).json({ error: 'no_producer_on_project' }); return; }
+
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipAddress = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) || req.ip || null;
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    await recordClientOauthConsent(pool, {
+      projectId: session.projectId,
+      clientEmail: session.clientEmail,
+      clientName: session.clientName ?? null,
+      producerUserId: producer.userId,
+      producerName: producer.name,
+      producerAgency: producer.agency,
+      platform,
+      scopesSummary: CLIENT_OAUTH_CONSENT_SUMMARY[platform],
+      ipAddress,
+      userAgent,
+    });
+
+    // Proaktivt varsel til produsent-teamet (push + inbox).
+    try {
+      const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
+      await upsertProducerProjectNotification({
+        projectId: session.projectId,
+        audience: 'producer_team',
+        eventType: 'client_granted_oauth_access',
+        title: 'Klienten ga tilgang til en konto',
+        message: `${session.clientName || session.clientEmail} ga tilgang til å publisere på ${platformLabel}.`,
+        linkedEntityType: 'client_oauth_consent',
+        linkedEntityId: platform,
+        metadata: {
+          source: 'client_oauth_consent',
+          platform,
+          clientEmail: session.clientEmail,
+          clientName: session.clientName ?? null,
+        },
+        createdByUserId: session.clientEmail,
+        createdByRole: 'client',
+      });
+    } catch (notifyError) {
+      console.warn('[client-portal] consent-varsel feilet', notifyError);
+    }
+
+    res.json({ status: 'ok' });
   });
 
   router.patch('/projects/:projectId/producer/client-materials/:materialId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {

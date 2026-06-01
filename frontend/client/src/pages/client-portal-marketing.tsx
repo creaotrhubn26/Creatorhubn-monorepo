@@ -555,6 +555,28 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
   const [connectError, setConnectError] = useState<string | null>(null);
   // Plattformen klienten er i ferd med å godkjenne tilgang for (åpner modalen).
   const [pendingPlatform, setPendingPlatform] = useState<string | null>(null);
+  // Tilbakemelding etter OAuth-retur (?connected= / ?connect_error= i URL).
+  const [flash, setFlash] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('connected');
+    const failed = params.get('connect_error');
+    if (!connected && !failed) return;
+    const label = connected
+      ? PLATFORM_DISPLAY[connected] ?? connected
+      : PLATFORM_DISPLAY[failed ?? ''] ?? failed ?? '';
+    setFlash(
+      connected
+        ? { severity: 'success', text: `${label} er koblet til. Takk!` }
+        : { severity: 'error', text: `Tilkoblingen til ${label} ble ikke fullført. Prøv igjen.` },
+    );
+    // Rydd query-paramene fra URL-en så meldingen ikke dukker opp ved reload.
+    params.delete('connected');
+    params.delete('connect_error');
+    const cleaned = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+    window.history.replaceState(null, '', cleaned);
+  }, []);
 
   // Steg 1: klikk på «Koble til» åpner samtykke-skjermen i stedet for å
   // redirecte rett til OAuth — klienten skal tydelig se HVEM de gir tilgang til.
@@ -574,7 +596,7 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
     setConnectError(null);
     try {
       // Logg samtykket. Defensiv: en feil her skal ikke blokkere tilkoblingen.
-      await fetch(`/api/client/portal/oauth-consent?token=${encodeURIComponent(token)}`, {
+      await fetch(`/api/role-room/client-portal/oauth-consent?token=${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ platform }),
@@ -678,6 +700,12 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
         Plattformene du har gitt produsenten tilgang til å publisere på. Du kan
         koble dem til selv her.
       </Typography>
+
+      {flash ? (
+        <Alert severity={flash.severity} sx={{ mb: 1.4, fontSize: '0.82rem' }} onClose={() => setFlash(null)}>
+          {flash.text}
+        </Alert>
+      ) : null}
 
       {connectError ? (
         <Alert severity="error" sx={{ mb: 1.4, fontSize: '0.82rem' }} onClose={() => setConnectError(null)}>

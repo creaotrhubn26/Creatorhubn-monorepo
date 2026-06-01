@@ -153,7 +153,8 @@ export function setupRoleRoomSocialMetaRoutes(
         error: "Prosjektet mangler en produsent å koble kontoen til.",
       });
     }
-    const state = signOauthState({ userId: producerUserId, projectId: session.projectId });
+    const returnPath = `/client/portal/${encodeURIComponent(token)}`;
+    const state = signOauthState({ userId: producerUserId, projectId: session.projectId, returnPath });
     const url = buildAuthorizationUrl(state);
     if (!url) return res.status(500).json({ success: false, error: "Kunne ikke bygge auth-URL." });
     return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
@@ -223,6 +224,12 @@ export function setupRoleRoomSocialMetaRoutes(
           });
         }
       }
+      // Klient-initiert kobling (returnPath satt): send klienten tilbake til
+      // portalen i stedet for en generisk success-side.
+      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connected=instagram`);
+      }
       return res.send(
         `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
           `<h1>Instagram er koblet til</h1>` +
@@ -233,6 +240,10 @@ export function setupRoleRoomSocialMetaRoutes(
       );
     } catch (oauthError) {
       console.error("[ig-oauth] callback failed", oauthError);
+      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connect_error=instagram`);
+      }
       return res.status(500).send(
         `<html><body><h1>Innlogging feilet</h1><p>${(oauthError as Error).message}</p></body></html>`,
       );

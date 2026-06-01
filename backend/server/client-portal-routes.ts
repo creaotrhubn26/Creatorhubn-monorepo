@@ -9,7 +9,6 @@ import { markClientPresent } from "./client-portal-presence-service.js";
 import {
   loadConnectedPlatforms,
   loadProjectProducerInfo,
-  recordClientOauthConsent,
 } from "./client-portal-connected-platforms.js";
 
 export interface ClientPortalRoutesDeps {
@@ -64,52 +63,8 @@ export function setupClientPortalRoutes(
     }
   });
 
-  // Klient-samtykke: logges rett før OAuth-redirecten når klienten bekrefter
-  // at de gir produsenten publiseringstilgang til en plattform. Gir et
-  // sporbart bevis (GDPR) på hvem som tillot hva, når. Defensiv — en feil her
-  // skal ikke blokkere selve tilkoblingen (frontend fortsetter uansett).
-  const PLATFORM_CONSENT_SUMMARY: Record<string, string> = {
-    instagram: "Publisere innlegg, reels og stories til Instagram (via Meta).",
-    facebook: "Publisere innlegg til den tilkoblede Facebook-siden (via Meta).",
-    tiktok: "Publisere videoer til TikTok-kontoen.",
-    linkedin: "Publisere innlegg til LinkedIn på vegne av kontoen.",
-    google: "Lese/skrive dokumenter og filer i Google Workspace knyttet til prosjektet.",
-  };
-  app.post("/api/client/portal/oauth-consent", async (req, res) => {
-    const token = typeof req.query.token === "string" ? req.query.token : "";
-    if (!token) return res.status(400).json({ error: "missing_token" });
-    const session = await resolveClientPortalSession(pool, token);
-    if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
-    const platform =
-      req.body && typeof req.body.platform === "string" ? req.body.platform.toLowerCase() : "";
-    if (!PLATFORM_CONSENT_SUMMARY[platform]) {
-      return res.status(400).json({ error: "invalid_platform" });
-    }
-    const producer = await loadProjectProducerInfo(pool, session.projectId);
-    if (!producer) {
-      return res.status(409).json({ error: "no_producer_on_project" });
-    }
-    const forwarded = req.headers["x-forwarded-for"];
-    const ipAddress =
-      (typeof forwarded === "string" ? forwarded.split(",")[0].trim() : null) ||
-      req.ip ||
-      null;
-    const userAgent =
-      typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null;
-    await recordClientOauthConsent(pool, {
-      projectId: session.projectId,
-      clientEmail: session.clientEmail,
-      clientName: session.clientName ?? null,
-      producerUserId: producer.userId,
-      producerName: producer.name,
-      producerAgency: producer.agency,
-      platform,
-      scopesSummary: PLATFORM_CONSENT_SUMMARY[platform],
-      ipAddress,
-      userAgent,
-    });
-    return res.json({ status: "ok" });
-  });
+  // (Klient-samtykke flyttet til role-room-routerens /client-portal/oauth-consent
+  //  for å kunne varsle produsent-teamet via upsertProducerProjectNotification.)
 
   app.get("/api/client/portal/requests", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";

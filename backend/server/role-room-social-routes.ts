@@ -280,7 +280,7 @@ export function setupRoleRoomSocialRoutes(
       const result = startTikTokOauth({
         userId: producerUserId,
         projectId: session.projectId,
-        returnPath: null,
+        returnPath: `/client/portal/${encodeURIComponent(token)}`,
         browserOrigin: typeof req.body?.browserOrigin === "string" ? req.body.browserOrigin : null,
       });
       return res.json({ success: true, authorizationUrl: result.authorizationUrl });
@@ -299,7 +299,14 @@ export function setupRoleRoomSocialRoutes(
       return res.status(400).send("Missing code or state");
     }
     try {
-      await completeTikTokOauthCallback(pool, code, state);
+      const result = await completeTikTokOauthCallback(pool, code, state);
+      // Klient-initiert kobling (returnPath satt i state): redirect tilbake til
+      // portalen i stedet for pop-up-HTML.
+      const returnPath = (result as { pendingState?: { returnPath?: string | null } })?.pendingState?.returnPath;
+      if (returnPath && typeof returnPath === "string" && returnPath.startsWith("/")) {
+        const sep = returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${returnPath}${sep}connected=tiktok`);
+      }
       // Pop-up flow: returner enkel HTML som postMessage'er til parent og lukker.
       return res.send(`<!doctype html><html><body><script>
         try { window.opener?.postMessage({ type: 'tiktok-connected' }, '*'); } catch (e) {}
