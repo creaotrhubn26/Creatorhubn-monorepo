@@ -26,6 +26,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 6,
     description: "Setup-stemning, deltagere som strømmer inn, registreringsbord, lobby-buzz. Etablerer scale + atmosfære før innholdet starter. Bra for B-roll, sponsor-skilt, branding-overlays.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "hook" as const,
   },
   {
     id: "opening",
@@ -33,6 +34,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 8,
     description: "Vert/MC introduserer event, takker sponsorer, setter tonen. Korte cuts for å holde energi — ikke la velkomsten føles lang. Sponsor-logoer skal ha synlighet her.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "keynote",
@@ -40,6 +42,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 28,
     description: "Hovedinnholdet. Speaker-fokus prioriteres alltid — close-up + wide-shot rotasjon, slides når relevant. Audience-reaction-cuts brukes til å forsterke punkter (laughter, nikking, intens fokus).",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "panel",
@@ -47,6 +50,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 16,
     description: "Multi-speaker. Cut PÅ TALER-SKIFTE, ikke hver linje. Wide-shot mellom intens utveksling så seeren henger med på hvem som snakker. B-roll av modarator når noen tenker. Q&A inkluderes hvis publikum-spørsmål er klare.",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "networking",
@@ -54,6 +58,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 10,
     description: "Pause-stemning. Håndtrykk, kaffe, småprat, smil. Brukes som transitional-bro mellom kapittel-segmentene. Sponsor-skilt og branding skal vises naturlig her.",
     priorityHint: "transitional" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "workshop",
@@ -61,6 +66,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 10,
     description: "Parallelle sessioner. Korte montage-cuts av hver workshop med caption som identifiserer tema. Hands-on-shots (folk skriver, jobber sammen) > talking-head her.",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "closing",
@@ -68,6 +74,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 10,
     description: "Avsluttende ord, takk-til, premier-utdeling, gruppe-foto. Emosjonell topp før utro. Standing-ovation alltid full lengde — aldri kuttet kort.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "highlights",
@@ -75,6 +82,7 @@ const EVENT_CHAPTERS = [
     pacingPct: 12,
     description: "3-min recap av hele eventet til slutt. Bygges som music-driven montasje av sterkeste momenter. Sponsor-logo-roll på slutten. Brukes ofte alene som sosial-promo-versjon.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "outro" as const,
   },
 ];
 
