@@ -20,7 +20,11 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Launch as LaunchIcon,
   Save as SaveIcon,
+  Download as DownloadIcon,
+  DeleteOutline as DeleteIcon,
+  PersonOutline as PersonIcon,
 } from '@mui/icons-material';
+import { CollapsibleSection } from '../CollapsibleSection';
 import type {
   ProducerPlanningFrameworkStepKey,
   CastingProject,
@@ -249,6 +253,213 @@ const ensureContentLogic = (planning: ProducerProjectPlanning) => ({
   distributionPlan: planning.contentLogic?.distributionPlan ?? '',
   successSignals: planning.contentLogic?.successSignals ?? [],
 });
+
+const CLIENT_MATERIAL_TYPE_LABELS: Record<string, string> = {
+  brand_asset: 'Logo / brand',
+  asset_link: 'Lenke',
+  reference: 'Referanse',
+  document: 'Dokument',
+  brief_note: 'Brief-notat',
+  feedback: 'Tilbakemelding',
+};
+
+function formatMaterialFileSize(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Rik klientmateriale-visning: full liste over alt klienten (og produsenten)
+ * har lagt inn — opplastede filer (logo/brand/brief) med nedlasting, og
+ * lenker — gruppert per type. Erstatter den tidligere telling-bare visningen.
+ */
+function ProducerClientMaterialsSection({
+  projectId,
+  materials,
+  onDeleted,
+}: {
+  projectId: string;
+  materials: ProducerClientMaterial[];
+  onDeleted: (id: string) => void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const groups = useMemo(() => {
+    const byType = new Map<string, ProducerClientMaterial[]>();
+    for (const material of materials) {
+      const key = material.entry_type || 'reference';
+      if (!byType.has(key)) byType.set(key, []);
+      byType.get(key)!.push(material);
+    }
+    return Array.from(byType.entries()).map(([type, items]) => ({
+      type,
+      label: CLIENT_MATERIAL_TYPE_LABELS[type] ?? type,
+      items,
+    }));
+  }, [materials]);
+
+  const readFileMeta = (material: ProducerClientMaterial) => {
+    const meta = material.metadata as
+      | { file?: { originalName?: string; fileSize?: number }; uploadedByClient?: boolean }
+      | undefined;
+    return {
+      file: meta?.file ?? null,
+      fromClient: Boolean(meta?.uploadedByClient) || material.created_by_role === 'client',
+    };
+  };
+
+  const handleDownload = async (material: ProducerClientMaterial) => {
+    const { file } = readFileMeta(material);
+    setBusyId(material.id);
+    setError(null);
+    try {
+      await producerWorkflowService.downloadClientMaterialFile(
+        projectId,
+        material.id,
+        file?.originalName || material.title || 'fil',
+      );
+    } catch {
+      setError('Kunne ikke laste ned filen akkurat nå.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDelete = async (material: ProducerClientMaterial) => {
+    setBusyId(material.id);
+    setError(null);
+    try {
+      await producerWorkflowService.deleteClientMaterial(projectId, material.id);
+      onDeleted(material.id);
+    } catch {
+      setError('Kunne ikke slette materialet akkurat nå.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <CollapsibleSection
+      title="Klientmateriale"
+      defaultOpen={materials.length > 0 && materials.length <= 8}
+      summary={materials.length > 0 ? `${materials.length} element` : 'Ingen sendt ennå'}
+      badge={
+        materials.length > 0 ? (
+          <Chip size="small" label={materials.length} sx={{ height: 18, bgcolor: 'rgba(192,132,252,0.18)', color: '#f5d0fe', fontWeight: 700, fontSize: '0.68rem' }} />
+        ) : null
+      }
+    >
+      {error ? (
+        <Alert severity="error" sx={{ mb: 1.2, fontSize: '0.82rem' }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      ) : null}
+
+      {materials.length === 0 ? (
+        <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
+          Klienten har ikke sendt materiale ennå. De kan laste opp logo, brand-filer
+          og brief direkte fra klientportalen.
+        </Typography>
+      ) : (
+        <Stack spacing={1.4}>
+          {groups.map((group) => (
+            <Box key={group.type}>
+              <Typography sx={{ color: '#e9d5ff', fontWeight: 700, fontSize: '0.82rem', mb: 0.6 }}>
+                {group.label} · {group.items.length}
+              </Typography>
+              <Stack spacing={0.7}>
+                {group.items.map((material) => {
+                  const { file, fromClient } = readFileMeta(material);
+                  const when = material.created_at ? new Date(material.created_at) : null;
+                  const whenLabel = when && !Number.isNaN(when.getTime())
+                    ? when.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' })
+                    : '';
+                  return (
+                    <Box
+                      key={material.id}
+                      sx={{
+                        p: 1.1,
+                        borderRadius: 1.4,
+                        bgcolor: 'rgba(15,23,42,0.6)',
+                        border: '1px solid rgba(148,163,184,0.14)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 1,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {file?.originalName || material.title}
+                          </Typography>
+                          {fromClient ? (
+                            <Chip
+                              size="small"
+                              icon={<PersonIcon sx={{ fontSize: '0.8rem !important', color: '#7dd3fc !important' }} />}
+                              label="Fra klient"
+                              sx={{ height: 18, bgcolor: 'rgba(56,189,248,0.16)', color: '#bae6fd', fontWeight: 700, fontSize: '0.64rem' }}
+                            />
+                          ) : null}
+                        </Stack>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.72rem' }}>
+                          {[whenLabel, file?.fileSize ? formatMaterialFileSize(file.fileSize) : null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </Typography>
+                        {material.description ? (
+                          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.2 }}>
+                            {material.description}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                        {file ? (
+                          <Button
+                            size="small"
+                            disabled={busyId === material.id}
+                            onClick={() => void handleDownload(material)}
+                            startIcon={<DownloadIcon sx={{ fontSize: '1rem' }} />}
+                            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: '#93c5fd', minWidth: 0 }}
+                          >
+                            Last ned
+                          </Button>
+                        ) : material.external_url ? (
+                          <Button
+                            size="small"
+                            component="a"
+                            href={material.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            startIcon={<LaunchIcon sx={{ fontSize: '1rem' }} />}
+                            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: '#93c5fd', minWidth: 0 }}
+                          >
+                            Åpne
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="small"
+                          disabled={busyId === material.id}
+                          onClick={() => void handleDelete(material)}
+                          sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: 'rgba(248,113,113,0.8)', minWidth: 0 }}
+                        >
+                          <DeleteIcon sx={{ fontSize: '1rem' }} />
+                        </Button>
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+      )}
+    </CollapsibleSection>
+  );
+}
 
 export default function ProducerClientPlanningPanel({
   project,
@@ -821,6 +1032,12 @@ export default function ProducerClientPlanningPanel({
             </Box>
           </Box>
         </Box>
+
+        <ProducerClientMaterialsSection
+          projectId={project.id}
+          materials={clientMaterials}
+          onDeleted={(id) => setClientMaterials((previous) => previous.filter((material) => material.id !== id))}
+        />
 
         <Box
           sx={{
