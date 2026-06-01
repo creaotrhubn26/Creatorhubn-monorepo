@@ -241,7 +241,10 @@ const roleRoomTalentsService = {
   },
 
   // ── Phase 7: Talent Registry (agency-search) ──────────────────────
-  async searchTalents(filters: TalentSearchFilters): Promise<TalentSearchResult> {
+  async searchTalents(
+    filters: TalentSearchFilters,
+    opts?: { agencyType?: string; agencyId?: string; demo?: boolean },
+  ): Promise<TalentSearchResult> {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
       if (v == null || v === '') return;
@@ -253,13 +256,27 @@ const roleRoomTalentsService = {
         params.set(k, String(v));
       }
     });
+    if (opts?.agencyType && opts?.agencyId) {
+      params.set('agency_type', opts.agencyType);
+      params.set('agency_id', opts.agencyId);
+    }
+    if (opts?.demo) params.set('demo', '1');
     const r = await authFetch(`${AGENCY_BASE}/agency/talents/search?${params.toString()}`);
     if (!r.ok) return { agency: null, filters, total: 0, talents: [] };
     return await r.json();
   },
 
-  async fetchRegistryOverview(): Promise<RegistryOverview> {
-    const r = await authFetch(`${AGENCY_BASE}/agency/registry-overview`);
+  async fetchRegistryOverview(
+    opts?: { agencyType?: string; agencyId?: string; demo?: boolean },
+  ): Promise<RegistryOverview> {
+    const params = new URLSearchParams();
+    if (opts?.agencyType && opts?.agencyId) {
+      params.set('agency_type', opts.agencyType);
+      params.set('agency_id', opts.agencyId);
+    }
+    if (opts?.demo) params.set('demo', '1');
+    const qs = params.toString();
+    const r = await authFetch(`${AGENCY_BASE}/agency/registry-overview${qs ? `?${qs}` : ''}`);
     if (!r.ok) return { agency: null, total_visible: 0, new_30d: 0, available_now: 0 };
     return await r.json();
   },

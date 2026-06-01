@@ -109,18 +109,38 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
   const [proposals, setProposals] = useState<TalentProposal[]>([]);
   const [showProposals, setShowProposals] = useState(false);
 
+  // Phase 9 — produksjonsteam-eier kan søke via et SPESIFIKT byrå
+  // (AgencyPartnershipPicker åpner /talents/registry?agency_type=&agency_id=).
+  // Parser én gang ved mount; URL endres ikke under brukerens sesjon.
+  const agencyContext = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const sp = new URLSearchParams(window.location.search);
+    const t = sp.get('agency_type');
+    const id = sp.get('agency_id');
+    return t && id ? { agencyType: t, agencyId: id } : null;
+  }, []);
+
+  const serviceOpts = useMemo(
+    () => ({
+      agencyType: agencyContext?.agencyType,
+      agencyId: agencyContext?.agencyId,
+      demo: demoMode,
+    }),
+    [agencyContext, demoMode],
+  );
+
   const runSearch = useCallback(async (f: TalentSearchFilters) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await roleRoomTalentsService.searchTalents(f);
+      const result = await roleRoomTalentsService.searchTalents(f, serviceOpts);
       setSearchResult({ total: result.total, talents: result.talents });
     } catch (err) {
       setError(`Søk feilet: ${err instanceof Error ? err.message : 'ukjent'}`);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [serviceOpts]);
 
   // Trigger søk når filters endres (debounce ~250ms)
   useEffect(() => {
@@ -135,9 +155,9 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
 
   useEffect(() => {
     void roleRoomTalentsService.fetchSavedSearches().then(setSavedSearches);
-    void roleRoomTalentsService.fetchRegistryOverview().then(setOverview);
+    void roleRoomTalentsService.fetchRegistryOverview(serviceOpts).then(setOverview);
     void reloadProposals();
-  }, [reloadProposals]);
+  }, [reloadProposals, serviceOpts]);
 
   const pendingProposalsCount = proposals.filter((p) => p.status === 'pending').length;
 
@@ -153,10 +173,14 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3, gap: 2 }}>
           <Box>
             <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15 }}>
-              Talent-register
+              {agencyContext && overview?.agency?.name
+                ? `${overview.agency.name} — talent-register`
+                : 'Talent-register'}
             </Typography>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem', mt: 0.6 }}>
-              Finn og koble deg til skuespillere over hele Norge.
+              {agencyContext && overview?.agency?.name
+                ? `Søker via godkjent partnership med ${overview.agency.name}. Kun talenter som har gitt byrået aktiv consent vises.`
+                : 'Finn og koble deg til skuespillere over hele Norge.'}
             </Typography>
           </Box>
           <Stack direction="row" spacing={1.4} alignItems="center">
