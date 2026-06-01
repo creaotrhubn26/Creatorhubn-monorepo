@@ -77,6 +77,20 @@ async function resolveUserContext(pool: Pool, userId: string): Promise<UserConte
 /** Den nåværende vilkår-versjonen byråene må godta. Bump ved endring → krever re-accept. */
 export const CURRENT_PARTNERSHIP_TERMS_VERSION = "1.0";
 
+/** Demo-mode helpers — samme mønster som agency-search-routes. */
+function isDemoRequest(req: express.Request): boolean {
+  return req.query?.demo === "1" || req.query?.demo === "true";
+}
+
+function getDemoAgency() {
+  return {
+    id: "a2222222-2222-2222-2222-2222222222a2",
+    type: "stella_casting",
+    name: "Stella Casting (demo)",
+    slug: "demo-stella-casting",
+  };
+}
+
 type QualifiedAgency = {
   id: string;
   name: string;
@@ -1314,6 +1328,428 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
     } catch (err) {
       console.error("[partnerships/discoverable-agencies] failed", err);
       return res.status(500).json({ error: "Klarte ikke å hente byråer" });
+    }
+  });
+
+  // ── GET /invitations/:invId/proposable-talents ────────────────────
+  // Bryået søker i sitt EGNE register etter talenter å foreslå til
+  // prosjektet. Filtreres på consent (talent har gitt byrået scope) +
+  // valgfri q-søk.
+  app.get("/api/role-room/partnerships/invitations/:invId/proposable-talents", async (req, res) => {
+    const session = getActiveSession(req);
+    const demo = isDemoRequest(req);
+    let agencyOrgId: string | null = null;
+    let agencyType: string | null = null;
+    if (demo) {
+      const a = getDemoAgency();
+      agencyOrgId = a.id;
+      agencyType = a.type;
+    } else {
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const ctx = await resolveUserContext(pool, session.userId);
+      if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+      agencyOrgId = ctx.agencyOrgId;
+      agencyType = ctx.agencyType;
+    }
+
+    const q = (req.query.q as string) || "";
+    try {
+      // Verifiser at invitasjonen tilhører byrået og er aksepterert
+      const inv = await pool.query(
+        `SELECT i.*, p.agency_org_id
+           FROM partnership_project_invitations i
+           JOIN agency_production_partnerships p ON p.id = i.partnership_id
+          WHERE i.id = $1 LIMIT 1`,
+        [req.params.invId],
+      );
+      const invitation = inv.rows[0];
+      if (!invitation) return res.status(404).json({ error: "Invitasjon ikke funnet" });
+      if (invitation.agency_org_id !== agencyOrgId) {
+        return res.status(403).json({ error: "Du eier ikke denne invitasjonen" });
+      }
+      if (invitation.status !== "accepted") {
+        return res.status(409).json({
+          error: `Invitasjon-status er ${invitation.status}, kan ikke foreslå talenter`,
+        });
+      }
+
+      const params: unknown[] = [agencyType, agencyOrgId, demo ? true : false];
+      const where: string[] = [
+        "c.partner_type = $1",
+        "c.partner_ref = $2",
+        "c.status = 'granted'",
+        "(c.expires_at IS NULL OR c.expires_at > now())",
+        "t.profile_status != 'archived'",
+        "COALESCE(t.is_demo, FALSE) = $3",
+      ];
+      if (q) {
+        params.push(`%${q}%`);
+        where.push(`(t.display_name ILIKE $${params.length} OR t.city ILIKE $${params.length})`);
+      }
+      const r = await pool.query(
+        `SELECT DISTINCT t.id::text, t.display_name, t.city, t.country,
+                t.headshot_url, t.playing_age_min, t.playing_age_max, t.gender,
+                t.availability_status,
+                -- Allerede foreslått til denne invitasjonen?
+                (SELECT COUNT(*) > 0 FROM partnership_talent_proposals ptp
+                  WHERE ptp.invitation_id = $${params.length + 1}
+                    AND ptp.talent_id = t.id
+                    AND ptp.status IN ('pending','accepted')
+                ) AS already_proposed
+           FROM talent_consent_registry c
+           JOIN talents t ON t.id = c.talent_id
+          WHERE ${where.join(" AND ")}
+          ORDER BY t.display_name
+          LIMIT 100`,
+        [...params, req.params.invId],
+      );
+      return res.json({ talents: r.rows });
+    } catch (err) {
+      console.error("[partnerships/proposable-talents] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente talenter" });
+    }
+  });
+
+  // ── POST /invitations/:invId/talent-proposals ─────────────────────
+  // Bryået foreslår en talent til en spesifikk rolle i prosjektet.
+  // Body: { talent_id, casting_role_id?, agency_notes? }
+  app.post("/api/role-room/partnerships/invitations/:invId/talent-proposals", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+
+    const { talent_id, casting_role_id, agency_notes } = (req.body || {}) as {
+      talent_id?: string;
+      casting_role_id?: string;
+      agency_notes?: string;
+    };
+    if (!talent_id) return res.status(400).json({ error: "talent_id er påkrevd" });
+
+    try {
+      // Verifiser at invitasjonen tilhører byrået + er aksepterert
+      const inv = await pool.query(
+        `SELECT i.*, p.agency_org_id, p.production_user_id, a.type AS agency_type
+           FROM partnership_project_invitations i
+           JOIN agency_production_partnerships p ON p.id = i.partnership_id
+           JOIN agency_orgs a ON a.id = p.agency_org_id
+          WHERE i.id = $1 LIMIT 1`,
+        [req.params.invId],
+      );
+      const invitation = inv.rows[0];
+      if (!invitation) return res.status(404).json({ error: "Invitasjon ikke funnet" });
+      if (invitation.agency_org_id !== ctx.agencyOrgId) {
+        return res.status(403).json({ error: "Du eier ikke denne invitasjonen" });
+      }
+      if (invitation.status !== "accepted") {
+        return res.status(409).json({ error: "Invitasjonen er ikke akseptert" });
+      }
+
+      // Verifiser at byrået har gyldig consent til talenten
+      const consent = await pool.query(
+        `SELECT 1 FROM talent_consent_registry
+          WHERE talent_id = $1::uuid AND partner_type = $2 AND partner_ref = $3
+            AND status = 'granted' AND (expires_at IS NULL OR expires_at > now())
+          LIMIT 1`,
+        [talent_id, invitation.agency_type, ctx.agencyOrgId],
+      );
+      if (!consent.rowCount) {
+        return res.status(403).json({
+          error: "Talenten har ikke gitt byrået aktiv tilgang — kan ikke foreslås",
+        });
+      }
+
+      // Hvis casting_role_id er angitt, verifiser at rollen tilhører prosjektet
+      if (casting_role_id) {
+        const roleCheck = await pool.query(
+          `SELECT 1 FROM casting_roles
+            WHERE id = $1 AND project_id = $2 LIMIT 1`,
+          [casting_role_id, invitation.casting_project_id],
+        );
+        if (!roleCheck.rowCount) {
+          return res.status(400).json({ error: "Rolle tilhører ikke dette prosjektet" });
+        }
+      }
+
+      const r = await pool.query(
+        `INSERT INTO partnership_talent_proposals
+           (invitation_id, talent_id, casting_role_id, proposed_by_user_id,
+            agency_notes, status, is_demo)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'pending',
+                 COALESCE((SELECT is_demo FROM talents WHERE id = $2::uuid), FALSE))
+         ON CONFLICT (invitation_id, talent_id, casting_role_id) DO UPDATE SET
+           agency_notes = COALESCE(EXCLUDED.agency_notes, partnership_talent_proposals.agency_notes),
+           status = CASE
+             WHEN partnership_talent_proposals.status IN ('withdrawn','declined') THEN 'pending'
+             ELSE partnership_talent_proposals.status
+           END,
+           updated_at = now()
+         RETURNING *`,
+        [req.params.invId, talent_id, casting_role_id ?? null, session.userId, agency_notes ?? null],
+      );
+
+      await logAudit(pool, {
+        invitationId: req.params.invId,
+        actorUserId: session.userId,
+        action: "talent_proposed",
+        details: { talent_id, casting_role_id: casting_role_id ?? null },
+      });
+
+      // Fire-and-forget e-postvarsel til produksjon
+      const proposal = r.rows[0];
+      void (async () => {
+        try {
+          const detail = await pool.query(
+            `SELECT t.display_name AS talent_display_name,
+                    a.name AS agency_name,
+                    proj.name AS project_name,
+                    cr.name AS role_name,
+                    prod.email AS production_email
+               FROM partnership_talent_proposals ptp
+               JOIN talents t ON t.id = ptp.talent_id
+               JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+               JOIN agency_production_partnerships p ON p.id = i.partnership_id
+               JOIN agency_orgs a ON a.id = p.agency_org_id
+               JOIN casting_projects proj ON proj.id = i.casting_project_id
+               JOIN users prod ON prod.id = p.production_user_id
+               LEFT JOIN casting_roles cr ON cr.id = ptp.casting_role_id
+              WHERE ptp.id = $1`,
+            [proposal.id],
+          );
+          const d = detail.rows[0];
+          if (!d || !d.production_email) return;
+          const { sendTalentProposedByAgency } = await import("./role-room-partnerships-emails");
+          await sendTalentProposedByAgency(pool, {
+            proposalId: proposal.id,
+            talentDisplayName: d.talent_display_name,
+            agencyName: d.agency_name,
+            projectName: d.project_name,
+            roleName: d.role_name ?? null,
+            agencyNotes: agency_notes ?? null,
+            recipientEmail: d.production_email,
+            sentByUserId: session.userId,
+          });
+        } catch (mailErr) {
+          console.error("[partnerships/talent-proposals POST] e-post feilet (uten å blokkere)", mailErr);
+        }
+      })();
+
+      return res.status(201).json({ proposal });
+    } catch (err) {
+      console.error("[partnerships/talent-proposals POST] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å foreslå talent", detail: String(err) });
+    }
+  });
+
+  // ── GET /invitations/:invId/talent-proposals ──────────────────────
+  // Bryå-perspektivet: alle proposals jeg har sendt for denne invitasjonen.
+  app.get("/api/role-room/partnerships/invitations/:invId/talent-proposals", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+
+    try {
+      const inv = await pool.query(
+        `SELECT i.id, p.agency_org_id
+           FROM partnership_project_invitations i
+           JOIN agency_production_partnerships p ON p.id = i.partnership_id
+          WHERE i.id = $1 LIMIT 1`,
+        [req.params.invId],
+      );
+      if (!inv.rows[0]) return res.status(404).json({ error: "Invitasjon ikke funnet" });
+      if (inv.rows[0].agency_org_id !== ctx.agencyOrgId) {
+        return res.status(403).json({ error: "Du eier ikke denne invitasjonen" });
+      }
+
+      const r = await pool.query(
+        `SELECT ptp.*, t.display_name, t.headshot_url, t.city, t.country,
+                t.playing_age_min, t.playing_age_max, t.gender, t.availability_status,
+                cr.name AS role_name, cr.description AS role_description
+           FROM partnership_talent_proposals ptp
+           JOIN talents t ON t.id = ptp.talent_id
+           LEFT JOIN casting_roles cr ON cr.id = ptp.casting_role_id
+          WHERE ptp.invitation_id = $1::uuid
+          ORDER BY ptp.created_at DESC`,
+        [req.params.invId],
+      );
+      return res.json({ proposals: r.rows });
+    } catch (err) {
+      console.error("[partnerships/talent-proposals GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente forslag" });
+    }
+  });
+
+  // ── POST /talent-proposals/:id/withdraw ───────────────────────────
+  app.post("/api/role-room/partnerships/talent-proposals/:id/withdraw", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+
+    try {
+      const cur = await pool.query(
+        `SELECT ptp.*, p.agency_org_id
+           FROM partnership_talent_proposals ptp
+           JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+           JOIN agency_production_partnerships p ON p.id = i.partnership_id
+          WHERE ptp.id = $1 LIMIT 1`,
+        [req.params.id],
+      );
+      const proposal = cur.rows[0];
+      if (!proposal) return res.status(404).json({ error: "Forslag ikke funnet" });
+      if (proposal.agency_org_id !== ctx.agencyOrgId) {
+        return res.status(403).json({ error: "Du eier ikke dette forslaget" });
+      }
+      if (proposal.status !== "pending") {
+        return res.status(409).json({ error: `Status er ${proposal.status}, kan ikke trekkes` });
+      }
+      const r = await pool.query(
+        `UPDATE partnership_talent_proposals
+            SET status = 'withdrawn', withdrawn_at = now()
+          WHERE id = $1 RETURNING *`,
+        [req.params.id],
+      );
+      await logAudit(pool, {
+        invitationId: proposal.invitation_id,
+        actorUserId: session.userId,
+        action: "talent_proposal_withdrawn",
+        details: { proposal_id: proposal.id },
+      });
+      return res.json({ proposal: r.rows[0] });
+    } catch (err) {
+      console.error("[partnerships/talent-proposals/withdraw] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å trekke forslag" });
+    }
+  });
+
+  // ── POST /talent-proposals/:id/respond ────────────────────────────
+  // Produksjon svarer på et talent-forslag (accept/decline).
+  app.post("/api/role-room/partnerships/talent-proposals/:id/respond", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const { accept, production_notes } = (req.body || {}) as {
+      accept?: boolean;
+      production_notes?: string;
+    };
+    if (typeof accept !== "boolean") {
+      return res.status(400).json({ error: "accept (boolean) er påkrevd" });
+    }
+    try {
+      const cur = await pool.query(
+        `SELECT ptp.*, p.production_user_id
+           FROM partnership_talent_proposals ptp
+           JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+           JOIN agency_production_partnerships p ON p.id = i.partnership_id
+          WHERE ptp.id = $1 LIMIT 1`,
+        [req.params.id],
+      );
+      const proposal = cur.rows[0];
+      if (!proposal) return res.status(404).json({ error: "Forslag ikke funnet" });
+      if (session.userId !== proposal.production_user_id) {
+        return res.status(403).json({ error: "Kun produksjonsteam-eier kan svare på forslag" });
+      }
+      if (proposal.status !== "pending") {
+        return res.status(409).json({ error: `Status er ${proposal.status}, kan ikke svares på` });
+      }
+
+      const newStatus = accept ? "accepted" : "declined";
+      const r = await pool.query(
+        `UPDATE partnership_talent_proposals
+            SET status = $1, production_notes = $2,
+                responded_at = now(), response_user_id = $3
+          WHERE id = $4 RETURNING *`,
+        [newStatus, production_notes ?? null, session.userId, req.params.id],
+      );
+
+      await logAudit(pool, {
+        invitationId: proposal.invitation_id,
+        actorUserId: session.userId,
+        action: accept ? "talent_proposal_accepted" : "talent_proposal_declined",
+        details: { proposal_id: proposal.id, production_notes: production_notes ?? null },
+      });
+
+      // Fire-and-forget e-postvarsel til byrå (kontakt-e-post)
+      const updated = r.rows[0];
+      void (async () => {
+        try {
+          const detail = await pool.query(
+            `SELECT t.display_name AS talent_display_name,
+                    proj.name AS project_name,
+                    prod.first_name || ' ' || prod.last_name AS production_name,
+                    a.contact_email AS agency_email
+               FROM partnership_talent_proposals ptp
+               JOIN talents t ON t.id = ptp.talent_id
+               JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+               JOIN agency_production_partnerships p ON p.id = i.partnership_id
+               JOIN agency_orgs a ON a.id = p.agency_org_id
+               JOIN casting_projects proj ON proj.id = i.casting_project_id
+               JOIN users prod ON prod.id = p.production_user_id
+              WHERE ptp.id = $1`,
+            [updated.id],
+          );
+          const d = detail.rows[0];
+          if (!d || !d.agency_email) return;
+          const { sendTalentProposalResponded } = await import("./role-room-partnerships-emails");
+          await sendTalentProposalResponded(pool, {
+            proposalId: updated.id,
+            accepted: accept,
+            talentDisplayName: d.talent_display_name,
+            projectName: d.project_name,
+            productionName: d.production_name || "Produksjonsteam",
+            productionNotes: production_notes ?? null,
+            recipientEmail: d.agency_email,
+            sentByUserId: session.userId,
+          });
+        } catch (mailErr) {
+          console.error("[partnerships/talent-proposals/respond] e-post feilet (uten å blokkere)", mailErr);
+        }
+      })();
+
+      return res.json({ proposal: updated });
+    } catch (err) {
+      console.error("[partnerships/talent-proposals/respond] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å svare på forslag" });
+    }
+  });
+
+  // ── GET /casting-projects/:projectId/incoming-talent-proposals ────
+  // Produksjon ser alle proposals for et prosjekt på tvers av invitasjoner.
+  app.get("/api/role-room/partnerships/casting-projects/:projectId/incoming-talent-proposals", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      // Verifiser at innlogget bruker eier prosjektet
+      const proj = await pool.query(
+        `SELECT id, created_by FROM casting_projects WHERE id = $1 LIMIT 1`,
+        [req.params.projectId],
+      );
+      if (!proj.rows[0]) return res.status(404).json({ error: "Prosjekt ikke funnet" });
+      if (proj.rows[0].created_by !== session.userId) {
+        return res.status(403).json({ error: "Du eier ikke prosjektet" });
+      }
+
+      const r = await pool.query(
+        `SELECT ptp.*, t.display_name, t.headshot_url, t.city, t.country,
+                t.playing_age_min, t.playing_age_max, t.gender, t.availability_status,
+                cr.name AS role_name, cr.description AS role_description,
+                a.name AS agency_name, a.logo_url AS agency_logo_url,
+                u.first_name || ' ' || u.last_name AS proposer_name
+           FROM partnership_talent_proposals ptp
+           JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+           JOIN agency_production_partnerships p ON p.id = i.partnership_id
+           JOIN agency_orgs a ON a.id = p.agency_org_id
+           JOIN talents t ON t.id = ptp.talent_id
+           LEFT JOIN casting_roles cr ON cr.id = ptp.casting_role_id
+           LEFT JOIN users u ON u.id = ptp.proposed_by_user_id
+          WHERE i.casting_project_id = $1
+          ORDER BY ptp.created_at DESC`,
+        [req.params.projectId],
+      );
+      return res.json({ proposals: r.rows });
+    } catch (err) {
+      console.error("[partnerships/incoming-talent-proposals] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente forslag" });
     }
   });
 }

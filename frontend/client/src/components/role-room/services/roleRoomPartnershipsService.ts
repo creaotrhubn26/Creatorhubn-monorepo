@@ -278,3 +278,81 @@ export function incomingInvitations(): Promise<{ invitations: ProjectInvitation[
 export function discoverableAgencies(filters?: { q?: string; type?: string }): Promise<{ agencies: DiscoverableAgency[] }> {
   return api('/discoverable-agencies', { method: 'GET', params: { q: filters?.q, type: filters?.type } });
 }
+
+// ── Talent-proposals (byrå → produksjon per invitasjon) ──────────────
+export interface ProposableTalent {
+  id: string;
+  display_name: string;
+  city: string | null;
+  country: string | null;
+  headshot_url: string | null;
+  playing_age_min: number | null;
+  playing_age_max: number | null;
+  gender: string | null;
+  availability_status: string | null;
+  already_proposed: boolean;
+}
+
+export interface TalentProposal {
+  id: string;
+  invitation_id: string;
+  talent_id: string;
+  casting_role_id: string | null;
+  proposed_by_user_id: string;
+  agency_notes: string | null;
+  status: 'pending' | 'accepted' | 'declined' | 'withdrawn';
+  production_notes: string | null;
+  responded_at: string | null;
+  response_user_id: string | null;
+  withdrawn_at: string | null;
+  is_demo: boolean;
+  created_at: string;
+  updated_at: string;
+  display_name?: string;
+  headshot_url?: string | null;
+  city?: string | null;
+  country?: string | null;
+  playing_age_min?: number | null;
+  playing_age_max?: number | null;
+  gender?: string | null;
+  availability_status?: string | null;
+  role_name?: string | null;
+  role_description?: string | null;
+  agency_name?: string;
+  agency_logo_url?: string | null;
+  proposer_name?: string | null;
+}
+
+export function proposableTalents(invitationId: string, q?: string): Promise<{ talents: ProposableTalent[] }> {
+  return api(`/invitations/${invitationId}/proposable-talents`, { method: 'GET', params: { q } });
+}
+
+export function proposeTalent(
+  invitationId: string,
+  args: { talent_id: string; casting_role_id?: string; agency_notes?: string },
+): Promise<{ proposal: TalentProposal }> {
+  return api(`/invitations/${invitationId}/talent-proposals`, { method: 'POST', body: JSON.stringify(args) });
+}
+
+export function listTalentProposals(invitationId: string): Promise<{ proposals: TalentProposal[] }> {
+  return api(`/invitations/${invitationId}/talent-proposals`);
+}
+
+export function withdrawTalentProposal(proposalId: string): Promise<{ proposal: TalentProposal }> {
+  return api(`/talent-proposals/${proposalId}/withdraw`, { method: 'POST' });
+}
+
+export function respondToTalentProposal(
+  proposalId: string,
+  accept: boolean,
+  production_notes?: string,
+): Promise<{ proposal: TalentProposal }> {
+  return api(`/talent-proposals/${proposalId}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ accept, production_notes: production_notes ?? null }),
+  });
+}
+
+export function incomingTalentProposalsForProject(projectId: string): Promise<{ proposals: TalentProposal[] }> {
+  return api(`/casting-projects/${projectId}/incoming-talent-proposals`);
+}
