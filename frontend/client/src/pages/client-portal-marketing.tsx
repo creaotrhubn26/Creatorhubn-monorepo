@@ -522,12 +522,14 @@ const PLATFORM_STATUS_META: Record<
  * fra det autoritative connection-endepunktet — aldri tokens, kun status.
  */
 // Plattformer der klienten selv kan starte OAuth fra portalen. Meta dekker
-// både Instagram og Facebook (samme tilkobling). LinkedIn/Google kobles
-// fortsatt produsent-side i dag.
-const CLIENT_CONNECTABLE: Record<string, { endpoint: string; method: 'GET' | 'POST'; label: string }> = {
-  instagram: { endpoint: 'instagram', method: 'GET', label: 'Koble til Instagram' },
-  facebook: { endpoint: 'instagram', method: 'GET', label: 'Koble til (Meta)' },
-  tiktok: { endpoint: 'tiktok', method: 'POST', label: 'Koble til TikTok' },
+// både Instagram og Facebook (samme tilkobling). IG/TikTok ligger på
+// client-portal-prefikset; LinkedIn/Google på role-room-routerens prefiks.
+const CLIENT_CONNECTABLE: Record<string, { path: string; method: 'GET' | 'POST'; label: string }> = {
+  instagram: { path: '/api/client/portal/oauth/instagram/start', method: 'GET', label: 'Koble til Instagram' },
+  facebook: { path: '/api/client/portal/oauth/instagram/start', method: 'GET', label: 'Koble til (Meta)' },
+  tiktok: { path: '/api/client/portal/oauth/tiktok/start', method: 'POST', label: 'Koble til TikTok' },
+  linkedin: { path: '/api/role-room/client-portal/oauth/linkedin/start', method: 'POST', label: 'Koble til LinkedIn' },
+  google: { path: '/api/role-room/client-portal/oauth/google/start', method: 'POST', label: 'Koble til Google' },
 };
 
 function ConnectedPlatformsCard({ token }: { token: string }) {
@@ -543,7 +545,7 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
     setConnectError(null);
     try {
       const res = await fetch(
-        `/api/client/portal/oauth/${cfg.endpoint}/start?token=${encodeURIComponent(token)}`,
+        `${cfg.path}?token=${encodeURIComponent(token)}`,
         { method: cfg.method },
       );
       const json = await res.json();

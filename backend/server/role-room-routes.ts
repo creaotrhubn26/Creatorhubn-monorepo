@@ -21,6 +21,8 @@ import {
   loadOauthTransfer,
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
+import { resolveClientPortalSession } from './role-room-client-portal.js';
+import { getProjectProducerUserId } from './client-portal-connected-platforms.js';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -8933,6 +8935,71 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // Klient-initiert Google Workspace-kobling fra portalen (alltid link-modus).
+  // Samme state-payload som produsentens link-start, men med prosjekteierens
+  // userId. Hopper over commercial-login-gaten (den gjelder kun mode='login').
+  router.post('/client-portal/oauth/google/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+      const session = await resolveClientPortalSession(pool, token);
+      if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+      const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+      if (!producerUserId) {
+        res.status(409).json({ error: 'Prosjektet mangler en produsent å koble kontoen til.' });
+        return;
+      }
+
+      const browserOrigin = sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req);
+      const requestScopedRedirectUri = browserOrigin
+        ? `${browserOrigin}/api/role-room/google/oauth/callback`
+        : null;
+      const config = getRoleRoomGoogleConfig(req, requestScopedRedirectUri);
+      if (!config.configured) {
+        res.status(400).json({ error: 'Google Workspace er ikke konfigurert', missing: config.missing });
+        return;
+      }
+      const oauthClient = createRoleRoomGoogleOAuthClient(req, config.redirectUri);
+      if (!oauthClient) {
+        res.status(500).json({ error: 'Google OAuth-klient er ikke tilgjengelig' });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
+      const oauthStatePayload: RoleRoomGoogleOauthState = {
+        mode: 'link',
+        returnPath,
+        browserOrigin,
+        redirectUri: config.redirectUri ?? null,
+        loginAs: null,
+        requestedRole: null,
+        projectId: session.projectId,
+        createdByUserId: producerUserId,
+        createdByEmail: null,
+        targetConnectionUserId: null,
+        targetConnectionEmail: null,
+        createdAt: Date.now(),
+      };
+      roleRoomGoogleOauthStateStore.set(stateId, oauthStatePayload);
+      void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
+
+      const authorizationUrl = oauthClient.generateAuthUrl({
+        access_type: 'offline',
+        scope: [...ROLE_ROOM_GOOGLE_SCOPES],
+        include_granted_scopes: true,
+        prompt: 'consent',
+        state: stateId,
+      });
+
+      res.json({ success: true, mode: 'link' as const, authorizationUrl });
+    } catch (error) {
+      console.error('Role Room client Google oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte Google OAuth' });
+    }
+  });
+
   router.get('/google/oauth/callback', async (req: Request, res: Response) => {
     pruneExpiredRoleRoomGoogleState();
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
@@ -9593,6 +9660,56 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       });
     } catch (error) {
       console.error('Role Room LinkedIn oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte LinkedIn OAuth' });
+    }
+  });
+
+  // Klient-initiert LinkedIn-kobling fra portalen. Mynter samme state-store-
+  // entry som produsentens start, men med PROSJEKTEIERENS userId, slik at den
+  // delte callbacken lagrer koblingen under produsenten + prosjektet.
+  // Klient-token gater hvem som kan starte; consent gis med klientens konto.
+  router.post('/client-portal/oauth/linkedin/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+      const session = await resolveClientPortalSession(pool, token);
+      if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+      const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+      if (!producerUserId) {
+        res.status(409).json({ error: 'Prosjektet mangler en produsent å koble kontoen til.' });
+        return;
+      }
+
+      const config = getRoleRoomLinkedInConfig(req);
+      if (!config.configured || !config.clientId || !config.redirectUri) {
+        res.status(400).json({ error: 'LinkedIn er ikke konfigurert', missing: config.missing });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
+      roleRoomLinkedInOauthStateStore.set(stateId, {
+        returnPath,
+        browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
+        projectId: session.projectId,
+        createdByUserId: producerUserId,
+        createdAt: Date.now(),
+      });
+
+      const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${
+        new URLSearchParams({
+          response_type: 'code',
+          client_id: config.clientId,
+          redirect_uri: config.redirectUri,
+          scope: [...ROLE_ROOM_LINKEDIN_SCOPES].join(' '),
+          state: stateId,
+        }).toString()
+      }`;
+
+      res.json({ success: true, mode: 'link' as const, authorizationUrl });
+    } catch (error) {
+      console.error('Role Room client LinkedIn oauth start error:', error);
       res.status(500).json({ error: 'Kunne ikke starte LinkedIn OAuth' });
     }
   });
