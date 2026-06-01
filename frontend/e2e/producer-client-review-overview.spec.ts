@@ -138,6 +138,13 @@ test.describe('Producer client review overview', () => {
     await expect(page.getByTestId('producer-review-summary-approved')).toContainText('1');
     await expect(page.getByTestId('producer-review-summary-total')).toContainText('4');
 
+    // Live klient-aktivitet-feed (sanntid): klientens beslutninger vises nyeste
+    // først, med handling + årsak. Feeden utledes fra de poll'ede reviewsene.
+    await expect(page.getByText('Live klient-aktivitet')).toBeVisible();
+    await expect(page.getByText(/godkjente «Storyboard er godkjent»/)).toBeVisible();
+    await expect(page.getByText(/ba om endringer på «Manus krever endringer».*CTA må spisses/)).toBeVisible();
+    await expect(page.getByText(/avslo «Referanse er avslått»/)).toBeVisible();
+
     await expectVisibleReviewTitles(page, [
       'Shotlist må godkjennes',
       'Manus krever endringer',

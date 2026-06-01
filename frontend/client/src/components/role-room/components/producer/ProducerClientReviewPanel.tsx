@@ -518,6 +518,83 @@ export default function ProducerClientReviewPanel({
       return null;
     }
   }, [lastSyncedAt]);
+
+  // Live aktivitets-feed: utledet fra de poll'ede reviewsene (beslutninger +
+  // kommentarer), nyeste først. Siden hooken poll'er hvert 15. sek, oppdaterer
+  // denne seg automatisk når klienten handler i portalen — Stig ser «Helene
+  // godkjente Storyboard for 2 min siden» uten å laste på nytt.
+  const clientActivity = useMemo(() => {
+    const isClientRole = (role?: string | null) => Boolean(role && /client|reviewer|klient/i.test(role));
+    const humanActor = (value?: string | null): string | null => {
+      const trimmed = (value ?? '').trim();
+      if (!trimmed) return null;
+      // Vis e-post/navn, men skjul rene UUID-er (lite informativt for Stig).
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return null;
+      return trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+    };
+    const clip = (text: string, max = 90) => {
+      const clean = text.replace(/\s+/g, ' ').trim();
+      return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+    };
+
+    type ActivityEvent = {
+      id: string;
+      at: string;
+      fromClient: boolean;
+      actor: string;
+      action: string;
+    };
+    const events: ActivityEvent[] = [];
+    for (const review of items) {
+      if (
+        review.decision_at
+        && (review.status === 'approved' || review.status === 'rejected' || review.status === 'changes_requested')
+      ) {
+        const verb = review.status === 'approved'
+          ? 'godkjente'
+          : review.status === 'rejected'
+            ? 'avslo'
+            : 'ba om endringer på';
+        events.push({
+          id: `decision-${review.id}`,
+          at: review.decision_at,
+          fromClient: true,
+          actor: humanActor(review.decision_by_user_id) ?? 'Klienten',
+          action: `${verb} «${clip(review.title, 48)}»${review.decision_reason ? ` — «${clip(review.decision_reason, 70)}»` : ''}`,
+        });
+      }
+      for (const comment of review.comments ?? []) {
+        if (!comment.comment_text.trim()) continue;
+        const fromClient = isClientRole(comment.author_role);
+        events.push({
+          id: `comment-${comment.id}`,
+          at: comment.created_at,
+          fromClient,
+          actor: humanActor(comment.author_user_id) ?? (fromClient ? 'Klienten' : 'Teamet'),
+          action: `kommenterte på «${clip(review.title, 40)}»: «${clip(comment.comment_text, 70)}»`,
+        });
+      }
+    }
+    events.sort((left, right) => (left.at < right.at ? 1 : left.at > right.at ? -1 : 0));
+    return events.slice(0, 5);
+  }, [items]);
+
+  const formatRelativeTime = useCallback((iso: string): string => {
+    const then = new Date(iso).getTime();
+    if (!Number.isFinite(then)) return '';
+    const diffMs = Date.now() - then;
+    if (diffMs < 0) return 'nå';
+    const min = Math.floor(diffMs / 60000);
+    if (min < 1) return 'akkurat nå';
+    if (min < 60) return `for ${min} min siden`;
+    const hours = Math.floor(min / 60);
+    if (hours < 24) return `for ${hours} t siden`;
+    try {
+      return new Date(iso).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' });
+    } catch {
+      return '';
+    }
+  }, []);
   const [agreementsById, setAgreementsById] = useState<Record<string, ProjectAgreement>>({});
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
   const [clientMaterials, setClientMaterials] = useState<ProducerClientMaterial[]>([]);
@@ -1854,6 +1931,55 @@ export default function ProducerClientReviewPanel({
             {statusDriverReview && statusDriverCopy ? statusDriverCopy : `Prosjektstatus styres av klientbeslutningene: ${projectStatusDetail}`}
           </Typography>
         </Box>
+
+        {clientActivity.length > 0 ? (
+          <Box
+            sx={{
+              p: 1.25,
+              borderRadius: 2,
+              border: '1px solid rgba(34,197,94,0.22)',
+              bgcolor: 'rgba(34,197,94,0.06)',
+            }}
+          >
+            <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.75 }}>
+              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#22c55e' }} />
+              <Typography sx={{ color: '#bbf7d0', fontSize: '0.78rem', fontWeight: 700 }}>
+                Live klient-aktivitet
+              </Typography>
+            </Stack>
+            <Stack spacing={0.6}>
+              {clientActivity.map((event) => (
+                <Stack
+                  key={event.id}
+                  direction="row"
+                  spacing={0.8}
+                  alignItems="baseline"
+                  sx={{ flexWrap: 'wrap' }}
+                >
+                  <Typography
+                    component="span"
+                    sx={{
+                      color: event.fromClient ? '#86efac' : 'rgba(203,213,225,0.85)',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {event.actor}
+                  </Typography>
+                  <Typography component="span" sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.78rem' }}>
+                    {event.action}
+                  </Typography>
+                  <Typography
+                    component="span"
+                    sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.7rem', ml: 'auto', whiteSpace: 'nowrap' }}
+                  >
+                    {formatRelativeTime(event.at)}
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        ) : null}
 
         <Box
           sx={{
