@@ -26,6 +26,7 @@ import FacebookIcon from '@mui/icons-material/Facebook';
 import InstagramIcon from '@mui/icons-material/Instagram';
 import LinkedInIcon from '@mui/icons-material/LinkedIn';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import { adminTokens, adminSx, statusChipSx } from './styles';
 
 const THEROLERROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
@@ -49,12 +50,22 @@ interface ScoreEntry {
   momentum: 'fast-growth' | 'steady' | 'flat' | 'declining';
   notableActivity: string;
 }
+interface KpiTarget {
+  platform: 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'ga4';
+  metric: string;
+  currentValue: number | null;
+  targetValue: number;
+  timeframe: '7d' | '30d' | '90d';
+  reasoning: string;
+  difficulty: 'easy' | 'realistic' | 'stretch';
+}
 interface Report {
   summary: string;
   insights: Insight[];
   contentGaps: string[];
   recommendedNextActions: Action[];
   competitorScorecard: ScoreEntry[];
+  kpiTargets?: KpiTarget[];
 }
 
 const CATEGORY_META: Record<Insight['category'], {
@@ -445,6 +456,65 @@ export default function CompetitorReportPanel() {
                     </Box>
                   ))}
                 </Stack>
+              </Box>
+            )}
+
+            {/* KPI Targets */}
+            {report.kpiTargets && report.kpiTargets.length > 0 && (
+              <Box>
+                <SectionLabel icon={<TrackChangesIcon sx={{ fontSize: 16 }} />}>
+                  KPI-mål · {report.kpiTargets.length}
+                </SectionLabel>
+                <Box sx={{
+                  display: 'grid', gap: 1.25,
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                }}>
+                  {report.kpiTargets.map((k, i) => {
+                    const diffMeta = k.difficulty === 'easy' ? 'success' as const
+                      : k.difficulty === 'stretch' ? 'error' as const : 'warning' as const;
+                    const platformColor = adminTokens.platforms[k.platform as keyof typeof adminTokens.platforms] || '#94a3b8';
+                    const delta = k.currentValue != null ? k.targetValue - k.currentValue : null;
+                    return (
+                      <Box key={i}
+                        sx={{
+                          p: 1.5, borderRadius: 1.5,
+                          background: `${platformColor}0d`,
+                          border: `1px solid ${platformColor}40`,
+                          borderLeft: `4px solid ${platformColor}`,
+                        }}
+                        data-testid="report-kpi">
+                        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
+                          <Chip label={k.platform.toUpperCase()} size="small"
+                            sx={{ background: `${platformColor}26`, color: platformColor, fontSize: '0.6rem', height: 16, fontWeight: 700 }} />
+                          <Chip label={k.difficulty} size="small" sx={statusChipSx(diffMeta)} />
+                          <Chip label={k.timeframe} size="small" sx={statusChipSx('neutral')} />
+                        </Stack>
+                        <Typography sx={{ fontWeight: 700, fontSize: '0.92rem', color: adminTokens.text.primary }}>
+                          {k.metric}
+                        </Typography>
+                        <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mt: 0.5 }}>
+                          <Typography sx={{ color: adminTokens.text.muted, fontSize: '0.85rem' }}>
+                            {k.currentValue != null ? k.currentValue : '?'}
+                          </Typography>
+                          <Typography sx={{ color: adminTokens.text.muted, fontSize: '0.9rem' }}>→</Typography>
+                          <Typography sx={{ fontWeight: 700, color: platformColor, fontSize: '1.1rem' }}>
+                            {k.targetValue}
+                          </Typography>
+                          {delta != null && (
+                            <Chip
+                              label={`${delta > 0 ? '+' : ''}${delta}`}
+                              size="small"
+                              sx={statusChipSx(delta > 0 ? 'success' : 'error')}
+                            />
+                          )}
+                        </Stack>
+                        <Typography variant="caption" sx={{ color: adminTokens.text.body, display: 'block', mt: 0.5, lineHeight: 1.5 }}>
+                          {k.reasoning}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Box>
               </Box>
             )}
 

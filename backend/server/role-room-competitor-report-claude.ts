@@ -13,6 +13,26 @@
 
 import { logAIUsage } from './ai-usage-tracker.js';
 
+export interface BrandMetricsInput {
+  facebook?: {
+    fanCount: number | null;
+    followersCount: number | null;
+    pageImpressions7d: number | null;
+    pageEngagedUsers7d: number | null;
+    posts7d: number | null;
+    posts30d: number | null;
+  };
+  instagram?: {
+    username: string | null;
+    followersCount: number | null;
+    mediaCount: number | null;
+    recent10MediaAvgLikes: number | null;
+    recent10MediaAvgComments: number | null;
+  };
+  facebookSnapshotsCount?: number;
+  instagramSnapshotsCount?: number;
+}
+
 export interface CompetitorReportInput {
   brand: {
     name: string;
@@ -22,6 +42,7 @@ export interface CompetitorReportInput {
     contentPillars?: Array<{ name: string; description: string }>;
     currentFanCount?: number | null;
     currentIgFollowers?: number | null;
+    selfMetrics?: BrandMetricsInput;
   };
   competitors: Array<{
     id: number;
@@ -58,6 +79,16 @@ export interface CompetitorReportAction {
   timeframe?: string;
 }
 
+export interface KpiTarget {
+  platform: 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'ga4';
+  metric: string;             // 'fan_count', 'avg_likes_per_post', 'engaged_users_7d', etc.
+  currentValue: number | null;
+  targetValue: number;
+  timeframe: '7d' | '30d' | '90d';
+  reasoning: string;
+  difficulty: 'easy' | 'realistic' | 'stretch';
+}
+
 export interface CompetitorReport {
   summary: string;
   insights: CompetitorReportInsight[];
@@ -68,6 +99,7 @@ export interface CompetitorReport {
     momentum: 'fast-growth' | 'steady' | 'flat' | 'declining';
     notableActivity: string;
   }>;
+  kpiTargets?: KpiTarget[];
   generatedWithModel: string;
   usage?: {
     inputTokens: number;
@@ -125,6 +157,15 @@ function buildSystemPrompt(): string {
     '    momentum: "fast-growth" | "steady" | "flat" | "declining";',
     '    notableActivity: string;   // 1 sentence',
     '  }>;',
+    '  kpiTargets?: Array<{',
+    '    platform: "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube" | "ga4";',
+    '    metric: string;            // e.g. "fan_count", "page_impressions_7d", "ig_avg_likes_per_post", "posts_per_30d"',
+    '    currentValue: number | null;  // null if no self-metrics for that platform yet',
+    '    targetValue: number;       // realistic target',
+    '    timeframe: "7d" | "30d" | "90d";',
+    '    reasoning: string;         // 1-2 sentences why this target',
+    '    difficulty: "easy" | "realistic" | "stretch";',
+    '  }>;',
     '};',
     '```',
     '',
@@ -144,6 +185,17 @@ function buildSystemPrompt(): string {
     '    declining:   <-1% / 30d',
     '  notableActivity must reference SPECIFIC data: "Posted 22 times last 7d vs 8 the week before" not "Active poster".',
     '- If a competitor has only 1 snapshot, mark momentum "flat" + note "trenger flere snapshots for trend".',
+    '',
+    'kpiTargets-rules (only output if brand.selfMetrics is provided):',
+    '- 3-6 KPI-mål total. Mix av plattformer som har self-metrics-data.',
+    '- Mål må være REALISTISKE for SMB i Norge: fan_count vekst 5-30/uke er normalt,',
+    '  ig followers 5-50/uke for ny konto, posts/30d 12-30 for aktiv strategi.',
+    '- difficulty: easy = vil sannsynligvis skje uten endring; realistic = krever',
+    '  konsekvent eksekvering av planen; stretch = ambisiøst men oppnåelig.',
+    '- currentValue = leses fra brand.selfMetrics. Hvis ingen self-metrics: null.',
+    '- timeframe: "7d" for daglige metrics, "30d" for kvartalsvekst, "90d" for transformasjon.',
+    '- reasoning må REFERERE konkurrent-data: "Norwedfilm har 226 fans — vi kan',
+    '  realistisk treffe 100 innen 30d ved 3 posts/uke + cross-promotion fra industri-CRM"',
     '- Use the language hint. Default Norwegian bokmål if brand is Norwegian.',
     '',
     'Return ONLY the JSON object. No markdown, no prose, no backticks.',
@@ -164,6 +216,20 @@ function buildUserMessage(input: CompetitorReportInput): string {
     lines.push('');
     lines.push('## Content pillars');
     for (const p of input.brand.contentPillars) lines.push(`- ${p.name}: ${p.description}`);
+  }
+
+  if (input.brand.selfMetrics) {
+    lines.push('');
+    lines.push('## OUR self-metrics (use to set realistic kpiTargets)');
+    const sm = input.brand.selfMetrics;
+    if (sm.facebook) {
+      lines.push(`Facebook: fan_count=${sm.facebook.fanCount} followers=${sm.facebook.followersCount} page_impressions_7d=${sm.facebook.pageImpressions7d} engaged_users_7d=${sm.facebook.pageEngagedUsers7d} posts_7d=${sm.facebook.posts7d} posts_30d=${sm.facebook.posts30d}`);
+      lines.push(`Facebook snapshot history: ${sm.facebookSnapshotsCount ?? 0} data points`);
+    }
+    if (sm.instagram) {
+      lines.push(`Instagram @${sm.instagram.username}: followers=${sm.instagram.followersCount} posts=${sm.instagram.mediaCount} avg_likes_recent_10=${sm.instagram.recent10MediaAvgLikes} avg_comments_recent_10=${sm.instagram.recent10MediaAvgComments}`);
+      lines.push(`Instagram snapshot history: ${sm.instagramSnapshotsCount ?? 0} data points`);
+    }
   }
 
   lines.push('');

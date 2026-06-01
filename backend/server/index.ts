@@ -156,6 +156,7 @@ import { setupRoleRoomAgentRoutes } from "./role-room-agent-routes.js";
 import { setupMarketingCompetitorsRoutes } from "./role-room-marketing-competitors-routes.js";
 import { startCompetitorSnapshotWorker } from "./role-room-competitor-snapshot-worker.js";
 import { setupPostDraftsRoutes } from "./role-room-post-drafts-routes.js";
+import { setupBrandMetricsRoutes, startBrandMetricsWorker } from "./role-room-brand-metrics-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31985,6 +31986,11 @@ startCompetitorSnapshotWorker(pool);
 
 // Post-drafts — AI-skrevet post-utkast fra rapport-insights + publish-bro.
 setupPostDraftsRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// Brand-metrics — daglige snapshots av The Role Rooms FB+IG metrics for
+// å gi AI-rapporten "vår tilstand"-input → kpiTargets.
+setupBrandMetricsRoutes({ app, pool, requireAdminOrDemoBypass });
+startBrandMetricsWorker(pool);
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-

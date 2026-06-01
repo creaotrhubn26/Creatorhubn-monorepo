@@ -477,6 +477,55 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         });
       }
 
+      // Fetch latest brand-metrics for self-state input → Claude can set kpiTargets.
+      let selfMetrics: CompetitorReportInput['brand']['selfMetrics'] = undefined;
+      try {
+        const smR = await pool.query(
+          `SELECT platform, metrics_json,
+                  (SELECT COUNT(*) FROM brand_metrics_snapshots s2
+                   WHERE s2.brand_key = $1 AND s2.platform = s.platform AND s2.fetch_error IS NULL) AS snapshot_count
+           FROM brand_metrics_snapshots s
+           WHERE brand_key = $1 AND fetch_error IS NULL
+             AND id IN (
+               SELECT MAX(id) FROM brand_metrics_snapshots
+               WHERE brand_key = $1 AND fetch_error IS NULL
+               GROUP BY platform
+             )`,
+          [brandKey],
+        );
+        if (smR.rowCount && smR.rowCount > 0) {
+          const sm: NonNullable<CompetitorReportInput['brand']['selfMetrics']> = {};
+          for (const row of smR.rows) {
+            const platform = String(row.platform);
+            const m = row.metrics_json as Record<string, unknown>;
+            const count = Number(row.snapshot_count ?? 0);
+            if (platform === 'facebook') {
+              sm.facebook = {
+                fanCount: typeof m.fanCount === 'number' ? m.fanCount : null,
+                followersCount: typeof m.followersCount === 'number' ? m.followersCount : null,
+                pageImpressions7d: typeof m.pageImpressions7d === 'number' ? m.pageImpressions7d : null,
+                pageEngagedUsers7d: typeof m.pageEngagedUsers7d === 'number' ? m.pageEngagedUsers7d : null,
+                posts7d: typeof m.posts7d === 'number' ? m.posts7d : null,
+                posts30d: typeof m.posts30d === 'number' ? m.posts30d : null,
+              };
+              sm.facebookSnapshotsCount = count;
+            } else if (platform === 'instagram') {
+              sm.instagram = {
+                username: typeof m.username === 'string' ? m.username : null,
+                followersCount: typeof m.followersCount === 'number' ? m.followersCount : null,
+                mediaCount: typeof m.mediaCount === 'number' ? m.mediaCount : null,
+                recent10MediaAvgLikes: typeof m.recent10MediaAvgLikes === 'number' ? m.recent10MediaAvgLikes : null,
+                recent10MediaAvgComments: typeof m.recent10MediaAvgComments === 'number' ? m.recent10MediaAvgComments : null,
+              };
+              sm.instagramSnapshotsCount = count;
+            }
+          }
+          selfMetrics = sm;
+        }
+      } catch (err) {
+        console.warn('[generate-report] fetch self-metrics failed', err);
+      }
+
       // Build full input for Claude.
       const input: CompetitorReportInput = {
         brand: {
@@ -485,6 +534,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           positioning: THEROLERROOM_BOOTSTRAP.positioning,
           voice: THEROLERROOM_BOOTSTRAP.toneOfVoice?.voice,
           contentPillars: THEROLERROOM_BOOTSTRAP.contentPillars,
+          selfMetrics,
         },
         competitors,
         language: 'nb',
