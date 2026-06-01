@@ -152,6 +152,10 @@ export function StoryView({
           structure={structure}
           onGenerateAlternative={onGenerateAlternative}
           onApplyRecommendation={onApplyRecommendation}
+          projectBrief={{
+            type: projectInfo.project || "Prosjekt",
+            intent: intentStyle.label,
+          }}
         />
         <StoryBalancePanel picks={picks} structure={structure} />
       </aside>

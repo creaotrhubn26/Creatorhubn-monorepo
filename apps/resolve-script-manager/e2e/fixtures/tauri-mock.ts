@@ -66,6 +66,12 @@ export function installTauriMock(opts: MockOptions = {}) {
     JSON.stringify({ RR_BEARER_TOKEN: "test-token" }),
   );
 
+  // Skru av Claude Story Director-kall som default — eksisterende
+  // strukturelle tester skal kjøre på heuristikken (ingen nettverks-
+  // flakkete). Tester som vil verifisere Claude-respons setter dette
+  // til false og mocker fetch via page.route() i stedet.
+  (globalThis as any).__POST_AGENT_DISABLE_CLAUDE__ = true;
+
   // Inject mock picks så CreativeEditorView kan laste dem fra en kjent path
   if (opts.picks && opts.picks.length > 0) {
     const payload = {
