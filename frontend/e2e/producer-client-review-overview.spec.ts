@@ -117,6 +117,26 @@ async function routeProducerReviewApis(page: Page) {
       body: JSON.stringify({ items: [] }),
     });
   });
+  // Klient-tilstedeværelse: Helene har klientportalen åpen akkurat nå.
+  await page.route('**/api/role-room/projects/e2e-review-project/client-presence', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'ok',
+        projectId: 'e2e-review-project',
+        clients: [
+          {
+            email: 'helene.nygard@northwinddrilling.no',
+            name: 'Helene Nygard',
+            workspace: 'marketing-plan',
+            joinedAt: new Date().toISOString(),
+            lastSeenAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+  });
 }
 
 async function expectVisibleReviewTitles(page: Page, titles: string[]) {
@@ -144,6 +164,9 @@ test.describe('Producer client review overview', () => {
     await expect(page.getByText(/godkjente «Storyboard er godkjent»/)).toBeVisible();
     await expect(page.getByText(/ba om endringer på «Manus krever endringer».*CTA må spisses/)).toBeVisible();
     await expect(page.getByText(/avslo «Referanse er avslått»/)).toBeVisible();
+
+    // Klient-tilstedeværelse (sanntid): «Helene Nygard ser på nå»-indikatoren.
+    await expect(page.getByText(/Helene Nygard ser på nå/)).toBeVisible({ timeout: 15_000 });
 
     await expectVisibleReviewTitles(page, [
       'Shotlist må godkjennes',

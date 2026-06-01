@@ -12431,6 +12431,35 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Producer Workflow (Timeline / Economy / Client Reviews)
   // ═══════════════════════════════════════════════════════════
 
+  // Klient-tilstedeværelse: hvilke klienter har klientportalen åpen akkurat nå.
+  // Mates av POST /api/client/portal/presence (klientportalens heartbeat).
+  router.get('/projects/:projectId/client-presence', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      const { clientsForProject } = await import('./client-portal-presence-service.js');
+      const clients = clientsForProject(projectId);
+      res.json({
+        status: 'ok',
+        projectId,
+        clients: clients.map((entry) => ({
+          email: entry.email,
+          name: entry.name,
+          workspace: entry.workspace,
+          joinedAt: new Date(entry.joinedAt).toISOString(),
+          lastSeenAt: new Date(entry.lastSeenAt).toISOString(),
+        })),
+      });
+    } catch (error) {
+      console.error('[role-room] client-presence failed', error);
+      res.status(500).json({ error: 'Kunne ikke hente klient-tilstedeværelse' });
+    }
+  });
+
   router.get('/projects/:projectId/producer/timeline', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!(await ensureProducerWorkflowTables())) {
       res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });

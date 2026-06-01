@@ -5,6 +5,7 @@ import {
   resolveClientPortalSession,
 } from "./role-room-client-portal.js";
 import { persistAuthSession } from "./auth-session-store.js";
+import { markClientPresent } from "./client-portal-presence-service.js";
 
 export interface ClientPortalRoutesDeps {
   app: express.Application;
@@ -17,6 +18,19 @@ export function setupClientPortalRoutes(
 ): void {
   const { app, pool, activeSessions } = deps;
   type ActiveSessionData = any;
+
+  // Klient-tilstedeværelse: klientportalen sender en heartbeat mens fanen er
+  // åpen, så produsenten kan se «Klienten ser på prosjektet nå» i sanntid.
+  app.post("/api/client/portal/presence", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+    const workspace =
+      req.body && typeof req.body.workspace === "string" ? req.body.workspace : null;
+    markClientPresent(session.projectId, session.clientEmail, session.clientName, workspace);
+    return res.json({ status: "ok" });
+  });
 
   app.get("/api/client/portal/requests", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";

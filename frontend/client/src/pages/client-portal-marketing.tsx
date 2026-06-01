@@ -164,6 +164,38 @@ export default function ClientPortalMarketingPage() {
     };
   }, [token]);
 
+  // Tilstedeværelses-heartbeat: så lenge klienten har portalen åpen, sender vi
+  // et lite ping hvert 30. sek slik at produsenten ser «Klienten ser på nå» i
+  // sanntid. Pauser når fanen er skjult; best-effort (svelger feil).
+  useEffect(() => {
+    if (!token) {
+      return undefined;
+    }
+    const ping = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      void fetch(`/api/client/portal/presence?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace: 'marketing-plan' }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    ping();
+    const timer = window.setInterval(ping, 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        ping();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [token]);
+
   if (loading) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: '#0b1220', color: '#e2e8f0', display: 'grid', placeItems: 'center' }}>

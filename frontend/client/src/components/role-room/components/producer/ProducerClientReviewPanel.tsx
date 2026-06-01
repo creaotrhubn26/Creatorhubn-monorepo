@@ -39,6 +39,7 @@ import type {
   ProducerWorkflowProjectStatus,
 } from '../../models/casting';
 import { useProducerReviews } from '../../hooks/useProducerReviews';
+import { useClientPresence } from '../../hooks/useClientPresence';
 import {
   getProducerOperationalReviews,
   isClientGroundingManagedReview,
@@ -508,6 +509,15 @@ export default function ProducerClientReviewPanel({
     addComment,
     setDecision,
   } = useProducerReviews(projectId, { livePollMs: 15000 });
+  // Klient-tilstedeværelse: hvem har klientportalen åpen akkurat nå.
+  const { clients: presentClients, anyPresent: clientPresent } = useClientPresence(projectId, { pollMs: 20000 });
+  const presentClientLabel = useMemo(() => {
+    if (presentClients.length === 0) return null;
+    const first = presentClients[0];
+    const name = (first.name && first.name.trim()) || first.email.split('@')[0];
+    if (presentClients.length === 1) return name;
+    return `${name} +${presentClients.length - 1}`;
+  }, [presentClients]);
   // Klient-handlinger (godkjenn/kommenter i portalen) skjer på en annen enhet,
   // så vi poll'er backend hvert 15. sek for å vise dem i tilnærmet sanntid.
   const lastSyncedLabel = useMemo(() => {
@@ -1875,6 +1885,47 @@ export default function ProducerClientReviewPanel({
                     />
                     <Typography sx={{ color: '#bbf7d0', fontSize: '0.7rem', fontWeight: 700 }}>
                       {lastSyncedLabel ? `Sanntid · oppdatert ${lastSyncedLabel}` : 'Sanntid på'}
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              ) : null}
+              {clientPresent && presentClientLabel ? (
+                <Tooltip
+                  arrow
+                  placement="bottom"
+                  title={`${presentClients
+                    .map((entry) => (entry.name && entry.name.trim()) || entry.email)
+                    .join(', ')} har klientportalen åpen akkurat nå.`}
+                >
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.6,
+                      px: 1,
+                      py: 0.35,
+                      borderRadius: 999,
+                      border: '1px solid rgba(56,189,248,0.45)',
+                      bgcolor: 'rgba(56,189,248,0.14)',
+                      cursor: 'help',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        bgcolor: '#38bdf8',
+                        animation: 'rrPresencePulse 1.8s ease-out infinite',
+                        '@keyframes rrPresencePulse': {
+                          '0%': { boxShadow: '0 0 0 0 rgba(56,189,248,0.55)' },
+                          '70%': { boxShadow: '0 0 0 6px rgba(56,189,248,0)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(56,189,248,0)' },
+                        },
+                      }}
+                    />
+                    <Typography sx={{ color: '#bae6fd', fontSize: '0.7rem', fontWeight: 700 }}>
+                      {`${presentClientLabel} ser på nå`}
                     </Typography>
                   </Box>
                 </Tooltip>

@@ -151,6 +151,14 @@ export interface ProducerClientReview {
   comments: ProducerReviewComment[];
 }
 
+export interface ProducerClientPresence {
+  email: string;
+  name: string | null;
+  workspace: string | null;
+  joinedAt: string;
+  lastSeenAt: string;
+}
+
 export interface ProducerProjectNotification {
   id: string;
   project_id: string;
@@ -3412,6 +3420,34 @@ export const producerWorkflowService = {
 
   async getReviews(projectId: string): Promise<ProducerClientReview[]> {
     return getCachedReviews(projectId);
+  },
+
+  /**
+   * Hvilke klienter har klientportalen åpen akkurat nå (sanntid). Best-effort —
+   * returnerer tom liste ved feil/offline i stedet for å kaste, så presence
+   * aldri velter review-panelet.
+   */
+  async getClientPresence(projectId: string): Promise<ProducerClientPresence[]> {
+    try {
+      const response = await producerWorkflowRequest<{ clients?: unknown[] }>(`/projects/${projectId}/client-presence`);
+      const clients = Array.isArray(response.clients) ? response.clients : [];
+      return clients
+        .map((value) => {
+          const record = asRecord(value);
+          const email = readFirstNonEmptyString(record.email);
+          if (!email) return null;
+          return {
+            email,
+            name: readFirstNonEmptyString(record.name) ?? null,
+            workspace: readFirstNonEmptyString(record.workspace) ?? null,
+            joinedAt: readFirstNonEmptyString(record.joinedAt, record.joined_at) ?? nowIso(),
+            lastSeenAt: readFirstNonEmptyString(record.lastSeenAt, record.last_seen_at) ?? nowIso(),
+          } as ProducerClientPresence;
+        })
+        .filter((entry): entry is ProducerClientPresence => entry !== null);
+    } catch {
+      return [];
+    }
   },
 
   async getNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
