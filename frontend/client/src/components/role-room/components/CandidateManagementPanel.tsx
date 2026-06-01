@@ -81,6 +81,7 @@ import {
   Videocam as VideocamIcon,
   Gavel as GavelIcon,
   Tune as TuneIcon,
+  HandshakeOutlined as HandshakeOutlinedIcon,
   DoneAll as DoneAllIcon,
   Rule as RuleIcon,
   ViewCarousel as ViewCarouselIcon,
@@ -1838,6 +1839,32 @@ function CandidateManagementPanelInner({
                   size="small"
                   sx={{ height: 22, bgcolor: 'rgba(184,107,255,0.14)', color: roleTabAccent, border: `1px solid ${roleBorder}` }}
                 />
+                {(() => {
+                  // Vis "Foreslått av <byrå>"-chip når kandidat kom via
+                  // partnership-talent-proposal (auto-created). Detekteres
+                  // via metadata.source — strikt skille fra manuelt
+                  // satte agency-strenger.
+                  const meta = (candidate as { metadata?: Record<string, unknown> }).metadata;
+                  const isFromPartnership = meta && (meta as { source?: string }).source === 'partnership_talent_proposal';
+                  const agencyName = isFromPartnership
+                    ? ((meta as { agency_name?: string }).agency_name ?? candidate.agency)
+                    : null;
+                  if (!isFromPartnership || !agencyName) return null;
+                  return (
+                    <Chip
+                      icon={<HandshakeOutlinedIcon sx={{ color: '#38bdf8 !important', fontSize: '0.9rem' }} />}
+                      label={`Fra ${agencyName}`}
+                      size="small"
+                      sx={{
+                        height: 22,
+                        bgcolor: 'rgba(56,189,248,0.14)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56,189,248,0.32)',
+                        fontWeight: 600,
+                      }}
+                    />
+                  );
+                })()}
               </Box>
               <LinearProgress
                 variant="determinate"
