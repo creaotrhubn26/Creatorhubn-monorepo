@@ -557,6 +557,9 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
   const [pendingPlatform, setPendingPlatform] = useState<string | null>(null);
   // Tilbakemelding etter OAuth-retur (?connected= / ?connect_error= i URL).
   const [flash, setFlash] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+  // Plattformen klienten er i ferd med å trekke tilbake tilgang for.
+  const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -624,29 +627,48 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
     }
   };
 
+  const handleRevoke = async () => {
+    const platform = pendingRevoke;
+    if (!platform) return;
+    setRevoking(true);
+    try {
+      await fetch(`/api/role-room/client-portal/oauth-revoke?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform }),
+      });
+      await loadPlatforms();
+      setFlash({
+        severity: 'success',
+        text: `Tilgangen til ${PLATFORM_DISPLAY[platform] ?? platform} er trukket tilbake.`,
+      });
+    } catch {
+      setConnectError('Kunne ikke trekke tilbake tilgangen akkurat nå.');
+    } finally {
+      setRevoking(false);
+      setPendingRevoke(null);
+    }
+  };
+
+  const loadPlatforms = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/client/portal/connected-platforms?token=${encodeURIComponent(token)}`,
+      );
+      const json = await res.json();
+      if (Array.isArray(json?.platforms)) {
+        setPlatforms(json.platforms as ConnectedPlatform[]);
+        setProducer(json?.producer ?? null);
+      }
+    } catch {
+      setPlatforms((prev) => prev ?? []);
+    }
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/client/portal/connected-platforms?token=${encodeURIComponent(token)}`,
-        );
-        const json = await res.json();
-        if (!cancelled && Array.isArray(json?.platforms)) {
-          setPlatforms(json.platforms as ConnectedPlatform[]);
-          setProducer(json?.producer ?? null);
-        }
-      } catch {
-        if (!cancelled) setPlatforms([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+    void loadPlatforms().finally(() => setLoading(false));
+  }, [token, loadPlatforms]);
 
   if (loading) {
     return (
@@ -755,6 +777,16 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
                     sx={{ bgcolor: `${meta.color}1f`, color: meta.color, fontWeight: 700, fontSize: '0.7rem' }}
                   />
                   {needsReconnect ? connectButton(p.platform, 'small') : null}
+                  {p.platform !== 'facebook' ? (
+                    <Button
+                      size="small"
+                      disabled={revoking || connecting !== null}
+                      onClick={() => setPendingRevoke(p.platform)}
+                      sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: 'rgba(248,113,113,0.85)', minWidth: 0, px: 0.8 }}
+                    >
+                      Trekk tilbake
+                    </Button>
+                  ) : null}
                 </Stack>
               </Box>
             );
@@ -846,6 +878,49 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
             sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
           >
             {connecting ? 'Åpner…' : 'Gi tilgang og fortsett'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bekreftelse på tilbaketrekking av tilgang (GDPR). */}
+      <Dialog
+        open={pendingRevoke !== null}
+        onClose={() => (revoking ? undefined : setPendingRevoke(null))}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { bgcolor: '#0f172a', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>
+          Trekke tilbake tilgang til {pendingRevoke ? PLATFORM_DISPLAY[pendingRevoke] ?? pendingRevoke : ''}?
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.9rem', lineHeight: 1.55 }}>
+            Produsenten mister da tilgangen til å publisere på din{' '}
+            <strong style={{ color: '#fff' }}>
+              {pendingRevoke ? PLATFORM_DISPLAY[pendingRevoke] ?? pendingRevoke : ''}
+            </strong>
+            -konto. Du kan gi tilgang på nytt senere.
+          </Typography>
+          <Typography sx={{ color: 'rgba(148,163,184,0.75)', fontSize: '0.76rem', mt: 1.2 }}>
+            Tilbaketrekkingen logges med dato, og produsenten varsles.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setPendingRevoke(null)}
+            disabled={revoking}
+            sx={{ textTransform: 'none', color: 'rgba(203,213,225,0.85)' }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            onClick={() => void handleRevoke()}
+            disabled={revoking}
+            variant="contained"
+            color="error"
+            sx={{ textTransform: 'none', fontWeight: 700 }}
+          >
+            {revoking ? 'Trekker tilbake…' : 'Trekk tilbake tilgang'}
           </Button>
         </DialogActions>
       </Dialog>

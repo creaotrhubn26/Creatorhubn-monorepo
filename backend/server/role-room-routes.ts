@@ -26,6 +26,7 @@ import {
   getProjectProducerUserId,
   loadProjectProducerInfo,
   recordClientOauthConsent,
+  revokeProjectPlatformConnection,
 } from './client-portal-connected-platforms.js';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
@@ -15453,6 +15454,66 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       });
     } catch (notifyError) {
       console.warn('[client-portal] consent-varsel feilet', notifyError);
+    }
+
+    res.json({ status: 'ok' });
+  });
+
+  // Klient trekker tilbake tilgang (GDPR-retten til å trekke samtykke).
+  // Setter koblingen til 'revoked' (tilgangen opphører), logger tilbaketrekkingen
+  // i samme spor (action='revoked'), og varsler produsenten.
+  router.post('/client-portal/oauth-revoke', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const platform = typeof req.body?.platform === 'string' ? req.body.platform.toLowerCase() : '';
+    if (!CLIENT_OAUTH_CONSENT_SUMMARY[platform]) { res.status(400).json({ error: 'invalid_platform' }); return; }
+    const producer = await loadProjectProducerInfo(pool, session.projectId);
+
+    // 1) Koblingen settes til revoked → tilgangen opphører.
+    await revokeProjectPlatformConnection(pool, session.projectId, producer?.userId ?? null, platform);
+
+    // 2) Logg tilbaketrekkingen (GDPR-bevis).
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipAddress = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) || req.ip || null;
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    await recordClientOauthConsent(pool, {
+      projectId: session.projectId,
+      clientEmail: session.clientEmail,
+      clientName: session.clientName ?? null,
+      producerUserId: producer?.userId ?? 'unknown',
+      producerName: producer?.name ?? null,
+      producerAgency: producer?.agency ?? null,
+      platform,
+      scopesSummary: 'Tilgang trukket tilbake av klienten.',
+      ipAddress,
+      userAgent,
+      action: 'revoked',
+    });
+
+    // 3) Varsle produsent-teamet.
+    try {
+      const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
+      await upsertProducerProjectNotification({
+        projectId: session.projectId,
+        audience: 'producer_team',
+        eventType: 'client_revoked_oauth_access',
+        title: 'Klienten trakk tilbake tilgang',
+        message: `${session.clientName || session.clientEmail} trakk tilbake tilgangen til ${platformLabel}.`,
+        linkedEntityType: 'client_oauth_consent',
+        linkedEntityId: platform,
+        metadata: {
+          source: 'client_oauth_revoke',
+          platform,
+          clientEmail: session.clientEmail,
+          clientName: session.clientName ?? null,
+        },
+        createdByUserId: session.clientEmail,
+        createdByRole: 'client',
+      });
+    } catch (notifyError) {
+      console.warn('[client-portal] revoke-varsel feilet', notifyError);
     }
 
     res.json({ status: 'ok' });

@@ -26,6 +26,7 @@ import {
   Send as SendIcon,
   CheckCircle as CheckCircleIcon,
   Download as DownloadIcon,
+  Block as BlockIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type {
@@ -1994,7 +1995,7 @@ export default function ProducerClientReviewPanel({
             {clientConsents.length > 0 ? (
               <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
                 <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600 }}>
-                  Klient ga tilgang:
+                  Klient-tilgang:
                 </Typography>
                 {clientConsents.map((consent) => {
                   const label = consentPlatformLabels[consent.platform] ?? consent.platform;
@@ -2003,23 +2004,33 @@ export default function ProducerClientReviewPanel({
                     ? ''
                     : when.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' });
                   const who = (consent.clientName && consent.clientName.trim()) || consent.clientEmail;
+                  const revoked = consent.action === 'revoked';
                   return (
                     <Tooltip
                       key={consent.platform}
-                      title={`${who} godkjente tilgang til ${label}${whenLabel ? ` den ${whenLabel}` : ''}`}
+                      title={
+                        revoked
+                          ? `${who} trakk tilbake tilgangen til ${label}${whenLabel ? ` den ${whenLabel}` : ''}`
+                          : `${who} godkjente tilgang til ${label}${whenLabel ? ` den ${whenLabel}` : ''}`
+                      }
                       arrow
                     >
                       <Chip
                         size="small"
-                        icon={<CheckCircleIcon sx={{ fontSize: '0.85rem !important', color: '#34d399 !important' }} />}
+                        icon={
+                          revoked
+                            ? <BlockIcon sx={{ fontSize: '0.85rem !important', color: '#fca5a5 !important' }} />
+                            : <CheckCircleIcon sx={{ fontSize: '0.85rem !important', color: '#34d399 !important' }} />
+                        }
                         label={`${label}${whenLabel ? ` · ${whenLabel}` : ''}`}
                         sx={{
                           height: 20,
-                          bgcolor: 'rgba(52,211,153,0.14)',
-                          color: '#6ee7b7',
+                          bgcolor: revoked ? 'rgba(248,113,113,0.14)' : 'rgba(52,211,153,0.14)',
+                          color: revoked ? '#fca5a5' : '#6ee7b7',
                           fontWeight: 700,
                           fontSize: '0.68rem',
-                          border: '1px solid rgba(52,211,153,0.35)',
+                          border: revoked ? '1px solid rgba(248,113,113,0.35)' : '1px solid rgba(52,211,153,0.35)',
+                          textDecoration: revoked ? 'line-through' : 'none',
                           cursor: 'help',
                         }}
                       />

@@ -164,6 +164,7 @@ export interface ProducerClientConsent {
   clientName: string | null;
   clientEmail: string;
   consentedAt: string;
+  action: 'granted' | 'revoked';
 }
 
 export interface ProducerProjectNotification {
@@ -3476,6 +3477,7 @@ export const producerWorkflowService = {
             clientName: readFirstNonEmptyString(record.clientName, record.client_name) ?? null,
             clientEmail,
             consentedAt: readFirstNonEmptyString(record.consentedAt, record.consented_at) ?? nowIso(),
+            action: record.action === 'revoked' ? 'revoked' : 'granted',
           } as ProducerClientConsent;
         })
         .filter((entry): entry is ProducerClientConsent => entry !== null);

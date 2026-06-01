@@ -208,6 +208,8 @@ export interface ClientOauthConsentRecord {
   scopesSummary: string | null;
   ipAddress: string | null;
   userAgent: string | null;
+  /** 'granted' (ga tilgang) eller 'revoked' (trakk tilbake). Default 'granted'. */
+  action?: "granted" | "revoked";
 }
 
 /**
@@ -224,8 +226,8 @@ export async function recordClientOauthConsent(
     await pool.query(
       `INSERT INTO role_room_client_oauth_consents
          (project_id, client_email, client_name, producer_user_id, producer_name,
-          producer_agency, platform, scopes_summary, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          producer_agency, platform, scopes_summary, ip_address, user_agent, action)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         record.projectId,
         record.clientEmail,
@@ -237,6 +239,7 @@ export async function recordClientOauthConsent(
         record.scopesSummary,
         record.ipAddress,
         record.userAgent,
+        record.action ?? "granted",
       ],
     );
   } catch (error) {
@@ -244,11 +247,59 @@ export async function recordClientOauthConsent(
   }
 }
 
+/**
+ * Setter connection_state='revoked' for plattformens kobling knyttet til
+ * prosjektet/produsenten — så tilgangen faktisk opphører når klienten trekker
+ * samtykket. Defensiv per tabell (manglende tabell svelges). IG er prosjekt-
+ * scopet; de øvrige er bruker-scopet på produsenten (slik koblingen ble lagret).
+ */
+export async function revokeProjectPlatformConnection(
+  pool: Pool,
+  projectId: string,
+  producerUserId: string | null,
+  platform: string,
+): Promise<void> {
+  const key = platform.toLowerCase();
+  const run = async (sql: string, params: unknown[]) => {
+    try {
+      await pool.query(sql, params);
+    } catch {
+      /* tabell mangler e.l. — best-effort */
+    }
+  };
+  if (key === "instagram" || key === "facebook") {
+    // IG er prosjekt-scopet; FB avledes av samme Meta-kobling.
+    await run(
+      `UPDATE role_room_instagram_connections
+          SET connection_state = 'revoked', updated_at = now()
+        WHERE project_id = $1${producerUserId ? " OR user_id = $2" : ""}`,
+      producerUserId ? [projectId, producerUserId] : [projectId],
+    );
+    return;
+  }
+  if (!producerUserId) return;
+  const table =
+    key === "tiktok"
+      ? "role_room_tiktok_connections"
+      : key === "linkedin"
+        ? "role_room_linkedin_connections"
+        : key === "google"
+          ? "role_room_google_connections"
+          : null;
+  if (!table) return;
+  await run(
+    `UPDATE ${table} SET connection_state = 'revoked', updated_at = now() WHERE user_id = $1`,
+    [producerUserId],
+  );
+}
+
 export interface ClientConsentSummary {
   platform: string;
   clientName: string | null;
   clientEmail: string;
   consentedAt: string;
+  /** 'granted' eller 'revoked' — gjeldende status for plattformen. */
+  action: "granted" | "revoked";
 }
 
 /**
@@ -266,12 +317,14 @@ export async function latestClientConsentsForProject(
       clientName: string | null;
       clientEmail: string;
       consentedAt: Date | string;
+      action: string | null;
     }>(
       `SELECT DISTINCT ON (platform)
               platform,
               client_name  AS "clientName",
               client_email AS "clientEmail",
-              consented_at AS "consentedAt"
+              consented_at AS "consentedAt",
+              action
          FROM role_room_client_oauth_consents
         WHERE project_id = $1
         ORDER BY platform, consented_at DESC`,
@@ -282,6 +335,7 @@ export async function latestClientConsentsForProject(
       clientName: row.clientName ?? null,
       clientEmail: row.clientEmail,
       consentedAt: toIso(row.consentedAt) ?? new Date(0).toISOString(),
+      action: row.action === "revoked" ? "revoked" : "granted",
     }));
   } catch {
     return [];
