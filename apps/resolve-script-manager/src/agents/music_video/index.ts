@@ -24,6 +24,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 8,
     description: "Establishing shot, mood-setting, atmosfære før første vokal-linje. Kan være atmospheric eller energetic avhengig av genre.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "hook" as const,
   },
   {
     id: "verse_1",
@@ -31,6 +32,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 16,
     description: "Først vers — etablerer artist-tilstedeværelse og narrativ. Klipping bør være middels tempo, kamera-fokus på artist + B-roll.",
     priorityHint: "informational" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "pre_chorus",
@@ -38,6 +40,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 6,
     description: "Bygger spenning før chorus. Klipping akselerer, kamera-bevegelse intensiveres, vinkel-variasjon øker.",
     priorityHint: "transitional" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "chorus",
@@ -45,6 +48,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 22,
     description: "Hovedhook-en. Maks energi, mest cuts pr bar, mest dynamiske kamera-bevegelser. Lip-sync er kritisk — Bjarne MÅ ha vokal-fokus på hver chorus-linje.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "verse_2",
@@ -52,6 +56,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 14,
     description: "Andre vers — variasjon fra Verse 1. Ny lokasjon, ny outfit eller ny kamera-style for å holde interesse.",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "bridge",
@@ -59,6 +64,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 10,
     description: "Atmosfærisk break, ofte stilskifte. Slower cuts, mer komposisjon, kunstnerisk frihet. Kan brukes til narrative beats.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "drop",
@@ -66,6 +72,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 8,
     description: "Hvis sangen har en drop (EDM/hyperpop): maksimal kinetisk energi, hurtigste cuts, visual effects velkomne. Synkroniser med kick.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "outro",
@@ -73,6 +80,7 @@ const MUSIC_VIDEO_CHAPTERS = [
     pacingPct: 8,
     description: "Resolution. Slower pace, returner til mood-establishing, eventuell tekst-overlay med credits. Bør føles 'complete'.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "outro" as const,
   },
 ];
 
