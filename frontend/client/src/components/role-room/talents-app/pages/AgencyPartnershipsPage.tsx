@@ -39,7 +39,10 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
-import { useCallback, useEffect, useState } from 'react';
+import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+
+const ProposeTalentsDialog = lazy(() => import('../components/ProposeTalentsDialog'));
 
 import { palette, radius } from '../theme';
 import {
@@ -116,6 +119,9 @@ export default function AgencyPartnershipsPage() {
     onPauseInstead: () => Promise<void>;
   } | null>(null);
   const [pauseDialogReason, setPauseDialogReason] = useState('');
+
+  // Foreslå-talenter-dialog (åpnes fra accepted prosjekt-invitasjoner)
+  const [proposeDialog, setProposeDialog] = useState<ProjectInvitation | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -283,7 +289,20 @@ export default function AgencyPartnershipsPage() {
             () => respondToProjectInvitation(invId, accept),
             accept ? 'Prosjekt-invitasjon akseptert.' : 'Prosjekt-invitasjon avslått.',
           )}
+          onProposeTalents={(inv) => setProposeDialog(inv)}
         />
+      ) : null}
+
+      {proposeDialog ? (
+        <Suspense fallback={null}>
+          <ProposeTalentsDialog
+            open
+            invitationId={proposeDialog.id}
+            projectName={proposeDialog.project_name}
+            roleIds={proposeDialog.role_ids}
+            onClose={() => setProposeDialog(null)}
+          />
+        </Suspense>
       ) : null}
 
       {/* Pause-anbefaling-dialog (felles for både close og revoke) */}
@@ -710,67 +729,117 @@ function IncomingInvitationsTab(props: {
   invitations: ProjectInvitation[];
   busy: boolean;
   onRespond: (invId: string, accept: boolean) => Promise<void>;
+  onProposeTalents: (inv: ProjectInvitation) => void;
 }) {
   if (props.invitations.length === 0) {
     return (
       <Box sx={{ ...cardSx, textAlign: 'center' }}>
         <Typography sx={{ color: palette.textMuted }}>
-          Ingen aktive prosjekt-invitasjoner.
+          Ingen prosjekt-invitasjoner ennå.
         </Typography>
       </Box>
     );
   }
+  const pending = props.invitations.filter((i) => i.status === 'pending');
+  const accepted = props.invitations.filter((i) => i.status === 'accepted');
   return (
-    <Stack spacing={1.2}>
-      {props.invitations.map((i) => (
-        <Box key={i.id} sx={cardSx}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-            <Box>
-              <Typography sx={{ fontWeight: 700, color: palette.textPrimary, fontSize: '1.05rem' }}>
-                {i.project_name}
-              </Typography>
-              <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-                {i.project_type} · {fmtDate(i.start_date)} → {fmtDate(i.end_date)}
-              </Typography>
-            </Box>
-            <Chip
-              size="small"
-              label={`Utløper ${fmtDate(i.expires_at)}`}
-              sx={{ bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontWeight: 700 }}
-            />
-          </Stack>
-          {i.notes ? (
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
-              «{i.notes}»
-            </Typography>
-          ) : null}
-          {Array.isArray(i.role_ids) && i.role_ids.length > 0 ? (
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
-              {i.role_ids.length} valgte roller å foreslå talenter til
-            </Typography>
-          ) : null}
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              disabled={props.busy}
-              onClick={() => void props.onRespond(i.id, true)}
-              startIcon={<CheckCircleOutlineIcon />}
-              sx={primaryBtnSx}
-            >
-              Aksepter
-            </Button>
-            <Button
-              size="small"
-              disabled={props.busy}
-              onClick={() => void props.onRespond(i.id, false)}
-              startIcon={<CancelOutlinedIcon />}
-              sx={secondaryBtnSx}
-            >
-              Avslå
-            </Button>
+    <Stack spacing={2}>
+      {pending.length > 0 ? (
+        <Box>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+            Venter på svar ({pending.length})
+          </Typography>
+          <Stack spacing={1.2}>
+            {pending.map((i) => (
+              <Box key={i.id} sx={cardSx}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700, color: palette.textPrimary, fontSize: '1.05rem' }}>
+                      {i.project_name}
+                    </Typography>
+                    <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                      {i.project_type} · {fmtDate(i.start_date)} → {fmtDate(i.end_date)}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    size="small"
+                    label={`Utløper ${fmtDate(i.expires_at)}`}
+                    sx={{ bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontWeight: 700 }}
+                  />
+                </Stack>
+                {i.notes ? (
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
+                    «{i.notes}»
+                  </Typography>
+                ) : null}
+                {Array.isArray(i.role_ids) && i.role_ids.length > 0 ? (
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
+                    {i.role_ids.length} valgte roller å foreslå talenter til
+                  </Typography>
+                ) : null}
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" disabled={props.busy} onClick={() => void props.onRespond(i.id, true)} startIcon={<CheckCircleOutlineIcon />} sx={primaryBtnSx}>
+                    Aksepter
+                  </Button>
+                  <Button size="small" disabled={props.busy} onClick={() => void props.onRespond(i.id, false)} startIcon={<CancelOutlinedIcon />} sx={secondaryBtnSx}>
+                    Avslå
+                  </Button>
+                </Stack>
+              </Box>
+            ))}
           </Stack>
         </Box>
-      ))}
+      ) : null}
+
+      {accepted.length > 0 ? (
+        <Box>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+            Aktive prosjekter — du kan foreslå talenter ({accepted.length})
+          </Typography>
+          <Stack spacing={1.2}>
+            {accepted.map((i) => (
+              <Box key={i.id} sx={{ ...cardSx, borderColor: 'rgba(52,211,153,0.32)' }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700, color: palette.textPrimary, fontSize: '1.05rem' }}>
+                      {i.project_name}
+                    </Typography>
+                    <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                      {i.project_type} · {fmtDate(i.start_date)} → {fmtDate(i.end_date)}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    size="small"
+                    icon={<CheckCircleOutlineIcon sx={{ fontSize: 14 }} />}
+                    label="Aktiv"
+                    sx={{
+                      bgcolor: 'rgba(52,211,153,0.16)',
+                      color: '#34d399',
+                      fontWeight: 700,
+                      '& .MuiChip-icon': { color: '#34d399' },
+                    }}
+                  />
+                </Stack>
+                {Array.isArray(i.role_ids) && i.role_ids.length > 0 ? (
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
+                    {i.role_ids.length} valgte roller å foreslå talenter til
+                  </Typography>
+                ) : null}
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    onClick={() => props.onProposeTalents(i)}
+                    startIcon={<HandshakeOutlinedIcon />}
+                    sx={primaryBtnSx}
+                  >
+                    Foreslå talenter
+                  </Button>
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
     </Stack>
   );
 }

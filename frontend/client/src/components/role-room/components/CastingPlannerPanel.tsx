@@ -234,6 +234,7 @@ const CastingPlannerTutorial = lazy(() => import('./CastingPlannerTutorial').the
 const TutorialEditorPanel = lazy(() => import('./TutorialEditorPanel').then(m => ({ default: m.TutorialEditorPanel })));
 const ConsentManagementPanel = lazy(() => import('./ConsentManagementPanel').then(m => ({ default: m.ConsentManagementPanel })));
 const AgencyPartnershipPicker = lazyWithRetry(() => import('./AgencyPartnershipPicker').then(m => ({ default: m.default })));
+const IncomingTalentProposalsList = lazyWithRetry(() => import('./IncomingTalentProposalsList').then(m => ({ default: m.default })));
 const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(m => ({ default: m.ConsentContractDialog })));
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
@@ -9834,6 +9835,12 @@ type RoleRoomProjectWorkspaceState = {
                   castingProjectId={currentProject.id}
                   castingProjectName={currentProject.name}
                 />
+              </Suspense>
+            ) : null}
+            {/* Talent-forslag fra byråer (migrate 226) — viser kun hvis det finnes forslag */}
+            {currentProject?.id ? (
+              <Suspense fallback={null}>
+                <IncomingTalentProposalsList castingProjectId={currentProject.id} />
               </Suspense>
             ) : null}
             {/* Candidate filters & view mode toolbar */}
