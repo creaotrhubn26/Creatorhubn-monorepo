@@ -131,6 +131,21 @@ const DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT: ManuscriptCoverFocalPoint = { x: 50,
 const clampCoverFocalPointValue = (value: number): number => Math.max(0, Math.min(100, value));
 const normalizeProjectKey = (value: string | null | undefined): string => String(value || '').trim().toLowerCase();
 
+// Trekker ut normaliserte scene-headinger fra Fountain-tekst. Brukes til å
+// oppdage at DB-scenene er ute av synk med manuset (ulik sekvens av headinger).
+const SCENE_HEADING_DETECT_RE = /^(\.)?((?:INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s])/i;
+const extractFountainSceneHeadings = (content: string | undefined): string[] => {
+  if (!content) return [];
+  const out: string[] = [];
+  for (const raw of content.split('\n')) {
+    const line = raw.trim();
+    if (SCENE_HEADING_DETECT_RE.test(line)) {
+      out.push(line.replace(/^\./, '').trim().toUpperCase().replace(/\s+/g, ' '));
+    }
+  }
+  return out;
+};
+
 const getManuscriptCoverFocalPoint = (manuscript: Manuscript | null | undefined): ManuscriptCoverFocalPoint => {
   const raw = manuscript?.coverFocalPoint;
   if (typeof raw !== 'object' || raw === null) {
@@ -1357,6 +1372,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   };
 
+  // Er DB-scenene ute av synk med manuset? (Ulik sekvens av scene-headinger.)
+  // Stateless: sammenligner Fountain-headinger mot scene-listas headinger.
+  const scenesOutOfSync = useMemo(() => {
+    if (!selectedManuscript || scenes.length === 0) return false;
+    const contentHeadings = extractFountainSceneHeadings(selectedManuscript.content);
+    if (contentHeadings.length === 0) return false;
+    const sceneHeadings = scenes.map((s) => (s.sceneHeading || s.heading || '').trim().toUpperCase().replace(/\s+/g, ' '));
+    if (contentHeadings.length !== sceneHeadings.length) return true;
+    return contentHeadings.some((h, i) => h !== sceneHeadings[i]);
+  }, [selectedManuscript, scenes]);
+
   const handleAutoBreakdown = async () => {
     if (!selectedManuscript) return;
     if (!autoBreakdownEnabled) {
@@ -1458,11 +1484,59 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       // Extract unique characters (will be computed from dialogue)
       const uniqueCharacters = Array.from(new Set(currentCharacters));
 
+      // ── Ikke-destruktiv merge ──────────────────────────────────────────
+      // Behold eksisterende scene-id + produksjonsdata (storyboardFrames,
+      // props, description, status, metadata) for scener som matcher på
+      // heading, slik at en re-breakdown ikke sletter arbeid eller foreldreløs-
+      // gjør shots/storyboard (som er keyet på scene-id). Matcher i rekkefølge
+      // for å håndtere dupliserte headinger.
+      const normalizeHeading = (h?: string) => (h || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      const existingByHeading = new Map<string, SceneBreakdown[]>();
+      for (const existing of scenes) {
+        const key = normalizeHeading(existing.sceneHeading || existing.heading);
+        const bucket = existingByHeading.get(key) ?? [];
+        bucket.push(existing);
+        existingByHeading.set(key, bucket);
+      }
+      const autoIdToFinalId = new Map<string, string>();
+      const mergedScenes = autoScenes.map((auto) => {
+        const key = normalizeHeading(auto.sceneHeading);
+        const bucket = existingByHeading.get(key);
+        const match = bucket && bucket.length ? bucket.shift() : undefined;
+        if (!match) {
+          autoIdToFinalId.set(auto.id, auto.id);
+          return auto;
+        }
+        autoIdToFinalId.set(auto.id, match.id);
+        // Behold ALT fra eksisterende scene, oppdater kun de parse-avledede feltene.
+        return {
+          ...match,
+          sceneHeading: auto.sceneHeading,
+          heading: auto.sceneHeading,
+          intExt: auto.intExt,
+          locationName: auto.locationName,
+          timeOfDay: auto.timeOfDay,
+          characters: auto.characters,
+          sceneNumber: auto.sceneNumber,
+          manuscriptId: auto.manuscriptId,
+        } as SceneBreakdown;
+      });
+      // Remap dialogue til de endelige scene-id-ene (bevarte der de matchet).
+      const mergedDialogue = autoDialogue.map((d) => ({
+        ...d,
+        sceneId: autoIdToFinalId.get(d.sceneId) ?? d.sceneId,
+      }));
+
       // Update state
-      setScenes(autoScenes);
-      setDialogueLines(autoDialogue);
-      
-      showSuccess(`Automatisk breakdown fullført: ${autoScenes.length} scener, ${uniqueCharacters.length} karakterer funnet`);
+      setScenes(mergedScenes);
+      setDialogueLines(mergedDialogue);
+
+      // Antall scener der vi gjenbrukte (matchet) en eksisterende scene.
+      const reusedCount = Array.from(autoIdToFinalId.entries()).filter(([autoId, finalId]) => autoId !== finalId).length;
+      showSuccess(
+        `Automatisk breakdown fullført: ${mergedScenes.length} scener, ${uniqueCharacters.length} karakterer`
+        + (reusedCount > 0 ? ` · beholdt produksjonsdata for ${reusedCount} eksisterende scene${reusedCount === 1 ? '' : 'r'}` : ''),
+      );
     } catch (error) {
       showError('Feil ved automatisk breakdown');
       console.error(error);
@@ -2421,6 +2495,26 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               ? ` (siden ${new Date(manuscriptLockConflict.lockedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })})`
               : ''}
             . Endringene dine lagres ikke før låsen frigis — men de beholdes i editoren.
+          </Alert>
+        )}
+
+        {selectedManuscript && scenesOutOfSync && (
+          <Alert
+            severity="info"
+            icon={<WarningAmberIcon fontSize="inherit" />}
+            sx={{ mt: responsive.spacing }}
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                disabled={isLoading || !autoBreakdownEnabled}
+                onClick={handleAutoBreakdown}
+              >
+                Kjør Auto Breakdown
+              </Button>
+            }
+          >
+            Scene-listen er ute av synk med manuset (ulike scene-overskrifter). Kjør Auto Breakdown for å oppdatere — produksjonsdata (storyboard, props) på scener som fortsatt finnes beholdes.
           </Alert>
         )}
 

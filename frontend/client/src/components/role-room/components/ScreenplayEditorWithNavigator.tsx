@@ -55,7 +55,7 @@ import {
   ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
-import { SceneNavigatorSidebar, reorderScenesInContent, type ParsedScene } from './SceneNavigatorSidebar';
+import { SceneNavigatorSidebar, reorderScenesWithLineMap, type ParsedScene } from './SceneNavigatorSidebar';
 import { PostCommentLayer } from './PostCommentLayer';
 import authSessionService from '../services/authSessionService';
 import { BeatBoard } from './BeatBoard';
@@ -520,12 +520,49 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   // Scene-reorder: Fountain-teksten er source-of-truth, så vi flytter scenens
   // linje-blokk i teksten og ruter gjennom handleChange (respekterer lås).
   const handleReorderScenes = useCallback((fromIndex: number, toIndex: number) => {
-    const next = reorderScenesInContent(value, fromIndex, toIndex);
-    if (next !== value) {
-      handleChange(next);
-      setSnackbar({ open: true, message: 'Scene flyttet', severity: 'success' });
-    }
-  }, [value, handleChange]);
+    const { content: next, mapLine } = reorderScenesWithLineMap(value, fromIndex, toIndex);
+    if (next === value) return;
+    handleChange(next);
+    setSnackbar({ open: true, message: 'Scene flyttet', severity: 'success' });
+
+    // Hold åpen linje-tråd i sync med ny posisjon.
+    setActiveCommentLine((prev) => (prev != null ? mapLine(prev) : prev));
+
+    // Re-map linje-ankrede kommentarer så markørene følger scenen (ikke en
+    // absolutt linje som nå inneholder noe annet).
+    const token = authSessionService.getSessionTokenSync();
+    if (!projectId || !manuscriptId || !token) return;
+    const prefix = `${manuscriptId}#`;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/role-room/editor-comments?projectId=${encodeURIComponent(projectId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const items: Array<{ id?: string; anchorType?: string; anchorRef?: string | null }> =
+          Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
+        const patches: Promise<unknown>[] = [];
+        for (const c of items) {
+          if (c.id && c.anchorType === 'screenplay_line' && typeof c.anchorRef === 'string' && c.anchorRef.startsWith(prefix)) {
+            const oldLine = parseInt(c.anchorRef.slice(prefix.length), 10);
+            if (!Number.isFinite(oldLine)) continue;
+            const newLine = mapLine(oldLine);
+            if (newLine !== oldLine) {
+              patches.push(fetch(`/api/role-room/editor-comments/${encodeURIComponent(c.id)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ anchorRef: `${manuscriptId}#${newLine}` }),
+              }).catch(() => undefined));
+            }
+          }
+        }
+        await Promise.allSettled(patches);
+      } catch {
+        /* best-effort */
+      }
+    })();
+  }, [value, handleChange, projectId, manuscriptId]);
 
   // Hent linje-ankrede kommentarer for dette manuset → marg-markører. Poll så
   // markører oppdateres når teamet kommenterer. anchorRef-format: `<manusId>#<linje>`.

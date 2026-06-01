@@ -427,6 +427,15 @@ export function registerRoleRoomEditorCommentsRoutes(
           updates.push(`assigned_to = $${p++}`);
           values.push(body.assignedTo.slice(0, 200));
         }
+        // anchorRef-oppdatering: brukes til å re-mappe linje-ankrede kommentarer
+        // når manus-scener omorganiseres (linjenumre forskyves). Kun forfatter.
+        if (typeof body?.anchorRef === "string") {
+          if (existing[0].author_id !== auth.userId) {
+            res.status(403).json({ error: "kan_ikke_editere_andres_kommentar" }); return;
+          }
+          updates.push(`anchor_ref = $${p++}`);
+          values.push(body.anchorRef.slice(0, 200));
+        }
         if (updates.length === 0) {
           res.status(400).json({ error: "ingen_endringer" }); return;
         }

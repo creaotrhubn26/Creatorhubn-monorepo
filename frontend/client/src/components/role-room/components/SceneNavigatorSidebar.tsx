@@ -105,14 +105,16 @@ interface SceneNavigatorSidebarProps {
 }
 
 // ── Stable scene identity ─────────────────────────────────────────────────
-// Hash the heading text + ordinal index so the id is stable across re-parses
-// as long as the heading text itself hasn't changed.
-function stableSceneId(heading: string, index: number): string {
+// Hash the heading text + per-heading OCCURRENCE ordinal (ikke global posisjon).
+// Slik forblir id-en stabil når scener flyttes (reorder): en gitt heading
+// beholder samme id uavhengig av rekkefølge. Dupliserte headinger
+// disambigueres med 0,1,2… i den rekkefølgen de dukker opp.
+function stableSceneId(heading: string, occurrence: number): string {
   let h = 5381;
   for (let i = 0; i < heading.length; i++) {
     h = (((h << 5) + h) ^ heading.charCodeAt(i)) >>> 0;
   }
-  return `s_${h.toString(36)}_${index}`;
+  return `s_${h.toString(36)}_${occurrence}`;
 }
 
 // Character line pattern (all-caps names, possibly with extension)
@@ -128,6 +130,8 @@ function parseScenes(content: string): ParsedScene[] {
 
   let sceneStartLine = 0;
   let sceneChars = new Set<string>();
+  // Teller hvor mange ganger hver heading har dukket opp, for stabil id.
+  const headingOccurrences = new Map<string, number>();
 
   // Write back accumulated stats into the last pushed scene
   const flushCurrent = (upToLine: number) => {
@@ -156,9 +160,12 @@ function parseScenes(content: string): ParsedScene[] {
       const location  = match[4]?.trim() || '';
       const timeOfDay = match[5] || null;
       const heading   = line.replace(/^\./, '');
+      const headingKey = heading.trim().toUpperCase().replace(/\s+/g, ' ');
+      const occurrence = headingOccurrences.get(headingKey) ?? 0;
+      headingOccurrences.set(headingKey, occurrence + 1);
 
       scenes.push({
-        id: stableSceneId(heading, scenes.length),
+        id: stableSceneId(heading, occurrence),
         sceneNumber: `${scenes.length + 1}`,
         heading,
         intExt,
@@ -196,7 +203,21 @@ export function reorderScenesInContent(
   fromIndex: number,
   toIndex: number,
 ): string {
-  if (!content || fromIndex === toIndex) return content;
+  return reorderScenesWithLineMap(content, fromIndex, toIndex).content;
+}
+
+/**
+ * Som reorderScenesInContent, men returnerer OGSÅ en linje-mapping (1-basert
+ * gammel linje → ny linje). Brukes til å re-mappe linje-ankrede kommentarer så
+ * de ikke peker på feil linje etter at en scene flyttes. Ren funksjon.
+ */
+export function reorderScenesWithLineMap(
+  content: string,
+  fromIndex: number,
+  toIndex: number,
+): { content: string; mapLine: (oldLine: number) => number } {
+  const identity = (l: number) => l;
+  if (!content || fromIndex === toIndex) return { content, mapLine: identity };
   const lines = content.split('\n');
 
   // Finn start-linje (0-basert) for hver scene-overskrift.
@@ -211,19 +232,47 @@ export function reorderScenesInContent(
     fromIndex < 0 || toIndex < 0 ||
     fromIndex >= sceneStarts.length || toIndex >= sceneStarts.length
   ) {
-    return content;
+    return { content, mapLine: identity };
   }
 
-  const preamble = lines.slice(0, sceneStarts[0]);
-  const blocks: string[][] = sceneStarts.map((start, idx) => {
-    const end = idx + 1 < sceneStarts.length ? sceneStarts[idx + 1] : lines.length;
-    return lines.slice(start, end);
-  });
+  const preambleLen = sceneStarts[0];
+  const blockMeta = sceneStarts.map((start, idx) => ({
+    start,
+    len: (idx + 1 < sceneStarts.length ? sceneStarts[idx + 1] : lines.length) - start,
+  }));
 
-  const [moved] = blocks.splice(fromIndex, 1);
-  blocks.splice(toIndex, 0, moved);
+  // Ny rekkefølge av originale block-indekser.
+  const order = blockMeta.map((_, i) => i);
+  const [movedIdx] = order.splice(fromIndex, 1);
+  order.splice(toIndex, 0, movedIdx);
 
-  return [...preamble, ...blocks.flat()].join('\n');
+  // Ny 0-basert start for hver original block.
+  const newStartByOrig = new Map<number, number>();
+  let cursor = preambleLen;
+  for (const origIdx of order) {
+    newStartByOrig.set(origIdx, cursor);
+    cursor += blockMeta[origIdx].len;
+  }
+
+  const blocks = blockMeta.map((b) => lines.slice(b.start, b.start + b.len));
+  const reordered = order.map((i) => blocks[i]);
+  const newContent = [...lines.slice(0, preambleLen), ...reordered.flat()].join('\n');
+
+  const mapLine = (oldLine: number): number => {
+    const idx0 = oldLine - 1;
+    if (idx0 < preambleLen) return oldLine; // preamble flyttes ikke
+    for (let b = 0; b < blockMeta.length; b++) {
+      const { start, len } = blockMeta[b];
+      if (idx0 >= start && idx0 < start + len) {
+        const offset = idx0 - start;
+        const newStart = newStartByOrig.get(b) ?? start;
+        return newStart + offset + 1;
+      }
+    }
+    return oldLine;
+  };
+
+  return { content: newContent, mapLine };
 }
 
 // Convert database SceneBreakdown to ParsedScene

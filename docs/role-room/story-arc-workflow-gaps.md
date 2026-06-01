@@ -45,6 +45,14 @@ Sjette runde (de siste lav-verdi-restene):
 
 **Alle punktene fra gap-rapporten er nå adressert** (bygget eller bevisst avgrenset med begrunnelse).
 
+Syvende runde — synkronisering manus → nedstrøms (etter sync-gjennomgang):
+- ✅ **Ikke-destruktiv Auto Breakdown** — merger på scene-heading: beholder scene-id + `storyboardFrames`/props/`description`/`status`/`metadata` for matchende scener, så re-breakdown ikke sletter arbeid eller foreldreløs-gjør shots/storyboard. Dialogue-`sceneId` remappes til bevarte id-er.
+- ✅ **«Scener ute av synk»-varsel** — stateless sammenligning av Fountain-headinger mot DB-scenenes headinger; banner med «Kjør Auto Breakdown»-CTA.
+- ✅ **Stabile scene-ID-er** — `stableSceneId` bruker per-heading forekomst-ordinal i stedet for global indeks, så ID-er overlever reorder (duplikat-headinger disambigueres 0,1,2…).
+- ✅ **Scene-bevisst kommentar-remapping** — ved reorder beregnes en gammel→ny linje-mapping (`reorderScenesWithLineMap`) og linje-ankrede kommentarer PATCH-es til ny linje (backend PATCH tillater nå `anchorRef`). Enhetstest dekker reorder + mapping.
+
+**Kjent gjenstående (inherent):** typing-indusert linje-drift for kommentarer (kun reorder re-mappes; vilkårlig skriving er en grunnleggende begrensning ved absolutt-linje-anker). Auto-sync av timeline/økonomi/produksjonsdager fra manus er fortsatt bevisst manuelt.
+
 Implementert (tsc-grønt):
 - ✅ Fix 1 — Unsaved-guard på «Tilbake» fra manus og story-logic (`CastingPlannerPanel.tsx` `confirmDiscardUnsavedIfNeeded`).
 - ✅ Fix 2 — Manus-lås tas ved åpning + heartbeat + frigis ved lukking; lås-konflikt-banner viser hvem som låste (`ManuscriptPanel.tsx`). Server håndhevet allerede 409; hullet var at ingen tok låsen.
