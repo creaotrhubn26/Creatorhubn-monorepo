@@ -207,6 +207,73 @@ export function reorderScenesInContent(
 }
 
 /**
+ * Scene-ankre fra Fountain-tekst: stabil sceneId + 1-basert start/slutt-linje.
+ * Brukes til å forankre kommentarer RELATIVT til en scene (sceneId + offset) i
+ * stedet for et absolutt linjenummer — slik følger kommentarer innholdet når
+ * man skriver over dem eller flytter scener. Bruker samme stabile id-skjema
+ * som navigatoren (heading-hash + forekomst-ordinal). Ren funksjon.
+ */
+export function parseSceneAnchors(
+  content: string,
+): Array<{ sceneId: string; startLine: number; endLine: number }> {
+  if (!content) return [];
+  const lines = content.split('\n');
+  const occ = new Map<string, number>();
+  const heads: Array<{ sceneId: string; startLine: number }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (SCENE_HEADING_LINE_RE.test(line)) {
+      const heading = line.replace(/^\./, '');
+      const key = heading.trim().toUpperCase().replace(/\s+/g, ' ');
+      const o = occ.get(key) ?? 0;
+      occ.set(key, o + 1);
+      heads.push({ sceneId: stableSceneId(heading, o), startLine: i + 1 });
+    }
+  }
+  return heads.map((h, idx) => ({
+    sceneId: h.sceneId,
+    startLine: h.startLine,
+    endLine: idx + 1 < heads.length ? heads[idx + 1].startLine : lines.length + 1,
+  }));
+}
+
+/**
+ * Bygger et scene-relativt kommentar-anker for en absolutt linje, eller et
+ * absolutt fallback-anker (`#L:<linje>`) for linjer før første scene (preamble).
+ */
+export function buildLineCommentAnchor(content: string, manuscriptId: string, line: number): string {
+  const scenes = parseSceneAnchors(content);
+  const scene = scenes.find((s) => line >= s.startLine && line < s.endLine);
+  if (scene) {
+    return `${manuscriptId}#s:${scene.sceneId}:${line - scene.startLine}`;
+  }
+  return `${manuscriptId}#L:${line}`;
+}
+
+/**
+ * Løser et kommentar-anker tilbake til gjeldende absolutt linje. Returnerer null
+ * hvis scenen er slettet (foreldreløst anker). Bakoverkompatibel med gamle
+ * absolutte ankre på formen `<manusId>#<tall>`.
+ */
+export function resolveLineCommentAnchor(content: string, manuscriptId: string, anchorRef: string): number | null {
+  const prefix = `${manuscriptId}#`;
+  if (!anchorRef.startsWith(prefix)) return null;
+  const rest = anchorRef.slice(prefix.length);
+  if (rest.startsWith('s:')) {
+    const m = rest.match(/^s:(.+):(\d+)$/);
+    if (!m) return null;
+    const sceneId = m[1];
+    const offset = parseInt(m[2], 10);
+    const scene = parseSceneAnchors(content).find((s) => s.sceneId === sceneId);
+    if (!scene) return null; // scene slettet → foreldreløst
+    return scene.startLine + offset;
+  }
+  // Legacy / preamble absolutt-anker: `#L:<n>` eller `#<n>`
+  const n = parseInt(rest.replace(/^L:/, ''), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * Som reorderScenesInContent, men returnerer OGSÅ en linje-mapping (1-basert
  * gammel linje → ny linje). Brukes til å re-mappe linje-ankrede kommentarer så
  * de ikke peker på feil linje etter at en scene flyttes. Ren funksjon.

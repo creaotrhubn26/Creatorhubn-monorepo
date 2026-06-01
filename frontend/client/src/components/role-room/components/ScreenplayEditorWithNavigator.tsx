@@ -55,7 +55,7 @@ import {
   ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
-import { SceneNavigatorSidebar, reorderScenesWithLineMap, type ParsedScene } from './SceneNavigatorSidebar';
+import { SceneNavigatorSidebar, reorderScenesInContent, buildLineCommentAnchor, resolveLineCommentAnchor, type ParsedScene } from './SceneNavigatorSidebar';
 import { PostCommentLayer } from './PostCommentLayer';
 import authSessionService from '../services/authSessionService';
 import { BeatBoard } from './BeatBoard';
@@ -303,15 +303,32 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
 }) => {
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
   const [storyFoundationOpen, setStoryFoundationOpen] = useState(false);
-  // Per-linje kommentarer: hvilke linjer har tråder (for marg-markør) + valgt linje.
-  const [commentLineSet, setCommentLineSet] = useState<Set<number>>(new Set());
-  const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
+  // Per-linje kommentarer: rå ankre fra server (scene-relative), pluss valgt
+  // tråd. Markør-linjene utledes fra ankrene + GJELDENDE innhold (useMemo under),
+  // så markørene følger teksten ved skriving/reorder uten å lagre absolutt linje.
+  const [lineCommentAnchors, setLineCommentAnchors] = useState<string[]>([]);
+  const [activeCommentAnchor, setActiveCommentAnchor] = useState<string | null>(null);
   const storyFoundationLogline = storyLogicData?.logline?.fullLogline?.trim() || '';
   const hasStoryFoundation = Boolean(
     storyFoundationLogline ||
     storyLogicData?.theme?.centralTheme ||
     storyLogicData?.concept?.genre,
   );
+  // Marg-markør-linjer: løs hvert (scene-relative) anker mot GJELDENDE innhold.
+  const commentLineSet = useMemo(() => {
+    const set = new Set<number>();
+    if (!manuscriptId) return set;
+    for (const ref of lineCommentAnchors) {
+      const line = resolveLineCommentAnchor(value, manuscriptId, ref);
+      if (line != null && line > 0) set.add(line);
+    }
+    return set;
+  }, [lineCommentAnchors, value, manuscriptId]);
+  // Gjeldende linje for den åpne tråden (for "Linje X"-chip + gå-til-linje).
+  const activeCommentLine = useMemo(() => {
+    if (!activeCommentAnchor || !manuscriptId) return null;
+    return resolveLineCommentAnchor(value, manuscriptId, activeCommentAnchor);
+  }, [activeCommentAnchor, value, manuscriptId]);
   const responsive = getResponsiveValues(tier);
 
   // ── Consolidated UI state via reducer ─────────────────────────────────────
@@ -519,62 +536,26 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
 
   // Scene-reorder: Fountain-teksten er source-of-truth, så vi flytter scenens
   // linje-blokk i teksten og ruter gjennom handleChange (respekterer lås).
+  // Kommentarer er scene-relativt forankret (sceneId + offset), så de følger
+  // automatisk med — ingen re-mapping nødvendig.
   const handleReorderScenes = useCallback((fromIndex: number, toIndex: number) => {
-    const { content: next, mapLine } = reorderScenesWithLineMap(value, fromIndex, toIndex);
+    const next = reorderScenesInContent(value, fromIndex, toIndex);
     if (next === value) return;
     handleChange(next);
     setSnackbar({ open: true, message: 'Scene flyttet', severity: 'success' });
-
-    // Hold åpen linje-tråd i sync med ny posisjon.
-    setActiveCommentLine((prev) => (prev != null ? mapLine(prev) : prev));
-
-    // Re-map linje-ankrede kommentarer så markørene følger scenen (ikke en
-    // absolutt linje som nå inneholder noe annet).
-    const token = authSessionService.getSessionTokenSync();
-    if (!projectId || !manuscriptId || !token) return;
-    const prefix = `${manuscriptId}#`;
-    void (async () => {
-      try {
-        const res = await fetch(`/api/role-room/editor-comments?projectId=${encodeURIComponent(projectId)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const items: Array<{ id?: string; anchorType?: string; anchorRef?: string | null }> =
-          Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
-        const patches: Promise<unknown>[] = [];
-        for (const c of items) {
-          if (c.id && c.anchorType === 'screenplay_line' && typeof c.anchorRef === 'string' && c.anchorRef.startsWith(prefix)) {
-            const oldLine = parseInt(c.anchorRef.slice(prefix.length), 10);
-            if (!Number.isFinite(oldLine)) continue;
-            const newLine = mapLine(oldLine);
-            if (newLine !== oldLine) {
-              patches.push(fetch(`/api/role-room/editor-comments/${encodeURIComponent(c.id)}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ anchorRef: `${manuscriptId}#${newLine}` }),
-              }).catch(() => undefined));
-            }
-          }
-        }
-        await Promise.allSettled(patches);
-      } catch {
-        /* best-effort */
-      }
-    })();
-  }, [value, handleChange, projectId, manuscriptId]);
+  }, [value, handleChange]);
 
   // Hent linje-ankrede kommentarer for dette manuset → marg-markører. Poll så
   // markører oppdateres når teamet kommenterer. anchorRef-format: `<manusId>#<linje>`.
   useEffect(() => {
     const token = authSessionService.getSessionTokenSync();
     if (!projectId || !manuscriptId || !token) {
-      setCommentLineSet(new Set());
+      setLineCommentAnchors([]);
       return;
     }
     let cancelled = false;
     const prefix = `${manuscriptId}#`;
-    const fetchLines = async () => {
+    const fetchAnchors = async () => {
       try {
         const res = await fetch(`/api/role-room/editor-comments?projectId=${encodeURIComponent(projectId)}`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -583,20 +564,18 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
         const data = await res.json();
         const items: Array<{ anchorType?: string; anchorRef?: string | null }> =
           Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
-        const lines = new Set<number>();
-        for (const c of items) {
-          if (c.anchorType === 'screenplay_line' && typeof c.anchorRef === 'string' && c.anchorRef.startsWith(prefix)) {
-            const n = parseInt(c.anchorRef.slice(prefix.length), 10);
-            if (Number.isFinite(n) && n > 0) lines.add(n);
-          }
-        }
-        if (!cancelled) setCommentLineSet(lines);
+        const anchors = Array.from(new Set(
+          items
+            .filter((c) => c.anchorType === 'screenplay_line' && typeof c.anchorRef === 'string' && c.anchorRef.startsWith(prefix))
+            .map((c) => c.anchorRef as string),
+        ));
+        if (!cancelled) setLineCommentAnchors(anchors);
       } catch {
         /* best-effort */
       }
     };
-    void fetchLines();
-    const timer = setInterval(fetchLines, 20000);
+    void fetchAnchors();
+    const timer = setInterval(fetchAnchors, 20000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [projectId, manuscriptId]);
 
@@ -1145,7 +1124,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             spellCheck={enableSpellcheck}
             commentLines={commentLineSet}
             onCommentLineClick={(line) => {
-              setActiveCommentLine(line);
+              if (manuscriptId) {
+                const ref = lineCommentAnchors.find((r) => resolveLineCommentAnchor(value, manuscriptId, r) === line)
+                  ?? buildLineCommentAnchor(value, manuscriptId, line);
+                setActiveCommentAnchor(ref);
+              }
               dispatchUi({ type: 'SET_RIGHT_PANEL', payload: 'comments' });
             }}
           />
@@ -1359,7 +1342,8 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     </Box>
                   );
                 }
-                const lineMode = activeCommentLine != null && Boolean(manuscriptId);
+                const lineMode = activeCommentAnchor != null && Boolean(manuscriptId);
+                const orphaned = lineMode && activeCommentLine == null;
                 return (
                   <Box sx={{ p: 1.5, height: '100%', overflow: 'auto' }}>
                     {/* Modus-bryter: hele manuset vs. en konkret linje */}
@@ -1368,11 +1352,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                         <>
                           <Chip
                             size="small"
-                            color="warning"
-                            label={`Linje ${activeCommentLine}`}
+                            color={orphaned ? 'default' : 'warning'}
+                            label={orphaned ? 'Scene slettet' : `Linje ${activeCommentLine}`}
                             onClick={() => activeCommentLine != null && gotoLine(activeCommentLine)}
                           />
-                          <Button size="small" onClick={() => setActiveCommentLine(null)}>
+                          <Button size="small" onClick={() => setActiveCommentAnchor(null)}>
                             Vis hele manuset
                           </Button>
                         </>
@@ -1381,18 +1365,18 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                           size="small"
                           variant="outlined"
                           startIcon={<CommentIcon sx={{ fontSize: 16 }} />}
-                          disabled={isReadOnly}
-                          onClick={() => setActiveCommentLine(currentLine || 1)}
+                          disabled={isReadOnly || !manuscriptId}
+                          onClick={() => manuscriptId && setActiveCommentAnchor(buildLineCommentAnchor(value, manuscriptId, currentLine || 1))}
                         >
                           Kommenter linje {currentLine || 1}
                         </Button>
                       )}
                     </Box>
                     <PostCommentLayer
-                      key={lineMode ? `line-${activeCommentLine}` : 'manuscript'}
+                      key={lineMode ? activeCommentAnchor! : 'manuscript'}
                       projectId={projectId}
                       anchorType={lineMode ? 'screenplay_line' : 'manuscript'}
-                      anchorRef={lineMode ? `${manuscriptId}#${activeCommentLine}` : (manuscriptId || projectId)}
+                      anchorRef={lineMode ? activeCommentAnchor! : (manuscriptId || projectId)}
                       auth={{ kind: 'bearer', token }}
                       readOnly={isReadOnly}
                     />
