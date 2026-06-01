@@ -173,6 +173,8 @@ export const photoshop = {
         x?: number;
         y?: number;
         font_size?: number;
+        /** For image_placeholder: absolutt fil-sti til bildet som skal embedes som smart-object. */
+        file_path?: string;
       }>;
     };
   }) =>

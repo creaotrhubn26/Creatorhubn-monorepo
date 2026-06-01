@@ -396,6 +396,57 @@ const COMMANDS = {
             {},
           );
           createdLayers.push({ key: f.key, type: "text", layer_name: layerName });
+        } else if (f.type === "image_placeholder") {
+          // Lag en smart-object-layer fra eksisterende fil-path.
+          // Hvis ingen file_path er gitt, skip — UI-en vil måtte be brukeren
+          // legge til bildet manuelt etterpå (raster-only-tilfelle).
+          if (!f.file_path) {
+            createdLayers.push({
+              key: f.key,
+              type: "image_placeholder",
+              layer_name: layerName,
+              skipped: "no file_path provided",
+            });
+            continue;
+          }
+          try {
+            const fileEntry = await fs.getEntryWithUrl("file:" + encodeURI(f.file_path));
+            const token = await fs.createSessionToken(fileEntry);
+            // placedFile batchPlay lager smart-object-layer fra fila
+            await action.batchPlay(
+              [
+                {
+                  _obj: "placedFile",
+                  null: { _path: token, _kind: "local" },
+                  freeTransformCenterState: { _enum: "quadCenterState", _value: "QCSAverage" },
+                  offset: {
+                    _obj: "offset",
+                    horizontal: { _unit: "pixelsUnit", _value: 0 },
+                    vertical: { _unit: "pixelsUnit", _value: 0 },
+                  },
+                  _options: { dialogOptions: "dontDisplay" },
+                },
+              ],
+              {},
+            );
+            // Newly placed layer is now activeLayer — rename den til {{key}}
+            if (doc.activeLayers && doc.activeLayers.length > 0) {
+              doc.activeLayers[0].name = layerName;
+            }
+            createdLayers.push({
+              key: f.key,
+              type: "image_placeholder",
+              layer_name: layerName,
+              file_path: f.file_path,
+            });
+          } catch (err) {
+            createdLayers.push({
+              key: f.key,
+              type: "image_placeholder",
+              layer_name: layerName,
+              error: err.message || String(err),
+            });
+          }
         }
       }
 
