@@ -476,7 +476,7 @@ pub fn run() {
         .manage(Arc::new(CopySessionState::default()))
         .manage(Arc::new(IpadPairingState::default()))
         .manage(Arc::new(CaptureSubscriberState::default()))
-        .manage(Arc::new(MirrorState::default()))
+        .manage(Arc::new(MirrorState::new_loaded()))
         .manage(Arc::new(projects::ProjectStore::default()))
         .setup(|app| {
             let handle = app.handle().clone();
