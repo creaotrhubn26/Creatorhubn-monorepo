@@ -6,6 +6,7 @@ import {
 } from "./role-room-client-portal.js";
 import { persistAuthSession } from "./auth-session-store.js";
 import { markClientPresent } from "./client-portal-presence-service.js";
+import { loadConnectedPlatforms } from "./client-portal-connected-platforms.js";
 
 export interface ClientPortalRoutesDeps {
   app: express.Application;
@@ -30,6 +31,24 @@ export function setupClientPortalRoutes(
       req.body && typeof req.body.workspace === "string" ? req.body.workspace : null;
     markClientPresent(session.projectId, session.clientEmail, session.clientName, workspace);
     return res.json({ status: "ok" });
+  });
+
+  // Koblede plattformer: klienten ser hvilke kontoer de har gitt produsenten
+  // tilgang til (Instagram, Facebook, TikTok, LinkedIn, Google Workspace) og
+  // status på koblingen. Returnerer ALDRI tokens eller scopes — kun
+  // {platform, status, kontonavn}.
+  app.get("/api/client/portal/connected-platforms", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+    try {
+      const platforms = await loadConnectedPlatforms(pool, session.projectId);
+      return res.json({ status: "ok", platforms });
+    } catch {
+      // Aldri la denne oversikten velte klientportalen — degrader til tom liste.
+      return res.json({ status: "ok", platforms: [] });
+    }
   });
 
   app.get("/api/client/portal/requests", async (req, res) => {

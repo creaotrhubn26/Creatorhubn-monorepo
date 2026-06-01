@@ -246,7 +246,9 @@ export default function ClientPortalMarketingPage() {
           {/* Forespørsler øverst — viser kun seksjonen hvis det finnes noen */}
           <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
           <ProgressSection progress={data.progress!} plan={data.plan!} />
+          <ConnectedPlatformsCard token={token} />
           <UpcomingSection upcoming={data.upcoming!} projectId={data.project?.id ?? null} clientToken={token} />
+          <PublishedContentCard posts={data.posts!} projectId={data.project?.id ?? null} clientToken={token} />
           <StrategyCard plan={data.plan!} />
           <PillarsCard pillars={data.plan!.pillars} />
           <AllPostsCard posts={data.posts!} pillars={data.plan!.pillars} projectId={data.project?.id ?? null} clientToken={token} />
@@ -481,6 +483,212 @@ function PillarsCard({ pillars }: { pillars: DashboardPillar[] }) {
           </Box>
         ))}
       </Stack>
+    </Box>
+  );
+}
+
+const PLATFORM_DISPLAY: Record<string, string> = {
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
+  linkedin: 'LinkedIn',
+  google: 'Google Workspace',
+  youtube: 'YouTube',
+};
+
+interface ConnectedPlatform {
+  platform: string;
+  label: string;
+  status: 'connected' | 'expired' | 'revoked' | 'error' | 'not_connected';
+  accountName: string | null;
+  connectedAt: string | null;
+}
+
+const PLATFORM_STATUS_META: Record<
+  ConnectedPlatform['status'],
+  { label: string; color: string }
+> = {
+  connected: { label: 'Tilkoblet', color: '#22c55e' },
+  expired: { label: 'Utløpt – fornyes', color: '#f59e0b' },
+  revoked: { label: 'Tilgang trukket', color: '#ef4444' },
+  error: { label: 'Feil på kobling', color: '#ef4444' },
+  not_connected: { label: 'Ikke tilkoblet', color: '#94a3b8' },
+};
+
+/**
+ * Koblede kontoer (Feature A): klienten ser hvilke plattformer de har gitt
+ * produsenten tilgang til å publisere på, og status på hver kobling. Henter
+ * fra det autoritative connection-endepunktet — aldri tokens, kun status.
+ */
+function ConnectedPlatformsCard({ token }: { token: string }) {
+  const [platforms, setPlatforms] = useState<ConnectedPlatform[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/client/portal/connected-platforms?token=${encodeURIComponent(token)}`,
+        );
+        const json = await res.json();
+        if (!cancelled && Array.isArray(json?.platforms)) {
+          setPlatforms(json.platforms as ConnectedPlatform[]);
+        }
+      } catch {
+        if (!cancelled) setPlatforms([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <CircularProgress size={18} sx={{ color: '#94a3b8' }} />
+        <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.86rem' }}>
+          Henter koblede kontoer…
+        </Typography>
+      </Box>
+    );
+  }
+
+  const list = platforms ?? [];
+  const active = list.filter((p) => p.status !== 'not_connected');
+  const missing = list.filter((p) => p.status === 'not_connected');
+
+  return (
+    <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
+      <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.04rem', mb: 0.4 }}>
+        Koblede kontoer
+      </Typography>
+      <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.8rem', mb: 1.6 }}>
+        Plattformene du har gitt produsenten tilgang til å publisere på.
+      </Typography>
+
+      {active.length === 0 ? (
+        <Box sx={{ p: 1.6, borderRadius: 2, bgcolor: 'rgba(148,163,184,0.08)', border: '1px dashed rgba(148,163,184,0.25)' }}>
+          <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.86rem' }}>
+            Ingen kontoer er koblet på ennå. Produsenten kobler kontoene dine når
+            dere er klare til å publisere.
+          </Typography>
+        </Box>
+      ) : (
+        <Stack spacing={0.9}>
+          {active.map((p) => {
+            const meta = PLATFORM_STATUS_META[p.status];
+            return (
+              <Box
+                key={p.platform}
+                sx={{
+                  p: 1.2,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(15,23,42,0.7)',
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1,
+                }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>
+                    {PLATFORM_DISPLAY[p.platform] ?? p.label}
+                  </Typography>
+                  {p.accountName ? (
+                    <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.accountName}
+                    </Typography>
+                  ) : null}
+                </Box>
+                <Chip
+                  size="small"
+                  label={meta.label}
+                  sx={{ bgcolor: `${meta.color}1f`, color: meta.color, fontWeight: 700, fontSize: '0.7rem', flexShrink: 0 }}
+                />
+              </Box>
+            );
+          })}
+        </Stack>
+      )}
+
+      {missing.length > 0 ? (
+        <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.76rem', mt: 1.4 }}>
+          Ikke tilkoblet ennå: {missing.map((p) => PLATFORM_DISPLAY[p.platform] ?? p.label).join(', ')}
+        </Typography>
+      ) : null}
+    </Box>
+  );
+}
+
+/**
+ * Publisert innhold (Feature B): en oversikt over alt som faktisk er publisert,
+ * gruppert per plattform, så klienten enkelt ser hva som er ute. Bruker postene
+ * som allerede er i dashboardet — ingen ekstra fetch.
+ */
+function PublishedContentCard({ posts, projectId, clientToken }: {
+  posts: DashboardPost[];
+  projectId: string | null;
+  clientToken: string;
+}) {
+  const groups = useMemo(() => {
+    const published = posts.filter((p) => p.status === 'published');
+    const byPlatform = new Map<string, DashboardPost[]>();
+    for (const p of published) {
+      const key = p.primaryPlatform ?? 'annet';
+      if (!byPlatform.has(key)) byPlatform.set(key, []);
+      byPlatform.get(key)!.push(p);
+    }
+    return Array.from(byPlatform.entries())
+      .map(([platform, items]) => ({
+        platform,
+        label: PLATFORM_DISPLAY[platform] ?? (platform === 'annet' ? 'Annet' : platform),
+        posts: items,
+      }))
+      .sort((a, b) => b.posts.length - a.posts.length);
+  }, [posts]);
+
+  const publishedCount = groups.reduce((sum, g) => sum + g.posts.length, 0);
+
+  return (
+    <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
+      <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.04rem', mb: 0.4 }}>
+        Publisert innhold ({publishedCount})
+      </Typography>
+      <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.8rem', mb: 1.6 }}>
+        Alt som er ute, gruppert per plattform.
+      </Typography>
+
+      {publishedCount === 0 ? (
+        <Box sx={{ p: 1.6, borderRadius: 2, bgcolor: 'rgba(148,163,184,0.08)', border: '1px dashed rgba(148,163,184,0.25)' }}>
+          <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.86rem' }}>
+            Ingen poster er publisert ennå. Planlagte poster ser du lenger ned i planen.
+          </Typography>
+        </Box>
+      ) : (
+        <Stack spacing={2}>
+          {groups.map((group) => (
+            <Box key={group.platform}>
+              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.8 }}>
+                <Typography sx={{ color: '#bbf7d0', fontWeight: 700, fontSize: '0.88rem' }}>
+                  {group.label}
+                </Typography>
+                <Chip size="small" label={group.posts.length} sx={{ height: 18, bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 700, fontSize: '0.68rem' }} />
+              </Stack>
+              <Stack spacing={0.8}>
+                {group.posts.map((post) => (
+                  <PostRow key={post.id} post={post} compact projectId={projectId} clientToken={clientToken} />
+                ))}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+      )}
     </Box>
   );
 }
