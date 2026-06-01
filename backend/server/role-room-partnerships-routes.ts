@@ -1671,11 +1671,96 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         [newStatus, production_notes ?? null, session.userId, req.params.id],
       );
 
+      // Phase 9.5 — ved accept: auto-opprett casting_candidates-rad så
+      // talenten dukker opp i Kandidater-tab. Idempotent via WHERE NOT EXISTS
+      // på (project_id, talent_id) — én candidate per talent per prosjekt.
+      let createdCandidateId: string | null = null;
+      if (accept) {
+        try {
+          const candidateRow = await pool.query(
+            `WITH talent_info AS (
+               SELECT t.id, t.display_name, t.email, t.phone, t.headshot_url, t.showreel_url,
+                      i.casting_project_id, i.id AS invitation_id,
+                      a.name AS agency_name, a.id AS agency_id,
+                      ptp.casting_role_id, ptp.agency_notes,
+                      cr.name AS role_name
+                 FROM partnership_talent_proposals ptp
+                 JOIN talents t ON t.id = ptp.talent_id
+                 JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+                 JOIN agency_production_partnerships p ON p.id = i.partnership_id
+                 JOIN agency_orgs a ON a.id = p.agency_org_id
+                 LEFT JOIN casting_roles cr ON cr.id = ptp.casting_role_id
+                WHERE ptp.id = $1
+             ),
+             new_candidate AS (
+               INSERT INTO casting_candidates
+                 (id, project_id, name, email, phone, agency, photos,
+                  status, assigned_roles, talent_id, notes, metadata)
+               SELECT
+                 'ct_' || replace(gen_random_uuid()::text, '-', ''),
+                 ti.casting_project_id,
+                 ti.display_name,
+                 ti.email,
+                 ti.phone,
+                 ti.agency_name,
+                 CASE WHEN ti.headshot_url IS NOT NULL
+                      THEN jsonb_build_array(jsonb_build_object('url', ti.headshot_url, 'type', 'headshot'))
+                      ELSE '[]'::jsonb END,
+                 'pending',
+                 CASE WHEN ti.casting_role_id IS NOT NULL
+                      THEN jsonb_build_array(jsonb_build_object(
+                             'role_id', ti.casting_role_id,
+                             'role_name', COALESCE(ti.role_name, '')))
+                      ELSE '[]'::jsonb END,
+                 ti.id,
+                 ti.agency_notes,
+                 jsonb_build_object(
+                   'source', 'partnership_talent_proposal',
+                   'proposal_id', $1::text,
+                   'invitation_id', ti.invitation_id::text,
+                   'agency_id', ti.agency_id::text,
+                   'agency_name', ti.agency_name)
+                 FROM talent_info ti
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM casting_candidates cc
+                   WHERE cc.project_id = ti.casting_project_id
+                     AND cc.talent_id = ti.id
+                )
+               RETURNING id
+             )
+             SELECT id FROM new_candidate
+              UNION ALL
+             SELECT cc.id FROM casting_candidates cc
+                JOIN talent_info ti ON ti.casting_project_id = cc.project_id AND ti.id = cc.talent_id
+              LIMIT 1`,
+            [proposal.id],
+          );
+          createdCandidateId = candidateRow.rows[0]?.id ?? null;
+
+          // Bevarer candidate_id i proposal.metadata for senere sporing
+          if (createdCandidateId) {
+            await pool.query(
+              `UPDATE partnership_talent_proposals
+                  SET production_notes = production_notes  -- no-op trigger updated_at
+                WHERE id = $1`,
+              [proposal.id],
+            );
+          }
+        } catch (candidateErr) {
+          // Ikke blokker proposal-aksepten hvis candidate-opprett feiler
+          console.error("[partnerships/talent-proposals/respond] auto-candidate feilet", candidateErr);
+        }
+      }
+
       await logAudit(pool, {
         invitationId: proposal.invitation_id,
         actorUserId: session.userId,
         action: accept ? "talent_proposal_accepted" : "talent_proposal_declined",
-        details: { proposal_id: proposal.id, production_notes: production_notes ?? null },
+        details: {
+          proposal_id: proposal.id,
+          production_notes: production_notes ?? null,
+          candidate_id: createdCandidateId,
+        },
       });
 
       // Fire-and-forget e-postvarsel til byrå (kontakt-e-post)
@@ -1715,7 +1800,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         }
       })();
 
-      return res.json({ proposal: updated });
+      return res.json({ proposal: updated, candidate_id: createdCandidateId });
     } catch (err) {
       console.error("[partnerships/talent-proposals/respond] failed", err);
       return res.status(500).json({ error: "Klarte ikke å svare på forslag" });

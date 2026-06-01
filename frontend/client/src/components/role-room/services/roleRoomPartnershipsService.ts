@@ -346,7 +346,7 @@ export function respondToTalentProposal(
   proposalId: string,
   accept: boolean,
   production_notes?: string,
-): Promise<{ proposal: TalentProposal }> {
+): Promise<{ proposal: TalentProposal; candidate_id: string | null }> {
   return api(`/talent-proposals/${proposalId}/respond`, {
     method: 'POST',
     body: JSON.stringify({ accept, production_notes: production_notes ?? null }),

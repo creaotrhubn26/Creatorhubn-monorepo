@@ -104,12 +104,20 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
     setBusy(true);
     setError(null);
     try {
-      await respondToTalentProposal(responseTarget.proposal.id, responseTarget.accept, productionNotes || undefined);
-      setInfo(
-        responseTarget.accept
-          ? `${responseTarget.proposal.display_name} akseptert.`
-          : `${responseTarget.proposal.display_name} avslått.`,
+      const result = await respondToTalentProposal(
+        responseTarget.proposal.id,
+        responseTarget.accept,
+        productionNotes || undefined,
       );
+      if (responseTarget.accept) {
+        setInfo(
+          result.candidate_id
+            ? `${responseTarget.proposal.display_name} akseptert og lagt til i kandidatlisten.`
+            : `${responseTarget.proposal.display_name} akseptert (allerede i kandidatlisten).`,
+        );
+      } else {
+        setInfo(`${responseTarget.proposal.display_name} avslått.`);
+      }
       setResponseTarget(null);
       setProductionNotes('');
       await reload();
