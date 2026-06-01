@@ -22,6 +22,7 @@ import {
 } from "../agents/templateArtDirector";
 import { generateImage, type AiImageResult } from "../services/aiImageService";
 import { photoshop } from "../services/photoshopBridgeService";
+import { saveCreation, type Creation } from "../services/creationsService";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
@@ -124,12 +125,46 @@ export function ArtDirectorDialog({ onClose }: Props) {
             })),
           },
         });
+        // Lagre creation i state-store så den kan iteres på senere
+        const now = new Date().toISOString();
+        const creation: Creation = {
+          id: crypto.randomUUID(),
+          created_at: now,
+          updated_at: now,
+          user_prompt: prompt.trim(),
+          spec,
+          images: Object.fromEntries(
+            Object.entries(images).map(([key, r]) => [
+              key,
+              {
+                path: r.image_path,
+                prompt:
+                  spec.fields.find((f) => f.key === key)?.image_prompt ?? "",
+                seed: r.seed,
+                width: r.width,
+                height: r.height,
+                model: r.model,
+              },
+            ]),
+          ),
+          text_values: Object.fromEntries(
+            spec.fields
+              .filter((f) => f.type === "text")
+              .map((f) => [f.key, f.hint ?? `{{${f.key}}}`]),
+          ),
+          psd_path: picked,
+        };
+        try {
+          await saveCreation(creation);
+        } catch (e) {
+          console.warn("[ArtDirectorDialog] saveCreation failed:", e);
+        }
         setStage({ kind: "done", spec, images, psd_path: picked });
       } catch (e) {
         setStage({ kind: "error", message: e instanceof Error ? e.message : String(e) });
       }
     },
-    [],
+    [prompt],
   );
 
   return (

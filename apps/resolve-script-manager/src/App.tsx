@@ -70,6 +70,7 @@ import { PhotoshopSetupWizard } from "./components/PhotoshopSetupWizard";
 import { PhotoshopScaffoldDialog } from "./components/PhotoshopScaffoldDialog";
 import { AiImageDialog } from "./components/AiImageDialog";
 import { ArtDirectorDialog } from "./components/ArtDirectorDialog";
+import { CreationsDialog } from "./components/CreationsDialog";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons";
@@ -157,6 +158,7 @@ export default function App() {
   const [showPhotoshopScaffold, setShowPhotoshopScaffold] = useState(false);
   const [showAiImage, setShowAiImage] = useState(false);
   const [showArtDirector, setShowArtDirector] = useState(false);
+  const [showCreations, setShowCreations] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
   // Auto-show Role Room sign-in on app launch when first-run is done but
   // the user hasn't authenticated yet. Suppressed during first-run since
@@ -687,6 +689,7 @@ export default function App() {
         onOpenPhotoshopScaffold={() => setShowPhotoshopScaffold(true)}
         onOpenAiImage={() => setShowAiImage(true)}
         onOpenArtDirector={() => setShowArtDirector(true)}
+        onOpenCreations={() => setShowCreations(true)}
         onSignIn={() => setShowSignIn(true)}
         onSignedOut={() => { /* state refresh happens via storage event */ }}
         advancedMode={advancedMode}
@@ -1012,6 +1015,9 @@ export default function App() {
       )}
       {showPhotoshopTour && (
         <PhotoshopOnboardingTour onClose={() => setShowPhotoshopTour(false)} />
+      )}
+      {showCreations && (
+        <CreationsDialog onClose={() => setShowCreations(false)} />
       )}
       {showArtDirector && (
         <ArtDirectorDialog onClose={() => setShowArtDirector(false)} />

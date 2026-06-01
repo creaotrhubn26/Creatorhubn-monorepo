@@ -3,6 +3,7 @@
 //! Exposes commands consumed by the React frontend via `invoke()`.
 
 mod card_watcher;
+mod creations;
 mod cull;
 mod folder_watcher;
 mod history;
@@ -913,6 +914,10 @@ pub fn run() {
             open_udt,
             reveal_photoshop_plugin_manifest,
             ai_generate_image,
+            creations::creation_save,
+            creations::creation_list,
+            creations::creation_load,
+            creations::creation_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

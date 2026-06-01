@@ -9,6 +9,7 @@ import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import HistoryIcon from "@mui/icons-material/History";
 import WavingHandOutlinedIcon from "@mui/icons-material/WavingHandOutlined";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import FeedbackOutlinedIcon from "@mui/icons-material/FeedbackOutlined";
@@ -108,6 +109,7 @@ interface Props {
   onOpenPhotoshopScaffold: () => void;
   onOpenAiImage: () => void;
   onOpenArtDirector: () => void;
+  onOpenCreations: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -158,6 +160,7 @@ export function HeaderBar({
   onOpenPhotoshopScaffold,
   onOpenAiImage,
   onOpenArtDirector,
+  onOpenCreations,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -270,6 +273,9 @@ export function HeaderBar({
                   }}
                 >
                   <AutoAwesomeIcon fontSize="small" /> AI Creative Director…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenCreations(); }}>
+                  <HistoryIcon fontSize="small" /> Mine AI-kreasjoner…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
