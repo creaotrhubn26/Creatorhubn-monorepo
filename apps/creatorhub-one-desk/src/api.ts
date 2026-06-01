@@ -310,6 +310,17 @@ export interface CopySessionCompletedEvent {
   cancelled: boolean;
 }
 
+/// Emit'es én gang per destinasjon når den blir deaktivert for resten
+/// av sesjonen pga vedvarende feil. Etterfølgende filer i samme session
+/// skipper denne destinasjonen — andre destinasjoner fortsetter.
+export interface CopyDestDisabledEvent {
+  session_id: string;
+  dest_id: string;
+  dest_label: string;
+  reason_code: "DEST_NO_SPACE" | "DEST_PERM_DENIED" | string;
+  reason_message: string;
+}
+
 // ─── iPad-paring (F5) ──────────────────────────────────────────
 
 export interface DiscoveredIpad {
