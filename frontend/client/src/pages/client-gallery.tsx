@@ -817,45 +817,146 @@ export default function ClientGallery({}: ClientGalleryProps) {
           p: 2,
       }}
       >
-        {/* Logo/Brand — fotografens egen branding, fallback til profesjons-default */}
-        <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-          {gallery?.branding?.logoUrl ? (
-            <Avatar
-              src={gallery.branding.logoUrl}
-              alt={gallery.branding.companyName || 'Studio'}
-              sx={{
-                bgcolor: gallery.branding.primaryColor || config.primaryColor,
-                width: 48,
-                height: 48,
-                '& img': { objectFit: 'contain' },
-              }}
-            />
-          ) : (
-            <Avatar sx={{ bgcolor: gallery?.branding?.primaryColor || config.primaryColor, width: 40, height: 40 }}>
-              {config.icon}
-            </Avatar>
-          )}
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>
-              {gallery?.projectTitle || 'Fotogalleri'}
-            </Typography>
-            {gallery?.branding?.companyName ? (
+        {/* Brand-header — pro-fotografen sin studio-identitet.
+            Layout: studio-mark (logo i hvit card) → studio-navn (display-tekst) →
+            accent-divider i primaryColor → "din leveranse"-eyebrow → projectTitle.
+            Fallback (ingen branding): kompakt klassisk layout, samme som før. */}
+        {(() => {
+          const brand = gallery?.branding ?? {};
+          const hasBrand = !!(brand.logoUrl || brand.companyName);
+          const accent = brand.primaryColor || config.primaryColor;
+
+          if (!hasBrand) {
+            return (
+              <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Avatar sx={{ bgcolor: accent, width: 40, height: 40 }}>
+                  {config.icon}
+                </Avatar>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>
+                    {gallery?.projectTitle || 'Fotogalleri'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                    Klient: {gallery?.clientName}
+                  </Typography>
+                </Box>
+              </Box>
+            );
+          }
+
+          return (
+            <Box sx={{ mb: 3 }}>
+              {/* Logo-mark: hvit card med soft shadow gir logoen pusterom og
+                  lar fargene komme ren ut uavhengig av filtype */}
+              {brand.logoUrl ? (
+                <Box
+                  sx={{
+                    width: 72,
+                    height: 72,
+                    bgcolor: '#fff',
+                    borderRadius: 2,
+                    p: 1,
+                    mb: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: `0 4px 16px ${accent}33`,
+                    border: `1px solid ${accent}44`,
+                  }}
+                >
+                  <Box
+                    component="img"
+                    src={brand.logoUrl}
+                    alt={brand.companyName || 'Studio'}
+                    sx={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                </Box>
+              ) : (
+                <Avatar
+                  sx={{
+                    bgcolor: accent,
+                    width: 72,
+                    height: 72,
+                    mb: 1.5,
+                    boxShadow: `0 4px 16px ${accent}55`,
+                  }}
+                >
+                  {config.icon}
+                </Avatar>
+              )}
+
+              {/* Studio-navn: display-størrelse — dette er den "varemerkede" linjen */}
+              {brand.companyName && (
+                <Typography
+                  sx={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: '#fff',
+                    letterSpacing: '-0.01em',
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {brand.companyName}
+                </Typography>
+              )}
+
+              {/* Accent-divider i brand-farge — premium-detalj som binder logo+navn til
+                  prosjekt-info under. 24px bred så den ikke konkurrerer med tekst. */}
+              <Box
+                sx={{
+                  width: 32,
+                  height: 3,
+                  bgcolor: accent,
+                  borderRadius: 1,
+                  mt: 1,
+                  mb: 1.5,
+                }}
+              />
+
+              {/* Eyebrow + project title — "Din leveranse"-fraseringen plasserer
+                  klienten som mottaker av studioets arbeid */}
               <Typography
                 variant="caption"
                 sx={{
-                  color: gallery.branding.primaryColor || 'rgba(255,255,255,0.7)',
+                  color: 'rgba(255,255,255,0.5)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  fontSize: 10,
                   fontWeight: 600,
+                  display: 'block',
+                  mb: 0.25,
+                }}
+              >
+                Din leveranse
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{
+                  color: '#fff',
+                  fontWeight: 500,
+                  lineHeight: 1.3,
+                  mb: 0.5,
+                }}
+              >
+                {gallery?.projectTitle || 'Fotogalleri'}
+              </Typography>
+
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'rgba(255,255,255,0.5)',
                   display: 'block',
                 }}
               >
-                {gallery.branding.companyName}
+                Klient: {gallery?.clientName}
               </Typography>
-            ) : null}
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-              Klient: {gallery?.clientName}
-            </Typography>
-          </Box>
-        </Box>
+            </Box>
+          );
+        })()}
 
         {/* Selection Summary with Psychology */}
         <Paper
@@ -1172,6 +1273,61 @@ export default function ClientGallery({}: ClientGalleryProps) {
               clientName={gallery?.clientName ?? undefined}
               defaultImageId={selectedImages.size === 1 ? Array.from(selectedImages)[0] : null}
             />
+          </Box>
+        )}
+
+        {/* Studio-credit-footer — alltid i bunn av sidebar, nederst på flex-stacken.
+            Pro-fotograf skal være sluttkreditten klienten ser. */}
+        {gallery?.branding?.companyName && (
+          <Box
+            sx={{
+              mt: 'auto',
+              pt: 3,
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'rgba(255,255,255,0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                fontSize: 9,
+                fontWeight: 600,
+                display: 'block',
+                mb: 0.5,
+              }}
+            >
+              Levert av
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#fff',
+                lineHeight: 1.3,
+              }}
+            >
+              {gallery.branding.companyName}
+            </Typography>
+            {gallery.branding.website && (
+              <Typography
+                component="a"
+                href={gallery.branding.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  fontSize: 11,
+                  color: gallery.branding.primaryColor || 'rgba(255,255,255,0.5)',
+                  textDecoration: 'none',
+                  display: 'block',
+                  mt: 0.5,
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+              >
+                {gallery.branding.website.replace(/^https?:\/\//, '')}
+              </Typography>
+            )}
           </Box>
         )}
       </Box>
