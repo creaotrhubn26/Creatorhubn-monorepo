@@ -405,6 +405,10 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   const [includedChapters, setIncludedChapters] = useState<Set<string>>(new Set());
   // Currently focused pick (for video playback)
   const [focusedPickIdx, setFocusedPickIdx] = useState<number>(0);
+  // Pick-indekser som Story Director har highlightet via "Se forslag"-knapp.
+  // Vises som lilla dashed-outline i Story Arc. Ryddes når brukeren klikker
+  // manuelt på en pick (single-action mental modell).
+  const [recHighlightedPicks, setRecHighlightedPicks] = useState<number[]>([]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Playback state
@@ -2967,6 +2971,17 @@ ${ctxLines.join("\n")}`;
                 if (idx == null) return;
                 const i = filteredPicks.findIndex((p) => p.index === idx);
                 if (i >= 0) setFocusedPickIdx(i);
+                // Manuell navigasjon rydder rec-highlights — én anbefaling
+                // av gangen, ingen rest fra forrige forslag.
+                setRecHighlightedPicks([]);
+              }}
+              highlightedPickIndices={recHighlightedPicks}
+              onApplyRecommendation={(rec) => {
+                const indices = rec.pickIndices ?? [];
+                if (indices.length === 0) return;
+                const firstIdx = filteredPicks.findIndex((p) => p.index === indices[0]);
+                if (firstIdx >= 0) setFocusedPickIdx(firstIdx);
+                setRecHighlightedPicks(indices);
               }}
               projectInfo={{
                 project: projectTitle || "Uten navn",
