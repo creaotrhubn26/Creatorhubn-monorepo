@@ -6493,9 +6493,33 @@ type RoleRoomProjectWorkspaceState = {
   );
 
   const completedWorkflowSteps = useMemo(
-    () => deriveCompletedWorkflowSteps(currentProject?.producerWorkflowStatus),
-    [currentProject?.producerWorkflowStatus],
+    () => deriveCompletedWorkflowSteps(
+      currentProject?.producerWorkflowStatus,
+      currentProject?.producerPhaseCompletion,
+    ),
+    [currentProject?.producerWorkflowStatus, currentProject?.producerPhaseCompletion],
   );
+
+  const handleTogglePhaseComplete = useCallback(async (step: 'delivery' | 'economy') => {
+    if (!currentProject) return;
+    const existing = currentProject.producerPhaseCompletion ?? {};
+    const isComplete = Boolean(existing[step]);
+    const nextCompletion = { ...existing, [step]: isComplete ? null : new Date().toISOString() };
+    const nextProject: CastingProject = {
+      ...currentProject,
+      producerPhaseCompletion: nextCompletion,
+      updatedAt: new Date().toISOString(),
+    };
+    // Optimistisk: oppdater lokalt umiddelbart.
+    setCurrentProject(nextProject);
+    setProjects((previous) => previous.map((project) => (project.id === nextProject.id ? nextProject : project)));
+    try {
+      // saveProject er offline-resilient (replay-kø) — trygt selv ved 401/offline.
+      await castingService.saveProject(nextProject);
+    } catch (saveError) {
+      console.warn('[content-producer] kunne ikke lagre fase-fullføring', saveError);
+    }
+  }, [currentProject]);
 
   const handleSelectWorkflowStep = useCallback((step: WorkflowStepKey) => {
     switch (step) {
@@ -9282,6 +9306,53 @@ type RoleRoomProjectWorkspaceState = {
           hidden={isLiveSetImmersive}
         />
       )}
+
+      {/* Fase-fullføring: Levering/Økonomi har ingen avledet «ferdig»-signal,
+          så Stig markerer dem manuelt herfra. Vises kun når et av disse
+          stegene er aktivt. Stepperen reflekterer flagget med et check-ikon. */}
+      {isContentProducerMode && currentProject && !isLiveSetImmersive
+        && (activeWorkflowStep === 'delivery' || activeWorkflowStep === 'economy')
+        && (() => {
+          const phaseStep: 'delivery' | 'economy' = activeWorkflowStep === 'delivery' ? 'delivery' : 'economy';
+          const stepLabel = phaseStep === 'delivery' ? 'Levering' : 'Økonomi';
+          const completedAt = currentProject.producerPhaseCompletion?.[phaseStep] ?? null;
+          return (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                px: { xs: 1.5, sm: 2 },
+                py: 0.85,
+                bgcolor: completedAt ? 'rgba(34,197,94,0.08)' : 'rgba(15,23,42,0.4)',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              <Typography sx={{ fontSize: '0.8rem', color: completedAt ? '#86efac' : 'rgba(203,213,225,0.8)' }}>
+                {completedAt
+                  ? `✓ ${stepLabel} er markert som fullført ${new Date(completedAt).toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' })}`
+                  : `${stepLabel}-steget vises som uferdig i oversikten til du markerer det fullført.`}
+              </Typography>
+              <Button
+                size="small"
+                variant={completedAt ? 'text' : 'contained'}
+                onClick={() => { void handleTogglePhaseComplete(phaseStep); }}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.74rem',
+                  flexShrink: 0,
+                  ...(completedAt
+                    ? { color: 'rgba(203,213,225,0.85)' }
+                    : { bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }),
+                }}
+              >
+                {completedAt ? 'Angre' : `Marker ${stepLabel.toLowerCase()} som fullført`}
+              </Button>
+            </Box>
+          );
+        })()}
 
       {/* Tabs */}
       <Box
