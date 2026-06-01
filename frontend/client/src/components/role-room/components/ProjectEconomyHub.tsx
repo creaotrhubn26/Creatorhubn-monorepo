@@ -51,6 +51,7 @@ import {
 } from '../services/producerWorkflowFocusEvents';
 import { onProjectAgreementEvent } from '../services/projectAgreementEvents';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import { SimpleBudgetEstimator } from './SimpleBudgetEstimator';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -2318,6 +2319,21 @@ export default function ProjectEconomyHub({
               }}
             >
               <Stack spacing={2}>
+                <SimpleBudgetEstimator
+                  shootDays={project.productionDays?.length ?? 0}
+                  locations={project.locations?.length ?? 0}
+                  rates={project.budgetRates ?? {}}
+                  readOnly={readOnly}
+                  onRatesChange={async (budgetRates) => {
+                    const nextProject = { ...project, budgetRates, updatedAt: new Date().toISOString() };
+                    try {
+                      await castingService.saveProject(nextProject);
+                      await onProjectUpdated?.(nextProject);
+                    } catch (error) {
+                      console.error('Kunne ikke lagre budsjett-satser:', error);
+                    }
+                  }}
+                />
                 <Box
                   sx={{
                     p: 1.6,

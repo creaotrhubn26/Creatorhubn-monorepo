@@ -55,6 +55,8 @@ import {
   PushPinOutlined as PushPinOutlinedIcon,
   BarChart as StatsIcon,
   Person as PersonIcon,
+  KeyboardArrowUp as MoveUpIcon,
+  KeyboardArrowDown as MoveDownIcon,
 } from '@mui/icons-material';
 import type { SceneBreakdown } from '../models/casting';
 
@@ -92,20 +94,27 @@ interface SceneNavigatorSidebarProps {
   // Width
   width?: number;
   collapsedWidth?: number;
-  
+
   // Styling
   darkMode?: boolean;
+
+  // Reorder: flytt en scene i den globale (Fountain-tekst) rekkefølgen.
+  // Aktiveres kun for Fountain-baserte scener (ikke DB-scener), siden teksten
+  // er source-of-truth. fromIndex/toIndex er indekser i den globale scene-lista.
+  onReorderScenes?: (fromIndex: number, toIndex: number) => void;
 }
 
 // ── Stable scene identity ─────────────────────────────────────────────────
-// Hash the heading text + ordinal index so the id is stable across re-parses
-// as long as the heading text itself hasn't changed.
-function stableSceneId(heading: string, index: number): string {
+// Hash the heading text + per-heading OCCURRENCE ordinal (ikke global posisjon).
+// Slik forblir id-en stabil når scener flyttes (reorder): en gitt heading
+// beholder samme id uavhengig av rekkefølge. Dupliserte headinger
+// disambigueres med 0,1,2… i den rekkefølgen de dukker opp.
+function stableSceneId(heading: string, occurrence: number): string {
   let h = 5381;
   for (let i = 0; i < heading.length; i++) {
     h = (((h << 5) + h) ^ heading.charCodeAt(i)) >>> 0;
   }
-  return `s_${h.toString(36)}_${index}`;
+  return `s_${h.toString(36)}_${occurrence}`;
 }
 
 // Character line pattern (all-caps names, possibly with extension)
@@ -121,6 +130,8 @@ function parseScenes(content: string): ParsedScene[] {
 
   let sceneStartLine = 0;
   let sceneChars = new Set<string>();
+  // Teller hvor mange ganger hver heading har dukket opp, for stabil id.
+  const headingOccurrences = new Map<string, number>();
 
   // Write back accumulated stats into the last pushed scene
   const flushCurrent = (upToLine: number) => {
@@ -149,9 +160,12 @@ function parseScenes(content: string): ParsedScene[] {
       const location  = match[4]?.trim() || '';
       const timeOfDay = match[5] || null;
       const heading   = line.replace(/^\./, '');
+      const headingKey = heading.trim().toUpperCase().replace(/\s+/g, ' ');
+      const occurrence = headingOccurrences.get(headingKey) ?? 0;
+      headingOccurrences.set(headingKey, occurrence + 1);
 
       scenes.push({
-        id: stableSceneId(heading, scenes.length),
+        id: stableSceneId(heading, occurrence),
         sceneNumber: `${scenes.length + 1}`,
         heading,
         intExt,
@@ -171,6 +185,161 @@ function parseScenes(content: string): ParsedScene[] {
 
   flushCurrent(lines.length); // flush the final scene
   return scenes;
+}
+
+// Scene-heading-pattern (delt med parseScenes) for å finne scene-grenser.
+const SCENE_HEADING_LINE_RE = /^(\.)?((INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+)(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i;
+
+/**
+ * Flytter en scene-blokk i Fountain-teksten (Fountain er source-of-truth).
+ * En scene-blokk er alle linjer fra scene-overskriften til (men ikke med) neste
+ * scene-overskrift. Eventuell preamble (tittel-side e.l.) før første scene
+ * beholdes på toppen. Ren funksjon — testbar og uten side-effekter.
+ *
+ * @returns ny content-streng, eller uendret content hvis indeksene er ugyldige.
+ */
+export function reorderScenesInContent(
+  content: string,
+  fromIndex: number,
+  toIndex: number,
+): string {
+  return reorderScenesWithLineMap(content, fromIndex, toIndex).content;
+}
+
+/**
+ * Scene-ankre fra Fountain-tekst: stabil sceneId + 1-basert start/slutt-linje.
+ * Brukes til å forankre kommentarer RELATIVT til en scene (sceneId + offset) i
+ * stedet for et absolutt linjenummer — slik følger kommentarer innholdet når
+ * man skriver over dem eller flytter scener. Bruker samme stabile id-skjema
+ * som navigatoren (heading-hash + forekomst-ordinal). Ren funksjon.
+ */
+export function parseSceneAnchors(
+  content: string,
+): Array<{ sceneId: string; startLine: number; endLine: number }> {
+  if (!content) return [];
+  const lines = content.split('\n');
+  const occ = new Map<string, number>();
+  const heads: Array<{ sceneId: string; startLine: number }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (SCENE_HEADING_LINE_RE.test(line)) {
+      const heading = line.replace(/^\./, '');
+      const key = heading.trim().toUpperCase().replace(/\s+/g, ' ');
+      const o = occ.get(key) ?? 0;
+      occ.set(key, o + 1);
+      heads.push({ sceneId: stableSceneId(heading, o), startLine: i + 1 });
+    }
+  }
+  return heads.map((h, idx) => ({
+    sceneId: h.sceneId,
+    startLine: h.startLine,
+    endLine: idx + 1 < heads.length ? heads[idx + 1].startLine : lines.length + 1,
+  }));
+}
+
+/**
+ * Bygger et scene-relativt kommentar-anker for en absolutt linje, eller et
+ * absolutt fallback-anker (`#L:<linje>`) for linjer før første scene (preamble).
+ */
+export function buildLineCommentAnchor(content: string, manuscriptId: string, line: number): string {
+  const scenes = parseSceneAnchors(content);
+  const scene = scenes.find((s) => line >= s.startLine && line < s.endLine);
+  if (scene) {
+    return `${manuscriptId}#s:${scene.sceneId}:${line - scene.startLine}`;
+  }
+  return `${manuscriptId}#L:${line}`;
+}
+
+/**
+ * Løser et kommentar-anker tilbake til gjeldende absolutt linje. Returnerer null
+ * hvis scenen er slettet (foreldreløst anker). Bakoverkompatibel med gamle
+ * absolutte ankre på formen `<manusId>#<tall>`.
+ */
+export function resolveLineCommentAnchor(content: string, manuscriptId: string, anchorRef: string): number | null {
+  const prefix = `${manuscriptId}#`;
+  if (!anchorRef.startsWith(prefix)) return null;
+  const rest = anchorRef.slice(prefix.length);
+  if (rest.startsWith('s:')) {
+    const m = rest.match(/^s:(.+):(\d+)$/);
+    if (!m) return null;
+    const sceneId = m[1];
+    const offset = parseInt(m[2], 10);
+    const scene = parseSceneAnchors(content).find((s) => s.sceneId === sceneId);
+    if (!scene) return null; // scene slettet → foreldreløst
+    return scene.startLine + offset;
+  }
+  // Legacy / preamble absolutt-anker: `#L:<n>` eller `#<n>`
+  const n = parseInt(rest.replace(/^L:/, ''), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Som reorderScenesInContent, men returnerer OGSÅ en linje-mapping (1-basert
+ * gammel linje → ny linje). Brukes til å re-mappe linje-ankrede kommentarer så
+ * de ikke peker på feil linje etter at en scene flyttes. Ren funksjon.
+ */
+export function reorderScenesWithLineMap(
+  content: string,
+  fromIndex: number,
+  toIndex: number,
+): { content: string; mapLine: (oldLine: number) => number } {
+  const identity = (l: number) => l;
+  if (!content || fromIndex === toIndex) return { content, mapLine: identity };
+  const lines = content.split('\n');
+
+  // Finn start-linje (0-basert) for hver scene-overskrift.
+  const sceneStarts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (SCENE_HEADING_LINE_RE.test(lines[i].trim())) {
+      sceneStarts.push(i);
+    }
+  }
+  if (
+    sceneStarts.length < 2 ||
+    fromIndex < 0 || toIndex < 0 ||
+    fromIndex >= sceneStarts.length || toIndex >= sceneStarts.length
+  ) {
+    return { content, mapLine: identity };
+  }
+
+  const preambleLen = sceneStarts[0];
+  const blockMeta = sceneStarts.map((start, idx) => ({
+    start,
+    len: (idx + 1 < sceneStarts.length ? sceneStarts[idx + 1] : lines.length) - start,
+  }));
+
+  // Ny rekkefølge av originale block-indekser.
+  const order = blockMeta.map((_, i) => i);
+  const [movedIdx] = order.splice(fromIndex, 1);
+  order.splice(toIndex, 0, movedIdx);
+
+  // Ny 0-basert start for hver original block.
+  const newStartByOrig = new Map<number, number>();
+  let cursor = preambleLen;
+  for (const origIdx of order) {
+    newStartByOrig.set(origIdx, cursor);
+    cursor += blockMeta[origIdx].len;
+  }
+
+  const blocks = blockMeta.map((b) => lines.slice(b.start, b.start + b.len));
+  const reordered = order.map((i) => blocks[i]);
+  const newContent = [...lines.slice(0, preambleLen), ...reordered.flat()].join('\n');
+
+  const mapLine = (oldLine: number): number => {
+    const idx0 = oldLine - 1;
+    if (idx0 < preambleLen) return oldLine; // preamble flyttes ikke
+    for (let b = 0; b < blockMeta.length; b++) {
+      const { start, len } = blockMeta[b];
+      if (idx0 >= start && idx0 < start + len) {
+        const offset = idx0 - start;
+        const newStart = newStartByOrig.get(b) ?? start;
+        return newStart + offset + 1;
+      }
+    }
+    return oldLine;
+  };
+
+  return { content: newContent, mapLine };
 }
 
 // Convert database SceneBreakdown to ParsedScene
@@ -199,10 +368,14 @@ interface SceneRowProps {
   isPinned: boolean;
   onPin: (id: string, e: React.MouseEvent) => void;
   onClick: (scene: ParsedScene) => void;
+  // Reorder (kun aktivt for Fountain-baserte scener — tekst er source-of-truth)
+  index?: number;
+  total?: number;
+  onMove?: (index: number, direction: -1 | 1) => void;
 }
 
 const SceneRow: React.FC<SceneRowProps> = React.memo((
-  { scene, isCurrent, intExtColor, accentColor, textColor, isPinned, onPin, onClick }
+  { scene, isCurrent, intExtColor, accentColor, textColor, isPinned, onPin, onClick, index, total, onMove }
 ) => (
   <ListItemButton
     id={`scene-nav-${scene.id}`}
@@ -260,6 +433,30 @@ const SceneRow: React.FC<SceneRowProps> = React.memo((
       </Stack>
     </Box>
 
+    {/* Flytt scene opp/ned (Fountain-tekst er source-of-truth) */}
+    {onMove && typeof index === 'number' && (
+      <Box sx={{ display: 'flex', flexDirection: 'column', flexShrink: 0, mr: 0.25 }}>
+        <IconButton
+          size="small"
+          disabled={index <= 0}
+          onClick={(e) => { e.stopPropagation(); onMove(index, -1); }}
+          aria-label={`Flytt scene ${scene.sceneNumber} opp`}
+          sx={{ p: 0, height: 16, opacity: 0.4, '&:hover': { opacity: 1 }, '&.Mui-disabled': { opacity: 0.12 } }}
+        >
+          <MoveUpIcon sx={{ fontSize: 15 }} />
+        </IconButton>
+        <IconButton
+          size="small"
+          disabled={typeof total === 'number' && index >= total - 1}
+          onClick={(e) => { e.stopPropagation(); onMove(index, 1); }}
+          aria-label={`Flytt scene ${scene.sceneNumber} ned`}
+          sx={{ p: 0, height: 16, opacity: 0.4, '&:hover': { opacity: 1 }, '&.Mui-disabled': { opacity: 0.12 } }}
+        >
+          <MoveDownIcon sx={{ fontSize: 15 }} />
+        </IconButton>
+      </Box>
+    )}
+
     {/* Pin toggle */}
     <IconButton
       size="small"
@@ -291,6 +488,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   onToggleCollapse,
   width = 280,
   collapsedWidth = 48,
+  onReorderScenes,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set(['1', '2', '3', 'pinned']));
@@ -308,6 +506,15 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
     }
     return parseScenes(content || '');
   }, [content, dbScenes]);
+
+  // Reorder kun for Fountain-baserte scener (tekst er source-of-truth) — ikke
+  // for DB-scener (de reorderes i produksjonsvisningen).
+  const reorderEnabled = Boolean(onReorderScenes) && !(dbScenes && dbScenes.length > 0);
+  const handleMoveScene = useCallback((index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (index < 0 || target < 0) return;
+    onReorderScenes?.(index, target);
+  }, [onReorderScenes]);
 
   // ── Pro statistics ───────────────────────────────────────────────────────
   const locationStats = useMemo(() => {
@@ -869,7 +1076,8 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
                     {actScenes.filter(Boolean).map(scene => {
                       const isCurrent = currentScene?.id === scene.id;
                       const iec = scene.intExt === 'INT' ? intColor : scene.intExt === 'EXT' ? extColor : textColor;
-                      return <SceneRow key={scene.id} scene={scene} isCurrent={isCurrent} intExtColor={iec} accentColor={accentColor} textColor={textColor} isPinned={pinnedSceneIds.has(scene.id)} onPin={handlePinToggle} onClick={handleSceneClick} />;
+                      const globalIndex = reorderEnabled ? parsedScenes.findIndex(s => s.id === scene.id) : undefined;
+                      return <SceneRow key={scene.id} scene={scene} isCurrent={isCurrent} intExtColor={iec} accentColor={accentColor} textColor={textColor} isPinned={pinnedSceneIds.has(scene.id)} onPin={handlePinToggle} onClick={handleSceneClick} index={globalIndex} total={parsedScenes.length} onMove={reorderEnabled ? handleMoveScene : undefined} />;
                     })}
                   </List>
                 </Collapse>
