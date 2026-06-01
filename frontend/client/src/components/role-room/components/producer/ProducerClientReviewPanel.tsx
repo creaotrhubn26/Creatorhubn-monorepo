@@ -24,6 +24,7 @@ import {
   ChevronRight as ChevronRightIcon,
   RateReview as RateReviewIcon,
   Send as SendIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type {
@@ -45,6 +46,7 @@ import {
   isClientGroundingManagedReview,
   producerWorkflowService,
   type ProducerClientReview,
+  type ProducerClientConsent,
   type ProducerReviewDecision,
 } from '../../services/producerWorkflowService';
 import {
@@ -511,6 +513,32 @@ export default function ProducerClientReviewPanel({
   } = useProducerReviews(projectId, { livePollMs: 15000 });
   // Klient-tilstedeværelse: hvem har klientportalen åpen akkurat nå.
   const { clients: presentClients, anyPresent: clientPresent } = useClientPresence(projectId, { pollMs: 20000 });
+  // Klient-samtykker: hvilke plattformer klienten har godkjent tilgang til.
+  // Endrer seg sjelden — henter ved mount + sakte poll (30 sek) så et nytt
+  // samtykke dukker opp uten reload.
+  const [clientConsents, setClientConsents] = useState<ProducerClientConsent[]>([]);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    const load = () => {
+      void producerWorkflowService.getClientConsents(projectId).then((rows) => {
+        if (!cancelled) setClientConsents(rows);
+      });
+    };
+    load();
+    const intervalId = window.setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [projectId]);
+  const consentPlatformLabels: Record<string, string> = {
+    instagram: 'Instagram',
+    facebook: 'Facebook',
+    tiktok: 'TikTok',
+    linkedin: 'LinkedIn',
+    google: 'Google',
+  };
   const presentClientLabel = useMemo(() => {
     if (presentClients.length === 0) return null;
     const first = presentClients[0];
@@ -1936,6 +1964,43 @@ export default function ProducerClientReviewPanel({
             <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem' }}>
               {projectName} · Venter {summary.pending} · Godkjent {summary.approved} · Endringer {summary.changesRequested}
             </Typography>
+            {clientConsents.length > 0 ? (
+              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
+                <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600 }}>
+                  Klient ga tilgang:
+                </Typography>
+                {clientConsents.map((consent) => {
+                  const label = consentPlatformLabels[consent.platform] ?? consent.platform;
+                  const when = new Date(consent.consentedAt);
+                  const whenLabel = Number.isNaN(when.getTime())
+                    ? ''
+                    : when.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' });
+                  const who = (consent.clientName && consent.clientName.trim()) || consent.clientEmail;
+                  return (
+                    <Tooltip
+                      key={consent.platform}
+                      title={`${who} godkjente tilgang til ${label}${whenLabel ? ` den ${whenLabel}` : ''}`}
+                      arrow
+                    >
+                      <Chip
+                        size="small"
+                        icon={<CheckCircleIcon sx={{ fontSize: '0.85rem !important', color: '#34d399 !important' }} />}
+                        label={`${label}${whenLabel ? ` · ${whenLabel}` : ''}`}
+                        sx={{
+                          height: 20,
+                          bgcolor: 'rgba(52,211,153,0.14)',
+                          color: '#6ee7b7',
+                          fontWeight: 700,
+                          fontSize: '0.68rem',
+                          border: '1px solid rgba(52,211,153,0.35)',
+                          cursor: 'help',
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                })}
+              </Stack>
+            ) : null}
           </Stack>
           {(statusDriverEconomyFocus && onOpenEconomy) || (statusDriverTimelineFocus && onOpenTimeline) ? (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8}>

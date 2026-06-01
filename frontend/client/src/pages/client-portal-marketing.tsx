@@ -24,6 +24,10 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   LinearProgress,
   Stack,
   Typography,
@@ -505,6 +509,16 @@ interface ConnectedPlatform {
   connectedAt: string | null;
 }
 
+// Menneskelesbar beskrivelse av hva klienten faktisk godkjenner per plattform
+// (speiler backendens PLATFORM_CONSENT_SUMMARY).
+const PLATFORM_CONSENT_BLURB: Record<string, string> = {
+  instagram: 'Publisere innlegg, reels og stories til Instagram (via Meta).',
+  facebook: 'Publisere innlegg til den tilkoblede Facebook-siden (via Meta).',
+  tiktok: 'Publisere videoer til TikTok-kontoen.',
+  linkedin: 'Publisere innlegg til LinkedIn på vegne av kontoen.',
+  google: 'Lese/skrive dokumenter og filer i Google Workspace knyttet til prosjektet.',
+};
+
 const PLATFORM_STATUS_META: Record<
   ConnectedPlatform['status'],
   { label: string; color: string }
@@ -534,16 +548,37 @@ const CLIENT_CONNECTABLE: Record<string, { path: string; method: 'GET' | 'POST';
 
 function ConnectedPlatformsCard({ token }: { token: string }) {
   const [platforms, setPlatforms] = useState<ConnectedPlatform[] | null>(null);
+  const [producer, setProducer] = useState<{ name: string; agency: string | null; email: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
+  // Plattformen klienten er i ferd med å godkjenne tilgang for (åpner modalen).
+  const [pendingPlatform, setPendingPlatform] = useState<string | null>(null);
 
-  const handleConnect = async (platform: string) => {
-    const cfg = CLIENT_CONNECTABLE[platform];
-    if (!cfg) return;
+  // Steg 1: klikk på «Koble til» åpner samtykke-skjermen i stedet for å
+  // redirecte rett til OAuth — klienten skal tydelig se HVEM de gir tilgang til.
+  const requestConnect = (platform: string) => {
+    if (!CLIENT_CONNECTABLE[platform]) return;
+    setConnectError(null);
+    setPendingPlatform(platform);
+  };
+
+  // Steg 2: klienten bekrefter samtykket. Vi logger samtykket (sporbart bevis)
+  // FØR vi sender dem videre til plattformens egen consent-skjerm.
+  const confirmConsent = async () => {
+    const platform = pendingPlatform;
+    const cfg = platform ? CLIENT_CONNECTABLE[platform] : null;
+    if (!platform || !cfg) return;
     setConnecting(platform);
     setConnectError(null);
     try {
+      // Logg samtykket. Defensiv: en feil her skal ikke blokkere tilkoblingen.
+      await fetch(`/api/client/portal/oauth-consent?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform }),
+      }).catch(() => undefined);
+
       const res = await fetch(
         `${cfg.path}?token=${encodeURIComponent(token)}`,
         { method: cfg.method },
@@ -551,14 +586,16 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
       const json = await res.json();
       const url = json?.url || json?.authorizationUrl;
       if (json?.success && typeof url === 'string') {
-        // Send klienten til plattformens consent-skjerm. Etter godkjenning
+        // Send klienten til plattformens egen consent-skjerm. Etter godkjenning
         // lander koblingen via den delte callbacken og vises her ved retur.
         window.location.href = url;
         return;
       }
       setConnectError(json?.error || 'Kunne ikke starte tilkobling akkurat nå.');
+      setPendingPlatform(null);
     } catch {
       setConnectError('Kunne ikke starte tilkobling akkurat nå.');
+      setPendingPlatform(null);
     } finally {
       setConnecting(null);
     }
@@ -575,6 +612,7 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
         const json = await res.json();
         if (!cancelled && Array.isArray(json?.platforms)) {
           setPlatforms(json.platforms as ConnectedPlatform[]);
+          setProducer(json?.producer ?? null);
         }
       } catch {
         if (!cancelled) setPlatforms([]);
@@ -614,7 +652,7 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
         size="small"
         variant={variant === 'primary' ? 'contained' : 'outlined'}
         disabled={connecting !== null}
-        onClick={() => void handleConnect(platform)}
+        onClick={() => requestConnect(platform)}
         sx={{
           flexShrink: 0,
           textTransform: 'none',
@@ -726,6 +764,62 @@ function ConnectedPlatformsCard({ token }: { token: string }) {
           Kobles av produsenten: {producerOnly.map((p) => PLATFORM_DISPLAY[p.platform] ?? p.label).join(', ')}
         </Typography>
       ) : null}
+
+      {/* Samtykke-skjerm: tydelig hvem som får tilgang, til hva, før OAuth. */}
+      <Dialog
+        open={pendingPlatform !== null}
+        onClose={() => (connecting ? undefined : setPendingPlatform(null))}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { bgcolor: '#0f172a', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>
+          Gi tilgang til {pendingPlatform ? PLATFORM_DISPLAY[pendingPlatform] ?? pendingPlatform : ''}
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.9rem', lineHeight: 1.55 }}>
+            Du tillater at innholdsprodusent{' '}
+            <strong style={{ color: '#fff' }}>{producer?.name ?? 'produsenten'}</strong>
+            {producer?.agency ? <> fra <strong style={{ color: '#fff' }}>{producer.agency}</strong></> : null}
+            {' '}får tilgang til å publisere på din{' '}
+            <strong style={{ color: '#fff' }}>
+              {pendingPlatform ? PLATFORM_DISPLAY[pendingPlatform] ?? pendingPlatform : ''}
+            </strong>
+            -konto på vegne av prosjektet.
+          </Typography>
+          {pendingPlatform && PLATFORM_CONSENT_BLURB[pendingPlatform] ? (
+            <Box sx={{ mt: 1.6, p: 1.4, borderRadius: 2, bgcolor: 'rgba(124,58,237,0.08)', border: '1px solid rgba(167,139,250,0.25)' }}>
+              <Typography sx={{ color: '#c4b5fd', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.04em', mb: 0.3 }}>
+                DETTE GODKJENNER DU
+              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.85)', fontSize: '0.83rem' }}>
+                {PLATFORM_CONSENT_BLURB[pendingPlatform]}
+              </Typography>
+            </Box>
+          ) : null}
+          <Typography sx={{ color: 'rgba(148,163,184,0.75)', fontSize: '0.76rem', mt: 1.4 }}>
+            Du logger inn med din egen konto på neste steg. Du kan når som helst
+            trekke tilgangen tilbake på plattformen. Samtykket logges med dato.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setPendingPlatform(null)}
+            disabled={connecting !== null}
+            sx={{ textTransform: 'none', color: 'rgba(203,213,225,0.85)' }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            onClick={() => void confirmConsent()}
+            disabled={connecting !== null}
+            variant="contained"
+            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+          >
+            {connecting ? 'Åpner…' : 'Gi tilgang og fortsett'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

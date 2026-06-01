@@ -159,6 +159,13 @@ export interface ProducerClientPresence {
   lastSeenAt: string;
 }
 
+export interface ProducerClientConsent {
+  platform: string;
+  clientName: string | null;
+  clientEmail: string;
+  consentedAt: string;
+}
+
 export interface ProducerProjectNotification {
   id: string;
   project_id: string;
@@ -3445,6 +3452,33 @@ export const producerWorkflowService = {
           } as ProducerClientPresence;
         })
         .filter((entry): entry is ProducerClientPresence => entry !== null);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Klient-samtykker per plattform — så produsenten ser at klienten faktisk
+   * har godkjent tilgangen. Defensiv: tom liste ved feil/offline.
+   */
+  async getClientConsents(projectId: string): Promise<ProducerClientConsent[]> {
+    try {
+      const response = await producerWorkflowRequest<{ consents?: unknown[] }>(`/projects/${projectId}/client-consents`);
+      const consents = Array.isArray(response.consents) ? response.consents : [];
+      return consents
+        .map((value) => {
+          const record = asRecord(value);
+          const platform = readFirstNonEmptyString(record.platform);
+          const clientEmail = readFirstNonEmptyString(record.clientEmail, record.client_email);
+          if (!platform || !clientEmail) return null;
+          return {
+            platform,
+            clientName: readFirstNonEmptyString(record.clientName, record.client_name) ?? null,
+            clientEmail,
+            consentedAt: readFirstNonEmptyString(record.consentedAt, record.consented_at) ?? nowIso(),
+          } as ProducerClientConsent;
+        })
+        .filter((entry): entry is ProducerClientConsent => entry !== null);
     } catch {
       return [];
     }

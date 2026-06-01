@@ -12577,6 +12577,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // Produsent-side: se hvilke samtykker klienten har gitt (chip i UI).
+  router.get('/projects/:projectId/client-consents', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      const { latestClientConsentsForProject } = await import('./client-portal-connected-platforms.js');
+      const consents = await latestClientConsentsForProject(pool, projectId);
+      res.json({ status: 'ok', projectId, consents });
+    } catch (error) {
+      console.error('[role-room] client-consents failed', error);
+      res.status(500).json({ error: 'Kunne ikke hente klient-samtykker' });
+    }
+  });
+
   router.get('/projects/:projectId/producer/timeline', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!(await ensureProducerWorkflowTables())) {
       res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });

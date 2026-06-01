@@ -142,6 +142,152 @@ export async function getProjectProducerUserId(
   return ownerRow && typeof ownerRow.accountName === "string" ? ownerRow.accountName : null;
 }
 
+export interface ProjectProducerInfo {
+  userId: string;
+  name: string;
+  email: string | null;
+  agency: string | null;
+}
+
+/**
+ * Produsentens visningsinfo (navn + firma) for samtykke-skjermen, slik at
+ * klienten tydelig ser HVEM de gir tilgang til. Hentes fra users-raden bak
+ * casting_projects.created_by + prosjektets agency-felt.
+ */
+export async function loadProjectProducerInfo(
+  pool: Pool,
+  projectId: string,
+): Promise<ProjectProducerInfo | null> {
+  try {
+    const { rows } = await pool.query<{
+      userId: string | null;
+      agency: string | null;
+      email: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      username: string | null;
+    }>(
+      `SELECT p.created_by AS "userId",
+              p.agency     AS "agency",
+              u.email      AS "email",
+              u.first_name AS "firstName",
+              u.last_name  AS "lastName",
+              u.username   AS "username"
+         FROM casting_projects p
+         LEFT JOIN users u ON u.id::text = p.created_by
+        WHERE p.id = $1
+        LIMIT 1`,
+      [projectId],
+    );
+    const row = rows[0];
+    if (!row || !row.userId) return null;
+    const name =
+      [row.firstName, row.lastName].filter((v): v is string => Boolean(v)).join(" ") ||
+      row.username ||
+      (row.email ? row.email.split("@")[0] : null) ||
+      "Innholdsprodusenten";
+    return {
+      userId: row.userId,
+      name,
+      email: row.email ?? null,
+      agency: row.agency ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface ClientOauthConsentRecord {
+  projectId: string;
+  clientEmail: string;
+  clientName: string | null;
+  producerUserId: string;
+  producerName: string | null;
+  producerAgency: string | null;
+  platform: string;
+  scopesSummary: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+/**
+ * Logger klientens eksplisitte samtykke til at produsenten får publiseringstilgang
+ * til en plattform. Gir et sporbart bevis (GDPR) på HVEM som tillot HVA, NÅR.
+ * Defensiv: hvis tabellen ikke finnes (migrasjon ikke kjørt) svelges feilen
+ * slik at selve tilkoblingen ikke blokkeres.
+ */
+export async function recordClientOauthConsent(
+  pool: Pool,
+  record: ClientOauthConsentRecord,
+): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO role_room_client_oauth_consents
+         (project_id, client_email, client_name, producer_user_id, producer_name,
+          producer_agency, platform, scopes_summary, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        record.projectId,
+        record.clientEmail,
+        record.clientName,
+        record.producerUserId,
+        record.producerName,
+        record.producerAgency,
+        record.platform,
+        record.scopesSummary,
+        record.ipAddress,
+        record.userAgent,
+      ],
+    );
+  } catch (error) {
+    console.warn("[client-oauth-consent] kunne ikke logge samtykke", error);
+  }
+}
+
+export interface ClientConsentSummary {
+  platform: string;
+  clientName: string | null;
+  clientEmail: string;
+  consentedAt: string;
+}
+
+/**
+ * Siste samtykke per plattform for et prosjekt — slik produsenten kan SE at
+ * klienten faktisk har godkjent tilgangen (chip i produsent-UI). Defensiv:
+ * tom liste hvis tabellen mangler.
+ */
+export async function latestClientConsentsForProject(
+  pool: Pool,
+  projectId: string,
+): Promise<ClientConsentSummary[]> {
+  try {
+    const { rows } = await pool.query<{
+      platform: string;
+      clientName: string | null;
+      clientEmail: string;
+      consentedAt: Date | string;
+    }>(
+      `SELECT DISTINCT ON (platform)
+              platform,
+              client_name  AS "clientName",
+              client_email AS "clientEmail",
+              consented_at AS "consentedAt"
+         FROM role_room_client_oauth_consents
+        WHERE project_id = $1
+        ORDER BY platform, consented_at DESC`,
+      [projectId],
+    );
+    return rows.map((row) => ({
+      platform: row.platform,
+      clientName: row.clientName ?? null,
+      clientEmail: row.clientEmail,
+      consentedAt: toIso(row.consentedAt) ?? new Date(0).toISOString(),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Leser de autoritative connection-tabellene og bygger en klient-vennlig
  * liste over koblede plattformer for et prosjekt. Produsenten finnes via
