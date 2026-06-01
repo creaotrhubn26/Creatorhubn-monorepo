@@ -157,6 +157,10 @@ import { setupMarketingCompetitorsRoutes } from "./role-room-marketing-competito
 import { startCompetitorSnapshotWorker } from "./role-room-competitor-snapshot-worker.js";
 import { setupPostDraftsRoutes } from "./role-room-post-drafts-routes.js";
 import { setupBrandMetricsRoutes, startBrandMetricsWorker } from "./role-room-brand-metrics-routes.js";
+import {
+  setupReportSchedulerRoutes,
+  startCompetitorReportScheduler,
+} from "./role-room-competitor-report-scheduler.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31991,6 +31995,11 @@ setupPostDraftsRoutes({ app, pool, requireAdminOrDemoBypass });
 // å gi AI-rapporten "vår tilstand"-input → kpiTargets.
 setupBrandMetricsRoutes({ app, pool, requireAdminOrDemoBypass });
 startBrandMetricsWorker(pool);
+
+// Weekly competitor-report-mailer — Monday 08:00 Europe/Oslo, sends report
+// via Resend to MARKETING_REPORT_RECIPIENTS env-var (default daniel@).
+setupReportSchedulerRoutes({ app, pool, requireAdminOrDemoBypass });
+startCompetitorReportScheduler({ pool });
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
