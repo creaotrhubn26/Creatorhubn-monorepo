@@ -633,6 +633,52 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         console.warn('[generate-report] fetch self-metrics failed', err);
       }
 
+      // Fetch top-performers from post_engagement_snapshots (30d)
+      try {
+        const tpR = await pool.query(
+          `SELECT d.platform, d.caption, d.source_insight, d.published_at, d.external_post_id,
+                  (SELECT row_to_json(s) FROM (
+                    SELECT reach, reactions_total, comments_count, engagement_rate, snapshot_at
+                    FROM post_engagement_snapshots
+                    WHERE draft_id = d.id AND fetch_error IS NULL
+                    ORDER BY snapshot_at DESC LIMIT 1
+                  ) s) AS latest
+           FROM marketing_post_drafts d
+           WHERE d.status = 'published'
+             AND d.published_at > now() - interval '30 days'
+             AND EXISTS (
+               SELECT 1 FROM post_engagement_snapshots
+               WHERE draft_id = d.id AND fetch_error IS NULL AND engagement_rate IS NOT NULL
+             )
+           ORDER BY (
+             SELECT engagement_rate FROM post_engagement_snapshots
+             WHERE draft_id = d.id AND fetch_error IS NULL
+             ORDER BY snapshot_at DESC LIMIT 1
+           ) DESC NULLS LAST
+           LIMIT 5`,
+        );
+        if (tpR.rowCount && tpR.rowCount > 0 && selfMetrics) {
+          selfMetrics.topPerformers = tpR.rows.map((r) => {
+            const lt = r.latest as Record<string, unknown> | null;
+            const publishedAt = new Date(r.published_at);
+            const hoursLive = (Date.now() - publishedAt.getTime()) / 3_600_000;
+            return {
+              platform: String(r.platform),
+              caption: typeof r.caption === 'string' ? r.caption.slice(0, 200) : '',
+              sourceInsight: r.source_insight as string | null,
+              publishedAt: r.published_at as string,
+              reach: lt?.reach != null ? Number(lt.reach) : null,
+              reactionsTotal: lt?.reactions_total != null ? Number(lt.reactions_total) : null,
+              commentsCount: lt?.comments_count != null ? Number(lt.comments_count) : null,
+              engagementRate: lt?.engagement_rate != null ? Number(lt.engagement_rate) : null,
+              hoursLive: Math.round(hoursLive),
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('[generate-report] fetch top-performers failed', err);
+      }
+
       // Build full input for Claude.
       const input: CompetitorReportInput = {
         brand: {

@@ -161,6 +161,10 @@ import {
   setupReportSchedulerRoutes,
   startCompetitorReportScheduler,
 } from "./role-room-competitor-report-scheduler.js";
+import {
+  setupPostEngagementRoutes,
+  startPostEngagementWorker,
+} from "./role-room-post-engagement-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -32000,6 +32004,11 @@ startBrandMetricsWorker(pool);
 // via Resend to MARKETING_REPORT_RECIPIENTS env-var (default daniel@).
 setupReportSchedulerRoutes({ app, pool, requireAdminOrDemoBypass });
 startCompetitorReportScheduler({ pool });
+
+// Post-engagement-tracking — poll Meta Insights for publiserte FB-drafts
+// med tette-til-glesnere intervall (1h/6h/24h/3d/7d/14d/30d).
+setupPostEngagementRoutes({ app, pool, requireAdminOrDemoBypass });
+startPostEngagementWorker(pool);
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-

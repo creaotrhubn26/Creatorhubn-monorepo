@@ -31,6 +31,19 @@ export interface BrandMetricsInput {
   };
   facebookSnapshotsCount?: number;
   instagramSnapshotsCount?: number;
+  /** Top-3-5 publiserte posts siste 30d med engagement-data — feedback-loop
+   *  fra hva som faktisk har funket på The Role Rooms egne kanaler. */
+  topPerformers?: Array<{
+    platform: string;
+    caption: string;  // first 200 chars
+    sourceInsight: string | null;
+    publishedAt: string;
+    reach: number | null;
+    reactionsTotal: number | null;
+    commentsCount: number | null;
+    engagementRate: number | null;
+    hoursLive: number | null;
+  }>;
 }
 
 export interface CompetitorReportInput {
@@ -229,6 +242,17 @@ function buildUserMessage(input: CompetitorReportInput): string {
     if (sm.instagram) {
       lines.push(`Instagram @${sm.instagram.username}: followers=${sm.instagram.followersCount} posts=${sm.instagram.mediaCount} avg_likes_recent_10=${sm.instagram.recent10MediaAvgLikes} avg_comments_recent_10=${sm.instagram.recent10MediaAvgComments}`);
       lines.push(`Instagram snapshot history: ${sm.instagramSnapshotsCount ?? 0} data points`);
+    }
+    if (sm.topPerformers && sm.topPerformers.length > 0) {
+      lines.push('');
+      lines.push('## Top-performing publiserte posts siste 30d (feedback fra hva som har funket)');
+      for (const t of sm.topPerformers) {
+        lines.push(`- [${t.platform}] reach=${t.reach} reactions=${t.reactionsTotal} comments=${t.commentsCount} engagement_rate=${t.engagementRate} (${t.hoursLive}h live)`);
+        if (t.sourceInsight) lines.push(`  Fra insight: "${t.sourceInsight}"`);
+        lines.push(`  Caption: ${t.caption.slice(0, 120)}…`);
+      }
+      lines.push('');
+      lines.push('Bruk top-performers til å foreslå MØNSTRE: hvilken pillar/format/vinkel som har drevet engagement, og hvilke kpiTargets som bør justeres opp/ned basert på faktisk performance.');
     }
   }
 
