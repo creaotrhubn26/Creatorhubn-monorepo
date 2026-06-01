@@ -10,6 +10,77 @@ export interface UniversalCrmRoutesDeps {
 export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
 
+  // ── Self-applying, idempotent schema for the CRM workflow-gap features.
+  // Mirrors the CREATE TABLE IF NOT EXISTS pattern used across the codebase
+  // (ergonomics/marketplace/role-room) rather than the fire-and-forget
+  // migrate runner — safer and verifiable (see docs/UNIVERSAL-CRM-WORKFLOW-GAPS.md).
+  const ensureCrmExtraSchema = async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_invoices (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id uuid,
+        contract_id uuid,
+        invoice_number text,
+        description text,
+        total_amount numeric DEFAULT 0,
+        deposit_amount numeric DEFAULT 0,
+        paid_amount numeric DEFAULT 0,
+        currency text DEFAULT 'NOK',
+        status text DEFAULT 'draft',              -- draft|sent|partial|paid|overdue
+        due_date date,
+        issued_at timestamptz,
+        paid_at timestamptz,
+        profession text,
+        owner_user_id text,
+        created_at timestamptz DEFAULT now(),
+        updated_at timestamptz DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS crm_invoices_customer_idx ON crm_invoices(customer_id);
+
+      CREATE TABLE IF NOT EXISTS crm_meetings (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id uuid,
+        title text,
+        description text,
+        location text,
+        meet_link text,
+        web_view_url text,
+        scheduled_at timestamptz,
+        duration_minutes int DEFAULT 60,
+        profession text,
+        owner_user_id text,
+        created_at timestamptz DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS crm_meetings_customer_idx ON crm_meetings(customer_id);
+      CREATE INDEX IF NOT EXISTS crm_meetings_scheduled_idx ON crm_meetings(scheduled_at);
+
+      CREATE TABLE IF NOT EXISTS event_customer_relations (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id text NOT NULL,
+        customer_id uuid,
+        customer_email text,
+        role text DEFAULT 'Client',
+        notes text,
+        owner_user_id text,
+        created_at timestamptz DEFAULT now(),
+        UNIQUE (event_id, customer_id)
+      );
+      CREATE INDEX IF NOT EXISTS event_customer_relations_event_idx ON event_customer_relations(event_id);
+
+      CREATE TABLE IF NOT EXISTS lead_form_tokens (
+        token text PRIMARY KEY,
+        owner_user_id text NOT NULL,
+        profession text,
+        created_at timestamptz DEFAULT now()
+      );
+
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS owner_user_id text;
+    `);
+  };
+  ensureCrmExtraSchema().catch((e) =>
+    console.error("CRM extra-schema bootstrap failed:", e),
+  );
+
   app.get("/api/universal-crm/customers", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     try {
@@ -377,6 +448,23 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
          FROM crm_tasks WHERE 1=1`,
       );
 
+      // Invoice / accounts-receivable stats (#10/#11). Guarded so a missing
+      // table (pre-bootstrap) never breaks the whole stats endpoint.
+      let invoiceRow: any = { total: 0, billed: 0, collected: 0, outstanding: 0, overdue: 0 };
+      try {
+        const invoiceStats = await pool.query(
+          `SELECT count(*) as total,
+                  COALESCE(sum(total_amount), 0) as billed,
+                  COALESCE(sum(paid_amount), 0) as collected,
+                  COALESCE(sum(total_amount - paid_amount) FILTER (WHERE status <> 'paid'), 0) as outstanding,
+                  count(*) FILTER (WHERE status <> 'paid' AND due_date IS NOT NULL AND due_date < CURRENT_DATE) as overdue
+           FROM crm_invoices`,
+        );
+        invoiceRow = invoiceStats.rows[0];
+      } catch (e) {
+        console.warn("Invoice stats skipped (table may not exist yet):", e);
+      }
+
       const statusMap: Record<string, number> = {};
       byStatus.rows.forEach((r: any) => {
         statusMap[r.status || "unknown"] = parseInt(r.count);
@@ -403,6 +491,13 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
             total: parseInt(taskStats.rows[0].total),
             pending: parseInt(taskStats.rows[0].pending),
             completed: parseInt(taskStats.rows[0].completed),
+          },
+          invoices: {
+            total: parseInt(invoiceRow.total),
+            billed: parseFloat(invoiceRow.billed),
+            collected: parseFloat(invoiceRow.collected),
+            outstanding: parseFloat(invoiceRow.outstanding),
+            overdue: parseInt(invoiceRow.overdue),
           },
         },
       });
@@ -793,6 +888,341 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("CRM email templates error:", error);
       return res.status(500).json({ error: "Failed to fetch email templates" });
+    }
+  });
+
+  // ============================================================
+  // CRM Invoices API – #9/#10 manual invoice + payment-status tracking
+  // ============================================================
+
+  const mapInvoice = (r: any) => ({
+    id: r.id,
+    customerId: r.customer_id,
+    contractId: r.contract_id,
+    invoiceNumber: r.invoice_number,
+    description: r.description || "",
+    totalAmount: r.total_amount != null ? parseFloat(r.total_amount) : 0,
+    depositAmount: r.deposit_amount != null ? parseFloat(r.deposit_amount) : 0,
+    paidAmount: r.paid_amount != null ? parseFloat(r.paid_amount) : 0,
+    balanceDue:
+      (r.total_amount != null ? parseFloat(r.total_amount) : 0) -
+      (r.paid_amount != null ? parseFloat(r.paid_amount) : 0),
+    currency: r.currency || "NOK",
+    status: r.status || "draft",
+    dueDate: r.due_date,
+    issuedAt: r.issued_at,
+    paidAt: r.paid_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  });
+
+  app.get("/api/universal-crm/invoices", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    try {
+      const { customer_id } = req.query as Record<string, string>;
+      const where = customer_id ? "WHERE customer_id = $1" : "";
+      const params = customer_id ? [customer_id] : [];
+      const rows = await pool.query(
+        `SELECT * FROM crm_invoices ${where} ORDER BY created_at DESC`,
+        params,
+      );
+      return res.json({ invoices: rows.rows.map(mapInvoice) });
+    } catch (error) {
+      console.error("CRM invoices list error:", error);
+      return res.status(500).json({ error: "Failed to fetch invoices" });
+    }
+  });
+
+  app.post("/api/universal-crm/invoices", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const {
+        customerId,
+        contractId,
+        description,
+        totalAmount,
+        depositAmount,
+        dueDate,
+        profession,
+      } = req.body;
+      // Human-friendly sequential-ish invoice number.
+      const seq = await pool.query(
+        `SELECT count(*) + 1 AS n FROM crm_invoices`,
+      );
+      const invoiceNumber = `INV-${new Date().getFullYear()}-${String(seq.rows[0].n).padStart(4, "0")}`;
+      const result = await pool.query(
+        `INSERT INTO crm_invoices (id, customer_id, contract_id, invoice_number, description, total_amount, deposit_amount, paid_amount, status, due_date, issued_at, profession, owner_user_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 0, 'sent', $7, now(), $8, $9, now(), now()) RETURNING *`,
+        [
+          customerId || null,
+          contractId || null,
+          invoiceNumber,
+          description || null,
+          totalAmount || 0,
+          depositAmount || 0,
+          dueDate || null,
+          profession || null,
+          session.userId,
+        ],
+      );
+      return res.status(201).json({ invoice: mapInvoice(result.rows[0]) });
+    } catch (error) {
+      console.error("CRM invoice create error:", error);
+      return res.status(500).json({ error: "Failed to create invoice" });
+    }
+  });
+
+  // Update an invoice — primarily to record payments / change status.
+  app.put("/api/universal-crm/invoices/:id", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    try {
+      const { paidAmount, status, dueDate, description, totalAmount } = req.body;
+      const setClauses: string[] = ["updated_at = now()"];
+      const params: any[] = [];
+      let idx = 1;
+      if (paidAmount !== undefined) {
+        setClauses.push(`paid_amount = $${idx++}`);
+        params.push(paidAmount);
+      }
+      if (totalAmount !== undefined) {
+        setClauses.push(`total_amount = $${idx++}`);
+        params.push(totalAmount);
+      }
+      if (description !== undefined) {
+        setClauses.push(`description = $${idx++}`);
+        params.push(description);
+      }
+      if (dueDate !== undefined) {
+        setClauses.push(`due_date = $${idx++}`);
+        params.push(dueDate || null);
+      }
+      if (status !== undefined) {
+        setClauses.push(`status = $${idx++}`);
+        params.push(status);
+        if (status === "paid") setClauses.push("paid_at = now()");
+      }
+      params.push(req.params.id);
+      const result = await pool.query(
+        `UPDATE crm_invoices SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+        params,
+      );
+      if (result.rows.length === 0)
+        return res.status(404).json({ error: "Invoice not found" });
+      // Auto-resolve status from amounts when not explicitly set.
+      const inv = mapInvoice(result.rows[0]);
+      if (status === undefined) {
+        const newStatus =
+          inv.paidAmount <= 0
+            ? "sent"
+            : inv.paidAmount >= inv.totalAmount
+              ? "paid"
+              : "partial";
+        if (newStatus !== inv.status) {
+          await pool.query(
+            `UPDATE crm_invoices SET status = $1${newStatus === "paid" ? ", paid_at = now()" : ""} WHERE id = $2`,
+            [newStatus, req.params.id],
+          );
+          inv.status = newStatus;
+        }
+      }
+      return res.json({ invoice: inv });
+    } catch (error) {
+      console.error("CRM invoice update error:", error);
+      return res.status(500).json({ error: "Failed to update invoice" });
+    }
+  });
+
+  // ============================================================
+  // CRM Meetings API – #7 agenda / upcoming meetings
+  // ============================================================
+
+  app.get("/api/universal-crm/meetings", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    try {
+      const { customer_id, upcoming } = req.query as Record<string, string>;
+      let where = "WHERE 1=1";
+      const params: any[] = [];
+      let idx = 1;
+      if (customer_id) {
+        where += ` AND customer_id = $${idx++}`;
+        params.push(customer_id);
+      }
+      if (upcoming === "true") {
+        where += ` AND scheduled_at >= now()`;
+      }
+      const rows = await pool.query(
+        `SELECT * FROM crm_meetings ${where} ORDER BY scheduled_at ASC NULLS LAST LIMIT 100`,
+        params,
+      );
+      return res.json({ meetings: rows.rows });
+    } catch (error) {
+      console.error("CRM meetings list error:", error);
+      return res.status(500).json({ error: "Failed to fetch meetings" });
+    }
+  });
+
+  app.post("/api/universal-crm/meetings", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const {
+        customerId,
+        title,
+        description,
+        location,
+        meetLink,
+        webViewUrl,
+        scheduledAt,
+        durationMinutes,
+        profession,
+      } = req.body;
+      const result = await pool.query(
+        `INSERT INTO crm_meetings (id, customer_id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes, profession, owner_user_id, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now()) RETURNING *`,
+        [
+          customerId || null,
+          title || "Møte",
+          description || null,
+          location || null,
+          meetLink || null,
+          webViewUrl || null,
+          scheduledAt || null,
+          durationMinutes || 60,
+          profession || null,
+          session.userId,
+        ],
+      );
+      return res.status(201).json({ meeting: result.rows[0] });
+    } catch (error) {
+      console.error("CRM meeting create error:", error);
+      return res.status(500).json({ error: "Failed to create meeting" });
+    }
+  });
+
+  // ============================================================
+  // Event ↔ Customer relations – #15 (was a 404 + false-positive toast)
+  // ============================================================
+
+  app.get("/api/events/:id/relations", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    try {
+      const rows = await pool.query(
+        `SELECT r.*, c.name AS customer_name, c.email AS customer_email_resolved
+         FROM event_customer_relations r
+         LEFT JOIN crm_customers c ON c.id = r.customer_id
+         WHERE r.event_id = $1 ORDER BY r.created_at DESC`,
+        [req.params.id],
+      );
+      return res.json({ relations: rows.rows });
+    } catch (error) {
+      console.error("Event relations list error:", error);
+      return res.status(500).json({ error: "Failed to fetch relations" });
+    }
+  });
+
+  app.post("/api/events/:id/relations", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customerId, customerEmail, role, notes } = req.body;
+      const result = await pool.query(
+        `INSERT INTO event_customer_relations (id, event_id, customer_id, customer_email, role, notes, owner_user_id, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now())
+         ON CONFLICT (event_id, customer_id) DO UPDATE SET role = EXCLUDED.role, notes = EXCLUDED.notes
+         RETURNING *`,
+        [
+          req.params.id,
+          customerId || null,
+          customerEmail || null,
+          role || "Client",
+          notes || null,
+          session.userId,
+        ],
+      );
+      return res.status(201).json({ relation: result.rows[0] });
+    } catch (error) {
+      console.error("Event relation create error:", error);
+      return res.status(500).json({ error: "Failed to link customer to event" });
+    }
+  });
+
+  // ============================================================
+  // Lead intake – #1/#16 public web-form endpoint + form token
+  // ============================================================
+
+  // Authenticated: get-or-create the caller's public lead-form token.
+  app.get("/api/universal-crm/lead-form-token", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { profession } = req.query as Record<string, string>;
+      const existing = await pool.query(
+        `SELECT * FROM lead_form_tokens WHERE owner_user_id = $1 LIMIT 1`,
+        [session.userId],
+      );
+      let row = existing.rows[0];
+      if (!row) {
+        const created = await pool.query(
+          `INSERT INTO lead_form_tokens (token, owner_user_id, profession, created_at)
+           VALUES (encode(gen_random_bytes(12), 'hex'), $1, $2, now()) RETURNING *`,
+          [session.userId, profession || null],
+        );
+        row = created.rows[0];
+      }
+      return res.json({ token: row.token, profession: row.profession });
+    } catch (error) {
+      console.error("Lead-form token error:", error);
+      return res.status(500).json({ error: "Failed to get lead form token" });
+    }
+  });
+
+  // Public: a website inquiry form posts here. No auth — the token maps the
+  // lead to its photographer. Creates a lead (source='website') + an SLA task.
+  app.post("/api/public/lead/:formToken", async (req, res) => {
+    try {
+      const tokenRow = await pool.query(
+        `SELECT * FROM lead_form_tokens WHERE token = $1`,
+        [req.params.formToken],
+      );
+      if (tokenRow.rows.length === 0) {
+        return res.status(404).json({ error: "Unknown form" });
+      }
+      const owner = tokenRow.rows[0];
+      const { name, email, phone, projectType, budget, notes } = req.body;
+      if (!name || !email) {
+        return res.status(400).json({ error: "Name and email are required" });
+      }
+      const inserted = await pool.query(
+        `INSERT INTO crm_customers (id, name, email, phone, profession, project_type, budget, status, notes, source, owner_user_id, custom_fields, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'lead', $7, 'website', $8, '{}'::jsonb, now(), now()) RETURNING id`,
+        [
+          name,
+          email,
+          phone || null,
+          owner.profession || null,
+          projectType || null,
+          budget || null,
+          notes || null,
+          owner.owner_user_id,
+        ],
+      );
+      const customerId = inserted.rows[0].id;
+      // SLA: follow up within 24h.
+      await pool.query(
+        `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, assigned_to, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'high', 'pending', now() + interval '24 hours', $4, now(), now())`,
+        [
+          customerId,
+          `Følg opp ny henvendelse: ${name}`,
+          `Innkommet via nettside-skjema. ${notes || ""}`.trim(),
+          owner.owner_user_id,
+        ],
+      ).catch((e) => console.warn("Lead SLA task insert skipped:", e));
+      return res.status(201).json({ ok: true, message: "Takk! Vi tar kontakt snart." });
+    } catch (error) {
+      console.error("Public lead intake error:", error);
+      return res.status(500).json({ error: "Failed to submit lead" });
     }
   });
 }

@@ -214,6 +214,10 @@ export default function UniversalCRMDashboard({
     totalAmount: '',
     depositAmount: '',
   });
+  // #9/#10 — invoices dialog state
+  const [showInvoicesDialog, setShowInvoicesDialog] = useState(false);
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({ description: '', totalAmount: '', depositAmount: '', dueDate: '' });
   // Slice 9X.8 — per-client galleries dialog. Opens when photographer
   // clicks "Galleri-historikk" on a customer card; lists every gallery
   // belonging to that customer with full status, share-link, and
@@ -779,6 +783,19 @@ export default function UniversalCRMDashboard({
       const meeting = data.meeting || {};
       setMeetingResult({ meetLink: meeting.meetLink ?? null, webViewUrl: meeting.webViewUrl ?? null });
 
+      // #7 — persist to the CRM agenda so "kommende møter" can list it.
+      recordMeetingMutation.mutate({
+        customerId: data.customer?.id,
+        title: `Møte med ${data.customer?.name || 'kunde'}`,
+        description: meetingForm.description,
+        location: meetingForm.location,
+        meetLink: meeting.meetLink ?? null,
+        webViewUrl: meeting.webViewUrl ?? null,
+        scheduledAt: meetingForm.date ? `${meetingForm.date}T${meetingForm.time || '10:00'}:00` : null,
+        durationMinutes: meetingForm.duration,
+        profession: activeProfession,
+      });
+
       // #26 — a scheduled meeting advances a raw lead one step.
       if (data.customer?.id && data.customer.status === 'lead') {
         updateCustomerMutation.mutate({ id: data.customer.id, updates: { status: 'prospect' } });
@@ -969,6 +986,91 @@ export default function UniversalCRMDashboard({
     },
   });
 
+  // #9/#10 — invoices for the open customer.
+  const { data: invoicesData } = useQuery<{ invoices: any[] }>({
+    queryKey: ['universal-crm-invoices', selectedCustomer?.id],
+    enabled: Boolean(selectedCustomer?.id) && showInvoicesDialog,
+    queryFn: async () => {
+      const r = await fetch(`/api/universal-crm/invoices?customer_id=${encodeURIComponent(selectedCustomer!.id)}`);
+      if (!r.ok) return { invoices: [] };
+      return r.json();
+    },
+  });
+  const customerInvoices = invoicesData?.invoices || [];
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: async ({ customer, form }: { customer: UniversalCustomer; form: typeof invoiceForm }) => {
+      return apiRequest('/api/universal-crm/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: customer.id,
+          description: form.description || `${customer.name} – ${customer.projectType || 'oppdrag'}`,
+          totalAmount: Number(form.totalAmount) || customer.budget || 0,
+          depositAmount: Number(form.depositAmount) || 0,
+          dueDate: form.dueDate || null,
+          profession: activeProfession,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      emitCrmChange('invoice:created', { customerId: selectedCustomer?.id });
+      setShowInvoiceForm(false);
+      setInvoiceForm({ description: '', totalAmount: '', depositAmount: '', dueDate: '' });
+      toast({ title: 'Faktura opprettet', description: 'Markert som sendt. Registrer betaling når den kommer.', variant: 'success' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke opprette faktura', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  const recordPaymentMutation = useMutation({
+    mutationFn: async ({ invoice, kind }: { invoice: any; kind: 'deposit' | 'full' }) => {
+      const paidAmount = kind === 'full' ? invoice.totalAmount : (invoice.depositAmount || 0);
+      return apiRequest(`/api/universal-crm/invoices/${encodeURIComponent(invoice.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paidAmount }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      emitCrmChange('invoice:paid', { customerId: selectedCustomer?.id });
+      toast({ title: 'Betaling registrert', variant: 'success' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke registrere betaling', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  // #7 — record each scheduled meeting so the agenda has something to list.
+  const recordMeetingMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      return apiRequest('/api/universal-crm/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crm-meetings'] });
+    },
+  });
+
+  // #7 — upcoming meetings agenda.
+  const { data: upcomingMeetingsData } = useQuery<{ meetings: any[] }>({
+    queryKey: ['crm-meetings', 'upcoming'],
+    queryFn: async () => {
+      const r = await fetch('/api/universal-crm/meetings?upcoming=true');
+      if (!r.ok) return { meetings: [] };
+      return r.json();
+    },
+  });
+  const upcomingMeetings = upcomingMeetingsData?.meetings || [];
+
   const customers = customersData?.customers || [];
   const stats = statsData?.stats || { total: 0, byStatus: {}, recentlyAdded: 0, deals: { totalValue: 0, won: 0 }, tasks: {} };
   // #22/#14 — status is now filtered server-side, so the rendered list IS the
@@ -1006,7 +1108,8 @@ export default function UniversalCRMDashboard({
       // #11 — profession-agnostic revenue KPI from the deal pipeline the
       // backend already sums; no longer hidden behind the music-producer branch.
       value: `${Math.round(stats.deals?.totalValue || 0).toLocaleString('nb-NO')} kr`,
-      description: `${stats.deals?.won || 0} vunnet i pipeline`,
+      // #10 — surface outstanding accounts-receivable from invoices.
+      description: `Utestående: ${Math.round(stats.invoices?.outstanding || 0).toLocaleString('nb-NO')} kr`,
       tone: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)',
     },
     {
@@ -1563,6 +1666,35 @@ export default function UniversalCRMDashboard({
           </Stack>
         </Paper>
 
+        {/* #7 — upcoming meetings agenda so scheduled meetings don't vanish. */}
+        {upcomingMeetings.length > 0 && (
+          <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3.5, border: surfaceBorder }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+              <Schedule sx={{ color: colors.primary }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Kommende møter</Typography>
+              <Chip size="small" label={upcomingMeetings.length} sx={{ bgcolor: alpha(colors.primary, 0.12), color: colors.primary, fontWeight: 700 }} />
+            </Stack>
+            <Stack spacing={1}>
+              {upcomingMeetings.slice(0, 5).map((m: any) => (
+                <Stack key={m.id} direction="row" spacing={1.5} alignItems="center" justifyContent="space-between" sx={{ flexWrap: 'wrap' }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{m.title || 'Møte'}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {m.scheduled_at ? new Date(m.scheduled_at).toLocaleString('nb-NO', { dateStyle: 'medium', timeStyle: 'short' }) : 'Ukjent tid'}
+                      {m.location ? ` • ${m.location}` : ''}
+                    </Typography>
+                  </Box>
+                  {m.meet_link && (
+                    <Button size="small" startIcon={<VideoCall />} onClick={() => window.open(m.meet_link, '_blank')}>
+                      Bli med
+                    </Button>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+          </Paper>
+        )}
+
         {showAddForm && (
           <Paper
             elevation={0}
@@ -1702,14 +1834,34 @@ export default function UniversalCRMDashboard({
                   <Typography variant="body2" color="text.secondary">
                     Opprett den første kunden manuelt, eller la dem komme inn automatisk via kundeforespørsels-skjemaet på nettsiden din.
                   </Typography>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={() => setShowAddForm(true)}
-                    sx={{ bgcolor: colors.primary, mt: 1 }}
-                  >
-                    Opprett første kunde
-                  </Button>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                    <Button
+                      variant="contained"
+                      size="large"
+                      onClick={() => setShowAddForm(true)}
+                      sx={{ bgcolor: colors.primary }}
+                    >
+                      Opprett første kunde
+                    </Button>
+                    {/* #16 — real embeddable lead form, not an empty promise. */}
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      startIcon={<CopyIcon />}
+                      onClick={async () => {
+                        try {
+                          const r = await apiRequest(`/api/universal-crm/lead-form-token?profession=${encodeURIComponent(activeProfession)}`);
+                          const url = `${window.location.origin}/lead/${r.token}`;
+                          await navigator.clipboard?.writeText(url);
+                          toast({ title: 'Skjema-lenke kopiert', description: url, variant: 'success', duration: 8000 });
+                        } catch (e: any) {
+                          toast({ title: 'Kunne ikke hente skjema-lenke', description: e?.message || 'Prøv igjen.', variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      Kopier skjema-lenke for nettsiden
+                    </Button>
+                  </Stack>
                 </Stack>
               ) : (
                 <Stack spacing={1.5} alignItems="flex-start">
@@ -2097,6 +2249,22 @@ export default function UniversalCRMDashboard({
                               sx={{ borderColor: alpha('#7c3aed', 0.4), color: '#7c3aed' }}
                             >
                               Tilbud
+                            </Button>
+                            {/* #9 — invoicing from the card. */}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<InvoiceIcon />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(customer);
+                                setShowInvoiceForm(false);
+                                setShowInvoicesDialog(true);
+                              }}
+                              disabled={!salesTrackingAccess.hasAccess}
+                              sx={{ borderColor: alpha('#16a34a', 0.4), color: '#16a34a' }}
+                            >
+                              Faktura
                             </Button>
                             <Button
                               size="small"
@@ -2982,6 +3150,114 @@ export default function UniversalCRMDashboard({
             projectId={typeof selectedProject?.id === 'string' ? selectedProject.id : undefined}
           />
         </DialogContent>
+      </Dialog>
+
+      {/* #9/#10 — invoices: list, create, record payment */}
+      <Dialog open={showInvoicesDialog} onClose={() => { setShowInvoicesDialog(false); setShowInvoiceForm(false); }} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <InvoiceIcon sx={{ color: '#16a34a' }} />
+              <Typography variant="h6">Fakturaer for {selectedCustomer?.name}</Typography>
+            </Box>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setInvoiceForm({
+                  description: `${selectedCustomer?.name} – ${selectedCustomer?.projectType || 'oppdrag'}`,
+                  totalAmount: selectedCustomer?.budget ? String(selectedCustomer.budget) : '',
+                  depositAmount: '',
+                  dueDate: '',
+                });
+                setShowInvoiceForm((v) => !v);
+              }}
+              sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
+            >
+              {showInvoiceForm ? 'Skjul skjema' : 'Ny faktura'}
+            </Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {showInvoiceForm && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <TextField label="Beskrivelse" value={invoiceForm.description} onChange={(e) => setInvoiceForm((f) => ({ ...f, description: e.target.value }))} fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Totalbeløp (NOK)" type="number" value={invoiceForm.totalAmount} onChange={(e) => setInvoiceForm((f) => ({ ...f, totalAmount: e.target.value }))} fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Depositum (NOK)" type="number" value={invoiceForm.depositAmount} onChange={(e) => setInvoiceForm((f) => ({ ...f, depositAmount: e.target.value }))} fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Forfall" type="date" value={invoiceForm.dueDate} onChange={(e) => setInvoiceForm((f) => ({ ...f, dueDate: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
+                </Grid>
+                <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    disabled={createInvoiceMutation.isPending || !selectedCustomer}
+                    onClick={() => selectedCustomer && createInvoiceMutation.mutate({ customer: selectedCustomer, form: invoiceForm })}
+                    sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
+                  >
+                    {createInvoiceMutation.isPending ? 'Oppretter…' : 'Opprett faktura'}
+                  </Button>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+          {customerInvoices.length === 0 ? (
+            <Alert severity="info">Ingen fakturaer for denne kunden ennå.</Alert>
+          ) : (
+            <List>
+              {customerInvoices.map((inv: any) => {
+                const statusColor = inv.status === 'paid' ? 'success' : inv.status === 'partial' ? 'warning' : inv.status === 'overdue' ? 'error' : 'default';
+                return (
+                  <React.Fragment key={inv.id}>
+                    <ListItem alignItems="flex-start">
+                      <ListItemText
+                        primary={`${inv.invoiceNumber} — ${inv.description || 'Faktura'}`}
+                        secondary={
+                          <Box>
+                            <Typography variant="caption" display="block">
+                              Total: NOK {Number(inv.totalAmount).toLocaleString('nb-NO')} • Betalt: NOK {Number(inv.paidAmount).toLocaleString('nb-NO')} • Utestående: NOK {Number(inv.balanceDue).toLocaleString('nb-NO')}
+                            </Typography>
+                            {inv.dueDate && (
+                              <Typography variant="caption" display="block" color="text.secondary">
+                                Forfall: {new Date(inv.dueDate).toLocaleDateString('no-NO')}
+                              </Typography>
+                            )}
+                          </Box>
+                        }
+                      />
+                      <Stack spacing={0.5} alignItems="flex-end">
+                        <Chip label={inv.status} size="small" color={statusColor as any} />
+                        {inv.status !== 'paid' && (
+                          <Stack direction="row" spacing={0.5}>
+                            {inv.depositAmount > 0 && inv.paidAmount < inv.depositAmount && (
+                              <Button size="small" disabled={recordPaymentMutation.isPending} onClick={() => recordPaymentMutation.mutate({ invoice: inv, kind: 'deposit' })}>
+                                Depositum betalt
+                              </Button>
+                            )}
+                            <Button size="small" variant="outlined" disabled={recordPaymentMutation.isPending} onClick={() => recordPaymentMutation.mutate({ invoice: inv, kind: 'full' })}>
+                              Marker betalt
+                            </Button>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </ListItem>
+                    <Divider component="li" />
+                  </React.Fragment>
+                );
+              })}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setShowInvoicesDialog(false); setShowInvoiceForm(false); }}>Lukk</Button>
+        </DialogActions>
       </Dialog>
 
       {/* #41 — delete / archive confirmation */}
