@@ -27,7 +27,7 @@ interface Props {
   picks: NarrativePick[];
   structure: NarrativeStructure;
   onGenerateAlternative: () => void;
-  onApplyRecommendation: (recId: string) => void;
+  onApplyRecommendation: (rec: StoryRecommendation) => void;
   /** Brief sendt til Claude for å forme ton + språk. */
   projectBrief?: { type: string; intent?: string };
 }
@@ -92,7 +92,7 @@ export function StoryDirectorPanel({
               <p style={recBody}>{rec.body}</p>
               <button
                 style={recAction}
-                onClick={() => onApplyRecommendation(rec.id)}
+                onClick={() => onApplyRecommendation(rec)}
               >
                 Se forslag
                 {rec.actionCount != null && ` (${rec.actionCount} klipp)`}

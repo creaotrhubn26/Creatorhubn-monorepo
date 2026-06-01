@@ -46,7 +46,11 @@ interface Props {
   /** Når "Generer alternativ historie" klikkes. */
   onGenerateAlternative?: () => void;
   /** Når en Story Director-anbefaling klikkes. */
-  onApplyRecommendation?: (recId: string) => void;
+  onApplyRecommendation?: (
+    rec: import("../../hooks/useStoryRecommendations").StoryRecommendation,
+  ) => void;
+  /** Pick-indekser som highlightes (sekundær — ikke focused, men relatert). */
+  highlightedPickIndices?: number[];
   /** Tilbakeknapp ned i wizard-footer (forventes wired av parent). */
   onBackToProject?: () => void;
   onStartEditing?: () => void;
@@ -68,6 +72,7 @@ export function StoryView({
   projectInfo,
   onGenerateAlternative = () => {},
   onApplyRecommendation = () => {},
+  highlightedPickIndices = [],
   onBackToProject,
   onStartEditing,
 }: Props) {
@@ -101,6 +106,7 @@ export function StoryView({
             structure={structure}
             focusedPickIndex={focusedPickIndex}
             onFocusPick={onFocusPick}
+            highlightedPickIndices={highlightedPickIndices}
           />
         </div>
 

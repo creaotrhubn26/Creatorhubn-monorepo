@@ -44,6 +44,7 @@ export function StoryTestHarness() {
   }).__POST_AGENT_TEST_PICKS__;
   const picks: NarrativePick[] = payload?.picks ?? FALLBACK_PICKS;
   const [focused, setFocused] = useState<number | null>(picks[0]?.index ?? null);
+  const [highlighted, setHighlighted] = useState<number[]>([]);
   const [tab, setTab] = useState<"rediger" | "story">("story");
 
   return (
@@ -86,7 +87,18 @@ export function StoryTestHarness() {
             picks={picks}
             chapters={WEDDING_CHAPTERS_FOR_STORY}
             focusedPickIndex={focused}
-            onFocusPick={setFocused}
+            onFocusPick={(idx) => {
+              setFocused(idx);
+              // Klikk på enkelt-pick rydder highlights (manuell navigasjon)
+              setHighlighted([]);
+            }}
+            highlightedPickIndices={highlighted}
+            onApplyRecommendation={(rec) => {
+              const indices = rec.pickIndices ?? [];
+              if (indices.length === 0) return;
+              setFocused(indices[0]);
+              setHighlighted(indices);
+            }}
             projectInfo={{
               project: "Emma & Jonas — Bryllup",
               client: "Emma & Jonas",
