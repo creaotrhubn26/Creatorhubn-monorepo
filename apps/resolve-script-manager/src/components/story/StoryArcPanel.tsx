@@ -13,10 +13,21 @@ interface Props {
   structure: NarrativeStructure;
   focusedPickIndex: number | null;
   onFocusPick: (pickIndex: number | null) => void;
+  /** Sekundære highlights — vises som lilla outline (vs pink for focused). */
+  highlightedPickIndices?: number[];
 }
 
-export function StoryArcPanel({ structure, focusedPickIndex, onFocusPick }: Props) {
+export function StoryArcPanel({
+  structure,
+  focusedPickIndex,
+  onFocusPick,
+  highlightedPickIndices = [],
+}: Props) {
   const { beats, arcPoints } = structure;
+  const highlightSet = useMemo(
+    () => new Set(highlightedPickIndices),
+    [highlightedPickIndices],
+  );
 
   // Bygg SVG-path for energi-kurven
   const pathD = useMemo(() => {
@@ -96,33 +107,47 @@ export function StoryArcPanel({ structure, focusedPickIndex, onFocusPick }: Prop
           </linearGradient>
         </defs>
         <path d={pathD} stroke="url(#arcGradient)" strokeWidth={2} fill="none" />
-        {arcPoints.map((p, i) => (
-          <circle
-            key={i}
-            cx={12 + p.tNorm * (800 - 24)}
-            cy={140 - 12 - p.energy * (140 - 24)}
-            r={p.pickIndex === focusedPickIndex ? 6 : 3}
-            fill={p.pickIndex === focusedPickIndex ? "#f472b6" : "#a78bfa"}
-            style={{ cursor: "pointer" }}
-            onClick={() => onFocusPick(p.pickIndex)}
-          />
-        ))}
+        {arcPoints.map((p, i) => {
+          const isFocused = p.pickIndex === focusedPickIndex;
+          const isHighlighted = !isFocused && highlightSet.has(p.pickIndex);
+          return (
+            <circle
+              key={i}
+              cx={12 + p.tNorm * (800 - 24)}
+              cy={140 - 12 - p.energy * (140 - 24)}
+              r={isFocused ? 6 : isHighlighted ? 5 : 3}
+              fill={isFocused ? "#f472b6" : isHighlighted ? "#c084fc" : "#a78bfa"}
+              stroke={isHighlighted ? "#f472b6" : "none"}
+              strokeWidth={isHighlighted ? 1.5 : 0}
+              style={{ cursor: "pointer" }}
+              onClick={() => onFocusPick(p.pickIndex)}
+            />
+          );
+        })}
       </svg>
 
       {/* Thumbnail-strip */}
       <div style={thumbStrip} data-testid="story-arc-thumbs">
-        {samplePicks.map((p) => (
+        {samplePicks.map((p) => {
+          const isFocused = p.index === focusedPickIndex;
+          const isInRecSet = highlightSet.has(p.index);
+          // Outline-prioritet: focused > highlighted > ingen.
+          // `data-highlighted` markerer alle picks anbefalingen viser til,
+          // uavhengig av om de også er focused.
+          return (
           <div
             key={p.index}
             style={{
               ...thumb,
-              outline:
-                p.index === focusedPickIndex
-                  ? "2px solid #f472b6"
+              outline: isFocused
+                ? "2px solid #f472b6"
+                : isInRecSet
+                  ? "2px dashed #c084fc"
                   : "1px solid transparent",
             }}
             onClick={() => onFocusPick(p.index)}
             data-testid={`story-thumb-${p.index}`}
+            data-highlighted={isInRecSet ? "true" : "false"}
           >
             {p.thumbnailPath ? (
               <img
@@ -138,7 +163,8 @@ export function StoryArcPanel({ structure, focusedPickIndex, onFocusPick }: Prop
               <div style={thumbChapter}>{p.chapter ?? "—"}</div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={navHint} aria-hidden>

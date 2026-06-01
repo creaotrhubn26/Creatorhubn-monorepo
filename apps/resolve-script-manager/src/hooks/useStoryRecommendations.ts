@@ -35,6 +35,12 @@ export interface StoryRecommendation {
   category: RecommendationCategory;
   /** Foreslått antall klipp som anbefalingen gjelder (vises i CTA). */
   actionCount?: number;
+  /**
+   * Pick-indekser (samme `index`-felt som NarrativePick) som anbefalingen
+   * peker på. Lar `onApplyRecommendation` highlighte/fokusere disse
+   * direkte i Story Arc + Rediger.
+   */
+  pickIndices?: number[];
 }
 
 export interface StoryRecommendationsState {
@@ -154,6 +160,8 @@ const STORY_DIRECTOR_SYSTEM_PROMPT = `Du er Story Director for Post Agent — en
 
 Du leverer 2-4 KONKRETE, HANDLINGSORIENTERTE anbefalinger basert på det filmskaperen allerede har klippet. Du holder tonen varm og presis — ikke generisk, ikke svulstig.
 
+Hver anbefaling MÅ peke på spesifikke pick-indekser i \`pickIndices\` slik at brukeren kan klikke "Se forslag" og hoppe direkte til de relevante klippene. Bruk indeks-tallene som er listet i prompten — ikke finn på nye tall.
+
 Du SVARER ALLTID kun med gyldig JSON i dette skjemaet, uten markdown-kode-fence:
 
 {
@@ -164,7 +172,8 @@ Du SVARER ALLTID kun med gyldig JSON i dette skjemaet, uten markdown-kode-fence:
       "title": "kort tittel (3-5 ord)",
       "body": "1-2 setninger om HVA + HVORFOR",
       "category": "emotion" | "variety" | "structure" | "ending" | "pacing",
-      "actionCount": valgfritt tall som antyder antall klipp
+      "pickIndices": [array av pick-index-tall fra prompten],
+      "actionCount": valgfritt tall som antyder antall klipp (default: pickIndices.length)
     }
   ]
 }
@@ -194,6 +203,14 @@ function compactProjectBrief(opts: Opts): string {
     .map(([k, v]) => `${k}=${v}`)
     .join(", ");
 
+  const picksList = picks
+    .map((p) => {
+      const dur = p.durationSec.toFixed(0);
+      const score = p.score.toFixed(2);
+      return `  #${p.index}: ${p.chapter ?? "—"} (${dur}s, score ${score})`;
+    })
+    .join("\n");
+
   return [
     `Prosjekt-type: ${projectBrief?.type ?? "ukjent"}`,
     projectBrief?.intent ? `Intent: ${projectBrief.intent}` : "",
@@ -203,7 +220,10 @@ function compactProjectBrief(opts: Opts): string {
     `Gjennomsnittsscore pr beat: ${energyByBeat}`,
     `Picks pr chapter: ${chapterList}`,
     "",
-    "Gi 2-4 anbefalinger som gjør historien sterkere. Husk: kun JSON.",
+    "Picks (referer til disse indeksene i pickIndices):",
+    picksList,
+    "",
+    "Gi 2-4 anbefalinger som gjør historien sterkere. Husk: kun JSON, og hver anbefaling MÅ ha pickIndices.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -226,19 +246,29 @@ function parseClaudeResponse(
         body?: string;
         category?: string;
         actionCount?: number;
+        pickIndices?: unknown;
       }>;
     };
     if (!Array.isArray(parsed.recommendations)) return null;
     const recs: StoryRecommendation[] = parsed.recommendations
       .filter((r) => r.title && r.body)
       .slice(0, 4)
-      .map((r, i) => ({
-        id: r.id?.trim() || `claude-${i}`,
-        title: String(r.title),
-        body: String(r.body),
-        category: normalizeCategory(r.category),
-        actionCount: typeof r.actionCount === "number" ? r.actionCount : undefined,
-      }));
+      .map((r, i) => {
+        const pickIndices = Array.isArray(r.pickIndices)
+          ? (r.pickIndices.filter((v) => typeof v === "number") as number[])
+          : undefined;
+        return {
+          id: r.id?.trim() || `claude-${i}`,
+          title: String(r.title),
+          body: String(r.body),
+          category: normalizeCategory(r.category),
+          actionCount:
+            typeof r.actionCount === "number"
+              ? r.actionCount
+              : pickIndices?.length,
+          pickIndices: pickIndices && pickIndices.length > 0 ? pickIndices : undefined,
+        };
+      });
     if (recs.length === 0) return null;
     return {
       summary: parsed.summary?.trim() || "Historien din har en sterk struktur",
@@ -274,13 +304,17 @@ function buildHeuristicRecommendations(
 
   const peakBeat = structure.beats.find((b) => b.id === "peak");
   if (peakBeat && peakBeat.picks.length < 3) {
+    // Picks rett før peak (build-fasen) er kandidater for å puste ut
+    const buildBeat = structure.beats.find((b) => b.id === "build");
+    const buildIndices = (buildBeat?.picks ?? []).map((p) => p.index).slice(0, 3);
     recs.push({
       id: "more-breathing-before-peak",
       title: "Mer pust før peak",
       body:
         "Vurder å gjøre delen før peak litt roligere. Et ekstra reaksjons-klipp vil gjøre toppen mer effektfull.",
       category: "pacing",
-      actionCount: 3,
+      pickIndices: buildIndices.length > 0 ? buildIndices : undefined,
+      actionCount: buildIndices.length > 0 ? buildIndices.length : 3,
     });
   }
 
@@ -288,35 +322,58 @@ function buildHeuristicRecommendations(
     (p) => ((p.signals?.faces as number | undefined) ?? 0) > 0.5,
   ).length;
   if (faceSignals < picks.length * 0.3) {
+    // Picks UTEN sterke face-signaler — disse trenger reaksjons-klipp i nærheten
+    const lowFaceIndices = picks
+      .filter((p) => ((p.signals?.faces as number | undefined) ?? 0) <= 0.5)
+      .slice(0, 3)
+      .map((p) => p.index);
     recs.push({
       id: "parent-reactions",
       title: "Reaksjon fra mennesker",
       body:
         "Du har fine atmosfære-klipp, men mangler ansiktsreaksjoner. Dette vil forsterke emosjonen.",
       category: "emotion",
+      pickIndices: lowFaceIndices.length > 0 ? lowFaceIndices : undefined,
+      actionCount: lowFaceIndices.length || undefined,
     });
   }
 
   const outro = structure.beats.find((b) => b.id === "outro");
   if (!outro || outro.picks.length < 2) {
+    const outroIndices = (outro?.picks ?? []).map((p) => p.index);
     recs.push({
       id: "stronger-outro",
       title: "Sterkere avslutning",
       body:
         "Avslutningen kan bygge ut følelsen litt mer. Et siste atmosfærisk øyeblikk vil gi en fin etterklang.",
       category: "ending",
+      pickIndices: outroIndices.length > 0 ? outroIndices : undefined,
       actionCount: 2,
     });
   }
 
   const uniqueChapters = new Set(picks.map((p) => p.chapter ?? "—")).size;
   if (uniqueChapters < 4) {
+    // Velg picks fra de mest dominerende chaptersene — variasjon trengs der
+    const chapterCount = new Map<string, number>();
+    for (const p of picks) {
+      const ch = p.chapter ?? "—";
+      chapterCount.set(ch, (chapterCount.get(ch) ?? 0) + 1);
+    }
+    const dominant = Array.from(chapterCount.entries())
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+    const dominantIndices = picks
+      .filter((p) => (p.chapter ?? "—") === dominant)
+      .slice(0, 4)
+      .map((p) => p.index);
     recs.push({
       id: "more-variety",
       title: "Mer variasjon i shots",
       body:
         "Historien lener seg på samme type klipp. Legg til detaljbilder eller bredere atmosfære-shots.",
       category: "variety",
+      pickIndices: dominantIndices.length > 0 ? dominantIndices : undefined,
+      actionCount: dominantIndices.length || undefined,
     });
   }
 
