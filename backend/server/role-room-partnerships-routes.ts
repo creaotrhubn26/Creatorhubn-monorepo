@@ -74,21 +74,84 @@ async function resolveUserContext(pool: Pool, userId: string): Promise<UserConte
   };
 }
 
+/** Den nåværende vilkår-versjonen byråene må godta. Bump ved endring → krever re-accept. */
+export const CURRENT_PARTNERSHIP_TERMS_VERSION = "1.0";
+
+type QualifiedAgency = {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  type: string;
+  contact_email: string | null;
+  verified: boolean;
+  partnerships_enabled: boolean;
+  partnerships_paused_at: Date | null;
+  partnerships_terms_accepted_at: Date | null;
+  partnerships_terms_version: string | null;
+  partnerships_closed_at: Date | null;
+};
+
 /** Sjekk at agency-profilen er kvalifisert nok for partnership-foresp. */
 async function fetchQualifiedAgency(
   pool: Pool,
   agencyOrgId: string,
-): Promise<
-  | { id: string; name: string; logo_url: string | null; type: string; contact_email: string | null; verified: boolean }
-  | null
-> {
+): Promise<QualifiedAgency | null> {
   const r = await pool.query(
-    `SELECT id::text, name, logo_url, type, contact_email, COALESCE(verified, false) AS verified
+    `SELECT id::text, name, logo_url, type, contact_email,
+            COALESCE(verified, false) AS verified,
+            COALESCE(partnerships_enabled, false) AS partnerships_enabled,
+            partnerships_paused_at,
+            partnerships_terms_accepted_at,
+            partnerships_terms_version,
+            partnerships_closed_at
        FROM agency_orgs
       WHERE id = $1 AND status = 'active' LIMIT 1`,
     [agencyOrgId],
   );
   return r.rows[0] ?? null;
+}
+
+/**
+ * Returnerer en feilmelding hvis byrået ikke er tilgjengelig for nye
+ * partnership-forespørsler. Returnerer null hvis OK.
+ */
+function checkAgencyAvailability(agency: QualifiedAgency): string | null {
+  if (!agency.logo_url || !agency.contact_email) {
+    return "Byrået må fullføre sin profil (logo + kontakt-e-post) før det kan inngå partnership";
+  }
+  if (agency.partnerships_closed_at) {
+    return "Byrået har stengt for nye partnerships";
+  }
+  if (!agency.partnerships_terms_accepted_at) {
+    return "Byrået har ikke godtatt vilkårene for partnership-systemet ennå";
+  }
+  if (agency.partnerships_terms_version !== CURRENT_PARTNERSHIP_TERMS_VERSION) {
+    return "Byrået må godta oppdaterte vilkår før de kan inngå nye partnerships";
+  }
+  if (!agency.partnerships_enabled) {
+    return "Byrået har ikke slått på tilgjengelighet for partnerships";
+  }
+  if (agency.partnerships_paused_at) {
+    return "Byrået har midlertidig pauset partnerships";
+  }
+  return null;
+}
+
+async function logAvailabilityAudit(
+  pool: Pool,
+  data: {
+    agencyOrgId: string;
+    actorUserId: string;
+    action: string;
+    details?: Record<string, unknown>;
+  },
+) {
+  await pool.query(
+    `INSERT INTO agency_partnership_availability_audit
+       (agency_org_id, actor_user_id, action, details)
+     VALUES ($1::uuid, $2, $3, $4::jsonb)`,
+    [data.agencyOrgId, data.actorUserId, data.action, JSON.stringify(data.details ?? {})],
+  );
 }
 
 async function logAudit(
@@ -150,16 +213,34 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       });
     }
 
-    // Validér at byrået faktisk har en kvalifisert profil
+    // Validér at byrået faktisk har en kvalifisert + tilgjengelig profil.
+    // Når byrået selv proposer er det OK at partnerships_enabled=FALSE (de
+    // tar initiativ til en spesifikk produksjon før de slår på discoverability
+    // bredt), men de må uansett ha godtatt vilkårene.
     const agency = await fetchQualifiedAgency(pool, agency_org_id);
     if (!agency) {
       return res.status(404).json({ error: "Byrå ikke funnet eller ikke aktivt" });
     }
-    if (!agency.logo_url || !agency.contact_email) {
-      return res.status(409).json({
-        error:
-          "Byrået må fullføre sin profil (logo + kontakt-e-post) før det kan inngå partnership",
-      });
+    if (proposedBy === "production") {
+      const unavail = checkAgencyAvailability(agency);
+      if (unavail) {
+        return res.status(409).json({ error: unavail });
+      }
+    } else {
+      // Bryå selv proposer — minimum: profil + vilkår godtatt + ikke stengt
+      if (!agency.logo_url || !agency.contact_email) {
+        return res.status(409).json({
+          error: "Byrået må fullføre sin profil (logo + kontakt-e-post) før partnership",
+        });
+      }
+      if (agency.partnerships_closed_at) {
+        return res.status(409).json({ error: "Byrået har stengt for partnerships" });
+      }
+      if (!agency.partnerships_terms_accepted_at) {
+        return res.status(409).json({
+          error: "Byrået må godta partnership-vilkårene før de kan initiere",
+        });
+      }
     }
 
     try {
@@ -312,8 +393,58 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
     }
   });
 
-  // ── POST /:id/revoke ─────────────────────────────────────────────
-  app.post("/api/role-room/partnerships/:id/revoke", async (req, res) => {
+  // ── POST /:id/pause ──────────────────────────────────────────────
+  // Per-partnership pause: én av partene pauser samarbeidet midlertidig.
+  // Status forblir 'accepted' men paused_at settes → nye prosjekt-
+  // invitasjoner blokkeres til pause oppheves.
+  app.post("/api/role-room/partnerships/:id/pause", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const { reason } = (req.body || {}) as { reason?: string };
+    try {
+      const cur = await pool.query(
+        `SELECT * FROM agency_production_partnerships WHERE id = $1 LIMIT 1`,
+        [req.params.id],
+      );
+      const partnership = cur.rows[0];
+      if (!partnership) return res.status(404).json({ error: "Partnership ikke funnet" });
+      if (partnership.status !== "accepted") {
+        return res.status(409).json({
+          error: "Kun aksepterte partnerships kan pauses",
+        });
+      }
+      const ctx = await resolveUserContext(pool, session.userId);
+      const isAgencyAdmin = ctx.agencyOrgId === partnership.agency_org_id;
+      const isProduction = session.userId === partnership.production_user_id;
+      if (!isAgencyAdmin && !isProduction) {
+        return res.status(403).json({ error: "Du er ikke part i partnership" });
+      }
+      const r = await pool.query(
+        `UPDATE agency_production_partnerships
+            SET paused_at = now(),
+                paused_by_role = $1,
+                paused_by_user_id = $2,
+                paused_reason = $3
+          WHERE id = $4
+          RETURNING *`,
+        [isAgencyAdmin ? "agency" : "production", session.userId, reason ?? null, req.params.id],
+      );
+      await logAudit(pool, {
+        partnershipId: partnership.id,
+        actorUserId: session.userId,
+        action: "paused",
+        details: { reason: reason ?? null, by_role: isAgencyAdmin ? "agency" : "production" },
+      });
+      return res.json({ partnership: r.rows[0] });
+    } catch (err) {
+      console.error("[partnerships/pause] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å pause partnership" });
+    }
+  });
+
+  // ── POST /:id/unpause ────────────────────────────────────────────
+  // Den parten som pauset, gjenopptar samarbeidet.
+  app.post("/api/role-room/partnerships/:id/unpause", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
@@ -323,12 +454,101 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       );
       const partnership = cur.rows[0];
       if (!partnership) return res.status(404).json({ error: "Partnership ikke funnet" });
+      if (!partnership.paused_at) {
+        return res.status(409).json({ error: "Partnership er ikke pauset" });
+      }
+      const ctx = await resolveUserContext(pool, session.userId);
+      const isAgencyAdmin = ctx.agencyOrgId === partnership.agency_org_id;
+      const isProduction = session.userId === partnership.production_user_id;
+      // Begge parter kan oppheve pause uansett hvem som pauset — slik at
+      // ingen blir låst inne av motpartens midlertidige stopp.
+      if (!isAgencyAdmin && !isProduction) {
+        return res.status(403).json({ error: "Du er ikke part i partnership" });
+      }
+      const r = await pool.query(
+        `UPDATE agency_production_partnerships
+            SET paused_at = NULL,
+                paused_by_role = NULL,
+                paused_by_user_id = NULL,
+                paused_reason = NULL
+          WHERE id = $1 RETURNING *`,
+        [req.params.id],
+      );
+      await logAudit(pool, {
+        partnershipId: partnership.id,
+        actorUserId: session.userId,
+        action: "unpaused",
+      });
+      return res.json({ partnership: r.rows[0] });
+    } catch (err) {
+      console.error("[partnerships/unpause] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å gjenoppta partnership" });
+    }
+  });
+
+  // ── POST /:id/revoke ─────────────────────────────────────────────
+  // To-trinns flyt: første kall (uten confirm) returnerer pause-anbefaling
+  // + konsekvens-summary. Andre kall med { confirm: true,
+  // acknowledge_consequences: true } gjør faktisk revoke.
+  app.post("/api/role-room/partnerships/:id/revoke", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const { confirm, acknowledge_consequences, reason } = (req.body || {}) as {
+      confirm?: boolean;
+      acknowledge_consequences?: boolean;
+      reason?: string;
+    };
+    try {
+      const cur = await pool.query(
+        `SELECT p.*, a.name AS agency_name,
+                u.first_name || ' ' || u.last_name AS production_name
+           FROM agency_production_partnerships p
+           JOIN agency_orgs a ON a.id = p.agency_org_id
+           JOIN users u ON u.id = p.production_user_id
+          WHERE p.id = $1 LIMIT 1`,
+        [req.params.id],
+      );
+      const partnership = cur.rows[0];
+      if (!partnership) return res.status(404).json({ error: "Partnership ikke funnet" });
 
       const ctx = await resolveUserContext(pool, session.userId);
-      const isPart =
-        ctx.agencyOrgId === partnership.agency_org_id ||
-        session.userId === partnership.production_user_id;
-      if (!isPart) return res.status(403).json({ error: "Du er ikke part i partnership" });
+      const isAgencyAdmin = ctx.agencyOrgId === partnership.agency_org_id;
+      const isProduction = session.userId === partnership.production_user_id;
+      if (!isAgencyAdmin && !isProduction) {
+        return res.status(403).json({ error: "Du er ikke part i partnership" });
+      }
+
+      // Anbefal pause når motpart-status er aktiv. Bare gjør revoke uten
+      // dialog hvis ALLEREDE pending/declined (ingen konsekvens å advare om).
+      const isActive = partnership.status === "accepted";
+      if (isActive && (confirm !== true || acknowledge_consequences !== true)) {
+        const invCount = await pool.query(
+          `SELECT COUNT(*)::int AS n
+             FROM partnership_project_invitations
+            WHERE partnership_id = $1 AND status IN ('pending','accepted')`,
+          [partnership.id],
+        );
+        return res.status(409).json({
+          error: "Avslutning krever bekreftelse",
+          recommendation: "pause",
+          recommendation_reason:
+            isAgencyAdmin
+              ? `Bruker du pause beholder du relasjonen med ${partnership.production_name} — talentene dine forblir i deres register, men nye prosjekt-invitasjoner blokkeres. Aktiver igjen når du vil. Avslutter du, mister produksjonsselskapet umiddelbart tilgang til ALLE talentene dine, og dere må re-etablere relasjonen helt på nytt.`
+              : `Bruker du pause beholder du relasjonen med ${partnership.agency_name} — du kan invitere dem igjen senere uten å starte fra null. Avslutter du, må byrået godkjenne på nytt for å samarbeide igjen.`,
+          consequences: {
+            active_project_invitations: invCount.rows[0]?.n ?? 0,
+            counterparty: isAgencyAdmin ? partnership.production_name : partnership.agency_name,
+            talents_will_disappear_for_counterparty: isAgencyAdmin,
+            relationship_must_be_rebuilt: true,
+          },
+          to_confirm: {
+            confirm: true,
+            acknowledge_consequences: true,
+            reason: "valgfri begrunnelse (lagres i audit-log)",
+          },
+          alternative_pause_endpoint: `/api/role-room/partnerships/${partnership.id}/pause`,
+        });
+      }
 
       const r = await pool.query(
         `UPDATE agency_production_partnerships
@@ -337,10 +557,19 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         [session.userId, req.params.id],
       );
 
+      // Revoker også aktive prosjekt-invitasjoner for samme partnership
+      await pool.query(
+        `UPDATE partnership_project_invitations
+            SET status = 'revoked', updated_at = now()
+          WHERE partnership_id = $1 AND status IN ('pending','accepted')`,
+        [partnership.id],
+      );
+
       await logAudit(pool, {
         partnershipId: partnership.id,
         actorUserId: session.userId,
         action: "revoked",
+        details: { reason: reason ?? null, by_role: isAgencyAdmin ? "agency" : "production" },
       });
 
       return res.json({ partnership: r.rows[0] });
@@ -379,10 +608,23 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
           error: "Partnership må være akseptert før prosjekter kan inviteres",
         });
       }
+      if (partnership.paused_at) {
+        return res.status(409).json({
+          error: `Samarbeidet er midlertidig pauset av ${partnership.paused_by_role === "agency" ? "byrået" : "produksjonsteam"}. Nye prosjekt-invitasjoner er blokkert til pause oppheves.`,
+        });
+      }
       if (session.userId !== partnership.production_user_id) {
         return res
           .status(403)
           .json({ error: "Kun produksjonsteam-eier kan invitere byrået til prosjekter" });
+      }
+      // Sjekk også byrå-side global pause/stenging
+      const agencyCheck = await fetchQualifiedAgency(pool, partnership.agency_org_id);
+      if (agencyCheck) {
+        const unavail = checkAgencyAvailability(agencyCheck);
+        if (unavail) {
+          return res.status(409).json({ error: unavail });
+        }
       }
 
       // Hent default-utløp fra casting_project.end_date + 14d hvis ikke spesifisert
@@ -557,6 +799,372 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
     } catch (err) {
       console.error("[partnerships/invitations/incoming] failed", err);
       return res.status(500).json({ error: "Klarte ikke å hente innkommende invitasjoner" });
+    }
+  });
+
+  // ── GET /availability ────────────────────────────────────────────
+  // Byrå-admin sjekker egen tilgjengelighets-status.
+  app.get("/api/role-room/partnerships/availability", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) {
+      return res.status(403).json({ error: "Du tilhører ikke en agency" });
+    }
+    try {
+      const r = await pool.query(
+        `SELECT id::text, name, logo_url, contact_email,
+                COALESCE(partnerships_enabled, false) AS partnerships_enabled,
+                partnerships_paused_at, partnerships_paused_reason,
+                partnerships_terms_accepted_at, partnerships_terms_version,
+                partnerships_enabled_at, partnerships_closed_at
+           FROM agency_orgs WHERE id = $1::uuid LIMIT 1`,
+        [ctx.agencyOrgId],
+      );
+      const a = r.rows[0];
+      if (!a) return res.status(404).json({ error: "Byrå ikke funnet" });
+      const profileComplete = Boolean(a.logo_url && a.contact_email);
+      const termsAccepted = Boolean(a.partnerships_terms_accepted_at);
+      const termsCurrent = a.partnerships_terms_version === CURRENT_PARTNERSHIP_TERMS_VERSION;
+      const enabled = Boolean(a.partnerships_enabled);
+      const paused = Boolean(a.partnerships_paused_at);
+      const closed = Boolean(a.partnerships_closed_at);
+      let state: "not_started" | "needs_profile" | "needs_terms" | "needs_terms_update" | "disabled" | "paused" | "active" | "closed";
+      if (closed) state = "closed";
+      else if (!profileComplete) state = "needs_profile";
+      else if (!termsAccepted) state = "needs_terms";
+      else if (!termsCurrent) state = "needs_terms_update";
+      else if (!enabled) state = "disabled";
+      else if (paused) state = "paused";
+      else state = "active";
+
+      return res.json({
+        agency: { id: a.id, name: a.name },
+        state,
+        profile_complete: profileComplete,
+        terms_accepted: termsAccepted,
+        terms_version_current: termsCurrent,
+        terms_version_required: CURRENT_PARTNERSHIP_TERMS_VERSION,
+        terms_version_accepted: a.partnerships_terms_version,
+        terms_accepted_at: a.partnerships_terms_accepted_at,
+        enabled,
+        enabled_at: a.partnerships_enabled_at,
+        paused,
+        paused_at: a.partnerships_paused_at,
+        paused_reason: a.partnerships_paused_reason,
+        closed,
+        closed_at: a.partnerships_closed_at,
+      });
+    } catch (err) {
+      console.error("[partnerships/availability GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente tilgjengelighet" });
+    }
+  });
+
+  // ── POST /availability/accept-terms ──────────────────────────────
+  // Byrå godtar partnership-vilkårene (eller oppdatert versjon).
+  app.post("/api/role-room/partnerships/availability/accept-terms", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+
+    const { terms_version } = (req.body || {}) as { terms_version?: string };
+    if (terms_version !== CURRENT_PARTNERSHIP_TERMS_VERSION) {
+      return res.status(400).json({
+        error: `Vilkår-versjon må være ${CURRENT_PARTNERSHIP_TERMS_VERSION}`,
+        required_version: CURRENT_PARTNERSHIP_TERMS_VERSION,
+      });
+    }
+    try {
+      const r = await pool.query(
+        `UPDATE agency_orgs
+            SET partnerships_terms_accepted_at = now(),
+                partnerships_terms_version = $1,
+                partnerships_terms_accepted_by_user_id = $2
+          WHERE id = $3::uuid
+          RETURNING id::text, partnerships_terms_accepted_at, partnerships_terms_version`,
+        [terms_version, session.userId, ctx.agencyOrgId],
+      );
+      await logAvailabilityAudit(pool, {
+        agencyOrgId: ctx.agencyOrgId,
+        actorUserId: session.userId,
+        action: "terms_accepted",
+        details: { version: terms_version },
+      });
+      return res.json({ agency: r.rows[0] });
+    } catch (err) {
+      console.error("[partnerships/availability/accept-terms] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å registrere vilkår-godkjenning" });
+    }
+  });
+
+  // ── POST /availability/enable ────────────────────────────────────
+  // Byrå slår på discoverability. Krever vilkår godtatt + komplett profil.
+  app.post("/api/role-room/partnerships/availability/enable", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+
+    try {
+      const cur = await fetchQualifiedAgency(pool, ctx.agencyOrgId);
+      if (!cur) return res.status(404).json({ error: "Byrå ikke funnet" });
+      if (cur.partnerships_closed_at) {
+        return res.status(409).json({
+          error: "Byrået er stengt. Kontakt support for å gjenåpne.",
+        });
+      }
+      if (!cur.logo_url || !cur.contact_email) {
+        return res.status(409).json({
+          error: "Fullfør profilen (logo + kontakt-e-post) før du slår på discoverability",
+        });
+      }
+      if (!cur.partnerships_terms_accepted_at || cur.partnerships_terms_version !== CURRENT_PARTNERSHIP_TERMS_VERSION) {
+        return res.status(409).json({ error: "Godta gjeldende vilkår først" });
+      }
+
+      const r = await pool.query(
+        `UPDATE agency_orgs
+            SET partnerships_enabled = TRUE,
+                partnerships_enabled_at = COALESCE(partnerships_enabled_at, now()),
+                partnerships_enabled_by_user_id = COALESCE(partnerships_enabled_by_user_id, $1),
+                partnerships_paused_at = NULL,
+                partnerships_paused_reason = NULL,
+                partnerships_paused_by_user_id = NULL
+          WHERE id = $2::uuid
+          RETURNING id::text, partnerships_enabled, partnerships_enabled_at`,
+        [session.userId, ctx.agencyOrgId],
+      );
+      await logAvailabilityAudit(pool, {
+        agencyOrgId: ctx.agencyOrgId,
+        actorUserId: session.userId,
+        action: "enabled",
+      });
+      return res.json({ agency: r.rows[0] });
+    } catch (err) {
+      console.error("[partnerships/availability/enable] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å aktivere" });
+    }
+  });
+
+  // ── POST /availability/pause ─────────────────────────────────────
+  // Midlertidig pause: eksisterende partnerships fortsetter, men nye
+  // partnership-foresp. og prosjekt-invitasjoner blokkeres.
+  app.post("/api/role-room/partnerships/availability/pause", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+    const { reason } = (req.body || {}) as { reason?: string };
+
+    try {
+      const r = await pool.query(
+        `UPDATE agency_orgs
+            SET partnerships_paused_at = now(),
+                partnerships_paused_reason = $1,
+                partnerships_paused_by_user_id = $2
+          WHERE id = $3::uuid
+          RETURNING id::text, partnerships_paused_at, partnerships_paused_reason`,
+        [reason ?? null, session.userId, ctx.agencyOrgId],
+      );
+      await logAvailabilityAudit(pool, {
+        agencyOrgId: ctx.agencyOrgId,
+        actorUserId: session.userId,
+        action: "paused",
+        details: { reason: reason ?? null },
+      });
+      return res.json({ agency: r.rows[0] });
+    } catch (err) {
+      console.error("[partnerships/availability/pause] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å pause" });
+    }
+  });
+
+  // ── POST /availability/unpause ───────────────────────────────────
+  app.post("/api/role-room/partnerships/availability/unpause", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+    try {
+      const r = await pool.query(
+        `UPDATE agency_orgs
+            SET partnerships_paused_at = NULL,
+                partnerships_paused_reason = NULL,
+                partnerships_paused_by_user_id = NULL
+          WHERE id = $1::uuid
+          RETURNING id::text, partnerships_enabled, partnerships_paused_at`,
+        [ctx.agencyOrgId],
+      );
+      await logAvailabilityAudit(pool, {
+        agencyOrgId: ctx.agencyOrgId,
+        actorUserId: session.userId,
+        action: "unpaused",
+      });
+      return res.json({ agency: r.rows[0] });
+    } catch (err) {
+      console.error("[partnerships/availability/unpause] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å gjenoppta" });
+    }
+  });
+
+  // ── POST /availability/close ─────────────────────────────────────
+  // Permanent: stenger discoverability + revoker ALLE aktive partnerships
+  // for byrået. To-trinns flyt: første kall (uten confirm) returnerer
+  // konsekvens-summary + anbefaling om pause istedenfor. Andre kall med
+  // { confirm: true, acknowledge_consequences: true } stenger faktisk.
+  app.post("/api/role-room/partnerships/availability/close", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+    const { confirm, acknowledge_consequences, reason } = (req.body || {}) as {
+      confirm?: boolean;
+      acknowledge_consequences?: boolean;
+      reason?: string;
+    };
+
+    // Beregn konsekvenser
+    const affected = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE p.status IN ('pending','accepted'))::int AS active_partnerships,
+         COUNT(DISTINCT p.production_user_id) FILTER (WHERE p.status IN ('pending','accepted'))::int AS production_companies,
+         (SELECT COUNT(*)::int FROM partnership_project_invitations i
+            JOIN agency_production_partnerships p2 ON p2.id = i.partnership_id
+           WHERE p2.agency_org_id = $1::uuid
+             AND i.status IN ('pending','accepted')) AS active_invitations
+       FROM agency_production_partnerships p
+       WHERE p.agency_org_id = $1::uuid`,
+      [ctx.agencyOrgId],
+    );
+    const cons = affected.rows[0];
+
+    if (confirm !== true || acknowledge_consequences !== true) {
+      return res.status(409).json({
+        error: "Stenging krever bekreftelse",
+        recommendation: "pause",
+        recommendation_reason:
+          "Pause beholder alle relasjoner mens du midlertidig blokkerer ny aktivitet. Aktiver igjen når du er klar. Stenging revoker ALT — talentene dine vil forsvinne fra produksjonsselskapenes registre, og du må re-etablere alle relasjoner manuelt etter eventuell gjenåpning.",
+        consequences: {
+          active_partnerships: cons.active_partnerships,
+          production_companies: cons.production_companies,
+          active_invitations: cons.active_invitations,
+          talents_will_disappear_from_partners: true,
+          relations_lost_permanently: true,
+        },
+        to_confirm: {
+          confirm: true,
+          acknowledge_consequences: true,
+          reason: "valgfri begrunnelse (lagres i audit-log)",
+        },
+        alternative_pause_endpoint: "/api/role-room/partnerships/availability/pause",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const a = await client.query(
+        `UPDATE agency_orgs
+            SET partnerships_enabled = FALSE,
+                partnerships_closed_at = now(),
+                partnerships_closed_by_user_id = $1
+          WHERE id = $2::uuid
+          RETURNING id::text, partnerships_closed_at`,
+        [session.userId, ctx.agencyOrgId],
+      );
+      const revoked = await client.query(
+        `UPDATE agency_production_partnerships
+            SET status = 'revoked',
+                revoked_at = now(),
+                revoked_by_user_id = $1
+          WHERE agency_org_id = $2::uuid
+            AND status IN ('pending', 'accepted')
+          RETURNING id::text`,
+        [session.userId, ctx.agencyOrgId],
+      );
+      // Sett pending prosjekt-invitasjoner til revoked også
+      await client.query(
+        `UPDATE partnership_project_invitations i
+            SET status = 'revoked', updated_at = now()
+           FROM agency_production_partnerships p
+          WHERE i.partnership_id = p.id
+            AND p.agency_org_id = $1::uuid
+            AND i.status IN ('pending', 'accepted')`,
+        [ctx.agencyOrgId],
+      );
+      await client.query("COMMIT");
+      await logAvailabilityAudit(pool, {
+        agencyOrgId: ctx.agencyOrgId,
+        actorUserId: session.userId,
+        action: "closed",
+        details: {
+          reason: reason ?? null,
+          revoked_partnerships: revoked.rowCount,
+        },
+      });
+      return res.json({
+        agency: a.rows[0],
+        revoked_partnerships_count: revoked.rowCount,
+      });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("[partnerships/availability/close] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å stenge", detail: String(err) });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ── GET /discoverable-agencies ───────────────────────────────────
+  // Produksjonsteam søker etter byråer å sende partnership-foresp. til.
+  // Returnerer kun byråer som har slått på discoverability og ikke er
+  // paused/stengt. Støtter type-filter (stella_casting, caster_individual osv).
+  app.get("/api/role-room/partnerships/discoverable-agencies", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const q = (req.query.q as string) || "";
+    const type = (req.query.type as string) || "";
+    const demo = req.query.demo === "1" || req.query.demo === "true";
+    try {
+      const params: unknown[] = [];
+      const where: string[] = [
+        "a.status = 'active'",
+        "COALESCE(a.partnerships_enabled, false) = TRUE",
+        "a.partnerships_paused_at IS NULL",
+        "a.partnerships_closed_at IS NULL",
+        "a.partnerships_terms_accepted_at IS NOT NULL",
+        "a.logo_url IS NOT NULL",
+        `COALESCE(a.is_demo, FALSE) = ${demo ? "TRUE" : "FALSE"}`,
+      ];
+      if (q) {
+        params.push(`%${q}%`);
+        where.push(`a.name ILIKE $${params.length}`);
+      }
+      if (type) {
+        params.push(type);
+        where.push(`a.type = $${params.length}`);
+      }
+      const r = await pool.query(
+        `SELECT a.id::text, a.name, a.type, a.slug, a.logo_url, a.about,
+                a.website_url, a.verified, a.partnerships_enabled_at,
+                (SELECT COUNT(DISTINCT c.talent_id)::int
+                   FROM talent_consent_registry c
+                  WHERE c.partner_type = a.type AND c.partner_ref = a.id::text
+                    AND c.status = 'granted'
+                    AND (c.expires_at IS NULL OR c.expires_at > now())
+                ) AS talent_pool_size
+           FROM agency_orgs a
+          WHERE ${where.join(" AND ")}
+          ORDER BY a.verified DESC, a.partnerships_enabled_at DESC NULLS LAST
+          LIMIT 50`,
+        params,
+      );
+      return res.json({ agencies: r.rows });
+    } catch (err) {
+      console.error("[partnerships/discoverable-agencies] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente byråer" });
     }
   });
 }
