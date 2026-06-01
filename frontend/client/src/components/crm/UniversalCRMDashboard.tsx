@@ -433,9 +433,8 @@ export default function UniversalCRMDashboard({
       // are not just filtering the first loaded page client-side.
       if (statusFilter) params.append('status', statusFilter);
 
-      const response = await fetch(`/api/universal-crm/customers?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch customers');
-      return response.json();
+      // Via apiRequest so the Bearer token is attached (raw fetch was 401-ing).
+      return apiRequest(`/api/universal-crm/customers?${params.toString()}`);
   }
 });
 
@@ -444,9 +443,7 @@ export default function UniversalCRMDashboard({
     queryKey: ['universal-crm-stats', activeProfession],
     queryFn: async () => {
       const params = activeProfession ? `?profession=${activeProfession}` : '';
-      const response = await fetch(`/api/universal-crm/stats${params}`);
-      if (!response.ok) throw new Error('Failed to fetch stats');
-      return response.json();
+      return apiRequest(`/api/universal-crm/stats${params}`);
   }
 });
 
@@ -472,9 +469,8 @@ export default function UniversalCRMDashboard({
   }> }>({
     queryKey: ['/api/photographer/galleries'],
     queryFn: async () => {
-      const r = await fetch('/api/photographer/galleries');
-      if (!r.ok) return { galleries: [] };
-      return r.json();
+      try { return await apiRequest('/api/photographer/galleries'); }
+      catch { return { galleries: [] }; }
     },
     refetchInterval: 30_000,
   });
@@ -536,10 +532,10 @@ export default function UniversalCRMDashboard({
     queryKey: ['/api/projects', user?.id, 'crm-aggregation'],
     enabled: Boolean(user?.id),
     queryFn: async () => {
-      const r = await fetch(`/api/projects?userId=${encodeURIComponent(String(user?.id ?? ''))}`);
-      if (!r.ok) return [];
-      const arr = await r.json();
-      return Array.isArray(arr) ? arr : [];
+      try {
+        const arr = await apiRequest(`/api/projects?userId=${encodeURIComponent(String(user?.id ?? ''))}`);
+        return Array.isArray(arr) ? arr : [];
+      } catch { return []; }
     },
   });
   const projectsByClient = React.useMemo(() => {
@@ -586,11 +582,7 @@ export default function UniversalCRMDashboard({
   const isMusicProducer = activeProfession === 'music_producer';
   const { data: splitSheetStatsData } = useQuery({
     queryKey: ['split-sheets-crm-stats', activeProfession],
-    queryFn: async () => {
-      const response = await fetch(`/api/split-sheets/stats?profession=${activeProfession}`);
-      if (!response.ok) throw new Error('Failed to fetch split sheet stats');
-      return response.json();
-    },
+    queryFn: async () => apiRequest(`/api/split-sheets/stats?profession=${activeProfession}`),
     enabled: isMusicProducer,
   });
 
@@ -599,19 +591,14 @@ export default function UniversalCRMDashboard({
   // Create customer mutation
   const createCustomerMutation = useMutation({
     mutationFn: async (customerData: Partial<UniversalCustomer>) => {
-      const response = await fetch(`/api/universal-crm/customers`, {
-        headers: {
-          'Content-Type' : 'application/json'
-        },
+      return apiRequest('/api/universal-crm/customers', {
         method: 'POST',
         body: JSON.stringify({
           ...customerData,
           profession: activeProfession,
-          status: customerData.status || 'lead'
-        })
+          status: customerData.status || 'lead',
+        }),
       });
-      if (!response.ok) throw new Error('Failed to create customer');
-      return response.json();
     },
     onSuccess: async (created) => {
       // Sync to Google Contacts (create if missing)
@@ -666,13 +653,10 @@ export default function UniversalCRMDashboard({
   // Update customer mutation
   const updateCustomerMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<UniversalCustomer> }) => {
-      const response = await fetch(`/api/universal-crm/customers/${encodeURIComponent(id)}`, {
+      return apiRequest(`/api/universal-crm/customers/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify(updates),
       });
-      if (!response.ok) throw new Error('Failed to update customer');
-      return response.json();
     },
     onSuccess: (updated) => {
       try {
@@ -970,9 +954,7 @@ export default function UniversalCRMDashboard({
   // #41 — delete / archive a customer with confirmation + feedback.
   const deleteCustomerMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/universal-crm/customers/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete customer');
-      return response.json();
+      return apiRequest(`/api/universal-crm/customers/${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
@@ -991,9 +973,8 @@ export default function UniversalCRMDashboard({
     queryKey: ['universal-crm-invoices', selectedCustomer?.id],
     enabled: Boolean(selectedCustomer?.id) && showInvoicesDialog,
     queryFn: async () => {
-      const r = await fetch(`/api/universal-crm/invoices?customer_id=${encodeURIComponent(selectedCustomer!.id)}`);
-      if (!r.ok) return { invoices: [] };
-      return r.json();
+      try { return await apiRequest(`/api/universal-crm/invoices?customer_id=${encodeURIComponent(selectedCustomer!.id)}`); }
+      catch { return { invoices: [] }; }
     },
   });
   const customerInvoices = invoicesData?.invoices || [];
@@ -1064,9 +1045,8 @@ export default function UniversalCRMDashboard({
   const { data: upcomingMeetingsData } = useQuery<{ meetings: any[] }>({
     queryKey: ['crm-meetings', 'upcoming'],
     queryFn: async () => {
-      const r = await fetch('/api/universal-crm/meetings?upcoming=true');
-      if (!r.ok) return { meetings: [] };
-      return r.json();
+      try { return await apiRequest('/api/universal-crm/meetings?upcoming=true'); }
+      catch { return { meetings: [] }; }
     },
   });
   const upcomingMeetings = upcomingMeetingsData?.meetings || [];
@@ -1133,10 +1113,10 @@ export default function UniversalCRMDashboard({
       
       if (projectIds.length === 0) return {};
 
-      const response = await fetch(`/api/split-sheets?project_id=${projectIds.join('')}`);
-      if (!response.ok) return {};
-      const result = await response.json();
-      
+      let result: any;
+      try { result = await apiRequest(`/api/split-sheets?project_id=${projectIds.join('')}`); }
+      catch { return {}; }
+
       // Group by customer (via project relationship)
       const grouped: Record<string, any[]> = {};
       result.data?.forEach((ss: any) => {
