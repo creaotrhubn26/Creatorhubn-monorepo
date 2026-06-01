@@ -1122,11 +1122,16 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   // Returnerer kun byråer som har slått på discoverability og ikke er
   // paused/stengt. Støtter type-filter (stella_casting, caster_individual osv).
   app.get("/api/role-room/partnerships/discoverable-agencies", async (req, res) => {
-    const session = getActiveSession(req);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const q = (req.query.q as string) || "";
     const type = (req.query.type as string) || "";
     const demo = req.query.demo === "1" || req.query.demo === "true";
+    // Demo-mode bypass auth — gir produksjonsteam mulighet til å se hvilke
+    // byråer som finnes uten å være innlogget (samme mønster som
+    // /agency/talents/search?demo=1 i registry-flyten).
+    if (!demo) {
+      const session = getActiveSession(req);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    }
     try {
       const params: unknown[] = [];
       const where: string[] = [
