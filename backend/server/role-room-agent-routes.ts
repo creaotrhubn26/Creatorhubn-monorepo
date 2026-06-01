@@ -93,7 +93,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
           res.json({
             ok: true,
             cached: true,
-            recommendationId: row.id,
+            recommendationId: Number(row.id),
             recommendations: row.recommendations_json,
             generatedWithModel: row.generated_with_model,
             costNok: row.cost_nok ? Number(row.cost_nok) : null,
@@ -121,7 +121,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
          RETURNING id`,
         [brandKey, hash, recs, recs.generatedWithModel, recs.usage?.costNok ?? null],
       );
-      recommendationId = ins.rows[0]?.id ?? null;
+      recommendationId = ins.rows[0]?.id != null ? Number(ins.rows[0].id) : null;
     } catch (err) {
       console.error('[agent-routes] failed to persist recommendation', err);
     }
@@ -157,7 +157,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
       const row = r.rows[0];
       res.json({
         ok: true,
-        recommendationId: row.id,
+        recommendationId: Number(row.id),
         recommendations: row.recommendations_json,
         generatedWithModel: row.generated_with_model,
         costNok: row.cost_nok ? Number(row.cost_nok) : null,
@@ -295,7 +295,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
         ok: true,
         brandKey,
         entries: r.rows.map((row) => ({
-          id: row.id,
+          id: Number(row.id),
           platform: row.platform,
           field: row.field,
           value: row.value,
