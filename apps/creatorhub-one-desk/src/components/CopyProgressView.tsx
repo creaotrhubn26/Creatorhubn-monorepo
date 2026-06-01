@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   LinearProgress,
   List,
   ListItem,
@@ -16,6 +21,7 @@ import {
 import Stop from "@mui/icons-material/Stop";
 import CheckCircle from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import {
   cancelCopySession,
   CopyFileCompletedEvent,
@@ -39,10 +45,19 @@ interface FileState {
   totalDests: number;
 }
 
+interface MountDisappearedEvent {
+  session_id: string;
+  mount_path: string;
+  files_skipped: number;
+  succeeded: number;
+  failed: number;
+}
+
 export default function CopyProgressView() {
   const [sessions, setSessions] = useState<SessionStatus[]>([]);
   const [currentFiles, setCurrentFiles] = useState<Record<string, FileState>>({});
   const [recentErrors, setRecentErrors] = useState<string[]>([]);
+  const [mountDisappeared, setMountDisappeared] = useState<MountDisappearedEvent | null>(null);
 
   useEffect(() => {
     void listCopySessions().then(setSessions).catch(() => {});
@@ -121,6 +136,11 @@ export default function CopyProgressView() {
     }).then((un) => unlisteners.push(un));
 
     listen<CopySessionCompletedEvent>("copy-session-completed", () => {
+      void listCopySessions().then(setSessions);
+    }).then((un) => unlisteners.push(un));
+
+    listen<MountDisappearedEvent>("copy-session-mount-disappeared", (e) => {
+      setMountDisappeared(e.payload);
       void listCopySessions().then(setSessions);
     }).then((un) => unlisteners.push(un));
 
@@ -237,11 +257,14 @@ export default function CopyProgressView() {
                     <CheckCircle color="success" fontSize="small" />
                   ) : s.state === "cancelled" ? (
                     <Chip size="small" label="avbrutt" />
+                  ) : s.state === "mount_disappeared" ? (
+                    <WarningAmberIcon color="warning" fontSize="small" />
                   ) : (
                     <ErrorIcon color="error" fontSize="small" />
                   )}
                   <Typography variant="caption">
                     {s.volume_label}: {s.succeeded} ✓ / {s.failed} ✗ av {s.file_count}
+                    {s.state === "mount_disappeared" && " — kort fjernet"}
                   </Typography>
                 </Stack>
               ))}
@@ -267,6 +290,38 @@ export default function CopyProgressView() {
           </Box>
         )}
       </CardContent>
+
+      {/* Mount-disappeared modal — vises som blocking dialog så Fredrik
+          ikke får inntrykk av at backup gikk gjennom. Klar action: sett
+          inn kortet igjen + rerun, eller bekreft som "vil ikke fortsette". */}
+      <Dialog
+        open={!!mountDisappeared}
+        onClose={() => setMountDisappeared(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <WarningAmberIcon color="warning" />
+          Kortet ble fjernet før backup var ferdig
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <strong>{mountDisappeared?.files_skipped ?? 0}</strong> filer rakk
+            ikke å bli kopiert. <strong>{mountDisappeared?.succeeded ?? 0}</strong>{" "}
+            ble fullført, <strong>{mountDisappeared?.failed ?? 0}</strong> feilet.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Mount-sti: <code>{mountDisappeared?.mount_path}</code>
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Sett inn kortet på nytt og start backup igjen for den samme volumen —
+            allerede kopierte filer hoppes over automatisk.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMountDisappeared(null)}>OK, jeg har sett det</Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

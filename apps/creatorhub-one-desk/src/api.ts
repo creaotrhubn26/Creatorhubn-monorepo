@@ -112,7 +112,12 @@ export interface SessionStatus {
   session_id: string;
   mount_path: string;
   volume_label: string;
-  state: "running" | "completed" | "cancelled" | "failed";
+  state:
+    | "running"
+    | "completed"
+    | "cancelled"
+    | "failed"
+    | "mount_disappeared";
   file_count: number;
   total_bytes: number;
   succeeded: number;

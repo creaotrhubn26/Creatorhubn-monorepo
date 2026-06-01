@@ -33,7 +33,9 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::copy_engine::{build_dest_path, copy_and_verify, hash_file_xxh64};
+use crate::copy_engine::{
+    build_dest_path, copy_and_verify_typed, hash_file_xxh64, CopyErrorKind,
+};
 use crate::dit_reporter;
 use crate::helper_client::{self, Config};
 use crate::mount_watcher;
@@ -358,7 +360,7 @@ async fn process_destination(
     let cfg_for_progress = cfg.clone();
     let job_for_progress = backend_job_id.clone();
 
-    let result = copy_and_verify(&src, &dest_path, |copied, total| {
+    let result = copy_and_verify_typed(&src, &dest_path, |copied, total| {
         let now = Instant::now();
         if now.duration_since(last_ui_emit).as_millis() >= PROGRESS_THROTTLE_MS {
             last_ui_emit = now;
@@ -419,15 +421,27 @@ async fn process_destination(
             );
         }
         Err(err) => {
-            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
-                let code = if err.contains("HASH MISMATCH") {
+            // Mapper feilkategorien til dit_reporter-code + en UI-vennlig
+            // error-streng. CopyErrorKind tas direkte fra typed copy-API
+            // i copy_engine — ingen substring-matching mer.
+            let code = match err.kind {
+                CopyErrorKind::DestNoSpace => "DEST_NO_SPACE",
+                CopyErrorKind::DestPermDenied => "DEST_PERM_DENIED",
+                CopyErrorKind::DestWriteFailed if err.message.contains("HASH MISMATCH") => {
                     "HASH_MISMATCH"
-                } else if err.contains("Opprett destinasjon") {
+                }
+                CopyErrorKind::DestWriteFailed => "DEST_WRITE_FAILED",
+                CopyErrorKind::SourceReadFailed => "SOURCE_READ_FAILED",
+                CopyErrorKind::Other if err.message.contains("Opprett destinasjon") => {
                     "DEST_CREATE_FAILED"
-                } else {
-                    "COPY_FAILED"
-                };
-                if let Err(report_err) = dit_reporter::report_failed(cfg, job_id, code, &err).await {
+                }
+                CopyErrorKind::Other => "COPY_FAILED",
+            };
+            let err_str = err.to_string();
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                if let Err(report_err) =
+                    dit_reporter::report_failed(cfg, job_id, code, &err_str).await
+                {
                     eprintln!("[dit] failed-report failed: {}", report_err);
                 }
             }
@@ -440,7 +454,7 @@ async fn process_destination(
                     dest_id: dest_spec.id,
                     success: false,
                     hash: None,
-                    error: Some(err),
+                    error: Some(err_str),
                     skipped: false,
                 },
             );
@@ -458,14 +472,37 @@ async fn run_session(
 ) {
     let mount = PathBuf::from(&spec.mount_path);
     let mut cancelled = false;
+    let mut mount_disappeared = false;
+    let mut files_skipped_after_unmount = 0usize;
 
     // Last config én gang per session (best-effort). Hvis ingen config eller
     // ingen destinasjoner har backend_id, vil cfg-feltet bare bli ignorert.
     let cfg: Option<Arc<Config>> = helper_client::load_config().ok().flatten().map(Arc::new);
 
+    let total_files = files.len();
+    let mut file_index = 0usize;
     for source in files {
+        file_index += 1;
         if cancel.load(Ordering::SeqCst) {
             cancelled = true;
+            break;
+        }
+        // Mount-unmount-deteksjon: hvis SD-kortet/minnekortet er fjernet
+        // mens vi jobber, stopper vi sesjonen umiddelbart med en tydelig
+        // melding. Uten denne ville run_session forsøkt å hashe/lese
+        // filer som ikke lenger fins og markert sesjonen som "completed"
+        // tross at majoriteten av filene ble hoppet over stille.
+        // Sjekken er billig (single stat() per fil) men hindrer stille
+        // datatap når Fredrik tar ut kortet for tidlig.
+        if !mount.exists() {
+            mount_disappeared = true;
+            files_skipped_after_unmount = total_files.saturating_sub(file_index - 1);
+            eprintln!(
+                "[copy-session] mount {} forsvant mid-kopi ved fil {}/{} — stopper sesjonen",
+                mount.display(),
+                file_index,
+                total_files
+            );
             break;
         }
 
@@ -575,12 +612,33 @@ async fn run_session(
     state.update(&session_id, |s| {
         s.state = if cancelled {
             "cancelled".into()
+        } else if mount_disappeared {
+            // Nytt state: tydeliggjør at sesjonen ble avbrutt fordi
+            // kortet/disken forsvant. UI viser at gjenstående filer ikke
+            // ble kopiert, og kan tilby gjenoppstart når mount kommer
+            // tilbake.
+            "mount_disappeared".into()
         } else if failed > 0 && succeeded == 0 {
             "failed".into()
         } else {
             "completed".into()
         };
     });
+    // Hvis mount forsvant: emit en eksplisitt advarsel før den vanlige
+    // session-completed, så frontend kan vise modal i stedet for "ferdig"-
+    // toast.
+    if mount_disappeared {
+        let _ = app.emit(
+            "copy-session-mount-disappeared",
+            serde_json::json!({
+                "session_id": session_id,
+                "mount_path": spec.mount_path,
+                "files_skipped": files_skipped_after_unmount,
+                "succeeded": succeeded,
+                "failed": failed,
+            }),
+        );
+    }
     let _ = app.emit(
         "copy-session-completed",
         SessionCompletedEvent {
