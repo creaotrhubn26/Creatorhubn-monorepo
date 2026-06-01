@@ -1,20 +1,26 @@
 /**
  * StoryDirectorPanel — høyresidens Claude-anbefalinger.
- * Genererer 2-4 forslag basert på narrative-strukturen.
- * Mockup-treff: "CLAUDE – STORY DIRECTOR (BETA)"-seksjonen.
  *
- * MVP: heuristikk-baserte anbefalinger fra structure + picks. Kan
- * utvides til claude_chat-kall senere uten å endre signatur.
+ * Genererer 2-4 forslag fra Claude (via post-agent-proxy) med
+ * heuristikk-fallback. Se `useStoryRecommendations` for detaljer om
+ * source-badge (heuristikk / claude / fallback).
+ *
+ * Mockup-treff: "CLAUDE – STORY DIRECTOR (BETA)"-seksjonen.
  */
 
-import { useMemo } from "react";
 import type { NarrativePick } from "../../hooks/useNarrativeStructure";
 import type { NarrativeStructure } from "../../hooks/useNarrativeStructure";
+import {
+  useStoryRecommendations,
+  type RecommendationCategory,
+  type StoryRecommendation,
+} from "../../hooks/useStoryRecommendations";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import StarBorderOutlinedIcon from "@mui/icons-material/StarBorderOutlined";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
+import TimelineOutlinedIcon from "@mui/icons-material/TimelineOutlined";
 import type { SvgIconComponent } from "@mui/icons-material";
 
 interface Props {
@@ -22,74 +28,90 @@ interface Props {
   structure: NarrativeStructure;
   onGenerateAlternative: () => void;
   onApplyRecommendation: (recId: string) => void;
+  /** Brief sendt til Claude for å forme ton + språk. */
+  projectBrief?: { type: string; intent?: string };
 }
 
-interface Recommendation {
-  id: string;
-  title: string;
-  body: string;
-  Icon: SvgIconComponent;
-  iconColor: string;
-  actionLabel: string;
-  actionCount?: number;
-}
+const ICON_BY_CATEGORY: Record<RecommendationCategory, { Icon: SvgIconComponent; color: string }> = {
+  emotion: { Icon: FavoriteBorderIcon, color: "#ec4899" },
+  variety: { Icon: VideoFileOutlinedIcon, color: "#60a5fa" },
+  structure: { Icon: VisibilityOutlinedIcon, color: "#a78bfa" },
+  ending: { Icon: StarBorderOutlinedIcon, color: "#fbbf24" },
+  pacing: { Icon: TimelineOutlinedIcon, color: "#34d399" },
+};
 
 export function StoryDirectorPanel({
   picks,
   structure,
   onGenerateAlternative,
   onApplyRecommendation,
+  projectBrief,
 }: Props) {
-  const recommendations = useMemo<Recommendation[]>(
-    () => generateRecommendations(picks, structure),
-    [picks, structure],
-  );
+  const { recommendations, summary, source, loading, error } = useStoryRecommendations({
+    picks,
+    structure,
+    projectBrief,
+  });
 
   return (
-    <aside style={panel} data-testid="story-director-panel">
+    <aside style={panel} data-testid="story-director-panel" data-source={source}>
       <header style={panelHeader}>
         <div>
           <div style={panelLabel}>CLAUDE – STORY DIRECTOR</div>
-          <span style={betaBadge}>BETA</span>
+          <span style={betaBadge}>
+            {source === "claude" ? "LIVE" : source === "fallback" ? "OFFLINE" : "BETA"}
+          </span>
         </div>
-        <span style={infoBadge}>i</span>
+        <span style={infoBadge} title={error ?? undefined}>i</span>
       </header>
 
       <div style={summaryBox}>
         <FavoriteBorderIcon sx={{ fontSize: 14, color: "#ec4899", marginRight: "6px", verticalAlign: "text-bottom" }} />
-        <strong>Historien din har en sterk emosjonell bue</strong>
+        <strong>{summary}</strong>
         <div style={summaryHint}>
-          Her er mine viktigste anbefalinger for å gjøre den enda sterkere.
+          {loading
+            ? "Claude leser strukturen din…"
+            : "Her er mine viktigste anbefalinger for å gjøre den enda sterkere."}
         </div>
       </div>
 
       <div style={recList} data-testid="story-recommendations">
-        {recommendations.map((rec) => (
-          <article
-            key={rec.id}
-            style={recCard}
-            data-testid={`recommendation-${rec.id}`}
-          >
-            <header style={recHeader}>
-              <rec.Icon sx={{ fontSize: 16, color: rec.iconColor }} />
-              <span style={recTitle}>{rec.title}</span>
-            </header>
-            <p style={recBody}>{rec.body}</p>
-            <button
-              style={recAction}
-              onClick={() => onApplyRecommendation(rec.id)}
+        {recommendations.map((rec) => {
+          const { Icon, color } = ICON_BY_CATEGORY[rec.category];
+          return (
+            <article
+              key={rec.id}
+              style={recCard}
+              data-testid={`recommendation-${rec.id}`}
+              data-category={rec.category}
             >
-              📋 {rec.actionLabel}
-              {rec.actionCount != null && ` (${rec.actionCount} klipp)`}
-            </button>
-          </article>
-        ))}
+              <header style={recHeader}>
+                <Icon sx={{ fontSize: 16, color }} />
+                <span style={recTitle}>{rec.title}</span>
+              </header>
+              <p style={recBody}>{rec.body}</p>
+              <button
+                style={recAction}
+                onClick={() => onApplyRecommendation(rec.id)}
+              >
+                Se forslag
+                {rec.actionCount != null && ` (${rec.actionCount} klipp)`}
+              </button>
+            </article>
+          );
+        })}
         {recommendations.length === 0 && (
           <div style={emptyState}>
             Ingen anbefalinger ennå. Velg footage og last picks.
           </div>
         )}
       </div>
+
+      {error && (
+        <div style={errorHint} data-testid="story-director-error">
+          {error}
+        </div>
+      )}
 
       <button
         style={generateBtn}
@@ -103,76 +125,9 @@ export function StoryDirectorPanel({
   );
 }
 
-function generateRecommendations(
-  picks: NarrativePick[],
-  structure: NarrativeStructure,
-): Recommendation[] {
-  if (picks.length === 0) return [];
-
-  const recs: Recommendation[] = [];
-
-  // Heuristikk 1: peak-tetthet
-  const peakBeat = structure.beats.find((b) => b.id === "peak");
-  if (peakBeat && peakBeat.picks.length < 3) {
-    recs.push({
-      id: "more-breathing-before-peak",
-      title: "Mer pust før peak",
-      body:
-        "Vurder å gjøre delen før vielsen litt roligere. Et ekstra øyeblikk med brudens reaksjon vil gjøre toppen mer effektfull.",
-      Icon: FavoriteBorderIcon,
-      iconColor: "#ec4899",
-      actionLabel: "Se forslag",
-      actionCount: 3,
-    });
-  }
-
-  // Heuristikk 2: parents/family reactions
-  const faceSignals = picks.filter(
-    (p) => ((p.signals?.faces as number | undefined) ?? 0) > 0.5,
-  ).length;
-  if (faceSignals < picks.length * 0.3) {
-    recs.push({
-      id: "parent-reactions",
-      title: "Reaksjon fra foreldre",
-      body:
-        "Jeg ser at du har fine klipp fra talen, men mangler reaksjon fra foreldre. Dette vil forsterke emosjonen.",
-      Icon: VisibilityOutlinedIcon,
-      iconColor: "#a78bfa",
-      actionLabel: "Finn reaksjonsklipp",
-    });
-  }
-
-  // Heuristikk 3: outro/avslutning kvalitet
-  const outro = structure.beats.find((b) => b.id === "outro");
-  if (!outro || outro.picks.length < 2) {
-    recs.push({
-      id: "stronger-outro",
-      title: "Sterkere avslutning",
-      body:
-        "Avslutningen kan bygge ut følelsen litt mer. Et nattbilde eller et siste intimt øyeblikk vil gi en fin etterklang.",
-      Icon: StarBorderOutlinedIcon,
-      iconColor: "#fbbf24",
-      actionLabel: "Se forslag",
-      actionCount: 2,
-    });
-  }
-
-  // Heuristikk 4: variasjon i shot-typer
-  const uniqueChapters = new Set(picks.map((p) => p.chapter ?? "—")).size;
-  if (uniqueChapters < 4) {
-    recs.push({
-      id: "more-variety",
-      title: "Mer variasjon i shots",
-      body:
-        "Historien lener seg mye på samme type klipp. Vurder å legge til detaljbilder eller bredere atmosfære-shots.",
-      Icon: VideoFileOutlinedIcon,
-      iconColor: "#60a5fa",
-      actionLabel: "Vis kandidater",
-    });
-  }
-
-  return recs.slice(0, 3);
-}
+// Bevarer eksisterende type-eksporter for konsumenter (ingen i dag, men
+// dokumentasjon-sak).
+export type { StoryRecommendation };
 
 const panel: React.CSSProperties = {
   background: "#15151c",
@@ -280,6 +235,15 @@ const recAction: React.CSSProperties = {
   padding: "5px 10px",
   borderRadius: 6,
   cursor: "pointer",
+};
+
+const errorHint: React.CSSProperties = {
+  fontSize: 10,
+  color: "#a3a3b8",
+  background: "#22222e",
+  border: "1px solid #2e2e3a",
+  borderRadius: 6,
+  padding: "6px 8px",
 };
 
 const generateBtn: React.CSSProperties = {
