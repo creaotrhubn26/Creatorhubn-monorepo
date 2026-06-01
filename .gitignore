@@ -107,7 +107,10 @@ frontend/playwright-report/
 frontend/test-results/
 backend/test-results/
 recordings/
-.claude/
+.claude/*
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/*.md
 backend/*.traineddata
 output_*.png
 .tmp-*
