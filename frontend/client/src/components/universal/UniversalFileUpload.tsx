@@ -56,6 +56,11 @@ import {
 import backgroundUploadService from '../../services/BackgroundUploadService';
 import { useUploadQueue } from '../../hooks/useUploadQueue';
 import { usePhotoEnhancementWebSocket } from '../../hooks/usePhotoEnhancementWebSocket';
+import {
+  chunkedUpload,
+  shouldUseChunkedUpload,
+  CHUNKED_UPLOAD_THRESHOLD_BYTES,
+} from '@/lib/chunked-upload';
 import type { ProcessingOptions as BatchProcessingOptions } from '@shared/photo-enhancement-contracts';
 import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
 
@@ -146,7 +151,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   allowedTypes = 'all',
   showFormatInfo = true,
   showFeatureMeta = true,
-  uploadEndpoint = '/api/upload',
+  uploadEndpoint = '/api/uploads/file',
   additionalMetadata = {},
   className = '',
   profession = 'photographer',
@@ -191,6 +196,8 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const [validationErrors, setValidationErrors] = useState<Array<{ file: File; reason: string }>>([]);
   const [showSupportedFormats, setShowSupportedFormats] = useState(false);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [uploadFailures, setUploadFailures] = useState<Array<{ name: string; reason: string }>>([]);
+  const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Master Integration Provider
@@ -354,8 +361,10 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
         throw new Error('Failed to sync to Google Drive');
     }
   } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error('Google Drive sync error: ', error);
       setGoogleDriveSyncStatus('error');
+      setDriveSyncError(message);
   } finally {
       setSyncProgress(100);
   }
@@ -660,11 +669,12 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       };
 
       const handleTaskFailed = (taskId: string, error: string) => {
-        if (taskIds.includes(taskId) && onUploadError) {
-          const task = backgroundUploadService.getTask(taskId);
-          if (task) {
-            onUploadError(error, task.file);
-          }
+        if (!taskIds.includes(taskId)) return;
+        const task = backgroundUploadService.getTask(taskId);
+        const fileName = task?.file?.name || 'Ukjent fil';
+        setUploadFailures(prev => [...prev, { name: fileName, reason: error }]);
+        if (task && onUploadError) {
+          onUploadError(error, task.file);
         }
       };
 
@@ -681,13 +691,54 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       // Use immediate upload (legacy behavior)
       setUploading(true);
       const results: any[] = [];
+      const authHeadersForChunked: Record<string, string> = Object.entries(auth || {}).reduce(
+        (acc, [k, v]) => {
+          if (typeof v === 'string') acc[k] = v;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
 
       try {
         for (let i = 0; i < selectedFiles.length; i++) {
           const file = selectedFiles[i];
+
+          // Chunked path for store filer (≥ 25 MB) — gir resumable upload
+          // som overlever nettverksdrop og browser-restart.
+          if (shouldUseChunkedUpload(file)) {
+            try {
+              const chunked = await chunkedUpload(file, {
+                authHeaders: authHeadersForChunked,
+                metadata: {
+                  ...uploadMetadata,
+                  projectId: projectId ?? selectedProject?.id ?? null,
+                  profession,
+                },
+                onProgress: (info) => {
+                  const pct = Math.round((info.bytesUploaded / info.totalBytes) * 100);
+                  setUploadProgress(prev => ({ ...prev, [file.name]: pct }));
+                },
+              });
+              results.push({ file, result: chunked, success: true });
+              continue;
+            } catch (error: any) {
+              const message = error?.message || String(error);
+              results.push({ file, error: message, success: false });
+              setUploadFailures(prev => [
+                ...prev,
+                {
+                  name: file.name,
+                  reason: `${message} (chunked — fremgang er lagret, prøv på nytt for å resume)`,
+                },
+              ]);
+              if (onUploadError) onUploadError(message, file);
+              continue;
+            }
+          }
+
           const formData = new FormData();
           formData.append('file', file);
-          
+
           // Add metadata
           Object.entries(uploadMetadata).forEach(([key, value]) => {
             formData.append(key, JSON.stringify(value));
@@ -708,14 +759,17 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
           } else {
               const error = await response.text();
               results.push({ file, error, success: false });
+              setUploadFailures(prev => [...prev, { name: file.name, reason: error }]);
               if (onUploadError) {
                 onUploadError(error, file);
             }
           }
         } catch (error: any) {
-            results.push({ file, error: error.message, success: false });
+            const message = error?.message || String(error);
+            results.push({ file, error: message, success: false });
+            setUploadFailures(prev => [...prev, { name: file.name, reason: message }]);
             if (onUploadError) {
-              onUploadError(error.message, file);
+              onUploadError(message, file);
           }
         }
       }
@@ -902,6 +956,51 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Upload Failures Summary — vises også når kalleren ikke passerte onUploadError */}
+      {uploadFailures.length > 0 && (
+        <Alert
+          severity="error"
+          onClose={() => setUploadFailures([])}
+          sx={{ mb: 2 }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            {uploadFailures.length} {uploadFailures.length === 1 ? 'fil' : 'filer'} feilet under opplasting
+          </Typography>
+          <Box component="ul" sx={{ pl: 2, my: 0.5, maxHeight: 160, overflowY: 'auto' }}>
+            {uploadFailures.slice(0, 10).map((f, i) => (
+              <li key={`${f.name}-${i}`}>
+                <Typography variant="caption">
+                  <strong>{f.name}</strong>: {f.reason}
+                </Typography>
+              </li>
+            ))}
+            {uploadFailures.length > 10 && (
+              <li>
+                <Typography variant="caption" color="text.secondary">
+                  +{uploadFailures.length - 10} flere…
+                </Typography>
+              </li>
+            )}
+          </Box>
+        </Alert>
+      )}
+
+      {/* Google Drive Sync Error */}
+      {driveSyncError && (
+        <Alert
+          severity="error"
+          onClose={() => setDriveSyncError(null)}
+          sx={{ mb: 2 }}
+        >
+          <Typography variant="body2">
+            <strong>Google Drive-sync feilet: </strong> {driveSyncError}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Sjekk Drive-tilkoblingen og prøv igjen.
+          </Typography>
+        </Alert>
       )}
 
       {/* Storage Warning */}

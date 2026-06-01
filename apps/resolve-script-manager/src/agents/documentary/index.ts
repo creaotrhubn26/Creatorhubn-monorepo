@@ -30,6 +30,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 5,
     description: "3-30 sek pre-title hook. Et sterkt visuelt øyeblikk, en provoserende setning, eller en uventet detalj som tvinger seer å spørre: 'hva er dette?'. Aldri en eksposisjon — la den komme etterpå.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "hook" as const,
   },
   {
     id: "titles",
@@ -37,6 +38,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 3,
     description: "Tittel + tema-etablering. Kan være musikk-drevet, foto-kollasj, eller en stillesittende komposisjon. Setter tonen for hele filmen.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "setup",
@@ -44,6 +46,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 12,
     description: "Hvem, hvor, hva står på spill. Etabler verden seeren skal være i. Bruk wide-shots av sted, ambient sound, og kort voiceover ELLER interview-snutt. IKKE eksposisjon-dump.",
     priorityHint: "informational" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "character",
@@ -51,6 +54,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 14,
     description: "Vi blir kjent med hovedpersonen(e). Interview-snutter, hverdag-B-roll, et småtimt øyeblikk som viser hvem de er — ikke bare hva de sier. Show-don't-tell.",
     priorityHint: "informational" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "conflict",
@@ -58,6 +62,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 14,
     description: "Hva endrer seg. Hva utfordrer. Hva er problemet/spørsmålet filmen skal undersøke. Dette er punktet der seeren commitser seg.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "investigation",
@@ -65,6 +70,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 24,
     description: "Hovedkjernen. Hovedpersonen møter motgang, lærer, snakker med andre, beveger seg gjennom historien. Veksle mellom interview, B-roll, archival, ambient. Pacing-variasjon er kritisk her — ikke alt skal være intens.",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "turning_point",
@@ -72,6 +78,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 6,
     description: "Et moment der ting endrer seg fundamentalt. Realisering, beslutning, oppdagelse. Ofte slow-pace, longer takes, mer reflektivt enn handling.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "climax",
@@ -79,6 +86,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 12,
     description: "Filmen-s høyeste følelsesmessige eller informasjonelle punkt. Den store revealen, konfrontasjonen, eller forløsningen. Aldri rushet.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "resolution",
@@ -86,6 +94,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 7,
     description: "Konsekvensene. Hva skjedde etter. Karakteren har endret seg — vis hvordan. Pacing slower, mer kontemplativt.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "celebration" as const,
   },
   {
     id: "coda",
@@ -93,6 +102,7 @@ const DOCUMENTARY_CHAPTERS = [
     pacingPct: 3,
     description: "Kort epilog. Tekst-overlay eller stillesittende komposisjon: 'Et år senere …'. Eller bare et symbolsk siste shot. Føles uunngåelig.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "outro" as const,
   },
 ];
 

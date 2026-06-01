@@ -108,12 +108,17 @@ import CommandPalette from '../shared/CommandPalette';
 import ProfessionModeChip from '../shared/ProfessionModeChip';
 import HelpButton, { type WhatsNewItem } from '../shared/HelpButton';
 import FirstTimeTour from '../shared/FirstTimeTour';
+import RoleRoomMobileProfileSheet from '../components/RoleRoomMobileProfileSheet';
+import { useAuth } from '../../../hooks/useAuth';
+import { useRoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import {
   EmojiPeople as WelcomeIcon,
   Search as SearchTourIcon,
   HelpOutline as HelpTourIcon,
   SwapHoriz as ModeTourIcon,
+  AccountCircle as AccountCircleIcon,
 } from '@mui/icons-material';
+import { Avatar, IconButton, Tooltip } from '@mui/material';
 
 
 
@@ -674,6 +679,27 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     ) ?? null;
   }, [memberships]);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+  // Profil-knapp + sheet — speiler RoleRoomDashboardPanel-mønsteret så
+  // DanceWorkspace har logout-tilgang når den brukes selvstendig.
+  const auth = useAuth();
+  const viewport = useRoleRoomViewportMode();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
+  const profileDisplayName = auth.user?.displayName || auth.user?.name || null;
+  const profileEmail = auth.user?.email || null;
+  const profileInitials = useMemo(() => {
+    const source = (profileDisplayName ?? profileEmail ?? '').trim();
+    if (!source) return null;
+    const parts = source.split(/\s+/).filter(Boolean);
+    const letters = parts.slice(0, 2).map((p) => p.charAt(0).toUpperCase()).join('');
+    return letters || source.charAt(0).toUpperCase();
+  }, [profileDisplayName, profileEmail]);
+  const handleOpenProfile = (anchor: HTMLElement) => {
+    setProfileAnchor(anchor);
+    setProfileOpen(true);
+  };
+  const handleCloseProfile = () => setProfileOpen(false);
+  const isAdminUser = (profileEmail ?? '').trim().toLowerCase() === 'daniel@creatorhubn.com';
   React.useEffect(() => {
     if (upgradeOfferTarget) setUpgradeDialogOpen(true);
   }, [upgradeOfferTarget?.member.memberRowId]);
@@ -838,7 +864,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         <TrialBanner />
       </Box>
       {memberships.length > 0 ? (
-        <Box sx={{ px: 1.5, py: 0.75, display: 'flex', justifyContent: 'flex-end' }}>
+        <Box sx={{ px: 1.5, py: 0.75, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
           <MyTeamsHeader
             memberships={memberships}
             activeTeamOrgId={activeTeamOrgId ?? memberships[0]?.team.teamOrganizationId ?? null}
@@ -849,8 +875,63 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
               window.history.replaceState(null, '', url.toString());
             }}
           />
+          <Tooltip title="Profil">
+            <IconButton
+              onClick={(event) => handleOpenProfile(event.currentTarget)}
+              aria-label="Åpne profil"
+              size="small"
+              sx={{
+                bgcolor: 'rgba(139,92,246,0.95)',
+                color: '#fff',
+                '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
+              }}
+            >
+              {profileInitials ? (
+                <Avatar sx={{ width: 26, height: 26, bgcolor: 'transparent', fontSize: '0.72rem', fontWeight: 700, color: '#fff' }}>
+                  {profileInitials}
+                </Avatar>
+              ) : (
+                <AccountCircleIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
         </Box>
-      ) : null}
+      ) : (
+        <Box sx={{ px: 1.5, py: 0.75, display: 'flex', justifyContent: 'flex-end' }}>
+          <Tooltip title="Profil">
+            <IconButton
+              onClick={(event) => handleOpenProfile(event.currentTarget)}
+              aria-label="Åpne profil"
+              size="small"
+              sx={{
+                bgcolor: 'rgba(139,92,246,0.95)',
+                color: '#fff',
+                '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
+              }}
+            >
+              {profileInitials ? (
+                <Avatar sx={{ width: 26, height: 26, bgcolor: 'transparent', fontSize: '0.72rem', fontWeight: 700, color: '#fff' }}>
+                  {profileInitials}
+                </Avatar>
+              ) : (
+                <AccountCircleIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+      <RoleRoomMobileProfileSheet
+        open={profileOpen}
+        onClose={handleCloseProfile}
+        mode={viewport.mode}
+        anchorEl={profileAnchor}
+        displayName={profileDisplayName}
+        email={profileEmail}
+        roleLabel={null}
+        workspaceSummary={null}
+        onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
+        isAdmin={isAdminUser}
+      />
       {upgradeDialogOpen && upgradeOfferTarget ? (
         <UpgradeToFreelanceDialog
           membership={upgradeOfferTarget}

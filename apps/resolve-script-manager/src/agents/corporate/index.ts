@@ -22,6 +22,7 @@ const CORPORATE_CHAPTERS = [
     pacingPct: 6,
     description: "Fang oppmerksomhet de første 5 sekunder. Pattern interrupt, sterk visuell, eller direkte spørsmål. Hvis hooken svikter, faller alt etterpå.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "hook" as const,
   },
   {
     id: "problem",
@@ -29,6 +30,7 @@ const CORPORATE_CHAPTERS = [
     pacingPct: 18,
     description: "Etabler smerten kunden kjenner igjen. Konkret, spesifikk, ikke generisk. Bruk B-roll som visualiserer problemet (frustrert kunde, manuelle prosesser, kø).",
     priorityHint: "informational" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "solution",
@@ -36,6 +38,7 @@ const CORPORATE_CHAPTERS = [
     pacingPct: 28,
     description: "Vis hvordan produktet/tjenesten løser problemet. Demo, screen-recording, hands-on-shots. Hovedkjernen i video-en.",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "proof",
@@ -43,6 +46,7 @@ const CORPORATE_CHAPTERS = [
     pacingPct: 20,
     description: "Sosial bevis: testimonial, case-tall, før/etter, kunde-logoer, eksperter. Bygger troverdighet før CTA.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "differentiation",
@@ -50,6 +54,7 @@ const CORPORATE_CHAPTERS = [
     pacingPct: 12,
     description: "Hva som skiller oss fra konkurrentene. Kort sammenligning, unique value prop. Bør ikke dvele her — én klar setning er ofte nok.",
     priorityHint: "transitional" as const,
+    narrativeBeat: "celebration" as const,
   },
   {
     id: "cta",
@@ -57,6 +62,7 @@ const CORPORATE_CHAPTERS = [
     pacingPct: 10,
     description: "Klar handling: 'Bestill demo', 'Last ned guide', 'Følg lenken'. Skjerm-tekst pluss verbal CTA. Skap urgency hvis det passer.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "celebration" as const,
   },
   {
     id: "outro",
@@ -64,6 +70,7 @@ const CORPORATE_CHAPTERS = [
     pacingPct: 6,
     description: "Logo-reveal, varemerke-bumper, kontaktinfo. Slutt-følelse av polert produksjon — det signaliserer at hele leveransen er kvalitetssikret.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "outro" as const,
   },
 ];
 

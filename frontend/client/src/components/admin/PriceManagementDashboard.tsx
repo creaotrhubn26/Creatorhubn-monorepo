@@ -95,6 +95,10 @@ interface SubscriptionPlanRow {
   isActive: boolean;
   contactSalesOnly?: boolean;
   ctaLabel?: string | null;
+  // Storage-billing — vises i Pris-admin slik at admin har full kontroll
+  maxStorageGB?: number;
+  allowsStorageOverage?: boolean | null;
+  storageOveragePricePerGbNok?: number | null;
 }
 
 interface CreatorHubEmailTemplateRow {
@@ -462,6 +466,9 @@ function mapSubscriptionPlans(plans: PlatformSubscriptionPlan[]): SubscriptionPl
     isActive: plan.isActive,
     contactSalesOnly: Boolean(plan.contactSalesOnly),
     ctaLabel: plan.ctaLabel ?? null,
+    maxStorageGB: plan.limits?.maxStorageGB,
+    allowsStorageOverage: (plan as any).allowsStorageOverage ?? null,
+    storageOveragePricePerGbNok: (plan as any).storageOveragePricePerGbNok ?? null,
   }));
 }
 
@@ -536,6 +543,18 @@ export default function PriceManagementDashboard({
   const [editingPlanCtaLabel, setEditingPlanCtaLabel] = useState('');
   const [editingPlanActive, setEditingPlanActive] = useState(true);
   const [editingPlanContactSalesOnly, setEditingPlanContactSalesOnly] = useState(false);
+  // Storage-billing-state (lagt til 2026-05-31)
+  const [editingPlanMaxStorageGB, setEditingPlanMaxStorageGB] = useState('');
+  const [editingPlanPrevStorageGB, setEditingPlanPrevStorageGB] = useState(0);
+  const [editingPlanAllowsOverage, setEditingPlanAllowsOverage] = useState(false);
+  const [editingPlanOveragePrice, setEditingPlanOveragePrice] = useState('');
+  const [editingPlanAutoAdjustPrice, setEditingPlanAutoAdjustPrice] = useState(false);
+  const [storageCostPreview, setStorageCostPreview] = useState<{
+    monthlyCostNok: number;
+    suggestedMonthlyPriceNok: number;
+    suggestedOveragePricePerGbNok: number;
+    notes: string[];
+  } | null>(null);
   const [creatorHubEmailSettings, setCreatorHubEmailSettings] = useState<CreatorHubEmailSettings>(
     defaultCreatorHubEmailSettings,
   );
@@ -858,6 +877,42 @@ export default function PriceManagementDashboard({
     resetFeatureForm();
   };
 
+  // Hent sanntid kost-preview når storage-cap endres i edit-dialogen
+  useEffect(() => {
+    if (!editPlanDialogOpen) return;
+    const gb = parseFloat(editingPlanMaxStorageGB);
+    if (!Number.isFinite(gb) || gb < 0) {
+      setStorageCostPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/storage-cost/preview?storageGB=${gb}`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.breakdown) {
+          setStorageCostPreview({
+            monthlyCostNok: data.breakdown.monthlyCostNok,
+            suggestedMonthlyPriceNok: data.breakdown.suggestedMonthlyPriceNok,
+            suggestedOveragePricePerGbNok:
+              data.breakdown.suggestedOveragePricePerGbNok,
+            notes: data.breakdown.notes ?? [],
+          });
+        }
+      } catch {
+        // stille
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [editPlanDialogOpen, editingPlanMaxStorageGB]);
+
   const savePlanEdit = async () => {
     const monthlyPrice = Number(editingPlanMonthlyPrice);
     const yearlyPrice = Number(editingPlanYearlyPrice);
@@ -872,7 +927,36 @@ export default function PriceManagementDashboard({
       return;
     }
 
-    const patchPayload = {
+    const parsedStorageGB = editingPlanMaxStorageGB.trim() === ''
+      ? undefined
+      : parseFloat(editingPlanMaxStorageGB);
+    if (
+      parsedStorageGB !== undefined &&
+      (!Number.isFinite(parsedStorageGB) || parsedStorageGB < 0 || parsedStorageGB > 100_000)
+    ) {
+      setSnackbar({
+        open: true,
+        message: 'Ugyldig lagrings-cap (0–100 000 GB).',
+        severity: 'error',
+      });
+      return;
+    }
+    const parsedOveragePrice = editingPlanOveragePrice.trim() === ''
+      ? undefined
+      : parseFloat(editingPlanOveragePrice);
+    if (
+      parsedOveragePrice !== undefined &&
+      (!Number.isFinite(parsedOveragePrice) || parsedOveragePrice < 0)
+    ) {
+      setSnackbar({
+        open: true,
+        message: 'Ugyldig overforbruks-pris.',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const patchPayload: Record<string, unknown> = {
       displayName: editingPlanName.trim(),
       description: editingPlanDescription.trim(),
       features: editingPlanFeatures
@@ -886,7 +970,17 @@ export default function PriceManagementDashboard({
       publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
       ctaLabel: editingPlanCtaLabel.trim() || null,
       isActive: editingPlanActive,
+      allowsStorageOverage: editingPlanAllowsOverage,
     };
+    if (parsedStorageGB !== undefined) {
+      patchPayload.maxStorageGB = parsedStorageGB;
+    }
+    if (parsedOveragePrice !== undefined) {
+      patchPayload.storageOveragePricePerGbNok = parsedOveragePrice;
+    }
+    if (editingPlanAutoAdjustPrice) {
+      patchPayload.autoAdjustMonthlyPrice = true;
+    }
     let updatedServer = false;
     let updatedPlanFromServer: PlatformSubscriptionPlan | null = null;
 
@@ -1457,6 +1551,12 @@ export default function PriceManagementDashboard({
                           <strong>Årlig</strong>
                         </TableCell>
                         <TableCell>
+                          <strong>Lagring</strong>
+                        </TableCell>
+                        <TableCell>
+                          <strong>Overforbruk</strong>
+                        </TableCell>
+                        <TableCell>
                           <strong>Offentlig visning</strong>
                         </TableCell>
                         <TableCell>
@@ -1501,6 +1601,43 @@ export default function PriceManagementDashboard({
                             </Stack>
                           </TableCell>
                           <TableCell>
+                            <Stack spacing={0.25}>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {plan.maxStorageGB != null
+                                  ? `${plan.maxStorageGB} GB`
+                                  : '—'}
+                              </Typography>
+                              {plan.maxStorageGB ? (
+                                <Typography variant="caption" color="text.secondary">
+                                  ~{(plan.maxStorageGB * 0.5).toFixed(0)} kr kost/mnd
+                                </Typography>
+                              ) : null}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            {plan.allowsStorageOverage ? (
+                              <Stack spacing={0.25}>
+                                <Chip
+                                  label="Tillatt"
+                                  color="warning"
+                                  size="small"
+                                  sx={{ fontWeight: 700, width: 'fit-content' }}
+                                />
+                                {plan.storageOveragePricePerGbNok != null ? (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {plan.storageOveragePricePerGbNok} kr/GB
+                                  </Typography>
+                                ) : null}
+                              </Stack>
+                            ) : (
+                              <Chip
+                                label="Hard cap"
+                                size="small"
+                                sx={{ fontWeight: 700, width: 'fit-content' }}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {plan.publicPriceLabel || (plan.contactSalesOnly ? 'Kontakt salg' : 'Pris vises automatisk')}
                           </TableCell>
                           <TableCell>
@@ -1525,6 +1662,18 @@ export default function PriceManagementDashboard({
                                 setEditingPlanCtaLabel(plan.ctaLabel ?? '');
                                 setEditingPlanActive(plan.isActive);
                                 setEditingPlanContactSalesOnly(Boolean(plan.contactSalesOnly));
+                                setEditingPlanMaxStorageGB(
+                                  plan.maxStorageGB != null ? String(plan.maxStorageGB) : '',
+                                );
+                                setEditingPlanPrevStorageGB(plan.maxStorageGB ?? 0);
+                                setEditingPlanAllowsOverage(Boolean(plan.allowsStorageOverage));
+                                setEditingPlanOveragePrice(
+                                  plan.storageOveragePricePerGbNok != null
+                                    ? String(plan.storageOveragePricePerGbNok)
+                                    : '',
+                                );
+                                setEditingPlanAutoAdjustPrice(false);
+                                setStorageCostPreview(null);
                                 setEditPlanDialogOpen(true);
                               }}
                             >
@@ -2286,6 +2435,152 @@ export default function PriceManagementDashboard({
             label="Plan aktiv"
             sx={{ mt: 1 }}
           />
+
+          {/* Storage-billing-blokk — lagt til 2026-05-31 */}
+          <Box
+            sx={{
+              mt: 3,
+              p: 2,
+              borderRadius: '12px',
+              border: '1px solid rgba(15, 23, 42, 0.12)',
+              bgcolor: '#f8fafc',
+            }}
+          >
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+              Lagring & overforbruk
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+              Storage-cap håndheves direkte ved upload (507 ved overskridelse hvis overforbruk ikke er tillatt).
+              Overforbruks-pris brukes som metered Stripe-faktura når brukeren går over.
+            </Typography>
+            <TextField
+              fullWidth
+              label="Lagrings-cap (GB)"
+              type="number"
+              inputProps={{ min: 0, step: 1 }}
+              value={editingPlanMaxStorageGB}
+              onChange={(event) => setEditingPlanMaxStorageGB(event.target.value)}
+              helperText="La feltet stå tomt for å bruke hardkodet default for tieren."
+              sx={{ mb: 2 }}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={editingPlanAllowsOverage}
+                  onChange={(event) => setEditingPlanAllowsOverage(event.target.checked)}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2">Tillat overforbruk</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Av = hard cap (bruker får 507). På = metered Stripe-overage.
+                  </Typography>
+                </Box>
+              }
+              sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}
+            />
+            <TextField
+              fullWidth
+              label="Overforbruks-pris (NOK / GB)"
+              type="number"
+              inputProps={{ min: 0, step: 0.5 }}
+              value={editingPlanOveragePrice}
+              onChange={(event) => setEditingPlanOveragePrice(event.target.value)}
+              disabled={!editingPlanAllowsOverage}
+              helperText="Vises i Stripe-fakturering når brukeren overstiger lagring."
+              sx={{ mt: 1, mb: 2 }}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={editingPlanAutoAdjustPrice}
+                  onChange={(event) => setEditingPlanAutoAdjustPrice(event.target.checked)}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2">Juster månedspris automatisk</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Ved endring av lagrings-cap: oppjuster månedspris så CreatorHub beholder samme feature-margin.
+                  </Typography>
+                </Box>
+              }
+              sx={{ display: 'flex', alignItems: 'flex-start' }}
+            />
+
+            {storageCostPreview ? (
+              <Box
+                sx={{
+                  mt: 2,
+                  p: 1.75,
+                  borderRadius: '10px',
+                  bgcolor: '#fff7ed',
+                  border: '1px solid #fed7aa',
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  Kostnader vs pris (sanntid)
+                </Typography>
+                <Stack spacing={0.5}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption">Kost (Cloudflare R2+Stream):</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                      {storageCostPreview.monthlyCostNok.toFixed(2)} kr/mnd
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption">Foreslått pris (3× margin):</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#16a34a' }}>
+                      {storageCostPreview.suggestedMonthlyPriceNok} kr/mnd
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption">Foreslått overforbruks-pris:</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                      {storageCostPreview.suggestedOveragePricePerGbNok} kr/GB
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                    <Typography variant="caption">Nåværende pris:</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                      {editingPlanMonthlyPrice || 0} kr/mnd
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption">Margin til CreatorHub:</Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontWeight: 700,
+                        color:
+                          (parseFloat(editingPlanMonthlyPrice) || 0) -
+                            storageCostPreview.monthlyCostNok >=
+                          0
+                            ? '#16a34a'
+                            : '#dc2626',
+                      }}
+                    >
+                      {(
+                        (parseFloat(editingPlanMonthlyPrice) || 0) -
+                        storageCostPreview.monthlyCostNok
+                      ).toFixed(2)}{' '}
+                      kr
+                    </Typography>
+                  </Box>
+                </Stack>
+                {storageCostPreview.notes.length > 0 ? (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block', mt: 1 }}
+                  >
+                    {storageCostPreview.notes.join(' · ')}
+                  </Typography>
+                ) : null}
+              </Box>
+            ) : null}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditPlanDialogOpen(false)}>Avbryt</Button>

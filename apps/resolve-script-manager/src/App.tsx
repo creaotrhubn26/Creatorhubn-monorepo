@@ -37,6 +37,7 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
+import { StoryTestHarness } from "./components/story/StoryTestHarness";
 import { AgentEditorView } from "./components/AgentEditorView";
 import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
 import CORPORATE_AGENT_CONFIG from "./agents/corporate";
@@ -55,6 +56,22 @@ import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
 import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
+import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
+import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
+import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
+import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
+import { PhotoshopHealthCheckDialog } from "./components/PhotoshopHealthCheckDialog";
+import {
+  PhotoshopOnboardingTour,
+  hasCompletedPhotoshopTour,
+} from "./components/PhotoshopOnboardingTour";
+import { FeedbackDialog } from "./components/FeedbackDialog";
+import { HelpDialog } from "./components/HelpDialog";
+import { PhotoshopSetupWizard } from "./components/PhotoshopSetupWizard";
+import { PhotoshopScaffoldDialog } from "./components/PhotoshopScaffoldDialog";
+import { AiImageDialog } from "./components/AiImageDialog";
+import { ArtDirectorDialog } from "./components/ArtDirectorDialog";
+import { CreationsDialog } from "./components/CreationsDialog";
 import { MagicCutDialog } from "./components/MagicCutDialog";
 import { HomeView, recordRecentProject } from "./components/HomeView";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons";
@@ -63,7 +80,22 @@ import { useProjectTemplate } from "./hooks/useProjectTemplate";
 
 const MAX_LOG_EVENTS = 500;
 
+/**
+ * Test-bypass: når URL har `?test=story`, eksporter vi en harness som
+ * direkte mounter StoryView med pre-loaded picks fra window.__POST_AGENT_TEST_PICKS__.
+ * Brukes av Playwright e2e — ingen prod-effekt fordi flagget kun
+ * finnes når Playwright setter det.
+ */
+function isStoryTestMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("test") === "story";
+}
+
 export default function App() {
+  if (isStoryTestMode()) {
+    return <StoryTestHarness />;
+  }
+
   const [registry, setRegistry] = useState<Registry | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowMap>({});
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
@@ -128,6 +160,21 @@ export default function App() {
   }, []);
   const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
   const [showWatch, setShowWatch] = useState(false);
+  const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
+  const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
+  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
+  const [showPsdGallery, setShowPsdGallery] = useState(false);
+  const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
+  const [showPhotoshopTour, setShowPhotoshopTour] = useState(
+    () => !hasCompletedPhotoshopTour(),
+  );
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showPhotoshopSetup, setShowPhotoshopSetup] = useState(false);
+  const [showPhotoshopScaffold, setShowPhotoshopScaffold] = useState(false);
+  const [showAiImage, setShowAiImage] = useState(false);
+  const [showArtDirector, setShowArtDirector] = useState(false);
+  const [showCreations, setShowCreations] = useState(false);
   const [showMagicCut, setShowMagicCut] = useState(false);
   // Auto-show Role Room sign-in on app launch when first-run is done but
   // the user hasn't authenticated yet. Suppressed during first-run since
@@ -646,6 +693,19 @@ export default function App() {
         onOpenSettings={() => setShowSettings(true)}
         onOpenDependencies={() => setShowDependencies(true)}
         onOpenWatch={() => setShowWatch(true)}
+        onOpenPhotoshopBridge={() => setShowPhotoshopBridge(true)}
+        onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
+        onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
+        onOpenPsdGallery={() => setShowPsdGallery(true)}
+        onOpenPhotoshopHealth={() => setShowPhotoshopHealth(true)}
+        onOpenPhotoshopTour={() => setShowPhotoshopTour(true)}
+        onOpenFeedback={() => setShowFeedback(true)}
+        onOpenHelp={() => setShowHelp(true)}
+        onOpenPhotoshopSetup={() => setShowPhotoshopSetup(true)}
+        onOpenPhotoshopScaffold={() => setShowPhotoshopScaffold(true)}
+        onOpenAiImage={() => setShowAiImage(true)}
+        onOpenArtDirector={() => setShowArtDirector(true)}
+        onOpenCreations={() => setShowCreations(true)}
         onSignIn={() => setShowSignIn(true)}
         onSignedOut={() => { /* state refresh happens via storage event */ }}
         advancedMode={advancedMode}
@@ -954,6 +1014,45 @@ export default function App() {
       )}
 
       {showWatch && <WatchFolderModal onClose={() => setShowWatch(false)} />}
+      {showPhotoshopBridge && (
+        <PhotoshopBridgeDialog onClose={() => setShowPhotoshopBridge(false)} />
+      )}
+      {showPhotoshopTemplates && (
+        <PhotoshopTemplateDialog onClose={() => setShowPhotoshopTemplates(false)} />
+      )}
+      {showPhotoshopAgent && (
+        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
+      )}
+      {showPsdGallery && (
+        <PsdGalleryDialog onClose={() => setShowPsdGallery(false)} />
+      )}
+      {showPhotoshopHealth && (
+        <PhotoshopHealthCheckDialog onClose={() => setShowPhotoshopHealth(false)} />
+      )}
+      {showPhotoshopTour && (
+        <PhotoshopOnboardingTour onClose={() => setShowPhotoshopTour(false)} />
+      )}
+      {showCreations && (
+        <CreationsDialog onClose={() => setShowCreations(false)} />
+      )}
+      {showArtDirector && (
+        <ArtDirectorDialog onClose={() => setShowArtDirector(false)} />
+      )}
+      {showAiImage && (
+        <AiImageDialog onClose={() => setShowAiImage(false)} />
+      )}
+      {showPhotoshopScaffold && (
+        <PhotoshopScaffoldDialog onClose={() => setShowPhotoshopScaffold(false)} />
+      )}
+      {showPhotoshopSetup && (
+        <PhotoshopSetupWizard onClose={() => setShowPhotoshopSetup(false)} />
+      )}
+      {showHelp && (
+        <HelpDialog onClose={() => setShowHelp(false)} />
+      )}
+      {showFeedback && (
+        <FeedbackDialog onClose={() => setShowFeedback(false)} />
+      )}
 
       {updateInfo && (
         <UpdaterDialog

@@ -46,6 +46,7 @@ import { VisualEditorProvider } from '../admin/visual-editor/VisualEditorContext
 import CreatorHubMarketplace from '../resume/ResumeBuilderMarketplace';
 import ContractSummaryWidget from '../contract-designer/ContractSummaryWidget';
 import RelatedItemsWidget from './shared/RelatedItemsWidget';
+import StorageUsageBanner from './shared/StorageUsageBanner';
 import {
   Box,
   Container,
@@ -312,7 +313,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'files', label: 'Filer', icon: <FolderOpen /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','portrett','event','kommersiell'],
     stats: [
@@ -344,7 +345,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','commercial','portrett','produkt'],
     stats: [
@@ -376,7 +377,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','reklame','dokumentar','musikkvideo'],
     stats: [
@@ -408,7 +409,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['album','singel','podcast','jingle'],
     stats: [
@@ -434,7 +435,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['utleie','salg','service','konsultasjon'],
     stats: [
@@ -468,7 +469,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
-      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+      ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','corporate','event','musikkvideo','portrett','reklame'],
     stats: [
@@ -4798,6 +4799,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     : null)
               }
             />
+            <Box sx={{ mt: 2, mb: 2 }}>
+              <StorageUsageBanner
+                variant="expanded"
+                onUpgradeClick={() => setTabValue('settings')}
+                onManageFilesClick={() => setTabValue('files')}
+              />
+            </Box>
           <MuiCard sx={{
             // Landing-matched dark surface med profesjon-spesifikk
             // aksent-border. Hver fag har egen "lyd" (orange/rød/blå/

@@ -3,6 +3,16 @@ import type { HealthStatus, ProjectTemplateSummary } from "../types";
 import { IconGear, IconBox, IconEye, IconMagicCut } from "./Icons";
 import { UserProfile } from "./UserProfile";
 import { useDepHealth, type DepHealth } from "../hooks/useDepHealth";
+import { PhotoshopStatusPill } from "./PhotoshopStatusPill";
+import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
+import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
+import AddIcon from "@mui/icons-material/Add";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import HistoryIcon from "@mui/icons-material/History";
+import WavingHandOutlinedIcon from "@mui/icons-material/WavingHandOutlined";
+import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
+import FeedbackOutlinedIcon from "@mui/icons-material/FeedbackOutlined";
 
 function DepHealthPill({ onOpen }: { onOpen: () => void }) {
   const { state } = useDepHealth();
@@ -87,6 +97,19 @@ interface Props {
   onOpenSettings: () => void;
   onOpenDependencies: () => void;
   onOpenWatch: () => void;
+  onOpenPhotoshopBridge: () => void;
+  onOpenPhotoshopTemplates: () => void;
+  onOpenPhotoshopAgent: () => void;
+  onOpenPsdGallery: () => void;
+  onOpenPhotoshopHealth: () => void;
+  onOpenPhotoshopTour: () => void;
+  onOpenFeedback: () => void;
+  onOpenHelp: () => void;
+  onOpenPhotoshopSetup: () => void;
+  onOpenPhotoshopScaffold: () => void;
+  onOpenAiImage: () => void;
+  onOpenArtDirector: () => void;
+  onOpenCreations: () => void;
   onSignIn: () => void;
   onSignedOut: () => void;
   advancedMode: boolean;
@@ -125,6 +148,19 @@ export function HeaderBar({
   onOpenSettings,
   onOpenDependencies,
   onOpenWatch,
+  onOpenPhotoshopBridge,
+  onOpenPhotoshopTemplates,
+  onOpenPhotoshopAgent,
+  onOpenPsdGallery,
+  onOpenPhotoshopHealth,
+  onOpenPhotoshopTour,
+  onOpenFeedback,
+  onOpenHelp,
+  onOpenPhotoshopSetup,
+  onOpenPhotoshopScaffold,
+  onOpenAiImage,
+  onOpenArtDirector,
+  onOpenCreations,
   onSignIn,
   onSignedOut,
   advancedMode,
@@ -142,6 +178,7 @@ export function HeaderBar({
           {connectionLabel(health)}
         </span>
         <DepHealthPill onOpen={onOpenDependencies} />
+        <PhotoshopStatusPill onClick={onOpenPhotoshopBridge} />
       </div>
 
       <div className="header-actions">
@@ -191,6 +228,77 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenWatch(); }}>
                   <IconEye /> Watch Folder
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenPhotoshopHealth(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(74,212,138,0.18), rgba(34,180,90,0.18))",
+                    border: "1px solid rgba(74,212,138,0.40)",
+                    color: "#dafce6",
+                    fontWeight: 600,
+                  }}
+                >
+                  <CheckCircleOutlinedIcon fontSize="small" /> Helse-sjekk Photoshop…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenPhotoshopSetup(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(59,130,246,0.16), rgba(37,99,235,0.16))",
+                    border: "1px solid rgba(59,130,246,0.40)",
+                    color: "#dbeafe",
+                    fontWeight: 600,
+                  }}
+                >
+                  <BuildOutlinedIcon fontSize="small" /> Photoshop-oppsett (kom i gang)
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopBridge(); }}>
+                  Photoshop Bridge…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTemplates(); }}>
+                  Photoshop Templates…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopScaffold(); }}>
+                  <AddIcon fontSize="small" /> Lag template fra startpunkt…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenAiImage(); }}>
+                  <AutoAwesomeIcon fontSize="small" /> AI image generation…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenArtDirector(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(167,139,250,0.22), rgba(110,63,199,0.22))",
+                    border: "1px solid rgba(167,139,250,0.45)",
+                    color: "#e8e0ff",
+                    fontWeight: 600,
+                  }}
+                >
+                  <AutoAwesomeIcon fontSize="small" /> AI Creative Director…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenCreations(); }}>
+                  <HistoryIcon fontSize="small" /> Mine AI-kreasjoner…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
+                  style={{
+                    background: "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
+                    border: "1px solid rgba(167,139,250,0.35)",
+                    color: "#e8e0ff",
+                    fontWeight: 600,
+                  }}
+                >
+                  <BrushOutlinedIcon fontSize="small" /> Photoshop Agent…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPsdGallery(); }}>
+                  PSD-galleri…
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenPhotoshopTour(); }}>
+                  <WavingHandOutlinedIcon fontSize="small" /> Vis Photoshop-tour på nytt
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenHelp(); }}>
+                  <HelpOutlineOutlinedIcon fontSize="small" /> Hjelp + dokumentasjon
+                </button>
+                <button onClick={() => { setMenuOpen(false); onOpenFeedback(); }}>
+                  <FeedbackOutlinedIcon fontSize="small" /> Send feedback
                 </button>
                 <div className="header-menu-divider" />
                 <button onClick={() => { setMenuOpen(false); onConnect(); }} disabled={busy}>

@@ -147,6 +147,29 @@ import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
+import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
+import { setupPagesCtaRoutes } from "./role-room-pages-cta-routes.js";
+import { setupPagePublicContentRoutes } from "./role-room-page-public-content-routes.js";
+import { setupPageMentionsRoutes } from "./role-room-page-mentions-routes.js";
+import { setupPageMetadataRoutes } from "./role-room-page-metadata-routes.js";
+import { setupIgPublicRoutes } from "./role-room-ig-public-routes.js";
+import { setupLeadsRetrievalRoutes } from "./role-room-leads-retrieval-routes.js";
+import { setupIgEventsRoutes } from "./role-room-ig-events-routes.js";
+import { setupMetaReviewIndexRoutes } from "./role-room-meta-review-index-routes.js";
+import { setupMarketingCockpitRoutes } from "./role-room-marketing-cockpit-routes.js";
+import { setupRoleRoomAgentRoutes } from "./role-room-agent-routes.js";
+import { setupMarketingCompetitorsRoutes } from "./role-room-marketing-competitors-routes.js";
+import { startCompetitorSnapshotWorker } from "./role-room-competitor-snapshot-worker.js";
+import { setupPostDraftsRoutes } from "./role-room-post-drafts-routes.js";
+import { setupBrandMetricsRoutes, startBrandMetricsWorker } from "./role-room-brand-metrics-routes.js";
+import {
+  setupReportSchedulerRoutes,
+  startCompetitorReportScheduler,
+} from "./role-room-competitor-report-scheduler.js";
+import {
+  setupPostEngagementRoutes,
+  startPostEngagementWorker,
+} from "./role-room-post-engagement-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -440,6 +463,11 @@ import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-ro
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
+import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
+import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
+import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-routes";
+import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
+import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -649,6 +677,14 @@ import {
   ensurePhotographerProjectsSchemaShared,
 } from "./photographer-projects-routes";
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
+import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
+import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
+import { setupUploadsRoutes } from "./uploads-routes";
+import { setupStorageStatusRoutes } from "./storage-status-routes";
+import { setupStorageBillingAdminRoutes } from "./storage-billing-admin-routes";
+import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
+import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
+import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
@@ -1000,6 +1036,11 @@ const projectFileUpload = multer({
     cb(new Error("Ugyldig prosjektfilformat."));
   },
 });
+
+// Installer log-redaction FØR app instansieres så alle påfølgende
+// console.* går gjennom maskeringen. Idempotent — trygt å re-importere.
+import { installSecretRedactor } from "./log-redaction.js";
+installSecretRedactor();
 
 const app = express();
 
@@ -18490,6 +18531,9 @@ type CompatPlatformSubscriptionPlan = {
   contactSalesOnly?: boolean;
   publicPriceLabel?: string | null;
   ctaLabel?: string | null;
+  // Storage-billing eksponert til admin-UI og frontend-billing-flows.
+  allowsStorageOverage?: boolean | null;
+  storageOveragePricePerGbNok?: number | null;
   trialDays: number;
   createdAt: string;
   updatedAt: string;
@@ -18506,6 +18550,10 @@ type CompatPlatformSubscriptionPlanOverride = {
   isActive?: boolean | null;
   publicPriceLabel?: string | null;
   ctaLabel?: string | null;
+  // Storage-konfig (lagt til 2026-05-31 — gjør lagrings-cap editerbar fra admin)
+  maxStorageGB?: number | null;
+  allowsStorageOverage?: boolean | null;
+  storageOveragePricePerGbNok?: number | null;
   updatedAt: string;
   updatedBy?: string | null;
 };
@@ -18822,6 +18870,18 @@ async function ensureCompatPlatformSubscriptionPlanOverridesLoaded() {
             Object.prototype.hasOwnProperty.call(rawOverride, "ctaLabel")
               ? readString(rawOverride.ctaLabel)
               : undefined,
+          maxStorageGB:
+            Object.prototype.hasOwnProperty.call(rawOverride, "maxStorageGB")
+              ? readNumber(rawOverride.maxStorageGB)
+              : undefined,
+          allowsStorageOverage:
+            Object.prototype.hasOwnProperty.call(rawOverride, "allowsStorageOverage")
+              ? readBoolean(rawOverride.allowsStorageOverage)
+              : undefined,
+          storageOveragePricePerGbNok:
+            Object.prototype.hasOwnProperty.call(rawOverride, "storageOveragePricePerGbNok")
+              ? readNumber(rawOverride.storageOveragePricePerGbNok)
+              : undefined,
           updatedAt,
           updatedBy: readString(rawOverride.updatedBy),
         });
@@ -18881,6 +18941,25 @@ function applyCompatPlatformSubscriptionPlanOverride(
         ? override.publicPriceLabel
         : plan.publicPriceLabel,
     ctaLabel: override.ctaLabel !== undefined ? override.ctaLabel : plan.ctaLabel,
+    // Storage-felter: lagres på plan.limits.maxStorageGB (eksisterende felt),
+    // mens allowsStorageOverage + storageOveragePricePerGbNok eksponeres som
+    // nye toppnivå-felter på plan-objektet.
+    limits: {
+      ...plan.limits,
+      maxStorageGB:
+        typeof override.maxStorageGB === "number" && Number.isFinite(override.maxStorageGB)
+          ? override.maxStorageGB
+          : plan.limits.maxStorageGB,
+    },
+    allowsStorageOverage:
+      typeof override.allowsStorageOverage === "boolean"
+        ? override.allowsStorageOverage
+        : (plan as any).allowsStorageOverage,
+    storageOveragePricePerGbNok:
+      typeof override.storageOveragePricePerGbNok === "number" &&
+      Number.isFinite(override.storageOveragePricePerGbNok)
+        ? override.storageOveragePricePerGbNok
+        : (plan as any).storageOveragePricePerGbNok,
     updatedAt: override.updatedAt || plan.updatedAt,
   };
 }
@@ -25740,6 +25819,15 @@ setupRoleRoomTalentsRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
+// B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
+// Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
+// VIKTIG: Må registreres FØR setupRoleRoomAgenciesRoutes, fordi sistnevnte
+// har "/agency/talents/:talentId" som ellers fanger "/agency/talents/search".
+setupRoleRoomAgencySearchRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
 // B2B2Talent Phase 1.5 — agency-perspektivet. Stella/NSF/produsenter ser
 // talents kun via consent. Migrasjon 211 (agency_orgs + users.agency_org_id).
 setupRoleRoomAgenciesRoutes({
@@ -25747,9 +25835,40 @@ setupRoleRoomAgenciesRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
+// B2B2Talent Phase 7.5 — reverse-consent: agency foreslår talent → talent
+// godkjenner via e-post-lenke. GDPR-grunnlag for at agency aldri kan tvinge
+// en talent inn i sitt register. Mål: koble til BankID i Phase 8 for
+// juridisk gyldig signering. Strengere barn-handling planlagt (ROADMAP.md).
+// Migrasjon 218 (agency_talent_proposals).
+setupRoleRoomAgencyProposalsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Agency ↔ Production team partnership-system. Per-prosjekt scope.
+// Migrasjon 222 (agency_production_partnerships + invitations + audit).
+setupRoleRoomPartnershipsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
 // B2B2Talent Phase 2 — alt-i-ett partners-overview + bulk-set + invite-flow.
 // Migrasjon 213 (talent_partner_invites). E2E-data for /talents/partners-siden.
 setupRoleRoomTalentPartnersRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 5 — direkte fil-opplastning til Cloudflare R2 via
+// presigned PUT-URL. Klient streamer filer direkte, backend ser ikke bytes.
+setupRoleRoomTalentUploadsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// B2B2Talent Phase 6 — GDPR-rettigheter (art. 15/17/20): export, slett,
+// audit-retention. Migrasjon 216 (talent_stream_uploads).
+setupRoleRoomTalentGdprRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
@@ -31847,6 +31966,67 @@ function requireAdminOrDemoBypass(
   if (isDemoBypassed(req)) return true;
   return Boolean(requireAdminSession(req, res));
 }
+
+// Meta App Review demo for oEmbed Read — egen modul (overlever branch-flips).
+setupOEmbedRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for pages_manage_cta — Role Agent setter Page CTA.
+setupPagesCtaRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Page Public Content Access — public page-discovery.
+setupPagePublicContentRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Page Mentions — read posts tagging a Page.
+setupPageMentionsRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Page Public Metadata Access — rich public fields.
+setupPageMetadataRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for Instagram Public Content Access — hashtag + discovery.
+setupIgPublicRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for leads_retrieval — Lead Ads form-submissions ingest.
+setupLeadsRetrievalRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for instagram_manage_events — IG events CRUD.
+setupIgEventsRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo INDEX — one URL surfacing all 9 demos.
+setupMetaReviewIndexRoutes({ app, requireAdminOrDemoBypass });
+
+// Marketing Cockpit — aggregates Page profile, mentions, CTA, IG profile,
+// upcoming events, leads, and hashtag stats for The Role Room brand Page.
+setupMarketingCockpitRoutes({ app, requireAdminOrDemoBypass });
+
+// Role Room Agent — profile-recommendations (bio, cover, CTA per platform)
+// + publish-orchestration to Meta API + history log.
+setupRoleRoomAgentRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// Marketing-competitors — tracked-list + daily snapshots for konkurrent-monitor.
+setupMarketingCompetitorsRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// Competitor auto-snapshot worker — refreshes auto_snapshot=true rows hourly
+// for any that haven't been snapshotted in 24h. Starts 60s after boot so the
+// server is fully ready first.
+startCompetitorSnapshotWorker(pool);
+
+// Post-drafts — AI-skrevet post-utkast fra rapport-insights + publish-bro.
+setupPostDraftsRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// Brand-metrics — daglige snapshots av The Role Rooms FB+IG metrics for
+// å gi AI-rapporten "vår tilstand"-input → kpiTargets.
+setupBrandMetricsRoutes({ app, pool, requireAdminOrDemoBypass });
+startBrandMetricsWorker(pool);
+
+// Weekly competitor-report-mailer — Monday 08:00 Europe/Oslo, sends report
+// via Resend to MARKETING_REPORT_RECIPIENTS env-var (default daniel@).
+setupReportSchedulerRoutes({ app, pool, requireAdminOrDemoBypass });
+startCompetitorReportScheduler({ pool });
+
+// Post-engagement-tracking — poll Meta Insights for publiserte FB-drafts
+// med tette-til-glesnere intervall (1h/6h/24h/3d/7d/14d/30d).
+setupPostEngagementRoutes({ app, pool, requireAdminOrDemoBypass });
+startPostEngagementWorker(pool);
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
@@ -67636,6 +67816,46 @@ setupPhotographerMiscRoutes({
   pool,
   requireUserSession,
   ensurePrintStoreSchema,
+});
+setupGoogleDriveSyncRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupChunkedUploadRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupUploadsRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupStorageStatusRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupStorageBillingAdminRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminStorageCostRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminFileAuditRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminSecretsRotationRoutes({
+  app,
+  pool,
+  requireAdminSession,
 });
 setupClientGalleryRoutes({
   app,

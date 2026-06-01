@@ -884,7 +884,19 @@ export function setupPhotographerProjectsRoutes(
             );
             CREATE INDEX IF NOT EXISTS photographer_integrations_photographer_idx
               ON photographer_integrations (photographer_id);
-          `);
+            -- 0093: PO Go v2-flow trenger Product-referanse på SalesOrder-linjer.
+            -- Vi cacher auto-opprettet produkt-id per tenant her.
+            ALTER TABLE photographer_integrations
+              ADD COLUMN IF NOT EXISTS default_product_id BIGINT;
+            ALTER TABLE photographer_integrations
+              ADD COLUMN IF NOT EXISTS default_product_synced_at TIMESTAMPTZ;
+            -- 0093: customer_type på clients (person | company) — PO Go v2
+            -- har forskjellige required fields per CustomerPostDto.IsPerson.
+            ALTER TABLE clients
+              ADD COLUMN IF NOT EXISTS customer_type VARCHAR(16) DEFAULT 'person';
+            ALTER TABLE clients
+              ADD COLUMN IF NOT EXISTS organization_number VARCHAR(32);
+`);
         } catch (err) {
           console.warn('[photographer-integrations] schema-ensure failed:', err);
           photographerIntegrationsSchemaReady = null;
@@ -1012,9 +1024,9 @@ export function setupPhotographerProjectsRoutes(
       await ensurePhotographerProjectsSchema();
       await ensurePhotographerIntegrationsSchema();
 
-      // Hent integrasjon
+      // Hent integrasjon (inkluderer cached PO-product-id)
       const intQ = await pool.query(
-        `SELECT client_key, status FROM photographer_integrations
+        `SELECT client_key, status, default_product_id FROM photographer_integrations
           WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
         [photographerId],
       );
@@ -1024,18 +1036,21 @@ export function setupPhotographerProjectsRoutes(
           message: 'Koble til PowerOffice først via /photographer/settings/integrations.',
         });
       }
-      const { client_key, status } = intQ.rows[0];
+      const { client_key, status, default_product_id } = intQ.rows[0];
       if (status !== 'active') {
         return res.status(412).json({ error: 'integration_not_active', integrationStatus: status });
       }
 
-      // Hent prosjekt + klient
+      // Hent prosjekt + klient med customer_type
       const projQ = await pool.query(
         `SELECT
            p.id, p.title, p.service_price, p.vat_rate,
            p.invoice_provider, p.external_invoice_id, p.external_invoice_number,
-           COALESCE(c.first_name || ' ' || c.last_name, p.client_name) AS client_name,
-           c.email AS client_email
+           c.first_name, c.last_name, c.email AS client_email,
+           c.phone AS client_phone,
+           COALESCE(c.customer_type, 'person') AS customer_type,
+           c.organization_number,
+           p.client_name AS fallback_client_name
          FROM projects p
          LEFT JOIN clients c ON c.id = p.client_id
          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
@@ -1048,8 +1063,8 @@ export function setupPhotographerProjectsRoutes(
       if (p.invoice_provider === 'poweroffice' && p.external_invoice_id) {
         return res.json({
           alreadyInvoiced: true,
-          invoiceId: p.external_invoice_id,
-          invoiceNumber: p.external_invoice_number,
+          salesOrderId: p.external_invoice_id,
+          salesOrderNumber: p.external_invoice_number,
         });
       }
 
@@ -1063,22 +1078,33 @@ export function setupPhotographerProjectsRoutes(
       const vatRate = Number(p.vat_rate ?? 25);
       const unitPriceNet = vatRate > 0 ? serviceGross / (1 + vatRate / 100) : serviceGross;
 
-      const { createOutgoingInvoice, PowerOfficeApiError, PowerOfficeAuthError } = await import('./poweroffice.js');
+      // Bygg klient-navn: bruk first+last hvis de finnes, ellers fallback fra prosjekt.
+      const clientName = [p.first_name, p.last_name].filter(Boolean).join(' ')
+        || p.fallback_client_name
+        || 'Kunde';
+
+      const { createInvoiceViaSalesOrder, PowerOfficeApiError, PowerOfficeAuthError } = await import('./poweroffice.js');
       let result;
       try {
-        result = await createOutgoingInvoice({
+        result = await createInvoiceViaSalesOrder({
           clientKey: client_key,
-          clientName: p.client_name || 'Kunde',
-          clientEmail: p.client_email,
+          cachedProductId: default_product_id ? Number(default_product_id) : null,
+          customer: {
+            type: p.customer_type === 'company' ? 'company' : 'person',
+            name: clientName,
+            email: p.client_email,
+            organizationNumber: p.organization_number ?? null,
+            phone: p.client_phone ?? null,
+          },
           reference: p.title,
           lines: [
             {
               description: p.title || 'Fotograf-leveranse',
               quantity: 1,
-              unitPrice: Math.round(unitPriceNet * 100) / 100,
-              vatRate,
+              unitPriceNet: Math.round(unitPriceNet * 100) / 100,
             },
           ],
+          deliveryType: 'Auto',
         });
       } catch (err) {
         // Auth-feil — marker integrasjonen som invalid så fotograf får clear feedback.
@@ -1110,7 +1136,11 @@ export function setupPhotographerProjectsRoutes(
         throw err;
       }
 
-      // Lagre invoice-koblingen på prosjektet.
+      // Lagre invoice-koblingen på prosjektet (external_invoice_id = SalesOrder UUID).
+      // VIKTIG: vi committer dette ALLTID når SalesOrderen er opprettet i PO,
+      // selv om send-stegen feilet — ellers vil retry skape en duplikat-ordre.
+      // SalesOrderNo er null inntil PO posterer fakturaen, men vi lagrer den
+      // hvis returnert.
       await pool.query(
         `UPDATE projects SET
            invoice_provider = 'poweroffice',
@@ -1119,20 +1149,48 @@ export function setupPhotographerProjectsRoutes(
            invoiced_at = NOW(),
            updated_at = NOW()::text
          WHERE id = $3 AND user_id = $4`,
-        [result.invoiceId, result.invoiceNumber, projectId, photographerId],
-      );
-      await pool.query(
-        `UPDATE photographer_integrations
-            SET last_used_at = NOW(), last_error = NULL, updated_at = NOW()
-          WHERE photographer_id = $1 AND provider = 'poweroffice'`,
-        [photographerId],
+        [result.salesOrderId, result.salesOrderNumber != null ? String(result.salesOrderNumber) : null, projectId, photographerId],
       );
 
-      res.status(201).json({
-        invoiceId: result.invoiceId,
-        invoiceNumber: result.invoiceNumber,
-        status: result.status,
+      // Persistér nyopprettet PO-product-id (gjenbrukes for senere fakturaer).
+      // Lagrer også sendError som last_error så fotograf ser feilen i status.
+      const lastErrorForIntegration = result.sendError
+        ? `Send blokkert (${result.sendError.status}): ${JSON.stringify(result.sendError.detail).slice(0, 400)}`
+        : null;
+      if (result.productJustCreated) {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET default_product_id = $2,
+                  default_product_synced_at = NOW(),
+                  last_used_at = NOW(),
+                  last_error = $3,
+                  updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [photographerId, result.productId, lastErrorForIntegration],
+        );
+      } else {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET last_used_at = NOW(),
+                  last_error = $2,
+                  updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [photographerId, lastErrorForIntegration],
+        );
+      }
+
+      res.status(202).json({
+        salesOrderId: result.salesOrderId,
+        salesOrderNumber: result.salesOrderNumber,
+        sendStatus: result.sendStatus,
+        // Hvis sett: SalesOrderen er opprettet, men send-stegen feilet i PO
+        // (typisk "Missing privilege"). Fotograf kan sende manuelt fra
+        // PowerOffice GO → Salg → Salgsordrer.
+        sendError: result.sendError,
         provider: 'poweroffice',
+        // Indikerer at faktura-sending er asynkron i PO og det endelige
+        // fakturanummeret tildeles av PO etter postering.
+        async: true,
       });
     } catch (err) {
       console.error('[poweroffice] invoice creation failed:', err);

@@ -103,10 +103,12 @@ import { createBlock, isBlockArray, type Block, type BlocksContent } from '../co
 import { PAGE_TEMPLATES, type TemplateKind } from '../components/role-room/cms/pageTemplates';
 import HistoryIcon from '@mui/icons-material/History';
 import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
+import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
+import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4360,6 +4362,8 @@ export default function AdminRoom() {
   else if (tab === 'ai-citation') content = <AiCitationTab />;
   else if (tab === 'whats-new') content = <WhatsNewTab />;
   else if (tab === 'resend') content = <ResendStatusTab />;
+  else if (tab === 'marketing-cockpit') content = <MarketingCockpitTab />;
+  else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4411,6 +4415,8 @@ export default function AdminRoom() {
           <Tab value="ai-citation" label="🤖 GEO-effekt" />
           <Tab value="whats-new" label="Hva er nytt" />
           <Tab value="resend" label="E-post (Resend)" />
+          <Tab value="marketing-cockpit" label="Marketing Cockpit" />
+          <Tab value="role-room-agent" label="🤖 Role Room Agent" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>

@@ -3,10 +3,13 @@
 //! Exposes commands consumed by the React frontend via `invoke()`.
 
 mod card_watcher;
+mod creations;
 mod cull;
 mod folder_watcher;
 mod history;
 mod media_probe;
+mod photoshop_bridge;
+mod psd_indexer;
 mod python;
 mod role_room_api;
 
@@ -22,7 +25,9 @@ use card_watcher::{CardWatcherState, MountedCard};
 use cull::CullSession;
 use folder_watcher::{FolderWatcherState, WatchedFolder};
 use history::HistoryRecord;
+use photoshop_bridge::PhotoshopBridgeState;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use python::{python_root, spawn_python, AppSettings, RunSummary, RunningScriptsState};
 
@@ -198,6 +203,234 @@ async fn launch_resolve() -> Result<String, String> {
         ));
     }
     Ok(format!("Launched {}", resolve_path))
+}
+
+/// Photoshop setup-status — detekterer hva som er installert på Mac-en
+/// så setup-wizardet vet hvilke steg som er gjort. Brukes for Irlin/Irene
+/// for å unngå at de manuelt må sjekke disse i Finder.
+#[derive(serde::Serialize)]
+pub struct PhotoshopSetupStatus {
+    pub photoshop_installed: bool,
+    pub photoshop_path: Option<String>,
+    pub photoshop_version: Option<String>,
+    pub udt_installed: bool,
+    pub udt_path: Option<String>,
+    pub plugin_manifest_path: Option<String>,
+    pub plugin_manifest_exists: bool,
+}
+
+#[tauri::command]
+fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
+    // Photoshop — let etter de vanlige path-mønstrene
+    let ps_candidates = [
+        "/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app",
+        "/Applications/Adobe Photoshop 2025/Adobe Photoshop 2025.app",
+        "/Applications/Adobe Photoshop 2024/Adobe Photoshop 2024.app",
+        "/Applications/Adobe Photoshop 2023/Adobe Photoshop 2023.app",
+        "/Applications/Adobe Photoshop 2022/Adobe Photoshop 2022.app",
+    ];
+    let mut photoshop_path = None;
+    let mut photoshop_version = None;
+    for p in ps_candidates {
+        if std::path::Path::new(p).exists() {
+            photoshop_path = Some(p.to_string());
+            // Trekk versjon ut av path-navnet
+            photoshop_version = p
+                .split('/')
+                .find(|seg| seg.starts_with("Adobe Photoshop "))
+                .map(|seg| seg.trim_start_matches("Adobe Photoshop ").to_string());
+            break;
+        }
+    }
+
+    // UXP Developer Tool
+    let udt_path = ["/Applications/Adobe UXP Developer Tool.app"]
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .map(|p| p.to_string());
+
+    // Plugin manifest — sjekk om vi finner den der vi forventer
+    // (devmode kjører fra dev-cwd; prod kjører fra resource_dir).
+    let manifest_candidates: Vec<std::path::PathBuf> = vec![
+        // Dev — fra repo-rot
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../post-agent-photoshop-plugin/manifest.json"),
+        // Alternative dev-paths
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..").join("apps/post-agent-photoshop-plugin/manifest.json"),
+    ];
+    let plugin_manifest_path = manifest_candidates
+        .iter()
+        .find(|p| p.exists())
+        .and_then(|p| p.canonicalize().ok())
+        .map(|p| p.display().to_string());
+    let plugin_manifest_exists = plugin_manifest_path.is_some();
+
+    Ok(PhotoshopSetupStatus {
+        photoshop_installed: photoshop_path.is_some(),
+        photoshop_path,
+        photoshop_version,
+        udt_installed: udt_path.is_some(),
+        udt_path,
+        plugin_manifest_path,
+        plugin_manifest_exists,
+    })
+}
+
+/// Åpne UXP Developer Tool i Finder/Launcher slik at brukeren slipper
+/// å lete etter den.
+#[tauri::command]
+async fn open_udt() -> Result<String, String> {
+    let udt_path = "/Applications/Adobe UXP Developer Tool.app";
+    if !std::path::Path::new(udt_path).exists() {
+        return Err(format!(
+            "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først."
+        ));
+    }
+    let output = std::process::Command::new("open")
+        .arg("-a")
+        .arg(udt_path)
+        .output()
+        .map_err(|e| format!("Failed to spawn open: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "open -a failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(format!("Opened {}", udt_path))
+}
+
+/// Reveal plugin-manifest in Finder så brukeren ser akkurat hvilken
+/// fil hun skal dra inn i UDT.
+#[tauri::command]
+async fn reveal_photoshop_plugin_manifest() -> Result<String, String> {
+    let status = photoshop_setup_status()?;
+    let manifest = status
+        .plugin_manifest_path
+        .ok_or("plugin manifest finnes ikke i dette Tauri-bygget")?;
+    let output = std::process::Command::new("open")
+        .arg("-R")
+        .arg(&manifest)
+        .output()
+        .map_err(|e| format!("Failed to spawn open: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "open -R failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(manifest)
+}
+
+/// AI image generation — kaller Role Room-backend som proxer mot fal.ai
+/// for Flux 1.1 Pro, henter ned bildet og lagrer det lokalt så det kan
+/// brukes som smart-object i template.scaffold. Phase 2 av
+/// "AI-to-editable-PSD"-pipelinen.
+#[derive(serde::Serialize)]
+pub struct AiImageResult {
+    pub image_path: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub model: String,
+    pub seed: Option<i64>,
+}
+
+#[tauri::command]
+async fn ai_generate_image(
+    app: AppHandle,
+    prompt: String,
+    image_size: Option<String>,
+    seed: Option<i64>,
+) -> Result<AiImageResult, String> {
+    let (bearer, base_url) = if let Some(settings) = app.try_state::<AppSettings>() {
+        let snap = settings.snapshot();
+        (
+            snap.get("RR_BEARER_TOKEN").cloned().unwrap_or_default(),
+            snap.get("RR_POST_AGENT_BASE_URL")
+                .cloned()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
+        )
+    } else {
+        (String::new(), "https://creatorhubn.com/api/post-agent".to_string())
+    };
+    if bearer.is_empty() {
+        return Err(
+            "Ikke logget inn til Role Room. AI image generation krever bearer-token \
+             så vi kan spore bruk per konto. Logg inn fra Settings."
+                .to_string(),
+        );
+    }
+
+    let trimmed_base = base_url.trim_end_matches('/');
+    let body = serde_json::json!({
+        "prompt": prompt,
+        "options": {
+            "image_size": image_size.unwrap_or_else(|| "square_hd".to_string()),
+            "seed": seed,
+        },
+    });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/ai/generate-image", trimmed_base))
+        .header("Authorization", format!("Bearer {}", bearer))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Backend request failed: {}", e))?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| format!("Read response: {}", e))?;
+    if !status.is_success() {
+        return Err(format!("Backend {} — {}", status, text));
+    }
+    let data: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("Parse response: {}", e))?;
+    let image_url = data
+        .get("image_url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "image_url mangler i backend-response".to_string())?
+        .to_string();
+    let model = data
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let seed_out = data.get("seed").and_then(|v| v.as_i64());
+    let width = data.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
+    let height = data.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
+
+    // Last ned bildet og lagre det lokalt
+    let img_resp = client
+        .get(&image_url)
+        .send()
+        .await
+        .map_err(|e| format!("Download image: {}", e))?;
+    if !img_resp.status().is_success() {
+        return Err(format!("Image download {}: failed", img_resp.status()));
+    }
+    let bytes = img_resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Read image bytes: {}", e))?;
+
+    let dir = std::path::PathBuf::from(
+        std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?,
+    )
+    .join("Library/Application Support/no.creatorhubn.roleroom-post-agent/generated-images");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Create dir: {}", e))?;
+    let filename = format!("{}.png", Uuid::new_v4());
+    let out_path = dir.join(&filename);
+    std::fs::write(&out_path, &bytes).map_err(|e| format!("Write file: {}", e))?;
+
+    Ok(AiImageResult {
+        image_path: out_path.display().to_string(),
+        width,
+        height,
+        model,
+        seed: seed_out,
+    })
 }
 
 /// Activate Resolve and send cmd+, via osascript to open the Preferences dialog.
@@ -582,6 +815,7 @@ pub fn run() {
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
         .manage(FolderWatcherState::default())
+        .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
             // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
@@ -620,9 +854,15 @@ pub fn run() {
                     eprintln!("Failed to emit deep-link event: {}", err);
                 }
             });
-            if let Err(err) = card_watcher::spawn_watcher(handle) {
+            if let Err(err) = card_watcher::spawn_watcher(handle.clone()) {
                 eprintln!("Failed to start card watcher: {}", err);
             }
+            // Start lokal WS-server for Photoshop UXP-plugin (port 1733).
+            let bridge_state = app
+                .state::<Arc<PhotoshopBridgeState>>()
+                .inner()
+                .clone();
+            photoshop_bridge::spawn_server(handle, bridge_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -666,6 +906,18 @@ pub fn run() {
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
+            photoshop_bridge::photoshop_send_command,
+            photoshop_bridge::photoshop_status,
+            psd_indexer::psd_index_directory,
+            psd_indexer::psd_get_info,
+            photoshop_setup_status,
+            open_udt,
+            reveal_photoshop_plugin_manifest,
+            ai_generate_image,
+            creations::creation_save,
+            creations::creation_list,
+            creations::creation_load,
+            creations::creation_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

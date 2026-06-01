@@ -103,6 +103,8 @@ import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
 import BillingManagementPanel from './BillingManagementPanel';
+import UserCostOverviewPanel from './UserCostOverviewPanel';
+import SecretsRotationPanel from './SecretsRotationPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
 import CreatorhubVisualEditorRefactored from './CreatorhubVisualEditorRefactored';
@@ -895,6 +897,7 @@ export default function AdminDashboard({
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
+    { id: 'user-costs', label: 'Bruker-kostnader', icon: AttachMoney },
     { id: 'marketplace-apps', label: 'Marketplace-apper', icon: Storefront },
     { id: 'analytics-hub', label: 'Analytics Hub', icon: Assessment },
     { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
@@ -908,6 +911,7 @@ export default function AdminDashboard({
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
     { id: 'centralized-monitoring', label: 'Sentralisert Overvåkning', icon: Assessment },
     { id: 'protokollstyring', label: 'Protokollstyring', icon: Security },
+    { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
     { id: 'drift-helse', label: 'Drift', icon: Settings },
     { id: 'system-backup', label: 'Backup', icon: Storage },
     { id: 'gdpr-compliance', label: 'GDPR', icon: Security },
@@ -943,13 +947,13 @@ export default function AdminDashboard({
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'profession-types'].includes(tab.id),
+        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'profession-types'].includes(tab.id),
       ),
     },
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -973,6 +977,7 @@ export default function AdminDashboard({
     'prototype-feedback': 'Samle produktinnsikt, tester og prioritering fra prototyper.',
     okonomi: 'Følg inntekter, utbetalinger og operativ økonomi.',
     'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
+    'user-costs': 'Per-bruker oversikt over lagring, AI-kost, totalkost og margin til CreatorHub.',
     reports: 'Analyser utvikling, rapporter og forretningssignaler.',
     academy: 'Styr Academy-økonomi, instruktører og utbetalingsflyt.',
     'tidum-tilganger': 'Behandle Tidum-forespørsler, knytt dem til virksomheter og hold tilgangssynken samlet i CreatorHub.',
@@ -982,6 +987,7 @@ export default function AdminDashboard({
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
     protokollstyring: 'Styr interne protokoller, rutiner og push-konfigurasjon.',
+    'secrets-rotation': 'Spor når Stripe-/Cloudflare-/Render-nøkler ble rotert sist; varsel ved forfall.',
     'drift-helse': 'Overvåk tjenestehelse, kapasitet og systemstatus.',
     'system-backup': 'Administrer sikkerhetskopier og gjenoppretting.',
     'gdpr-compliance': 'Følg personvernkrav, sletterutiner og samsvar.',
@@ -1798,6 +1804,10 @@ export default function AdminDashboard({
             initialSection={priceManagementSection}
           />
         );
+      case 'user-costs':
+        return <UserCostOverviewPanel />;
+      case 'secrets-rotation':
+        return <SecretsRotationPanel />;
       case 'marketplace-apps':
         return <MarketplaceAppConfigManager />;
       case 'analytics-hub':
