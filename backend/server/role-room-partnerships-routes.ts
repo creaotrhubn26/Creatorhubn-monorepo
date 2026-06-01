@@ -487,22 +487,68 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   });
 
   // ── POST /:id/revoke ─────────────────────────────────────────────
+  // To-trinns flyt: første kall (uten confirm) returnerer pause-anbefaling
+  // + konsekvens-summary. Andre kall med { confirm: true,
+  // acknowledge_consequences: true } gjør faktisk revoke.
   app.post("/api/role-room/partnerships/:id/revoke", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const { confirm, acknowledge_consequences, reason } = (req.body || {}) as {
+      confirm?: boolean;
+      acknowledge_consequences?: boolean;
+      reason?: string;
+    };
     try {
       const cur = await pool.query(
-        `SELECT * FROM agency_production_partnerships WHERE id = $1 LIMIT 1`,
+        `SELECT p.*, a.name AS agency_name,
+                u.first_name || ' ' || u.last_name AS production_name
+           FROM agency_production_partnerships p
+           JOIN agency_orgs a ON a.id = p.agency_org_id
+           JOIN users u ON u.id = p.production_user_id
+          WHERE p.id = $1 LIMIT 1`,
         [req.params.id],
       );
       const partnership = cur.rows[0];
       if (!partnership) return res.status(404).json({ error: "Partnership ikke funnet" });
 
       const ctx = await resolveUserContext(pool, session.userId);
-      const isPart =
-        ctx.agencyOrgId === partnership.agency_org_id ||
-        session.userId === partnership.production_user_id;
-      if (!isPart) return res.status(403).json({ error: "Du er ikke part i partnership" });
+      const isAgencyAdmin = ctx.agencyOrgId === partnership.agency_org_id;
+      const isProduction = session.userId === partnership.production_user_id;
+      if (!isAgencyAdmin && !isProduction) {
+        return res.status(403).json({ error: "Du er ikke part i partnership" });
+      }
+
+      // Anbefal pause når motpart-status er aktiv. Bare gjør revoke uten
+      // dialog hvis ALLEREDE pending/declined (ingen konsekvens å advare om).
+      const isActive = partnership.status === "accepted";
+      if (isActive && (confirm !== true || acknowledge_consequences !== true)) {
+        const invCount = await pool.query(
+          `SELECT COUNT(*)::int AS n
+             FROM partnership_project_invitations
+            WHERE partnership_id = $1 AND status IN ('pending','accepted')`,
+          [partnership.id],
+        );
+        return res.status(409).json({
+          error: "Avslutning krever bekreftelse",
+          recommendation: "pause",
+          recommendation_reason:
+            isAgencyAdmin
+              ? `Bruker du pause beholder du relasjonen med ${partnership.production_name} — talentene dine forblir i deres register, men nye prosjekt-invitasjoner blokkeres. Aktiver igjen når du vil. Avslutter du, mister produksjonsselskapet umiddelbart tilgang til ALLE talentene dine, og dere må re-etablere relasjonen helt på nytt.`
+              : `Bruker du pause beholder du relasjonen med ${partnership.agency_name} — du kan invitere dem igjen senere uten å starte fra null. Avslutter du, må byrået godkjenne på nytt for å samarbeide igjen.`,
+          consequences: {
+            active_project_invitations: invCount.rows[0]?.n ?? 0,
+            counterparty: isAgencyAdmin ? partnership.production_name : partnership.agency_name,
+            talents_will_disappear_for_counterparty: isAgencyAdmin,
+            relationship_must_be_rebuilt: true,
+          },
+          to_confirm: {
+            confirm: true,
+            acknowledge_consequences: true,
+            reason: "valgfri begrunnelse (lagres i audit-log)",
+          },
+          alternative_pause_endpoint: `/api/role-room/partnerships/${partnership.id}/pause`,
+        });
+      }
 
       const r = await pool.query(
         `UPDATE agency_production_partnerships
@@ -511,10 +557,19 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         [session.userId, req.params.id],
       );
 
+      // Revoker også aktive prosjekt-invitasjoner for samme partnership
+      await pool.query(
+        `UPDATE partnership_project_invitations
+            SET status = 'revoked', updated_at = now()
+          WHERE partnership_id = $1 AND status IN ('pending','accepted')`,
+        [partnership.id],
+      );
+
       await logAudit(pool, {
         partnershipId: partnership.id,
         actorUserId: session.userId,
         action: "revoked",
+        details: { reason: reason ?? null, by_role: isAgencyAdmin ? "agency" : "production" },
       });
 
       return res.json({ partnership: r.rows[0] });
@@ -956,18 +1011,57 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
 
   // ── POST /availability/close ─────────────────────────────────────
   // Permanent: stenger discoverability + revoker ALLE aktive partnerships
-  // for byrået. Krever bekreftelse (?confirm=true) for å unngå utilsiktet.
+  // for byrået. To-trinns flyt: første kall (uten confirm) returnerer
+  // konsekvens-summary + anbefaling om pause istedenfor. Andre kall med
+  // { confirm: true, acknowledge_consequences: true } stenger faktisk.
   app.post("/api/role-room/partnerships/availability/close", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const ctx = await resolveUserContext(pool, session.userId);
     if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
-    const { confirm, reason } = (req.body || {}) as { confirm?: boolean; reason?: string };
-    if (confirm !== true) {
-      return res.status(400).json({
-        error: "Stenging må bekreftes (confirm: true). Alle aktive partnerships revokes.",
+    const { confirm, acknowledge_consequences, reason } = (req.body || {}) as {
+      confirm?: boolean;
+      acknowledge_consequences?: boolean;
+      reason?: string;
+    };
+
+    // Beregn konsekvenser
+    const affected = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE p.status IN ('pending','accepted'))::int AS active_partnerships,
+         COUNT(DISTINCT p.production_user_id) FILTER (WHERE p.status IN ('pending','accepted'))::int AS production_companies,
+         (SELECT COUNT(*)::int FROM partnership_project_invitations i
+            JOIN agency_production_partnerships p2 ON p2.id = i.partnership_id
+           WHERE p2.agency_org_id = $1::uuid
+             AND i.status IN ('pending','accepted')) AS active_invitations
+       FROM agency_production_partnerships p
+       WHERE p.agency_org_id = $1::uuid`,
+      [ctx.agencyOrgId],
+    );
+    const cons = affected.rows[0];
+
+    if (confirm !== true || acknowledge_consequences !== true) {
+      return res.status(409).json({
+        error: "Stenging krever bekreftelse",
+        recommendation: "pause",
+        recommendation_reason:
+          "Pause beholder alle relasjoner mens du midlertidig blokkerer ny aktivitet. Aktiver igjen når du er klar. Stenging revoker ALT — talentene dine vil forsvinne fra produksjonsselskapenes registre, og du må re-etablere alle relasjoner manuelt etter eventuell gjenåpning.",
+        consequences: {
+          active_partnerships: cons.active_partnerships,
+          production_companies: cons.production_companies,
+          active_invitations: cons.active_invitations,
+          talents_will_disappear_from_partners: true,
+          relations_lost_permanently: true,
+        },
+        to_confirm: {
+          confirm: true,
+          acknowledge_consequences: true,
+          reason: "valgfri begrunnelse (lagres i audit-log)",
+        },
+        alternative_pause_endpoint: "/api/role-room/partnerships/availability/pause",
       });
     }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
