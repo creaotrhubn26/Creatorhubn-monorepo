@@ -36,6 +36,14 @@ import process from 'process';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
 const COOKIE = process.env.COOKIE || '';
+const AUTH_BEARER = process.env.AUTH_BEARER || '';
+// readActiveSessionToken på backend leser fra Authorization: Bearer eller
+// x-session-token / x-auth-token (cookie støttes ikke direkte). Hvis
+// COOKIE-strengen ser ut som et rent token (uten ';' eller '='), behandle
+// den som Bearer-token. Eksplisitt AUTH_BEARER overstyrer.
+const resolvedBearer =
+  AUTH_BEARER ||
+  (COOKIE && !COOKIE.includes(';') && !COOKIE.includes('=') ? COOKIE : '');
 const TEST_FILE_SIZE = Number(process.env.TEST_SIZE) || 1 * 1024 * 1024; // 1 MB
 const CHUNK_SIZE = 256 * 1024; // 256 KB per chunk for testing
 
@@ -66,7 +74,8 @@ const die = (msg) => {
 // HTTP helpers
 // ──────────────────────────────────────────────────────────────────
 const headers = (extra = {}) => ({
-  ...(COOKIE ? { Cookie: COOKIE } : {}),
+  ...(resolvedBearer ? { Authorization: `Bearer ${resolvedBearer}` } : {}),
+  ...(COOKIE && COOKIE.includes(';') ? { Cookie: COOKIE } : {}),
   ...extra,
 });
 
@@ -121,10 +130,11 @@ const main = async () => {
   console.log(`${c.dim}BASE_URL: ${BASE_URL}${c.reset}`);
   console.log(`${c.dim}TEST_FILE_SIZE: ${TEST_FILE_SIZE} bytes${c.reset}`);
 
-  if (!COOKIE) {
+  if (!COOKIE && !AUTH_BEARER) {
     die(
-      'Mangler COOKIE env-var. Kopier session-cookie fra browseren og kjør:\n' +
-        '  COOKIE="<verdi>" node scripts/smoke-test-encrypted-delivery.mjs',
+      'Mangler auth. Sett enten:\n' +
+        '  AUTH_BEARER="<token>"  (programmatisk Bearer-token), eller\n' +
+        '  COOKIE="<cookie-streng med ; og =>" (fra browser DevTools)',
     );
   }
 
