@@ -154,6 +154,7 @@ import { setupMetaReviewIndexRoutes } from "./role-room-meta-review-index-routes
 import { setupMarketingCockpitRoutes } from "./role-room-marketing-cockpit-routes.js";
 import { setupRoleRoomAgentRoutes } from "./role-room-agent-routes.js";
 import { setupMarketingCompetitorsRoutes } from "./role-room-marketing-competitors-routes.js";
+import { startCompetitorSnapshotWorker } from "./role-room-competitor-snapshot-worker.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -31975,6 +31976,11 @@ setupRoleRoomAgentRoutes({ app, pool, requireAdminOrDemoBypass });
 
 // Marketing-competitors — tracked-list + daily snapshots for konkurrent-monitor.
 setupMarketingCompetitorsRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// Competitor auto-snapshot worker — refreshes auto_snapshot=true rows hourly
+// for any that haven't been snapshotted in 24h. Starts 60s after boot so the
+// server is fully ready first.
+startCompetitorSnapshotWorker(pool);
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-

@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Stack,
-  Typography, TextField, IconButton, Tooltip, Divider,
+  Typography, TextField, IconButton, Tooltip, Divider, Switch, FormControlLabel,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -40,6 +40,8 @@ interface Competitor {
   notes: string | null;
   active: boolean;
   addedAt: string;
+  autoSnapshot: boolean;
+  lastSnapshotAt: string | null;
   latestSnapshot: LatestSnapshot | null;
 }
 
@@ -106,14 +108,16 @@ function FanCountTrend({ snapshots }: { snapshots: Snapshot[] }) {
 }
 
 function CompetitorRow({
-  competitor, onSnapshot, onDelete, snapshots, snapshotsLoading, snapshotBusy,
+  competitor, onSnapshot, onDelete, onToggleAuto, snapshots, snapshotsLoading, snapshotBusy, autoToggleBusy,
 }: {
   competitor: Competitor;
   onSnapshot: (id: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onToggleAuto: (id: number, next: boolean) => Promise<void>;
   snapshots: Snapshot[];
   snapshotsLoading: boolean;
   snapshotBusy: boolean;
+  autoToggleBusy: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const fan = competitor.latestSnapshot?.fan_count;
@@ -158,7 +162,22 @@ function CompetitorRow({
                 : <TrendingUpIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />}
             </IconButton>
           </Tooltip>
-          <Tooltip title="Hent nytt snapshot fra Meta API">
+          <Tooltip title={competitor.autoSnapshot ? 'Auto-snapshot ON (1×/døgn)' : 'Auto-snapshot OFF — kun manuell'}>
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={competitor.autoSnapshot}
+                  onChange={(e) => void onToggleAuto(competitor.id, e.target.checked)}
+                  disabled={autoToggleBusy}
+                  data-testid={`competitor-auto-toggle-${competitor.id}`}
+                />
+              }
+              label={<Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.6)' }}>auto</Typography>}
+              sx={{ m: 0 }}
+            />
+          </Tooltip>
+          <Tooltip title="Hent nytt snapshot fra Meta API (manuell)">
             <IconButton size="small" onClick={() => void onSnapshot(competitor.id)}
               disabled={snapshotBusy} data-testid={`competitor-snapshot-${competitor.id}`}>
               {snapshotBusy ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16, color: '#fbbf24' }} />}
@@ -194,6 +213,7 @@ export default function CompetitorsPanel() {
   const [snapshotBusy, setSnapshotBusy] = useState<number | null>(null);
   const [snapshotData, setSnapshotData] = useState<Record<number, Snapshot[]>>({});
   const [snapshotLoading, setSnapshotLoading] = useState<Record<number, boolean>>({});
+  const [autoToggleBusy, setAutoToggleBusy] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ kind: 'success' | 'error' | 'info'; msg: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -266,6 +286,37 @@ export default function CompetitorsPanel() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, snapshotData]);
+
+  const handleToggleAuto = useCallback(async (id: number, next: boolean) => {
+    setAutoToggleBusy(id);
+    // Optimistic update so the Switch reflects immediately.
+    setCompetitors((cs) => cs.map((c) => c.id === id ? { ...c, autoSnapshot: next } : c));
+    try {
+      const r = await fetch(`/api/role-room/marketing-cockpit/competitors/${id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoSnapshot: next }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setNotice({
+          kind: 'success',
+          msg: next
+            ? 'Auto-snapshot på. Worker tar nytt snapshot innen 1 time, deretter daglig.'
+            : 'Auto-snapshot av. Bare manuelle snapshots fra nå.',
+        });
+      } else {
+        // Rollback optimistic update
+        setCompetitors((cs) => cs.map((c) => c.id === id ? { ...c, autoSnapshot: !next } : c));
+        setNotice({ kind: 'error', msg: d.error || 'Toggle failed' });
+      }
+    } catch (err) {
+      setCompetitors((cs) => cs.map((c) => c.id === id ? { ...c, autoSnapshot: !next } : c));
+      setNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setAutoToggleBusy(null);
+    }
+  }, []);
 
   const handleDelete = useCallback(async (id: number) => {
     if (!confirm('Slett konkurrent fra liste? Alle snapshots beholdes i DB.')) return;
@@ -361,9 +412,11 @@ export default function CompetitorsPanel() {
                 competitor={c}
                 onSnapshot={handleSnapshot}
                 onDelete={handleDelete}
+                onToggleAuto={handleToggleAuto}
                 snapshots={snapshotData[c.id] || []}
                 snapshotsLoading={snapshotLoading[c.id] || false}
                 snapshotBusy={snapshotBusy === c.id}
+                autoToggleBusy={autoToggleBusy === c.id}
               />
             ))}
           </Box>

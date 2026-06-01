@@ -18,6 +18,7 @@
 
 import type { Application, Request, Response } from 'express';
 import type { Pool } from 'pg';
+import { runCompetitorSnapshotWorkerOnce } from './role-room-competitor-snapshot-worker.js';
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
@@ -109,6 +110,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const r = await pool.query(
         `SELECT
            p.id, p.page_id, p.nickname, p.category, p.notes, p.active, p.added_at,
+           p.auto_snapshot, p.last_snapshot_at,
            (
              SELECT row_to_json(s)
              FROM (
@@ -135,6 +137,8 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           notes: row.notes,
           active: row.active,
           addedAt: row.added_at,
+          autoSnapshot: row.auto_snapshot ?? false,
+          lastSnapshotAt: row.last_snapshot_at,
           latestSnapshot: row.latest_snapshot,
         })),
       });
@@ -173,6 +177,64 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           addedAt: r.rows[0].added_at,
         },
       });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // ── PATCH update — toggle auto_snapshot, active, eller endre nickname/notes ──
+  app.patch('/api/role-room/marketing-cockpit/competitors/:id', async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      res.status(400).json({ ok: false, error: 'invalid id' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let idx = 2;
+    if (typeof body.autoSnapshot === 'boolean') { fields.push(`auto_snapshot = $${idx++}`); values.push(body.autoSnapshot); }
+    if (typeof body.active === 'boolean')       { fields.push(`active = $${idx++}`); values.push(body.active); }
+    if (typeof body.nickname === 'string')      { fields.push(`nickname = $${idx++}`); values.push(body.nickname.trim()); }
+    if (typeof body.notes === 'string')         { fields.push(`notes = $${idx++}`); values.push(body.notes.trim() || null); }
+    if (fields.length === 0) {
+      res.status(400).json({ ok: false, error: 'no updatable fields in body (autoSnapshot, active, nickname, notes)' });
+      return;
+    }
+    try {
+      const r = await pool.query(
+        `UPDATE marketing_competitor_pages SET ${fields.join(', ')}
+         WHERE id = $1
+         RETURNING id, auto_snapshot, active, nickname, notes`,
+        [id, ...values],
+      );
+      if (!r.rowCount || r.rowCount === 0) {
+        res.status(404).json({ ok: false, error: 'competitor not found' });
+        return;
+      }
+      const row = r.rows[0];
+      res.json({
+        ok: true,
+        competitor: {
+          id: Number(row.id),
+          autoSnapshot: row.auto_snapshot,
+          active: row.active,
+          nickname: row.nickname,
+          notes: row.notes,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // ── POST trigger-worker — manuelt fire worker-tick (admin debugging) ────
+  app.post('/api/role-room/marketing-cockpit/competitors/trigger-auto-worker', async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    try {
+      const result = await runCompetitorSnapshotWorkerOnce(pool);
+      res.json(result);
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }
@@ -246,11 +308,19 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         ],
       );
 
-      // Also persist category onto the competitor row if not already set.
+      // Persist last_snapshot_at on the row (used by auto-worker to determine due-ness).
+      // Also persist category if not already set.
       if (snapshot.category) {
         await pool.query(
-          `UPDATE marketing_competitor_pages SET category = $2 WHERE id = $1 AND (category IS NULL OR category = '')`,
+          `UPDATE marketing_competitor_pages
+           SET last_snapshot_at = now(), category = COALESCE(NULLIF(category, ''), $2)
+           WHERE id = $1`,
           [id, snapshot.category],
+        );
+      } else {
+        await pool.query(
+          `UPDATE marketing_competitor_pages SET last_snapshot_at = now() WHERE id = $1`,
+          [id],
         );
       }
 
