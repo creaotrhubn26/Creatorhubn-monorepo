@@ -26,6 +26,7 @@ import { NarrativeBeatsPanel } from "./NarrativeBeatsPanel";
 import { SceneGraphPanel } from "./SceneGraphPanel";
 import { StoryDirectorPanel } from "./StoryDirectorPanel";
 import { StoryBalancePanel } from "./StoryBalancePanel";
+import { AlternativeStoryDialog } from "./AlternativeStoryDialog";
 
 interface Props {
   picks: NarrativePick[];
@@ -43,8 +44,12 @@ interface Props {
     created: string;
     updated: string;
   };
-  /** Når "Generer alternativ historie" klikkes. */
+  /** Når "Generer alternativ historie" klikkes — telemetri-hook, valgfri. */
   onGenerateAlternative?: () => void;
+  /** Når brukeren har valgt å bruke et alternativ-forslag fra dialogen. */
+  onAlternativeApplied?: (
+    result: import("./AlternativeStoryDialog").AlternativeStoryResult,
+  ) => void;
   /** Når en Story Director-anbefaling klikkes. */
   onApplyRecommendation?: (
     rec: import("../../hooks/useStoryRecommendations").StoryRecommendation,
@@ -70,7 +75,8 @@ export function StoryView({
   onFocusPick,
   intentStyle = DEFAULT_INTENT_STYLE,
   projectInfo,
-  onGenerateAlternative = () => {},
+  onGenerateAlternative,
+  onAlternativeApplied,
   onApplyRecommendation = () => {},
   highlightedPickIndices = [],
   onBackToProject,
@@ -78,6 +84,7 @@ export function StoryView({
 }: Props) {
   const [activeElement, setActiveElement] = useState<StoryElementId>("arc");
   const [focusedBeatId, setFocusedBeatId] = useState<string | null>(null);
+  const [altDialogOpen, setAltDialogOpen] = useState(false);
 
   const structure = useNarrativeStructure(picks, chapters);
 
@@ -156,7 +163,10 @@ export function StoryView({
         <StoryDirectorPanel
           picks={picks}
           structure={structure}
-          onGenerateAlternative={onGenerateAlternative}
+          onGenerateAlternative={() => {
+            setAltDialogOpen(true);
+            onGenerateAlternative?.();
+          }}
           onApplyRecommendation={onApplyRecommendation}
           projectBrief={{
             type: projectInfo.project || "Prosjekt",
@@ -165,6 +175,19 @@ export function StoryView({
         />
         <StoryBalancePanel picks={picks} structure={structure} />
       </aside>
+
+      <AlternativeStoryDialog
+        open={altDialogOpen}
+        picks={picks}
+        projectBrief={{
+          type: projectInfo.project || "Prosjekt",
+          intent: intentStyle.label,
+        }}
+        onClose={() => setAltDialogOpen(false)}
+        onApply={(result) => {
+          onAlternativeApplied?.(result);
+        }}
+      />
     </div>
   );
 }
