@@ -233,6 +233,7 @@ const KanbanPanel = lazy(() => import('./KanbanPanel').then(m => ({ default: m.K
 const CastingPlannerTutorial = lazy(() => import('./CastingPlannerTutorial').then(m => ({ default: m.CastingPlannerTutorial })));
 const TutorialEditorPanel = lazy(() => import('./TutorialEditorPanel').then(m => ({ default: m.TutorialEditorPanel })));
 const ConsentManagementPanel = lazy(() => import('./ConsentManagementPanel').then(m => ({ default: m.ConsentManagementPanel })));
+const AgencyPartnershipPicker = lazyWithRetry(() => import('./AgencyPartnershipPicker').then(m => ({ default: m.default })));
 const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(m => ({ default: m.ConsentContractDialog })));
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
@@ -9826,6 +9827,15 @@ type RoleRoomProjectWorkspaceState = {
             </ProducerExtrasPanel>
           ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Agency partnerships — velg byrå per prosjekt (migrate 222) */}
+            {currentProject?.id ? (
+              <Suspense fallback={null}>
+                <AgencyPartnershipPicker
+                  castingProjectId={currentProject.id}
+                  castingProjectName={currentProject.name}
+                />
+              </Suspense>
+            ) : null}
             {/* Candidate filters & view mode toolbar */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
               <FormControl size="small" sx={{ minWidth: 130 }}>
