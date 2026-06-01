@@ -99,8 +99,34 @@ export function StoryTestHarness() {
             onStartEditing={() => setTab("rediger")}
           />
         ) : (
-          <div data-testid="rediger-placeholder" style={{ padding: 20, color: "#7b7b8d" }}>
-            (Rediger-fanen vises her i prod-app — utenfor test-scope)
+          /* Minimal Rediger-mock: speiler `focused` state via en pick-strip.
+             Brukes av sync-tester for å verifisere at focusedPickIndex
+             er en delt source-of-truth mellom Story og Rediger. */
+          <div data-testid="rediger-view" style={{ padding: 20, color: "#e5e5ea" }}>
+            <div data-testid="rediger-focused-label" style={{ marginBottom: 12, fontSize: 13 }}>
+              Aktiv pick: <strong>{focused == null ? "ingen" : `#${focused}`}</strong>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {picks.map((p) => (
+                <button
+                  key={p.index}
+                  data-testid={`rediger-pick-${p.index}`}
+                  data-active={p.index === focused ? "true" : "false"}
+                  onClick={() => setFocused(p.index)}
+                  style={{
+                    padding: "8px 14px",
+                    background: p.index === focused ? "#f472b6" : "transparent",
+                    color: p.index === focused ? "#0b0b12" : "#a78bfa",
+                    border: `1px solid ${p.index === focused ? "#f472b6" : "#2a2a36"}`,
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  Pick #{p.index} ({p.chapter ?? "—"})
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
