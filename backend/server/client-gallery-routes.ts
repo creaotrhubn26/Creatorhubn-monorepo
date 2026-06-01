@@ -611,14 +611,14 @@ export function setupClientGalleryRoutes(
                  (gallery_id, photographer_id, image_title, image_description,
                   thumbnail_url, full_size_url, image_metadata, sort_order,
                   is_visible)
-               VALUES ($1, $2, $3, NULL, '', '',
+               VALUES ($1, $2::text, $3, NULL, '', '',
                        jsonb_build_object(
                          'chunkedUploadId', $4::text,
                          'encryptedAtRest', TRUE,
-                         'attachedBy', $2,
+                         'attachedBy', $2::text,
                          'attachedAt', now()::text
                        ),
-                       $5, TRUE)
+                       $5::int, TRUE)
                RETURNING id`,
               [galleryId, session.userId, title, fileId, i],
             );
