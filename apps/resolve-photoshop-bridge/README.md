@@ -27,16 +27,21 @@ I Resolve: `Workspace → Scripts → Edit → [scriptnavn]` — to nye menypunk
 3. Stillen havner i `~/PostAgent/inbox/<epoch>_<prosjekt>_<frame>.png` + metadata `.json`
 4. I Post Agent — be Claude "åpne det jeg sendte fra Resolve" → den kjører `photoshop_resolve_open_latest`
 
-**Photoshop → Resolve:**
+**Photoshop → Resolve (auto-replace):**
 
 1. Når du er ferdig i Photoshop, be Claude "send det tilbake til Resolve"
-2. Claude kaller `photoshop_resolve_export_back` → fil lagres i `~/PostAgent/outbox/`
-3. I Resolve: `Workspace → Scripts → Edit → insert-from-postagent` → fil importeres til Media Pool
-4. Drag fra Media Pool til timeline manuelt
+2. Claude kaller `photoshop_resolve_export_back` → fil + metadata-sidefil lagres i `~/PostAgent/outbox/`
+3. I Resolve: `Workspace → Scripts → Edit → insert-from-postagent`
 
-## Hvorfor manuell timeline-insert?
+**Hva som skjer:**
+- Hvis metadata-sidefilen har clip-info (eksportert fra timeline-still), kaller scriptet `MediaPoolItem:ReplaceClip(...)` på det ORIGINALE klippet. Timeline-klippet oppdaterer source automatisk — ingen drag nødvendig.
+- Hvis ingen clip-info finnes (stand-alone-eksport eller original-clip slettet), faller scriptet tilbake til vanlig `ImportMedia` → ny media-item i Media Pool → drag manuelt.
 
-Resolve sin scripting-API for `InsertGeneratorIntoTimeline` / `AppendIntoTimeline` er knotete med stills. Auto-insert ville krevd nullstilling av playhead, og det kan crasher edit-flyten. Brukeren har bedre kontroll med drag.
+## Auto-replace-begrensninger
+
+- Original MediaPoolItem må fortsatt eksistere (ikke slettet fra Media Pool)
+- Hvis Photoshop endrer dimensjoner radikalt, kan timeline-klippets in/out-points bli forskjøvet
+- Filformat: PNG er sikrest (TIFF og JPG også OK, PSD avhenger av Resolve-versjon)
 
 ## Plugin-kommandoer (Post Agent)
 
