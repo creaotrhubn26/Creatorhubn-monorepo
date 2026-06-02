@@ -318,6 +318,86 @@ const COLORS = {
 // MAIN COMPONENT
 // ============================================
 
+/**
+ * Auto-fyller call-sheet-felter fra en faktisk produksjonsdag: dagens location
+ * (med ekte geokodet adresse/parkering/kontakt), dagens scener (→ scene-linjer +
+ * cast fra karakterene), dagens crew, dato/call/wrap og værvarsel. Ren funksjon
+ * — returnerer kun feltene som faktisk kan utledes (resten beholdes av kalleren).
+ */
+export function buildDayCallSheetFields(
+  productionDay: ProductionDay,
+  sceneList: SceneBreakdown[],
+  crewList: CrewMember[],
+  locList: Location[],
+): Partial<CallSheetData> {
+  const fields: Partial<CallSheetData> = {};
+  if (productionDay.date) fields.date = productionDay.date;
+  if (productionDay.callTime) fields.callTime = productionDay.callTime;
+  if (productionDay.wrapTime) fields.estimatedWrap = productionDay.wrapTime;
+
+  const loc = locList.find((l) => l.id === productionDay.locationId);
+  if (loc) {
+    fields.locations = [{
+      id: loc.id,
+      name: loc.name || 'Lokasjon',
+      address: typeof loc.address === 'string' ? loc.address : '',
+      parkingInfo: typeof loc.accessNotes === 'string' ? loc.accessNotes : '',
+      contactPerson: loc.contactInfo?.name ?? '',
+      contactPhone: loc.contactInfo?.phone ?? '',
+    }];
+  }
+
+  const idSet = new Set(Array.isArray(productionDay.scenes) ? productionDay.scenes : []);
+  const dayScenes = idSet.size > 0 ? sceneList.filter((s) => idSet.has(s.id)) : [];
+  if (dayScenes.length > 0) {
+    fields.scenes = dayScenes.map((s) => ({
+      sceneNumber: String(s.sceneNumber ?? ''),
+      description: s.description || s.sceneHeading || '',
+      intExt: s.intExt || '',
+      dayNight: s.timeOfDay || '',
+      pages: s.pageLength != null ? String(s.pageLength) : '',
+      cast: Array.isArray(s.characters) ? s.characters : [],
+      location: loc?.name || s.locationName || '',
+      estimatedTime: s.estimatedDuration != null ? `${s.estimatedDuration}t` : '',
+    }));
+    const chars = Array.from(new Set(dayScenes.flatMap((s) => (Array.isArray(s.characters) ? s.characters : []))));
+    if (chars.length > 0) {
+      fields.cast = chars.map((ch, i) => ({
+        id: `cast-${i}`,
+        name: ch,
+        role: ch,
+        callTime: productionDay.callTime || '',
+        onSetTime: productionDay.callTime || '',
+        scenes: dayScenes.filter((s) => (Array.isArray(s.characters) ? s.characters : []).includes(ch)).map((s) => String(s.sceneNumber ?? '')),
+      }));
+    }
+  }
+
+  const dayCrewIds = new Set(Array.isArray(productionDay.crew) ? productionDay.crew : []);
+  const dayCrew = dayCrewIds.size > 0 ? crewList.filter((c) => dayCrewIds.has(c.id)) : crewList;
+  if (dayCrew.length > 0) {
+    fields.crew = dayCrew.map((c) => ({
+      id: c.id,
+      name: c.name,
+      department: c.department ? String(c.department) : 'Crew',
+      position: c.role ? String(c.role) : '',
+      callTime: productionDay.callTime || '',
+      phone: c.contactInfo?.phone,
+    }));
+  }
+
+  const wf = productionDay.weatherForecast?.forecast?.[0];
+  if (wf) {
+    fields.weatherForecast = {
+      temperature: typeof wf.temperature === 'number' ? wf.temperature : 0,
+      conditions: wf.symbol || 'Se værvarsel',
+      sunrise: '',
+      sunset: '',
+    };
+  }
+  return fields;
+}
+
 export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   projectId,
   productionDay,
@@ -471,17 +551,24 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         setCastingCrew(crewMembers || []);
         setCastingLocations(locs || []);
 
-        if (project) {
-          const director = crewMembers?.find(c => 
-            c.role?.toLowerCase().includes('regissør') || c.role?.toLowerCase().includes('director')
-          );
-          const producer = crewMembers?.find(c => 
-            c.role?.toLowerCase().includes('produsent') || c.role?.toLowerCase().includes('producer')
-          );
+        // Auto-fyll call-sheeten fra den faktiske produksjonsdagen. Foretrekk
+        // eksplisitte props, ellers nylig lastet prosjekt-data.
+        const resolvedScenes = scenes && scenes.length ? scenes : [];
+        const resolvedCrew = crew && crew.length ? crew : (crewMembers || []);
+        const resolvedLocs = locations && locations.length ? locations : (locs || []);
+        const dayFields = productionDay
+          ? buildDayCallSheetFields(productionDay, resolvedScenes, resolvedCrew, resolvedLocs)
+          : {};
+        const director = resolvedCrew.find(c =>
+          c.role?.toLowerCase().includes('regissør') || c.role?.toLowerCase().includes('director'));
+        const producer = resolvedCrew.find(c =>
+          c.role?.toLowerCase().includes('produsent') || c.role?.toLowerCase().includes('producer'));
 
+        if (project || productionDay) {
           setCallSheet(prev => ({
             ...prev,
-            projectName: project.name || prev.projectName,
+            ...dayFields,
+            projectName: project?.name || prev.projectName,
             director: director?.name || prev.director,
             producer: producer?.name || prev.producer,
           }));
@@ -501,7 +588,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       // Background load - don't await
       loadCastingData();
     }
-  }, [projectId, productionDay, scenes]);
+  }, [projectId, productionDay, scenes, crew, locations]);
 
   const handlePrint = () => {
     const printContent = printRef.current;
