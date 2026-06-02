@@ -17,6 +17,7 @@ import type { Application, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { composePost, type ComposePostInput } from './role-room-post-composer-claude.js';
 import { THEROLERROOM_BOOTSTRAP } from './role-room-agent-profile-recommendations.js';
+import { dispatchPublish } from './social-publisher.js';
 
 export interface SetupPostDraftsRoutesDeps {
   app: Application;
@@ -25,6 +26,28 @@ export interface SetupPostDraftsRoutesDeps {
 }
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
+
+let cachedMarketingUserId: string | null = null;
+async function resolveMarketingUserId(pool: Pool): Promise<string | null> {
+  if (cachedMarketingUserId) return cachedMarketingUserId;
+  const envId = (process.env.ROLE_ROOM_MARKETING_USER_ID || '').trim();
+  if (envId) {
+    cachedMarketingUserId = envId;
+    return envId;
+  }
+  try {
+    const r = await pool.query<{ id: string }>(
+      `SELECT id FROM users WHERE email = 'daniel@creatorhubn.com' LIMIT 1`,
+    );
+    if (r.rows[0]?.id) {
+      cachedMarketingUserId = r.rows[0].id;
+      return r.rows[0].id;
+    }
+  } catch (err) {
+    console.warn('[post-drafts] resolveMarketingUserId failed', err);
+  }
+  return null;
+}
 
 function mapDraftRow(row: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -380,8 +403,63 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
           });
           return;
         }
+      } else if (platform === 'linkedin') {
+        // LinkedIn UGC via registrert publisher. Henter user_id fra
+        // env (ROLE_ROOM_MARKETING_USER_ID) — fallback til daniel-konto.
+        const userId = await resolveMarketingUserId(pool);
+        if (!userId) {
+          res.status(503).json({
+            ok: false,
+            error: 'Ingen marketing-bruker konfigurert. Sett ROLE_ROOM_MARKETING_USER_ID eller opprett bruker daniel@creatorhubn.com.',
+          });
+          return;
+        }
+
+        const hashtags = Array.isArray(draft.hashtags) ? draft.hashtags as string[] : [];
+        const caption = String(draft.caption || '') + (hashtags.length > 0 ? '\n\n' + hashtags.join(' ') : '');
+        const ctaLink = draft.cta_link ? String(draft.cta_link).trim() : '';
+
+        const result = await dispatchPublish('linkedin', {
+          connectionId: userId,
+          userId,
+          projectId: 'role-room-marketing',
+          mediaKind: ctaLink ? 'link' : 'text',
+          caption,
+          extras: ctaLink ? { link: ctaLink } : undefined,
+          scheduledFor: null,
+        });
+
+        if (result.ok && result.status === 'published') {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'published', published_at = now(),
+                 external_post_id = $2, raw_publish_response = $3, publish_error = NULL,
+                 updated_at = now()
+             WHERE id = $1`,
+            [id, result.externalPostId ?? null, JSON.stringify(result.raw ?? result)],
+          );
+          res.json({
+            ok: true,
+            status: 'published',
+            externalPostId: result.externalPostId,
+            permalink: result.permalink,
+          });
+          return;
+        }
+
+        const errMsg = result.error || result.reason || `LinkedIn publish status: ${result.status}`;
+        await pool.query(
+          `UPDATE marketing_post_drafts
+           SET status = 'failed', publish_error = $2, raw_publish_response = $3, updated_at = now()
+           WHERE id = $1`,
+          [id, errMsg, JSON.stringify(result.raw ?? result)],
+        );
+        res.status(502).json({
+          ok: false, status: 'failed', error: errMsg, reason: result.reason,
+        });
+        return;
       } else {
-        // IG/LinkedIn/TikTok — not auto-publish yet
+        // IG/TikTok — not auto-publish yet (krever container-flow / Business API)
         await pool.query(
           `UPDATE marketing_post_drafts
            SET status = 'manual_copy', updated_at = now()
