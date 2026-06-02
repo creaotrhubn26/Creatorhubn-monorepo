@@ -67,6 +67,33 @@ export interface AppInfo {
   documents: DocumentSummary[];
 }
 
+export interface LayerSummary {
+  /** Layer-navn, prefikset med gruppe-stier hvis nested ("Background/Logo"). */
+  name: string;
+  /** Photoshop layer-kind ("text", "smartObject", "pixel", "group", etc.). */
+  kind: string;
+  visible: boolean;
+  has_text: boolean;
+  is_smart_object: boolean;
+}
+
+export interface LayerListResult {
+  layers: LayerSummary[];
+  count: number;
+}
+
+export type SelectionInfoResult =
+  | { exists: false }
+  | {
+      exists: true;
+      bounds: { top: number; left: number; bottom: number; right: number };
+      width: number;
+      height: number;
+      doc_width: number;
+      doc_height: number;
+      coverage_pct: number;
+    };
+
 export type ExportFormat = "jpg" | "jpeg" | "png" | "psd" | "tiff" | "tif";
 
 export type TemplateFieldType = "text" | "image" | "unsupported";
@@ -232,6 +259,10 @@ export const photoshop = {
 
   toggleLayer: (params: { layer_name: string; visible: boolean }) =>
     send<{ layer_name: string; visible: boolean }>("layer.toggle", params),
+
+  listLayers: () => send<LayerListResult>("doc.listLayers"),
+
+  selectionInfo: () => send<SelectionInfoResult>("selection.info"),
 
   scanTemplate: (template_path: string) =>
     send<TemplateScanResult>("template.scan", { template_path }),

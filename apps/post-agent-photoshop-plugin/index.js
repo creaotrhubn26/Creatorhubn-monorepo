@@ -264,6 +264,71 @@ const COMMANDS = {
   },
 
   /*
+   * List alle layers i aktivt dokument med metadata. Brukes av Firefly
+   * Prompt Assistant for å gjette subject_description fra layer-navn,
+   * og som generell introspection-API for Claude tool-use loops.
+   *
+   * Returnerer: { layers: [{name, kind, visible, has_text, is_smart_object}, ...] }
+   * Layer-tre flatets ut — gruppe-medlemmer listes med parent-prefix.
+   */
+  "doc.listLayers": async () => {
+    const doc = requireActiveDocument();
+    const layers = [];
+    const walk = (group, prefix) => {
+      for (const layer of group.layers || []) {
+        const fullName = prefix ? `${prefix}/${layer.name}` : layer.name;
+        const kind = layer.kind ?? null;
+        layers.push({
+          name: fullName,
+          kind: typeof kind === "string" ? kind : String(kind ?? "unknown"),
+          visible: !!layer.visible,
+          has_text: kind === "text" || !!layer.textItem,
+          is_smart_object: kind === "smartObject",
+        });
+        if (layer.layers && layer.layers.length > 0) {
+          walk(layer, fullName);
+        }
+      }
+    };
+    walk(doc, "");
+    return { layers, count: layers.length };
+  },
+
+  /*
+   * Selection-introspection: returnerer bounding box (top/left/bottom/
+   * right + width/height) av aktiv selection i aktivt dokument, eller
+   * `exists: false` hvis ingen aktiv selection finnes. Brukes for å
+   * gi Claude/Firefly hint om hvor i bildet endringen skal skje.
+   */
+  "selection.info": async () => {
+    const doc = requireActiveDocument();
+    const sel = doc.selection;
+    if (!sel || !sel.bounds) {
+      return { exists: false };
+    }
+    const b = sel.bounds;
+    // bounds kan være et UIScript-objekt eller en array — normaliser
+    const top = b.top ?? b[1] ?? 0;
+    const left = b.left ?? b[0] ?? 0;
+    const bottom = b.bottom ?? b[3] ?? 0;
+    const right = b.right ?? b[2] ?? 0;
+    const width = right - left;
+    const height = bottom - top;
+    if (width <= 0 || height <= 0) {
+      return { exists: false };
+    }
+    return {
+      exists: true,
+      bounds: { top, left, bottom, right },
+      width,
+      height,
+      doc_width: doc.width,
+      doc_height: doc.height,
+      coverage_pct: Math.round(((width * height) / (doc.width * doc.height)) * 100),
+    };
+  },
+
+  /*
    * Template-scan: åpner en .psd, leter etter alle layers med navn `{{key}}`
    * og returnerer en katalog over feltene. Text-layers blir string-felt;
    * smart objects blir file-felt. Andre layer-typer ignoreres.

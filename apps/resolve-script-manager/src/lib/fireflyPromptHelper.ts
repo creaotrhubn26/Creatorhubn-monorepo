@@ -23,7 +23,11 @@
  */
 
 import { claudeProxyService } from "../services/claudeProxyService";
-import type { AppInfo } from "../services/photoshopBridgeService";
+import type {
+  AppInfo,
+  LayerListResult,
+  SelectionInfoResult,
+} from "../services/photoshopBridgeService";
 
 export type FireflyIntent =
   | "expand_background"
@@ -77,6 +81,82 @@ export interface FireflyPromptSuggestion {
  *
  * Returnerer en delvis kontekst som kan merges med dialog-state.
  */
+/**
+ * Utvidet kontekst-ekstraksjon som leser BÅDE app.info, layer-listen
+ * OG aktiv selection. Bygger en rik FireflyContext der subject-hints
+ * gjettes fra layer-navn og selection-coverage gir hint om hvor stort
+ * inngrep brukeren planlegger.
+ *
+ * Anbefales fremfor `extractContextFromAppInfo` når plugin støtter
+ * doc.listLayers + selection.info (Post Agent 2026-06-02+).
+ */
+export function extractContextFromPhotoshopState(
+  info: AppInfo,
+  layers?: LayerListResult,
+  selection?: SelectionInfoResult,
+): FireflyContext {
+  const ctx = extractContextFromAppInfo(info);
+  if (layers && layers.layers.length > 0) {
+    const subject = inferSubjectFromLayers(layers.layers.map((l) => l.name));
+    if (subject) ctx.subject_description = subject;
+  }
+  if (selection && selection.exists) {
+    // Veldig stor coverage (>70%) hinter at brukeren vil endre HELE
+    // bildet — sannsynligvis stylize eller replace. Liten coverage
+    // (<15%) hinter på remove/add av enkelt-element. Vi lagrer ikke
+    // direkte men bruker det som "user_intent"-supplement.
+    const coverageHint =
+      selection.coverage_pct >= 70
+        ? "(stor selection — sannsynligvis hele scenen)"
+        : selection.coverage_pct <= 15
+          ? "(liten selection — enkelt-element)"
+          : "(middels selection)";
+    ctx.user_intent = [ctx.user_intent, coverageHint].filter(Boolean).join(" ");
+  }
+  return ctx;
+}
+
+/**
+ * Gjett hovedsubjektet fra layer-navnene. Bruker en kombinasjon av:
+ * 1. Eksplisitte "subject"/"main"/"hero"-prefikser
+ * 2. Filter ut åpenbare ikke-subjekt-layers (background, logo, watermark)
+ * 3. Returner det mest meningsfulle navnet (uten Photoshop-default
+ *    "Layer 1", "Layer 2" osv.)
+ */
+function inferSubjectFromLayers(layerNames: string[]): string | undefined {
+  const DEFAULT_NAMES = /^layer\s*\d+$|^background$|^bakgrunn$/i;
+  const NEGATIVE_HINTS = /(logo|watermark|brand|frame|border|guides?|notes?|gutter)/i;
+  const POSITIVE_PREFIXES = /(subject|main|hero|portrait|product|model|key)/i;
+
+  // Først: layers med eksplisitt positivt prefix
+  for (const name of layerNames) {
+    const last = name.split("/").pop() ?? name;
+    if (POSITIVE_PREFIXES.test(last)) {
+      return cleanLayerName(last);
+    }
+  }
+
+  // Deretter: første "ekte" navngitte layer som ikke matcher negativ-mønster
+  for (const name of layerNames) {
+    const last = name.split("/").pop() ?? name;
+    if (DEFAULT_NAMES.test(last)) continue;
+    if (NEGATIVE_HINTS.test(last)) continue;
+    if (last.length < 2) continue;
+    return cleanLayerName(last);
+  }
+
+  return undefined;
+}
+
+function cleanLayerName(name: string): string {
+  // Fjern Photoshop-suffikser (" copy", " 2") + bytt ut underscore med space
+  return name
+    .replace(/\s*copy(\s*\d+)?$/i, "")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 export function extractContextFromAppInfo(info: AppInfo): FireflyContext {
   const ctx: FireflyContext = {};
   const doc = info.active_document;

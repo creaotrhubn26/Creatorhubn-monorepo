@@ -131,6 +131,18 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_list_layers",
+    description:
+      "List alle layers i aktivt dokument med metadata (navn, kind, visibility, has_text, is_smart_object). Layer-tre flatets ut — gruppe-medlemmer prefikses med parent-navn ('Background/Logo'). Brukes for å forstå strukturen i et åpent dokument før du redigerer eller for å gjette subjekt-navn.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_selection_info",
+    description:
+      "Hent bounding box (top/left/bottom/right) + coverage_pct av aktiv selection. Returnerer {exists: false} hvis ingen selection finnes. Brukes for å vite hvor i bildet en endring skal skje før gen.fill eller andre selection-baserte operasjoner.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "photoshop_scan_template",
     description:
       "Skann et .psd/.psb-template etter alle layers navngitt {{key}}. Returnerer fields-array som beskriver hvilke felter (text eller image) som kan fylles. Bruk dette FØRST før du kaller render_template.",
@@ -434,6 +446,10 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         layer_name: requireString(input, "layer_name"),
         visible: input.visible === true,
       });
+    case "photoshop_list_layers":
+      return photoshop.listLayers();
+    case "photoshop_selection_info":
+      return photoshop.selectionInfo();
     case "photoshop_scan_template":
       return photoshop.scanTemplate(requireString(input, "template_path"));
     case "photoshop_render_template":

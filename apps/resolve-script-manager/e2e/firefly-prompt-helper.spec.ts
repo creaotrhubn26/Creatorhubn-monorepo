@@ -7,8 +7,13 @@ import { test, expect } from "@playwright/test";
 import {
   suggestPromptsLocal,
   extractContextFromAppInfo,
+  extractContextFromPhotoshopState,
   type FireflyIntent,
 } from "../src/lib/fireflyPromptHelper";
+import type {
+  LayerListResult,
+  SelectionInfoResult,
+} from "../src/services/photoshopBridgeService";
 
 const mockAppInfo = (doc: { name: string; width: number; height: number }) => ({
   photoshop_version: "25.0",
@@ -96,6 +101,77 @@ test.describe("fireflyPromptHelper.suggestPromptsLocal", () => {
     expect(extractContextFromAppInfo(mockAppInfo({ name: "outdoor-landscape.psd", width: 1080, height: 1920 })).scene_type).toBe("landscape");
     expect(extractContextFromAppInfo(mockAppInfo({ name: "produkt-shot.psd", width: 1080, height: 1920 })).scene_type).toBe("product");
     expect(extractContextFromAppInfo(mockAppInfo({ name: "unknown.psd", width: 1080, height: 1920 })).scene_type).toBeUndefined();
+  });
+
+  test("extractContextFromPhotoshopState: bruker layer-navn for subject-hint", () => {
+    const info = mockAppInfo({ name: "Emma-bryllup.psd", width: 1080, height: 1920 });
+    const layers: LayerListResult = {
+      count: 3,
+      layers: [
+        { name: "Background", kind: "pixel", visible: true, has_text: false, is_smart_object: false },
+        { name: "Logo", kind: "smartObject", visible: true, has_text: false, is_smart_object: true },
+        { name: "Bride and groom", kind: "smartObject", visible: true, has_text: false, is_smart_object: true },
+      ],
+    };
+    const ctx = extractContextFromPhotoshopState(info, layers);
+    expect(ctx.subject_description).toBe("bride and groom");
+    expect(ctx.scene_type).toBe("wedding");
+  });
+
+  test("extractContextFromPhotoshopState: positivt prefix ('Hero', 'Subject') vinner", () => {
+    const info = mockAppInfo({ name: "test.psd", width: 1080, height: 1080 });
+    const layers: LayerListResult = {
+      count: 4,
+      layers: [
+        { name: "Background", kind: "pixel", visible: true, has_text: false, is_smart_object: false },
+        { name: "Watermark", kind: "text", visible: true, has_text: true, is_smart_object: false },
+        { name: "Hero - product shot", kind: "smartObject", visible: true, has_text: false, is_smart_object: true },
+        { name: "Logo", kind: "smartObject", visible: true, has_text: false, is_smart_object: true },
+      ],
+    };
+    const ctx = extractContextFromPhotoshopState(info, layers);
+    expect(ctx.subject_description).toContain("hero");
+    expect(ctx.subject_description).toContain("product shot");
+  });
+
+  test("extractContextFromPhotoshopState: hopper over default-navn ('Layer 1', 'Background')", () => {
+    const info = mockAppInfo({ name: "test.psd", width: 1080, height: 1080 });
+    const layers: LayerListResult = {
+      count: 3,
+      layers: [
+        { name: "Background", kind: "pixel", visible: true, has_text: false, is_smart_object: false },
+        { name: "Layer 1", kind: "pixel", visible: true, has_text: false, is_smart_object: false },
+        { name: "Vintage car", kind: "smartObject", visible: true, has_text: false, is_smart_object: true },
+      ],
+    };
+    const ctx = extractContextFromPhotoshopState(info, layers);
+    expect(ctx.subject_description).toBe("vintage car");
+  });
+
+  test("extractContextFromPhotoshopState: selection coverage gir intent-hint", () => {
+    const info = mockAppInfo({ name: "test.psd", width: 1080, height: 1080 });
+    const bigSelection: SelectionInfoResult = {
+      exists: true,
+      bounds: { top: 100, left: 100, bottom: 1000, right: 1000 },
+      width: 900,
+      height: 900,
+      doc_width: 1080,
+      doc_height: 1080,
+      coverage_pct: 75,
+    };
+    const smallSelection: SelectionInfoResult = {
+      exists: true,
+      bounds: { top: 100, left: 100, bottom: 200, right: 200 },
+      width: 100,
+      height: 100,
+      doc_width: 1080,
+      doc_height: 1080,
+      coverage_pct: 10,
+    };
+    const ctxBig = extractContextFromPhotoshopState(info, undefined, bigSelection);
+    expect(ctxBig.user_intent).toContain("stor selection");
+    const ctxSmall = extractContextFromPhotoshopState(info, undefined, smallSelection);
+    expect(ctxSmall.user_intent).toContain("enkelt-element");
   });
 
   test("extractContextFromAppInfo: ingen active doc → tom kontekst", () => {
