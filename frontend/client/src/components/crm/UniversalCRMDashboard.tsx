@@ -64,6 +64,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import CustomerDetailDrawer from './CustomerDetailDrawer';
 import CrmTaskInbox from './CrmTaskInbox';
+import DealsPipelineBoard from './DealsPipelineBoard';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -1814,6 +1815,10 @@ export default function UniversalCRMDashboard({
             <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: surfaceBorder }}>
               <Typography color="error">Feil ved lasting av kunder</Typography>
             </Paper>
+          ) : viewMode === 'board' ? (
+            /* #3/#19 — real pipeline: board operates on DEALS, not customer.status.
+               Shown before the empty-customer gate so it works even with 0 customers. */
+            <DealsPipelineBoard profession={activeProfession} />
           ) : filteredCustomers.length === 0 ? (
             <Paper
               elevation={0}
@@ -1883,78 +1888,6 @@ export default function UniversalCRMDashboard({
                 </Stack>
               )}
             </Paper>
-          ) : viewMode === 'board' ? (
-            /* #2 — pipeline board: one column per stage, drag-free quick-advance. */
-            <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 1 }}>
-              {PIPELINE_ORDER.map((stage) => {
-                const inStage = filteredCustomers.filter((c: UniversalCustomer) => c.status === stage);
-                return (
-                  <Paper
-                    key={stage}
-                    elevation={0}
-                    sx={{
-                      minWidth: 280,
-                      flex: '0 0 280px',
-                      borderRadius: 3,
-                      border: `1px solid ${alpha(getStatusColor(stage), 0.3)}`,
-                      bgcolor: alpha(getStatusColor(stage), 0.04),
-                      p: 1.5,
-                    }}
-                  >
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: getStatusColor(stage) }}>
-                        {statusLabel(stage)}
-                      </Typography>
-                      <Chip size="small" label={inStage.length} sx={{ bgcolor: alpha(getStatusColor(stage), 0.15), color: getStatusColor(stage), fontWeight: 700 }} />
-                    </Stack>
-                    <Stack spacing={1}>
-                      {inStage.length === 0 ? (
-                        <Typography variant="caption" color="text.secondary">Ingen kunder her.</Typography>
-                      ) : inStage.map((customer: UniversalCustomer) => {
-                        const ns = nextStatus(customer.status);
-                        return (
-                          <Card key={customer.id} variant="outlined" sx={{ borderRadius: 2 }}>
-                            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                              <Typography
-                                variant="body2"
-                                sx={{ fontWeight: 700, cursor: onCustomerSelect ? 'pointer' : 'default' }}
-                                onClick={() => onCustomerSelect?.(customer)}
-                              >
-                                {customer.name}
-                              </Typography>
-                              {customer.projectType && (
-                                <Typography variant="caption" color="text.secondary">{customer.projectType}</Typography>
-                              )}
-                              {customer.budget != null && (
-                                <Typography variant="caption" display="block" color="text.secondary">
-                                  {customer.budget.toLocaleString('nb-NO')} kr
-                                </Typography>
-                              )}
-                              <Stack direction="row" spacing={0.5} sx={{ mt: 0.75 }}>
-                                <Button size="small" variant="text" onClick={() => { setEditingCustomer(customer); setShowEditDialog(true); }}>
-                                  Rediger
-                                </Button>
-                                {ns && (
-                                  <Button
-                                    size="small"
-                                    variant="text"
-                                    startIcon={<NextStepIcon />}
-                                    disabled={updateCustomerMutation.isPending}
-                                    onClick={() => updateCustomerMutation.mutate({ id: customer.id, updates: { status: ns } })}
-                                  >
-                                    {statusLabel(ns)}
-                                  </Button>
-                                )}
-                              </Stack>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </Stack>
-                  </Paper>
-                );
-              })}
-            </Box>
           ) : (
             <Grid container spacing={2.25}>
               {filteredCustomers.map((customer: UniversalCustomer) => {

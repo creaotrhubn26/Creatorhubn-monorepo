@@ -78,6 +78,10 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       -- Wave 0 multi-tenancy: every CRM-owned table gets an owner so reads can
       -- be scoped per user. Idempotent; safe to run on every boot.
       ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS owner_user_id text;
+      -- Wave 1 (#20-lean) — immutable win/loss timestamps, captured on close.
+      ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS won_at timestamptz;
+      ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS lost_at timestamptz;
+      ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS lost_reason text;
       ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS owner_user_id text;
       ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS owner_user_id text;
       -- Wave 1: staleness signal — bumped on every activity insert (#35).
@@ -575,21 +579,23 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         stage,
         limit = "50",
       } = req.query as Record<string, string>;
-      let where = "WHERE owner_user_id = $1";
+      let where = "WHERE d.owner_user_id = $1";
       const params: any[] = [session.userId];
       let idx = 2;
       if (customer_id) {
-        where += ` AND customer_id = $${idx++}`;
+        where += ` AND d.customer_id = $${idx++}`;
         params.push(customer_id);
       }
       if (stage) {
-        where += ` AND stage = $${idx++}`;
+        where += ` AND d.stage = $${idx++}`;
         params.push(stage);
       }
 
       const rows = await pool.query(
-        `SELECT * FROM crm_deals ${where} ORDER BY created_at DESC LIMIT $${idx}`,
-        [...params, parseInt(limit) || 50],
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email
+         FROM crm_deals d LEFT JOIN crm_customers c ON c.id = d.customer_id
+         ${where} ORDER BY d.created_at DESC LIMIT $${idx}`,
+        [...params, parseInt(limit) || 200],
       );
       return res.json({ deals: rows.rows });
     } catch (error) {
@@ -673,6 +679,9 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           params.push(req.body[key]);
         }
       }
+      // #20-lean — stamp the immutable close moment when the stage closes.
+      if (req.body.stage === "closed_won") setClauses.push("won_at = COALESCE(won_at, now())");
+      if (req.body.stage === "closed_lost") setClauses.push("lost_at = COALESCE(lost_at, now())");
       params.push(req.params.id);
       params.push(session.userId);
       const result = await pool.query(
@@ -685,6 +694,48 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("CRM deal update error:", error);
       return res.status(500).json({ error: "Failed to update deal" });
+    }
+  });
+
+  // #46 — single deal with customer + its activities/tasks.
+  app.get("/api/universal-crm/deals/:id", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const deal = await pool.query(
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email
+         FROM crm_deals d LEFT JOIN crm_customers c ON c.id = d.customer_id
+         WHERE d.id = $1 AND d.owner_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (deal.rows.length === 0)
+        return res.status(404).json({ error: "Deal not found" });
+      const [tasks, activities] = await Promise.all([
+        pool.query(`SELECT * FROM crm_tasks WHERE deal_id = $1 AND owner_user_id = $2 ORDER BY due_date ASC NULLS LAST`, [req.params.id, session.userId]),
+        pool.query(`SELECT * FROM crm_activities WHERE deal_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [req.params.id, session.userId]),
+      ]);
+      return res.json({ deal: deal.rows[0], tasks: tasks.rows, activities: activities.rows });
+    } catch (error) {
+      console.error("CRM deal get error:", error);
+      return res.status(500).json({ error: "Failed to fetch deal" });
+    }
+  });
+
+  // #46 — delete a deal (owner-scoped).
+  app.delete("/api/universal-crm/deals/:id", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const result = await pool.query(
+        `DELETE FROM crm_deals WHERE id = $1 AND owner_user_id = $2 RETURNING id`,
+        [req.params.id, session.userId],
+      );
+      if (result.rows.length === 0)
+        return res.status(404).json({ error: "Deal not found" });
+      return res.json({ success: true, id: req.params.id });
+    } catch (error) {
+      console.error("CRM deal delete error:", error);
+      return res.status(500).json({ error: "Failed to delete deal" });
     }
   });
 
