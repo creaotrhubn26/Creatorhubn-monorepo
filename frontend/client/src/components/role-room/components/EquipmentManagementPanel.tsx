@@ -2208,6 +2208,34 @@ export function EquipmentManagementPanel({
     }
   }, []);
 
+  // ── Auto-bilde ved add ────────────────────────────────────────────────
+  // Når man legger til NYTT utstyr uten bilde (kamera-katalogen har ingen
+  // innebygde bilder), kjør bildesøket automatisk på «merke + modell» og
+  // pre-fyll beste treff. Forslagene vises under bildefeltet så Lars kan
+  // bytte med ett klikk. Løser «ingen bilde av utstyret» uten manuelt søk.
+  const autoResolveImageRef = useRef(false);
+
+  useEffect(() => {
+    if (!dialogOpen || editingEquipment) return; // kun ved nytt utstyr
+    if (formData.imageUrl) return; // alt har bilde
+    const query = [formData.brand, formData.model].filter(Boolean).join(' ').trim();
+    if (query.length < 3) return;
+    autoResolveImageRef.current = true;
+    const timer = window.setTimeout(() => { void searchImages(query); }, 700);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, editingEquipment, formData.brand, formData.model, formData.imageUrl]);
+
+  useEffect(() => {
+    if (!autoResolveImageRef.current) return;
+    if (imageSearchResults.length === 0) return;
+    autoResolveImageRef.current = false;
+    const best = imageSearchResults[0];
+    if (best?.url) {
+      setFormData((prev) => (prev.imageUrl ? prev : { ...prev, imageUrl: best.url }));
+    }
+  }, [imageSearchResults]);
+
   const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -6940,6 +6968,36 @@ export function EquipmentManagementPanel({
                       }}
                     />
                   </Box>
+
+                  {/* Auto-foreslåtte bilder ved add uten bilde — klikk for å bytte. */}
+                  {!editingEquipment && (imageSearchLoading || imageSearchResults.length > 0) ? (
+                    <Box sx={{ mt: 1.25 }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', mb: 0.6 }}>
+                        {imageSearchLoading ? 'Finner bilder…' : 'Forslag — klikk for å bytte'}
+                      </Typography>
+                      <Stack direction="row" spacing={0.6} sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        {imageSearchResults.slice(0, 6).map((img) => (
+                          <Box
+                            key={img.id}
+                            component="img"
+                            src={img.thumbnailUrl || img.url}
+                            alt=""
+                            loading="lazy"
+                            onClick={() => setFormData((prev) => ({ ...prev, imageUrl: img.url }))}
+                            sx={{
+                              width: 52,
+                              height: 52,
+                              borderRadius: 1,
+                              objectFit: 'cover',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              border: formData.imageUrl === img.url ? '2px solid #9333ea' : '1px solid rgba(255,255,255,0.15)',
+                            }}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : null}
                 </Box>
               </Box>
             </Box>
