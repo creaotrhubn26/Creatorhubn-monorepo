@@ -86,6 +86,11 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS owner_user_id text;
       -- Wave 1: staleness signal — bumped on every activity insert (#35).
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_contact timestamptz;
+      -- Wave 2: post-delivery lifecycle + rebook loop (#8/#21/#24).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS lifecycle_stage text;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_delivered_at timestamptz;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS next_rebook_due_at timestamptz;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_reminded_at timestamptz;
       CREATE INDEX IF NOT EXISTS crm_customers_owner_idx ON crm_customers(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_deals_owner_idx ON crm_deals(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_activities_owner_idx ON crm_activities(owner_user_id);
@@ -95,6 +100,50 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   ensureCrmExtraSchema().catch((e) =>
     console.error("CRM extra-schema bootstrap failed:", e),
   );
+
+  // ── Wave 2 automation engine (#9/#21/#24) ────────────────────────────
+  // Idempotent sweep: for every customer whose rebook window has arrived and
+  // who has no open rebook task, create one (throttled via last_reminded_at so
+  // we never spam). This is the motor that turns "delivered 11 months ago"
+  // into a concrete follow-up instead of a lead rotting in silence.
+  const runCrmAutomationSweep = async (): Promise<{ rebookTasks: number }> => {
+    try {
+      const due = await pool.query(
+        `SELECT id, owner_user_id, name FROM crm_customers
+         WHERE next_rebook_due_at IS NOT NULL
+           AND next_rebook_due_at <= now()
+           AND status <> 'archived'
+           AND (last_reminded_at IS NULL OR last_reminded_at < now() - interval '30 days')`,
+      );
+      let created = 0;
+      for (const c of due.rows) {
+        const ins = await pool.query(
+          `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, owner_user_id, created_at, updated_at)
+           SELECT gen_random_uuid(), $1, 'Følg opp gjenbestilling', 'Det er ~1 år siden levering — foreslå ny fotografering.', 'medium', 'pending', now() + interval '7 days', $2, now(), now()
+           WHERE NOT EXISTS (
+             SELECT 1 FROM crm_tasks WHERE customer_id = $1 AND owner_user_id = $2 AND status = 'pending' AND title = 'Følg opp gjenbestilling'
+           ) RETURNING id`,
+          [c.id, c.owner_user_id],
+        );
+        if (ins.rows.length > 0) {
+          created++;
+          await pool.query(
+            `UPDATE crm_customers SET last_reminded_at = now(), lifecycle_stage = 'rebook-window' WHERE id = $1`,
+            [c.id],
+          );
+        }
+      }
+      return { rebookTasks: created };
+    } catch (e) {
+      console.error("CRM automation sweep failed:", e);
+      return { rebookTasks: 0 };
+    }
+  };
+  // Hourly scheduler (best-effort; idempotent + throttled so duplicate boots
+  // are harmless). Mirrors the other worker loops in this server.
+  const automationTimer = setInterval(() => { void runCrmAutomationSweep(); }, 60 * 60 * 1000);
+  automationTimer.unref?.();
+  console.log("[crm-automation] sweep loop started (hourly)");
 
   app.get("/api/universal-crm/customers", async (req, res) => {
     const session = requireUserSession(req, res);
@@ -337,6 +386,27 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
 
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Customer not found" });
+      }
+
+      // #8/#38 — delivery trigger: completing a customer starts the post-
+      // delivery lifecycle (review request now, rebook nudge in ~11 months).
+      if (updates.status === "completed") {
+        await pool.query(
+          `UPDATE crm_customers
+             SET lifecycle_stage = 'delivered', last_delivered_at = now(),
+                 next_rebook_due_at = now() + interval '11 months'
+           WHERE id = $1 AND owner_user_id = $2`,
+          [id, session.userId],
+        ).catch((e) => console.warn("lifecycle set skipped:", e));
+        // Create a review-request task if none open for this customer.
+        await pool.query(
+          `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, owner_user_id, created_at, updated_at)
+           SELECT gen_random_uuid(), $1, 'Be om anmeldelse', 'Leveranse fullført — be kunden om en anmeldelse.', 'medium', 'pending', now() + interval '3 days', $2, now(), now()
+           WHERE NOT EXISTS (
+             SELECT 1 FROM crm_tasks WHERE customer_id = $1 AND owner_user_id = $2 AND status = 'pending' AND title = 'Be om anmeldelse'
+           )`,
+          [id, session.userId],
+        ).catch((e) => console.warn("review task skipped:", e));
       }
 
       const r = result.rows[0];
@@ -1356,6 +1426,74 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("Public lead intake error:", error);
       return res.status(500).json({ error: "Failed to submit lead" });
+    }
+  });
+
+  // ============================================================
+  // Action queue (#24) + automation trigger (#9)
+  // ============================================================
+
+  // What needs proactive attention right now — owner-scoped buckets that turn
+  // the lifecycle data into a daily to-do that drives repeat revenue.
+  app.get("/api/universal-crm/action-queue", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const owner = session.userId;
+      const [overdue, rebook, dormant, reviewDue] = await Promise.all([
+        pool.query(
+          `SELECT t.id, t.title, t.due_date, t.customer_id, c.name AS customer_name
+           FROM crm_tasks t LEFT JOIN crm_customers c ON c.id = t.customer_id
+           WHERE t.owner_user_id = $1 AND t.status = 'pending' AND t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE
+           ORDER BY t.due_date ASC LIMIT 50`,
+          [owner],
+        ),
+        pool.query(
+          `SELECT id, name, email, last_delivered_at, next_rebook_due_at
+           FROM crm_customers
+           WHERE owner_user_id = $1 AND status <> 'archived'
+             AND next_rebook_due_at IS NOT NULL AND next_rebook_due_at <= now()
+           ORDER BY next_rebook_due_at ASC LIMIT 50`,
+          [owner],
+        ),
+        pool.query(
+          `SELECT id, name, email, last_contact
+           FROM crm_customers
+           WHERE owner_user_id = $1 AND status IN ('lead','prospect','active')
+             AND (last_contact IS NULL OR last_contact < now() - interval '45 days')
+           ORDER BY last_contact ASC NULLS FIRST LIMIT 50`,
+          [owner],
+        ),
+        pool.query(
+          `SELECT id, name, email, last_delivered_at
+           FROM crm_customers
+           WHERE owner_user_id = $1 AND lifecycle_stage = 'delivered'
+             AND last_delivered_at IS NOT NULL AND last_delivered_at > now() - interval '60 days'
+           ORDER BY last_delivered_at DESC LIMIT 50`,
+          [owner],
+        ),
+      ]);
+      return res.json({
+        overdueTasks: overdue.rows,
+        rebookDue: rebook.rows,
+        dormant: dormant.rows,
+        reviewDue: reviewDue.rows,
+      });
+    } catch (error) {
+      console.error("CRM action-queue error:", error);
+      return res.status(500).json({ error: "Failed to fetch action queue" });
+    }
+  });
+
+  // Manual trigger for the automation sweep (also runs hourly on a timer).
+  app.post("/api/universal-crm/automation/run", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    try {
+      const result = await runCrmAutomationSweep();
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      console.error("CRM automation run error:", error);
+      return res.status(500).json({ error: "Failed to run automation" });
     }
   });
 }
