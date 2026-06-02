@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import {
   Drawer, Box, Stack, Typography, Chip, Divider, TextField, Button, MenuItem,
   IconButton, Avatar, List, ListItem, ListItemText, CircularProgress, Alert,
+  Rating, FormControlLabel, Checkbox,
 } from '@mui/material';
 import {
   Close as CloseIcon, NoteAlt as NoteIcon, Call as CallIcon, VideoCall as MeetIcon,
@@ -61,6 +62,10 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
   const [showEmail, setShowEmail] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
+  // #39 — review capture
+  const [reviewRating, setReviewRating] = useState<number | null>(5);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewPublic, setReviewPublic] = useState(false);
 
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ['crm-customer-overview', customerId],
@@ -90,6 +95,19 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
 
   const c = data?.customer;
   const stale = c ? staleness(c.lastContact) : null;
+
+  const addReview = useMutation({
+    mutationFn: async () => apiRequest('/api/universal-crm/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ customerId, rating: reviewRating, npsScore: reviewRating ? reviewRating * 2 : null, testimonialText: reviewText.trim(), publicConsent: reviewPublic }),
+    }),
+    onSuccess: () => {
+      setReviewText(''); setReviewRating(5); setReviewPublic(false);
+      queryClient.invalidateQueries({ queryKey: ['crm-customer-overview', customerId] });
+      toast({ title: 'Anmeldelse registrert', variant: 'success' });
+    },
+    onError: (e: any) => toast({ title: 'Kunne ikke registrere', description: e?.message, variant: 'destructive' }),
+  });
 
   // #50 — email templates with {{merge}} interpolation.
   const { data: tplData } = useQuery<{ templates: any[] }>({
@@ -153,6 +171,7 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
                 <Chip size="small" label={statusLabel(c.status)} color="primary" />
                 {c.projectType && <Chip size="small" variant="outlined" label={c.projectType} />}
                 {c.source && <Chip size="small" variant="outlined" label={`Kilde: ${c.source}`} />}
+                {c.consentStatus && <Chip size="small" color="success" variant="outlined" label={`Samtykke: ${c.consentStatus}`} />}
               </Stack>
               {c.email && <Typography variant="body2" color="text.secondary">{c.email}</Typography>}
               {c.phone && <Typography variant="body2" color="text.secondary">{c.phone}</Typography>}
@@ -231,6 +250,33 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
                   </Button>
                 </Stack>
               )}
+            </Stack>
+
+            <Divider />
+
+            {/* Reviews / NPS (#39) */}
+            <Stack spacing={1}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Anmeldelser</Typography>
+              {(data.reviews || []).map((r: any) => (
+                <Box key={r.id} sx={{ p: 1, borderRadius: 1, bgcolor: 'action.hover' }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Rating size="small" value={r.rating || 0} readOnly />
+                    {r.public_consent && <Chip size="small" label="Kan publiseres" color="success" variant="outlined" />}
+                  </Stack>
+                  {r.testimonial_text && <Typography variant="caption" color="text.secondary">{r.testimonial_text}</Typography>}
+                </Box>
+              ))}
+              <Stack spacing={1} sx={{ mt: 0.5 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Rating value={reviewRating} onChange={(_e, v) => setReviewRating(v)} />
+                  <Typography variant="caption" color="text.secondary">Registrer mottatt anmeldelse</Typography>
+                </Stack>
+                <TextField size="small" placeholder="Sitat / tilbakemelding (valgfritt)" value={reviewText} onChange={(e) => setReviewText(e.target.value)} fullWidth multiline rows={2} />
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <FormControlLabel control={<Checkbox size="small" checked={reviewPublic} onChange={(e) => setReviewPublic(e.target.checked)} />} label={<Typography variant="caption">Kan publiseres</Typography>} />
+                  <Button size="small" variant="contained" disabled={!reviewRating || addReview.isPending} onClick={() => addReview.mutate()}>Lagre</Button>
+                </Stack>
+              </Stack>
             </Stack>
 
             <Divider />

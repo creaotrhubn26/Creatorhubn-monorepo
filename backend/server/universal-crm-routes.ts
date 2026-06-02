@@ -101,6 +101,20 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS email_normalized text;
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS referred_by_customer_id uuid;
       CREATE INDEX IF NOT EXISTS crm_customers_email_norm_idx ON crm_customers(owner_user_id, email_normalized);
+      -- Wave 3c: GDPR consent metadata (#34) + reviews/NPS (#39).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS consent_status text;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS consent_at timestamptz;
+      CREATE TABLE IF NOT EXISTS crm_reviews (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id uuid,
+        owner_user_id text,
+        rating int,
+        nps_score int,
+        testimonial_text text,
+        public_consent boolean DEFAULT false,
+        created_at timestamptz DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS crm_reviews_customer_idx ON crm_reviews(customer_id);
       CREATE INDEX IF NOT EXISTS crm_customers_owner_idx ON crm_customers(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_deals_owner_idx ON crm_deals(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_activities_owner_idx ON crm_activities(owner_user_id);
@@ -372,9 +386,12 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         notes: "notes",
         source: "source",
         customFields: "custom_fields",
+        consentStatus: "consent_status",
       };
 
       const setClauses: string[] = ["updated_at = now()"];
+      // #34 — stamp consent time whenever consent status is set.
+      if (updates.consentStatus !== undefined) setClauses.push("consent_at = now()");
       const params: any[] = [];
       let idx = 1;
 
@@ -488,12 +505,13 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         return res.status(404).json({ error: "Customer not found" });
       }
       const c = cust.rows[0];
-      const [deals, tasks, invoices, meetings, activities] = await Promise.all([
+      const [deals, tasks, invoices, meetings, activities, reviews] = await Promise.all([
         pool.query(`SELECT * FROM crm_deals WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]),
         pool.query(`SELECT * FROM crm_tasks WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY due_date ASC NULLS LAST`, [id, owner]),
         pool.query(`SELECT * FROM crm_invoices WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]).catch(() => ({ rows: [] })),
         pool.query(`SELECT * FROM crm_meetings WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY scheduled_at DESC NULLS LAST`, [id, owner]).catch(() => ({ rows: [] })),
         pool.query(`SELECT * FROM crm_activities WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC LIMIT 200`, [id, owner]),
+        pool.query(`SELECT * FROM crm_reviews WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]).catch(() => ({ rows: [] })),
       ]);
 
       // Build a unified reverse-chronological timeline from activities +
@@ -518,12 +536,14 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           id: c.id, name: c.name, email: c.email, phone: c.phone, company: c.company,
           status: c.status, projectType: c.project_type, budget: c.budget ? parseFloat(c.budget) : null,
           source: c.source, tags: c.tags || [], notes: c.notes, lastContact: c.last_contact,
+          consentStatus: c.consent_status, consentAt: c.consent_at,
           createdAt: c.created_at,
         },
         deals: deals.rows,
         tasks: tasks.rows,
         invoices: invoices.rows,
         meetings: meetings.rows,
+        reviews: reviews.rows,
         timeline,
       });
     } catch (error) {
@@ -1409,8 +1429,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         return res.status(400).json({ error: "Name and email are required" });
       }
       const inserted = await pool.query(
-        `INSERT INTO crm_customers (id, name, email, phone, profession, project_type, budget, status, notes, source, owner_user_id, custom_fields, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'lead', $7, 'website', $8, '{}'::jsonb, now(), now()) RETURNING id`,
+        `INSERT INTO crm_customers (id, name, email, phone, profession, project_type, budget, status, notes, source, owner_user_id, email_normalized, consent_status, consent_at, custom_fields, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'lead', $7, 'website', $8, $9, 'form_submitted', now(), '{}'::jsonb, now(), now()) RETURNING id`,
         [
           name,
           email,
@@ -1420,6 +1440,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           budget || null,
           notes || null,
           owner.owner_user_id,
+          normalizeEmail(email),
         ],
       );
       const customerId = inserted.rows[0].id;
@@ -1663,6 +1684,41 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("CRM import error:", error);
       return res.status(500).json({ error: "Failed to import" });
+    }
+  });
+
+  // ============================================================
+  // Reviews / NPS (#39) — owner-scoped
+  // ============================================================
+  app.get("/api/universal-crm/reviews", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customer_id } = req.query as Record<string, string>;
+      const where = customer_id ? "WHERE owner_user_id = $1 AND customer_id = $2" : "WHERE owner_user_id = $1";
+      const params = customer_id ? [session.userId, customer_id] : [session.userId];
+      const rows = await pool.query(`SELECT * FROM crm_reviews ${where} ORDER BY created_at DESC`, params);
+      return res.json({ reviews: rows.rows });
+    } catch (error) {
+      console.error("CRM reviews list error:", error);
+      return res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+  });
+
+  app.post("/api/universal-crm/reviews", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customerId, rating, npsScore, testimonialText, publicConsent } = req.body;
+      const result = await pool.query(
+        `INSERT INTO crm_reviews (id, customer_id, owner_user_id, rating, nps_score, testimonial_text, public_consent, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now()) RETURNING *`,
+        [customerId || null, session.userId, rating || null, npsScore || null, testimonialText || null, Boolean(publicConsent)],
+      );
+      return res.status(201).json({ review: result.rows[0] });
+    } catch (error) {
+      console.error("CRM review create error:", error);
+      return res.status(500).json({ error: "Failed to create review" });
     }
   });
 }

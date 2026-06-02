@@ -203,6 +203,7 @@ import PhotographerProfitability from '@/pages/photographer-profitability';
 import PhotographerIntegrations from '@/pages/photographer-integrations';
 import PhotographerGalleryDetail from '@/pages/photographer-gallery-detail';
 import PublicLeadForm from '@/pages/public-lead-form';
+import CrmStandalone from '@/pages/crm-standalone';
 import PortalPage from '@/pages/portal';
 import PhotographerProjectUpload from '@/pages/photographer-project-upload';
 import PhotographerEquipment from '@/pages/photographer-equipment';
@@ -854,6 +855,7 @@ function App() {
                     component={WeddingTimelineClientResponsive}
                   />
                   <Route path="/dashboard" component={() => <SmartDashboardRoute />} />
+                  <Route path="/crm" component={CrmStandalone as React.ComponentType<any>} />
                   <Route path="/story-arc-studio" component={StoryArcStudioRouteWrapper} />
                   <Route
                     path="/fotograf"
