@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Box, CircularProgress, Container, Typography } from "@mui/material";
-import { loadStoredConfig, StoredConfig } from "./api";
+import { deviceTokenStatus, listProjects, loadStoredConfig, StoredConfig } from "./api";
 import TokenSetupScreen from "./components/TokenSetupScreen";
 import ProjectInfoScreen from "./components/ProjectInfoScreen";
+import ProjectPickerScreen from "./components/ProjectPickerScreen";
+import LoginScreen from "./components/LoginScreen";
 import UpdaterDialog from "./components/UpdaterDialog";
 
-type Status = "loading" | "needs-token" | "connected";
+type Status = "loading" | "needs-login" | "needs-token" | "picker" | "connected";
 
 interface PendingUpdate {
   version: string;
@@ -55,21 +57,52 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  /// Hoved-rute-logikk. Tilstander etter loading:
+  ///   - needs-login: ingen device-token + ingen lagrede prosjekter → LoginScreen
+  ///   - needs-token: bruker velger "manuelt token" fra LoginScreen → TokenSetupScreen
+  ///   - picker: flere prosjekter konfigurert OG bruker har valgt
+  ///     "bytt prosjekt" (eller etter logout) → ProjectPickerScreen
+  ///   - connected: aktivt prosjekt valgt → ProjectInfoScreen
+  /// Migration fra single-project handles automatically i ProjectStore.
   const refresh = async () => {
     setStatus("loading");
     try {
+      const projs = await listProjects();
       const cfg = await loadStoredConfig();
+      const deviceToken = await deviceTokenStatus().catch(() => null);
+
+      if (projs.length === 0) {
+        // Ingen prosjekter — vis Google-login med manuell-token-fallback
+        setConfig(null);
+        // Hvis device-token finnes men ingen prosjekter (rare race), gå
+        // til login uansett — backend kan fortsatt re-fetche.
+        setStatus(deviceToken || !deviceToken ? "needs-login" : "needs-token");
+        return;
+      }
       if (cfg && cfg.has_token) {
         setConfig(cfg);
         setStatus("connected");
       } else {
         setConfig(null);
-        setStatus("needs-token");
+        setStatus("picker");
       }
     } catch {
       setConfig(null);
-      setStatus("needs-token");
+      setStatus("needs-login");
     }
+  };
+
+  const handleSwitchProject = () => {
+    setStatus("picker");
+    setConfig(null);
+  };
+
+  const handleAddNew = () => {
+    setStatus("needs-login");
+  };
+
+  const handleManualToken = () => {
+    setStatus("needs-token");
   };
 
   useEffect(() => {
@@ -87,13 +120,27 @@ export default function App() {
     );
   }
 
+  if (status === "needs-login") {
+    return <LoginScreen onLoggedIn={refresh} onManualToken={handleManualToken} />;
+  }
+
   if (status === "needs-token") {
     return <TokenSetupScreen onSaved={refresh} />;
   }
 
+  if (status === "picker") {
+    return <ProjectPickerScreen onProjectSelected={refresh} onAddNew={handleAddNew} />;
+  }
+
   return (
     <Box>
-      {config && <ProjectInfoScreen config={config} onLoggedOut={refresh} />}
+      {config && (
+        <ProjectInfoScreen
+          config={config}
+          onLoggedOut={refresh}
+          onSwitchProject={handleSwitchProject}
+        />
+      )}
       {updateInfo && (
         <UpdaterDialog
           version={updateInfo.version}

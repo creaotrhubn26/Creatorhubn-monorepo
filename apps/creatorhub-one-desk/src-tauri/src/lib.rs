@@ -9,10 +9,12 @@ mod capture_mirror;
 mod capture_subscriber;
 mod copy_engine;
 mod copy_session;
+mod device_auth;
 mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
+mod projects;
 
 use std::sync::Arc;
 
@@ -23,7 +25,7 @@ use helper_client::{CaptureSessionSummary, Config, ProjectInfo};
 use ipad_pairing::{DiscoveredIpad, IpadPairingState, PairedIpad, PendingPin};
 use mount_watcher::{DetectedMount, MountWatcherState};
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[derive(Serialize)]
 struct StoredConfig {
@@ -82,6 +84,90 @@ fn save_helper_config(
 #[tauri::command]
 fn clear_helper_config() -> Result<(), String> {
     helper_client::clear_config()
+}
+
+// ── Google-OAuth device-auth commands ──────────────────────────────
+
+#[derive(Serialize)]
+struct DeviceTokenStatus {
+    user_email: String,
+    user_name: String,
+    api_base: String,
+}
+
+#[tauri::command]
+fn device_token_status() -> Result<Option<DeviceTokenStatus>, String> {
+    Ok(device_auth::load_device_token()?.map(|t| DeviceTokenStatus {
+        user_email: t.user_email,
+        user_name: t.user_name,
+        api_base: t.api_base,
+    }))
+}
+
+#[tauri::command]
+async fn start_google_login(api_base: Option<String>) -> Result<String, String> {
+    let base = api_base.unwrap_or_else(|| helper_client::default_api_base().to_string());
+    device_auth::start_google_login(&base).await
+}
+
+#[tauri::command]
+async fn refresh_projects_from_api(
+    store: tauri::State<'_, Arc<projects::ProjectStore>>,
+) -> Result<usize, String> {
+    let token = device_auth::load_device_token()?
+        .ok_or_else(|| "Ikke logget inn med Google".to_string())?;
+    let entries = device_auth::fetch_projects_for_token(&token.api_base, &token.token).await?;
+    let count = entries.len();
+    store.replace_all(entries)?;
+    Ok(count)
+}
+
+#[tauri::command]
+fn desktop_logout(store: tauri::State<Arc<projects::ProjectStore>>) -> Result<(), String> {
+    device_auth::clear_device_token()?;
+    store.clear_all()?;
+    Ok(())
+}
+
+// ── Multi-project commands ─────────────────────────────────────────
+
+#[tauri::command]
+fn list_projects(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+) -> Result<Vec<projects::ProjectEntry>, String> {
+    store.list()
+}
+
+#[tauri::command]
+fn active_project_id(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+) -> Result<Option<String>, String> {
+    store.active_id()
+}
+
+#[tauri::command]
+fn set_active_project(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+    project_id: String,
+) -> Result<(), String> {
+    store.set_active(&project_id)
+}
+
+#[tauri::command]
+fn remove_project(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+    project_id: String,
+) -> Result<(), String> {
+    store.remove(&project_id)
+}
+
+#[tauri::command]
+fn update_project_label(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+    project_id: String,
+    label: String,
+) -> Result<(), String> {
+    store.update_label(&project_id, label)
 }
 
 #[tauri::command]
@@ -285,20 +371,65 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(MountWatcherState::default())
         .manage(Arc::new(CopySessionState::default()))
         .manage(Arc::new(IpadPairingState::default()))
         .manage(Arc::new(CaptureSubscriberState::default()))
         .manage(Arc::new(MirrorState::default()))
+        .manage(Arc::new(projects::ProjectStore::default()))
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(err) = mount_watcher::spawn_watcher(handle.clone()) {
                 eprintln!("Mount-watcher kunne ikke starte: {err}");
             }
             let pairing_state: tauri::State<Arc<IpadPairingState>> = app.state();
-            if let Err(err) = ipad_pairing::spawn_browser(handle, pairing_state.inner().clone()) {
+            if let Err(err) = ipad_pairing::spawn_browser(handle.clone(), pairing_state.inner().clone()) {
                 eprintln!("iPad Bonjour-browser kunne ikke starte: {err}");
             }
+
+            // Deep-link-handler: når macOS sender appen
+            // creatorhub-one-desk://oauth-callback?token=...&email=... så
+            // lagrer vi tokenet, henter prosjekter fra backend og emitter
+            // event så frontend rerendrer.
+            use tauri_plugin_deep_link::DeepLinkExt;
+            let handle_clone = handle.clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    let url_str = url.as_str();
+                    let Some(dt) = device_auth::parse_oauth_callback_url(url_str) else {
+                        continue;
+                    };
+                    if let Err(err) = device_auth::save_device_token(&dt) {
+                        eprintln!("Lagre device-token feilet: {err}");
+                        continue;
+                    }
+                    let h = handle_clone.clone();
+                    let dt_clone = dt.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let store: tauri::State<Arc<projects::ProjectStore>> = h.state();
+                        match device_auth::fetch_projects_for_token(&dt_clone.api_base, &dt_clone.token).await {
+                            Ok(entries) => {
+                                if let Err(e) = store.replace_all(entries) {
+                                    eprintln!("Lagre prosjekter feilet: {e}");
+                                    return;
+                                }
+                                let _ = h.emit("desktop-auth-completed", &dt_clone.user_email);
+                                // Bring vinduet til front så Fredrik ser at det funket
+                                if let Some(window) = h.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Hent prosjekter feilet: {e}");
+                                let _ = h.emit("desktop-auth-failed", &e);
+                            }
+                        }
+                    });
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -306,6 +437,15 @@ pub fn run() {
             load_stored_config,
             save_helper_config,
             clear_helper_config,
+            device_token_status,
+            start_google_login,
+            refresh_projects_from_api,
+            desktop_logout,
+            list_projects,
+            active_project_id,
+            set_active_project,
+            remove_project,
+            update_project_label,
             fetch_project_info,
             list_detected_mounts,
             rescan_mounts,
