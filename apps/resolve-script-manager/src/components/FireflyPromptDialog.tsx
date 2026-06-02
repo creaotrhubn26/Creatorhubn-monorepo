@@ -16,7 +16,7 @@ import { useState } from "react";
 import {
   suggestPromptsLocal,
   suggestPromptsViaClaude,
-  extractContextFromAppInfo,
+  extractContextFromPhotoshopState,
   type FireflyIntent,
   type FireflyContext,
   type FireflyPromptSuggestion,
@@ -98,8 +98,15 @@ export function FireflyPromptDialog({
     setError(null);
     setContextLoading(true);
     try {
-      const info = await photoshop.appInfo();
-      const ctx = extractContextFromAppInfo(info);
+      // Parallell-fetch: app.info + listLayers + selection.info.
+      // Layers + selection er nye kommandoer (PR med doc.listLayers) —
+      // fall tilbake hvis plugin er eldre.
+      const [info, layers, selection] = await Promise.all([
+        photoshop.appInfo(),
+        photoshop.listLayers().catch(() => undefined),
+        photoshop.selectionInfo().catch(() => undefined),
+      ]);
+      const ctx = extractContextFromPhotoshopState(info, layers, selection);
       const notes: string[] = [];
       if (ctx.scene_type && ctx.scene_type !== sceneType) {
         setSceneType(ctx.scene_type);
@@ -108,6 +115,13 @@ export function FireflyPromptDialog({
       if (ctx.target_aspect) {
         setTargetAspect(ctx.target_aspect);
         notes.push(`aspect: ${ctx.target_aspect}`);
+      }
+      if (ctx.subject_description && !subjectDesc) {
+        setSubjectDesc(ctx.subject_description);
+        notes.push(`subjekt: ${ctx.subject_description}`);
+      }
+      if (selection && selection.exists) {
+        notes.push(`selection ${selection.coverage_pct}%`);
       }
       if (info.active_document?.name) {
         notes.push(`fra "${info.active_document.name}"`);
