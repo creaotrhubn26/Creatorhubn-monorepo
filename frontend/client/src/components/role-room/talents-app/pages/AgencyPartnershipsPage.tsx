@@ -288,9 +288,24 @@ export default function AgencyPartnershipsPage() {
       </Tabs>
 
       {loading && !availability ? (
-        <Box sx={{ textAlign: 'center', py: 6 }}>
-          <CircularProgress size={28} />
-        </Box>
+        <Stack spacing={2}>
+          {[0, 1, 2].map((i) => (
+            <Box
+              key={i}
+              sx={{
+                ...cardSx,
+                height: 88,
+                background: `linear-gradient(90deg, ${palette.bgCard} 0%, ${palette.bgCardElevated} 50%, ${palette.bgCard} 100%)`,
+                backgroundSize: '200% 100%',
+                animation: 'skeletonPulse 1.4s ease-in-out infinite',
+                '@keyframes skeletonPulse': {
+                  '0%': { backgroundPosition: '200% 0' },
+                  '100%': { backgroundPosition: '-200% 0' },
+                },
+              }}
+            />
+          ))}
+        </Stack>
       ) : null}
 
       {tab === 'overview' ? (
@@ -805,9 +820,26 @@ function MinePartnershipsTab(props: {
 }) {
   if (props.partnerships.length === 0) {
     return (
-      <Box sx={{ ...cardSx, textAlign: 'center' }}>
-        <Typography sx={{ color: palette.textMuted }}>
-          Ingen partnerships ennå. Slå på discoverability for å bli funnet av produksjonsselskaper.
+      <Box sx={{ ...cardSx, textAlign: 'center', py: 5 }}>
+        <Box
+          sx={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            bgcolor: 'rgba(168,85,247,0.12)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 2,
+          }}
+        >
+          <HandshakeOutlinedIcon sx={{ fontSize: 32, color: palette.accentBright }} />
+        </Box>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.05rem', mb: 0.6 }}>
+          Ingen partnerships ennå
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem', maxWidth: 380, mx: 'auto' }}>
+          Slå på discoverability i Tilgjengelighets-fanen for å bli funnet av produksjonsselskaper.
         </Typography>
       </Box>
     );
@@ -923,9 +955,26 @@ function IncomingInvitationsTab(props: {
 }) {
   if (props.invitations.length === 0) {
     return (
-      <Box sx={{ ...cardSx, textAlign: 'center' }}>
-        <Typography sx={{ color: palette.textMuted }}>
-          Ingen prosjekt-invitasjoner ennå.
+      <Box sx={{ ...cardSx, textAlign: 'center', py: 5 }}>
+        <Box
+          sx={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            bgcolor: 'rgba(168,85,247,0.12)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 2,
+          }}
+        >
+          <CheckCircleOutlineIcon sx={{ fontSize: 32, color: palette.accentBright }} />
+        </Box>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.05rem', mb: 0.6 }}>
+          Ingen prosjekt-invitasjoner ennå
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem', maxWidth: 380, mx: 'auto' }}>
+          Når produksjonsselskaper inviterer byrået ditt til et casting-prosjekt, dukker invitasjonen opp her.
         </Typography>
       </Box>
     );
