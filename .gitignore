@@ -74,6 +74,8 @@ docs/
 !docs/security/*.md
 !docs/post-agent/
 !docs/post-agent/*.md
+!docs/dance/
+!docs/dance/*.md
 !apps/resolve-script-manager/src/docs/
 !apps/resolve-script-manager/src/docs/*.md
 !backend/docs/META_APP_REVIEW_SUBMISSION.md
