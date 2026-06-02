@@ -14,6 +14,7 @@ import GoogleIcon from "@mui/icons-material/Google";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { startGoogleLogin } from "../api";
+import DeskIcon from "./DeskIcon";
 
 interface Props {
   /** Trigget når brukeren har fullført Google-login og prosjekter er hentet. */
@@ -64,6 +65,10 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
       <Stack spacing={4} sx={{ alignItems: "stretch", textAlign: "center" }}>
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
+          <DeskIcon size={96} />
+        </Box>
+
         <Box>
           <Typography variant="overline" color="text.secondary">
             Creatorhub One Desk

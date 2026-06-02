@@ -9,6 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { getDefaultApiBase, saveHelperConfig } from "../api";
+import DeskIcon from "./DeskIcon";
 
 interface Props {
   onSaved: () => void;
@@ -41,20 +42,23 @@ export default function TokenSetupScreen({ onSaved }: Props) {
   return (
     <Container maxWidth="sm" sx={{ py: 6 }}>
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="overline" color="text.secondary">
-            CreatorHub
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-            Koble til prosjekt
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Lim inn helper-tokenet du genererte i CreatorHub. Tokenet lagres
-            lokalt med 0600-permissions i <code>~/.creatorhub-one-desk/config.json</code>
-            {" "}og brukes kun fra Rust-prosessen — det eksponeres ikke til
-            frontend etter lagring.
-          </Typography>
-        </Box>
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+          <DeskIcon size={56} shadow={false} />
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="overline" color="text.secondary">
+              Creatorhub One Desk
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+              Koble til prosjekt
+            </Typography>
+          </Box>
+        </Stack>
+        <Typography variant="body2" color="text.secondary">
+          Lim inn helper-tokenet du genererte i Creatorhub. Tokenet lagres
+          lokalt med 0600-permissions i <code>~/.creatorhub-one-desk/projects.json</code>
+          {" "}og brukes kun fra Rust-prosessen — det eksponeres ikke til
+          frontend etter lagring.
+        </Typography>
 
         <TextField
           label="Backend-URL"
