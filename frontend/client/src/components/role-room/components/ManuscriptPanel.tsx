@@ -625,6 +625,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const [manuscriptViewers, setManuscriptViewers] = useState<Array<{ userId: string; displayName: string }>>([]);
   // userId → vennlig navn (fra prosjekt-medlemmer) for å resolve lås-eier.
   const [memberNameMap, setMemberNameMap] = useState<Record<string, string>>({});
+  // Ref-speil så lås-effektens (én-gangs) closure alltid ser nyeste navnekart.
+  const memberNameMapRef = useRef<Record<string, string>>({});
+  useEffect(() => { memberNameMapRef.current = memberNameMap; }, [memberNameMap]);
+  const resolveMemberName = (id?: string | null): string => {
+    const key = id == null ? '' : String(id);
+    return (key && memberNameMapRef.current[key]) || key || 'En annen i teamet';
+  };
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
@@ -1114,7 +1121,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           });
           showWarning(
             lockErr.lockedBy
-              ? `${lockErr.lockedBy} redigerer dette manuset nå. Endringene dine lagres ikke før låsen frigis.`
+              ? `${resolveMemberName(lockErr.lockedBy)} redigerer dette manuset nå. Endringene dine lagres ikke før låsen frigis.`
               : 'En annen i teamet redigerer dette manuset nå.',
           );
         }
@@ -1856,7 +1863,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           setManuscriptSaveStatus('error');
           showWarning(
             lockErr.lockedBy
-              ? `Manuset redigeres av ${lockErr.lockedBy} akkurat nå — endringene dine er ikke lagret. De beholdes til låsen frigis.`
+              ? `Manuset redigeres av ${resolveMemberName(lockErr.lockedBy)} akkurat nå — endringene dine er ikke lagret. De beholdes til låsen frigis.`
               : 'Manuset er låst av en annen i teamet — endringene dine er ikke lagret ennå.',
           );
           return;
