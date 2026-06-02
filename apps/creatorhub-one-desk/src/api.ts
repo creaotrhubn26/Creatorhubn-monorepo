@@ -71,6 +71,29 @@ export async function saveHelperConfig(args: {
   });
 }
 
+// ── Google OAuth / device-auth ────────────────────────────────────
+export interface DeviceTokenStatus {
+  user_email: string;
+  user_name: string;
+  api_base: string;
+}
+
+export async function deviceTokenStatus(): Promise<DeviceTokenStatus | null> {
+  return invoke<DeviceTokenStatus | null>("device_token_status");
+}
+
+export async function startGoogleLogin(apiBase?: string): Promise<string> {
+  return invoke<string>("start_google_login", { apiBase: apiBase ?? null });
+}
+
+export async function refreshProjectsFromApi(): Promise<number> {
+  return invoke<number>("refresh_projects_from_api");
+}
+
+export async function desktopLogout(): Promise<void> {
+  return invoke<void>("desktop_logout");
+}
+
 // ── Multi-project ─────────────────────────────────────────────────
 export interface ProjectEntry {
   project_id: string;

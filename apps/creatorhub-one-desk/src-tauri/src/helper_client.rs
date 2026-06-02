@@ -42,6 +42,13 @@ pub fn config_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".creatorhub-one-desk"))
 }
 
+/// Sørg for at config-mappa eksisterer. Brukes av modulene som
+/// skriver filer hit (projects.rs, device_auth.rs).
+pub fn ensure_config_dir() -> Result<(), String> {
+    let dir = config_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Create config dir: {}", e))
+}
+
 /// Legacy single-project config path. Beholdt for migration —
 /// projects.rs leser denne ved første kall hvis projects.json ikke
 /// finnes ennå.

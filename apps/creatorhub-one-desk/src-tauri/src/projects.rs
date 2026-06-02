@@ -247,6 +247,54 @@ impl ProjectStore {
         self.save_to_disk(&file_clone)
     }
 
+    /// Erstatt hele prosjekt-listen i én transaksjon. Brukes etter
+    /// Google OAuth → /api/desktop/me/projects-svaret kommer inn med
+    /// ALLE prosjekter brukeren har tilgang til. Bevarer last_used_ms
+    /// for prosjekter som allerede fantes så MRU-sortering ikke nullstilles.
+    pub fn replace_all(&self, entries: Vec<ProjectEntry>) -> Result<(), String> {
+        self.ensure_loaded()?;
+        let mut guard = self.inner.lock().unwrap();
+        let file = guard.as_mut().expect("loaded");
+
+        let mut prev_last_used: std::collections::HashMap<String, u64> = file
+            .projects
+            .iter()
+            .map(|p| (p.project_id.clone(), p.last_used_ms))
+            .collect();
+
+        let merged: Vec<ProjectEntry> = entries
+            .into_iter()
+            .map(|mut e| {
+                if let Some(prev) = prev_last_used.remove(&e.project_id) {
+                    e.last_used_ms = prev;
+                } else if e.last_used_ms == 0 {
+                    e.last_used_ms = now_ms();
+                }
+                e
+            })
+            .collect();
+
+        // Velg aktivt prosjekt: behold gjeldende hvis den fortsatt finnes
+        // i ny liste, ellers MRU.
+        let still_active = file
+            .active_project_id
+            .as_ref()
+            .filter(|id| merged.iter().any(|p| &p.project_id == *id))
+            .cloned();
+        let active = still_active.or_else(|| {
+            merged
+                .iter()
+                .max_by_key(|p| p.last_used_ms)
+                .map(|p| p.project_id.clone())
+        });
+
+        file.projects = merged;
+        file.active_project_id = active;
+        let file_clone = file.clone();
+        drop(guard);
+        self.save_to_disk(&file_clone)
+    }
+
     /// Sletter både projects.json OG legacy config.json. Brukes ved
     /// "Logg ut alle prosjekter".
     pub fn clear_all(&self) -> Result<(), String> {

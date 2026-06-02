@@ -214,6 +214,7 @@ import {
   handleAgentSubscriptionRevoked,
 } from "./role-room-agent-stripe-webhook.js";
 import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
+import { createDesktopAuthRouter } from "./desktop-auth-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
@@ -1778,6 +1779,7 @@ registerDesignTokensRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
+app.use("/api/desktop", createDesktopAuthRouter(pool));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 
 // Role Room member profile (separat fra Creatorhub-profil) — central solution

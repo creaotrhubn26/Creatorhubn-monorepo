@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Box, CircularProgress, Container, Typography } from "@mui/material";
-import { listProjects, loadStoredConfig, StoredConfig } from "./api";
+import { deviceTokenStatus, listProjects, loadStoredConfig, StoredConfig } from "./api";
 import TokenSetupScreen from "./components/TokenSetupScreen";
 import ProjectInfoScreen from "./components/ProjectInfoScreen";
 import ProjectPickerScreen from "./components/ProjectPickerScreen";
+import LoginScreen from "./components/LoginScreen";
 import UpdaterDialog from "./components/UpdaterDialog";
 
-type Status = "loading" | "needs-token" | "picker" | "connected";
+type Status = "loading" | "needs-login" | "needs-token" | "picker" | "connected";
 
 interface PendingUpdate {
   version: string;
@@ -56,37 +57,38 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  /// Hoved-rute-logikk. Vi har tre tilstander etter loading:
-  ///   - needs-token: ingen prosjekter konfigurert ennå → TokenSetupScreen
+  /// Hoved-rute-logikk. Tilstander etter loading:
+  ///   - needs-login: ingen device-token + ingen lagrede prosjekter → LoginScreen
+  ///   - needs-token: bruker velger "manuelt token" fra LoginScreen → TokenSetupScreen
   ///   - picker: flere prosjekter konfigurert OG bruker har valgt
   ///     "bytt prosjekt" (eller etter logout) → ProjectPickerScreen
   ///   - connected: aktivt prosjekt valgt → ProjectInfoScreen
-  /// Migration fra single-project handles automatically i ProjectStore
-  /// første gang load skjer.
+  /// Migration fra single-project handles automatically i ProjectStore.
   const refresh = async () => {
     setStatus("loading");
     try {
-      // listProjects() trigger lazy migration fra config.json
       const projs = await listProjects();
       const cfg = await loadStoredConfig();
+      const deviceToken = await deviceTokenStatus().catch(() => null);
+
       if (projs.length === 0) {
-        // Ingen prosjekt konfigurert
+        // Ingen prosjekter — vis Google-login med manuell-token-fallback
         setConfig(null);
-        setStatus("needs-token");
+        // Hvis device-token finnes men ingen prosjekter (rare race), gå
+        // til login uansett — backend kan fortsatt re-fetche.
+        setStatus(deviceToken || !deviceToken ? "needs-login" : "needs-token");
         return;
       }
       if (cfg && cfg.has_token) {
-        // Aktivt prosjekt → connected
         setConfig(cfg);
         setStatus("connected");
       } else {
-        // Prosjekter finnes men ingen aktiv → picker
         setConfig(null);
         setStatus("picker");
       }
     } catch {
       setConfig(null);
-      setStatus("needs-token");
+      setStatus("needs-login");
     }
   };
 
@@ -96,6 +98,10 @@ export default function App() {
   };
 
   const handleAddNew = () => {
+    setStatus("needs-login");
+  };
+
+  const handleManualToken = () => {
     setStatus("needs-token");
   };
 
@@ -112,6 +118,10 @@ export default function App() {
         </Typography>
       </Container>
     );
+  }
+
+  if (status === "needs-login") {
+    return <LoginScreen onLoggedIn={refresh} onManualToken={handleManualToken} />;
   }
 
   if (status === "needs-token") {
