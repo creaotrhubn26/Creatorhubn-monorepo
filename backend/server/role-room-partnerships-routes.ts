@@ -1846,4 +1846,130 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       return res.status(500).json({ error: "Klarte ikke å hente forslag" });
     }
   });
+
+  // ── GET /dashboard/agency ─────────────────────────────────────────
+  // Konsolidert KPI-respons for byrå-admin sin overview-side.
+  // Erstatter klikk-deg-gjennom-3-faner med ett kart i UI.
+  app.get("/api/role-room/partnerships/dashboard/agency", async (req, res) => {
+    const session = getActiveSession(req);
+    const demo = isDemoRequest(req);
+    let agencyOrgId: string | null = null;
+    let agencyType: string | null = null;
+    if (demo) {
+      const a = getDemoAgency();
+      agencyOrgId = a.id;
+      agencyType = a.type;
+    } else {
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const ctx = await resolveUserContext(pool, session.userId);
+      if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+      agencyOrgId = ctx.agencyOrgId;
+      agencyType = ctx.agencyType;
+    }
+    try {
+      const [
+        partnershipsAgg,
+        invitationsAgg,
+        proposalsAgg,
+        candidateAgg,
+        recentActivity,
+      ] = await Promise.all([
+        pool.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE status = 'pending')::int  AS partnerships_pending,
+             COUNT(*) FILTER (WHERE status = 'accepted' AND paused_at IS NULL)::int AS partnerships_active,
+             COUNT(*) FILTER (WHERE status = 'accepted' AND paused_at IS NOT NULL)::int AS partnerships_paused,
+             COUNT(*) FILTER (WHERE status = 'revoked')::int  AS partnerships_revoked
+            FROM agency_production_partnerships
+           WHERE agency_org_id = $1::uuid`,
+          [agencyOrgId],
+        ),
+        pool.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE i.status = 'pending')::int  AS invitations_pending,
+             COUNT(*) FILTER (WHERE i.status = 'accepted')::int AS invitations_accepted,
+             COUNT(*) FILTER (WHERE i.status IN ('declined','revoked','expired'))::int AS invitations_closed
+            FROM partnership_project_invitations i
+            JOIN agency_production_partnerships p ON p.id = i.partnership_id
+           WHERE p.agency_org_id = $1::uuid`,
+          [agencyOrgId],
+        ),
+        pool.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE ptp.status = 'pending')::int  AS proposals_pending,
+             COUNT(*) FILTER (WHERE ptp.status = 'accepted')::int AS proposals_accepted,
+             COUNT(*) FILTER (WHERE ptp.status = 'declined')::int AS proposals_declined,
+             COUNT(*) FILTER (WHERE ptp.status = 'withdrawn')::int AS proposals_withdrawn,
+             COUNT(*)::int AS proposals_total
+            FROM partnership_talent_proposals ptp
+            JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+            JOIN agency_production_partnerships p ON p.id = i.partnership_id
+           WHERE p.agency_org_id = $1::uuid`,
+          [agencyOrgId],
+        ),
+        // Hvor mange unike talenter byrået har consent fra
+        pool.query(
+          `SELECT COUNT(DISTINCT talent_id)::int AS talent_pool_size
+             FROM talent_consent_registry
+            WHERE partner_type = $1 AND partner_ref = $2
+              AND status = 'granted'
+              AND (expires_at IS NULL OR expires_at > now())`,
+          [agencyType, agencyOrgId],
+        ),
+        pool.query(
+          `SELECT pa.action, pa.created_at::text, pa.details,
+                  u.first_name || ' ' || u.last_name AS actor_name
+             FROM partnership_audit pa
+             LEFT JOIN users u ON u.id = pa.actor_user_id
+            WHERE pa.partnership_id IN (
+                    SELECT id FROM agency_production_partnerships WHERE agency_org_id = $1::uuid)
+               OR pa.invitation_id IN (
+                    SELECT i.id FROM partnership_project_invitations i
+                    JOIN agency_production_partnerships p ON p.id = i.partnership_id
+                   WHERE p.agency_org_id = $1::uuid)
+            ORDER BY pa.created_at DESC
+            LIMIT 10`,
+          [agencyOrgId],
+        ),
+      ]);
+
+      const p = partnershipsAgg.rows[0] || {};
+      const i = invitationsAgg.rows[0] || {};
+      const pr = proposalsAgg.rows[0] || {};
+      const tp = candidateAgg.rows[0] || {};
+
+      // Akseptrate (proposals accepted / total proposed)
+      const proposalsTotal = pr.proposals_total ?? 0;
+      const acceptRate = proposalsTotal > 0
+        ? Math.round(((pr.proposals_accepted ?? 0) / proposalsTotal) * 100)
+        : null;
+
+      return res.json({
+        partnerships: {
+          pending: p.partnerships_pending ?? 0,
+          active: p.partnerships_active ?? 0,
+          paused: p.partnerships_paused ?? 0,
+          revoked: p.partnerships_revoked ?? 0,
+        },
+        project_invitations: {
+          pending: i.invitations_pending ?? 0,
+          accepted: i.invitations_accepted ?? 0,
+          closed: i.invitations_closed ?? 0,
+        },
+        talent_proposals: {
+          pending: pr.proposals_pending ?? 0,
+          accepted: pr.proposals_accepted ?? 0,
+          declined: pr.proposals_declined ?? 0,
+          withdrawn: pr.proposals_withdrawn ?? 0,
+          total: proposalsTotal,
+          accept_rate_percent: acceptRate,
+        },
+        talent_pool_size: tp.talent_pool_size ?? 0,
+        recent_activity: recentActivity.rows,
+      });
+    } catch (err) {
+      console.error("[partnerships/dashboard/agency] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente dashboard-data" });
+    }
+  });
 }

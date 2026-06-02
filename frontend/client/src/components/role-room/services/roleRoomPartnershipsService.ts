@@ -356,3 +356,24 @@ export function respondToTalentProposal(
 export function incomingTalentProposalsForProject(projectId: string): Promise<{ proposals: TalentProposal[] }> {
   return api(`/casting-projects/${projectId}/incoming-talent-proposals`);
 }
+
+// ── Agency dashboard ───────────────────────────────────────────────
+export interface AgencyDashboard {
+  partnerships: { pending: number; active: number; paused: number; revoked: number };
+  project_invitations: { pending: number; accepted: number; closed: number };
+  talent_proposals: {
+    pending: number; accepted: number; declined: number; withdrawn: number;
+    total: number; accept_rate_percent: number | null;
+  };
+  talent_pool_size: number;
+  recent_activity: Array<{
+    action: string;
+    created_at: string;
+    details: Record<string, unknown> | null;
+    actor_name: string | null;
+  }>;
+}
+
+export function agencyDashboard(): Promise<AgencyDashboard> {
+  return api('/dashboard/agency');
+}
