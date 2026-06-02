@@ -161,6 +161,10 @@ import { setupRoleRoomAgentRoutes } from "./role-room-agent-routes.js";
 import { setupMarketingCompetitorsRoutes } from "./role-room-marketing-competitors-routes.js";
 import { startCompetitorSnapshotWorker } from "./role-room-competitor-snapshot-worker.js";
 import { setupPostDraftsRoutes } from "./role-room-post-drafts-routes.js";
+import {
+  setupAutoPublishSchedulerRoutes,
+  startAutoPublishScheduler,
+} from "./role-room-post-drafts-autopublish-scheduler.js";
 import { setupBrandMetricsRoutes, startBrandMetricsWorker } from "./role-room-brand-metrics-routes.js";
 import {
   setupReportSchedulerRoutes,
@@ -32027,6 +32031,12 @@ startCompetitorSnapshotWorker(pool);
 
 // Post-drafts — AI-skrevet post-utkast fra rapport-insights + publish-bro.
 setupPostDraftsRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// PR 11: Auto-publish scheduler — drafts med suggested_publish_time +
+// auto_publish_enabled trigges automatisk hvert 60s. Self-HTTP til
+// publish-bro så vi gjenbruker hele platform-routingen.
+setupAutoPublishSchedulerRoutes({ app, pool, requireAdminOrDemoBypass });
+startAutoPublishScheduler({ pool });
 
 // Brand-metrics — daglige snapshots av The Role Rooms FB+IG metrics for
 // å gi AI-rapporten "vår tilstand"-input → kpiTargets.

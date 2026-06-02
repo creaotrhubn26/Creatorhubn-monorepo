@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
   Drawer, IconButton, Stack, Tooltip, Typography, Divider, TextField,
-  ToggleButton, ToggleButtonGroup, Menu, MenuItem,
+  ToggleButton, ToggleButtonGroup, Menu, MenuItem, Switch, FormControlLabel,
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -64,6 +64,9 @@ interface DraftPost {
     reactions_total: number | null;
     comments_count: number | null;
   } | null;
+  autoPublishEnabled?: boolean;
+  autoPublishAttempts?: number;
+  autoPublishAttemptedAt?: string | null;
 }
 
 const PLATFORM_META: Record<DraftPost['platform'], { icon: React.ReactElement; color: string; bg: string }> = {
@@ -322,6 +325,40 @@ function PostDrawer({
                 </Typography></Box>
               )}
             </Stack>
+          </Box>
+        )}
+
+        {/* PR 11: Auto-publish toggle — kun synlig hvis det er en planlagt tid + ikke publisert */}
+        {post.suggestedPublishTime && post.status !== 'published' && (
+          <Box sx={{
+            p: 1.5, mt: 1.5, mb: 1.5,
+            background: post.autoPublishEnabled ? 'rgba(168,85,247,0.10)' : adminTokens.bg.panel,
+            border: `1px solid ${post.autoPublishEnabled ? adminTokens.border.accent : adminTokens.border.subtle}`,
+            borderRadius: 1,
+          }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={post.autoPublishEnabled === true}
+                  onChange={(e) => void onSave(post.id, { autoPublishEnabled: e.target.checked } as Partial<DraftPost>)}
+                  disabled={post.platform === 'instagram' || post.platform === 'tiktok'}
+                  data-testid={`drawer-autopublish-toggle-${post.id}`}
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{ color: adminTokens.text.body, fontWeight: 600 }}>
+                  Auto-publiser ved planlagt tid
+                </Typography>
+              }
+            />
+            <Typography variant="caption" sx={{ color: adminTokens.text.muted, display: 'block', mt: 0.5 }}>
+              {post.platform === 'instagram' || post.platform === 'tiktok'
+                ? `Auto-publish støttes ikke for ${post.platform} ennå.`
+                : post.autoPublishEnabled
+                  ? `Scheduler tikker hvert 60s og publiserer når tidspunkt nås.${(post.autoPublishAttempts ?? 0) > 0 ? ` ${post.autoPublishAttempts} forsøk så langt.` : ''}`
+                  : 'Slå på for å publisere automatisk når tiden nås.'}
+            </Typography>
           </Box>
         )}
 
