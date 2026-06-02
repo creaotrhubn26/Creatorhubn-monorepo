@@ -59,7 +59,13 @@ Retningslinjer:
 - Spør brukeren om presise fil-stier og layer-navn hvis de mangler — gjett aldri.
 - Kall photoshop_scan_template før photoshop_render_template så du vet hvilke {{key}}-felter som finnes.
 - Forklar kort hva du gjør før hvert tool-kall (1 setning).
-- Når du er ferdig, oppsummer hva du faktisk gjorde og pek bruker mot resultatet.`;
+- Når du er ferdig, oppsummer hva du faktisk gjorde og pek bruker mot resultatet.
+
+Vision-flyt (NYHET 2026-06-02):
+- Når brukeren spør om innholdsbasert hjelp ("hvordan ser dette ut?", "hva mangler?", "er komposisjonen god?") → kall photoshop_see_canvas FØRST. Du får da et thumbnail som du faktisk kan analysere visuelt.
+- Etter at du har sett bildet kan du gi presise, konkrete anbefalinger basert på det du ser — ikke generiske råd.
+- Også: kall photoshop_see_canvas før gen.fill/gen.expand hvis du ikke vet hva som er i bildet, så promptene blir kontekstuelle.
+- Kombiner med photoshop_list_layers + photoshop_selection_info for full kontekst.`;
 
 export function PhotoshopAgentDialog({ onClose }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -317,9 +323,27 @@ function ToolResultBlock({ block }: { block: ClaudeToolResultBlock }) {
           )}
         </span>
       </div>
-      <pre style={toolJson}>{block.content}</pre>
+      <pre style={toolJson}>{stringifyToolContent(block.content)}</pre>
     </div>
   );
+}
+
+function stringifyToolContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((c) => {
+        if (c && typeof c === "object" && "type" in c) {
+          const block = c as { type: string; text?: string };
+          if (block.type === "text") return block.text ?? "";
+          if (block.type === "image") return "[image]";
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(content);
 }
 
 const overlay: React.CSSProperties = {

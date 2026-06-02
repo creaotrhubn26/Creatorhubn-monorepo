@@ -13,7 +13,7 @@
  */
 
 const photoshop = require("photoshop");
-const { app, action, core, constants } = photoshop;
+const { app, action, core, constants, imaging } = photoshop;
 const uxp = require("uxp");
 const fs = uxp.storage.localFileSystem;
 
@@ -325,6 +325,50 @@ const COMMANDS = {
       doc_width: doc.width,
       doc_height: doc.height,
       coverage_pct: Math.round(((width * height) / (doc.width * doc.height)) * 100),
+    };
+  },
+
+  /*
+   * Hent base64-encoded thumbnail av aktivt dokument. Bruker imaging-API
+   * sin targetSize for automatisk skalering — lengste side blir
+   * `max_size` (default 1024px). Returnerer:
+   *   { base64, width, height, doc_width, doc_height, mime_type }
+   *
+   * Brukes for å sende live-thumbnails til Claude vision-API slik at
+   * AI Creative Director kan SE bildet, ikke bare høre beskrivelser.
+   */
+  "doc.thumbnail": async ({ max_size } = {}) => {
+    const doc = requireActiveDocument();
+    const targetMax = typeof max_size === "number" && max_size > 0 ? max_size : 1024;
+    const longSide = Math.max(doc.width, doc.height);
+    const scale = Math.min(1, targetMax / longSide);
+    const targetW = Math.max(1, Math.round(doc.width * scale));
+    const targetH = Math.max(1, Math.round(doc.height * scale));
+
+    let base64 = "";
+    await core.executeAsModal(async () => {
+      const pixels = await imaging.getPixels({
+        documentID: doc.id,
+        targetSize: { width: targetW, height: targetH },
+        componentSize: 8,
+        applyAlpha: true,
+      });
+      const encoded = await imaging.encodeImageData({
+        imageData: pixels.imageData,
+        base64: true,
+      });
+      base64 = typeof encoded === "string" ? encoded : "";
+      // Frigjør memory — UXP imaging-API krever explicit dispose
+      pixels.imageData.dispose();
+    }, { commandName: "Post Agent: capture thumbnail" });
+
+    return {
+      base64,
+      width: targetW,
+      height: targetH,
+      doc_width: doc.width,
+      doc_height: doc.height,
+      mime_type: "image/png",
     };
   },
 

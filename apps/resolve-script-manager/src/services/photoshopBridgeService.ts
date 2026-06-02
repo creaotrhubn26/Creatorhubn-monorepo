@@ -82,6 +82,18 @@ export interface LayerListResult {
   count: number;
 }
 
+export interface ThumbnailResult {
+  /** Base64-encoded PNG bytes (uten "data:image/png;base64,"-prefix). */
+  base64: string;
+  /** Thumbnail-størrelse i piksler. */
+  width: number;
+  height: number;
+  /** Original dokument-dimensjoner (for å beregne nedskalering). */
+  doc_width: number;
+  doc_height: number;
+  mime_type: "image/png";
+}
+
 export type SelectionInfoResult =
   | { exists: false }
   | {
@@ -263,6 +275,9 @@ export const photoshop = {
   listLayers: () => send<LayerListResult>("doc.listLayers"),
 
   selectionInfo: () => send<SelectionInfoResult>("selection.info"),
+
+  captureThumbnail: (max_size?: number) =>
+    send<ThumbnailResult>("doc.thumbnail", { max_size: max_size ?? 1024 }),
 
   scanTemplate: (template_path: string) =>
     send<TemplateScanResult>("template.scan", { template_path }),
