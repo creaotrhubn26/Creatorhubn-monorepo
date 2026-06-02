@@ -20,7 +20,6 @@ import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
-import { CaptureChooser } from './CaptureChooser';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext } from './demoStudioAI';
 import { useDemoStudio } from './demoStudioStore';
@@ -74,8 +73,6 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [recording, setRecording] = useState(false);
   const rec = useSceneRecorder();
   const [urlInput, setUrlInput] = useState('');
-  // Valgt opptaks-mål fra Cover Flow-velgeren (null = velger ikke gjort ennå).
-  const [chosenDevice, setChosenDevice] = useState<'macbook' | 'ipad' | 'iphone' | null>(null);
   const [directorBusy, setDirectorBusy] = useState(false);
   const [directorMsg, setDirectorMsg] = useState<string | null>(null);
 
@@ -112,39 +109,26 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const storyPicks = useMemo(() => (project ? demoScenesToPicks(project.scenes) : []), [project]);
   const storyChapters = useMemo(() => (project ? demoChapters(project.scenes) : []), [project]);
 
-  // ── Steg 0: Cover Flow-velger — hva vil du ta opp? ──
-  if (!project && !chosenDevice) {
-    return <CaptureChooser onClose={onClose} onChoose={(v) => setChosenDevice(v)} />;
-  }
-
-  // ── Steg 1: URL + flow (device allerede valgt i velgeren) ──
+  // ── Tom tilstand: Create Demo (URL + flow) ──
   if (!project) {
     const valid = /^https?:\/\//.test(urlInput.trim());
-    const dl = chosenDevice === 'macbook' ? 'Mac (skrivebordsapp)' : chosenDevice === 'ipad' ? 'iPad (mobilapp)' : 'iPhone (mobilapp)';
-    const create = () => {
-      createProject(urlInput.trim(), demoType);
-      const st = useDemoStudio.getState();
-      // Sett valgt device på alle scener + som global capture-hint.
-      st.project?.scenes.forEach((s) => st.setSceneDevice(s.id, chosenDevice!));
-    };
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: C.font, background: C.bg, color: C.ink }}>
         <div style={topbarStyle}>
-          <div style={iconBtn} onClick={() => setChosenDevice(null)} title="Tilbake til valg">←</div>
+          <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Product Demo Studio</div>
         </div>
         <div style={{ maxWidth: 560, margin: '64px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, color: '#ef8a5d', fontWeight: 700 }}>Opptak: {dl}</div>
           <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>Hva vil du vise frem?</h2>
-          <p style={{ color: C.inkSoft, fontSize: 13.5, margin: 0 }}>Lim inn en URL og bygg en scene-basert produktdemo. Du styrer opptaket steg for steg.</p>
+          <p style={{ color: C.inkSoft, fontSize: 13.5, margin: 0 }}>Lim inn en URL og bygg en scene-basert produktdemo. Velg opptaks-enhet i Guided Recorder. Du styrer opptaket steg for steg.</p>
           <input style={{ ...field, fontSize: 15, padding: '13px 15px' }} placeholder="https://example.com"
             value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && valid) create(); }} />
+            onKeyDown={(e) => { if (e.key === 'Enter' && valid) createProject(urlInput.trim(), demoType); }} />
           <select style={{ ...field, padding: '11px 12px' }} value={demoType} onChange={(e) => setDemoType(e.target.value as DemoType)}>
             {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => <option key={t} value={t}>{DEMO_TYPE_LABELS[t]}</option>)}
           </select>
           <button style={{ ...primaryBtn, opacity: valid ? 1 : 0.5, alignSelf: 'flex-start' }}
-            disabled={!valid} onClick={create}>
+            disabled={!valid} onClick={() => createProject(urlInput.trim(), demoType)}>
             Generér demo-flow →
           </button>
         </div>

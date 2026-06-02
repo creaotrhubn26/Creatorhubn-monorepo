@@ -18,6 +18,7 @@ import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
+import { CaptureChooser } from './CaptureChooser';
 import { DEVICE_FRAMES } from './deviceFrames';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
 
@@ -58,6 +59,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
   const [showConnectGuide, setShowConnectGuide] = useState(false);
+  const [showChooser, setShowChooser] = useState(false);
 
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
@@ -246,15 +248,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 4, border: `1px solid ${C.line}`, borderRadius: 10, padding: 3 }}>
-            {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
-              <div key={d} onClick={() => cur && setSceneDeviceLocal(d)} title={DEVICE_LABEL[d]}
-                style={{ padding: '6px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
-                  background: cur?.device === d ? '#f3ece2' : 'transparent', color: cur?.device === d ? C.ink : C.inkFaint, fontWeight: cur?.device === d ? 600 : 400 }}>
-                {d === 'macbook' ? '▭' : d === 'ipad' ? '▢' : '▯'} {DEVICE_LABEL[d]}
-              </div>
-            ))}
-          </div>
+          {/* Åpner Cover Flow-velgeren for opptaks-enhet */}
+          <button style={btn} onClick={() => setShowChooser(true)} title="Velg opptaks-enhet">
+            {cur?.device === 'macbook' ? '▭' : cur?.device === 'ipad' ? '▢' : '▯'} {DEVICE_LABEL[cur?.device ?? 'macbook']} <span style={{ color: C.inkFaint }}>⌄</span>
+          </button>
           <div style={{ flex: 1 }} />
           {/* Auto/Manual-toggle */}
           <div style={{ display: 'flex', border: `1px solid ${C.lineStrong}`, borderRadius: 10, overflow: 'hidden' }} title="Manuell: vent på deg. Auto: Playwright utfører handlinger.">
@@ -409,12 +406,22 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
           onDetected={(s) => { pickSource(s); listCaptureSources().then(setSources).catch(() => {}); }}
         />
       )}
+
+      {showChooser && (
+        <CaptureChooser
+          onClose={() => setShowChooser(false)}
+          onChoose={(v) => {
+            // Sett valgt enhet på ALLE scener (hele demoen) + lukk velgeren.
+            scenes.forEach((s) => updateScene(s.id, {
+              device: v, viewport: v === 'macbook' ? 'desktop' : v === 'ipad' ? 'tablet' : 'mobile',
+            }));
+            setShowChooser(false);
+          }}
+        />
+      )}
     </div>
   );
 
-  function setSceneDeviceLocal(d: DemoDevice) {
-    if (cur) updateScene(cur.id, { device: d, viewport: d === 'macbook' ? 'desktop' : d === 'ipad' ? 'tablet' : 'mobile' });
-  }
 }
 
 /**
