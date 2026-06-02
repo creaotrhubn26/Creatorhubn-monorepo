@@ -21,6 +21,7 @@ import {
 } from "@mui/material";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutlineOutlined";
+import DeskIcon from "./DeskIcon";
 import {
   clearHelperConfig,
   fetchProjectInfo,
@@ -114,17 +115,20 @@ export default function ProjectInfoScreen({ config, onLoggedOut, onSwitchProject
           direction="row"
           sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1 }}
         >
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="overline" color="text.secondary">
-              Creatorhub One Desk
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-              {info?.project.name || config.project_id}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {config.api_base} · prosjekt {config.project_id}
-            </Typography>
-          </Box>
+          <Stack direction="row" spacing={2} sx={{ flex: 1, minWidth: 0, alignItems: "center" }}>
+            <DeskIcon size={56} shadow={false} />
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="overline" color="text.secondary">
+                Creatorhub One Desk
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }} noWrap>
+                {info?.project.name || config.project_id}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {config.api_base} · prosjekt {config.project_id}
+              </Typography>
+            </Box>
+          </Stack>
 
           {/* Quick-switcher: vis bare når det er flere prosjekter ELLER
               parent har gitt oss onSwitchProject (Picker-tilgang). */}
