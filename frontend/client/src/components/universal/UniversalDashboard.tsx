@@ -297,7 +297,7 @@ const localProfessionConfigs: ProfessionConfigs = {
     displayName: 'Admin',
     color: '#ff8c00',
     iconColor: '#ff8c00',
-    icon: <Build />,
+    icon: <AdminPanelSettings />,
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Prosjekter', icon: <Folder /> },
@@ -328,7 +328,7 @@ const localProfessionConfigs: ProfessionConfigs = {
     displayName: 'Fotograf',
     color: '#ff8c00',
     iconColor: '#ff8c00',
-    icon: <Build />,
+    icon: <PhotoCamera />,
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Prosjekter', icon: <Folder /> },
@@ -360,7 +360,7 @@ const localProfessionConfigs: ProfessionConfigs = {
     displayName: 'Videograf',
     color: '#e74c3c',
     iconColor: '#e74c3c',
-    icon: <Build />,
+    icon: <Videocam />,
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Videoer', icon: <Videocam /> },
@@ -392,7 +392,7 @@ const localProfessionConfigs: ProfessionConfigs = {
     displayName: 'Musikkprodusent',
     color: '#1976d2',
     iconColor: '#1976d2',
-    icon: <Build />,
+    icon: <LibraryMusic />,
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Låter', icon: <LibraryMusic /> },
@@ -424,7 +424,7 @@ const localProfessionConfigs: ProfessionConfigs = {
     displayName: 'Leverandør',
     color: '#27ae60',
     iconColor: '#27ae60',
-    icon: <Build />,
+    icon: <Store />,
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Produkter', icon: <Store /> },
@@ -3876,17 +3876,27 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     alignItems: { xs: 'center', sm: 'flex-start' },
                     gap: { xs: 1, sm: 2 },
                     mb: 1 }}>
-                    <Typography variant="h3" 
-                      sx={{ 
-                        fontWeight: 600, 
+                    <Typography variant="h3"
+                      sx={{
+                        fontWeight: 600,
                         color: theming.colors.primary,
                         fontSize: { xs: '1.1rem', sm: '1.25rem' }
                       }}
                       // WCAG: Proper heading hierarchy
                       component="h3"
-                      aria-label={`Velkommen tilbake, ${typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}`}
+                      aria-label={`Velkommen tilbake, ${
+                        currentUser?.firstName
+                          || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
+                      }`}
                     >
-                      Velkommen tilbake, {typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}!
+                      {/* Personalisert til brukerens fornavn (onboarding-data),
+                          ikke profesjonen. Tidligere viste vi customBranding.businessName
+                          som ofte er profesjons-label ('Fotograf'), noe som dupliserte
+                          DashboardHeroBand-banneret nedenfor. */}
+                      Velkommen tilbake, {
+                        currentUser?.firstName
+                          || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
+                      }!
                     </Typography>
                     {/* Enterprise: Show Norwedfilm logo + combined profession badges */}
                     {profession === 'enterprise' && (
