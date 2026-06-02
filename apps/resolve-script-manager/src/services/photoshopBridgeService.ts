@@ -274,6 +274,27 @@ export const photoshop = {
   applyStyle: (params: { layer_name: string; effects: StyleEffects }) =>
     send<{ layer_name: string; applied: string[] }>("style.apply", params),
 
+  selectionSelect: (mode: "all" | "none" | "invert") =>
+    send<{ mode: string }>("selection.select", { mode }),
+
+  generativeFill: (prompt: string) =>
+    send<{ prompt: string; mode: "generate" | "auto" }>("gen.fill", { prompt }),
+
+  generativeExpand: (params: {
+    target_width: number;
+    target_height: number;
+    anchor?:
+      | "topLeft" | "topCenter" | "topRight"
+      | "middleLeft" | "middleCenter" | "middleRight"
+      | "bottomLeft" | "bottomCenter" | "bottomRight";
+    prompt?: string;
+  }) => send<{
+    before: { width: number; height: number };
+    after: { width: number; height: number };
+    anchor: string;
+    prompt: string;
+  }>("gen.expand", params),
+
   autoRenameTemplate: (params: {
     template_path: string;
     output_path: string;

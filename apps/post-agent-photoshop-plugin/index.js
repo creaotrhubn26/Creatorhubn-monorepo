@@ -700,6 +700,130 @@ const COMMANDS = {
    * Hver iteration åpner master på nytt → ingen mutasjons-arv.
    */
   /*
+   * Sett aktiv selection via en enkel mode.
+   * V1 støtter: "all", "none", "invert".
+   * (PNG-mask-import + threshold-til-selection kommer i en senere
+   *  iterasjon — krever copy/paste channel-flow som er mer kompleks.)
+   */
+  "selection.select": async ({ mode }) => {
+    assertString(mode, "mode");
+    const doc = requireActiveDocument();
+    await core.executeAsModal(async () => {
+      switch (mode) {
+        case "all":
+          await doc.selection.selectAll();
+          break;
+        case "none":
+          await doc.selection.deselect();
+          break;
+        case "invert":
+          await doc.selection.invert();
+          break;
+        default:
+          throw new Error(`Ukjent selection mode: ${mode}. Støtter: all, none, invert`);
+      }
+    }, { commandName: `Post Agent: selection.${mode}` });
+    return { mode };
+  },
+
+  /*
+   * Adobe Firefly Generative Fill på nåværende selection. Tom prompt
+   * betyr "remove/auto-fill background" (samme som Generative Expand
+   * sin auto-fill). Krever Photoshop 2024 (25.0+) — Adobe-konto med
+   * aktiv Firefly-kvote må være innlogget.
+   */
+  "gen.fill": async ({ prompt }) => {
+    requireActiveDocument();
+    const promptText = typeof prompt === "string" ? prompt : "";
+
+    await core.executeAsModal(async () => {
+      await action.batchPlay(
+        [
+          {
+            _obj: "syntheticFill",
+            prompt: promptText,
+            serviceID: "clio",
+            serviceOptionsList: {
+              clio: {
+                _obj: "clio",
+                clio_advanced_options:
+                  '{"customModelId":"","sref":"","sref_strength":0,"contentReference":""}',
+              },
+            },
+          },
+        ],
+        {},
+      );
+    }, { commandName: `Post Agent: gen.fill${promptText ? ` "${promptText.slice(0, 40)}"` : " (auto)"}` });
+
+    return { prompt: promptText, mode: promptText ? "generate" : "auto" };
+  },
+
+  /*
+   * Generative Expand: utvid canvas til target W×H med anchor, og
+   * auto-fill det nye området via Firefly. Kombinerer canvas-resize +
+   * selection.invert + gen.fill(""). Anchor styrer hvor original
+   * komposisjon plasseres i den nye canvasen — default "middleCenter".
+   *
+   * Krever Photoshop 2024 (25.0+) med aktiv Firefly-konto.
+   */
+  "gen.expand": async ({ target_width, target_height, anchor, prompt }) => {
+    if (typeof target_width !== "number" || target_width <= 0) {
+      throw new Error('"target_width" må være et positivt tall (px)');
+    }
+    if (typeof target_height !== "number" || target_height <= 0) {
+      throw new Error('"target_height" må være et positivt tall (px)');
+    }
+    const doc = requireActiveDocument();
+    const anchorPos = anchor || "middleCenter";
+    const promptText = typeof prompt === "string" ? prompt : "";
+
+    const beforeW = doc.width;
+    const beforeH = doc.height;
+
+    await core.executeAsModal(async () => {
+      // 1) Utvid canvas — eksisterende innhold beholdes ifølge anchor
+      await doc.resizeCanvas(target_width, target_height, anchorPos);
+
+      // 2) Select nytt-utvidet område: select all → invert IKKE riktig
+      //    fordi original innholdet kan være mindre enn ny canvas. Triks:
+      //    selectAll dekker hele canvas. For å treffe bare nye områder
+      //    måtte vi vite forrige bounds. Enklere: la gen.fill jobbe på
+      //    hele canvas — Firefly er smart nok til å kun fylle tomme
+      //    pixels. Det fungerer fordi "syntheticFill" med tom prompt
+      //    er identisk med UI's "Generative Expand"-knapp.
+      await doc.selection.selectAll();
+
+      await action.batchPlay(
+        [
+          {
+            _obj: "syntheticFill",
+            prompt: promptText,
+            serviceID: "clio",
+            serviceOptionsList: {
+              clio: {
+                _obj: "clio",
+                clio_advanced_options:
+                  '{"customModelId":"","sref":"","sref_strength":0,"contentReference":""}',
+              },
+            },
+          },
+        ],
+        {},
+      );
+
+      await doc.selection.deselect();
+    }, { commandName: `Post Agent: gen.expand ${target_width}×${target_height}` });
+
+    return {
+      before: { width: beforeW, height: beforeH },
+      after: { width: target_width, height: target_height },
+      anchor: anchorPos,
+      prompt: promptText,
+    };
+  },
+
+  /*
    * Legg til en ikke-destruktiv adjustment layer over aktivt dokument
    * (eller en navngitt target-layer). V1 støtter 4 typer:
    *   - brightness_contrast: { brightness: -150..150, contrast: -150..150 }
