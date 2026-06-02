@@ -12,6 +12,7 @@ import {
   Bolt as AutomationIcon, Autorenew as RebookIcon, NightsStay as DormantIcon,
   StarBorder as ReviewIcon, WarningAmber as OverdueIcon,
 } from '@mui/icons-material';
+import { BrandScope } from './crm-brand';
 
 const daysSince = (d: string | null) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : null;
 
@@ -19,9 +20,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onOpenCustomer: (id: string, name?: string) => void;
+  brandColor?: string;
 }
 
-export default function CrmActionQueue({ open, onClose, onOpenCustomer }: Props) {
+export default function CrmActionQueue({ open, onClose, onOpenCustomer, brandColor }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -55,6 +57,7 @@ export default function CrmActionQueue({ open, onClose, onOpenCustomer }: Props)
   const total = (q.overdueTasks?.length || 0) + (q.rebookDue?.length || 0) + (q.dormant?.length || 0) + (q.reviewDue?.length || 0);
 
   return (
+    <BrandScope brandColor={brandColor}>
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
@@ -125,6 +128,7 @@ export default function CrmActionQueue({ open, onClose, onOpenCustomer }: Props)
         <Button onClick={onClose}>Lukk</Button>
       </DialogActions>
     </Dialog>
+    </BrandScope>
   );
 }
 

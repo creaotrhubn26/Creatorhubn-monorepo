@@ -14,6 +14,7 @@ import {
   Add as AddIcon, MoreVert as MoreIcon, ArrowForward as MoveIcon,
   DeleteOutline as DeleteIcon, EmojiEvents as WonIcon, Cancel as LostIcon,
 } from '@mui/icons-material';
+import { BrandScope } from './crm-brand';
 
 const STAGES: { key: string; label: string; color: string }[] = [
   { key: 'prospecting', label: 'Prospektering', color: '#64748b' },
@@ -29,7 +30,7 @@ const nok = (v: any) => `${Math.round(Number(v) || 0).toLocaleString('nb-NO')} k
 
 const emptyForm = { id: '', customerId: '', title: '', value: '', probability: '50', stage: 'prospecting', expectedCloseDate: '' };
 
-export default function DealsPipelineBoard({ profession }: { profession?: string }) {
+export default function DealsPipelineBoard({ profession, brandColor }: { profession?: string; brandColor?: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -98,6 +99,7 @@ export default function DealsPipelineBoard({ profession }: { profession?: string
   if (error) return <Alert severity="error">Kunne ikke laste pipeline.</Alert>;
 
   return (
+    <BrandScope brandColor={brandColor}>
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
         <Typography variant="body2" color="text.secondary">
@@ -185,5 +187,6 @@ export default function DealsPipelineBoard({ profession }: { profession?: string
         </DialogActions>
       </Dialog>
     </Box>
+    </BrandScope>
   );
 }

@@ -1870,7 +1870,7 @@ export default function UniversalCRMDashboard({
           ) : viewMode === 'board' ? (
             /* #3/#19 — real pipeline: board operates on DEALS, not customer.status.
                Shown before the empty-customer gate so it works even with 0 customers. */
-            <DealsPipelineBoard profession={activeProfession} />
+            <DealsPipelineBoard profession={activeProfession} brandColor={colors.primary} />
           ) : filteredCustomers.length === 0 ? (
             <Paper
               elevation={0}
@@ -3332,23 +3332,25 @@ export default function UniversalCRMDashboard({
         customerId={detailCustomer?.id || null}
         customerName={detailCustomer?.name}
         onClose={() => setDetailCustomer(null)}
+        brandColor={colors.primary}
       />
 
       {/* #5 — task inbox */}
-      <CrmTaskInbox open={showTaskInbox} onClose={() => setShowTaskInbox(false)} />
+      <CrmTaskInbox open={showTaskInbox} onClose={() => setShowTaskInbox(false)} brandColor={colors.primary} />
 
       {/* #24 — action queue */}
       <CrmActionQueue
         open={showActionQueue}
         onClose={() => setShowActionQueue(false)}
         onOpenCustomer={(id, name) => setDetailCustomer({ id, name } as any)}
+        brandColor={colors.primary}
       />
 
       {/* Wave 3 — reports */}
-      <CrmReports open={showReports} onClose={() => setShowReports(false)} />
+      <CrmReports open={showReports} onClose={() => setShowReports(false)} brandColor={colors.primary} />
 
       {/* Wave 3b — CSV import */}
-      <CrmImportDialog open={showImport} onClose={() => setShowImport(false)} />
+      <CrmImportDialog open={showImport} onClose={() => setShowImport(false)} brandColor={colors.primary} />
     </Box>
   );
 }

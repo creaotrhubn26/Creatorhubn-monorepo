@@ -9,6 +9,7 @@ import {
   Chip, Button, Checkbox, List, ListItem, ListItemText, CircularProgress, Alert,
 } from '@mui/material';
 import { Task as TaskIcon } from '@mui/icons-material';
+import { BrandScope } from './crm-brand';
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const endOfWeek = () => { const d = startOfToday(); d.setDate(d.getDate() + 7); return d; };
@@ -31,9 +32,9 @@ const BUCKETS: { key: 'overdue' | 'today' | 'week' | 'none'; label: string; colo
   { key: 'none', label: 'Senere / uten dato', color: 'default' },
 ];
 
-interface Props { open: boolean; onClose: () => void; }
+interface Props { open: boolean; onClose: () => void; brandColor?: string; }
 
-export default function CrmTaskInbox({ open, onClose }: Props) {
+export default function CrmTaskInbox({ open, onClose, brandColor }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -61,6 +62,7 @@ export default function CrmTaskInbox({ open, onClose }: Props) {
   for (const t of tasks) grouped[bucketOf(t.due_date)].push(t);
 
   return (
+    <BrandScope brandColor={brandColor}>
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         <Stack direction="row" spacing={1} alignItems="center">
@@ -107,5 +109,6 @@ export default function CrmTaskInbox({ open, onClose }: Props) {
         <Button onClick={onClose}>Lukk</Button>
       </DialogActions>
     </Dialog>
+    </BrandScope>
   );
 }
