@@ -3885,19 +3885,24 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       // WCAG: Proper heading hierarchy
                       component="h3"
                       aria-label={`Velkommen tilbake, ${
-                        currentUser?.displayName?.split(' ')[0]
-                          || currentUser?.firstName
-                          || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
+                        (() => {
+                          const raw = currentUser?.displayName?.split(' ')[0]
+                            || currentUser?.firstName
+                            || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker');
+                          return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'bruker';
+                        })()
                       }`}
                     >
-                      {/* Personalisert til brukerens fornavn fra displayName eller firstName
-                          (samme rekkefølge som DashboardHeroBand bruker). Tidligere viste vi
-                          customBranding.businessName som ofte er profesjons-label ('Fotograf'),
-                          noe som dupliserte velkomsten i DashboardHeroBand nedenfor. */}
+                      {/* Personalisert til brukerens fornavn fra displayName eller firstName.
+                          Capitalize første bokstav fordi onboarding-data lagres typisk
+                          lowercased ('daniel' → 'Daniel'). */}
                       Velkommen tilbake, {
-                        currentUser?.displayName?.split(' ')[0]
-                          || currentUser?.firstName
-                          || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
+                        (() => {
+                          const raw = currentUser?.displayName?.split(' ')[0]
+                            || currentUser?.firstName
+                            || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker');
+                          return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'bruker';
+                        })()
                       }!
                     </Typography>
                     {/* Enterprise: Show Norwedfilm logo + combined profession badges */}
@@ -4794,23 +4799,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         ) : (
           /* Standard Dashboard */
           <>
-            {/* CMS-styrt profesjon-aware hero. Henter
-                dashboard.hero.heading + .subheading via useCmsContent.
-                Backend leverer profesjon-spesifikk variant automatisk
-                (photographer: "Studio i lommen", videograf: "Edit fra
-                første klipp", etc). Default-fallback i hooken sikrer
-                at vi alltid har tekst selv om CMS-rad ikke finnes. */}
-            <DashboardHeroBand
-              accent={professionAccent}
-              professionDisplayName={config.name}
-              businessName={currentUser?.businessName ?? null}
-              userDisplayName={
-                currentUser?.displayName
-                || (currentUser?.firstName
-                    ? `${currentUser.firstName}${currentUser?.lastName ? ' ' + currentUser.lastName : ''}`
-                    : null)
-              }
-            />
+            {/* DashboardHeroBand fjernet — topp-banneret over
+                ("Velkommen tilbake, {firstName}!") dekker samme funksjon
+                personalisert via currentUser.displayName/firstName. Tidligere
+                viste begge samme info → duplikat. */}
             <Box sx={{ mt: 2, mb: 2 }}>
               <StorageUsageBanner
                 variant="expanded"
