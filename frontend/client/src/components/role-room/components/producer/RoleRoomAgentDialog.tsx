@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import roleRoomAgentIcon from '@/assets/role-room-agent-icon.png';
 import {
   Alert,
   Box,
@@ -496,21 +497,19 @@ export default function RoleRoomAgentDialog({
           >
             <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
               <Box
+                component="img"
+                src={roleRoomAgentIcon}
+                alt="The Role Room Agent"
                 sx={{
                   width: { xs: 38, md: 46 },
                   height: { xs: 38, md: 46 },
                   borderRadius: 2.5,
-                  display: 'grid',
-                  placeItems: 'center',
-                  color: '#22d3ee',
-                  border: '1px solid rgba(34,211,238,0.26)',
-                  bgcolor: 'rgba(8,47,73,0.22)',
-                  boxShadow: '0 0 28px rgba(34,211,238,0.12)',
+                  objectFit: 'cover',
+                  boxShadow: '0 0 28px rgba(168,85,247,0.35)',
                   flexShrink: 0,
+                  display: 'block',
                 }}
-              >
-                <AutoFixHighIcon sx={{ fontSize: { xs: 20, md: 24 } }} />
-              </Box>
+              />
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
                   sx={{
