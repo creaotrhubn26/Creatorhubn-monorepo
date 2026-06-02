@@ -680,7 +680,7 @@ export default function MarketingPlanPanel({
           severity="info"
           sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
         >
-          Ingen markedsplan ennå. Klikk "Generer plan" — Claude bruker research-outputen og
+          Ingen markedsplan ennå. Klikk "Generer plan" — CI bruker research-outputen og
           bygger 3–5 content pillars + kanalstrategi + KPI-mål.
         </Alert>
       )}
@@ -1358,7 +1358,7 @@ function PostsSection({
             severity="info"
             sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
           >
-            Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — Claude bygger én post
+            Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — CI bygger én post
             per dag balansert på tvers av pillars, med hook, format, script og CTA ferdig
             skrevet.
           </Alert>
@@ -1784,7 +1784,7 @@ function PostCard({
   // #157 — regenerér én post med valgfri hint
   const handleRegenerate = useCallback(async () => {
     const hint = window.prompt(
-      `Hint til Claude (valgfri, f.eks. "gjør den mer ironisk" eller "kort til 50 ord"):`,
+      `Hint til CI (valgfri, f.eks. "gjør den mer ironisk" eller "kort til 50 ord"):`,
       '',
     );
     if (hint === null) return; // bruker avbrøt
@@ -2114,7 +2114,7 @@ function PostCard({
                 </Tooltip>
                 {/* #158 — A/B-variant (skjuler seg på variant selv for å unngå loop) */}
                 {!variantOf ? (
-                  <Tooltip title="Lag en B-variant for A/B-test (Claude Haiku, høy temperature)">
+                  <Tooltip title="Lag en B-variant for A/B-test (CI)">
                     <Button
                       size="small"
                       onClick={() => void handleVariant()}
@@ -2132,7 +2132,7 @@ function PostCard({
                   </Tooltip>
                 ) : null}
                 {/* #157 — regenerér med hint */}
-                <Tooltip title="Regenerér posten med valgfri tone-hint (Claude Haiku)">
+                <Tooltip title="Regenerér posten med valgfri tone-hint (CI)">
                   <Button
                     size="small"
                     onClick={() => void handleRegenerate()}

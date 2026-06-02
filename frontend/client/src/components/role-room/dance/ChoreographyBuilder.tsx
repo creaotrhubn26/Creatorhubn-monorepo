@@ -1307,7 +1307,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <AutoAwesomeIcon sx={{ fontSize: 14, color: '#a78bfa' }} />
             <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}>
-              CLAUDE — KOREOGRAFI-FORSLAG
+              CI — KOREOGRAFI-FORSLAG
             </Typography>
           </Stack>
           <Typography sx={{ fontSize: 10.5, color: '#cbd5e1', mb: 1, lineHeight: 1.4 }}>

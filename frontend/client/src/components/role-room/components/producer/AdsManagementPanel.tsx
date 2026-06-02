@@ -356,7 +356,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                   <Typography sx={{ color: '#f0abfc', fontWeight: 700, fontSize: '0.82rem' }}>AI-annonsetekst</Typography>
                 </Stack>
                 <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
-                  Claude lager plattform-tilpasset tekst fra bedriftens marketing-plan + det du fyller inn under. Du velger variant og redigerer før kampanjen opprettes.
+                  CI lager plattform-tilpasset tekst fra bedriftens marketing-plan + det du fyller inn under. Du velger variant og redigerer før kampanjen opprettes.
                 </Typography>
                 <Stack direction="row" spacing={1}>
                   <TextField select size="small" label="Mål for annonsen" value={aiGoal}

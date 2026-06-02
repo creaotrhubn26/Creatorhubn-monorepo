@@ -335,8 +335,8 @@ export default function RoleRoomAgentDialog({
   const canGenerate = companyName.trim().length > 0 || websiteUrl.trim().length > 0 || organizationNumber.trim().length > 0;
   const providerLabel = useMemo(() => {
     if (!result) return null;
-    if (result.provider === 'openai') return `OpenAI · ${result.model}`;
-    if (result.provider === 'anthropic') return `Anthropic Claude · ${result.model}`;
+    if (result.provider === 'openai') return 'Creatorhub Intelligence';
+    if (result.provider === 'anthropic') return 'Creatorhub Intelligence';
     return 'Fallback-analyse';
   }, [result]);
   const runtimeLabel = useMemo(() => {

@@ -542,7 +542,7 @@ export default function RoleRoomFeedPlannerPanel({
               startIcon={<RestartAltIcon fontSize="small" />}
               onClick={refreshStrategy}
               disabled={refreshingStrategy}
-              title={strategyRefreshNote ?? 'Tving Claude+web_search-oppdatering av plattform-strategi'}
+              title={strategyRefreshNote ?? 'Tving CI-oppdatering av plattform-strategi'}
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,

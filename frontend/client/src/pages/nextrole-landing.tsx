@@ -188,7 +188,7 @@ const STEPS = [
   {
     title: 'Last opp din nåværende CV',
     description:
-      'PDF eller DOCX. Claude leser tekstinnholdet og strukturerer det inn i NextRole på under 30 sekunder.',
+      'PDF eller DOCX. Creatorhub Intelligence leser tekstinnholdet og strukturerer det inn i NextRole på under 30 sekunder.',
     mockup: 'upload',
     icon: <PdfIcon />,
   },
@@ -335,7 +335,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
           <Typography variant="caption" sx={{ fontWeight: 700, color: '#7A5A0B' }}>BEHANDLER</Typography>
           <LinearProgress sx={{ mt: 0.7, '& .MuiLinearProgress-bar': { bgcolor: '#F5B82E' } }} />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            Claude leser dokumentet (12 sekunder gjenstår …)
+            Creatorhub Intelligence leser dokumentet (12 sekunder gjenstår …)
           </Typography>
         </Box>
       </Box>
@@ -815,7 +815,7 @@ const NextRoleLanding: React.FC = () => {
               </Typography>
               <Typography variant="h6" color="text.secondary" sx={{ mb: 3, lineHeight: 1.5, fontWeight: 400 }}>
                 AI-drevet CV-bygger, ATS-optimalisering, søknadsbrev og intervjuforberedelse — alt på norsk.
-                Bygget på Claude, lagd for norske jobbsøkere.
+                Bygget på Creatorhub Intelligence, lagd for norske jobbsøkere.
               </Typography>
               <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
                 <Button
