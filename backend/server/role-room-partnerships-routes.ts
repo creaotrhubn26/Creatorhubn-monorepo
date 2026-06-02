@@ -1847,6 +1847,129 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
     }
   });
 
+  // ── POST /invitations/:invId/talent-proposals/bulk ───────────────
+  // Bulk-foreslå opp til 50 talenter på én gang. Validerer hver:
+  // (a) Bryået har consent fra talenten
+  // (b) Rolle (hvis valgt) tilhører prosjektet
+  // (c) Ingen aktiv duplikat-foreslåelse
+  // Returnerer { successes: [{ talent_id, proposal }], failures: [{ talent_id, error }] }
+  app.post("/api/role-room/partnerships/invitations/:invId/talent-proposals/bulk", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const ctx = await resolveUserContext(pool, session.userId);
+    if (!ctx.agencyOrgId) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+
+    const { talent_ids, casting_role_id, agency_notes } = (req.body || {}) as {
+      talent_ids?: string[];
+      casting_role_id?: string;
+      agency_notes?: string;
+    };
+    if (!Array.isArray(talent_ids) || talent_ids.length === 0) {
+      return res.status(400).json({ error: "talent_ids er påkrevd (ikke-tom liste)" });
+    }
+    if (talent_ids.length > 50) {
+      return res.status(400).json({ error: "Maks 50 talenter per bulk" });
+    }
+
+    try {
+      // Verifiser invitasjon — én gang
+      const inv = await pool.query(
+        `SELECT i.*, p.agency_org_id, a.type AS agency_type
+           FROM partnership_project_invitations i
+           JOIN agency_production_partnerships p ON p.id = i.partnership_id
+           JOIN agency_orgs a ON a.id = p.agency_org_id
+          WHERE i.id = $1 LIMIT 1`,
+        [req.params.invId],
+      );
+      const invitation = inv.rows[0];
+      if (!invitation) return res.status(404).json({ error: "Invitasjon ikke funnet" });
+      if (invitation.agency_org_id !== ctx.agencyOrgId) {
+        return res.status(403).json({ error: "Du eier ikke denne invitasjonen" });
+      }
+      if (invitation.status !== "accepted") {
+        return res.status(409).json({ error: "Invitasjonen er ikke akseptert" });
+      }
+
+      // Verifiser rolle (hvis spesifisert) — én gang
+      if (casting_role_id) {
+        const r = await pool.query(
+          `SELECT 1 FROM casting_roles WHERE id = $1 AND project_id = $2 LIMIT 1`,
+          [casting_role_id, invitation.casting_project_id],
+        );
+        if (!r.rowCount) {
+          return res.status(400).json({ error: "Rolle tilhører ikke dette prosjektet" });
+        }
+      }
+
+      const successes: Array<{ talent_id: string; proposal: unknown }> = [];
+      const failures: Array<{ talent_id: string; error: string }> = [];
+
+      // Process hver talent-id sekvensielt for å holde feilhåndtering enkel
+      for (const tid of talent_ids) {
+        try {
+          // Consent-sjekk
+          const consent = await pool.query(
+            `SELECT 1 FROM talent_consent_registry
+              WHERE talent_id = $1::uuid AND partner_type = $2 AND partner_ref = $3
+                AND status = 'granted' AND (expires_at IS NULL OR expires_at > now())
+              LIMIT 1`,
+            [tid, invitation.agency_type, ctx.agencyOrgId],
+          );
+          if (!consent.rowCount) {
+            failures.push({ talent_id: tid, error: "Mangler aktiv consent" });
+            continue;
+          }
+          const ins = await pool.query(
+            `INSERT INTO partnership_talent_proposals
+               (invitation_id, talent_id, casting_role_id, proposed_by_user_id,
+                agency_notes, status, is_demo)
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'pending',
+                     COALESCE((SELECT is_demo FROM talents WHERE id = $2::uuid), FALSE))
+             ON CONFLICT (invitation_id, talent_id, casting_role_id) DO UPDATE SET
+               agency_notes = COALESCE(EXCLUDED.agency_notes, partnership_talent_proposals.agency_notes),
+               status = CASE
+                 WHEN partnership_talent_proposals.status IN ('withdrawn','declined') THEN 'pending'
+                 ELSE partnership_talent_proposals.status
+               END,
+               updated_at = now()
+             RETURNING *`,
+            [req.params.invId, tid, casting_role_id ?? null, session.userId, agency_notes ?? null],
+          );
+          successes.push({ talent_id: tid, proposal: ins.rows[0] });
+        } catch (loopErr) {
+          failures.push({
+            talent_id: tid,
+            error: loopErr instanceof Error ? loopErr.message : String(loopErr),
+          });
+        }
+      }
+
+      // Audit én bulk-entry (ikke per talent)
+      await logAudit(pool, {
+        invitationId: req.params.invId,
+        actorUserId: session.userId,
+        action: "talent_proposed_bulk",
+        details: {
+          attempted: talent_ids.length,
+          succeeded: successes.length,
+          failed: failures.length,
+          casting_role_id: casting_role_id ?? null,
+        },
+      });
+
+      return res.status(201).json({
+        attempted: talent_ids.length,
+        succeeded: successes.length,
+        failed: failures.length,
+        successes,
+        failures,
+      });
+    } catch (err) {
+      console.error("[partnerships/talent-proposals/bulk] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å foreslå bulk", detail: String(err) });
+    }
+  });
+
   // ── GET /dashboard/agency ─────────────────────────────────────────
   // Konsolidert KPI-respons for byrå-admin sin overview-side.
   // Erstatter klikk-deg-gjennom-3-faner med ett kart i UI.

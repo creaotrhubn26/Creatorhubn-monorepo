@@ -334,6 +334,21 @@ export function proposeTalent(
   return api(`/invitations/${invitationId}/talent-proposals`, { method: 'POST', body: JSON.stringify(args) });
 }
 
+export interface BulkProposeResult {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  successes: Array<{ talent_id: string; proposal: TalentProposal }>;
+  failures: Array<{ talent_id: string; error: string }>;
+}
+
+export function bulkProposeTalents(
+  invitationId: string,
+  args: { talent_ids: string[]; casting_role_id?: string; agency_notes?: string },
+): Promise<BulkProposeResult> {
+  return api(`/invitations/${invitationId}/talent-proposals/bulk`, { method: 'POST', body: JSON.stringify(args) });
+}
+
 export function listTalentProposals(invitationId: string): Promise<{ proposals: TalentProposal[] }> {
   return api(`/invitations/${invitationId}/talent-proposals`);
 }
