@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
+import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -55,6 +56,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [autoRunning, setAutoRunning] = useState(false);
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
+  const [showConnectGuide, setShowConnectGuide] = useState(false);
 
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
@@ -226,8 +228,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                     sub={s.kind === 'ios_device' ? 'Kablet enhet — funker med App Store-apper' : s.kind === 'ios_simulator' ? 'Simulator — kun egne Xcode-bygg' : 'Mac-skjerm'}
                     onClick={() => pickSource(s)} active={project.captureSourceId === s.id && captureKind === s.kind} />
                 ))}
-                <div style={{ fontSize: 10.5, color: C.inkFaint, padding: '8px 10px 4px', lineHeight: 1.4 }}>
-                  iPhone/iPad: koble til med kabel + «Stol på». App Store-apper tas opp via kablet enhet.
+                <div onClick={() => { setSourceMenu(false); setShowConnectGuide(true); }}
+                  style={{ fontSize: 11.5, color: C.accent, fontWeight: 600, padding: '8px 10px 4px', cursor: 'pointer' }}>
+                  ▶ Hvordan koble til iPhone/iPad?
+                </div>
+                <div style={{ fontSize: 10.5, color: C.inkFaint, padding: '0 10px 4px', lineHeight: 1.4 }}>
+                  App Store-apper tas opp via kablet enhet.
                 </div>
               </div>
             )}
@@ -393,6 +399,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
           <div style={{ fontSize: 11.5, color: C.inkFaint, paddingRight: 8 }}>Total: {fmt(scenes.reduce((a, s) => a + s.duration, 0))}</div>
         </div>
       </div>
+
+      {showConnectGuide && <DeviceConnectGuide onClose={() => setShowConnectGuide(false)} />}
     </div>
   );
 
