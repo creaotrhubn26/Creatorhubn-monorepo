@@ -101,15 +101,20 @@ export async function saveDemoRecording(
 }
 
 export interface CaptureSource {
-  kind: "mac_screen" | "ios_device" | "ios_simulator";
+  kind: "mac_screen" | "ios_device" | "ios_simulator" | "iphone_mirroring";
   id: string;
   label: string;
   available: boolean;
 }
 
-/** List tilgjengelige capture-kilder (Mac-skjerm, kablede iOS-enheter, simulatorer). */
+/** List tilgjengelige capture-kilder (Mac-skjerm, kablede iOS-enheter, simulatorer, iPhone Mirroring). */
 export async function listCaptureSources(): Promise<CaptureSource[]> {
   return invoke<CaptureSource[]>("list_capture_sources");
+}
+
+/** Åpne Apples iPhone Mirroring (trådløs speiling, macOS 15+). */
+export async function openIphoneMirroring(): Promise<boolean> {
+  return invoke<boolean>("open_iphone_mirroring");
 }
 
 /** Ta opp fra AVFoundation video-device-indeks (Mac-skjerm / kablet iOS) → mp4. */

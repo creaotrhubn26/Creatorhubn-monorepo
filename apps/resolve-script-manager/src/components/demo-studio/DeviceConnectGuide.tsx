@@ -12,7 +12,8 @@
  *   3. Velg enheten som capture-kilde → ta opp appen
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { listCaptureSources, openIphoneMirroring, type CaptureSource } from '../../api';
 
 const C = {
   bg: 'rgba(20,18,16,0.55)', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
@@ -114,11 +115,39 @@ function buildSteps(device: DeviceKind, connector: Connector) {
   ];
 }
 
-export function DeviceConnectGuide({ onClose }: { onClose: () => void }) {
+export function DeviceConnectGuide({ onClose, onDetected }: { onClose: () => void; onDetected?: (s: CaptureSource) => void }) {
   const [device, setDevice] = useState<DeviceKind>('iphone');
   const [connector, setConnector] = useState<Connector>('usbc');
   const [step, setStep] = useState(1);
+  const [detected, setDetected] = useState<CaptureSource | null>(null);
+  /** null = baseline ikke tatt ennå. Etterpå: id-er som fantes ved åpning. */
+  const baseline = useRef<Set<string> | null>(null);
   const STEPS = buildSteps(device, device === 'ipad' ? 'usbc' : connector);
+
+  // Live-deteksjon: poll capture-kilder. Første tick = baseline-snapshot.
+  // Deretter trigger vi på enhver iOS-enhet/Mirroring som IKKE var i baseline.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const list = await listCaptureSources();
+        const ios = list.filter((s) => s.kind === 'ios_device' || (s.kind === 'iphone_mirroring' && s.available));
+        if (baseline.current === null) {
+          baseline.current = new Set(ios.map((s) => s.id)); // snapshot ved åpning
+          return;
+        }
+        const fresh = ios.find((s) => !baseline.current!.has(s.id));
+        if (fresh && alive) {
+          setDetected(fresh);
+          setStep(3);
+          onDetected?.(fresh);
+        }
+      } catch { /* ignore */ }
+    };
+    void tick();
+    const iv = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [onDetected]);
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.bg, display: 'grid', placeItems: 'center', zIndex: 100, fontFamily: C.font }}>
@@ -158,6 +187,29 @@ export function DeviceConnectGuide({ onClose }: { onClose: () => void }) {
               </div>
             ))}
             <span style={{ fontSize: 10.5, color: C.inkFaint }}>{connector === 'usbc' ? 'iPhone 15 og nyere' : 'iPhone 14 og eldre'}</span>
+          </div>
+        )}
+
+        {/* Trådløst alternativ: iPhone Mirroring (macOS 15+) */}
+        {step === 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px 0' }}>
+            <span style={{ fontSize: 11.5, color: C.inkFaint }}>Eller trådløst:</span>
+            <button onClick={() => openIphoneMirroring().catch(() => {})}
+              style={{ fontSize: 12, fontWeight: 600, color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 8, padding: '4px 12px', background: '#fff', cursor: 'pointer' }}>
+              Åpne iPhone Mirroring
+            </button>
+            <span style={{ fontSize: 10.5, color: C.inkFaint }}>macOS 15+, samme Apple-ID</span>
+          </div>
+        )}
+
+        {/* Live-deteksjon: banner når enhet dukker opp */}
+        {detected && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 20px 0', padding: '10px 14px', background: '#eef7f0', border: `1px solid #bfe0c9`, borderRadius: 10 }}>
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: C.green, animation: 'dcg-pulse 1.4s ease-in-out infinite' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.green }}>Enhet oppdaget: {detected.label}</div>
+              <div style={{ fontSize: 11, color: C.inkSoft }}>Klar til opptak — lukk denne og trykk Record.</div>
+            </div>
           </div>
         )}
 

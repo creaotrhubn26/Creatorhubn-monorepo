@@ -105,6 +105,42 @@ fn list_simulators() -> Vec<CaptureSource> {
     sources
 }
 
+const IPHONE_MIRRORING_BUNDLE: &str = "com.apple.ScreenContinuity";
+const IPHONE_MIRRORING_PATH: &str = "/System/Applications/iPhone Mirroring.app";
+
+/// Er en app med gitt bundle-id i gang? (via lsappinfo)
+fn is_running(bundle_id: &str) -> bool {
+    Command::new("/usr/bin/lsappinfo")
+        .args(["find", &format!("bundleID={}", bundle_id)])
+        .output()
+        .map(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// iPhone Mirroring-kilde hvis appen finnes (macOS 15+). Trådløs Continuity-
+/// speiling; vi tar opp selve vinduet via skjerm-capture. 'available' = appen
+/// kjører allerede (klar til å fanges).
+fn iphone_mirroring_source() -> Option<CaptureSource> {
+    if !std::path::Path::new(IPHONE_MIRRORING_PATH).exists() { return None; }
+    Some(CaptureSource {
+        kind: "iphone_mirroring".into(),
+        id: IPHONE_MIRRORING_BUNDLE.into(),
+        label: "iPhone Mirroring (trådløst)".into(),
+        available: is_running(IPHONE_MIRRORING_BUNDLE),
+    })
+}
+
+/// Åpne Apples iPhone Mirroring-app (trådløs speiling, ingen kabel).
+#[tauri::command]
+pub async fn open_iphone_mirroring() -> Result<bool, String> {
+    if !std::path::Path::new(IPHONE_MIRRORING_PATH).exists() {
+        return Err("iPhone Mirroring krever macOS 15 (Sequoia) eller nyere".into());
+    }
+    Command::new("/usr/bin/open").arg("-a").arg(IPHONE_MIRRORING_PATH)
+        .status().map_err(|e| format!("open feilet: {}", e))?;
+    Ok(true)
+}
+
 /// List alle tilgjengelige capture-kilder akkurat nå.
 #[tauri::command]
 pub async fn list_capture_sources() -> Result<Vec<CaptureSource>, String> {
@@ -113,6 +149,7 @@ pub async fn list_capture_sources() -> Result<Vec<CaptureSource>, String> {
         out.extend(list_avfoundation(&ff));
     }
     out.extend(list_simulators());
+    if let Some(m) = iphone_mirroring_source() { out.push(m); }
     Ok(out)
 }
 

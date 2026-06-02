@@ -69,7 +69,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const actionMeta = ACTION_META[cur?.actionType ?? 'click'];
   const autoMode = (project.continueMode ?? 'manual') === 'auto';
   const captureKind = project.captureKind ?? 'web';
-  const isNativeCapture = captureKind === 'ios_device' || captureKind === 'mac_screen' || captureKind === 'ios_simulator';
+  const isNativeCapture = captureKind === 'ios_device' || captureKind === 'mac_screen' || captureKind === 'ios_simulator' || captureKind === 'iphone_mirroring';
 
   /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl). */
   const recordNativeScene = async (sceneId: string): Promise<string | null> => {
@@ -78,8 +78,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       if (captureKind === 'ios_simulator') {
         return await recordSimulator(project.id, sceneId, project.captureSourceId ?? '', dur);
       }
-      // mac_screen + ios_device går begge via AVFoundation-indeks.
-      return await recordAvfoundation(project.id, sceneId, project.captureSourceId ?? '0', dur);
+      // iPhone Mirroring fanges som skjerm-capture → bruk Mac-skjerm-indeksen.
+      // ios_device + mac_screen bruker sin egen AVFoundation-indeks direkte.
+      const idx = captureKind === 'iphone_mirroring'
+        ? (sources.find((s) => s.kind === 'mac_screen')?.id ?? '0')
+        : (project.captureSourceId ?? '0');
+      return await recordAvfoundation(project.id, sceneId, idx, dur);
     } catch { return null; }
   };
 
@@ -217,15 +221,18 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
           {/* Capture-kilde-velger: web / Mac-skjerm / kablet iOS / simulator */}
           <div style={{ position: 'relative' }}>
             <button style={btn} onClick={() => setSourceMenu((v) => !v)} title="Hva tas opp">
-              {captureKind === 'web' ? '🌐 Web' : captureKind === 'mac_screen' ? '🖥 Mac' : captureKind === 'ios_simulator' ? '⊞ Simulator' : '📱 ' + (project.captureSourceLabel ?? 'iOS')} ⌄
+              {captureKind === 'web' ? '🌐 Web' : captureKind === 'mac_screen' ? '🖥 Mac' : captureKind === 'ios_simulator' ? '⊞ Simulator' : captureKind === 'iphone_mirroring' ? '📡 Mirroring' : '📱 ' + (project.captureSourceLabel ?? 'iOS')} ⌄
             </button>
             {sourceMenu && (
               <div style={{ position: 'absolute', top: 40, left: 0, zIndex: 20, background: '#fff', border: `1px solid ${C.lineStrong}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 260, padding: 6 }}>
                 <SourceItem label="🌐 Web-app (URL)" sub="iframe-preview av nettsiden" onClick={() => pickSource(null)} active={captureKind === 'web'} />
                 {sources.map((s) => (
                   <SourceItem key={s.kind + s.id}
-                    label={`${s.kind === 'mac_screen' ? '🖥' : s.kind === 'ios_simulator' ? '⊞' : '📱'} ${s.label}`}
-                    sub={s.kind === 'ios_device' ? 'Kablet enhet — funker med App Store-apper' : s.kind === 'ios_simulator' ? 'Simulator — kun egne Xcode-bygg' : 'Mac-skjerm'}
+                    label={`${s.kind === 'mac_screen' ? '🖥' : s.kind === 'ios_simulator' ? '⊞' : s.kind === 'iphone_mirroring' ? '📡' : '📱'} ${s.label}`}
+                    sub={s.kind === 'ios_device' ? 'Kablet enhet — funker med App Store-apper'
+                      : s.kind === 'ios_simulator' ? 'Simulator — kun egne Xcode-bygg'
+                      : s.kind === 'iphone_mirroring' ? (s.available ? 'Trådløst — speiler iPhone (åpen)' : 'Trådløst — åpne appen først')
+                      : 'Mac-skjerm'}
                     onClick={() => pickSource(s)} active={project.captureSourceId === s.id && captureKind === s.kind} />
                 ))}
                 <div onClick={() => { setSourceMenu(false); setShowConnectGuide(true); }}
@@ -400,7 +407,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
         </div>
       </div>
 
-      {showConnectGuide && <DeviceConnectGuide onClose={() => setShowConnectGuide(false)} />}
+      {showConnectGuide && (
+        <DeviceConnectGuide
+          onClose={() => setShowConnectGuide(false)}
+          onDetected={(s) => { pickSource(s); listCaptureSources().then(setSources).catch(() => {}); }}
+        />
+      )}
     </div>
   );
 

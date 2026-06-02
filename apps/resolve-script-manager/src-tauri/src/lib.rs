@@ -914,6 +914,7 @@ pub fn run() {
             capture_sources::list_capture_sources,
             capture_sources::record_avfoundation,
             capture_sources::record_simulator,
+            capture_sources::open_iphone_mirroring,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,
