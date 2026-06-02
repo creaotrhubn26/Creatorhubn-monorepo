@@ -11,8 +11,9 @@
  * + device + opptak henger sammen (spec §11.3).
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
+import { generateSceneScript, improveScript, type ImproveAction } from './demoStudioAI';
 import {
   SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, SCRIPT_TONE_LABELS, SCRIPT_LENGTH_LABELS,
   type DemoDevice, type DemoActionType, type ScriptTone, type ScriptLength,
@@ -40,11 +41,11 @@ const DEVICE_LABEL: Record<DemoDevice, string> = { macbook: 'MacBook', ipad: 'iP
 const ACTION_TYPES: DemoActionType[] = ['open_url', 'click', 'scroll', 'hover', 'type', 'wait', 'switch_device', 'highlight', 'zoom'];
 const PAUSE_OPTS = [1, 2, 3, 5];
 
-const AI_SUGGESTIONS = [
-  { ic: '✂', title: 'Shorten intro', desc: 'Make the opening more concise.' },
-  { ic: '➤', title: 'Add CTA', desc: 'Encourage users to take action.' },
-  { ic: '◉', title: 'Make more tutorial-focused', desc: 'Add step-by-step guidance.' },
-  { ic: '▭', title: 'Mention mobile experience', desc: 'Highlight the mobile app benefits.' },
+const AI_SUGGESTIONS: { ic: string; title: string; desc: string; action: ImproveAction }[] = [
+  { ic: '✂', title: 'Gjør kortere', desc: 'Stram inn manuset.', action: 'shorten' },
+  { ic: '➤', title: 'Legg til CTA', desc: 'Oppfordre til handling.', action: 'cta' },
+  { ic: '◉', title: 'Mer tutorial-fokusert', desc: 'Legg til steg-for-steg.', action: 'tutorial' },
+  { ic: '✦', title: 'Forenkle språket', desc: 'Unngå sjargong.', action: 'simplify' },
 ];
 
 function fmt(sec: number) {
@@ -63,6 +64,30 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
     const words = (selected?.narration ?? '').trim().split(/\s+/).filter(Boolean).length;
     return Math.max(1, Math.round((words / 150) * 60)); // ~150 wpm
   }, [selected?.narration]);
+
+  const [aiBusy, setAiBusy] = useState<null | string>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const onGenerate = async () => {
+    if (!project || !selected) return;
+    setAiError(null); setAiBusy('generate');
+    try {
+      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta });
+      updateScene(selected.id, {
+        narration: g.narration, visualInstruction: g.visualInstruction,
+        requiredAction: g.requiredAction, overlayText: g.overlayText, status: 'in_progress',
+      });
+    } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
+  };
+
+  const onImprove = async (action: ImproveAction) => {
+    if (!selected?.narration?.trim()) { setAiError('Skriv narration først'); return; }
+    setAiError(null); setAiBusy(action);
+    try {
+      const improved = await improveScript({ text: selected.narration, action, meta });
+      updateScene(selected.id, { narration: improved });
+    } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
+  };
 
   if (!project || !selected) {
     return <div style={{ padding: 40, fontFamily: C.font, color: C.inkSoft }}>Opprett en demo i Flow Builder først.</div>;
@@ -104,8 +129,12 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             ⌕ Search scenes… <span style={{ marginLeft: 'auto', fontSize: 11, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 5, padding: '1px 5px' }}>⌘K</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button style={btn}>✦ Generate Script</button>
-          <button style={btn}>✎ AI Improve</button>
+          <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onGenerate()}>
+            ✦ {aiBusy === 'generate' ? 'Genererer…' : 'Generate Script'}
+          </button>
+          <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onImprove('clarify')}>
+            ✎ {aiBusy && aiBusy !== 'generate' ? 'Forbedrer…' : 'AI Improve'}
+          </button>
           <button style={{ ...btn, padding: '8px 10px' }}>⋯</button>
           <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}>✓ Save Script <span>⌄</span></button>
         </div>
@@ -217,7 +246,8 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <div style={{ flex: 1 }} />
               <span style={{ fontSize: 11, color: C.inkSoft, cursor: 'pointer' }}>↻ Regenerate</span>
             </div>
-            <div style={{ fontSize: 11, color: C.inkFaint, marginBottom: 12 }}>Suggestions to improve your script</div>
+            <div style={{ fontSize: 11, color: C.inkFaint, marginBottom: 12 }}>Forbedre manuset for denne scenen</div>
+            {aiError && <div style={{ fontSize: 11.5, color: '#c4453b', marginBottom: 10 }}>{aiError}</div>}
             {AI_SUGGESTIONS.map((s) => (
               <div key={s.title} style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: C.cream, display: 'grid', placeItems: 'center', fontSize: 12 }}>{s.ic}</div>
@@ -225,7 +255,10 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                   <div style={{ fontSize: 12.5, fontWeight: 600 }}>{s.title}</div>
                   <div style={{ fontSize: 11, color: C.inkFaint }}>{s.desc}</div>
                 </div>
-                <button style={{ ...btn, padding: '5px 12px', fontSize: 12 }}>Insert</button>
+                <button style={{ ...btn, padding: '5px 12px', fontSize: 12, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy}
+                  onClick={() => void onImprove(s.action)}>
+                  {aiBusy === s.action ? '…' : 'Insert'}
+                </button>
               </div>
             ))}
             <div style={{ textAlign: 'center', border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, fontSize: 12, color: C.inkSoft, cursor: 'pointer', marginTop: 4 }}>View all suggestions ›</div>
