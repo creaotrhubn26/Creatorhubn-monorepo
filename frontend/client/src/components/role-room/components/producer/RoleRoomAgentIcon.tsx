@@ -7,7 +7,7 @@
  */
 import { Box } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material';
-import roleRoomAgentIcon from '@/assets/role-room-agent-icon.png';
+import roleRoomAgentIcon from '../../../../assets/role-room-agent-icon.png';
 
 export function RoleRoomAgentIcon({
   size = 24,
