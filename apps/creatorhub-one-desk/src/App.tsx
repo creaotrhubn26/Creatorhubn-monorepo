@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Box, CircularProgress, Container, Typography } from "@mui/material";
-import { loadStoredConfig, StoredConfig } from "./api";
+import { listProjects, loadStoredConfig, StoredConfig } from "./api";
 import TokenSetupScreen from "./components/TokenSetupScreen";
 import ProjectInfoScreen from "./components/ProjectInfoScreen";
+import ProjectPickerScreen from "./components/ProjectPickerScreen";
 import UpdaterDialog from "./components/UpdaterDialog";
 
-type Status = "loading" | "needs-token" | "connected";
+type Status = "loading" | "needs-token" | "picker" | "connected";
 
 interface PendingUpdate {
   version: string;
@@ -55,21 +56,47 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  /// Hoved-rute-logikk. Vi har tre tilstander etter loading:
+  ///   - needs-token: ingen prosjekter konfigurert ennå → TokenSetupScreen
+  ///   - picker: flere prosjekter konfigurert OG bruker har valgt
+  ///     "bytt prosjekt" (eller etter logout) → ProjectPickerScreen
+  ///   - connected: aktivt prosjekt valgt → ProjectInfoScreen
+  /// Migration fra single-project handles automatically i ProjectStore
+  /// første gang load skjer.
   const refresh = async () => {
     setStatus("loading");
     try {
+      // listProjects() trigger lazy migration fra config.json
+      const projs = await listProjects();
       const cfg = await loadStoredConfig();
+      if (projs.length === 0) {
+        // Ingen prosjekt konfigurert
+        setConfig(null);
+        setStatus("needs-token");
+        return;
+      }
       if (cfg && cfg.has_token) {
+        // Aktivt prosjekt → connected
         setConfig(cfg);
         setStatus("connected");
       } else {
+        // Prosjekter finnes men ingen aktiv → picker
         setConfig(null);
-        setStatus("needs-token");
+        setStatus("picker");
       }
     } catch {
       setConfig(null);
       setStatus("needs-token");
     }
+  };
+
+  const handleSwitchProject = () => {
+    setStatus("picker");
+    setConfig(null);
+  };
+
+  const handleAddNew = () => {
+    setStatus("needs-token");
   };
 
   useEffect(() => {
@@ -91,9 +118,19 @@ export default function App() {
     return <TokenSetupScreen onSaved={refresh} />;
   }
 
+  if (status === "picker") {
+    return <ProjectPickerScreen onProjectSelected={refresh} onAddNew={handleAddNew} />;
+  }
+
   return (
     <Box>
-      {config && <ProjectInfoScreen config={config} onLoggedOut={refresh} />}
+      {config && (
+        <ProjectInfoScreen
+          config={config}
+          onLoggedOut={refresh}
+          onSwitchProject={handleSwitchProject}
+        />
+      )}
       {updateInfo && (
         <UpdaterDialog
           version={updateInfo.version}

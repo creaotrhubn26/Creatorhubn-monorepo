@@ -13,6 +13,7 @@ mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
+mod projects;
 
 use std::sync::Arc;
 
@@ -82,6 +83,47 @@ fn save_helper_config(
 #[tauri::command]
 fn clear_helper_config() -> Result<(), String> {
     helper_client::clear_config()
+}
+
+// ── Multi-project commands ─────────────────────────────────────────
+
+#[tauri::command]
+fn list_projects(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+) -> Result<Vec<projects::ProjectEntry>, String> {
+    store.list()
+}
+
+#[tauri::command]
+fn active_project_id(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+) -> Result<Option<String>, String> {
+    store.active_id()
+}
+
+#[tauri::command]
+fn set_active_project(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+    project_id: String,
+) -> Result<(), String> {
+    store.set_active(&project_id)
+}
+
+#[tauri::command]
+fn remove_project(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+    project_id: String,
+) -> Result<(), String> {
+    store.remove(&project_id)
+}
+
+#[tauri::command]
+fn update_project_label(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+    project_id: String,
+    label: String,
+) -> Result<(), String> {
+    store.update_label(&project_id, label)
 }
 
 #[tauri::command]
@@ -290,6 +332,7 @@ pub fn run() {
         .manage(Arc::new(IpadPairingState::default()))
         .manage(Arc::new(CaptureSubscriberState::default()))
         .manage(Arc::new(MirrorState::default()))
+        .manage(Arc::new(projects::ProjectStore::default()))
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(err) = mount_watcher::spawn_watcher(handle.clone()) {
@@ -306,6 +349,11 @@ pub fn run() {
             load_stored_config,
             save_helper_config,
             clear_helper_config,
+            list_projects,
+            active_project_id,
+            set_active_project,
+            remove_project,
+            update_project_label,
             fetch_project_info,
             list_detected_mounts,
             rescan_mounts,

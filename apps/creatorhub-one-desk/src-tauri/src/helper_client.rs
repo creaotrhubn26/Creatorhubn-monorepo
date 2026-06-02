@@ -42,43 +42,31 @@ pub fn config_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".creatorhub-one-desk"))
 }
 
-fn config_path() -> PathBuf {
+/// Legacy single-project config path. Beholdt for migration —
+/// projects.rs leser denne ved første kall hvis projects.json ikke
+/// finnes ennå.
+pub fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }
 
+/// Returnerer den aktive prosjekt-config-en. Delegerer til projects-
+/// modulen som håndterer multi-project + migration fra gammel
+/// config.json. Eksisterende callers (copy_session, capture_mirror,
+/// ipad_pairing) ser samme API som før.
 pub fn load_config() -> Result<Option<Config>, String> {
-    let path = config_path();
-    if !path.exists() {
-        return Ok(None);
-    }
-    let raw = std::fs::read(&path).map_err(|e| format!("Les config: {}", e))?;
-    let cfg: Config = serde_json::from_slice(&raw).map_err(|e| format!("Parse config: {}", e))?;
-    Ok(Some(cfg))
+    crate::projects::load_active_disk()
 }
 
+/// Lagrer config-en som ny eller oppdatert prosjekt-entry i
+/// projects.json. Setter den også som aktiv.
 pub fn save_config(cfg: &Config) -> Result<(), String> {
-    let dir = config_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Opprett config-mappe: {}", e))?;
-    let json = serde_json::to_vec_pretty(cfg).map_err(|e| format!("Serialiser: {}", e))?;
-    let path = config_path();
-    std::fs::write(&path, &json).map_err(|e| format!("Skriv config: {}", e))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        if let Err(e) = std::fs::set_permissions(&path, perms) {
-            eprintln!("Advarsel: kunne ikke sette 0600 på {}: {}", path.display(), e);
-        }
-    }
-    Ok(())
+    crate::projects::save_active_disk(cfg, None)
 }
 
+/// Sletter ALLE prosjekter (multi-store) + legacy config.json. Brukes
+/// fra logout-flow når Fredrik vil starte forfra.
 pub fn clear_config() -> Result<(), String> {
-    let path = config_path();
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| format!("Slett config: {}", e))?;
-    }
-    Ok(())
+    crate::projects::clear_all_disk()
 }
 
 pub fn default_api_base() -> &'static str {
