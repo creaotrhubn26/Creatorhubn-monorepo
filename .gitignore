@@ -170,3 +170,4 @@ decks/screenshots/
 # Design mockup screenshots (regenerable via scripts/capture-design-mockups.mjs)
 mockups/*.png
 out-videos/
+apps/resolve-script-manager/src/components/demo-studio/_pixelcheck/
