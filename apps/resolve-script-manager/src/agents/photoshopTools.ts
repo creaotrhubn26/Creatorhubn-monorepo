@@ -157,6 +157,52 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_add_adjustment",
+    description:
+      "Legg til en ikke-destruktiv adjustment layer (brightness_contrast, hue_saturation, color_balance, curves) over aktivt dokument eller en navngitt target-layer. Brukes for å applisere look/color-grade uten å miste muligheten til å justere etterpå.",
+    input_schema: {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["brightness_contrast", "hue_saturation", "color_balance", "curves"],
+        },
+        params: {
+          type: "object",
+          description: "Type-spesifikke verdier. brightness_contrast: {brightness:-150..150, contrast:-150..150}. hue_saturation: {hue:-180..180, saturation:-100..100, lightness:-100..100}. color_balance: {midtones:[r,g,b], shadows?, highlights?} med verdier -100..100. curves: {points:[[x,y],...]} med 0..255-verdier på composite.",
+        },
+        name: { type: "string", description: "Layer-navn for adjustment (valgfri)" },
+        target_layer_name: {
+          type: "string",
+          description: "Hvis satt, plasseres adjustment over denne layeren",
+        },
+      },
+      required: ["type", "params"],
+    },
+  },
+  {
+    name: "photoshop_apply_style",
+    description:
+      "Applisere layer styles (drop_shadow, outer_glow, color_overlay) på en navngitt layer. Flere effekter kan settes samtidig — de kombineres på samme layer.",
+    input_schema: {
+      type: "object",
+      properties: {
+        layer_name: { type: "string" },
+        effects: {
+          type: "object",
+          description:
+            "Map av effekter. drop_shadow:{opacity?,angle?,distance?,size?,color?:{r,g,b}}. outer_glow:{opacity?,size?,color?}. color_overlay:{opacity?,color:{r,g,b},blend_mode?}",
+          properties: {
+            drop_shadow: { type: "object" },
+            outer_glow: { type: "object" },
+            color_overlay: { type: "object" },
+          },
+        },
+      },
+      required: ["layer_name", "effects"],
+    },
+  },
+  {
     name: "photoshop_multi_aspect_export",
     description:
       "Eksporter samme master-PSD til flere aspect-ratios. Bruker fill-by-resize + center-crop: bildet skaleres så det dekker target, overflod cropper bort fra senter. Brukes for sosial-pakker (1:1 + 9:16 + 4:5 + 16:9). target_long_edge styrer outputstørrelse — lengste side blir det tallet, kort side beregnes ut fra aspect.",
@@ -310,6 +356,33 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         items,
         default_format: input.default_format as ExportFormat | undefined,
         default_quality: input.default_quality as number | undefined,
+      });
+    }
+    case "photoshop_add_adjustment": {
+      const type = requireString(input, "type") as
+        | "brightness_contrast"
+        | "hue_saturation"
+        | "color_balance"
+        | "curves";
+      const params = input.params;
+      if (!params || typeof params !== "object") {
+        throw new Error('"params" må være et objekt');
+      }
+      return photoshop.addAdjustment({
+        type,
+        params: params as Record<string, unknown> as never,
+        name: input.name as string | undefined,
+        target_layer_name: input.target_layer_name as string | undefined,
+      });
+    }
+    case "photoshop_apply_style": {
+      const effects = input.effects;
+      if (!effects || typeof effects !== "object") {
+        throw new Error('"effects" må være et objekt');
+      }
+      return photoshop.applyStyle({
+        layer_name: requireString(input, "layer_name"),
+        effects: effects as never,
       });
     }
     case "photoshop_multi_aspect_export": {

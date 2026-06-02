@@ -699,6 +699,107 @@ const COMMANDS = {
    *
    * Hver iteration åpner master på nytt → ingen mutasjons-arv.
    */
+  /*
+   * Legg til en ikke-destruktiv adjustment layer over aktivt dokument
+   * (eller en navngitt target-layer). V1 støtter 4 typer:
+   *   - brightness_contrast: { brightness: -150..150, contrast: -150..150 }
+   *   - hue_saturation:      { hue: -180..180, saturation: -100..100, lightness: -100..100 }
+   *   - color_balance:       { midtones: [r,g,b], shadows?: [r,g,b], highlights?: [r,g,b] }
+   *                          (verdier -100..100, preserveLuminosity default true)
+   *   - curves:              { points: [[x,y], ...] } der x,y er 0..255 på composite-kanalen
+   */
+  "adjustment.add": async ({ type, params, name, target_layer_name }) => {
+    assertString(type, "type");
+    if (!params || typeof params !== "object") {
+      throw new Error('"params" må være et objekt');
+    }
+    const doc = requireActiveDocument();
+
+    await core.executeAsModal(async () => {
+      if (target_layer_name) {
+        const layer = findLayerByName(doc, target_layer_name);
+        if (!layer) throw new Error(`Fant ingen layer med navn: ${target_layer_name}`);
+        doc.activeLayers = [layer];
+      }
+
+      const using = buildAdjustmentDescriptor(type, params);
+      await action.batchPlay(
+        [
+          {
+            _obj: "make",
+            _target: [{ _ref: "adjustmentLayer" }],
+            using: { _obj: "adjustmentLayer", type: using },
+          },
+        ],
+        {},
+      );
+
+      if (name) {
+        const created = doc.activeLayers[0];
+        if (created) created.name = name;
+      }
+    }, { commandName: `Post Agent: adjustment.${type}` });
+
+    return { type, name: name ?? null, target_layer_name: target_layer_name ?? null };
+  },
+
+  /*
+   * Applisere layer-effekter på en navngitt layer. V1 støtter 3:
+   *   drop_shadow:    { opacity?:0-100, angle?:0-360, distance?:px, size?:px, color?:{r,g,b} }
+   *   outer_glow:     { opacity?:0-100, size?:px, color?:{r,g,b} }
+   *   color_overlay:  { opacity?:0-100, color:{r,g,b}, blend_mode?:string }
+   * Flere kan settes i samme call — Photoshop kombinerer dem.
+   */
+  "style.apply": async ({ layer_name, effects }) => {
+    assertString(layer_name, "layer_name");
+    if (!effects || typeof effects !== "object") {
+      throw new Error('"effects" må være et objekt');
+    }
+    const doc = requireActiveDocument();
+    const applied = [];
+
+    await core.executeAsModal(async () => {
+      const layer = findLayerByName(doc, layer_name);
+      if (!layer) throw new Error(`Fant ingen layer: ${layer_name}`);
+      doc.activeLayers = [layer];
+
+      const layerEffects = { _obj: "layerEffects", scale: { _unit: "percentUnit", _value: 100 } };
+
+      if (effects.drop_shadow) {
+        layerEffects.dropShadow = buildDropShadow(effects.drop_shadow);
+        applied.push("drop_shadow");
+      }
+      if (effects.outer_glow) {
+        layerEffects.outerGlow = buildOuterGlow(effects.outer_glow);
+        applied.push("outer_glow");
+      }
+      if (effects.color_overlay) {
+        layerEffects.solidFill = buildColorOverlay(effects.color_overlay);
+        applied.push("color_overlay");
+      }
+
+      if (applied.length === 0) {
+        throw new Error("Ingen kjent effect — støtter: drop_shadow, outer_glow, color_overlay");
+      }
+
+      await action.batchPlay(
+        [
+          {
+            _obj: "set",
+            _target: [
+              { _ref: "property", _property: "layerEffects" },
+              { _ref: "layer", _enum: "ordinal", _value: "targetEnum" },
+            ],
+            to: layerEffects,
+          },
+        ],
+        {},
+      );
+    }, { commandName: `Post Agent: style.apply (${applied.join("+")})` });
+
+    return { layer_name, applied };
+  },
+
   "multiAspect.export": async ({
     master_path,
     output_dir,
@@ -802,6 +903,117 @@ const COMMANDS = {
  * Parse aspect-streng som "9:16" eller "16:9" og beregn W×H der den
  * lengste siden blir `long_edge`.
  */
+/**
+ * Bygg "type"-descriptoren for en adjustment-layer. Returnert objekt
+ * leveres som `using.type` i batchPlay `_obj: "make" → adjustmentLayer`.
+ */
+function buildAdjustmentDescriptor(type, params) {
+  switch (type) {
+    case "brightness_contrast":
+      return {
+        _obj: "brightnessEvent",
+        brightness: Number(params.brightness) || 0,
+        center: Number(params.contrast) || 0,
+        useLegacy: false,
+      };
+    case "hue_saturation":
+      return {
+        _obj: "hueSaturation",
+        colorize: false,
+        adjustment: [
+          {
+            _obj: "hueSatAdjustmentV2",
+            hue: Number(params.hue) || 0,
+            saturation: Number(params.saturation) || 0,
+            lightness: Number(params.lightness) || 0,
+          },
+        ],
+      };
+    case "color_balance": {
+      const cb = {
+        _obj: "colorBalance",
+        preserveLuminosity: params.preserveLuminosity !== false,
+      };
+      if (Array.isArray(params.shadows)) cb.shadowLevels = params.shadows.map(Number);
+      if (Array.isArray(params.midtones)) cb.midtoneLevels = params.midtones.map(Number);
+      if (Array.isArray(params.highlights)) cb.highlightLevels = params.highlights.map(Number);
+      if (!cb.midtoneLevels && !cb.shadowLevels && !cb.highlightLevels) {
+        cb.midtoneLevels = [0, 0, 0];
+      }
+      return cb;
+    }
+    case "curves": {
+      if (!Array.isArray(params.points) || params.points.length < 2) {
+        throw new Error("curves trenger minst 2 punkter, hver som [x, y] med 0-255-verdier");
+      }
+      return {
+        _obj: "curves",
+        adjustment: [
+          {
+            _obj: "curvesAdjustment",
+            channel: { _ref: "channel", _enum: "channel", _value: "composite" },
+            curve: params.points.map(([x, y]) => ({
+              _obj: "paint",
+              horizontal: Number(x),
+              vertical: Number(y),
+            })),
+          },
+        ],
+      };
+    }
+    default:
+      throw new Error(`Ukjent adjustment-type: ${type}. Støtter: brightness_contrast, hue_saturation, color_balance, curves`);
+  }
+}
+
+function buildDropShadow(p) {
+  return {
+    _obj: "dropShadow",
+    enabled: true,
+    present: true,
+    mode: { _enum: "blendMode", _value: "multiply" },
+    color: rgbColor(p.color || { r: 0, g: 0, b: 0 }),
+    opacity: { _unit: "percentUnit", _value: p.opacity ?? 35 },
+    useGlobalAngle: false,
+    angle: { _unit: "angleUnit", _value: p.angle ?? 120 },
+    distance: { _unit: "pixelsUnit", _value: p.distance ?? 5 },
+    chokeMatte: { _unit: "pixelsUnit", _value: p.spread ?? 0 },
+    blur: { _unit: "pixelsUnit", _value: p.size ?? 5 },
+  };
+}
+
+function buildOuterGlow(p) {
+  return {
+    _obj: "outerGlow",
+    enabled: true,
+    present: true,
+    mode: { _enum: "blendMode", _value: "screen" },
+    color: rgbColor(p.color || { r: 255, g: 255, b: 200 }),
+    opacity: { _unit: "percentUnit", _value: p.opacity ?? 50 },
+    chokeMatte: { _unit: "pixelsUnit", _value: 0 },
+    blur: { _unit: "pixelsUnit", _value: p.size ?? 10 },
+  };
+}
+
+function buildColorOverlay(p) {
+  return {
+    _obj: "solidFill",
+    enabled: true,
+    present: true,
+    mode: { _enum: "blendMode", _value: p.blend_mode || "normal" },
+    color: rgbColor(p.color || { r: 255, g: 255, b: 255 }),
+    opacity: { _unit: "percentUnit", _value: p.opacity ?? 100 },
+  };
+}
+
+function rgbColor(c) {
+  // Aksepter både {r,g,b} og {red,green,blue}
+  const r = c.r ?? c.red ?? 0;
+  const g = c.g ?? c.green ?? 0;
+  const b = c.b ?? c.blue ?? 0;
+  return { _obj: "RGBColor", red: Number(r), green: Number(g), blue: Number(b) };
+}
+
 function computeTargetDimensions(aspectStr, long_edge) {
   const m = /^(\d+):(\d+)$/.exec(String(aspectStr).trim());
   if (!m) throw new Error(`Ugyldig aspect: ${aspectStr} (forventer "W:H", f.eks. "9:16")`);
