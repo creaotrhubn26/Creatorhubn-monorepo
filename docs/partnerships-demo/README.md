@@ -1,24 +1,21 @@
-# Partnership-flyten — demo-opptak (v2 med pravatar-portretter)
+# Partnership-flyten — demo-opptak (v3 med Phase 9.13)
 
-24-sekunders gjennomgang av hele Phase 9 bryå-flyten i demo-modus.
-`?demo=1` på alle endepunkter — ingen innlogging kreves.
+15-sekunders gjennomgang av bryå-flyten i demo-modus etter Phase 9.13
+UX-forbedringer.
 
 ## Video
 
-[`partnerships-demo.mp4`](partnerships-demo.mp4) — 1280×648, 30 fps, 8 frames á 3 sek (280 KB).
+[`partnerships-demo.mp4`](partnerships-demo.mp4) — 1280×648, 30 fps, 5 frames á 3 sek (200 KB).
 
 ## Frames
 
 | # | Skjermbilde | Hva som vises |
 |---|---|---|
-| 1 | [01-oversikt.png](01-oversikt.png) | **Oversikt-fanen** med KPI-er: 1 aktiv partnership, 1 prosjekt-invitasjon, 1 talent-forslag, 10 talenter i pool. Status-badge "Aktiv". |
-| 2 | [02-tilgjengelighet.png](02-tilgjengelighet.png) | **Tilgjengelighets-fanen** med progress-stigen (profil ✓, vilkår ✓, discoverability på ✓). Pause + Stenge-handlinger. |
-| 3 | [03-mine-partnerships.png](03-mine-partnerships.png) | **Mine partnerships-fanen** med Daniels produksjon (Aktiv-status). |
-| 4 | [04-innkommende.png](04-innkommende.png) | **Innkommende-fanen** med TROLL-prosjektet aksepterert + "Foreslå talenter"-knapp. |
-| 5 | [05-foresla-modal.png](05-foresla-modal.png) | **ProposeTalentsDialog** med Stella-registret. Elias merket "Allerede foreslått". |
-| 6 | [06-bulk-select.png](06-bulk-select.png) | **Bulk multi-select**: 3 valgte talenter (Amalie, Henrik, Ingrid Vik), bulk-bar med "Foreslå alle valgte"-knapp. |
-| 7 | [07-mine-forslag.png](07-mine-forslag.png) | **Mine forslag-fanen** i ProposeTalentsDialog. |
-| 8 | [08-talent-registry-stella.png](08-talent-registry-stella.png) | **Talent-registry i Stella-kontekst** (via produksjonsteam-eier åpner søkeknappen). Header viser "Stella Casting — talent-register" og **profesjonelle pravatar-headshots** for alle 10 talenter. |
+| 1 | [01-oversikt.png](01-oversikt.png) | **Oversikt-fanen** med ALLE Phase 9.10–9.13 forbedringer: demo-banner, "Hva nå?"-kort (lilla gradient), smart-varselbar (gul), klikkbare KPI-er, mini-sparklines (14d), per-prosjekt-progress-strip (TROLL 100%), siste aktivitet-feed med 6 entries |
+| 2 | [02-tilgjengelighet.png](02-tilgjengelighet.png) | **Tilgjengelighets-fanen** med progress-stigen + pause/steng-handlinger |
+| 3 | [03-mine-partnerships.png](03-mine-partnerships.png) | **Mine partnerships-fanen** med Daniels produksjon (Aktiv-status) |
+| 4 | [04-innkommende.png](04-innkommende.png) | **Innkommende-fanen** med "Venter på svar" (Dokumentarprosjekt) og "Aktive prosjekter" (TROLL) — den nye 2-seksjons-strukturen |
+| 5 | [05-talent-registry-stella.png](05-talent-registry-stella.png) | **Talent-registry i Stella-kontekst** med pravatar-portretter + **ekte dynamisk sparkline** (Register-oversikt) som leser fra `/agency/registry-overview` |
 
 ## Demo-URLer
 
@@ -27,27 +24,37 @@
 /talents/registry?demo=1&agency_type=stella_casting&agency_id=a2222222-2222-2222-2222-2222222222a2
 ```
 
-## Hva er nytt i v2 (vs første opptak)
+## Hva er nytt i v3 (vs v2)
 
-- **Profesjonelle headshots** (pravatar.cc) erstatter randomuser.me-snapshots
-- Bedre kvalitet for sales-pitches og presentasjoner
-- Lisens-frie portretter, alle 400×400 face-cropped
+| Endring | PR |
+|---|---|
+| Demo-banner med ScienceOutlinedIcon | #190 |
+| Stavefiks "Bryå" → "Byrå" (4 filer, 30+ steder) | #190 |
+| Større avatarer (44→52px) + grønn "Foreslått"-chip | #190 |
+| Ingrid Nilsen portrett | #191 |
+| Skeleton-loading istedenfor spinner | #191 |
+| Empty state-illustrasjoner | #191 |
+| **"Hva nå?"-kort** med smart neste-handling | #198 |
+| **Klikkbare KPI-er** + hover-animasjon | #198 |
+| **Tooltips** på alle KPI-er | #198 |
+| **Mini-sparklines** (14d trend) | #199 |
+| **Per-prosjekt-progress-strip** med gradient-bar | #199 |
+| **Smart-varselbar** for utløp innen 7d | #199 |
+| **Ekte sparkline** i Register-oversikt (var fake mock før) | #201 |
+
+## Demo-fixture-data
+- Stella Casting demo-byrå
+- 1 akseptert partnership (Daniels produksjon)
+- 1 akseptert prosjekt-invitasjon (TROLL, utløper om 5d)
+- 1 pending prosjekt-invitasjon (Dokumentar, utløper om 3d) — trigger smart-varsel
+- 1 akseptert talent-forslag (Elias Berg) — akseptrate 100%
+- 6 audit-entries — viser "Siste aktivitet"-feeden
+- 10 talenter i pool med pravatar.cc-headshots
 
 ## Slik regenererer du
 
 ```bash
-# 1. Naviger til hver flate i Playwright/Chrome med ?demo=1
-# 2. Ta screenshot per flate (1728×874 viewport)
-# 3. Crop hvis du har full-page-screenshots til samme høyde
-# 4. Sett sammen til MP4:
 ffmpeg -framerate 1/3 -pattern_type glob -i 'docs/partnerships-demo/*.png' \
   -c:v libx264 -pix_fmt yuv420p -vf "scale=1280:-2" -r 30 \
   docs/partnerships-demo/partnerships-demo.mp4
 ```
-
-## Tekniske detaljer
-
-- **Demo-modus**: ?demo=1 på alle endepunkter, demo-user (99999...) koblet til Stella demo-agency via migrate 227
-- **Demo-fixture**: 1 partnership (accepted) + 1 prosjekt-invitasjon (accepted) + 1 talent-forslag (pending) — alle satt opp via direkte SQL for E2E-verifisering
-- **Phase 9-stack**: PR-ene #95 → #170 leverer hele flyten
-- **Migrate 228**: bytter portretter fra randomuser.me → pravatar.cc
