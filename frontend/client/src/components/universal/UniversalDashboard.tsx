@@ -3885,19 +3885,24 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       // WCAG: Proper heading hierarchy
                       component="h3"
                       aria-label={`Velkommen tilbake, ${
-                        currentUser?.displayName?.split(' ')[0]
-                          || currentUser?.firstName
-                          || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
+                        (() => {
+                          const raw = currentUser?.displayName?.split(' ')[0]
+                            || currentUser?.firstName
+                            || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker');
+                          return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'bruker';
+                        })()
                       }`}
                     >
-                      {/* Personalisert til brukerens fornavn fra displayName eller firstName
-                          (samme rekkefølge som DashboardHeroBand bruker). Tidligere viste vi
-                          customBranding.businessName som ofte er profesjons-label ('Fotograf'),
-                          noe som dupliserte velkomsten i DashboardHeroBand nedenfor. */}
+                      {/* Personalisert til brukerens fornavn fra displayName eller firstName.
+                          Capitalize første bokstav fordi onboarding-data lagres typisk
+                          lowercased ('daniel' → 'Daniel'). */}
                       Velkommen tilbake, {
-                        currentUser?.displayName?.split(' ')[0]
-                          || currentUser?.firstName
-                          || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
+                        (() => {
+                          const raw = currentUser?.displayName?.split(' ')[0]
+                            || currentUser?.firstName
+                            || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker');
+                          return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'bruker';
+                        })()
                       }!
                     </Typography>
                     {/* Enterprise: Show Norwedfilm logo + combined profession badges */}
