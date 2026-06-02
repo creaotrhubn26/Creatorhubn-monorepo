@@ -1380,38 +1380,69 @@ function buildDefinedBody(entries: Array<[string, unknown]>): Record<string, unk
   return body;
 }
 
+// In-flight dedupe-cache. Forhindrer at parallelle komponenter som bruker
+// samme hook (eks. useProducerNotifications brukt av CastingPlannerPanel +
+// ProducerPlannerStudio + RoleRoomDashboardPanel samtidig) hver fyrer sin
+// egen fetch-request for samme prosjekt. Verifisert via Playwright: 14+
+// duplikat-fetches innen sekunder før denne fixen.
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
+function dedupedFetch<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inFlightRequests.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = (async () => {
+    try {
+      return await fn();
+    } finally {
+      inFlightRequests.delete(key);
+    }
+  })();
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
 async function fetchTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+  return dedupedFetch(`timeline:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+  });
 }
 
 async function fetchEconomy(projectId: string): Promise<ProducerEconomyItem[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+  return dedupedFetch(`economy:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+  });
 }
 
 async function fetchReviews(projectId: string): Promise<ProducerClientReview[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortReviews(items.map((review) => normalizeReview(review, projectId)));
+  return dedupedFetch(`reviews:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return sortReviews(items.map((review) => normalizeReview(review, projectId)));
+  });
 }
 
 async function fetchNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/notifications`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return items
-    .map((item) => normalizeNotification(item, projectId))
-    .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+  return dedupedFetch(`notifications:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/notifications`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return items
+      .map((item) => normalizeNotification(item, projectId))
+      .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+  });
 }
 
 async function fetchExpenses(projectId: string): Promise<ProducerExpense[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/expenses`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return items
-    .map((item) => normalizeExpense(item, projectId))
-    .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
+  return dedupedFetch(`expenses:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/expenses`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return items
+      .map((item) => normalizeExpense(item, projectId))
+      .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
+  });
 }
 
 async function fetchClientIntake(projectId: string): Promise<ProducerClientIntake> {
