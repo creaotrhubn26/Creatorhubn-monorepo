@@ -42,7 +42,7 @@ function fmt(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function DemoStudioShell() {
+export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const { project, selectedSceneId } = useDemoStudio();
   const [nav, setNav] = useState<NavId>('flow');
   const [tab, setTab] = useState<'Guide' | 'Script' | 'Notes'>('Guide');
@@ -55,7 +55,7 @@ export function DemoStudioShell() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
       {/* ── Topbar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, height: 60, padding: '0 18px', background: C.panel, borderBottom: `1px solid ${C.line}`, flexShrink: 0 }}>
-        <div style={iconBtn}>☰</div>
+        <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
             {project?.name ?? 'Untitled Demo'} <span style={{ color: C.inkFaint }}>⌄</span>

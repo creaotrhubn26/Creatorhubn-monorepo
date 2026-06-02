@@ -38,6 +38,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
+import DevicesIcon from "@mui/icons-material/Devices";
 import EventIcon from "@mui/icons-material/Event";
 import LocalMoviesIcon from "@mui/icons-material/LocalMovies";
 import PodcastsIcon from "@mui/icons-material/Podcasts";
@@ -99,6 +100,7 @@ interface Props {
   onOpenDocumentaryAgent: () => void;
   onOpenPodcastAgent: () => void;
   onOpenShortFilmAgent: () => void;
+  onOpenDemoStudio: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -179,6 +181,7 @@ export function HomeView({
   onOpenDocumentaryAgent,
   onOpenPodcastAgent,
   onOpenShortFilmAgent,
+  onOpenDemoStudio,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -452,6 +455,25 @@ export function HomeView({
               click-zoom og voice-aware editing
             </div>
             <div className="home-action-tag">Screen Recording Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenDemoStudio}
+          title="Scene-basert produktdemo fra URL — Mac/iPad/iPhone-mockups, manus, teleprompter og guided opptak"
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef8a5d, #a030c0)" }}>
+            <DevicesIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Product Demo Studio</div>
+            <div className="home-action-desc">
+              Lim inn en URL og lag en styrt produktdemo i Mac/iPad/iPhone-mockups
+              — scener, manus, teleprompter og guided opptak
+            </div>
+            <div className="home-action-tag">Scene-basert · ny</div>
           </div>
           <IconArrowRight />
         </button>
