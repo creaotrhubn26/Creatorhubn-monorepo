@@ -39,10 +39,17 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         paid_at timestamptz,
         profession text,
         owner_user_id text,
+        external_invoice_id text,
+        external_provider text,
+        external_synced_at timestamptz,
         created_at timestamptz DEFAULT now(),
         updated_at timestamptz DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS crm_invoices_customer_idx ON crm_invoices(customer_id);
+      -- #27 — accounting bridge (PowerOffice) external reference, idempotent.
+      ALTER TABLE crm_invoices ADD COLUMN IF NOT EXISTS external_invoice_id text;
+      ALTER TABLE crm_invoices ADD COLUMN IF NOT EXISTS external_provider text;
+      ALTER TABLE crm_invoices ADD COLUMN IF NOT EXISTS external_synced_at timestamptz;
 
       CREATE TABLE IF NOT EXISTS crm_meetings (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1162,6 +1169,9 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     dueDate: r.due_date,
     issuedAt: r.issued_at,
     paidAt: r.paid_at,
+    externalInvoiceId: r.external_invoice_id || null,
+    externalProvider: r.external_provider || null,
+    externalSyncedAt: r.external_synced_at || null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   });
@@ -1285,6 +1295,94 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("CRM invoice update error:", error);
       return res.status(500).json({ error: "Failed to update invoice" });
+    }
+  });
+
+  // #27 — book a CRM invoice into accounting (PowerOffice Go). Reuses the
+  // existing poweroffice.ts module + the owner's stored connection in
+  // photographer_integrations (photographer_id == CRM owner_user_id). Honest
+  // errors when no active connection (so we never pretend to have booked).
+  app.post("/api/universal-crm/invoices/:id/book", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const inv = await pool.query(
+        `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, c.company AS customer_company
+         FROM crm_invoices i LEFT JOIN crm_customers c ON c.id = i.customer_id
+         WHERE i.id = $1 AND i.owner_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (inv.rows.length === 0) return res.status(404).json({ error: "Invoice not found" });
+      const row = inv.rows[0];
+      if (row.external_invoice_id) {
+        return res.status(409).json({ error: "Fakturaen er allerede bokført", externalInvoiceId: row.external_invoice_id });
+      }
+      if (!row.customer_email) {
+        return res.status(400).json({ error: "Kunden mangler e-post — kreves for å opprette faktura i PowerOffice." });
+      }
+
+      // Owner's PowerOffice connection.
+      const intQ = await pool.query(
+        `SELECT client_key, status, default_product_id FROM photographer_integrations
+         WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
+        [session.userId],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (intQ.rows.length === 0) {
+        return res.status(412).json({ error: "PowerOffice er ikke koblet til. Koble regnskap i innstillinger først." });
+      }
+      const { client_key, status: intStatus, default_product_id } = intQ.rows[0];
+      if (intStatus && intStatus !== "active" && intStatus !== "connected") {
+        return res.status(412).json({ error: `PowerOffice-tilkoblingen er ikke aktiv (status=${intStatus}).` });
+      }
+
+      const total = row.total_amount != null ? parseFloat(row.total_amount) : 0;
+      const { createInvoiceViaSalesOrder, PowerOfficeApiError, PowerOfficeAuthError } = await import("./poweroffice.js");
+      try {
+        const result = await createInvoiceViaSalesOrder({
+          clientKey: client_key,
+          cachedProductId: default_product_id ? Number(default_product_id) : null,
+          customer: row.customer_company
+            ? { type: "company", name: row.customer_company, email: row.customer_email, phone: row.customer_phone || null }
+            : { type: "person", name: row.customer_name || "Kunde", email: row.customer_email, phone: row.customer_phone || null },
+          reference: row.invoice_number || row.description || `Faktura ${row.id}`,
+          lines: [{ description: row.description || "Tjeneste", quantity: 1, unitPriceNet: total }],
+          deliveryType: "Auto",
+        });
+        await pool.query(
+          `UPDATE crm_invoices SET external_invoice_id = $2, external_provider = 'poweroffice', external_synced_at = now(), updated_at = now()
+           WHERE id = $1 AND owner_user_id = $3`,
+          [req.params.id, result.salesOrderId, session.userId],
+        );
+        if (result.productJustCreated) {
+          await pool.query(
+            `UPDATE photographer_integrations SET default_product_id = $2, last_used_at = now(), updated_at = now()
+             WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+            [session.userId, result.productId],
+          ).catch(() => {});
+        }
+        return res.json({
+          ok: true,
+          externalInvoiceId: result.salesOrderId,
+          salesOrderNumber: result.salesOrderNumber,
+          sendError: result.sendError || null,
+        });
+      } catch (err: any) {
+        if (err instanceof PowerOfficeAuthError) {
+          await pool.query(
+            `UPDATE photographer_integrations SET status = 'invalid', last_error = $2, updated_at = now()
+             WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+            [session.userId, String(err.message).slice(0, 500)],
+          ).catch(() => {});
+          return res.status(401).json({ error: "PowerOffice-tilkoblingen er ikke gyldig lenger. Koble til på nytt." });
+        }
+        if (err instanceof PowerOfficeApiError) {
+          return res.status(502).json({ error: `PowerOffice-feil: ${String(err.message).slice(0, 300)}` });
+        }
+        throw err;
+      }
+    } catch (error: any) {
+      console.error("CRM invoice book error:", error);
+      return res.status(500).json({ error: error?.message || "Failed to book invoice" });
     }
   });
 

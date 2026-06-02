@@ -1041,6 +1041,28 @@ export default function UniversalCRMDashboard({
     },
   });
 
+  // #27 — book an invoice into PowerOffice (accounting).
+  const bookInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: string) =>
+      apiRequest(`/api/universal-crm/invoices/${encodeURIComponent(invoiceId)}/book`, { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: (r: any) => {
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-invoices'] });
+      toast({
+        title: 'Bokført i PowerOffice',
+        description: r?.sendError ? `Salgsordre opprettet (sending: ${r.sendError})` : `Salgsordre ${r?.salesOrderNumber ?? ''} opprettet`.trim(),
+        variant: 'success',
+      });
+    },
+    onError: (err: any) => {
+      const msg = String(err?.message || '');
+      toast({
+        title: 'Kunne ikke bokføre',
+        description: /412|ikke koblet|ikke aktiv/i.test(msg) ? 'Koble PowerOffice i innstillinger først.' : (msg || 'Prøv igjen.'),
+        variant: 'destructive', duration: 7000,
+      });
+    },
+  });
+
   // #7 — record each scheduled meeting so the agenda has something to list.
   const recordMeetingMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -3236,7 +3258,12 @@ export default function UniversalCRMDashboard({
                         }
                       />
                       <Stack spacing={0.5} alignItems="flex-end">
-                        <Chip label={inv.status} size="small" color={statusColor as any} />
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          {inv.externalInvoiceId && (
+                            <Chip size="small" color="success" variant="outlined" icon={<InvoiceIcon />} label="Bokført" />
+                          )}
+                          <Chip label={inv.status} size="small" color={statusColor as any} />
+                        </Stack>
                         {inv.status !== 'paid' && (
                           <Stack direction="row" spacing={0.5}>
                             {inv.depositAmount > 0 && inv.paidAmount < inv.depositAmount && (
@@ -3248,6 +3275,12 @@ export default function UniversalCRMDashboard({
                               Marker betalt
                             </Button>
                           </Stack>
+                        )}
+                        {/* #27 — book to PowerOffice (accounting). */}
+                        {!inv.externalInvoiceId && (
+                          <Button size="small" variant="text" disabled={bookInvoiceMutation.isPending} onClick={() => bookInvoiceMutation.mutate(inv.id)}>
+                            Bokfør i PowerOffice
+                          </Button>
                         )}
                       </Stack>
                     </ListItem>
