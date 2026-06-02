@@ -184,19 +184,35 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
             </Typography>
           </Box>
           <Stack direction="row" spacing={1.4} alignItems="center">
-            <Button
-              startIcon={<PersonAddOutlinedIcon />}
-              onClick={() => setProposeOpen(true)}
-              disabled={demoMode}
-              sx={{
-                textTransform: 'none', fontWeight: 700, px: 2.4, py: 1.1, borderRadius: radius.sm,
-                background: palette.accentGradient, color: '#fff',
-                '&:hover': { filter: 'brightness(1.08)' },
-                boxShadow: '0 8px 24px rgba(168,85,247,0.28)',
-              }}
-            >
-              Foreslå ny skuespiller
-            </Button>
+            <Tooltip title={demoMode ? 'Ikke tilgjengelig i demo-modus — sender ekte e-post til talenten' : ''} arrow>
+              <span>
+                <Button
+                  startIcon={<PersonAddOutlinedIcon />}
+                  onClick={() => setProposeOpen(true)}
+                  disabled={demoMode}
+                  sx={{
+                    textTransform: 'none', fontWeight: 700, px: 2.4, py: 1.1, borderRadius: radius.sm,
+                    background: palette.accentGradient, color: '#fff',
+                    boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                      boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                    },
+                    // Overstyr MUI sin default disabled-stil (lys grå) — beholder
+                    // gradient men dimmer ned til 50% så det er tydelig at den
+                    // er deaktivert uten å bli blass/usynlig på dark bg.
+                    '&.Mui-disabled': {
+                      background: palette.accentGradient,
+                      color: 'rgba(255,255,255,0.7)',
+                      opacity: 0.45,
+                      boxShadow: 'none',
+                    },
+                  }}
+                >
+                  Foreslå ny skuespiller
+                </Button>
+              </span>
+            </Tooltip>
             <ToggleButtonGroup
               value={showProposals ? 'proposals' : view}
               exclusive
