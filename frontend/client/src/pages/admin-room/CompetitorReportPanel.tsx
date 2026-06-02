@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import GavelIcon from '@mui/icons-material/Gavel';
@@ -292,6 +293,31 @@ export default function CompetitorReportPanel() {
     }
   }, []);
 
+  const [newsletterBusy, setNewsletterBusy] = useState(false);
+  const [newsletterNotice, setNewsletterNotice] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
+
+  const generateNewsletter = useCallback(async () => {
+    if (!reportMeta?.reportId) return;
+    setNewsletterBusy(true); setNewsletterNotice(null);
+    try {
+      const r = await fetch('/api/admin-room/newsletter/role-room/issues/from-report', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandKey: 'theroleroom', reportId: reportMeta.reportId }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || `status ${r.status}`);
+      setNewsletterNotice({
+        kind: 'success',
+        msg: `Weekly Brief-draft opprettet (${d.blockCount} blocks). Åpne Newsletter Studio for å redigere.`,
+      });
+    } catch (err) {
+      setNewsletterNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setNewsletterBusy(false);
+    }
+  }, [reportMeta?.reportId]);
+
   const sortedInsights = report?.insights
     ? [...report.insights].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
     : [];
@@ -341,7 +367,36 @@ export default function CompetitorReportPanel() {
           >
             Cache
           </Button>
+          {reportMeta?.reportId && (
+            <Button
+              startIcon={<MailOutlineIcon />}
+              onClick={() => void generateNewsletter()} disabled={newsletterBusy}
+              data-testid="report-to-newsletter" sx={adminSx.secondaryButton} size="medium"
+            >
+              {newsletterBusy ? 'Lager…' : 'Lag Weekly Brief'}
+            </Button>
+          )}
         </Stack>
+
+        {newsletterNotice && (
+          <Alert
+            severity={newsletterNotice.kind}
+            sx={{ mb: 2 }}
+            onClose={() => setNewsletterNotice(null)}
+            data-testid="newsletter-from-report-notice"
+          >
+            {newsletterNotice.msg}
+            {newsletterNotice.kind === 'success' && (
+              <>
+                {' '}
+                <Box component="a" href="/admin?tab=newsletter-studio"
+                  sx={{ color: adminTokens.primary.textBright, textDecoration: 'underline', fontWeight: 600 }}>
+                  Åpne Newsletter Studio
+                </Box>
+              </>
+            )}
+          </Alert>
+        )}
 
         {error && <Alert severity="error" sx={{ mb: 2 }} data-testid="report-error">{error}</Alert>}
 
