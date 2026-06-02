@@ -87,6 +87,19 @@ export async function mockupRenderVideo(
   });
 }
 
+/**
+ * Lagre et Guided Recorder-scene-opptak til disk. `dataBase64` er rå base64
+ * (uten data:-prefiks). Returnerer absolutt sti til .webm — lagres som
+ * scene.recordingPath og mates senere til mockupRenderVideo.
+ */
+export async function saveDemoRecording(
+  projectId: string,
+  sceneId: string,
+  dataBase64: string,
+): Promise<string> {
+  return invoke<string>("save_demo_recording", { projectId, sceneId, dataBase64 });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }

@@ -19,6 +19,7 @@ import { useMemo, useState } from 'react';
 import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { ExportView } from './ExportView';
+import { useSceneRecorder } from './useSceneRecorder';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -68,6 +69,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [tab, setTab] = useState<'Guide' | 'Script' | 'Notes'>('Guide');
   const [storyMode, setStoryMode] = useState(false);
   const [recording, setRecording] = useState(false);
+  const rec = useSceneRecorder();
   const [urlInput, setUrlInput] = useState('');
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
 
@@ -135,7 +137,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: C.green }}>✓</span> All changes saved</div>
         <button style={recording ? { ...btn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' } : btn}
-          onClick={() => { setRecording(true); setStoryMode(false); startRecorder(); }}>● {recording ? 'Recording' : 'Record'}</button>
+          onClick={async () => {
+            if (recording) return;
+            setStoryMode(false); startRecorder();
+            const ok = await rec.start();
+            if (ok) setRecording(true);
+          }}>● {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}</button>
         <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}>Export <span>⌄</span></button>
       </div>
 
@@ -266,11 +273,33 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <div style={fldLabel}>Required action</div>
                   <div style={{ fontSize: 14, marginBottom: 14 }}>{recorderScene.requiredAction || <em style={{ color: C.inkFaint }}>(ingen)</em>}</div>
                   <span style={{ ...chip, background: SCENE_STATUS_COLORS[recorderScene.status] }}>{SCENE_STATUS_LABELS[recorderScene.status]}</span>
-                  <div style={{ fontSize: 12, color: C.inkSoft, margin: '14px 0' }}>Opptaket venter. Systemet går ikke videre før du bekrefter.</div>
-                  <button style={{ ...primaryBtn, background: C.green, width: '100%', marginBottom: 8 }} onClick={markCurrentDone}>✓ Mark as Done</button>
-                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8 }} onClick={retakeCurrent}>↺ Retake</button>
-                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1} onClick={nextStep}>→ Next Step</button>
-                  <button style={{ ...outlineBtn, width: '100%' }} onClick={() => setRecording(false)}>Avslutt opptak</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: rec.state === 'recording' ? '#ef4444' : C.inkSoft, margin: '14px 0' }}>
+                    {rec.state === 'recording' && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />}
+                    {rec.state === 'recording' ? 'Tar opp denne scenen…' : rec.state === 'saving' ? 'Lagrer opptak…' : 'Opptaket venter. Systemet går ikke videre før du bekrefter.'}
+                  </div>
+                  {rec.error && <div style={{ fontSize: 11.5, color: '#c4453b', marginBottom: 10 }}>{rec.error}</div>}
+                  {recorderScene.recordingPath && <div style={{ fontSize: 11, color: C.green, marginBottom: 10 }}>✓ Opptak lagret</div>}
+                  <button style={{ ...primaryBtn, background: C.green, width: '100%', marginBottom: 8, opacity: rec.state === 'saving' ? 0.6 : 1 }}
+                    disabled={rec.state === 'saving'}
+                    onClick={async () => {
+                      // Stopp + lagre opptak, sett recordingPath, marker done, gå videre + start neste opptak.
+                      if (rec.state === 'recording') {
+                        const path = await rec.stopAndSave(project.id, recorderScene.id);
+                        if (path) updateScene(recorderScene.id, { recordingPath: path });
+                      }
+                      markCurrentDone();
+                      if (recorderStepIndex < scenes.length - 1) {
+                        nextStep();
+                        await rec.start();
+                      } else {
+                        setRecording(false);
+                      }
+                    }}>✓ Mark as Done</button>
+                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8 }}
+                    onClick={async () => { rec.cancel(); retakeCurrent(); await rec.start(); }}>↺ Retake</button>
+                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
+                    onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await rec.start(); }}>→ Next Step</button>
+                  <button style={{ ...outlineBtn, width: '100%' }} onClick={() => { rec.cancel(); setRecording(false); }}>Avslutt opptak</button>
                 </>
               ) : selected ? (
                 <>
