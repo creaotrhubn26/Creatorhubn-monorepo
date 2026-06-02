@@ -462,6 +462,36 @@ function humanizeKey(k: string): string {
 
 // ── Availability-fanen ─────────────────────────────────────────────
 // ── Oversikts-fane (Phase 9.7) ────────────────────────────────────
+// Mini-sparkline (14d trend) — SVG. Tom-state = flat linje.
+function MiniSparkline({ data, color }: { data: Array<{ day: string; n: number }>; color: string }) {
+  if (!data || data.length === 0) {
+    return <Box sx={{ width: 80, height: 24 }} />;
+  }
+  const w = 80;
+  const h = 24;
+  const maxVal = Math.max(1, ...data.map((d) => d.n));
+  const stepX = data.length > 1 ? w / (data.length - 1) : w;
+  const points = data.map((d, i) => {
+    const x = i * stepX;
+    const y = h - (d.n / maxVal) * (h - 2) - 1;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg width={w} height={h} style={{ display: 'block' }}>
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points.join(' ')}
+        opacity="0.75"
+      />
+      <circle cx={(points[points.length - 1] || '0,0').split(',')[0]} cy={(points[points.length - 1] || '0,0').split(',')[1]} r="2" fill={color} />
+    </svg>
+  );
+}
+
 function OverviewTab(props: {
   dashboard: AgencyDashboard | null;
   availability: AvailabilityStatus | null;
@@ -631,6 +661,36 @@ function OverviewTab(props: {
         </Box>
       ) : null}
 
+      {/* Smart-varselbar — invitasjoner som utløper innen 7 dager */}
+      {dashboard.upcoming_expiries && dashboard.upcoming_expiries.length > 0 ? (
+        <Alert
+          severity="warning"
+          icon={<WarningAmberOutlinedIcon />}
+          onClick={() => props.onJumpTab('incoming')}
+          sx={{
+            cursor: 'pointer',
+            '& .MuiAlert-message': { width: '100%' },
+          }}
+        >
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.92rem' }}>
+                {dashboard.upcoming_expiries.length === 1
+                  ? `Prosjekt-invitasjon utløper snart`
+                  : `${dashboard.upcoming_expiries.length} prosjekt-invitasjoner utløper snart`}
+              </Typography>
+              <Typography sx={{ fontSize: '0.82rem', mt: 0.4 }}>
+                {dashboard.upcoming_expiries.slice(0, 2).map((e) => (
+                  `${e.project_name} (om ${e.days_left}d)`
+                )).join(' · ')}
+                {dashboard.upcoming_expiries.length > 2 ? ` +${dashboard.upcoming_expiries.length - 2}` : ''}
+              </Typography>
+            </Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Vis →</Typography>
+          </Stack>
+        </Alert>
+      ) : null}
+
       {/* Partnership-KPI-er — klikkbare hopper til Mine partnerships */}
       <Box>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
@@ -711,19 +771,99 @@ function OverviewTab(props: {
         </Stack>
       </Box>
 
-      {/* Talent-pool */}
-      <Box sx={cardSx}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Box>
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              Byråets talent-pool
-            </Typography>
-            <Typography sx={{ color: palette.textPrimary, fontSize: '1.4rem', fontWeight: 800, mt: 0.4 }}>
-              {dashboard.talent_pool_size} talenter med consent
-            </Typography>
+      {/* Talent-pool + sparklines */}
+      <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+        <Box sx={{ ...cardSx, flex: 1, minWidth: 240 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Byråets talent-pool
+          </Typography>
+          <Typography sx={{ color: palette.textPrimary, fontSize: '1.4rem', fontWeight: 800, mt: 0.4 }}>
+            {dashboard.talent_pool_size} talenter med consent
+          </Typography>
+        </Box>
+        {dashboard.partnerships_sparkline && dashboard.partnerships_sparkline.length > 0 ? (
+          <Box sx={{ ...cardSx, flex: 1, minWidth: 240 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.8 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                Nye partnerships · 14d
+              </Typography>
+              <Typography sx={{ color: palette.textPrimary, fontSize: '1.1rem', fontWeight: 700 }}>
+                {dashboard.partnerships_sparkline.reduce((sum, d) => sum + d.n, 0)}
+              </Typography>
+            </Stack>
+            <MiniSparkline data={dashboard.partnerships_sparkline} color="#34d399" />
           </Box>
-        </Stack>
-      </Box>
+        ) : null}
+        {dashboard.proposals_sparkline && dashboard.proposals_sparkline.length > 0 ? (
+          <Box sx={{ ...cardSx, flex: 1, minWidth: 240 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.8 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                Nye talent-forslag · 14d
+              </Typography>
+              <Typography sx={{ color: palette.textPrimary, fontSize: '1.1rem', fontWeight: 700 }}>
+                {dashboard.proposals_sparkline.reduce((sum, d) => sum + d.n, 0)}
+              </Typography>
+            </Stack>
+            <MiniSparkline data={dashboard.proposals_sparkline} color={palette.accentBright} />
+          </Box>
+        ) : null}
+      </Stack>
+
+      {/* Per-prosjekt-progress for accepted invitasjoner */}
+      {dashboard.active_projects && dashboard.active_projects.length > 0 ? (
+        <Box sx={cardSx}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1.4, letterSpacing: 0.4 }}>
+            Aktive prosjekter — talent-forslag-fremgang
+          </Typography>
+          <Stack spacing={1.4}>
+            {dashboard.active_projects.map((proj) => {
+              const pct = proj.role_count > 0
+                ? Math.min(100, Math.round((proj.proposals_count / proj.role_count) * 100))
+                : 0;
+              return (
+                <Box key={proj.invitation_id}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.6 }}>
+                    <Box>
+                      <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>
+                        {proj.project_name}
+                      </Typography>
+                      <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
+                        {proj.project_type ? `${proj.project_type} · ` : ''}
+                        {proj.role_count > 0
+                          ? `${proj.proposals_count}/${proj.role_count} forslag · ${proj.proposals_accepted} akseptert`
+                          : `${proj.proposals_count} forslag · ${proj.proposals_accepted} akseptert`}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ color: palette.accentBright, fontWeight: 800, fontSize: '0.95rem' }}>
+                      {proj.role_count > 0 ? `${pct}%` : '—'}
+                    </Typography>
+                  </Stack>
+                  {proj.role_count > 0 ? (
+                    <Box
+                      sx={{
+                        height: 6,
+                        bgcolor: 'rgba(168,85,247,0.15)',
+                        borderRadius: 999,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          height: '100%',
+                          width: `${pct}%`,
+                          background: palette.accentGradient,
+                          borderRadius: 999,
+                          transition: 'width 0.4s',
+                        }}
+                      />
+                    </Box>
+                  ) : null}
+                </Box>
+              );
+            })}
+          </Stack>
+        </Box>
+      ) : null}
 
       {/* Siste aktivitet */}
       {dashboard.recent_activity.length > 0 ? (

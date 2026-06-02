@@ -2008,6 +2008,10 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         proposalsAgg,
         candidateAgg,
         recentActivity,
+        partnershipsSparkline,
+        proposalsSparkline,
+        activeProjects,
+        upcomingExpiries,
       ] = await Promise.all([
         pool.query(
           `SELECT
@@ -2066,6 +2070,91 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
             LIMIT 10`,
           [agencyOrgId],
         ),
+        // Phase 9.13 — sparkline: nye partnership-proposals per dag siste 14 dager
+        pool.query(
+          `WITH days AS (
+             SELECT generate_series(
+               (now() AT TIME ZONE 'UTC')::date - interval '13 days',
+               (now() AT TIME ZONE 'UTC')::date,
+               interval '1 day'
+             )::date AS day
+           ),
+           counts AS (
+             SELECT DATE(proposed_at AT TIME ZONE 'UTC') AS day, COUNT(*)::int AS n
+               FROM agency_production_partnerships
+              WHERE agency_org_id = $1::uuid
+                AND proposed_at >= now() - interval '14 days'
+              GROUP BY DATE(proposed_at AT TIME ZONE 'UTC')
+           )
+           SELECT days.day::text, COALESCE(counts.n, 0)::int AS n
+             FROM days LEFT JOIN counts USING (day)
+            ORDER BY days.day`,
+          [agencyOrgId],
+        ),
+        pool.query(
+          `WITH days AS (
+             SELECT generate_series(
+               (now() AT TIME ZONE 'UTC')::date - interval '13 days',
+               (now() AT TIME ZONE 'UTC')::date,
+               interval '1 day'
+             )::date AS day
+           ),
+           counts AS (
+             SELECT DATE(ptp.created_at AT TIME ZONE 'UTC') AS day, COUNT(*)::int AS n
+               FROM partnership_talent_proposals ptp
+               JOIN partnership_project_invitations i ON i.id = ptp.invitation_id
+               JOIN agency_production_partnerships p ON p.id = i.partnership_id
+              WHERE p.agency_org_id = $1::uuid
+                AND ptp.created_at >= now() - interval '14 days'
+              GROUP BY DATE(ptp.created_at AT TIME ZONE 'UTC')
+           )
+           SELECT days.day::text, COALESCE(counts.n, 0)::int AS n
+             FROM days LEFT JOIN counts USING (day)
+            ORDER BY days.day`,
+          [agencyOrgId],
+        ),
+        // Per-prosjekt progress for accepted prosjekt-invitasjoner
+        pool.query(
+          `SELECT
+             i.id::text AS invitation_id,
+             i.casting_project_id,
+             proj.name AS project_name,
+             proj.project_type,
+             proj.end_date::text,
+             i.expires_at::text,
+             COALESCE(jsonb_array_length(i.role_ids), 0) AS role_count,
+             (SELECT COUNT(*)::int FROM partnership_talent_proposals ptp
+               WHERE ptp.invitation_id = i.id) AS proposals_count,
+             (SELECT COUNT(*)::int FROM partnership_talent_proposals ptp
+               WHERE ptp.invitation_id = i.id AND ptp.status = 'accepted') AS proposals_accepted
+            FROM partnership_project_invitations i
+            JOIN agency_production_partnerships p ON p.id = i.partnership_id
+            JOIN casting_projects proj ON proj.id = i.casting_project_id
+           WHERE p.agency_org_id = $1::uuid
+             AND i.status = 'accepted'
+           ORDER BY i.invited_at DESC
+           LIMIT 8`,
+          [agencyOrgId],
+        ),
+        // Smart-varselbar: invitasjoner som utløper innen 7 dager
+        pool.query(
+          `SELECT
+             i.id::text AS invitation_id,
+             proj.name AS project_name,
+             i.expires_at::text,
+             EXTRACT(EPOCH FROM (i.expires_at - now())) / 86400 AS days_left
+            FROM partnership_project_invitations i
+            JOIN agency_production_partnerships p ON p.id = i.partnership_id
+            JOIN casting_projects proj ON proj.id = i.casting_project_id
+           WHERE p.agency_org_id = $1::uuid
+             AND i.status IN ('pending', 'accepted')
+             AND i.expires_at IS NOT NULL
+             AND i.expires_at > now()
+             AND i.expires_at < now() + interval '7 days'
+           ORDER BY i.expires_at ASC
+           LIMIT 5`,
+          [agencyOrgId],
+        ),
       ]);
 
       const p = partnershipsAgg.rows[0] || {};
@@ -2101,6 +2190,14 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         },
         talent_pool_size: tp.talent_pool_size ?? 0,
         recent_activity: recentActivity.rows,
+        // Phase 9.13 — sparklines + per-prosjekt-progress + smart-varselbar
+        partnerships_sparkline: partnershipsSparkline.rows,
+        proposals_sparkline: proposalsSparkline.rows,
+        active_projects: activeProjects.rows,
+        upcoming_expiries: upcomingExpiries.rows.map((r) => ({
+          ...r,
+          days_left: Math.max(0, Math.ceil(Number(r.days_left ?? 0))),
+        })),
       });
     } catch (err) {
       console.error("[partnerships/dashboard/agency] failed", err);
