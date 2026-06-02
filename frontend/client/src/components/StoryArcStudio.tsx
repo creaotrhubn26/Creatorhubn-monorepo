@@ -2752,7 +2752,14 @@ export default function StoryArcStudio({
       }
     })();
     return () => { aborted = true; };
-  }, [storyArcId, storyArc?.id, projectContext, hydrateClipSources, extractRenderableVideoSources]);
+    // hydrateClipSources + extractRenderableVideoSources er bevisst UTELATT
+    // fra deps. De avhenger av availableVideoSources/sourceFileRegistry-state,
+    // og effekten kaller selv setAvailableVideoSources — å inkludere dem
+    // skaper en uendelig fetch-loop (observert ~1400 req/sek). Effekten
+    // skal kun fyre når selve story-arc-IDen eller prosjekt-konteksten
+    // endrer seg.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storyArcId, storyArc?.id, projectContext?.projectId, projectContext?.projectName]);
 
   // Autosave editor state (debounced) with Drive fallback
   const lastPrimaryUploadRef = useRef<number>(0);
