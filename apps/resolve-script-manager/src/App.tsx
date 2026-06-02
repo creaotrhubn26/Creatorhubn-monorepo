@@ -58,6 +58,7 @@ import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
 import { FireflyPromptDialog } from "./components/FireflyPromptDialog";
+import { PhotoshopWorkspaceDialog } from "./components/PhotoshopWorkspaceDialog";
 import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
 import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
 import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
@@ -163,6 +164,7 @@ export default function App() {
   const [showWatch, setShowWatch] = useState(false);
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
   const [showFireflyPrompt, setShowFireflyPrompt] = useState(false);
+  const [showPhotoshopWorkspace, setShowPhotoshopWorkspace] = useState(false);
   const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
   const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   const [showPsdGallery, setShowPsdGallery] = useState(false);
@@ -697,6 +699,7 @@ export default function App() {
         onOpenWatch={() => setShowWatch(true)}
         onOpenPhotoshopBridge={() => setShowPhotoshopBridge(true)}
         onOpenFireflyPrompt={() => setShowFireflyPrompt(true)}
+        onOpenPhotoshopWorkspace={() => setShowPhotoshopWorkspace(true)}
         onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
         onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
         onOpenPsdGallery={() => setShowPsdGallery(true)}
@@ -1028,6 +1031,15 @@ export default function App() {
           // Lagre i clipboard som default action — parent kan plugge inn
           // egen handler senere når gen.fill-panel er bygd.
           void navigator.clipboard?.writeText(prompt);
+        }}
+      />
+
+      <PhotoshopWorkspaceDialog
+        open={showPhotoshopWorkspace}
+        onClose={() => setShowPhotoshopWorkspace(false)}
+        onOpenFireflyPrompt={() => {
+          setShowPhotoshopWorkspace(false);
+          setShowFireflyPrompt(true);
         }}
       />
       {showPhotoshopTemplates && (
