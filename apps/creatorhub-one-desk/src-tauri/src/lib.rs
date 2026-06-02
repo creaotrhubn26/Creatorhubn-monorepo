@@ -101,6 +101,94 @@ fn rescan_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
     mount_watcher::rescan(&state)
 }
 
+/// macOS-native notification via osascript. Lar oss vise "Backup
+/// ferdig — 5430 filer kopiert" i Notification Center når en
+/// session-completed-event fyrer (kalt fra frontend så vi har
+/// kontekst om hvilken sesjon som ble ferdig).
+///
+/// Bruker AppleScript i stedet for et eget Tauri-plugin for å unngå
+/// både npm + Cargo dep + capability-konfig.
+///
+/// Validerer streng-input for å hindre AppleScript-injection:
+/// double-quotes og backslashes escapes før innfletting.
+#[tauri::command]
+async fn macos_notification(title: String, body: String) -> Result<(), String> {
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        "display notification \"{}\" with title \"{}\" sound name \"Glass\"",
+        esc(&body),
+        esc(&title)
+    );
+    let output = tokio::process::Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+        .await
+        .map_err(|e| format!("osascript: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "osascript feilet (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr
+        ));
+    }
+    Ok(())
+}
+
+/// Pre-flight kapasitets-sjekk: gitt en liste av destinasjons-paths og
+/// hvor mange bytes vi skal skrive til HVER av dem, returner status per
+/// dest. Brukes av BackupDialog FØR start_copy_session for å gi Fredrik
+/// proaktiv advarsel ("Disk B har bare 12 GB, du trenger 50 GB").
+///
+/// Hver bytes_needed-element matcher dest_paths-indeksen.
+#[derive(serde::Serialize)]
+struct DestCapacity {
+    path: String,
+    total_bytes: Option<u64>,
+    free_bytes: Option<u64>,
+    needed_bytes: u64,
+    sufficient: bool,
+    /// Anbefalt margin: 95% av free_bytes som "trygt brukbart" pga
+    /// FS-overhead + sektor-rounding. Hvis needed > 0.95 * free, viser
+    /// vi advarsel selv om teknisk plass finnes.
+    safe_margin: bool,
+}
+
+#[tauri::command]
+fn check_destinations_capacity(
+    dest_paths: Vec<String>,
+    bytes_needed: u64,
+) -> Vec<DestCapacity> {
+    dest_paths
+        .into_iter()
+        .map(|path| {
+            let stats = mount_watcher::capacity_for_path(std::path::Path::new(&path));
+            let (total, free) = match stats {
+                Some((t, f)) => (Some(t), Some(f)),
+                None => (None, None),
+            };
+            let sufficient = match free {
+                Some(f) => f >= bytes_needed,
+                None => true, // Kan ikke stat'es — anta OK, la copy-engine
+                              // fange det hvis det faktisk feiler
+            };
+            let safe_margin = match free {
+                Some(f) => (bytes_needed as f64) <= (f as f64) * 0.95,
+                None => true,
+            };
+            DestCapacity {
+                path,
+                total_bytes: total,
+                free_bytes: free,
+                needed_bytes: bytes_needed,
+                sufficient,
+                safe_margin,
+            }
+        })
+        .collect()
+}
+
 #[tauri::command]
 async fn start_copy_session(
     app: tauri::AppHandle,
@@ -309,6 +397,8 @@ pub fn run() {
             fetch_project_info,
             list_detected_mounts,
             rescan_mounts,
+            check_destinations_capacity,
+            macos_notification,
             start_copy_session,
             cancel_copy_session,
             list_copy_sessions,

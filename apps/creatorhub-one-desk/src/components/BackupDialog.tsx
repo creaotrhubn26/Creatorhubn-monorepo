@@ -22,11 +22,21 @@ import {
 import Add from "@mui/icons-material/Add";
 import Delete from "@mui/icons-material/Delete";
 import {
+  checkDestinationsCapacity,
+  DestCapacity,
   DestinationSpec,
   DetectedMount,
   DitDestination,
   startCopySession,
 } from "../api";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 ** 4) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  return `${(bytes / 1024 / 1024 / 1024 / 1024).toFixed(2)} TB`;
+}
 
 interface Props {
   open: boolean;
@@ -54,6 +64,8 @@ export default function BackupDialog({
   const [checkedPlanned, setCheckedPlanned] = useState<Set<string>>(new Set());
   const [localDests, setLocalDests] = useState<PendingLocalDest[]>([]);
   const [starting, setStarting] = useState(false);
+  const [capacityWarnings, setCapacityWarnings] = useState<DestCapacity[]>([]);
+  const [checkingCapacity, setCheckingCapacity] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Pre-velg alle planlagte destinasjoner med en path satt (in-place "original"
@@ -128,8 +140,50 @@ export default function BackupDialog({
     return [...planned, ...local];
   }, [plannedDestinations, checkedPlanned, localDests]);
 
+  // Capacity pre-flight: kjøres når destinasjonsutvalget endrer seg.
+  // Sjekker hver dest mot mount's bytes-størrelse + sammenligner med
+  // free space. Resultater vises som inline-Alert nederst i dialogen.
+  // Debounce-merknad: useEffect-trigger reagerer på finalSpecs-endring
+  // som er stabil via useMemo så vi får ikke for mange kall.
+  const sourceBytes = mount ? (mount.photo_bytes ?? 0) + (mount.video_bytes ?? 0) : 0;
+  useEffect(() => {
+    if (!mount || finalSpecs.length === 0 || sourceBytes === 0) {
+      setCapacityWarnings([]);
+      return;
+    }
+    let cancelled = false;
+    setCheckingCapacity(true);
+    void checkDestinationsCapacity(
+      finalSpecs.map((d) => d.path),
+      sourceBytes,
+    )
+      .then((results) => {
+        if (cancelled) return;
+        // Vis bare oppføringer der det er et reelt problem (insufficient
+        // eller utenfor safe margin). Disker med rikelig plass blir
+        // stille — Fredrik trenger ikke se "alt OK"-spam.
+        const problematic = results.filter((r) => !r.sufficient || !r.safe_margin);
+        setCapacityWarnings(problematic);
+      })
+      .catch(() => {
+        if (!cancelled) setCapacityWarnings([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingCapacity(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [finalSpecs, mount, sourceBytes]);
+
+  // Block start hvis NOEN dest er hard-insufficient (less plass enn
+  // trengs). Soft-margin warnings er bare info — Fredrik kan starte
+  // likevel (PR #126 deaktiverer disken automatisk ved ENOSPC).
+  const hasHardCapacityBlocker = capacityWarnings.some((c) => !c.sufficient);
+
   const handleStart = async () => {
     if (!mount || finalSpecs.length === 0) return;
+    if (hasHardCapacityBlocker) return;
     setStarting(true);
     setError(null);
     try {
@@ -260,6 +314,29 @@ export default function BackupDialog({
             )}
           </Box>
 
+          {/* Capacity pre-flight: synlig før Fredrik trykker start.
+              Hard-insufficient → error-Alert + start-knapp disabled.
+              Innenfor 5%-margin → warning-Alert (kan starte, men risikabelt). */}
+          {capacityWarnings.length > 0 && !checkingCapacity && (
+            <Alert
+              severity={hasHardCapacityBlocker ? "error" : "warning"}
+              sx={{ mt: 1 }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                {hasHardCapacityBlocker
+                  ? "Ikke nok plass på alle destinasjoner"
+                  : "Lite plass på noen destinasjoner"}
+              </Typography>
+              {capacityWarnings.map((c) => (
+                <Typography key={c.path} variant="caption" sx={{ display: "block" }}>
+                  {c.path}: trenger {formatBytes(c.needed_bytes)}, har{" "}
+                  {c.free_bytes != null ? formatBytes(c.free_bytes) : "ukjent"} ledig
+                  {!c.sufficient && " — for lite!"}
+                </Typography>
+              ))}
+            </Alert>
+          )}
+
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
@@ -270,11 +347,18 @@ export default function BackupDialog({
         <Button
           variant="contained"
           onClick={handleStart}
-          disabled={starting || finalSpecs.length === 0 || !mount}
+          disabled={
+            starting ||
+            finalSpecs.length === 0 ||
+            !mount ||
+            hasHardCapacityBlocker
+          }
         >
           {starting
             ? "Starter…"
-            : `Start backup (${finalSpecs.length} destinasjoner)`}
+            : hasHardCapacityBlocker
+              ? "Ikke nok plass"
+              : `Start backup (${finalSpecs.length} destinasjoner)`}
         </Button>
       </DialogActions>
     </Dialog>

@@ -24,6 +24,7 @@ import {
   CopySessionCompletedEvent,
   CopySessionStartedEvent,
   listCopySessions,
+  macosNotification,
   SessionStatus,
 } from "../api";
 import { bytesToHumanGb } from "../utils/capacity";
@@ -120,8 +121,23 @@ export default function CopyProgressView() {
       void listCopySessions().then(setSessions);
     }).then((un) => unlisteners.push(un));
 
-    listen<CopySessionCompletedEvent>("copy-session-completed", () => {
+    listen<CopySessionCompletedEvent>("copy-session-completed", (e) => {
       void listCopySessions().then(setSessions);
+      // macOS Notification Center: vis ferdig-melding så Fredrik vet
+      // når backup er klar uten å åpne hovedvinduet. Bare ved success-
+      // tilfeller (ikke cancelled, ikke 0 lyktes) — feil får ikke
+      // notification fordi Fredrik bør se on-screen-alert.
+      const { succeeded, failed, cancelled } = e.payload;
+      if (cancelled || succeeded === 0) return;
+      const title = failed > 0
+        ? "Backup ferdig med advarsler"
+        : "Backup ferdig";
+      const body = failed > 0
+        ? `${succeeded} filer kopiert, ${failed} feilet`
+        : `${succeeded} filer kopiert`;
+      void macosNotification(title, body).catch(() => {
+        // osascript ikke tilgjengelig (web preview/non-Mac) — ikke kritisk
+      });
     }).then((un) => unlisteners.push(un));
 
     return () => {

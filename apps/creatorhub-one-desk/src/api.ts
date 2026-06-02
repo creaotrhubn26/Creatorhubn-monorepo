@@ -100,6 +100,34 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+/// Pre-flight kapasitets-sjekk: sjekk om dest-paths har nok ledig
+/// plass for bytesNeeded (samme tall for hver dest). Brukes av
+/// BackupDialog FØR start.
+export interface DestCapacity {
+  path: string;
+  total_bytes: number | null;
+  free_bytes: number | null;
+  needed_bytes: number;
+  sufficient: boolean;
+  safe_margin: boolean;
+}
+
+export async function checkDestinationsCapacity(
+  destPaths: string[],
+  bytesNeeded: number,
+): Promise<DestCapacity[]> {
+  return invoke<DestCapacity[]>("check_destinations_capacity", {
+    destPaths,
+    bytesNeeded,
+  });
+}
+
+/// macOS-native notification via osascript. Brukes av CopyProgressView
+/// for å vise "Backup ferdig"-notification i Notification Center.
+export async function macosNotification(title: string, body: string): Promise<void> {
+  return invoke<void>("macos_notification", { title, body });
+}
+
 export interface DestinationSpec {
   id: string;
   label: string;
