@@ -41,6 +41,44 @@ const kr = (value: number): string =>
 
 const accent = '#34d399';
 
+// Standard bransje-satser (NOK) brukt som forslag der produsenten ikke har satt
+// egen pris. Delt mellom kortet og budsjettpakke-beregningen (én kilde).
+export const BUDGET_DEFAULTS = { perShootDay: 25000, perLocation: 5000 };
+
+export interface BudgetEstimateLine {
+  key: 'day' | 'location' | 'other';
+  label: string;
+  count: number;
+  rate: number;
+  subtotal: number;
+  isDefault: boolean;
+}
+export interface BudgetEstimateResult { total: number; lines: BudgetEstimateLine[] }
+
+/**
+ * Ren beregning av det enkle budsjett-overslaget fra PERSISTERTE satser +
+ * drivere (opptaksdager, lokasjoner). Bruker standard-satser der pris mangler.
+ * Brukes både til å sende budsjettpakken til klient og (via kortet) live.
+ */
+export function computeSimpleBudgetEstimate(
+  rates: BudgetRates | undefined,
+  shootDays: number,
+  locations: number,
+): BudgetEstimateResult {
+  const r = rates ?? {};
+  const dayDefault = !(r.perShootDay && r.perShootDay > 0);
+  const locDefault = !(r.perLocation && r.perLocation > 0);
+  const dayRate = dayDefault ? BUDGET_DEFAULTS.perShootDay : (r.perShootDay as number);
+  const locRate = locDefault ? BUDGET_DEFAULTS.perLocation : (r.perLocation as number);
+  const other = r.otherFixed && r.otherFixed > 0 ? r.otherFixed : 0;
+  const lines: BudgetEstimateLine[] = [
+    { key: 'day', label: 'Opptaksdager', count: shootDays, rate: dayRate, subtotal: shootDays * dayRate, isDefault: dayDefault },
+    { key: 'location', label: 'Lokasjoner', count: locations, rate: locRate, subtotal: locations * locRate, isDefault: locDefault },
+    { key: 'other', label: 'Andre faste kostnader', count: 1, rate: other, subtotal: other, isDefault: false },
+  ];
+  return { total: lines.reduce((sum, l) => sum + l.subtotal, 0), lines };
+}
+
 export function SimpleBudgetEstimator({
   shootDays,
   locations,
@@ -68,9 +106,9 @@ export function SimpleBudgetEstimator({
     return Number.isFinite(n) && n > 0 ? n : 0;
   };
 
-  // Standard bransje-satser (NOK) brukt som forslag der produsenten ikke har
-  // satt egen pris. Tydelig merket «standard» i UI — ikke en påstand om sannhet.
-  const DEFAULTS = { perShootDay: 25000, perLocation: 5000 };
+  // Standard bransje-satser (delt kilde) brukt som forslag der produsenten ikke
+  // har satt egen pris. Tydelig merket «standard» i UI — ikke en påstand om sannhet.
+  const DEFAULTS = BUDGET_DEFAULTS;
 
   const dayEntered = num(perDay);
   const locationEntered = num(perLocation);
