@@ -17,6 +17,7 @@ export const danceFlowColors = {
   bgPanel: '#0f1318', //  22× — paneler, sidebar-kort, modaler
   bgInset: '#0d1218', //   1× — innfelte felt (textareas, inputs)
   bgRaised: '#11151c', //  1× — løftede knapper/chips over panel
+  bgCard: '#111114', //    6× — card-bakgrunn (Billing/Video/Entity-paneler — historisk alias 'CARD')
 
   // Borders & dividers
   borderStrong: '#1e2536', // 60× — primær panelbord/divider

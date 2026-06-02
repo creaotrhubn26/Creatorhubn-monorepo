@@ -155,7 +155,7 @@ interface PlaceholderProps {
 
 const ComingSoonCard: React.FC<PlaceholderProps> = ({ title, body, feature }) => (
   <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
-    <Card sx={{ maxWidth: 720, mx: 'auto', bgcolor: '#111114', border: '1px solid rgba(139,92,246,0.25)', color: danceFlowColors.textSecondary }}>
+    <Card sx={{ maxWidth: 720, mx: 'auto', bgcolor: danceFlowColors.bgCard, border: '1px solid rgba(139,92,246,0.25)', color: danceFlowColors.textSecondary }}>
       <CardContent>
         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
           <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.18)', color: danceFlowColors.lavender, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
