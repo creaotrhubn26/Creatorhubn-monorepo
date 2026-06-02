@@ -63,6 +63,210 @@ async function ensureSchema(pool: any): Promise<void> {
   ).catch(() => undefined);
 }
 
+/**
+ * Push en wedding_invoice som SalesOrder i PowerOffice Go.
+ *
+ * Returnerer:
+ *   { ok: true, salesOrderId, salesOrderNumber, sendError? }
+ *   { ok: false, status, error, message, detail? }
+ *
+ * sendError er ikke-fatalt: salgsordren ER opprettet i PO, bare send-
+ * stegen ble blokkert (typisk demo-tier). Caller skal lagre PO-id likevel.
+ *
+ * NB: Linjer med mvaApplicable=false (kjøring/bom) markeres med [MVA-fri]
+ * i beskrivelsen — vårt standard-produkt (CHUB-FOTO, konto 3000) gir 25%
+ * MVA på alle linjer. Fotograf justerer kjøring/bom-linjenes konto til
+ * 3100 i PO Go-draftet før send.
+ */
+async function pushWeddingInvoiceToPowerOffice(
+  pool: any,
+  input: {
+    weddingId: string;
+    invoiceId: string;
+    photographerId: string;
+    customerEmailOverride: string | null;
+  },
+): Promise<
+  | {
+      ok: true;
+      salesOrderId: string;
+      salesOrderNumber: number | null;
+      sendError: { status: number; detail?: unknown } | null;
+    }
+  | { ok: false; status: number; error: string; message: string; detail?: unknown }
+> {
+  const intQ = await pool.query(
+    `SELECT client_key, status, default_product_id FROM photographer_integrations
+      WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
+    [input.photographerId],
+  );
+  if (intQ.rowCount === 0) {
+    return {
+      ok: false,
+      status: 412,
+      error: "poweroffice_not_connected",
+      message: "Koble til PowerOffice først via /photographer/settings/integrations.",
+    };
+  }
+  const { client_key, status: intStatus, default_product_id } = intQ.rows[0];
+  if (intStatus !== "active") {
+    return { ok: false, status: 412, error: "integration_not_active", message: `status=${intStatus}` };
+  }
+
+  const invQ = await pool.query(
+    `SELECT id, lines, total_kr, poweroffice_invoice_id
+       FROM wedding_invoices
+      WHERE id = $1 AND wedding_id = $2 AND photographer_id = $3 LIMIT 1`,
+    [input.invoiceId, input.weddingId, input.photographerId],
+  );
+  if (invQ.rowCount === 0) {
+    return { ok: false, status: 404, error: "invoice_not_found", message: "Faktura finnes ikke" };
+  }
+  const invoice = invQ.rows[0];
+
+  // Idempotens: hvis allerede pushet, returner samme id.
+  if (invoice.poweroffice_invoice_id) {
+    return {
+      ok: true,
+      salesOrderId: invoice.poweroffice_invoice_id,
+      salesOrderNumber: null,
+      sendError: null,
+    };
+  }
+
+  const lines: InvoiceLine[] = Array.isArray(invoice.lines) ? invoice.lines : [];
+  if (lines.length === 0) {
+    return { ok: false, status: 400, error: "invoice_empty", message: "Fakturaen har ingen linjer." };
+  }
+
+  const wdQ = await pool.query(
+    `SELECT partner_one_name, partner_two_name,
+            partner_one_email, partner_two_email,
+            partner_one_phone, partner_two_phone
+       FROM wedding_details
+      WHERE timeline_id = $1 LIMIT 1`,
+    [input.weddingId],
+  );
+  const wd = wdQ.rows[0] ?? {};
+  const wtQ = await pool.query(
+    `SELECT couple_name, wedding_date FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+    [input.weddingId],
+  );
+  const wt = wtQ.rows[0] ?? {};
+
+  const customerEmail =
+    input.customerEmailOverride
+    ?? wd.partner_one_email
+    ?? wd.partner_two_email
+    ?? null;
+  if (!customerEmail) {
+    return {
+      ok: false,
+      status: 400,
+      error: "customer_email_required",
+      message:
+        "Brudepar mangler e-post i wedding_details (partner_one_email / partner_two_email). "
+        + "Legg til via wedding-detail-skjemaet eller send customerEmail i request-body.",
+    };
+  }
+
+  const customerName =
+    [wd.partner_one_name, wd.partner_two_name].filter(Boolean).join(" og ")
+    || wt.couple_name
+    || "Brudepar";
+
+  const poLines = lines.map((l) => ({
+    description: (l.mvaApplicable === false ? "[MVA-fri] " : "") + l.description,
+    quantity: Number(l.quantity) || 1,
+    unitPriceNet: Number(l.unitPriceKr),
+  }));
+
+  const reference =
+    `Bryllup ${wt.couple_name || customerName}`
+    + (wt.wedding_date ? ` ${new Date(wt.wedding_date).toISOString().slice(0, 10)}` : "");
+
+  try {
+    const { createInvoiceViaSalesOrder, PowerOfficeApiError, PowerOfficeAuthError } = await import(
+      "./poweroffice.js"
+    );
+    try {
+      const result = await createInvoiceViaSalesOrder({
+        clientKey: client_key,
+        cachedProductId: default_product_id ? Number(default_product_id) : null,
+        customer: {
+          type: "person",
+          name: customerName,
+          email: customerEmail,
+          phone: wd.partner_one_phone ?? wd.partner_two_phone ?? null,
+        },
+        reference,
+        lines: poLines,
+        deliveryType: "Auto",
+      });
+
+      if (result.productJustCreated) {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET default_product_id = $2,
+                  default_product_synced_at = NOW(),
+                  last_used_at = NOW(),
+                  updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [input.photographerId, result.productId],
+        );
+      } else {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET last_used_at = NOW(), updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [input.photographerId],
+        );
+      }
+
+      return {
+        ok: true,
+        salesOrderId: result.salesOrderId,
+        salesOrderNumber: result.salesOrderNumber,
+        sendError: result.sendError,
+      };
+    } catch (err: unknown) {
+      if (err instanceof PowerOfficeAuthError) {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET status = 'invalid', last_error = $2, updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [input.photographerId, err.message.slice(0, 500)],
+        );
+        return {
+          ok: false,
+          status: 401,
+          error: "poweroffice_auth_failed",
+          message: "PowerOffice-tilkoblingen er ikke gyldig lenger. Reconnect via innstillinger.",
+        };
+      }
+      if (err instanceof PowerOfficeApiError) {
+        await pool.query(
+          `UPDATE photographer_integrations
+              SET last_error = $2, updated_at = NOW()
+            WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+          [input.photographerId, `${err.status}: ${err.message}`.slice(0, 500)],
+        );
+        return {
+          ok: false,
+          status: 502,
+          error: "poweroffice_api_failed",
+          message: err.message,
+          detail: err.body,
+        };
+      }
+      throw err;
+    }
+  } catch (err) {
+    console.error("[poweroffice/wedding] push failed:", err);
+    return { ok: false, status: 500, error: "internal_error", message: String(err) };
+  }
+}
+
 async function aggregateInvoice(pool: any, weddingId: string, photographerId: string) {
   // 1. Honorar + overtid fra wedding_timelines
   const wt = await pool.query(
@@ -259,12 +463,63 @@ export function setupWeddingInvoiceRoutes(deps: WeddingInvoiceRoutesDeps): void 
   });
 
   // ─── POST /api/wedding/:weddingId/invoice/:invoiceId/mark-sent ──
+  //
+  // Når channel='poweroffice' pushes fakturaen som SalesOrder i PO Go
+  // (kaller pushWeddingInvoiceToPowerOffice). Andre kanaler oppdaterer
+  // kun lokal status. Tilleggsparameter `customerEmail` i body overstyrer
+  // brudepar-epost-oppslaget fra wedding_details.
   app.post("/api/wedding/:weddingId/invoice/:invoiceId/mark-sent", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     try {
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
       const channel = String(req.body?.channel || "email");
+      const customerEmailOverride: string | null =
+        typeof req.body?.customerEmail === "string" && req.body.customerEmail.trim()
+          ? req.body.customerEmail.trim()
+          : null;
+
+      if (channel === "poweroffice") {
+        const poResult = await pushWeddingInvoiceToPowerOffice(pool, {
+          weddingId: req.params.weddingId,
+          invoiceId: req.params.invoiceId,
+          photographerId: uid,
+          customerEmailOverride,
+        });
+        if (!poResult.ok) {
+          return res.status(poResult.status).json({
+            error: poResult.error,
+            message: poResult.message,
+            detail: poResult.detail,
+          });
+        }
+        const noteFromSendError = poResult.sendError
+          ? `PO send blokkert (${poResult.sendError.status}): send manuelt fra PO Go → Salg → Salgsordre`
+          : "";
+        const r = await pool.query(
+          `UPDATE wedding_invoices
+             SET status = 'sent',
+                 delivery_channel = 'poweroffice',
+                 poweroffice_invoice_id = $1,
+                 sent_at = NOW(),
+                 updated_at = NOW(),
+                 notes = CASE
+                   WHEN $5::text = '' THEN notes
+                   ELSE COALESCE(notes, '') || E'\\n' || $5::text
+                 END
+             WHERE id = $2 AND wedding_id = $3 AND photographer_id = $4
+           RETURNING *`,
+          [poResult.salesOrderId, req.params.invoiceId, req.params.weddingId, uid, noteFromSendError],
+        );
+        if (r.rowCount === 0) return res.status(404).json({ error: "Faktura finnes ikke" });
+        return res.json({
+          invoice: r.rows[0],
+          salesOrderId: poResult.salesOrderId,
+          salesOrderNumber: poResult.salesOrderNumber,
+          sendError: poResult.sendError,
+        });
+      }
+
       const r = await pool.query(
         `UPDATE wedding_invoices
            SET status = 'sent', delivery_channel = $1, sent_at = NOW(), updated_at = NOW()
