@@ -99,15 +99,18 @@ export default function AnnotationExportOverlay({
     return () => window.removeEventListener('afterprint', afterPrint);
   }, [open]);
 
-  if (!open) return null;
-
-  const dancerLabel = (id: string): string =>
-    dancerOptions.find((d) => d.id === id)?.label ?? id;
-
+  // 🚨 React rules-of-hooks: useMemo MÅ deklareres FØR early-return på `!open`.
+  // Tidligere lå den etter — render 1 (closed): 1 hook → return null,
+  // render 2 (open): 1 hook + 1 useMemo → "Rendered more hooks". Flyttet opp.
   const sorted = React.useMemo(
     () => [...annotations].sort((a, b) => a.timestampSec - b.timestampSec),
     [annotations],
   );
+
+  if (!open) return null;
+
+  const dancerLabel = (id: string): string =>
+    dancerOptions.find((d) => d.id === id)?.label ?? id;
 
   const now = new Date();
   const totalDuration = sorted.reduce(
