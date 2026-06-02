@@ -156,10 +156,10 @@ export default function AnnotateCategoryDialog({
             label="Navn"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            data-testid="annotate-category-dialog-name"
             placeholder="F.eks. Floor work"
             autoFocus
-            inputProps={{ maxLength: 80 }}
+            // testid på input slik at Playwright `.fill()` virker direkte
+            inputProps={{ maxLength: 80, 'data-testid': 'annotate-category-dialog-name' }}
           />
 
           <Box>
