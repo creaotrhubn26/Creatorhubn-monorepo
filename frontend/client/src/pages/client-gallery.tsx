@@ -63,6 +63,7 @@ import {
   Search,
   AccessTime,
   GridView,
+  PlayArrow,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useClientSession } from '@/contexts/ClientSessionContext';
@@ -2207,7 +2208,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
       <GallerySelectionSubmitDialog
         open={showSubmitDialog}
         onClose={() => setShowSubmitDialog(false)}
-        accessToken={accessToken}
+        accessToken={accessToken ?? ''}
         galleryPassword={galleryPassword}
         clientEmail={gallery?.clientEmail || ''}
         clientName={gallery?.clientName || null}
@@ -2289,7 +2290,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
         <PrintOrderDialog
           open={!!printOrderImage}
           onClose={() => setPrintOrderImage(null)}
-          accessToken={accessToken}
+          accessToken={accessToken ?? ''}
           galleryPassword={galleryPassword}
           imageId={printOrderImage.id}
           imageThumbnail={printOrderImage.thumbnailUrl || printOrderImage.fullSizeUrl || null}

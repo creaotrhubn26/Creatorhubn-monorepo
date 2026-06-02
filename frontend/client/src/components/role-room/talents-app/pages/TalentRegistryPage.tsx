@@ -287,7 +287,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               value={filters.sort ?? 'recent'}
               size="small"
               onChange={(e) => setFilters({ ...filters, sort: e.target.value as TalentSearchFilters['sort'] })}
-              sx={{ color: palette.textPrimary, fontSize: '0.85rem', minWidth: 160, bgcolor: palette.bgCard, ...fieldSx['& .MuiOutlinedInput-root'] }}
+              sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', minWidth: 160, bgcolor: palette.bgCard }}
             >
               <MenuItem value="recent">Nylig aktive</MenuItem>
               <MenuItem value="available_first">Tilgjengelig først</MenuItem>
@@ -510,7 +510,7 @@ function FilterField({ label, value, onChange, options, placeholder, optionsLabe
         displayEmpty
         onChange={(e) => onChange(e.target.value)}
         renderValue={(v) => (v ? (optionsLabel?.[v] ?? v) : (placeholder || 'Alle'))}
-        sx={{ color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm, ...fieldSx['& .MuiOutlinedInput-root'] }}
+        sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm }}
       >
         {options.map((opt) => (
           <MenuItem key={opt || '__empty__'} value={opt}>
@@ -537,7 +537,7 @@ function PlayingAgeField({ filters, onChange }: { filters: TalentSearchFilters; 
           const [lo, hi] = v.split('–').map((x) => parseInt(x, 10));
           onChange({ age_min: lo || undefined, age_max: hi || undefined });
         }}
-        sx={{ color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm, ...fieldSx['& .MuiOutlinedInput-root'] }}
+        sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm }}
       >
         <MenuItem value="18–60+">18–60+</MenuItem>
         <MenuItem value="16–25">16–25</MenuItem>
@@ -566,7 +566,7 @@ function MultiField({ label, values, options, onChange }: { label: string; value
           return `${s.length} valgt`;
         }}
         onChange={(e) => onChange(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-        sx={{ color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm, ...fieldSx['& .MuiOutlinedInput-root'] }}
+        sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm }}
       >
         {options.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
       </Select>
