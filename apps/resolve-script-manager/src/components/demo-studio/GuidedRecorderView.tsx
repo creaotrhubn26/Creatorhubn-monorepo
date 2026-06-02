@@ -1,0 +1,273 @@
+/**
+ * GuidedRecorderView — piksel-matchet Guided Recorder (fasit: Daniels mockup
+ * + spec §2.4/§3.4). Kjernen i Product Demo Studio.
+ *
+ * Layout: mørk sidebar · topbar (URL + device-toggle + Generate Demo Flow +
+ * Record) · device-trio-preview i senter (Mac+iPad+iPhone) m/ "Recording
+ * Paused"-badge · høyre Guide/Script/Notes-panel med Step X of N, Narration,
+ * REQUIRED ACTION (m/ knapp-preview) + Retake/Mark as Done/Next Step · bunn
+ * scene-timeline.
+ *
+ * Required Action er sentral: den viser HVA opptakeren skal gjøre (action-type
+ * + instruksjon + visuelt mål-element), og opptaket VENTER alltid på manuell
+ * bekreftelse (continueMode: manual). Bruker useSceneRecorder for ekte opptak.
+ */
+
+import { useDemoStudio } from './demoStudioStore';
+import { useSceneRecorder } from './useSceneRecorder';
+import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
+
+const C = {
+  navBg: '#1c1a18', navText: '#cbc6bf', navActive: '#2a2724',
+  bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd', lineStrong: '#ddd6cc',
+  ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186', accent: '#ef8a5d', dark: '#2f2a26',
+  green: '#4a9d6b', red: '#d9534f', amber: '#e0922f', deviceFrame: '#2a2a2e',
+  font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
+};
+
+const NAV = [
+  { id: 'create', label: 'Create Demo', ic: '▢' },
+  { id: 'flow', label: 'Flow Builder', ic: '⤳' },
+  { id: 'script', label: 'Script Builder', ic: '✎' },
+  { id: 'recorder', label: 'Guided Recorder', ic: '●' },
+  { id: 'preview', label: 'Device Preview', ic: '▭' },
+  { id: 'export', label: 'Export', ic: '⤓' },
+];
+const DEVICE_LABEL: Record<DemoDevice, string> = { macbook: 'MacBook', ipad: 'iPad', iphone: 'iPhone' };
+
+function fmt(sec: number) {
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } = {}) {
+  const {
+    project, recorderStepIndex, selectScene, goToStep,
+    startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField,
+  } = useDemoStudio();
+  const rec = useSceneRecorder();
+
+  if (!project) return <div style={{ padding: 40, fontFamily: C.font, color: C.inkSoft }}>Opprett en demo først.</div>;
+
+  const scenes = project.scenes;
+  const cur = scenes[recorderStepIndex] ?? scenes[0];
+  const recording = rec.state === 'recording';
+  const actionMeta = ACTION_META[cur?.actionType ?? 'click'];
+
+  const beginRecording = async () => {
+    startRecorder();
+    await rec.start();
+  };
+  const doneAndNext = async () => {
+    if (rec.state === 'recording') {
+      const path = await rec.stopAndSave(project.id, cur.id);
+      if (path) updateScene(cur.id, { recordingPath: path });
+    }
+    markCurrentDone();
+    if (recorderStepIndex < scenes.length - 1) { nextStep(); await rec.start(); }
+  };
+
+  return (
+    <div style={{ display: 'flex', height: '100%', minHeight: 0, fontFamily: C.font, fontSize: 13, color: C.ink, background: C.bg }}>
+      {/* ── Left nav (mørk) ── */}
+      <div style={{ width: 210, background: C.navBg, color: C.navText, display: 'flex', flexDirection: 'column', flexShrink: 0, padding: '14px 12px' }}>
+        <div style={{ padding: '4px 8px 16px' }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: C.accent, display: 'grid', placeItems: 'center', color: '#fff' }}>▶</div>
+        </div>
+        {NAV.map((it) => (
+          <div key={it.id} onClick={() => onNav?.(it.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 11px', borderRadius: 9, fontSize: 13, cursor: 'pointer', marginBottom: 2,
+              background: it.id === 'recorder' ? C.navActive : 'transparent', color: it.id === 'recorder' ? '#fff' : C.navText, fontWeight: it.id === 'recorder' ? 600 : 500 }}>
+            <span style={{ width: 18, opacity: 0.85 }}>{it.ic}</span> {it.label}
+          </div>
+        ))}
+        <div style={{ flex: 1 }} />
+        <div style={{ borderTop: '1px solid #34302b', paddingTop: 10, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: C.inkFaint }}>Demo Project</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db' }}>{project.name} ⌄</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 8, borderTop: '1px solid #34302b' }}>
+          <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#3b5bdb', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>JD</div>
+          <div><div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db' }}>Jamie Davis</div><div style={{ fontSize: 11, color: C.inkFaint }}>Pro Plan</div></div>
+        </div>
+      </div>
+
+      {/* ── Main column ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* Topbar: URL + device-toggle + Generate + Record */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: C.panel, borderBottom: `1px solid ${C.line}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: '8px 12px', flex: 1, maxWidth: 460 }}>
+            <span style={{ color: C.inkFaint }}>🌐</span>
+            <input style={{ flex: 1, border: 0, outline: 'none', fontSize: 13, color: C.ink }} value={project.url}
+              onChange={(e) => setProjectField('url', e.target.value)} />
+            <span style={{ color: C.inkFaint, cursor: 'pointer' }}>✕</span>
+          </div>
+          <div style={{ display: 'flex', gap: 4, border: `1px solid ${C.line}`, borderRadius: 10, padding: 3 }}>
+            {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
+              <div key={d} onClick={() => cur && setSceneDeviceLocal(d)} title={DEVICE_LABEL[d]}
+                style={{ padding: '6px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+                  background: cur?.device === d ? '#f3ece2' : 'transparent', color: cur?.device === d ? C.ink : C.inkFaint, fontWeight: cur?.device === d ? 600 : 400 }}>
+                {d === 'macbook' ? '▭' : d === 'ipad' ? '▢' : '▯'} {DEVICE_LABEL[d]}
+              </div>
+            ))}
+          </div>
+          <div style={{ flex: 1 }} />
+          <button style={btn}>✦ Generate Demo Flow</button>
+          <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
+            onClick={() => { if (!recording) void beginRecording(); }}>
+            ● {recording ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'} <span>⌄</span>
+          </button>
+        </div>
+
+        {/* Body: device-trio + Guide-panel */}
+        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+          {/* Device-trio preview */}
+          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,#f6f3ee,#efe9e0)', minWidth: 0, overflow: 'hidden' }}>
+            {/* Recording status-badge */}
+            {(recording || cur?.recordingPath) && (
+              <div style={{ position: 'absolute', top: 16, left: 16, display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 10, padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: recording ? C.red : C.amber }} />
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{recording ? 'Recording' : 'Recording Paused'}</span>
+                <span style={{ fontSize: 12, color: C.inkFaint }}>{fmt(cur?.duration ?? 0)}</span>
+              </div>
+            )}
+            {/* Trioen: Mac dominerende, iPad + iPhone foran */}
+            <div style={{ position: 'relative', width: '78%', maxWidth: 760 }}>
+              {/* MacBook */}
+              <div style={{ borderRadius: 14, border: `10px solid ${C.deviceFrame}`, background: '#fff', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}>
+                <iframe title="mac" src={project.url} style={{ width: '100%', height: 360, border: 0, display: 'block' }} />
+              </div>
+              <div style={{ height: 10, background: C.deviceFrame, borderRadius: '0 0 12px 12px', margin: '0 auto', width: '60%' }} />
+              {/* iPad foran-høyre */}
+              <div style={{ position: 'absolute', right: -30, top: 70, width: 220, borderRadius: 14, border: `10px solid ${C.deviceFrame}`, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 40px rgba(0,0,0,0.22)' }}>
+                <iframe title="ipad" src={project.url} style={{ width: '100%', height: 260, border: 0, display: 'block' }} />
+              </div>
+              {/* iPhone foran-høyre ytterst */}
+              <div style={{ position: 'absolute', right: -60, top: 130, width: 120, borderRadius: 20, border: `8px solid ${C.deviceFrame}`, background: '#fff', overflow: 'hidden', boxShadow: '0 14px 30px rgba(0,0,0,0.25)' }}>
+                <iframe title="iphone" src={project.url} style={{ width: '100%', height: 230, border: 0, display: 'block' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Guide-panel (høyre) */}
+          <div style={{ width: 360, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column' }}>
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 18, padding: '14px 18px 0', borderBottom: `1px solid ${C.line}` }}>
+              {['Guide', 'Script', 'Notes'].map((t, i) => (
+                <div key={t} style={{ fontSize: 13, paddingBottom: 11, color: i === 0 ? C.ink : C.inkFaint, fontWeight: i === 0 ? 600 : 400, borderBottom: i === 0 ? `2px solid ${C.ink}` : '2px solid transparent', cursor: 'pointer' }}>{t}</div>
+              ))}
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: 18 }}>
+              {/* Step header */}
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Step {recorderStepIndex + 1} of {scenes.length}</span>
+                <div style={{ flex: 1 }} />
+                <span style={{ ...statusChip, background: recording ? '#fdeee0' : '#fdf3e7', color: recording ? C.red : C.amber }}>
+                  {recording ? '● Recording' : '❚❚ Recording Paused'}
+                </span>
+              </div>
+              {/* Progress-segmenter */}
+              <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
+                {scenes.map((s, i) => <div key={s.id} style={{ flex: 1, height: 4, borderRadius: 2, background: i < recorderStepIndex ? C.green : i === recorderStepIndex ? C.accent : '#e8e1d6' }} />)}
+              </div>
+
+              {/* Narration */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Narration</span>
+                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }}>✎</span>
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.5, color: C.ink, marginBottom: 22 }}>
+                {cur?.narration || <em style={{ color: C.inkFaint }}>(ingen narration — generér i Script Builder)</em>}
+              </div>
+
+              {/* REQUIRED ACTION */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Required Action</span>
+                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }}>⚙</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.lineStrong}`, display: 'grid', placeItems: 'center', fontSize: 11, color: C.inkSoft }}>{actionMeta.icon}</span>
+                <span style={{ fontSize: 13.5 }}>{cur?.requiredAction || `${actionMeta.verb} elementet`}</span>
+              </div>
+              {/* Action-preview: mål-element vist som knapp (slik mockupen viser knappen) */}
+              <div style={{ display: 'flex', gap: 10, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, marginBottom: 16, background: C.cream }}>
+                <button style={{ background: C.dark, color: '#fff', border: 0, borderRadius: 8, padding: '8px 14px', fontSize: 12.5, fontWeight: 600, outline: `2px solid ${C.accent}`, outlineOffset: 2 }}>
+                  {targetLabel(cur?.requiredAction)} →
+                </button>
+                <button style={{ background: '#fff', color: C.ink, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 14px', fontSize: 12.5 }}>Request a demo</button>
+              </div>
+
+              {/* Paused-info-boks */}
+              <div style={{ display: 'flex', gap: 10, background: '#fdf3e7', border: '1px solid #f0d9b8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+                <span style={{ color: C.amber }}>❚❚</span>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: '#8a6515' }}>{recording ? 'Tar opp denne scenen' : 'Recording is paused'}</div>
+                  <div style={{ fontSize: 11.5, color: '#a07a2a' }}>Demoen venter her til du markerer steget som ferdig.</div>
+                </div>
+              </div>
+              {rec.error && <div style={{ fontSize: 11.5, color: C.red, marginBottom: 10 }}>{rec.error}</div>}
+              {cur?.recordingPath && <div style={{ fontSize: 11.5, color: C.green, marginBottom: 10 }}>✓ Opptak lagret</div>}
+            </div>
+
+            {/* Bunn-knapper */}
+            <div style={{ padding: 16, borderTop: `1px solid ${C.line}` }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <button style={{ ...outlineBtn, flex: 1 }} onClick={async () => { rec.cancel(); retakeCurrent(); await rec.start(); }}>↺ Retake</button>
+                <button style={{ ...darkBtn, flex: 1, opacity: rec.state === 'saving' ? 0.6 : 1 }} disabled={rec.state === 'saving'} onClick={() => void doneAndNext()}>✓ Mark as Done</button>
+              </div>
+              <button style={{ ...darkBtn, width: '100%', opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
+                onClick={async () => { if (rec.state === 'recording') { const pth = await rec.stopAndSave(project.id, cur.id); if (pth) updateScene(cur.id, { recordingPath: pth }); } nextStep(); await rec.start(); }}>
+                Next Step →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Bunn scene-timeline */}
+        <div style={{ display: 'flex', gap: 10, padding: 12, borderTop: `1px solid ${C.line}`, background: C.panel, overflowX: 'auto', alignItems: 'center' }}>
+          {scenes.map((s, i) => (
+            <div key={s.id} onClick={() => { selectScene(s.id); goToStep(i); }}
+              style={{ minWidth: 140, padding: 10, borderRadius: 10, cursor: 'pointer', border: `2px solid ${i === recorderStepIndex ? C.accent : C.line}`, background: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                <span style={{ fontWeight: 700, fontSize: 11 }}>{i + 1}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
+              </div>
+              <div style={{ height: 48, borderRadius: 7, background: C.cream, marginBottom: 8 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: SCENE_STATUS_COLORS[s.status] }} />
+                <span style={{ color: C.inkSoft }}>{SCENE_STATUS_LABELS[s.status]}</span>
+                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint }}>{fmt(s.duration)}</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ minWidth: 100, height: 96, borderRadius: 10, border: `1px dashed ${C.lineStrong}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft }}>
+            <div style={{ textAlign: 'center' }}><div style={{ fontSize: 18 }}>⊕</div><div style={{ fontSize: 11 }}>Add Scene</div></div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ fontSize: 11.5, color: C.inkFaint, paddingRight: 8 }}>Total: {fmt(scenes.reduce((a, s) => a + s.duration, 0))}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  function setSceneDeviceLocal(d: DemoDevice) {
+    if (cur) updateScene(cur.id, { device: d, viewport: d === 'macbook' ? 'desktop' : d === 'ipad' ? 'tablet' : 'mobile' });
+  }
+}
+
+/** Trekk ut et kort knapp-navn fra required action ("Click the X button" → "X"). */
+function targetLabel(action?: string): string {
+  if (!action) return 'Start free trial';
+  const m = action.match(/[«"']([^«»"']+)[»"']/);
+  if (m) return m[1];
+  const words = action.replace(/^(klikk|click|trykk|press|på|on|the)\s+/i, '').split(/\s+/).slice(0, 3).join(' ');
+  return words || 'Start free trial';
+}
+
+const btn: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, background: '#fff', borderRadius: 10, padding: '9px 14px', fontSize: 12.5, fontWeight: 600, color: C.ink, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' };
+const darkBtn: React.CSSProperties = { background: C.dark, color: '#fff', border: 0, borderRadius: 9, padding: '11px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
+const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, borderRadius: 9, padding: '11px 14px', fontSize: 13, cursor: 'pointer' };
+const statusChip: React.CSSProperties = { fontSize: 11, fontWeight: 600, padding: '4px 9px', borderRadius: 8 };
+
+export default GuidedRecorderView;

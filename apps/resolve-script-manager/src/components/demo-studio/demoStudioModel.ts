@@ -60,6 +60,21 @@ export interface DemoAction {
   duration?: number;
 }
 
+/** UI-metadata for required action-typer (Guided Recorder + Script Builder). */
+export const ACTION_META: Record<DemoActionType, { label: string; icon: string; verb: string }> = {
+  open_url:          { label: 'Open URL',     icon: '🌐', verb: 'Åpne' },
+  wait:             { label: 'Wait',         icon: '◷',  verb: 'Vent' },
+  scroll:           { label: 'Scroll',       icon: '↕',  verb: 'Scroll til' },
+  click:            { label: 'Click',        icon: '☞',  verb: 'Klikk' },
+  hover:            { label: 'Hover',        icon: '⤚',  verb: 'Hold over' },
+  type:             { label: 'Type',         icon: '⌨',  verb: 'Skriv i' },
+  navigate_back:    { label: 'Tilbake',      icon: '←',  verb: 'Naviger tilbake' },
+  navigate_forward: { label: 'Fremover',     icon: '→',  verb: 'Naviger fremover' },
+  switch_device:    { label: 'Switch Device', icon: '⇄', verb: 'Bytt til' },
+  highlight:        { label: 'Highlight',    icon: '◎',  verb: 'Fremhev' },
+  zoom:             { label: 'Zoom',         icon: '⊕',  verb: 'Zoom inn på' },
+};
+
 export interface DemoScene {
   id: string;
   index: number;

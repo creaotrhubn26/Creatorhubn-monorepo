@@ -18,6 +18,7 @@
 import { useMemo, useState } from 'react';
 import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
+import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext } from './demoStudioAI';
@@ -135,9 +136,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     );
   }
 
-  // Script Builder har sin egen fullskjerm-layout (egen sidebar/topbar/timeline).
+  // Script Builder + Guided Recorder har egne fullskjerm-layouter.
   if (nav === 'script' && !storyMode) {
     return <ScriptBuilderView onNav={(id) => setNav(id as NavId)} />;
+  }
+  if (nav === 'recorder' && !storyMode) {
+    return <GuidedRecorderView onNav={(id) => setNav(id as NavId)} />;
   }
 
   return (
