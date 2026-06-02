@@ -80,6 +80,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS owner_user_id text;
       ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS owner_user_id text;
       ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS owner_user_id text;
+      -- Wave 1: staleness signal — bumped on every activity insert (#35).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_contact timestamptz;
       CREATE INDEX IF NOT EXISTS crm_customers_owner_idx ON crm_customers(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_deals_owner_idx ON crm_deals(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_activities_owner_idx ON crm_activities(owner_user_id);
@@ -381,6 +383,70 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   /**
+   * GET /api/universal-crm/customers/:id/overview
+   * Wave 1 (#2) — everything about one customer in a single owner-scoped
+   * round-trip: the record + deals + tasks + invoices + meetings + the
+   * activity timeline. Powers the CustomerDetailDrawer.
+   */
+  app.get("/api/universal-crm/customers/:id/overview", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const id = req.params.id;
+      const owner = session.userId;
+      const cust = await pool.query(
+        `SELECT * FROM crm_customers WHERE id = $1 AND owner_user_id = $2`,
+        [id, owner],
+      );
+      if (cust.rows.length === 0) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+      const c = cust.rows[0];
+      const [deals, tasks, invoices, meetings, activities] = await Promise.all([
+        pool.query(`SELECT * FROM crm_deals WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]),
+        pool.query(`SELECT * FROM crm_tasks WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY due_date ASC NULLS LAST`, [id, owner]),
+        pool.query(`SELECT * FROM crm_invoices WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]).catch(() => ({ rows: [] })),
+        pool.query(`SELECT * FROM crm_meetings WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY scheduled_at DESC NULLS LAST`, [id, owner]).catch(() => ({ rows: [] })),
+        pool.query(`SELECT * FROM crm_activities WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC LIMIT 200`, [id, owner]),
+      ]);
+
+      // Build a unified reverse-chronological timeline from activities +
+      // derived events (deal stage, invoice issued/paid, meeting scheduled).
+      const timeline: any[] = [];
+      for (const a of activities.rows) {
+        timeline.push({ kind: "activity", type: a.type, title: a.subject, detail: a.description, direction: a.direction, at: a.scheduled_at || a.created_at });
+      }
+      for (const d of deals.rows) {
+        timeline.push({ kind: "deal", type: d.stage, title: `Deal: ${d.title}`, detail: d.value ? `${Number(d.value).toLocaleString("nb-NO")} ${d.currency || "NOK"}` : null, at: d.created_at });
+      }
+      for (const inv of invoices.rows) {
+        timeline.push({ kind: "invoice", type: inv.status, title: `Faktura ${inv.invoice_number || ""}`.trim(), detail: `NOK ${Number(inv.total_amount || 0).toLocaleString("nb-NO")}`, at: inv.issued_at || inv.created_at });
+      }
+      for (const m of meetings.rows) {
+        timeline.push({ kind: "meeting", type: "meeting", title: m.title || "Møte", detail: m.location, at: m.scheduled_at || m.created_at });
+      }
+      timeline.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+
+      return res.json({
+        customer: {
+          id: c.id, name: c.name, email: c.email, phone: c.phone, company: c.company,
+          status: c.status, projectType: c.project_type, budget: c.budget ? parseFloat(c.budget) : null,
+          source: c.source, tags: c.tags || [], notes: c.notes, lastContact: c.last_contact,
+          createdAt: c.created_at,
+        },
+        deals: deals.rows,
+        tasks: tasks.rows,
+        invoices: invoices.rows,
+        meetings: meetings.rows,
+        timeline,
+      });
+    } catch (error) {
+      console.error("CRM customer overview error:", error);
+      return res.status(500).json({ error: "Failed to fetch overview" });
+    }
+  });
+
+  /**
    * GET /api/universal-crm/stats
    * CRM dashboard statistics
    */
@@ -423,11 +489,13 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         [owner],
       );
 
-      // Task stats — owner-scoped
+      // Task stats — owner-scoped, with overdue/due-today for the inbox badge (#37)
       const taskStats = await pool.query(
         `SELECT count(*) as total,
                 count(*) FILTER (WHERE status = 'pending') as pending,
-                count(*) FILTER (WHERE status = 'completed') as completed
+                count(*) FILTER (WHERE status = 'completed') as completed,
+                count(*) FILTER (WHERE status = 'pending' AND due_date IS NOT NULL AND due_date < CURRENT_DATE) as overdue,
+                count(*) FILTER (WHERE status = 'pending' AND due_date::date = CURRENT_DATE) as due_today
          FROM crm_tasks WHERE owner_user_id = $1`,
         [owner],
       );
@@ -476,6 +544,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
             total: parseInt(taskStats.rows[0].total),
             pending: parseInt(taskStats.rows[0].pending),
             completed: parseInt(taskStats.rows[0].completed),
+            overdue: parseInt(taskStats.rows[0].overdue),
+            dueToday: parseInt(taskStats.rows[0].due_today),
           },
           invoices: {
             total: parseInt(invoiceRow.total),
@@ -697,6 +767,13 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           session.userId,
         ],
       );
+      // #35 — bump the customer's last-contacted timestamp (owner-scoped).
+      if (customer_id) {
+        await pool.query(
+          `UPDATE crm_customers SET last_contact = now() WHERE id = $1 AND owner_user_id = $2`,
+          [customer_id, session.userId],
+        ).catch(() => { /* best-effort */ });
+      }
       return res.status(201).json({ activity: result.rows[0] });
     } catch (error) {
       console.error("CRM activity create error:", error);

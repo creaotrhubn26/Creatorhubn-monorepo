@@ -62,6 +62,8 @@ import {
   StarBorder as ReviewIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
+import CustomerDetailDrawer from './CustomerDetailDrawer';
+import CrmTaskInbox from './CrmTaskInbox';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -196,6 +198,8 @@ export default function UniversalCRMDashboard({
   const [customerToDelete, setCustomerToDelete] = useState<UniversalCustomer | null>(null); // #41 slett/arkiver
   const [meetingResult, setMeetingResult] = useState<{ meetLink?: string | null; webViewUrl?: string | null } | null>(null); // #5/#29 vis Meet-lenke
   const [showFollowUpFor, setShowFollowUpFor] = useState<UniversalCustomer | null>(null); // #38 etter-levering
+  const [detailCustomer, setDetailCustomer] = useState<UniversalCustomer | null>(null); // #2 kontaktdetalj-drawer
+  const [showTaskInbox, setShowTaskInbox] = useState(false); // #5 task-inbox
   // #42 — controlled edit-form so empty fields never corrupt into ', '
   const [editForm, setEditForm] = useState({
     name: '',
@@ -1372,6 +1376,21 @@ export default function UniversalCRMDashboard({
                 >
                   Business Intelligence
                 </Button>
+                {/* #5/#37 — CRM task inbox with overdue badge. */}
+                <Button
+                  variant="outlined"
+                  startIcon={<TaskIcon />}
+                  onClick={() => setShowTaskInbox(true)}
+                  sx={{
+                    minWidth: 140,
+                    borderColor: (stats.tasks?.overdue || 0) > 0 ? '#d32f2f' : alpha(colors.primary, 0.25),
+                    color: (stats.tasks?.overdue || 0) > 0 ? '#d32f2f' : colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Oppgaver{(stats.tasks?.pending || 0) > 0 ? ` (${stats.tasks.pending})` : ''}
+                </Button>
                 <Button
                   variant="outlined"
                   startIcon={<TaskIcon />}
@@ -2280,6 +2299,7 @@ export default function UniversalCRMDashboard({
                               startIcon={<WorkOutline />}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setDetailCustomer(customer); // #2 open the detail drawer
                                 onCustomerSelect?.(customer);
                               }}
                             >
@@ -3320,6 +3340,17 @@ export default function UniversalCRMDashboard({
           <Button onClick={() => setShowFollowUpFor(null)}>Lukk</Button>
         </DialogActions>
       </Dialog>
+
+      {/* #2 — contact detail drawer (record + timeline + quick-log) */}
+      <CustomerDetailDrawer
+        open={Boolean(detailCustomer)}
+        customerId={detailCustomer?.id || null}
+        customerName={detailCustomer?.name}
+        onClose={() => setDetailCustomer(null)}
+      />
+
+      {/* #5 — task inbox */}
+      <CrmTaskInbox open={showTaskInbox} onClose={() => setShowTaskInbox(false)} />
     </Box>
   );
 }
