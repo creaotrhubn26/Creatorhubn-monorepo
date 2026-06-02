@@ -6,8 +6,23 @@
 import { test, expect } from "@playwright/test";
 import {
   suggestPromptsLocal,
+  extractContextFromAppInfo,
   type FireflyIntent,
 } from "../src/lib/fireflyPromptHelper";
+
+const mockAppInfo = (doc: { name: string; width: number; height: number }) => ({
+  photoshop_version: "25.0",
+  locale: "en_US",
+  active_document: {
+    id: 1,
+    name: doc.name,
+    width: doc.width,
+    height: doc.height,
+    resolution: 72,
+    path: null,
+  },
+  documents: [],
+});
 
 test.describe("fireflyPromptHelper.suggestPromptsLocal", () => {
   test("remove_object returnerer alltid 1 forslag med tom prompt", () => {
@@ -62,6 +77,35 @@ test.describe("fireflyPromptHelper.suggestPromptsLocal", () => {
     const remove = suggestPromptsLocal("remove_object");
     expect(fix[0].prompt).toBe("");
     expect(remove[0].prompt).toBe("");
+  });
+
+  test("extractContextFromAppInfo: gjenkjenner standard-aspects", () => {
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "test.psd", width: 1080, height: 1080 })).target_aspect).toBe("1:1");
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "test.psd", width: 1920, height: 1080 })).target_aspect).toBe("16:9");
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "test.psd", width: 1080, height: 1920 })).target_aspect).toBe("9:16");
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "test.psd", width: 1080, height: 1350 })).target_aspect).toBe("4:5");
+  });
+
+  test("extractContextFromAppInfo: ikke-standard-ratio returnerer undefined", () => {
+    const ctx = extractContextFromAppInfo(mockAppInfo({ name: "test.psd", width: 1000, height: 700 }));
+    expect(ctx.target_aspect).toBeUndefined();
+  });
+
+  test("extractContextFromAppInfo: infer scene_type fra doc-navn", () => {
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "Emma-bryllup-2026.psd", width: 1080, height: 1920 })).scene_type).toBe("wedding");
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "outdoor-landscape.psd", width: 1080, height: 1920 })).scene_type).toBe("landscape");
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "produkt-shot.psd", width: 1080, height: 1920 })).scene_type).toBe("product");
+    expect(extractContextFromAppInfo(mockAppInfo({ name: "unknown.psd", width: 1080, height: 1920 })).scene_type).toBeUndefined();
+  });
+
+  test("extractContextFromAppInfo: ingen active doc → tom kontekst", () => {
+    const ctx = extractContextFromAppInfo({
+      photoshop_version: "25.0",
+      locale: "en_US",
+      active_document: null,
+      documents: [],
+    });
+    expect(ctx).toEqual({});
   });
 
   test("ALDRI returnerer negativ-formulering ('no X', 'without X')", () => {

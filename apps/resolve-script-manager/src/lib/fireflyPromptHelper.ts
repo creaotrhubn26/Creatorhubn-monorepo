@@ -23,6 +23,7 @@
  */
 
 import { claudeProxyService } from "../services/claudeProxyService";
+import type { AppInfo } from "../services/photoshopBridgeService";
 
 export type FireflyIntent =
   | "expand_background"
@@ -57,6 +58,77 @@ export interface FireflyPromptSuggestion {
   rationale: string;
   /** Hvilken intent denne prompten passer til. */
   fits: FireflyIntent;
+}
+
+// ---------------------------------------------------------------------------
+// Kontekst-ekstraksjon fra Photoshop-state
+// ---------------------------------------------------------------------------
+
+/**
+ * Les `app.info`-responsen og bygg en FireflyContext med så mye auto-
+ * utledet informasjon som mulig. Dialog-en kan bruke dette som
+ * forhåndsutfylling før brukeren manuelt korrigerer.
+ *
+ * Hva som auto-utledes per nå:
+ *   - target_aspect: fra active doc width/height (nærmeste standard-ratio
+ *     hvis det finnes, ellers den faktiske ratioen)
+ *   - scene_type: hint fra document name (matcher mot kjente nøkkelord)
+ *   - subject_description: tom — krever layer-analyse (V2)
+ *
+ * Returnerer en delvis kontekst som kan merges med dialog-state.
+ */
+export function extractContextFromAppInfo(info: AppInfo): FireflyContext {
+  const ctx: FireflyContext = {};
+  const doc = info.active_document;
+  if (!doc) return ctx;
+
+  const aspect = pickAspectRatio(doc.width, doc.height);
+  if (aspect) ctx.target_aspect = aspect;
+
+  const sceneHint = inferSceneTypeFromName(doc.name);
+  if (sceneHint) ctx.scene_type = sceneHint;
+
+  return ctx;
+}
+
+function pickAspectRatio(w: number, h: number): string | undefined {
+  if (!w || !h) return undefined;
+  // Standard-ratios vi gjenkjenner. Matcher mot raw ratio med 3% toleranse.
+  const standards: Array<[number, number]> = [
+    [1, 1], [16, 9], [9, 16], [4, 5], [5, 4], [4, 3], [3, 4], [3, 2], [2, 3], [21, 9],
+  ];
+  const ratio = w / h;
+  for (const [num, den] of standards) {
+    const stdRatio = num / den;
+    if (Math.abs(ratio - stdRatio) / stdRatio < 0.03) {
+      return `${num}:${den}`;
+    }
+  }
+  return undefined;
+}
+
+function inferSceneTypeFromName(name: string): FireflyContext["scene_type"] {
+  const n = name.toLowerCase();
+  const map: Array<[string, FireflyContext["scene_type"]]> = [
+    ["wedding", "wedding"],
+    ["bryllup", "wedding"],
+    ["portrait", "portrait"],
+    ["portrett", "portrait"],
+    ["landscape", "landscape"],
+    ["landskap", "landscape"],
+    ["product", "product"],
+    ["produkt", "product"],
+    ["interior", "interior"],
+    ["interiør", "interior"],
+    ["event", "event"],
+    ["studio", "studio"],
+    ["outdoor", "outdoor"],
+    ["urban", "urban"],
+  ];
+  for (const [key, value] of map) {
+    if (n.includes(key)) return value;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

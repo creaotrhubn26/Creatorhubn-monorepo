@@ -107,6 +107,7 @@ interface Props {
   onOpenHelp: () => void;
   onOpenPhotoshopSetup: () => void;
   onOpenPhotoshopScaffold: () => void;
+  onOpenFireflyPrompt: () => void;
   onOpenAiImage: () => void;
   onOpenArtDirector: () => void;
   onOpenCreations: () => void;
@@ -158,6 +159,7 @@ export function HeaderBar({
   onOpenHelp,
   onOpenPhotoshopSetup,
   onOpenPhotoshopScaffold,
+  onOpenFireflyPrompt,
   onOpenAiImage,
   onOpenArtDirector,
   onOpenCreations,
@@ -262,6 +264,12 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenAiImage(); }}>
                   <AutoAwesomeIcon fontSize="small" /> AI image generation…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenFireflyPrompt(); }}
+                  data-testid="header-firefly-prompt-btn"
+                >
+                  <AutoAwesomeIcon fontSize="small" /> Firefly Prompt Assistant…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenArtDirector(); }}
