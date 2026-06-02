@@ -4794,23 +4794,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         ) : (
           /* Standard Dashboard */
           <>
-            {/* CMS-styrt profesjon-aware hero. Henter
-                dashboard.hero.heading + .subheading via useCmsContent.
-                Backend leverer profesjon-spesifikk variant automatisk
-                (photographer: "Studio i lommen", videograf: "Edit fra
-                første klipp", etc). Default-fallback i hooken sikrer
-                at vi alltid har tekst selv om CMS-rad ikke finnes. */}
-            <DashboardHeroBand
-              accent={professionAccent}
-              professionDisplayName={config.name}
-              businessName={currentUser?.businessName ?? null}
-              userDisplayName={
-                currentUser?.displayName
-                || (currentUser?.firstName
-                    ? `${currentUser.firstName}${currentUser?.lastName ? ' ' + currentUser.lastName : ''}`
-                    : null)
-              }
-            />
+            {/* DashboardHeroBand fjernet — topp-banneret over
+                ("Velkommen tilbake, {firstName}!") dekker samme funksjon
+                personalisert via currentUser.displayName/firstName. Tidligere
+                viste begge samme info → duplikat. */}
             <Box sx={{ mt: 2, mb: 2 }}>
               <StorageUsageBanner
                 variant="expanded"
