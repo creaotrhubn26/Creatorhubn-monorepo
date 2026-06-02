@@ -388,6 +388,26 @@ export interface AgencyDashboard {
     details: Record<string, unknown> | null;
     actor_name: string | null;
   }>;
+  // Phase 9.13
+  partnerships_sparkline?: Array<{ day: string; n: number }>;
+  proposals_sparkline?: Array<{ day: string; n: number }>;
+  active_projects?: Array<{
+    invitation_id: string;
+    casting_project_id: string;
+    project_name: string;
+    project_type: string | null;
+    end_date: string | null;
+    expires_at: string | null;
+    role_count: number;
+    proposals_count: number;
+    proposals_accepted: number;
+  }>;
+  upcoming_expiries?: Array<{
+    invitation_id: string;
+    project_name: string;
+    expires_at: string;
+    days_left: number;
+  }>;
 }
 
 export function agencyDashboard(): Promise<AgencyDashboard> {
