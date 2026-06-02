@@ -67,6 +67,10 @@ interface DraftPost {
   autoPublishEnabled?: boolean;
   autoPublishAttempts?: number;
   autoPublishAttemptedAt?: string | null;
+  imageUrl?: string | null;
+  hasImageData?: boolean;
+  videoUrl?: string | null;
+  hasVideoData?: boolean;
 }
 
 const PLATFORM_META: Record<DraftPost['platform'], { icon: React.ReactElement; color: string; bg: string }> = {
@@ -342,7 +346,10 @@ function PostDrawer({
                   size="small"
                   checked={post.autoPublishEnabled === true}
                   onChange={(e) => void onSave(post.id, { autoPublishEnabled: e.target.checked } as Partial<DraftPost>)}
-                  disabled={post.platform === 'instagram' || post.platform === 'tiktok'}
+                  disabled={
+                    (post.platform === 'instagram' && !post.imageUrl && !post.hasImageData) ||
+                    (post.platform === 'tiktok' && !post.videoUrl && !post.hasVideoData)
+                  }
                   data-testid={`drawer-autopublish-toggle-${post.id}`}
                 />
               }
@@ -353,11 +360,13 @@ function PostDrawer({
               }
             />
             <Typography variant="caption" sx={{ color: adminTokens.text.muted, display: 'block', mt: 0.5 }}>
-              {post.platform === 'instagram' || post.platform === 'tiktok'
-                ? `Auto-publish støttes ikke for ${post.platform} ennå.`
-                : post.autoPublishEnabled
-                  ? `Scheduler tikker hvert 60s og publiserer når tidspunkt nås.${(post.autoPublishAttempts ?? 0) > 0 ? ` ${post.autoPublishAttempts} forsøk så langt.` : ''}`
-                  : 'Slå på for å publisere automatisk når tiden nås.'}
+              {post.platform === 'instagram' && !post.imageUrl && !post.hasImageData
+                ? 'IG container-flow krever en image URL — sett den i Rediger først.'
+                : post.platform === 'tiktok' && !post.videoUrl && !post.hasVideoData
+                  ? 'TikTok krever en video URL (MP4) — sett den i Rediger først.'
+                  : post.autoPublishEnabled
+                    ? `Scheduler tikker hvert 60s og publiserer når tidspunkt nås.${(post.autoPublishAttempts ?? 0) > 0 ? ` ${post.autoPublishAttempts} forsøk så langt.` : ''}`
+                    : 'Slå på for å publisere automatisk når tiden nås.'}
             </Typography>
           </Box>
         )}
