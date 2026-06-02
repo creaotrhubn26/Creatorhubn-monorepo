@@ -18,6 +18,7 @@
 import { useMemo, useState } from 'react';
 import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
+import { ExportView } from './ExportView';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -182,6 +183,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               onBackToProject={() => setStoryMode(false)} onStartEditing={() => setStoryMode(false)}
             />
           </div>
+        ) : nav === 'export' ? (
+          <div style={{ flex: 1, minHeight: 0 }}><ExportView /></div>
         ) : (
           <>
             {/* ── Blocks panel (demo-typer) ── */}
@@ -315,7 +318,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       </div>
 
       {/* ── Bottom: stat cards ── */}
-      {!storyMode && (
+      {!storyMode && nav !== 'export' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: C.line, borderTop: `1px solid ${C.line}`, flexShrink: 0 }}>
           <Stat h="⚇ Devices" v={[...new Set(scenes.map((s) => DEVICE_LABEL[s.device]))].join(' · ')} link="Endre →" />
           <Stat h="▦ Scener" v={`${scenes.length} scener`} s={`${doneCount} ferdig`} />
