@@ -151,6 +151,45 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_history_snapshot",
+    description:
+      "Lag et navngitt history-state i Photoshop. Brukes FØR risikable endringer så du kan revert hvis brukeren ikke liker resultatet. Returnerer snapshot_name som photoshop_history_revert kan bruke senere.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Snapshot-navn (default: timestamp). Bruk beskrivende navn som 'Før gen.fill av bakgrunn'.",
+        },
+      },
+    },
+  },
+  {
+    name: "photoshop_history_revert",
+    description:
+      "Revert til et navngitt history-snapshot. Brukes hvis brukeren ikke liker en endring eller for å teste flere varianter.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Snapshot-navn å revertere til" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_selection_from_mask",
+    description:
+      "Last en PNG-mask som Photoshop selection. Mask må ha samme dimensjoner som aktivt dokument. White pixels = selected. threshold styrer terskel (0-255, default 128). Brukes for å pre-definere region før gen.fill når Claude allerede har generert en maske.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mask_path: { type: "string", description: "Absolutt sti til mask-PNG" },
+        threshold: { type: "number", description: "Grayscale-terskel (0-255, default 128)" },
+      },
+      required: ["mask_path"],
+    },
+  },
+  {
     name: "photoshop_resolve_list_inbox",
     description:
       "List stills som DaVinci Resolve har eksportert til ~/PostAgent/inbox/ via export-still-to-postagent.lua. Hver item har path + filnavn + metadata (clip, frame, fps, project) hvis sidefil finnes. Sortert nyeste først.",
@@ -529,6 +568,15 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       return photoshop.captureThumbnail(
         typeof input.max_size === "number" ? input.max_size : undefined,
       );
+    case "photoshop_history_snapshot":
+      return photoshop.historySnapshot(typeof input.name === "string" ? input.name : undefined);
+    case "photoshop_history_revert":
+      return photoshop.historyRevert(requireString(input, "name"));
+    case "photoshop_selection_from_mask":
+      return photoshop.selectionFromMask({
+        mask_path: requireString(input, "mask_path"),
+        threshold: typeof input.threshold === "number" ? input.threshold : undefined,
+      });
     case "photoshop_resolve_list_inbox":
       return photoshop.resolveListInbox();
     case "photoshop_resolve_open_latest":

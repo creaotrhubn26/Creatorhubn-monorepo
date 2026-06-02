@@ -306,6 +306,18 @@ export const photoshop = {
   captureThumbnail: (max_size?: number) =>
     send<ThumbnailResult>("doc.thumbnail", { max_size: max_size ?? 1024 }),
 
+  historySnapshot: (name?: string) =>
+    send<{ snapshot_name: string; doc_name: string }>("history.snapshot", { name }),
+
+  historyRevert: (name: string) =>
+    send<{ reverted_to: string; doc_name: string }>("history.revert", { name }),
+
+  selectionFromMask: (params: { mask_path: string; threshold?: number }) =>
+    send<{ mask_path: string; pixels_selected: number; doc_width: number; doc_height: number }>(
+      "selection.fromMask",
+      params,
+    ),
+
   resolveListInbox: () => send<ResolveInboxResult>("resolve.listInbox"),
 
   resolveOpenLatest: () =>

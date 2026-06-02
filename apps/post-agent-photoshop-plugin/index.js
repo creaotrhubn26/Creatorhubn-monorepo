@@ -373,6 +373,150 @@ const COMMANDS = {
   },
 
   /*
+   * Last en PNG-mask som Photoshop selection. Brukes for å pre-definere
+   * regionen før gen.fill — Claude kan generere/levere en alpha-mask
+   * og kalle denne i stedet for å la brukeren manuelt tegne selection.
+   *
+   * Implementasjon: åpner mask-fila som midlertidig dokument, kopierer
+   * dens content som channel-data til aktivt dokument, laster channel
+   * som selection, lukker mask-doc uten å lagre.
+   *
+   * Krav: mask-fila må ha samme dimensjoner som aktivt dokument
+   * (resize ikke implementert i V1 — Claude bør levere riktig størrelse).
+   *
+   * threshold (0-255, default 128) styrer hva som regnes som "selected"
+   * fra grayscale mask-pixels.
+   */
+  "selection.fromMask": async ({ mask_path, threshold }) => {
+    assertString(mask_path, "mask_path");
+    const targetDoc = requireActiveDocument();
+    const docW = targetDoc.width;
+    const docH = targetDoc.height;
+    const thr = typeof threshold === "number" ? threshold : 128;
+
+    let pixelsSelected = 0;
+    await core.executeAsModal(async () => {
+      // Åpne mask-fila som midlertidig doc
+      const maskEntry = await fs.getEntryWithUrl("file:" + encodeURI(mask_path));
+      const maskDoc = await app.open(maskEntry);
+      try {
+        if (maskDoc.width !== docW || maskDoc.height !== docH) {
+          throw new Error(
+            `Mask-dimensjoner ${maskDoc.width}×${maskDoc.height} matcher ikke doc ${docW}×${docH}. Resize mask manuelt eller via Photoshop.`,
+          );
+        }
+
+        // Les mask-pixels via imaging-API
+        const pixels = await imaging.getPixels({
+          documentID: maskDoc.id,
+          componentSize: 8,
+          applyAlpha: false,
+        });
+
+        // Bygg en boolean-array fra grayscale-input (gjennomsnitt RGB)
+        const data = await pixels.imageData.getData();
+        const components = pixels.imageData.components;
+        const total = maskDoc.width * maskDoc.height;
+        const maskArr = new Uint8Array(total);
+        for (let i = 0; i < total; i++) {
+          // Gjennomsnitt over R+G+B (eller bruk alpha hvis tilstede)
+          let sum = 0;
+          for (let c = 0; c < Math.min(3, components); c++) {
+            sum += data[i * components + c];
+          }
+          const gray = sum / Math.min(3, components);
+          maskArr[i] = gray > thr ? 255 : 0;
+          if (maskArr[i] === 255) pixelsSelected++;
+        }
+        pixels.imageData.dispose();
+
+        // Lukk mask-doc før vi bytter aktivt
+        await maskDoc.closeWithoutSaving();
+
+        // Push selection til aktivt dokument via putSelection
+        const selImageData = await imaging.createImageData({
+          width: docW,
+          height: docH,
+          components: 1,
+          colorSpace: "Grayscale",
+          colorProfile: "",
+          pixelFormat: "PixelByPixel",
+        });
+        await selImageData.setData({ data: maskArr });
+        await imaging.putSelection({
+          documentID: targetDoc.id,
+          imageData: selImageData,
+        });
+        selImageData.dispose();
+      } catch (err) {
+        try {
+          await maskDoc.closeWithoutSaving();
+        } catch {
+          /* ignored — doc kanskje allerede lukket */
+        }
+        throw err;
+      }
+    }, { commandName: "Post Agent: selection from mask" });
+
+    return {
+      mask_path,
+      pixels_selected: pixelsSelected,
+      doc_width: docW,
+      doc_height: docH,
+    };
+  },
+
+  /*
+   * History-snapshot: lager et navngitt history-state i Photoshop som
+   * kan rolles tilbake til via history.revert. Brukes av Multi-Agent
+   * Director for trygge AI-eksperimenter — "test denne endringen, kan
+   * reverteres om brukeren ikke liker".
+   *
+   * Bruker batchPlay-make-snapshotEvent som lager et new history-state.
+   * Returnerer state-navnet så caller kan referere det senere.
+   */
+  "history.snapshot": async ({ name } = {}) => {
+    const doc = requireActiveDocument();
+    const snapshotName = name || `Post Agent ${new Date().toISOString().slice(11, 19)}`;
+    await core.executeAsModal(async () => {
+      await action.batchPlay(
+        [
+          {
+            _obj: "make",
+            _target: [{ _ref: "snapshotClass" }],
+            from: { _ref: "historyState", _property: "currentHistoryState" },
+            name: snapshotName,
+          },
+        ],
+        {},
+      );
+    }, { commandName: "Post Agent: history snapshot" });
+    return { snapshot_name: snapshotName, doc_name: doc.name };
+  },
+
+  /*
+   * History-revert: går tilbake til navngitt history-state. Hvis state
+   * ikke finnes, kaster en feil — Multi-Agent Director kan fange den
+   * og falle tilbake til full revert (doc.open på siste lagrede).
+   */
+  "history.revert": async ({ name }) => {
+    assertString(name, "name");
+    const doc = requireActiveDocument();
+    await core.executeAsModal(async () => {
+      await action.batchPlay(
+        [
+          {
+            _obj: "select",
+            _target: [{ _ref: "snapshotClass", _name: name }],
+          },
+        ],
+        {},
+      );
+    }, { commandName: "Post Agent: history revert" });
+    return { reverted_to: name, doc_name: doc.name };
+  },
+
+  /*
    * Resolve-bro: list stills i ~/PostAgent/inbox/ som er eksportert
    * fra DaVinci Resolve via export-still-to-postagent.lua. Returnerer
    * filer sortert nyeste først med metadata fra sidefil hvis tilgjengelig.

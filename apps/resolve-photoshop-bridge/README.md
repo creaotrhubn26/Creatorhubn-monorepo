@@ -37,6 +37,16 @@ I Resolve: `Workspace → Scripts → Edit → [scriptnavn]` — to nye menypunk
 - Hvis metadata-sidefilen har clip-info (eksportert fra timeline-still), kaller scriptet `MediaPoolItem:ReplaceClip(...)` på det ORIGINALE klippet. Timeline-klippet oppdaterer source automatisk — ingen drag nødvendig.
 - Hvis ingen clip-info finnes (stand-alone-eksport eller original-clip slettet), faller scriptet tilbake til vanlig `ImportMedia` → ny media-item i Media Pool → drag manuelt.
 
+## Tier 2: kontinuerlig watch-modus
+
+`watch-outbox.lua` poller `~/PostAgent/outbox/` hvert 2 sekund og auto-trigger insert-logikken når nye filer dukker opp. Slipper å kjøre `insert-from-postagent` manuelt:
+
+1. `Workspace → Scripts → Edit → watch-outbox`
+2. Scriptet kjører til du stopper Resolve (eller manuelt avbryter)
+3. Photoshop-eksporter blir auto-replaced/imported i sanntid
+
+Begrensninger: hvis Resolve crasher må du restarte scriptet. Krever lokal disk (ikke nettverks-sync som kan ha sen mtime-oppdatering).
+
 ## Auto-replace-begrensninger
 
 - Original MediaPoolItem må fortsatt eksistere (ikke slettet fra Media Pool)
