@@ -49,6 +49,10 @@ interface Draft {
   autoPublishEnabled?: boolean;
   autoPublishAttempts?: number;
   autoPublishAttemptedAt?: string | null;
+  imageUrl?: string | null;
+  hasImageData?: boolean;
+  videoUrl?: string | null;
+  hasVideoData?: boolean;
 }
 
 const PLATFORM_META: Record<Draft['platform'], { icon: React.ReactElement; color: string; name: string }> = {
@@ -86,6 +90,8 @@ function EditDialog({
   const [caption, setCaption] = useState(draft.caption);
   const [hashtags, setHashtags] = useState((draft.hashtags || []).join(' '));
   const [imageBrief, setImageBrief] = useState(draft.imageBrief || '');
+  const [imageUrl, setImageUrl] = useState(draft.imageUrl || '');
+  const [videoUrl, setVideoUrl] = useState(draft.videoUrl || '');
   const [ctaText, setCtaText] = useState(draft.ctaText || '');
   const [ctaLink, setCtaLink] = useState(draft.ctaLink || '');
   const [saving, setSaving] = useState(false);
@@ -102,8 +108,19 @@ function EditDialog({
             sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
           <TextField label="Hashtags (space-separated)" value={hashtags} onChange={(e) => setHashtags(e.target.value)}
             fullWidth sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
-          <TextField label="Image-brief" multiline minRows={2} value={imageBrief} onChange={(e) => setImageBrief(e.target.value)}
+          <TextField label="Image-brief (intern beskrivelse for design-bruk)" multiline minRows={2}
+            value={imageBrief} onChange={(e) => setImageBrief(e.target.value)}
             fullWidth sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
+          <TextField label="Image-URL (offentlig HTTP-URL, kreves for IG auto-publish)"
+            value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} fullWidth
+            helperText={draft.platform === 'instagram' ? 'IG container-flow trenger en URL Meta kan hente bildet fra.' : 'Valgfri — kun nødvendig for IG auto-publish.'}
+            placeholder="https://cdn.example.com/post-image.jpg"
+            sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
+          <TextField label="Video-URL (offentlig HTTP-link til MP4, kreves for TikTok auto-publish)"
+            value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} fullWidth
+            helperText={draft.platform === 'tiktok' ? 'TikTok henter MP4-en fra denne URL-en for inbox-upload.' : 'Valgfri — kun nødvendig for TikTok auto-publish.'}
+            placeholder="https://cdn.example.com/post-video.mp4"
+            sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
           <Stack direction="row" spacing={1.5}>
             <TextField label="CTA-tekst" value={ctaText} onChange={(e) => setCtaText(e.target.value)} sx={{ flex: 1 }} />
             <TextField label="CTA-link" value={ctaLink} onChange={(e) => setCtaLink(e.target.value)} sx={{ flex: 2 }} />
@@ -122,7 +139,9 @@ function EditDialog({
                 caption,
                 hashtags: hashtags.split(/\s+/).filter(Boolean),
                 imageBrief, ctaText, ctaLink,
-              });
+                imageUrl: imageUrl.trim() || null,
+                videoUrl: videoUrl.trim() || null,
+              } as Partial<Draft>);
               onClose();
             } finally { setSaving(false); }
           }}
@@ -251,7 +270,15 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, pu
                 ? 'Auto-publiser til FB Page når tidspunkt nås'
                 : draft.platform === 'linkedin'
                   ? 'Auto-publiser til LinkedIn UGC når tidspunkt nås'
-                  : 'Auto-publish støttes ikke for ' + draft.platform + ' enda'
+                  : draft.platform === 'instagram'
+                    ? (draft.imageUrl || draft.hasImageData
+                        ? 'Auto-publiser til IG via container-flow når tidspunkt nås'
+                        : 'IG krever en image URL — sett den i Rediger først')
+                    : draft.platform === 'tiktok'
+                      ? (draft.videoUrl || draft.hasVideoData
+                          ? 'Auto-publiser til TikTok-inbox når tidspunkt nås'
+                          : 'TikTok krever en video URL (MP4) — sett den i Rediger først')
+                      : 'Auto-publish støttes ikke for ' + draft.platform + ' enda'
             }>
               <FormControlLabel
                 control={
@@ -259,7 +286,10 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, pu
                     size="small"
                     checked={draft.autoPublishEnabled === true}
                     onChange={(e) => void onToggleAutoPublish(draft.id, e.target.checked)}
-                    disabled={draft.platform === 'instagram' || draft.platform === 'tiktok'}
+                    disabled={
+                      (draft.platform === 'instagram' && !draft.imageUrl && !draft.hasImageData) ||
+                      (draft.platform === 'tiktok' && !draft.videoUrl && !draft.hasVideoData)
+                    }
                     data-testid={`draft-autopublish-toggle-${draft.id}`}
                   />
                 }
