@@ -47,6 +47,7 @@ const ProposeTalentsDialog = lazy(() => import('../components/ProposeTalentsDial
 import { palette, radius } from '../theme';
 import {
   acceptTerms,
+  agencyDashboard,
   closeAvailability,
   CURRENT_PARTNERSHIP_TERMS_VERSION,
   enableAvailability,
@@ -60,6 +61,7 @@ import {
   revokePartnership,
   unpauseAvailability,
   unpausePartnership,
+  type AgencyDashboard,
   type AvailabilityState,
   type AvailabilityStatus,
   type ConsequenceWarning,
@@ -102,7 +104,8 @@ function fmtDate(s: string | null): string {
 }
 
 export default function AgencyPartnershipsPage() {
-  const [tab, setTab] = useState<'availability' | 'mine' | 'incoming'>('availability');
+  const [tab, setTab] = useState<'overview' | 'availability' | 'mine' | 'incoming'>('overview');
+  const [dashboard, setDashboard] = useState<AgencyDashboard | null>(null);
   const [availability, setAvailability] = useState<AvailabilityStatus | null>(null);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
@@ -127,16 +130,18 @@ export default function AgencyPartnershipsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [avail, mine, inc] = await Promise.all([
+      const [avail, mine, inc, dash] = await Promise.all([
         getAvailability().catch((e) => {
           throw new Error(`Tilgjengelighet: ${e instanceof Error ? e.message : String(e)}`);
         }),
         listMine('agency').catch(() => ({ partnerships: [] })),
         incomingInvitations().catch(() => ({ invitations: [] })),
+        agencyDashboard().catch(() => null),
       ]);
       setAvailability(avail);
       setPartnerships(mine.partnerships);
       setInvitations(inc.invitations);
+      setDashboard(dash);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Klarte ikke å laste data');
     } finally {
@@ -247,15 +252,24 @@ export default function AgencyPartnershipsPage() {
         onChange={(_, v) => setTab(v)}
         sx={{ mb: 2.4, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600 } }}
       >
+        <Tab value="overview" label="Oversikt" />
         <Tab value="availability" label="Tilgjengelighet" />
         <Tab value="mine" label={`Mine partnerships (${partnerships.length})`} />
-        <Tab value="incoming" label={`Innkommende invitasjoner (${invitations.length})`} />
+        <Tab value="incoming" label={`Innkommende (${invitations.length})`} />
       </Tabs>
 
       {loading && !availability ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
           <CircularProgress size={28} />
         </Box>
+      ) : null}
+
+      {tab === 'overview' ? (
+        <OverviewTab
+          dashboard={dashboard}
+          availability={availability}
+          onJumpTab={(t) => setTab(t)}
+        />
       ) : null}
 
       {tab === 'availability' && availability ? (
@@ -402,6 +416,153 @@ function humanizeKey(k: string): string {
 }
 
 // ── Availability-fanen ─────────────────────────────────────────────
+// ── Oversikts-fane (Phase 9.7) ────────────────────────────────────
+function OverviewTab(props: {
+  dashboard: AgencyDashboard | null;
+  availability: AvailabilityStatus | null;
+  onJumpTab: (t: 'overview' | 'availability' | 'mine' | 'incoming') => void;
+}) {
+  const { dashboard, availability } = props;
+  if (!dashboard) {
+    return (
+      <Box sx={{ ...cardSx, textAlign: 'center' }}>
+        <Typography sx={{ color: palette.textMuted }}>
+          Dashboard ikke tilgjengelig. Slå på discoverability for å begynne å samle data.
+        </Typography>
+      </Box>
+    );
+  }
+  const stateBadge = availability ? STATE_BADGE[availability.state] : null;
+  const KPI = ({ label, value, color }: { label: string; value: number | string; color?: string }) => (
+    <Box sx={{ ...cardSx, p: 1.8, textAlign: 'center', flex: 1, minWidth: 120 }}>
+      <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: color ?? palette.textPrimary, lineHeight: 1 }}>
+        {value}
+      </Typography>
+      <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        {label}
+      </Typography>
+    </Box>
+  );
+  return (
+    <Stack spacing={2}>
+      {/* Status-badge øverst */}
+      {availability && stateBadge ? (
+        <Box sx={{ ...cardSx, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Tilgjengelighets-status
+            </Typography>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.05rem', mt: 0.4 }}>
+              {availability.agency.name}
+            </Typography>
+          </Box>
+          <Chip
+            label={stateBadge.label}
+            sx={{ bgcolor: stateBadge.bg, color: stateBadge.color, fontWeight: 700, borderRadius: radius.sm }}
+            onClick={() => props.onJumpTab('availability')}
+          />
+        </Box>
+      ) : null}
+
+      {/* Partnership-KPI-er */}
+      <Box>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+          Partnerships
+        </Typography>
+        <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+          <KPI label="Aktive" value={dashboard.partnerships.active} color="#34d399" />
+          <KPI label="Venter svar" value={dashboard.partnerships.pending} color="#fbbf24" />
+          <KPI label="Pauset" value={dashboard.partnerships.paused} color="#fb923c" />
+          <KPI label="Avsluttet" value={dashboard.partnerships.revoked} color="#9ca3af" />
+        </Stack>
+      </Box>
+
+      {/* Prosjekt-invitasjoner */}
+      <Box>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+          Prosjekt-invitasjoner
+        </Typography>
+        <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+          <KPI label="Venter svar" value={dashboard.project_invitations.pending} color="#fbbf24" />
+          <KPI label="Aktive" value={dashboard.project_invitations.accepted} color="#34d399" />
+          <KPI label="Lukket" value={dashboard.project_invitations.closed} color="#9ca3af" />
+        </Stack>
+      </Box>
+
+      {/* Talent-forslag */}
+      <Box>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+          Talent-forslag · akseptrate {dashboard.talent_proposals.accept_rate_percent ?? '—'}%
+        </Typography>
+        <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+          <KPI label="Venter" value={dashboard.talent_proposals.pending} color="#fbbf24" />
+          <KPI label="Akseptert" value={dashboard.talent_proposals.accepted} color="#34d399" />
+          <KPI label="Avslått" value={dashboard.talent_proposals.declined} color="#f87171" />
+          <KPI label="Trukket" value={dashboard.talent_proposals.withdrawn} color="#9ca3af" />
+        </Stack>
+      </Box>
+
+      {/* Talent-pool */}
+      <Box sx={cardSx}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Box>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Bryåets talent-pool
+            </Typography>
+            <Typography sx={{ color: palette.textPrimary, fontSize: '1.4rem', fontWeight: 800, mt: 0.4 }}>
+              {dashboard.talent_pool_size} talenter med consent
+            </Typography>
+          </Box>
+        </Stack>
+      </Box>
+
+      {/* Siste aktivitet */}
+      {dashboard.recent_activity.length > 0 ? (
+        <Box sx={cardSx}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1.4, letterSpacing: 0.4 }}>
+            Siste aktivitet
+          </Typography>
+          <Stack spacing={0.8}>
+            {dashboard.recent_activity.slice(0, 8).map((a, idx) => (
+              <Stack key={idx} direction="row" alignItems="center" spacing={1} sx={{ fontSize: '0.85rem' }}>
+                <Typography sx={{ color: palette.textPrimary, fontWeight: 600, minWidth: 180 }}>
+                  {humanizeAction(a.action)}
+                </Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', flex: 1 }} noWrap>
+                  {a.actor_name ?? 'System'}
+                </Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem' }}>
+                  {fmtDate(a.created_at)}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
+    </Stack>
+  );
+}
+
+function humanizeAction(action: string): string {
+  const m: Record<string, string> = {
+    proposed: 'Partnership foreslått',
+    accepted: 'Partnership akseptert',
+    declined: 'Partnership avslått',
+    revoked: 'Partnership avsluttet',
+    paused: 'Partnership pauset',
+    unpaused: 'Partnership gjenopptatt',
+    project_invited: 'Prosjekt-invitasjon mottatt',
+    project_invitation_accepted: 'Prosjekt akseptert',
+    project_invitation_declined: 'Prosjekt avslått',
+    talent_proposed: 'Talent foreslått',
+    talent_proposal_accepted: 'Talent-forslag akseptert',
+    talent_proposal_declined: 'Talent-forslag avslått',
+    talent_proposal_withdrawn: 'Talent-forslag trukket',
+    candidate_status_changed: 'Kandidat-status endret',
+  };
+  return m[action] ?? action;
+}
+
 function AvailabilityTab(props: {
   status: AvailabilityStatus;
   busy: boolean;
