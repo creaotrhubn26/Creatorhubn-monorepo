@@ -71,6 +71,9 @@ function mapDraftRow(row: Record<string, unknown>): Record<string, unknown> {
     publishedAt: row.published_at,
     externalPostId: row.external_post_id,
     publishError: row.publish_error,
+    autoPublishEnabled: row.auto_publish_enabled === true,
+    autoPublishAttempts: row.auto_publish_attempts ? Number(row.auto_publish_attempts) : 0,
+    autoPublishAttemptedAt: row.auto_publish_attempted_at ?? null,
   };
 }
 
@@ -212,6 +215,15 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         }
       }
     }
+    if (typeof body.autoPublishEnabled === 'boolean') {
+      fields.push(`auto_publish_enabled = $${idx++}`);
+      values.push(body.autoPublishEnabled);
+      if (body.autoPublishEnabled === true) {
+        // Reset attempt-counter når admin re-enabler — gir frisk retry
+        fields.push(`auto_publish_attempts = 0`);
+        fields.push(`auto_publish_attempted_at = NULL`);
+      }
+    }
     if (fields.length === 0) {
       res.status(400).json({ ok: false, error: 'no updatable fields' });
       return;
@@ -270,6 +282,7 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         `SELECT id, platform, status, caption, hashtags, image_brief,
                 cta_text, cta_link, source_insight, suggested_publish_time,
                 published_at, external_post_id, generated_at,
+                auto_publish_enabled, auto_publish_attempts, auto_publish_attempted_at,
                 (SELECT row_to_json(s)
                  FROM (
                    SELECT engagement_rate, reach, reactions_total, comments_count
@@ -290,7 +303,8 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
       // 2. Unscheduled drafts (ingen suggested_publish_time, ikke publisert ennå)
       const unscheduled = await pool.query(
         `SELECT id, platform, status, caption, hashtags, image_brief,
-                cta_text, cta_link, source_insight, generated_at
+                cta_text, cta_link, source_insight, generated_at,
+                auto_publish_enabled, auto_publish_attempts, auto_publish_attempted_at
          FROM marketing_post_drafts
          WHERE brand_key = $1
            AND suggested_publish_time IS NULL
@@ -315,6 +329,9 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         externalPostId: row.external_post_id,
         generatedAt: row.generated_at,
         latestEngagement: row.latest_engagement || null,
+        autoPublishEnabled: row.auto_publish_enabled === true,
+        autoPublishAttempts: row.auto_publish_attempts ? Number(row.auto_publish_attempts) : 0,
+        autoPublishAttemptedAt: row.auto_publish_attempted_at ?? null,
       });
 
       res.json({

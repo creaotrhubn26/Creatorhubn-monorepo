@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress, Stack,
   Typography, TextField, IconButton, Tooltip, Divider, Dialog, DialogTitle,
-  DialogContent, DialogActions,
+  DialogContent, DialogActions, Switch, FormControlLabel,
 } from '@mui/material';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import InstagramIcon from '@mui/icons-material/Instagram';
@@ -46,6 +46,9 @@ interface Draft {
   publishedAt: string | null;
   externalPostId: string | null;
   publishError: string | null;
+  autoPublishEnabled?: boolean;
+  autoPublishAttempts?: number;
+  autoPublishAttemptedAt?: string | null;
 }
 
 const PLATFORM_META: Record<Draft['platform'], { icon: React.ReactElement; color: string; name: string }> = {
@@ -131,11 +134,12 @@ function EditDialog({
   );
 }
 
-function DraftCard({ draft, onEdit, onDelete, onPublish, publishBusy }: {
+function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, publishBusy }: {
   draft: Draft;
   onEdit: (d: Draft) => void;
   onDelete: (id: number) => Promise<void>;
   onPublish: (id: number) => Promise<void>;
+  onToggleAutoPublish: (id: number, value: boolean) => Promise<void>;
   publishBusy: boolean;
 }) {
   const pmeta = PLATFORM_META[draft.platform];
@@ -235,6 +239,47 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, publishBusy }: {
         {draft.status === 'failed' && draft.publishError && (
           <Alert severity="error" sx={{ mt: 1 }}>Publish-feil: {draft.publishError}</Alert>
         )}
+
+        {/* PR 11: Auto-publish toggle — kun synlig hvis det er en planlagt tid + ikke publisert */}
+        {draft.suggestedPublishTime && draft.status !== 'published' && (
+          <Box sx={{
+            mt: 1.5, pt: 1.5, borderTop: `1px solid ${adminTokens.border.subtle}`,
+            display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
+          }}>
+            <Tooltip title={
+              draft.platform === 'facebook'
+                ? 'Auto-publiser til FB Page når tidspunkt nås'
+                : draft.platform === 'linkedin'
+                  ? 'Auto-publiser til LinkedIn UGC når tidspunkt nås'
+                  : 'Auto-publish støttes ikke for ' + draft.platform + ' enda'
+            }>
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={draft.autoPublishEnabled === true}
+                    onChange={(e) => void onToggleAutoPublish(draft.id, e.target.checked)}
+                    disabled={draft.platform === 'instagram' || draft.platform === 'tiktok'}
+                    data-testid={`draft-autopublish-toggle-${draft.id}`}
+                  />
+                }
+                label={
+                  <Typography variant="caption" sx={{ color: adminTokens.text.body }}>
+                    Auto-publiser ved planlagt tid
+                  </Typography>
+                }
+                sx={{ ml: 0 }}
+              />
+            </Tooltip>
+            {draft.autoPublishEnabled && (draft.autoPublishAttempts ?? 0) > 0 && (
+              <Chip
+                label={`${draft.autoPublishAttempts} forsøk${draft.autoPublishAttempts === 1 ? '' : ''}`}
+                size="small"
+                sx={statusChipSx((draft.autoPublishAttempts ?? 0) >= 3 ? 'error' : 'warning')}
+              />
+            )}
+          </Box>
+        )}
       </CardContent>
     </Card>
   );
@@ -290,6 +335,25 @@ export default function PostDraftsPanel() {
       const d = await r.json();
       if (d.ok) { setNotice({ kind: 'success', msg: 'Slettet.' }); void load(); }
       else setNotice({ kind: 'error', msg: d.error || 'Delete failed' });
+    } catch (err) {
+      setNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    }
+  }, [load]);
+
+  const handleToggleAutoPublish = useCallback(async (id: number, value: boolean) => {
+    try {
+      const r = await fetch(`/api/role-room/agent/post-drafts/${id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoPublishEnabled: value }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setNotice({ kind: 'success', msg: value ? 'Auto-publish slått PÅ — trigges ved planlagt tid.' : 'Auto-publish slått AV.' });
+        void load();
+      } else {
+        setNotice({ kind: 'error', msg: d.error || 'Toggle failed' });
+      }
     } catch (err) {
       setNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
     }
@@ -362,6 +426,7 @@ export default function PostDraftsPanel() {
               onEdit={(d) => setEditing(d)}
               onDelete={handleDelete}
               onPublish={handlePublish}
+              onToggleAutoPublish={handleToggleAutoPublish}
               publishBusy={publishBusy === d.id}
             />
           ))}
