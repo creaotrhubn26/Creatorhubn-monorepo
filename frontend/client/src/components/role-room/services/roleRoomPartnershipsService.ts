@@ -162,7 +162,8 @@ async function api<T>(path: string, init?: RequestInit & { params?: Record<strin
       err.warning = payload as ConsequenceWarning;
       throw err;
     }
-    const msg = (payload && typeof payload === 'object' && (payload as { error?: string }).error) || `HTTP ${r.status}`;
+    const extractedError = (payload && typeof payload === 'object' && (payload as { error?: string }).error) || null;
+    const msg: string = typeof extractedError === 'string' ? extractedError : `HTTP ${r.status}`;
     throw new Error(msg);
   }
   return payload as T;
