@@ -15,6 +15,7 @@ mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
+mod prefs;
 mod projects;
 
 use std::sync::Arc;
@@ -359,6 +360,19 @@ fn check_destinations_capacity(
             }
         })
         .collect()
+}
+
+// ── Brukerpreferanser (prefs.json) ──────────────────────────────────
+#[tauri::command]
+fn get_prefs() -> Result<prefs::Prefs, String> {
+    prefs::load()
+}
+
+#[tauri::command]
+fn save_default_dest_ids(dest_ids: Vec<String>) -> Result<(), String> {
+    let mut p = prefs::load().unwrap_or_default();
+    p.default_dest_ids = dest_ids;
+    prefs::save(&p)
 }
 
 #[tauri::command]
@@ -711,6 +725,8 @@ pub fn run() {
             test_b2_connection,
             fetch_bucket_usage,
             list_detected_mounts,
+            get_prefs,
+            save_default_dest_ids,
             rescan_mounts,
             check_destinations_capacity,
             macos_notification,
