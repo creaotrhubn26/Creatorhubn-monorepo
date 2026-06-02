@@ -100,8 +100,12 @@ export interface DemoScene {
   /** Estimert/faktisk varighet i sekunder. */
   duration: number;
   status: SceneStatus;
-  /** Manuell progresjon er kravet — systemet venter alltid på brukeren. */
-  continueMode: 'manual';
+  /**
+   * Progresjons-modus per scene:
+   *   - 'manual': opptaket venter på brukerens bekreftelse (default, spec-krav)
+   *   - 'auto':   Playwright utfører required action automatisk og går videre
+   */
+  continueMode: 'manual' | 'auto';
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
 }
@@ -128,6 +132,8 @@ export interface DemoProject {
   demoType: DemoType;
   language: string;
   devices: DemoDevice[];
+  /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
+  continueMode?: 'manual' | 'auto';
   /** Eksport-format (aspect ratio). */
   format: '16:9' | '9:16' | '1:1' | '4:5';
   /** Manus-meta (Script Builder Tone/Audience/Language/Length). */

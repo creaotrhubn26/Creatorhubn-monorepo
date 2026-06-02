@@ -13,9 +13,12 @@
  * bekreftelse (continueMode: manual). Bruker useSceneRecorder for ekte opptak.
  */
 
+import { useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const C = {
   navBg: '#1c1a18', navText: '#cbc6bf', navActive: '#2a2724',
@@ -46,6 +49,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField,
   } = useDemoStudio();
   const rec = useSceneRecorder();
+  const macFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const autoAbort = useRef(false);
+  const [autoRunning, setAutoRunning] = useState(false);
 
   if (!project) return <div style={{ padding: 40, fontFamily: C.font, color: C.inkSoft }}>Opprett en demo først.</div>;
 
@@ -53,11 +59,63 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const cur = scenes[recorderStepIndex] ?? scenes[0];
   const recording = rec.state === 'recording';
   const actionMeta = ACTION_META[cur?.actionType ?? 'click'];
+  const autoMode = (project.continueMode ?? 'manual') === 'auto';
+
+  /**
+   * Utfør én scenes required action i Mac-preview-iframen (best-effort).
+   * Same-origin kreves for DOM-tilgang; cross-origin → vi simulerer kun
+   * scroll/wait på toppnivå. Aldri fatal.
+   */
+  const performAction = async (scene: typeof cur) => {
+    const type = scene.actionType ?? 'click';
+    const win = macFrameRef.current?.contentWindow;
+    const doc = (() => { try { return macFrameRef.current?.contentDocument ?? null; } catch { return null; } })();
+    try {
+      if (type === 'scroll') {
+        win?.scrollBy({ top: 500, behavior: 'smooth' });
+      } else if ((type === 'click' || type === 'hover' || type === 'highlight') && doc) {
+        const label = targetLabel(scene.requiredAction).toLowerCase();
+        const el = Array.from(doc.querySelectorAll('a,button,[role=button]'))
+          .find((e) => (e.textContent ?? '').toLowerCase().includes(label)) as HTMLElement | undefined;
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.outline = '3px solid #ef8a5d'; el.style.outlineOffset = '2px';
+          await sleep(500);
+          if (type === 'click') el.click();
+        }
+      }
+    } catch { /* cross-origin/blokkert — hopp over */ }
+  };
 
   const beginRecording = async () => {
     startRecorder();
     await rec.start();
+    if (autoMode) void runAuto();
   };
+
+  /** Auto-løp: kjør hver scene sin handling, vent varighet, gå videre. */
+  const runAuto = async () => {
+    autoAbort.current = false;
+    setAutoRunning(true);
+    for (let i = recorderStepIndex; i < scenes.length; i++) {
+      if (autoAbort.current) break;
+      goToStep(i);
+      const scene = scenes[i];
+      await sleep(400);
+      await performAction(scene);
+      // Vent scenens varighet (cap for å unngå evig venting).
+      await sleep(Math.min(Math.max((scene.duration || 6) * 1000, 1500), 20000));
+      if (autoAbort.current) break;
+      if (rec.state === 'recording') {
+        const path = await rec.stopAndSave(project.id, scene.id);
+        if (path) updateScene(scene.id, { recordingPath: path });
+      }
+      markCurrentDone();
+      if (i < scenes.length - 1) { nextStep(); await rec.start(); }
+    }
+    setAutoRunning(false);
+  };
+
   const doneAndNext = async () => {
     if (rec.state === 'recording') {
       const path = await rec.stopAndSave(project.id, cur.id);
@@ -65,6 +123,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     }
     markCurrentDone();
     if (recorderStepIndex < scenes.length - 1) { nextStep(); await rec.start(); }
+  };
+
+  const toggleMode = () => {
+    const next = autoMode ? 'manual' : 'auto';
+    setProjectField('continueMode', next);
+    if (next === 'manual') autoAbort.current = true;
   };
 
   return (
@@ -112,6 +176,11 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             ))}
           </div>
           <div style={{ flex: 1 }} />
+          {/* Auto/Manual-toggle */}
+          <div style={{ display: 'flex', border: `1px solid ${C.lineStrong}`, borderRadius: 10, overflow: 'hidden' }} title="Manuell: vent på deg. Auto: Playwright utfører handlinger.">
+            <div onClick={() => autoMode && toggleMode()} style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: !autoMode ? C.dark : '#fff', color: !autoMode ? '#fff' : C.inkSoft }}>Manual</div>
+            <div onClick={() => !autoMode && toggleMode()} style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: autoMode ? C.accent : '#fff', color: autoMode ? '#fff' : C.inkSoft }}>✦ Auto</div>
+          </div>
           <button style={btn}>✦ Generate Demo Flow</button>
           <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
             onClick={() => { if (!recording) void beginRecording(); }}>
@@ -135,7 +204,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             <div style={{ position: 'relative', width: '78%', maxWidth: 760 }}>
               {/* MacBook */}
               <div style={{ borderRadius: 14, border: `10px solid ${C.deviceFrame}`, background: '#fff', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}>
-                <iframe title="mac" src={project.url} style={{ width: '100%', height: 360, border: 0, display: 'block' }} />
+                <iframe ref={macFrameRef} title="mac" src={project.url} style={{ width: '100%', height: 360, border: 0, display: 'block' }} />
               </div>
               <div style={{ height: 10, background: C.deviceFrame, borderRadius: '0 0 12px 12px', margin: '0 auto', width: '60%' }} />
               {/* iPad foran-høyre */}
@@ -198,14 +267,24 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <button style={{ background: '#fff', color: C.ink, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 14px', fontSize: 12.5 }}>Request a demo</button>
               </div>
 
-              {/* Paused-info-boks */}
-              <div style={{ display: 'flex', gap: 10, background: '#fdf3e7', border: '1px solid #f0d9b8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
-                <span style={{ color: C.amber }}>❚❚</span>
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: '#8a6515' }}>{recording ? 'Tar opp denne scenen' : 'Recording is paused'}</div>
-                  <div style={{ fontSize: 11.5, color: '#a07a2a' }}>Demoen venter her til du markerer steget som ferdig.</div>
+              {/* Status-boks: auto-løp vs manuell pause */}
+              {autoRunning ? (
+                <div style={{ display: 'flex', gap: 10, background: '#fdeee0', border: `1px solid ${C.accent}`, borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+                  <span style={{ color: C.accent }}>✦</span>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: '#a85a2a' }}>Auto-modus kjører</div>
+                    <div style={{ fontSize: 11.5, color: '#b06a3a' }}>Playwright utfører handlinger og går videre automatisk.</div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 10, background: '#fdf3e7', border: '1px solid #f0d9b8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+                  <span style={{ color: C.amber }}>❚❚</span>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: '#8a6515' }}>{recording ? 'Tar opp denne scenen' : autoMode ? 'Auto-modus klar' : 'Recording is paused'}</div>
+                    <div style={{ fontSize: 11.5, color: '#a07a2a' }}>{autoMode ? 'Trykk Record — systemet kjører gjennom scenene automatisk.' : 'Demoen venter her til du markerer steget som ferdig.'}</div>
+                  </div>
+                </div>
+              )}
               {rec.error && <div style={{ fontSize: 11.5, color: C.red, marginBottom: 10 }}>{rec.error}</div>}
               {cur?.recordingPath && <div style={{ fontSize: 11.5, color: C.green, marginBottom: 10 }}>✓ Opptak lagret</div>}
             </div>
