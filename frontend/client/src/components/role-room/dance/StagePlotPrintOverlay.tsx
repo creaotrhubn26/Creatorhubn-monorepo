@@ -16,6 +16,7 @@
  * { format: 'pdf' } og setter print-state. Komponenten mountes, kjører
  * window.print(), og fjernes igjen ved 'afterprint'-event eller close-knapp.
  */
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import type { Dancer, Formation } from './formationTypes';
 import { formatTimecode } from './timecode';
@@ -48,7 +49,7 @@ function durationLabel(start: number | null | undefined, end: number | null | un
 }
 
 const STAGE_SVG_BG = '#f6f7fb';
-const STAGE_SVG_BORDER = '#1e2536';
+const STAGE_SVG_BORDER = danceFlowColors.borderStrong;
 
 const StageSvg: React.FC<{
   formation: Formation;
@@ -103,7 +104,7 @@ const StageSvg: React.FC<{
               cx={cx}
               cy={cy}
               r={PUCK_R}
-              fill={d.color ?? '#a78bfa'}
+              fill={d.color ?? danceFlowColors.lavender}
               stroke="#1e2536"
               strokeWidth={1.5}
             />
@@ -221,7 +222,7 @@ export default function StagePlotPrintOverlay({
               onClick={() => window.print()}
               data-testid="stage-plot-print-trigger"
               style={{
-                background: '#a78bfa', color: 'white', border: 'none',
+                background: danceFlowColors.lavender, color: 'white', border: 'none',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 700, cursor: 'pointer',
               }}
             >
@@ -232,7 +233,7 @@ export default function StagePlotPrintOverlay({
               onClick={onClose}
               data-testid="stage-plot-print-close"
               style={{
-                background: 'transparent', color: '#6b7280', border: '1px solid #d1d5db',
+                background: 'transparent', color: danceFlowColors.textDisabled, border: '1px solid #d1d5db',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 600, cursor: 'pointer',
               }}
             >
@@ -246,7 +247,7 @@ export default function StagePlotPrintOverlay({
           {/* Side 1: Sammendrag */}
           <div className="stage-plot-page" style={{ marginBottom: 32 }}>
             <h1 style={{ fontSize: 24, margin: '0 0 4px 0' }}>{title}</h1>
-            <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 16px 0' }}>
+            <p style={{ fontSize: 11, color: danceFlowColors.textDisabled, margin: '0 0 16px 0' }}>
               Generert {now.toLocaleString('nb-NO')} · {ordered.length} formasjoner ·{' '}
               Total varighet: {totalDuration > 0 ? formatTimecode(totalDuration) : '—'} · BPM {bpm}
             </p>
@@ -268,7 +269,7 @@ export default function StagePlotPrintOverlay({
                     <td style={{ padding: '4px 8px', borderBottom: '1px solid #e5e7eb' }}>
                       <span style={{
                         display: 'inline-block', width: 12, height: 12, borderRadius: 6,
-                        background: d.color ?? '#a78bfa', marginRight: 6, verticalAlign: 'middle',
+                        background: d.color ?? danceFlowColors.lavender, marginRight: 6, verticalAlign: 'middle',
                       }} />
                       D{i + 1}
                     </td>
@@ -328,7 +329,7 @@ export default function StagePlotPrintOverlay({
                 <h2 style={{ fontSize: 18, margin: '0 0 4px 0' }}>
                   {idx + 1}. {formation.name}
                 </h2>
-                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                <span style={{ fontSize: 11, color: danceFlowColors.textDisabled }}>
                   {formation.startSec != null ? formatTimecode(formation.startSec) : '—'} —{' '}
                   {formation.endSec != null ? formatTimecode(formation.endSec) : '—'}
                   {' · '}

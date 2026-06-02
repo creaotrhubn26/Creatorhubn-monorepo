@@ -308,7 +308,7 @@ export default function FormationHeaderBar({
                 data-testid={`${testId}-presence-${u.userId}`}
                 sx={{
                   width: 22, height: 22, borderRadius: '50%',
-                  bgcolor: u.color, color: '#0a0a0a',
+                  bgcolor: u.color, color: danceFlowColors.bgBase,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 9, fontWeight: 700,
                   border: `2px solid ${danceFlowColors.bgPanel}`,

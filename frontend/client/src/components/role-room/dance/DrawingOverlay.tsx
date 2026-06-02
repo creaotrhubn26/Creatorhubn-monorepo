@@ -8,6 +8,7 @@
  * read-only replay-modus (enabled=false, viser bare).
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 
 export interface DrawingPath {
@@ -33,7 +34,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   onPathsChange,
   enabled,
   readOnly = false,
-  defaultColor = '#fbbf24',
+  defaultColor = danceFlowColors.gold,
   defaultWidth = 3,
 }) => {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);

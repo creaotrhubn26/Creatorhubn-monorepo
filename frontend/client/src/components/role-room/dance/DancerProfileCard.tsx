@@ -9,6 +9,7 @@
  * DancerProfileEditor (åpnes av onEdit-callbacken).
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useMemo } from 'react';
 import {
   Avatar,
@@ -74,10 +75,10 @@ function isAvailableNow(profile: DancerProfile): boolean | null {
 
 function injuryColor(status: DancerProfile['injuryStatus']): string {
   switch (status) {
-    case 'healthy': return '#34d399';
-    case 'rehab': return '#f87171';
-    case 'cleared-with-restriction': return '#fbbf24';
-    default: return '#9ca3af';
+    case 'healthy': return danceFlowColors.successPrimary;
+    case 'rehab': return danceFlowColors.errorPrimary;
+    case 'cleared-with-restriction': return danceFlowColors.gold;
+    default: return danceFlowColors.textMuted;
   }
 }
 
@@ -125,7 +126,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
     <Card
       data-testid={`dancer-profile-card-${dancer.id}`}
       sx={{
-        bgcolor: '#0f1318',
+        bgcolor: danceFlowColors.bgPanel,
         border: '1px solid #1e2536',
         boxShadow: 'none',
         borderRadius: 2,
@@ -163,7 +164,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                     aria-label="Rediger danser-profil"
                     data-testid={`dancer-profile-edit-${dancer.id}`}
                     onClick={onEdit}
-                    sx={{ color: '#9ca3af', p: 0.25, '&:hover': { color: '#a78bfa' } }}
+                    sx={{ color: danceFlowColors.textMuted, p: 0.25, '&:hover': { color: danceFlowColors.lavender } }}
                   >
                     <EditIcon sx={{ fontSize: 14 }} />
                   </IconButton>
@@ -171,7 +172,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
               )}
             </Stack>
             {dancer.role && (
-              <Typography noWrap sx={{ fontSize: 10, color: '#6b7280' }}>
+              <Typography noWrap sx={{ fontSize: 10, color: danceFlowColors.textDisabled }}>
                 {dancer.role}
               </Typography>
             )}
@@ -184,7 +185,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
             <Chip
               size="small"
               label={`${stats.formationsCount} form.`}
-              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(167,139,250,0.15)', color: '#c4b5fd' }}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(167,139,250,0.15)', color: danceFlowColors.lavenderLight }}
             />
             <Chip
               size="small"
@@ -194,14 +195,14 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
             <Chip
               size="small"
               label={`${stats.annotationsCount} kommentarer`}
-              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(251,191,36,0.15)', color: danceFlowColors.gold }}
             />
           </Stack>
         ) : null}
 
         {profile === null ? (
           <Box sx={{ mt: 1.5, textAlign: 'center' }}>
-            <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic', mb: 0.75 }}>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic', mb: 0.75 }}>
               Ingen profil enda
             </Typography>
             {onEdit && (
@@ -214,9 +215,9 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                 sx={{
                   textTransform: 'none',
                   fontSize: 11,
-                  color: '#c4b5fd',
+                  color: danceFlowColors.lavenderLight,
                   borderColor: 'rgba(139,92,246,0.4)',
-                  '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' },
+                  '&:hover': { borderColor: danceFlowColors.lavender, bgcolor: 'rgba(139,92,246,0.08)' },
                 }}
               >
                 Opprett profil
@@ -235,7 +236,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                     height: 20,
                     fontSize: 10,
                     bgcolor: 'rgba(139,92,246,0.18)',
-                    color: '#c4b5fd',
+                    color: danceFlowColors.lavenderLight,
                     border: '1px solid rgba(139,92,246,0.4)',
                     textTransform: 'capitalize',
                   }}
@@ -245,7 +246,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                 <Chip
                   size="small"
                   label={`${profile.heightCm} cm`}
-                  sx={{ height: 20, fontSize: 10, bgcolor: '#1e2536', color: '#cbd5e1' }}
+                  sx={{ height: 20, fontSize: 10, bgcolor: danceFlowColors.borderStrong, color: '#cbd5e1' }}
                 />
               )}
               <Chip
@@ -288,7 +289,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
               <Typography
                 sx={{
                   fontSize: 10,
-                  color: availableNow ? '#34d399' : '#9ca3af',
+                  color: availableNow ? danceFlowColors.successPrimary : danceFlowColors.textMuted,
                   fontStyle: 'italic',
                 }}
               >

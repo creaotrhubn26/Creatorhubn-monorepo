@@ -90,8 +90,8 @@ export interface DanceAnnotateLayoutProps {
 
 const NAV_WIDTH = 240;
 const TOP_BAR_HEIGHT = 56;
-const PURPLE = '#a78bfa';
-const PURPLE_DARK = '#7c3aed';
+const PURPLE = danceFlowColors.lavender;
+const PURPLE_DARK = danceFlowColors.lavenderDeep;
 
 type NavItem = {
   id: string;
@@ -301,9 +301,9 @@ export default function DanceAnnotateLayout({
                 sx={{
                   textTransform: 'none',
                   color: saveStatus === 'saved'
-                    ? '#34d399'
+                    ? danceFlowColors.successPrimary
                     : saveStatus === 'error'
-                      ? '#f87171'
+                      ? danceFlowColors.errorPrimary
                       : saveStatus === 'saving'
                         ? danceFlowColors.lavender
                         : danceFlowColors.textSecondary,

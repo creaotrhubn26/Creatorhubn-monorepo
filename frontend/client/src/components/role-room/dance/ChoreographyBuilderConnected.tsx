@@ -10,6 +10,7 @@
  * running in tests/demo with a fixture.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -46,7 +47,7 @@ import {
 } from './choreographyService';
 import type { Choreography } from './choreographyTypes';
 
-const PURPLE = '#8b5cf6';
+const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_SOFT = 'rgba(139,92,246,0.18)';
 
 export interface ChoreographyBuilderConnectedProps {
@@ -383,7 +384,7 @@ export function ChoreographyBuilderConnected({
         sx={{
           fontSize: 10,
           letterSpacing: 2,
-          color: '#a78bfa',
+          color: danceFlowColors.lavender,
           fontWeight: 700,
           mr: 0.5,
         }}
@@ -406,7 +407,7 @@ export function ChoreographyBuilderConnected({
             '& .MuiOutlinedInput-notchedOutline': {
               borderColor: PURPLE_SOFT,
             },
-            '& .MuiSvgIcon-root': { color: '#a78bfa' },
+            '& .MuiSvgIcon-root': { color: danceFlowColors.lavender },
           }}
           data-testid="choreography-selector"
         >
@@ -437,7 +438,7 @@ export function ChoreographyBuilderConnected({
           fontWeight: 600,
           color: '#fff',
           bgcolor: PURPLE,
-          '&:hover': { bgcolor: '#7c3aed' },
+          '&:hover': { bgcolor: danceFlowColors.lavenderDeep },
         }}
         data-testid="choreography-new"
       >
@@ -451,7 +452,7 @@ export function ChoreographyBuilderConnected({
                 size="small"
                 onClick={() => void handleDuplicate()}
                 disabled={duplicateBusy}
-                sx={{ color: '#a78bfa' }}
+                sx={{ color: danceFlowColors.lavender }}
                 data-testid="choreography-duplicate"
               >
                 <DuplicateIcon fontSize="small" />
@@ -488,7 +489,7 @@ export function ChoreographyBuilderConnected({
         alignItems="center"
         justifyContent="center"
         spacing={2}
-        sx={{ minHeight: 240, color: '#a78bfa' }}
+        sx={{ minHeight: 240, color: danceFlowColors.lavender }}
       >
         <CircularProgress size={28} sx={{ color: PURPLE }} />
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
@@ -532,7 +533,7 @@ export function ChoreographyBuilderConnected({
           onClick={openCreate}
           sx={{
             bgcolor: PURPLE,
-            '&:hover': { bgcolor: '#7c3aed' },
+            '&:hover': { bgcolor: danceFlowColors.lavenderDeep },
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -587,7 +588,7 @@ export function ChoreographyBuilderConnected({
             onClick={() => void submitCreate()}
             variant="contained"
             disabled={createBusy}
-            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
             data-testid="choreography-new-submit"
           >
             {createBusy ? 'Oppretter…' : 'Opprett'}

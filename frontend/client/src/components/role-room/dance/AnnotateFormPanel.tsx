@@ -119,7 +119,7 @@ export default function AnnotateFormPanel({
           }}
           sx={{
             flex: 1.5,
-            '& .MuiInputBase-input': { fontSize: 12, color: '#e5e7eb' },
+            '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary },
             '& .MuiInputLabel-root': { fontSize: 11 },
           }}
         />
@@ -135,7 +135,7 @@ export default function AnnotateFormPanel({
           sx={{
             flex: 1,
             '& .MuiInputBase-input': {
-              fontSize: 12, color: '#e5e7eb', fontVariantNumeric: 'tabular-nums',
+              fontSize: 12, color: danceFlowColors.textSecondary, fontVariantNumeric: 'tabular-nums',
             },
             '& .MuiInputLabel-root': { fontSize: 11 },
           }}
@@ -152,7 +152,7 @@ export default function AnnotateFormPanel({
           sx={{
             flex: 1,
             '& .MuiInputBase-input': {
-              fontSize: 12, color: '#e5e7eb', fontVariantNumeric: 'tabular-nums',
+              fontSize: 12, color: danceFlowColors.textSecondary, fontVariantNumeric: 'tabular-nums',
             },
             '& .MuiInputLabel-root': { fontSize: 11 },
           }}
@@ -169,7 +169,7 @@ export default function AnnotateFormPanel({
           data-testid="annotate-form-dancer"
           sx={{
             flex: 1,
-            '& .MuiInputBase-input': { fontSize: 12, color: '#e5e7eb' },
+            '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary },
             '& .MuiInputLabel-root': { fontSize: 11 },
           }}
         >
@@ -194,7 +194,7 @@ export default function AnnotateFormPanel({
         data-testid="annotate-form-notes"
         placeholder="F.eks. «Travels to the right»"
         sx={{
-          '& .MuiInputBase-input': { fontSize: 12, color: '#e5e7eb' },
+          '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary },
           '& .MuiInputLabel-root': { fontSize: 11 },
         }}
       />
