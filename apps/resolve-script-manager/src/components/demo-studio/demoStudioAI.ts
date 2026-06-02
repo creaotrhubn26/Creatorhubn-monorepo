@@ -11,7 +11,7 @@
  */
 
 import { claudeProxyService } from '../../services/claudeProxyService';
-import type { DemoScene, ScriptMeta, DemoType } from './demoStudioModel';
+import { makeScene, viewportForDevice, type DemoScene, type ScriptMeta, type DemoType, type DemoDevice } from './demoStudioModel';
 
 export type ImproveAction =
   | 'shorten' | 'clarify' | 'professional' | 'human' | 'sales' | 'tutorial' | 'cta' | 'simplify';
@@ -113,4 +113,102 @@ export async function improveScript(params: {
     maxTokens: 500,
   });
   return raw.trim().replace(/^["']|["']$/g, '');
+}
+
+/**
+ * Hent best-effort nettside-kontekst (tittel + synlig tekst) så AI Director
+ * forstår HVA produktet faktisk er. Cross-origin/CORS kan blokkere fetch fra
+ * en webapp; da returnerer vi tom kontekst og lar Director jobbe ut fra
+ * URL + demo-type alene. (Best-effort, aldri fatal.)
+ */
+export async function fetchSiteContext(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) return '';
+    const html = await res.text();
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? '';
+    const desc = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]?.trim() ?? '';
+    // Strip tags → første ~1500 tegn synlig tekst.
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 1500);
+    return [title && `Tittel: ${title}`, desc && `Beskrivelse: ${desc}`, text && `Innhold: ${text}`]
+      .filter(Boolean).join('\n');
+  } catch {
+    return '';
+  }
+}
+
+export interface FlowSceneDraft {
+  title: string;
+  device: DemoDevice;
+  narration: string;
+  visualInstruction: string;
+  requiredAction: string;
+  overlayText: string;
+  duration: number;
+}
+
+/**
+ * AI Director (§5.1): analyser nettsiden + demo-mål og foreslå en HEL
+ * scene-flow med manus per scene. Resultatet mates inn i samme store og blir
+ * redigerbart i Script Builder — så Director og Script Builder samarbeider om
+ * samme scene-objekter.
+ */
+export async function generateDemoFlow(params: {
+  url: string;
+  demoType: DemoType;
+  devices: DemoDevice[];
+  meta: ScriptMeta;
+  targetSeconds?: number;
+  siteContext?: string;
+}): Promise<DemoScene[]> {
+  const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '' } = params;
+  const user = `Lag en komplett produktdemo-flow.
+
+Produkt-URL: ${url}
+Demo-type: ${demoType}
+Tilgjengelige enheter: ${devices.join(', ')}
+Tone: ${meta.tone} · Publikum: ${meta.audience} · Språk: ${meta.language} · Lengde: ${meta.length}
+Ønsket total varighet: ~${targetSeconds} sekunder
+${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}
+Foreslå 5-7 scener som forteller en sammenhengende historie (intro → kjernefunksjon → bevis/verdi → CTA → outro).
+Velg device per scene fra de tilgjengelige (bruk mobil for mobil-flyt hvis relevant).
+Svar med KUN ett JSON-objekt:
+{
+  "scenes": [
+    { "title": "...", "device": "macbook|ipad|iphone", "narration": "hva som sies",
+      "visualInstruction": "hva som vises", "requiredAction": "hva som gjøres",
+      "overlayText": "kort overlay", "duration": 10 }
+  ]
+}`;
+
+  const raw = await claudeProxyService.send({
+    systemPrompt: SYSTEM + ' Du designer hele demo-flowen — dramaturgi, rekkefølge og device-valg.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 2000,
+  });
+  const parsed = extractJson<{ scenes: FlowSceneDraft[] }>(raw);
+  if (!parsed?.scenes?.length) throw new Error('Klarte ikke å tolke flow fra AI');
+
+  return parsed.scenes.map((d, i) => {
+    const device: DemoDevice = (['macbook', 'ipad', 'iphone'] as DemoDevice[]).includes(d.device) ? d.device : (devices[0] ?? 'macbook');
+    const base = makeScene(i, device);
+    return {
+      ...base,
+      title: d.title || `Scene ${i + 1}`,
+      device,
+      viewport: viewportForDevice(device),
+      narration: d.narration || '',
+      visualInstruction: d.visualInstruction || '',
+      requiredAction: d.requiredAction || '',
+      overlayText: d.overlayText || '',
+      duration: typeof d.duration === 'number' && d.duration > 0 ? d.duration : 10,
+      status: 'in_progress',
+    };
+  });
 }

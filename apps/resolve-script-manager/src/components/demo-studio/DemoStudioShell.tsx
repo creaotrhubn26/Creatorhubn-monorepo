@@ -20,6 +20,7 @@ import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { ExportView } from './ExportView';
 import { useSceneRecorder } from './useSceneRecorder';
+import { generateDemoFlow, fetchSiteContext } from './demoStudioAI';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -61,7 +62,7 @@ function fmt(sec: number) {
 export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const {
     project, selectedSceneId, recorderStepIndex,
-    createProject, selectScene, updateScene, addScene, removeScene,
+    createProject, selectScene, updateScene, addScene, removeScene, replaceScenes,
     setSceneDevice, setProjectField, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
   } = useDemoStudio();
 
@@ -71,6 +72,31 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [recording, setRecording] = useState(false);
   const rec = useSceneRecorder();
   const [urlInput, setUrlInput] = useState('');
+  const [directorBusy, setDirectorBusy] = useState(false);
+  const [directorMsg, setDirectorMsg] = useState<string | null>(null);
+
+  // AI Director (§5.1): hent nettside-kontekst → generér hel scene-flow →
+  // erstatt scener → hopp til Script Builder så Director + Script Builder
+  // jobber på samme scene-objekter.
+  const runDirector = async () => {
+    if (!project || directorBusy) return;
+    setDirectorBusy(true); setDirectorMsg('Leser nettsiden…');
+    try {
+      const siteContext = await fetchSiteContext(project.url);
+      setDirectorMsg('AI Director designer flowen…');
+      const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'Healthcare Professionals', language: 'English', length: 'medium' as const };
+      const scenes = await generateDemoFlow({
+        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext,
+      });
+      replaceScenes(scenes);
+      setDirectorMsg(`✓ ${scenes.length} scener generert`);
+      setNav('script'); // samarbeid: åpne resultatet i Script Builder
+    } catch (e) {
+      setDirectorMsg('Feil: ' + (e as Error).message);
+    } finally {
+      setDirectorBusy(false);
+    }
+  };
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
 
   const scenes = project?.scenes ?? [];
@@ -165,8 +191,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <div style={{ flex: 1 }} />
           <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
             <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>✦ AI Director</h4>
-            <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 10 }}>La AI foreslå scener, manus og handlinger for demoen din.</p>
-            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff' }}>Open AI Director</button>
+            <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 10 }}>La AI lese nettsiden og foreslå en hel scene-flow med manus.</p>
+            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
+              disabled={directorBusy} onClick={() => void runDirector()}>
+              {directorBusy ? 'Jobber…' : 'Generér hele demoen'}
+            </button>
+            {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
             <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#cdbfae' }} />

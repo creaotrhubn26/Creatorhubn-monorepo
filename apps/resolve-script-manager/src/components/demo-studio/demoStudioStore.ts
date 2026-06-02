@@ -40,6 +40,8 @@ interface DemoStudioState {
   addScene: (afterIndex?: number) => void;
   updateScene: (id: string, patch: Partial<DemoScene>) => void;
   removeScene: (id: string) => void;
+  /** Bytt ut hele scene-listen (AI Director). */
+  replaceScenes: (scenes: DemoScene[]) => void;
   reorderScenes: (fromIndex: number, toIndex: number) => void;
   setSceneStatus: (id: string, status: SceneStatus) => void;
   setSceneDevice: (id: string, device: DemoDevice) => void;
@@ -117,6 +119,13 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
     const scenes = reindex(project.scenes.filter((s) => s.id !== id));
     const nextSelected = selectedSceneId === id ? scenes[0]?.id ?? null : selectedSceneId;
     set({ project: persist({ ...project, scenes }), selectedSceneId: nextSelected });
+  },
+
+  replaceScenes: (scenes) => {
+    const { project } = get();
+    if (!project) return;
+    const reindexed = reindex(scenes);
+    set({ project: persist({ ...project, scenes: reindexed }), selectedSceneId: reindexed[0]?.id ?? null });
   },
 
   reorderScenes: (fromIndex, toIndex) => {
