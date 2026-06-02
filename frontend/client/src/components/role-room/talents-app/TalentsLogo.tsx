@@ -1,7 +1,8 @@
 /**
  * TalentsLogo.tsx — "The Role Room" eksisterende logo + "TALENTS" under.
  *
- * Bruker /TheRoleRoom_Logo_Tagline.png (eksisterende asset) som master,
+ * Bruker /TheRoleRoom_Logo_v2.png (oppdatert logo med teater-masker +
+ * clapperboard + person-ikon + "Casting. Roles. Together."-tagline)
  * stacker "TALENTS" tekst under for å matche mockup #11 sidebar-header.
  */
 
@@ -19,7 +20,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box
           component="img"
-          src="/TheRoleRoom_Logo_Tagline.png"
+          src="/TheRoleRoom_Logo_v2.png"
           alt="The Role Room Talents"
           sx={{ height: 28, width: 'auto', objectFit: 'contain' }}
         />
@@ -49,7 +50,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
     >
       <Box
         component="img"
-        src="/TheRoleRoom_Logo_Tagline.png"
+        src="/TheRoleRoom_Logo_v2.png"
         alt="The Role Room"
         sx={{
           width: '100%',
