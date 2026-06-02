@@ -138,6 +138,7 @@ interface CallSheetCrewMember {
   position: string;
   callTime: string;
   phone?: string;
+  email?: string;
 }
 
 interface EmergencyContact {
@@ -383,6 +384,7 @@ export function buildDayCallSheetFields(
       position: c.role ? String(c.role) : '',
       callTime: productionDay.callTime || '',
       phone: c.contactInfo?.phone,
+      email: c.contactInfo?.email,
     }));
   }
 
@@ -396,6 +398,27 @@ export function buildDayCallSheetFields(
     };
   }
   return fields;
+}
+
+// Kompakt, e-postvennlig HTML av call-sheeten som sendes til crew. Escaper
+// dynamiske felter slik at scene-tekst/adresser ikke kan brekke markup.
+function buildCallSheetEmailHtml(cs: CallSheetData): string {
+  const esc = (v: string): string => String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const loc = cs.locations?.[0];
+  const sceneRows = (cs.scenes || [])
+    .map((s) => `<tr><td style="padding:4px;border:1px solid #ddd">${esc(s.sceneNumber)}</td><td style="padding:4px;border:1px solid #ddd">${esc(s.intExt)}/${esc(s.dayNight)}</td><td style="padding:4px;border:1px solid #ddd">${esc(s.description)}</td></tr>`)
+    .join('');
+  return [
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a">',
+    `<h2 style="margin:0 0 4px">Call Sheet · ${esc(cs.projectName)}</h2>`,
+    `<p><strong>Dato:</strong> ${esc(cs.date)} &nbsp;·&nbsp; <strong>Call:</strong> ${esc(cs.callTime)} &nbsp;·&nbsp; <strong>Wrap:</strong> ${esc(cs.estimatedWrap)}</p>`,
+    loc ? `<p><strong>Lokasjon:</strong> ${esc(loc.name)}, ${esc(loc.address)}${loc.parkingInfo ? `<br/><em>Parkering:</em> ${esc(loc.parkingInfo)}` : ''}${loc.contactPhone ? `<br/><em>Kontakt:</em> ${esc(loc.contactPerson)} ${esc(loc.contactPhone)}` : ''}</p>` : '',
+    cs.scenes?.length ? `<h3 style="margin:12px 0 4px">Scener</h3><table style="border-collapse:collapse;font-size:13px">${sceneRows}</table>` : '',
+    cs.specialInstructions ? `<h3 style="margin:12px 0 4px">Viktig</h3><p>${esc(cs.specialInstructions).replace(/\n/g, '<br/>')}</p>` : '',
+    '<p style="color:#888;font-size:12px;margin-top:16px">Sendt fra The Role Room · produksjonsplan</p>',
+    '</div>',
+  ].join('');
 }
 
 export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
@@ -414,6 +437,8 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [isLoading, setIsLoading] = useState(false); // Start with demo data visible
   const [isSynced, setIsSynced] = useState(false);
+  const [sendingCallSheet, setSendingCallSheet] = useState(false);
+  const [sendFeedback, setSendFeedback] = useState<{ severity: 'success' | 'warning' | 'error'; text: string } | null>(null);
   
   // Data from casting service
   const [castingCandidates, setCastingCandidates] = useState<Candidate[]>([]);
@@ -589,6 +614,45 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       loadCastingData();
     }
   }, [projectId, productionDay, scenes, crew, locations]);
+
+  const handleSendToCrew = async () => {
+    const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    const recipients = (callSheet.crew || [])
+      .filter((c) => c.email && emailRe.test(c.email))
+      .map((c) => ({ name: c.name, email: c.email as string }));
+    if (recipients.length === 0) {
+      setSendFeedback({ severity: 'warning', text: 'Ingen crew med e-postadresse. Legg til e-post på crew-medlemmene først.' });
+      return;
+    }
+    setSendingCallSheet(true);
+    setSendFeedback(null);
+    try {
+      const response = await fetch('/api/role-room/call-sheets/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          subject: `Call Sheet · ${callSheet.projectName} · ${callSheet.date}`,
+          html: buildCallSheetEmailHtml(callSheet),
+          recipients,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { sent?: number; total?: number; error?: string };
+      if (!response.ok) throw new Error(data?.error || 'Sending feilet');
+      const sent = data.sent ?? 0;
+      const total = data.total ?? recipients.length;
+      setSendFeedback({
+        severity: sent === total ? 'success' : 'warning',
+        text: sent === total
+          ? `Call sheet sendt til alle ${total} crew-medlemmer.`
+          : `Sendt til ${sent} av ${total}. Sjekk e-postadressene til resten.`,
+      });
+    } catch (error) {
+      setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : 'Kunne ikke sende call sheet.' });
+    } finally {
+      setSendingCallSheet(false);
+    }
+  };
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -900,7 +964,29 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
             >
               {responsive.showFullLabels ? 'Eksporter PDF' : 'PDF'}
             </Button>
+            <Button
+              variant="contained"
+              color="success"
+              size={responsive.compactMode ? 'small' : 'medium'}
+              startIcon={sendingCallSheet
+                ? <CircularProgress size={responsive.iconSize} color="inherit" />
+                : <EmailIcon sx={{ fontSize: responsive.iconSize }} />}
+              onClick={handleSendToCrew}
+              disabled={sendingCallSheet}
+              sx={{ fontSize: responsive.fontSize.caption }}
+            >
+              {responsive.showFullLabels ? (sendingCallSheet ? 'Sender…' : 'Send til crew') : ''}
+            </Button>
           </Stack>
+          {sendFeedback && (
+            <Alert
+              severity={sendFeedback.severity}
+              onClose={() => setSendFeedback(null)}
+              sx={{ mt: 1.5 }}
+            >
+              {sendFeedback.text}
+            </Alert>
+          )}
         </Stack>
       </Paper>
 
