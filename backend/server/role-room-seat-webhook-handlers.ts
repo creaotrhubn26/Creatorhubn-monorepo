@@ -170,8 +170,11 @@ export async function handleRoleRoomPaymentFailed(
   pool: Pool,
   invoice: Stripe.Invoice,
 ): Promise<{ matched: boolean }> {
-  const subId = typeof invoice.subscription === "string"
-    ? invoice.subscription : invoice.subscription?.id;
+  // Stripe v19+ flyttet invoice.subscription til en utvidet path.
+  // Bruker cast for å unngå å pin-poste den eksakte typen i hver API-bump.
+  const invoiceWithSub = invoice as Stripe.Invoice & { subscription?: string | { id: string } | null };
+  const subId = typeof invoiceWithSub.subscription === "string"
+    ? invoiceWithSub.subscription : invoiceWithSub.subscription?.id;
   if (!subId) return { matched: false };
 
   let ownerUserId: string | null = null;
