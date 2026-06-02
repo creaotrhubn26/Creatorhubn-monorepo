@@ -124,19 +124,19 @@ const BASE = '/api/role-room/partnerships';
 
 function buildUrl(path: string, params?: Record<string, string | undefined>): string {
   let url = `${BASE}${path}`;
+  const qp = new URLSearchParams();
   if (params) {
-    const qp = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
       if (v != null && v !== '') qp.set(k, String(v));
     });
-    // Bevar ?demo=1 fra nåværende URL hvis ikke eksplisitt overstyrt
-    if (typeof window !== 'undefined' && !qp.has('demo')) {
-      const cur = new URLSearchParams(window.location.search);
-      if (cur.get('demo') === '1' || cur.get('demo') === 'true') qp.set('demo', '1');
-    }
-    const qs = qp.toString();
-    if (qs) url += `?${qs}`;
   }
+  // Bevar ?demo=1 fra nåværende URL i ALLE requests (også de uten params)
+  if (typeof window !== 'undefined' && !qp.has('demo')) {
+    const cur = new URLSearchParams(window.location.search);
+    if (cur.get('demo') === '1' || cur.get('demo') === 'true') qp.set('demo', '1');
+  }
+  const qs = qp.toString();
+  if (qs) url += `?${qs}`;
   return url;
 }
 
