@@ -32,9 +32,9 @@ import ipadFrame from './frames/ipad.png';
 import macbookFrame from './frames/macbook.png';
 
 export const DEVICE_FRAMES: Record<DeviceVariant, FrameSpec> = {
-  iphone: { src: iphoneFrame, frameW: 1296, frameH: 2592, sx: 40, sy: 114, sw: 1216, sh: 2446, screenRadius: 120 },
-  ipad: { src: ipadFrame, frameW: 1861, frameH: 2581, sx: 16, sy: 73, sw: 1822, sh: 2492, screenRadius: 36 },
-  macbook: { src: macbookFrame, frameW: 3910, frameH: 2236, sx: 389, sy: 94, sw: 3134, sh: 1978, screenRadius: 8 },
+  iphone: { src: iphoneFrame, frameW: 1086, frameH: 1448, sx: 248, sy: 85, sw: 588, sh: 1275, screenRadius: 56 },
+  ipad: { src: ipadFrame, frameW: 1086, frameH: 1448, sx: 131, sy: 112, sw: 823, sh: 1222, screenRadius: 20 },
+  macbook: { src: macbookFrame, frameW: 1586, frameH: 992, sx: 261, sy: 39, sw: 1064, sh: 698, screenRadius: 6 },
 };
 
 /** Forholdstall (bredde/høyde) for hele frame-PNG-en. */
