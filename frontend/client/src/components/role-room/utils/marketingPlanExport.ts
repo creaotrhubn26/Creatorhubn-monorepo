@@ -163,7 +163,7 @@ export function exportMarketingPlanAsPdf(input: {
         doc.addPage();
         y = margin;
       }
-      const day = `Dag ${post.dayOffset + 1}`;
+      const day = `Dag ${(post.dayOffset ?? 0) + 1}`;
       const fmt = post.format;
       const hook = post.hook?.slice(0, 80) ?? '';
       doc.text(`${day} · ${fmt}: ${hook}`, margin, y);
@@ -251,7 +251,7 @@ export function exportMarketingPlanAsIcs(input: {
   posts.forEach((post, idx) => {
     const scheduledFor: Date = post.scheduledFor
       ? new Date(post.scheduledFor)
-      : new Date(planStart.getTime() + post.dayOffset * 24 * 60 * 60 * 1000);
+      : new Date(planStart.getTime() + (post.dayOffset ?? 0) * 24 * 60 * 60 * 1000);
     // 30-min default duration — calendar apps make this drag-extendable.
     const end = new Date(scheduledFor.getTime() + 30 * 60 * 1000);
     const uid = `${plan.id}-${post.id ?? idx}@role-room`;

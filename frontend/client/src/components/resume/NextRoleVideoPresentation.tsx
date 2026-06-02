@@ -17,7 +17,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Box, Typography, TextField, Stack, Paper, Chip,
   CircularProgress, LinearProgress, Alert, IconButton, MenuItem,
-  ToggleButtonGroup, ToggleButton, Slider,
+  ToggleButtonGroup, ToggleButton, Slider, Tooltip, Divider,
 } from '@mui/material';
 import {
   Close as CloseIcon,

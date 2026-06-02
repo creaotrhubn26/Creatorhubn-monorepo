@@ -596,7 +596,7 @@ export function LocationManagementPanel({
   const dialogDescId = `${baseId}-dialog-desc`;
 
   // Toast notifications
-  const { showSuccess, showError, showInfo } = useToast();
+  const { showSuccess, showError, showInfo, showWarning } = useToast();
   const { user } = useAuth();
   const noteActorLabel = useMemo(() => {
     const raw = user?.displayName ?? user?.name ?? user?.email;
