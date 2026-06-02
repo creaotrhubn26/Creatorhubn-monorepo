@@ -134,6 +134,14 @@ export interface DemoProject {
   devices: DemoDevice[];
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
   continueMode?: 'manual' | 'auto';
+  /**
+   * Hva som tas opp: 'web' (iframe/getDisplayMedia, default), eller en native
+   * capture-kilde. For App Store-apper: 'ios_device' (kablet enhet).
+   */
+  captureKind?: 'web' | 'mac_screen' | 'ios_device' | 'ios_simulator';
+  /** AVFoundation-indeks eller simulator-UDID når captureKind != 'web'. */
+  captureSourceId?: string;
+  captureSourceLabel?: string;
   /** Eksport-format (aspect ratio). */
   format: '16:9' | '9:16' | '1:1' | '4:5';
   /** Manus-meta (Script Builder Tone/Audience/Language/Length). */

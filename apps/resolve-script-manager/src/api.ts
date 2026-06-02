@@ -100,6 +100,32 @@ export async function saveDemoRecording(
   return invoke<string>("save_demo_recording", { projectId, sceneId, dataBase64 });
 }
 
+export interface CaptureSource {
+  kind: "mac_screen" | "ios_device" | "ios_simulator";
+  id: string;
+  label: string;
+  available: boolean;
+}
+
+/** List tilgjengelige capture-kilder (Mac-skjerm, kablede iOS-enheter, simulatorer). */
+export async function listCaptureSources(): Promise<CaptureSource[]> {
+  return invoke<CaptureSource[]>("list_capture_sources");
+}
+
+/** Ta opp fra AVFoundation video-device-indeks (Mac-skjerm / kablet iOS) → mp4. */
+export async function recordAvfoundation(
+  projectId: string, sceneId: string, deviceIndex: string, durationSec: number,
+): Promise<string> {
+  return invoke<string>("record_avfoundation", { projectId, sceneId, deviceIndex, durationSec });
+}
+
+/** Ta opp en bootet iOS-simulator (krever full Xcode) → mov. */
+export async function recordSimulator(
+  projectId: string, sceneId: string, udid: string, durationSec: number,
+): Promise<string> {
+  return invoke<string>("record_simulator", { projectId, sceneId, udid, durationSec });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }

@@ -13,9 +13,10 @@
  * bekreftelse (continueMode: manual). Bruker useSceneRecorder for ekte opptak.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
+import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -52,6 +53,11 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const macFrameRef = useRef<HTMLIFrameElement | null>(null);
   const autoAbort = useRef(false);
   const [autoRunning, setAutoRunning] = useState(false);
+  const [sources, setSources] = useState<CaptureSource[]>([]);
+  const [sourceMenu, setSourceMenu] = useState(false);
+
+  // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
+  useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
 
   if (!project) return <div style={{ padding: 40, fontFamily: C.font, color: C.inkSoft }}>Opprett en demo først.</div>;
 
@@ -60,6 +66,28 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const recording = rec.state === 'recording';
   const actionMeta = ACTION_META[cur?.actionType ?? 'click'];
   const autoMode = (project.continueMode ?? 'manual') === 'auto';
+  const captureKind = project.captureKind ?? 'web';
+  const isNativeCapture = captureKind === 'ios_device' || captureKind === 'mac_screen' || captureKind === 'ios_simulator';
+
+  /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl). */
+  const recordNativeScene = async (sceneId: string): Promise<string | null> => {
+    const dur = Math.min(Math.max(cur?.duration ?? 8, 2), 120);
+    try {
+      if (captureKind === 'ios_simulator') {
+        return await recordSimulator(project.id, sceneId, project.captureSourceId ?? '', dur);
+      }
+      // mac_screen + ios_device går begge via AVFoundation-indeks.
+      return await recordAvfoundation(project.id, sceneId, project.captureSourceId ?? '0', dur);
+    } catch { return null; }
+  };
+
+  const pickSource = (s: CaptureSource | null) => {
+    setSourceMenu(false);
+    if (!s) { setProjectField('captureKind', 'web'); setProjectField('captureSourceId', undefined); setProjectField('captureSourceLabel', undefined); return; }
+    setProjectField('captureKind', s.kind);
+    setProjectField('captureSourceId', s.id);
+    setProjectField('captureSourceLabel', s.label);
+  };
 
   /**
    * Utfør én scenes required action i Mac-preview-iframen (best-effort).
@@ -89,8 +117,15 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
   const beginRecording = async () => {
     startRecorder();
-    await rec.start();
-    if (autoMode) void runAuto();
+    if (isNativeCapture) {
+      // Native: ta opp gjeldende scene fra valgt enhet/simulator (blokkerer
+      // til varigheten er nådd), sett recordingPath.
+      const path = await recordNativeScene(cur.id);
+      if (path) updateScene(cur.id, { recordingPath: path });
+    } else {
+      await rec.start();
+      if (autoMode) void runAuto();
+    }
   };
 
   /** Auto-løp: kjør hver scene sin handling, vent varighet, gå videre. */
@@ -117,6 +152,16 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   };
 
   const doneAndNext = async () => {
+    if (isNativeCapture) {
+      // Native: opptak skjer per scene via recordNativeScene (allerede lagret).
+      markCurrentDone();
+      if (recorderStepIndex < scenes.length - 1) {
+        nextStep();
+        const path = await recordNativeScene(scenes[recorderStepIndex + 1]?.id ?? cur.id);
+        if (path) updateScene(scenes[recorderStepIndex + 1].id, { recordingPath: path });
+      }
+      return;
+    }
     if (rec.state === 'recording') {
       const path = await rec.stopAndSave(project.id, cur.id);
       if (path) updateScene(cur.id, { recordingPath: path });
@@ -160,11 +205,32 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Topbar: URL + device-toggle + Generate + Record */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: C.panel, borderBottom: `1px solid ${C.line}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: '8px 12px', flex: 1, maxWidth: 460 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: '8px 12px', flex: 1, maxWidth: 360 }}>
             <span style={{ color: C.inkFaint }}>🌐</span>
             <input style={{ flex: 1, border: 0, outline: 'none', fontSize: 13, color: C.ink }} value={project.url}
               onChange={(e) => setProjectField('url', e.target.value)} />
             <span style={{ color: C.inkFaint, cursor: 'pointer' }}>✕</span>
+          </div>
+
+          {/* Capture-kilde-velger: web / Mac-skjerm / kablet iOS / simulator */}
+          <div style={{ position: 'relative' }}>
+            <button style={btn} onClick={() => setSourceMenu((v) => !v)} title="Hva tas opp">
+              {captureKind === 'web' ? '🌐 Web' : captureKind === 'mac_screen' ? '🖥 Mac' : captureKind === 'ios_simulator' ? '⊞ Simulator' : '📱 ' + (project.captureSourceLabel ?? 'iOS')} ⌄
+            </button>
+            {sourceMenu && (
+              <div style={{ position: 'absolute', top: 40, left: 0, zIndex: 20, background: '#fff', border: `1px solid ${C.lineStrong}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 260, padding: 6 }}>
+                <SourceItem label="🌐 Web-app (URL)" sub="iframe-preview av nettsiden" onClick={() => pickSource(null)} active={captureKind === 'web'} />
+                {sources.map((s) => (
+                  <SourceItem key={s.kind + s.id}
+                    label={`${s.kind === 'mac_screen' ? '🖥' : s.kind === 'ios_simulator' ? '⊞' : '📱'} ${s.label}`}
+                    sub={s.kind === 'ios_device' ? 'Kablet enhet — funker med App Store-apper' : s.kind === 'ios_simulator' ? 'Simulator — kun egne Xcode-bygg' : 'Mac-skjerm'}
+                    onClick={() => pickSource(s)} active={project.captureSourceId === s.id && captureKind === s.kind} />
+                ))}
+                <div style={{ fontSize: 10.5, color: C.inkFaint, padding: '8px 10px 4px', lineHeight: 1.4 }}>
+                  iPhone/iPad: koble til med kabel + «Stol på». App Store-apper tas opp via kablet enhet.
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 4, border: `1px solid ${C.line}`, borderRadius: 10, padding: 3 }}>
             {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
@@ -333,6 +399,15 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   function setSceneDeviceLocal(d: DemoDevice) {
     if (cur) updateScene(cur.id, { device: d, viewport: d === 'macbook' ? 'desktop' : d === 'ipad' ? 'tablet' : 'mobile' });
   }
+}
+
+function SourceItem({ label, sub, onClick, active }: { label: string; sub: string; onClick: () => void; active: boolean }) {
+  return (
+    <div onClick={onClick} style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? '#f3ece2' : 'transparent' }}>
+      <div style={{ fontSize: 12.5, fontWeight: active ? 600 : 500, color: '#1d1b19' }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: '#9a9186' }}>{sub}</div>
+    </div>
+  );
 }
 
 /** Trekk ut et kort knapp-navn fra required action ("Click the X button" → "X"). */

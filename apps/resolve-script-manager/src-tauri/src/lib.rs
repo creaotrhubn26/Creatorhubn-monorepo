@@ -7,6 +7,7 @@ mod creations;
 mod cull;
 mod folder_watcher;
 mod history;
+mod capture_sources;
 mod demo_recording;
 mod media_probe;
 mod mockup_render;
@@ -910,6 +911,9 @@ pub fn run() {
             media_probe::probe_media_files,
             mockup_render::mockup_render_video,
             demo_recording::save_demo_recording,
+            capture_sources::list_capture_sources,
+            capture_sources::record_avfoundation,
+            capture_sources::record_simulator,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,
