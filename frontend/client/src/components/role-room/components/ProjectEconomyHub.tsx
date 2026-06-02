@@ -52,6 +52,7 @@ import {
 import { onProjectAgreementEvent } from '../services/projectAgreementEvents';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { SimpleBudgetEstimator, computeSimpleBudgetEstimate } from './SimpleBudgetEstimator';
+import { NextClientPointsButton } from './NextClientPointsButton';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -2226,6 +2227,13 @@ export default function ProjectEconomyHub({
                     {getProjectWorkflowStatusLabel(project.producerWorkflowStatus)}
                   </Typography>
                 </Box>
+                <NextClientPointsButton
+                  meta={project.producerWorkflowMeta}
+                  status={project.producerWorkflowStatus}
+                  clientInputBeforeHandoff={deliveryManifest.pendingClientMoments.length}
+                  onGoToReviews={onOpenReviews ? () => onOpenReviews() : undefined}
+                  compact
+                />
               </Stack>
               <Typography
                 sx={{
