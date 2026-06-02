@@ -68,6 +68,7 @@ import DealsPipelineBoard from './DealsPipelineBoard';
 import CrmActionQueue from './CrmActionQueue';
 import CrmReports from './CrmReports';
 import CrmImportDialog from './CrmImportDialog';
+import CrmDuplicatesDialog from './CrmDuplicatesDialog';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -207,6 +208,7 @@ export default function UniversalCRMDashboard({
   const [showActionQueue, setShowActionQueue] = useState(false); // #24 action queue
   const [showReports, setShowReports] = useState(false); // Wave 3 reports
   const [showImport, setShowImport] = useState(false); // Wave 3b CSV import
+  const [showDuplicates, setShowDuplicates] = useState(false); // #33 dedupe-merge
   // #42 — controlled edit-form so empty fields never corrupt into ', '
   const [editForm, setEditForm] = useState({
     name: '',
@@ -964,14 +966,15 @@ export default function UniversalCRMDashboard({
 
   // #41 — delete / archive a customer with confirmation + feedback.
   const deleteCustomerMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest(`/api/universal-crm/customers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    mutationFn: async ({ id, hard }: { id: string; hard?: boolean }) => {
+      // #15 — soft-delete by default; hard=true is an irreversible GDPR erasure.
+      return apiRequest(`/api/universal-crm/customers/${encodeURIComponent(id)}${hard ? '?hard=true' : ''}`, { method: 'DELETE' });
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
       queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
       emitCrmChange('customer:deleted', { id: customerToDelete?.id });
-      toast({ title: 'Kunde slettet', variant: 'success' });
+      toast({ title: res?.erased ? 'Alle data slettet' : 'Kunde slettet', variant: 'success' });
       setCustomerToDelete(null);
     },
     onError: (err: any) => {
@@ -1380,6 +1383,21 @@ export default function UniversalCRMDashboard({
                   }}
                 >
                   Importer
+                </Button>
+                {/* #33 — duplicate detection + merge. */}
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowDuplicates(true)}
+                  disabled={!customerManagementAccess.hasAccess}
+                  sx={{
+                    minWidth: 120,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Dubletter
                 </Button>
                 <Button
                   variant="outlined"
@@ -3250,11 +3268,11 @@ export default function UniversalCRMDashboard({
         <DialogTitle>Slett kunde?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
-            Dette sletter <strong>{customerToDelete?.name}</strong> permanent. Vil du heller arkivere kunden
-            slik at historikken beholdes?
+            <strong>Slett</strong> skjuler <strong>{customerToDelete?.name}</strong> men beholder historikken (kan gjenopprettes i databasen).
+            <strong> Arkiver</strong> beholder kunden synlig som arkivert. <strong>Slett alle data</strong> fjerner alt permanent (GDPR).
           </Typography>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap' }}>
           <Button onClick={() => setCustomerToDelete(null)}>Avbryt</Button>
           <Button
             startIcon={<ArchiveIcon />}
@@ -3269,12 +3287,19 @@ export default function UniversalCRMDashboard({
           </Button>
           <Button
             color="error"
-            variant="contained"
             startIcon={<DeleteIcon />}
             disabled={deleteCustomerMutation.isPending}
-            onClick={() => customerToDelete && deleteCustomerMutation.mutate(customerToDelete.id)}
+            onClick={() => customerToDelete && deleteCustomerMutation.mutate({ id: customerToDelete.id })}
           >
-            {deleteCustomerMutation.isPending ? 'Sletter…' : 'Slett permanent'}
+            {deleteCustomerMutation.isPending ? 'Sletter…' : 'Slett'}
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleteCustomerMutation.isPending}
+            onClick={() => customerToDelete && deleteCustomerMutation.mutate({ id: customerToDelete.id, hard: true })}
+          >
+            Slett alle data (GDPR)
           </Button>
         </DialogActions>
       </Dialog>
@@ -3351,6 +3376,9 @@ export default function UniversalCRMDashboard({
 
       {/* Wave 3b — CSV import */}
       <CrmImportDialog open={showImport} onClose={() => setShowImport(false)} brandColor={colors.primary} />
+
+      {/* #33 — dedupe / merge */}
+      <CrmDuplicatesDialog open={showDuplicates} onClose={() => setShowDuplicates(false)} brandColor={colors.primary} />
     </Box>
   );
 }

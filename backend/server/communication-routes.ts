@@ -3309,6 +3309,56 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     await handleSendEmail(req, res);
   });
 
+  // CRM inbound capture (#51) — pull recent inbox messages, match the sender to
+  // an owner's CRM customer (by normalized email), and log each as an inbound
+  // 'email' activity (deduped by Gmail message id) so client replies show up on
+  // the timeline. Honest error when Gmail isn't connected.
+  router.post('/api/universal-crm/inbound/gmail-sync', async (req, res) => {
+    try {
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const ownerUserId = preferredIdentity.userId;
+      if (!ownerUserId) return res.status(400).json({ error: 'Mangler bruker-identitet.' });
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren. Koble Gmail i Innstillinger for å synke svar.' });
+      }
+      const gmail = google.gmail({ version: 'v1', auth: workspaceContext.oauthClient });
+      const list = await gmail.users.messages.list({ userId: 'me', q: 'in:inbox newer_than:30d', maxResults: 25 });
+      const msgs = Array.isArray(list.data.messages) ? list.data.messages : [];
+      let scanned = 0, imported = 0;
+      for (const m of msgs) {
+        if (!m.id) continue;
+        scanned++;
+        const full = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['From', 'Subject', 'Date'] });
+        const headers = Array.isArray(full.data.payload?.headers) ? full.data.payload!.headers as Array<{ name?: string | null; value?: string | null }> : [];
+        const from = parseMailboxHeader(getGmailHeaderValue(headers, 'From'));
+        const senderEmail = from?.email?.toLowerCase();
+        if (!senderEmail) continue;
+        const cust = await pool.query(
+          `SELECT id FROM crm_customers WHERE owner_user_id = $1 AND email_normalized = $2 AND deleted_at IS NULL LIMIT 1`,
+          [ownerUserId, senderEmail],
+        );
+        if (cust.rows.length === 0) continue;
+        const subject = getGmailHeaderValue(headers, 'Subject') || '(uten emne)';
+        const ins = await pool.query(
+          `INSERT INTO crm_activities (id, customer_id, type, subject, description, direction, channel, source_message_id, owner_user_id, created_at, updated_at)
+           SELECT gen_random_uuid(), $1, 'email', $2, 'Innkommende e-post fra klient', 'inbound', 'email', $3, $4, now(), now()
+           WHERE NOT EXISTS (SELECT 1 FROM crm_activities WHERE owner_user_id = $4 AND source_message_id = $3)
+           RETURNING id`,
+          [cust.rows[0].id, subject, m.id, ownerUserId],
+        );
+        if (ins.rows.length > 0) {
+          imported++;
+          await pool.query(`UPDATE crm_customers SET last_contact = now() WHERE id = $1`, [cust.rows[0].id]).catch(() => {});
+        }
+      }
+      return res.json({ ok: true, scanned, imported });
+    } catch (error) {
+      console.error('CRM inbound gmail-sync error:', error);
+      return res.status(getGoogleWorkspaceApiStatus(error)).json({ error: formatGoogleWorkspaceApiError('Gmail API', error) });
+    }
+  });
+
   router.get('/api/google-tasks/lists', async (req, res) => {
     try {
       const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
