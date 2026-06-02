@@ -383,3 +383,71 @@ export async function sendTalentProposalResponded(
   });
   return { sent: r.sent, reason: r.reason ?? null };
 }
+
+// ── 7. candidate_status_update → byrå ──────────────────────────────
+export async function sendCandidateStatusUpdate(
+  pool: Pool,
+  args: {
+    candidateId: string;
+    proposalId: string;
+    talentDisplayName: string;
+    projectName: string;
+    productionName: string;
+    previousStatus: string;
+    newStatus: string;
+    productionNotes: string | null;
+    recipientEmail: string;
+    sentByUserId: string;
+  },
+): Promise<{ sent: boolean; reason: string | null }> {
+  const statusLabels: Record<string, string> = {
+    pending: "Avventer", screening: "Screening",
+    callback: "Callback", callbacks: "Callback",
+    final: "Final selection", cast: "Castet", selected: "Valgt",
+    declined: "Ikke valgt", withdrawn: "Trukket",
+    hold: "På hold", passed: "Passet på",
+  };
+  const newLabel = statusLabels[args.newStatus] ?? args.newStatus;
+  const prevLabel = statusLabels[args.previousStatus] ?? args.previousStatus;
+
+  const positive = ["callback", "callbacks", "final", "cast", "selected"].includes(args.newStatus);
+  const ctaUrl = `${appBaseUrl()}/talents/partnerships`;
+  const eyebrow = positive ? "Talent flyttet videre" : "Status-oppdatering";
+  const headline = `${args.talentDisplayName}: ${prevLabel} → ${newLabel}`;
+  const intro = positive
+    ? `${args.productionName} har tatt ${args.talentDisplayName} videre til ${newLabel} for ${args.projectName}.`
+    : `Status for ${args.talentDisplayName} i ${args.projectName} ble endret til ${newLabel}.`;
+  const body = `
+    <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
+      ${escapeHtml(headline)}
+    </h1>
+    <p style="color: #c4b5fd; line-height: 1.6;">${escapeHtml(intro)}</p>
+    ${
+      args.productionNotes
+        ? `<div style="margin: 16px 0; padding: 14px 18px; background: #1a0f3a; border-left: 3px solid #a855f7; border-radius: 0 8px 8px 0;">
+        <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Notat fra ${escapeHtml(args.productionName)}:</div>
+        <div style="color: #c4b5fd; font-style: italic; font-size: 15px;">"${escapeHtml(args.productionNotes)}"</div>
+      </div>`
+        : ""
+    }
+    <a href="${escapeHtml(ctaUrl)}" style="${PRIMARY_BTN}">
+      Åpne partnerships
+    </a>
+  `;
+  const subject = positive
+    ? `${args.talentDisplayName} videre til ${newLabel}`
+    : `${args.talentDisplayName}: status er ${newLabel}`;
+  const text = `${headline}\n\n${intro}\n${args.productionNotes ? `\nNotat: ${args.productionNotes}\n` : ""}\nÅpne: ${ctaUrl}`;
+
+  const r = await sendTransactionalEmail({
+    to: args.recipientEmail,
+    subject,
+    html: shellHtml(eyebrow, body),
+    text,
+    fromLabel: "The Role Room",
+    kind: `partnership_candidate_status_${args.newStatus}`,
+    sentByUserId: args.sentByUserId,
+    pool,
+  });
+  return { sent: r.sent, reason: r.reason ?? null };
+}
