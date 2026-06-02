@@ -54,7 +54,7 @@ import {
 
 const PURPLE = danceFlowColors.lavenderDark;
 const BG_DARK = danceFlowColors.bgBase;
-const CARD_BG = '#111114';
+const CARD_BG = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
 const BODY_PART_LABEL: Record<InjuryBodyPart, string> = {

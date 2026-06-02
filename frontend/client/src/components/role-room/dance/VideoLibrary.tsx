@@ -11,6 +11,7 @@
  * sorteres nyeste først.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -42,10 +43,10 @@ import { listChoreographies, getChoreography } from './choreographyService';
 import type { Choreography } from './choreographyTypes';
 import { VideoReviewRoom } from './VideoReviewRoom';
 
-const PURPLE = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
-const BG = '#0a0a0a';
-const CARD = '#111114';
+const PURPLE = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT = danceFlowColors.lavender;
+const BG = danceFlowColors.bgBase;
+const CARD = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
 const KIND_LABEL: Record<VideoClipKind, string> = {

@@ -3,6 +3,7 @@
  * classes, auditions og dancer-availability. Brukes av DanceProductionCalendar
  * for å rendre events som blokker i grid/uke/dag-view.
  */
+import { danceFlowColors } from './danceFlowTheme';
 
 export type CalendarEventKind =
   | 'rehearsal'
@@ -33,11 +34,11 @@ export interface CalendarEvent {
 }
 
 export const KIND_META: Record<CalendarEventKind, { label: string; color: string; bg: string }> = {
-  rehearsal:    { label: 'Prøver',          color: '#a78bfa', bg: 'rgba(167,139,250,0.18)' },
-  performance:  { label: 'Forestillinger',  color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
-  class:        { label: 'Klasser',         color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
+  rehearsal:    { label: 'Prøver',          color: danceFlowColors.lavender, bg: 'rgba(167,139,250,0.18)' },
+  performance:  { label: 'Forestillinger',  color: danceFlowColors.gold, bg: 'rgba(251,191,36,0.18)' },
+  class:        { label: 'Klasser',         color: danceFlowColors.successPrimary, bg: 'rgba(52,211,153,0.18)' },
   audition:     { label: 'Auditions',       color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
-  availability: { label: 'Tilgjengelighet', color: '#9ca3af', bg: 'rgba(156,163,175,0.18)' },
+  availability: { label: 'Tilgjengelighet', color: danceFlowColors.textMuted, bg: 'rgba(156,163,175,0.18)' },
 };
 
 /** Returns hvis to events overlapper i tid OG samme rom (ressurs-kollisjon). */

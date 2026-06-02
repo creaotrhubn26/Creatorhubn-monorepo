@@ -16,6 +16,7 @@
  * VoiceRecorder, EventSource-subscription).
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -75,10 +76,10 @@ import { DANCE_MOVEMENT_CATEGORIES, categoryById, categoryByShortcut, commonLabe
 import { AnnotationTimeline } from './AnnotationTimeline';
 import { AnnotationDetailsPanel } from './AnnotationDetailsPanel';
 
-const PURPLE = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
-const BG = '#0a0a0a';
-const CARD = '#111114';
+const PURPLE = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT = danceFlowColors.lavender;
+const BG = danceFlowColors.bgBase;
+const CARD = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
 export interface VideoReviewRoomProps {

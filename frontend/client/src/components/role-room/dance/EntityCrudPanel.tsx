@@ -43,7 +43,7 @@ import EmptyState from '../shared/EmptyState';
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
 const BG = danceFlowColors.bgBase;
-const CARD = '#111114';
+const CARD = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
 export type FieldType =
