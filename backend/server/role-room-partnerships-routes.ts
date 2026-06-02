@@ -193,7 +193,19 @@ async function logAudit(
 }
 
 export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutesDeps): void {
-  const { app, pool, getActiveSession } = deps;
+  const { app, pool, getActiveSession: realGetActiveSession } = deps;
+
+  // Phase 9.9 — demo-modus får mutation-bypass: når ?demo=1 returnerer vi
+  // demo-user-sesjonen (99999...) som er koblet til Stella demo-agency
+  // (migrate 227). Sikkerhetsmodellen er at demo-data alle har is_demo=TRUE
+  // og handlerne validerer FK-er, så bypass-en kan ikke endre prod-data.
+  const DEMO_USER_ID = "99999999-9999-9999-9999-999999999999";
+  const getActiveSession = (req: express.Request): SessionLike | null => {
+    if (isDemoRequest(req)) {
+      return { userId: DEMO_USER_ID, email: "demo-agency@theroleroom.com" };
+    }
+    return realGetActiveSession(req);
+  };
 
   // ── POST /propose ────────────────────────────────────────────────
   // Body: { agency_org_id, production_user_id, message? }
