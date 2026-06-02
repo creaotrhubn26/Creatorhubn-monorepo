@@ -382,7 +382,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               </Box>
             </Box>
             <Box sx={{ mt: 2, height: 60, borderRadius: radius.sm, bgcolor: 'rgba(168,85,247,0.04)', position: 'relative', overflow: 'hidden' }}>
-              <Sparkline color={palette.accent} />
+              <Sparkline color={palette.accent} data={overview.sparkline} />
             </Box>
           </Box>
         ) : null}
@@ -737,20 +737,46 @@ function SaveSearchDialog({ open, filters, currentCount, onClose, onSaved }: { o
   );
 }
 
-function Sparkline({ color }: { color: string }) {
-  // Enkel SVG-sparkline med deterministisk "growth"-mønster
-  const points = '0,55 30,52 60,48 90,52 120,40 150,38 180,30 210,32 240,22 270,16 300,8';
+function Sparkline({ color, data }: { color: string; data?: Array<{ day: string; n: number }> }) {
+  // EKTE sparkline fra backend — siste 30 dager med nye consent-grants
+  // per dag. Tom-state = ren tekst i stedet for fake-mønster.
+  if (!data || data.length === 0) {
+    return (
+      <svg viewBox="0 0 320 60" width="100%" height="100%" preserveAspectRatio="none">
+        <text x="160" y="34" textAnchor="middle" fill="rgba(168,85,247,0.45)" fontSize="11" fontFamily="-apple-system, sans-serif">
+          Ingen aktivitet siste 30 dager
+        </text>
+      </svg>
+    );
+  }
+  const w = 320;
+  const h = 60;
+  const padTop = 8;
+  const padBottom = 4;
+  const usableH = h - padTop - padBottom;
+  const maxVal = Math.max(1, ...data.map((d) => d.n));
+  const stepX = data.length > 1 ? w / (data.length - 1) : w;
+  const pts = data.map((d, i) => ({
+    x: i * stepX,
+    y: h - padBottom - (d.n / maxVal) * usableH,
+    val: d.n,
+    day: d.day,
+  }));
+  const polyPoints = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const lastPt = pts[pts.length - 1];
   return (
-    <svg viewBox="0 0 320 60" width="100%" height="100%" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="100%" preserveAspectRatio="none">
       <defs>
         <linearGradient id="sl-fill" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.45" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={`0,60 ${points} 320,60`} fill="url(#sl-fill)" />
-      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="300" cy="8" r="3" fill={color} />
+      <polygon points={`0,${h} ${polyPoints} ${w},${h}`} fill="url(#sl-fill)" />
+      <polyline points={polyPoints} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lastPt.x.toFixed(1)} cy={lastPt.y.toFixed(1)} r="3" fill={color}>
+        <title>{`${lastPt.day}: ${lastPt.val} nye registreringer`}</title>
+      </circle>
     </svg>
   );
 }
