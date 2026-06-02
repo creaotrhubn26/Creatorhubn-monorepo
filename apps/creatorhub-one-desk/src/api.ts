@@ -185,6 +185,12 @@ export async function addManualIpad(args: {
   });
 }
 
+/// Oppdater Mac-tray-tooltip dynamisk. Brukes av CopyProgressView for
+/// å vise "Backup: 87/240 filer" i status-baren.
+export async function setTrayStatus(tooltip: string): Promise<void> {
+  return invoke<void>("set_tray_status", { tooltip });
+}
+
 /// Status-event emit'es hvert 5. sekund fra Bonjour-browseren.
 export interface BonjourStatusEvent {
   discovered_count: number;

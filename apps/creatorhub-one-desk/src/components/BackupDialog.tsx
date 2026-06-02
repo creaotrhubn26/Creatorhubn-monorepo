@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   Alert,
   Box,
@@ -56,6 +58,7 @@ export default function BackupDialog({
   const [localDests, setLocalDests] = useState<PendingLocalDest[]>([]);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Pre-velg alle planlagte destinasjoner med en path satt (in-place "original"
   // destinasjoner uten path er ikke relevante for Desk)
@@ -81,14 +84,15 @@ export default function BackupDialog({
     onClose();
   };
 
-  const handleAddFolder = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "Velg backup-destinasjon",
-    });
-    if (!selected || Array.isArray(selected)) return;
-    const path = String(selected);
+  /// Felles add-handler — brukes BÅDE av "Legg til mappe"-knappen og
+  /// drag-drop-listener. Tar én path, validerer at den ikke allerede
+  /// er lagt til (enten som planned eller local), og legger den i
+  /// localDests med Finder-leaf som label.
+  const addLocalPath = (path: string) => {
+    // Hopp over hvis allerede lagt til som lokal mappe
+    if (localDests.some((d) => d.path === path)) return;
+    // Hopp også hvis matcher en planned-dest path (unngår dobbel-skriving)
+    if (plannedDestinations.some((d) => d.path === path)) return;
     destCounter += 1;
     const segments = path.split("/").filter(Boolean);
     const label = segments[segments.length - 1] || path;
@@ -97,6 +101,53 @@ export default function BackupDialog({
       { id: `local_${destCounter}`, label, path },
     ]);
   };
+
+  const handleAddFolder = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Velg backup-destinasjon",
+    });
+    if (!selected || Array.isArray(selected)) return;
+    addLocalPath(String(selected));
+  };
+
+  // Drag-drop fra Finder: Tauri 2 emit'er native drag-drop-event med
+  // fil-path-er. Vi lytter når dialogen er åpen og legger hver droppet
+  // folder til localDests (skipper non-directory paths og duplikater).
+  // Highlighter dialog-bgcolor under drag-over for visuell feedback.
+  useEffect(() => {
+    if (!isOpen) return;
+    let unlisten: UnlistenFn | undefined;
+    void getCurrentWebviewWindow()
+      .onDragDropEvent((event) => {
+        const p = event.payload;
+        if (p.type === "enter" || p.type === "over") {
+          setIsDragOver(true);
+        } else if (p.type === "leave") {
+          setIsDragOver(false);
+        } else if (p.type === "drop") {
+          setIsDragOver(false);
+          const paths = p.paths ?? [];
+          for (const path of paths) {
+            // Best-effort directory-detection: bare bruk paths som ikke
+            // har file-extensions etter siste "/". Robust nok for typisk
+            // Finder-drag av RAID-volumer og backup-mapper.
+            const leaf = path.split("/").pop() ?? "";
+            const hasExtension = /\.[a-zA-Z0-9]{1,5}$/.test(leaf);
+            if (hasExtension) continue;
+            addLocalPath(path);
+          }
+        }
+      })
+      .then((un) => {
+        unlisten = un;
+      });
+    return () => {
+      unlisten?.();
+      setIsDragOver(false);
+    };
+  }, [isOpen, localDests, plannedDestinations]);
 
   const togglePlanned = (id: string, checked: boolean) => {
     setCheckedPlanned((prev) => {
@@ -180,7 +231,27 @@ export default function BackupDialog({
   );
 
   return (
-    <Dialog open={isOpen} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open={isOpen}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+      slotProps={{
+        paper: {
+          sx: {
+            // Drag-over highlight: dotted primary-color outline + subtle
+            // tinted bg. Gjør det åpenbart at "du kan slippe her" mens
+            // Fredrik fortsatt drar fra Finder.
+            transition: "outline 0.15s, background-color 0.15s",
+            outline: isDragOver
+              ? "3px dashed rgba(245, 166, 35, 0.7)"
+              : "3px dashed transparent",
+            outlineOffset: -2,
+            bgcolor: isDragOver ? "rgba(245, 166, 35, 0.08)" : undefined,
+          },
+        },
+      }}
+    >
       <DialogTitle>
         Start backup
         {mount && (
@@ -256,7 +327,8 @@ export default function BackupDialog({
 
             {localDests.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                Ingen ad-hoc-mapper valgt.
+                Ingen ad-hoc-mapper valgt. Dra en mappe fra Finder rett inn
+                i dialogen, eller bruk "Legg til mappe"-knappen over.
               </Typography>
             ) : (
               <List dense>
