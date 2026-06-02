@@ -421,6 +421,7 @@ import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-r
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
+import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
 import { setupNewsletterAiRoutes } from "./role-room-newsletter-ai-routes";
 import { setupTheRoleRoomSitemapRoutes } from "./theroleroom-sitemap-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
@@ -17977,6 +17978,13 @@ setupAdminAiCitationRoutes({
 
 // ── Newsletter signups for theroleroom.com — public POST + admin stats
 setupRoleRoomNewsletterRoutes({
+  app,
+  pool,
+  requireAdminRoomAccess,
+});
+
+// ── PR 12: Newsletter Studio fra konkurrent-rapport (rapport → Weekly Brief draft)
+setupNewsletterFromReportRoutes({
   app,
   pool,
   requireAdminRoomAccess,
