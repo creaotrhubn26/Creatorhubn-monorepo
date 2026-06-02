@@ -34,7 +34,7 @@ const KEYFRAMES = `
 type DeviceKind = 'iphone' | 'ipad';
 
 /** Animert enhet + kabel for ett steg. */
-function ConnectAnim({ device, step }: { device: DeviceKind; step: number }) {
+function ConnectAnim({ device, step, connector }: { device: DeviceKind; step: number; connector: 'usbc' | 'lightning' }) {
   const isPad = device === 'ipad';
   const w = isPad ? 96 : 62;
   const h = isPad ? 130 : 128;
@@ -62,6 +62,10 @@ function ConnectAnim({ device, step }: { device: DeviceKind; step: number }) {
         {connected && [0, 1, 2].map((i) => (
           <span key={i} style={{ position: 'absolute', top: 1, left: 4, width: 4, height: 4, borderRadius: '50%', background: C.accent, animation: `dcg-flow 1.4s linear ${i * 0.45}s infinite` }} />
         ))}
+        {/* Plugg-form på enhets-enden: USB-C = bredt avrundet, Lightning = smalt */}
+        <div style={{ position: 'absolute', top: connector === 'usbc' ? 0 : 1, right: -1,
+          width: connector === 'usbc' ? 12 : 9, height: connector === 'usbc' ? 6 : 4,
+          borderRadius: connector === 'usbc' ? 3 : 2, background: '#8a857d' }} />
       </div>
 
       {/* iPhone/iPad (høyre) */}
@@ -96,15 +100,25 @@ function ConnectAnim({ device, step }: { device: DeviceKind; step: number }) {
   );
 }
 
-const STEPS = [
-  { title: '1. Koble til med USB', body: 'Koble iPhone eller iPad til Mac-en med en USB- eller USB-C-kabel.' },
-  { title: '2. Trykk «Stol på»', body: 'Lås opp enheten. Når «Stol på denne maskinen?» dukker opp, trykk Stol på (og skriv kode hvis du blir bedt om det).' },
-  { title: '3. Velg enheten + ta opp', body: 'Enheten dukker opp i capture-velgeren. Velg den, åpne appen din (også App Store-apper), og trykk Record.' },
-];
+type Connector = 'usbc' | 'lightning';
+const CONNECTOR_LABEL: Record<Connector, string> = { usbc: 'USB-C', lightning: 'Lightning' };
+
+function buildSteps(device: DeviceKind, connector: Connector) {
+  const cable = device === 'ipad' ? 'USB-C-kabel' : `${CONNECTOR_LABEL[connector]}-kabel`;
+  const macEnd = 'USB-C-porten på Mac-en';
+  return [
+    { title: `1. Koble til med ${device === 'ipad' ? 'USB-C' : CONNECTOR_LABEL[connector]}`,
+      body: `Bruk en ${cable}: enheten i den ene enden, ${macEnd} i den andre.${device === 'iphone' && connector === 'lightning' ? ' (eldre iPhone bruker Lightning — trenger Lightning-til-USB-C-kabel eller adapter.)' : ''}` },
+    { title: '2. Trykk «Stol på»', body: 'Lås opp enheten. Når «Stol på denne maskinen?» dukker opp, trykk Stol på (og skriv kode hvis du blir bedt om det).' },
+    { title: '3. Velg enheten + ta opp', body: 'Enheten dukker opp i capture-velgeren. Velg den, åpne appen din (også App Store-apper), og trykk Record.' },
+  ];
+}
 
 export function DeviceConnectGuide({ onClose }: { onClose: () => void }) {
   const [device, setDevice] = useState<DeviceKind>('iphone');
+  const [connector, setConnector] = useState<Connector>('usbc');
   const [step, setStep] = useState(1);
+  const STEPS = buildSteps(device, device === 'ipad' ? 'usbc' : connector);
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.bg, display: 'grid', placeItems: 'center', zIndex: 100, fontFamily: C.font }}>
@@ -113,7 +127,7 @@ export function DeviceConnectGuide({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${C.line}` }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>Koble til iPhone / iPad</div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>Koble til iPhone / iPad via USB-C</div>
             <div style={{ fontSize: 12, color: C.inkFaint }}>Ta opp en app — også apper fra App Store</div>
           </div>
           <div style={{ flex: 1 }} />
@@ -130,8 +144,22 @@ export function DeviceConnectGuide({ onClose }: { onClose: () => void }) {
 
         {/* Animasjon */}
         <div style={{ background: 'linear-gradient(180deg,#f6f3ee,#efe9e0)', padding: '24px 20px' }}>
-          <ConnectAnim device={device} step={step} />
+          <ConnectAnim device={device} step={step} connector={device === 'ipad' ? 'usbc' : connector} />
         </div>
+
+        {/* Kontakt-valg (kun iPhone; iPad er alltid USB-C) */}
+        {device === 'iphone' && step === 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px 0' }}>
+            <span style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 600 }}>Kontakt:</span>
+            {(['usbc', 'lightning'] as Connector[]).map((cn) => (
+              <div key={cn} onClick={() => setConnector(cn)}
+                style={{ padding: '4px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', border: `1px solid ${connector === cn ? C.accent : C.line}`, background: connector === cn ? C.cream : '#fff', color: connector === cn ? C.ink : C.inkSoft, fontWeight: connector === cn ? 600 : 400 }}>
+                {CONNECTOR_LABEL[cn]}
+              </div>
+            ))}
+            <span style={{ fontSize: 10.5, color: C.inkFaint }}>{connector === 'usbc' ? 'iPhone 15 og nyere' : 'iPhone 14 og eldre'}</span>
+          </div>
+        )}
 
         {/* Steg-tekst + navigasjon */}
         <div style={{ padding: '18px 20px' }}>
