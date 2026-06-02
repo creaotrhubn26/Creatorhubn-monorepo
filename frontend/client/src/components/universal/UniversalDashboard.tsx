@@ -3885,16 +3885,18 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       // WCAG: Proper heading hierarchy
                       component="h3"
                       aria-label={`Velkommen tilbake, ${
-                        currentUser?.firstName
+                        currentUser?.displayName?.split(' ')[0]
+                          || currentUser?.firstName
                           || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
                       }`}
                     >
-                      {/* Personalisert til brukerens fornavn (onboarding-data),
-                          ikke profesjonen. Tidligere viste vi customBranding.businessName
-                          som ofte er profesjons-label ('Fotograf'), noe som dupliserte
-                          DashboardHeroBand-banneret nedenfor. */}
+                      {/* Personalisert til brukerens fornavn fra displayName eller firstName
+                          (samme rekkefølge som DashboardHeroBand bruker). Tidligere viste vi
+                          customBranding.businessName som ofte er profesjons-label ('Fotograf'),
+                          noe som dupliserte velkomsten i DashboardHeroBand nedenfor. */}
                       Velkommen tilbake, {
-                        currentUser?.firstName
+                        currentUser?.displayName?.split(' ')[0]
+                          || currentUser?.firstName
                           || (typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker')
                       }!
                     </Typography>
