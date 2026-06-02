@@ -1283,6 +1283,24 @@ function PostRow({ post, compact, projectId, clientToken }: {
             {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
           </Typography>
         </Box>
+        {/* Liten thumbnail i compact-rader (publisert/alle-poster). Non-compact
+            viser full PostVideoPreview lenger ned, så vi unngår dobbel der. */}
+        {compact && post.previewStreamThumbnailUrl ? (
+          <Box sx={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
+            <Box
+              component="img"
+              src={post.previewStreamThumbnailUrl}
+              alt=""
+              loading="lazy"
+              sx={{ width: 44, height: 44, borderRadius: 1.4, objectFit: 'cover', border: '1px solid rgba(148,163,184,0.25)', display: 'block' }}
+            />
+            {post.previewVideoR2Url || post.previewStreamPlaybackUrl ? (
+              <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.85rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+                ▶
+              </Box>
+            ) : null}
+          </Box>
+        ) : null}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mb: 0.4 }}>
             <Chip size="small" label={FORMAT_LABEL[post.format]} sx={{ bgcolor: `${FORMAT_COLOR[post.format]}33`, color: '#fff', fontWeight: 700, fontSize: '0.7rem' }} />
