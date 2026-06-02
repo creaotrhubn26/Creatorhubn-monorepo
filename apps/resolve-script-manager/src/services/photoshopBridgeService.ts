@@ -148,6 +148,59 @@ export interface MultiAspectExportResult {
   failed: Array<{ aspect: string; error: string }>;
 }
 
+export type AdjustmentType =
+  | "brightness_contrast"
+  | "hue_saturation"
+  | "color_balance"
+  | "curves";
+
+export interface RGB {
+  r?: number;
+  g?: number;
+  b?: number;
+  red?: number;
+  green?: number;
+  blue?: number;
+}
+
+export type AdjustmentParams =
+  | { brightness?: number; contrast?: number } // brightness_contrast
+  | { hue?: number; saturation?: number; lightness?: number } // hue_saturation
+  | {
+      midtones?: [number, number, number];
+      shadows?: [number, number, number];
+      highlights?: [number, number, number];
+      preserveLuminosity?: boolean;
+    } // color_balance
+  | { points: Array<[number, number]> }; // curves
+
+export interface DropShadowParams {
+  opacity?: number;
+  angle?: number;
+  distance?: number;
+  size?: number;
+  spread?: number;
+  color?: RGB;
+}
+
+export interface OuterGlowParams {
+  opacity?: number;
+  size?: number;
+  color?: RGB;
+}
+
+export interface ColorOverlayParams {
+  opacity?: number;
+  color: RGB;
+  blend_mode?: string;
+}
+
+export interface StyleEffects {
+  drop_shadow?: DropShadowParams;
+  outer_glow?: OuterGlowParams;
+  color_overlay?: ColorOverlayParams;
+}
+
 async function send<T>(command: string, params?: unknown): Promise<T> {
   return invoke<T>("photoshop_send_command", { command, params: params ?? null });
 }
@@ -207,6 +260,19 @@ export const photoshop = {
     format: ExportFormat;
     quality?: number;
   }) => send<MultiAspectExportResult>("multiAspect.export", params),
+
+  addAdjustment: (params: {
+    type: AdjustmentType;
+    params: AdjustmentParams;
+    name?: string;
+    target_layer_name?: string;
+  }) => send<{ type: string; name: string | null; target_layer_name: string | null }>(
+    "adjustment.add",
+    params,
+  ),
+
+  applyStyle: (params: { layer_name: string; effects: StyleEffects }) =>
+    send<{ layer_name: string; applied: string[] }>("style.apply", params),
 
   autoRenameTemplate: (params: {
     template_path: string;
