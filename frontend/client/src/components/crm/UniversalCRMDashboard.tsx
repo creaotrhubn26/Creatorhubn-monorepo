@@ -67,6 +67,7 @@ import CrmTaskInbox from './CrmTaskInbox';
 import DealsPipelineBoard from './DealsPipelineBoard';
 import CrmActionQueue from './CrmActionQueue';
 import CrmReports from './CrmReports';
+import CrmImportDialog from './CrmImportDialog';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -205,6 +206,7 @@ export default function UniversalCRMDashboard({
   const [showTaskInbox, setShowTaskInbox] = useState(false); // #5 task-inbox
   const [showActionQueue, setShowActionQueue] = useState(false); // #24 action queue
   const [showReports, setShowReports] = useState(false); // Wave 3 reports
+  const [showImport, setShowImport] = useState(false); // Wave 3b CSV import
   // #42 — controlled edit-form so empty fields never corrupt into ', '
   const [editForm, setEditForm] = useState({
     name: '',
@@ -1362,6 +1364,22 @@ export default function UniversalCRMDashboard({
                   }}
                 >
                   {showAddForm ? 'Skjul skjema' : 'Ny kunde'}
+                </Button>
+                {/* #28 — import existing client list (biggest adoption blocker). */}
+                <Button
+                  variant="outlined"
+                  startIcon={<CopyIcon />}
+                  onClick={() => setShowImport(true)}
+                  disabled={!customerManagementAccess.hasAccess}
+                  sx={{
+                    minWidth: 130,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Importer
                 </Button>
                 <Button
                   variant="outlined"
@@ -3328,6 +3346,9 @@ export default function UniversalCRMDashboard({
 
       {/* Wave 3 — reports */}
       <CrmReports open={showReports} onClose={() => setShowReports(false)} />
+
+      {/* Wave 3b — CSV import */}
+      <CrmImportDialog open={showImport} onClose={() => setShowImport(false)} />
     </Box>
   );
 }

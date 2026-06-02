@@ -14,6 +14,12 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // Mirrors the CREATE TABLE IF NOT EXISTS pattern used across the codebase
   // (ergonomics/marketplace/role-room) rather than the fire-and-forget
   // migrate runner — safer and verifiable (see docs/UNIVERSAL-CRM-WORKFLOW-GAPS.md).
+  // #59 — one canonical normalizer shared by manual create + CSV import.
+  const normalizeEmail = (e: unknown): string | null => {
+    const s = typeof e === "string" ? e.trim().toLowerCase() : "";
+    return s.length > 0 ? s : null;
+  };
+
   const ensureCrmExtraSchema = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS crm_invoices (
@@ -91,6 +97,10 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_delivered_at timestamptz;
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS next_rebook_due_at timestamptz;
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_reminded_at timestamptz;
+      -- Wave 3b: data quality + growth attribution (#33/#59/#23).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS email_normalized text;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS referred_by_customer_id uuid;
+      CREATE INDEX IF NOT EXISTS crm_customers_email_norm_idx ON crm_customers(owner_user_id, email_normalized);
       CREATE INDEX IF NOT EXISTS crm_customers_owner_idx ON crm_customers(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_deals_owner_idx ON crm_deals(owner_user_id);
       CREATE INDEX IF NOT EXISTS crm_activities_owner_idx ON crm_activities(owner_user_id);
@@ -288,8 +298,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       }
 
       const result = await pool.query(
-        `INSERT INTO crm_customers (id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, owner_user_id, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now())
+        `INSERT INTO crm_customers (id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, owner_user_id, email_normalized, referred_by_customer_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now(), now())
          RETURNING *`,
         [
           name,
@@ -305,6 +315,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           source || null,
           JSON.stringify(customFields || {}),
           session.userId,
+          normalizeEmail(email),
+          req.body.referredByCustomerId || null,
         ],
       );
 
@@ -1587,6 +1599,70 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("CRM export error:", error);
       return res.status(500).json({ error: "Failed to export" });
+    }
+  });
+
+  // CSV/contact import (#28) — owner-scoped, normalized + deduped by email.
+  // body: { rows: [{name,email,phone,company,projectType,budget,source}], mode: 'skip'|'update' }
+  app.post("/api/universal-crm/customers/import", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const owner = session.userId;
+      const mode = req.body?.mode === "update" ? "update" : "skip";
+      const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+      if (rows.length === 0) return res.status(400).json({ error: "No rows to import" });
+      if (rows.length > 5000) return res.status(400).json({ error: "Max 5000 rows per import" });
+
+      let created = 0, updated = 0, skipped = 0;
+      const errors: Array<{ row: number; error: string }> = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i] || {};
+        const name = typeof r.name === "string" ? r.name.trim() : "";
+        if (!name) { errors.push({ row: i + 1, error: "Mangler navn" }); continue; }
+        const norm = normalizeEmail(r.email);
+        const budget = r.budget != null && r.budget !== "" ? Number(r.budget) : null;
+        try {
+          let existing = null as any;
+          if (norm) {
+            const found = await pool.query(
+              `SELECT id FROM crm_customers WHERE owner_user_id = $1 AND email_normalized = $2 LIMIT 1`,
+              [owner, norm],
+            );
+            existing = found.rows[0] || null;
+          }
+          if (existing && mode === "skip") { skipped++; continue; }
+          if (existing && mode === "update") {
+            await pool.query(
+              `UPDATE crm_customers SET
+                 name = COALESCE(NULLIF($3,''), name),
+                 phone = COALESCE(NULLIF($4,''), phone),
+                 company = COALESCE(NULLIF($5,''), company),
+                 project_type = COALESCE(NULLIF($6,''), project_type),
+                 budget = COALESCE($7, budget),
+                 source = COALESCE(NULLIF($8,''), source),
+                 updated_at = now()
+               WHERE id = $1 AND owner_user_id = $2`,
+              [existing.id, owner, name, r.phone || "", r.company || "", r.projectType || "", budget, r.source || ""],
+            );
+            updated++;
+          } else {
+            await pool.query(
+              `INSERT INTO crm_customers (id, name, email, phone, company, project_type, budget, status, source, profession, owner_user_id, email_normalized, custom_fields, created_at, updated_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'lead', $7, $8, $9, $10, '{}'::jsonb, now(), now())`,
+              [name, r.email || null, r.phone || null, r.company || null, r.projectType || null, budget, r.source || "import", r.profession || null, owner, norm],
+            );
+            created++;
+          }
+        } catch (rowErr: any) {
+          errors.push({ row: i + 1, error: rowErr?.message || "DB-feil" });
+        }
+      }
+      return res.json({ ok: true, created, updated, skipped, errors });
+    } catch (error) {
+      console.error("CRM import error:", error);
+      return res.status(500).json({ error: "Failed to import" });
     }
   });
 }
