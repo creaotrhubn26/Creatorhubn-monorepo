@@ -100,15 +100,10 @@ export default function SocialConnectionsPanel() {
       const ttResp = await fetch('/api/role-room/tiktok/connection', { credentials: 'include' });
       const ttData = await ttResp.json().catch(() => ({}));
 
-      // 3. LinkedIn-status (best-effort)
-      let linkedinConnected = false;
-      try {
-        const liResp = await fetch('/api/role-room/linkedin/connection-status', { credentials: 'include' });
-        if (liResp.ok) {
-          const liData = await liResp.json().catch(() => ({}));
-          linkedinConnected = !!liData?.connected;
-        }
-      } catch { /* ignore */ }
+      // 3. LinkedIn-status: endepunktet finnes ikke ennå — hopper over
+      // for å unngå 404-spam i konsollen. TODO: bygg connection-status-
+      // endepunkt eller hent via eksisterende /linkedin/profile.
+      const linkedinConnected = false;
 
       setStatus({
         facebook: { configured: fbConfigured, pageId: cockpitData?.profile?.data?.pageId },
