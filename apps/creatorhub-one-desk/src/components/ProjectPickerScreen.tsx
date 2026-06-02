@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/DeleteOutlined";
+import DeskIcon from "./DeskIcon";
 import {
   ProjectEntry,
   listProjects,
@@ -87,13 +88,18 @@ export default function ProjectPickerScreen({ onProjectSelected, onAddNew }: Pro
   return (
     <Container maxWidth="sm" sx={{ py: 6 }}>
       <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+          <DeskIcon size={56} shadow={false} />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="overline" color="text.secondary">
+              Creatorhub One Desk
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+              Velg prosjekt
+            </Typography>
+          </Box>
+        </Stack>
         <Box>
-          <Typography variant="overline" color="text.secondary">
-            Creatorhub One Desk
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-            Velg prosjekt
-          </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             Du har {projects.length} {projects.length === 1 ? "prosjekt" : "prosjekter"}{" "}
             konfigurert. Velg ett for å fortsette, eller legg til et nytt.

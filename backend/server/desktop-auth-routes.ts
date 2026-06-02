@@ -222,21 +222,19 @@ export function createDesktopAuthRouter(pool: Pool): Router {
       .query(`UPDATE desktop_device_tokens SET last_used_at = now() WHERE token_hash = $1`, [tokenHash])
       .catch(() => {});
 
-    // Finn alle prosjekter brukeren har tilgang til (eier ELLER
-    // medlem via casting_user_roles). Defensiv mot manglende
-    // kolonner.
+    // Hent DIT/foto-prosjekter brukeren eier. Kilden er legacy.projects
+    // (skrives av POST /api/photographer/projects fra
+    // ProjectCreationWithMemoryCards.tsx) — IKKE casting_projects som
+    // er Role Room/casting-flyten. Status-filter skipper arkivert/slettet.
     let projectRows: Array<{ id: string; name: string }> = [];
     try {
       const r = await pool.query<{ id: string; name: string }>(
-        `SELECT id, name FROM (
-           SELECT cp.id, cp.name FROM casting_projects cp WHERE cp.created_by = $1 OR cp.created_by = $2
-           UNION
-           SELECT cp.id, cp.name FROM casting_projects cp
-             INNER JOIN casting_user_roles cur ON cp.id = cur.project_id
-             WHERE (cur.user_id = $1 OR LOWER(cur.email) = LOWER($2)) AND cur.deactivated_at IS NULL
-         ) AS p
-         ORDER BY name ASC`,
-        [user_id, user_email],
+        `SELECT id, COALESCE(NULLIF(title, ''), NULLIF(name, ''), id) AS name
+           FROM legacy.projects
+          WHERE user_id = $1
+            AND (status IS NULL OR status NOT IN ('archived', 'deleted'))
+          ORDER BY created_at DESC`,
+        [user_id],
       );
       projectRows = r.rows;
     } catch (err: any) {
