@@ -237,37 +237,72 @@ export function parseSceneAnchors(
   }));
 }
 
+// Normalisert tekst-fingeravtrykk av en linje (trim + kollaps whitespace, maks
+// 60 tegn). Brukes for å la kommentarer følge den faktiske teksten.
+const lineFingerprint = (s: string): string => s.trim().replace(/\s+/g, ' ').slice(0, 60);
+
 /**
- * Bygger et scene-relativt kommentar-anker for en absolutt linje, eller et
- * absolutt fallback-anker (`#L:<linje>`) for linjer før første scene (preamble).
+ * Bygger et kommentar-anker for en absolutt linje:
+ *  - `#t:<sceneId>:<offset>:<snippet>` — scene + offset + tekst-fingeravtrykk
+ *    (følger teksten ved skriving inne i scenen). Brukes når linja har innhold.
+ *  - `#s:<sceneId>:<offset>` — scene + offset (tom linje, ingen fingeravtrykk).
+ *  - `#L:<linje>` — absolutt fallback for preamble (før første scene).
  */
 export function buildLineCommentAnchor(content: string, manuscriptId: string, line: number): string {
   const scenes = parseSceneAnchors(content);
   const scene = scenes.find((s) => line >= s.startLine && line < s.endLine);
   if (scene) {
-    return `${manuscriptId}#s:${scene.sceneId}:${line - scene.startLine}`;
+    const offset = line - scene.startLine;
+    const snippet = lineFingerprint(content.split('\n')[line - 1] ?? '');
+    return snippet
+      ? `${manuscriptId}#t:${scene.sceneId}:${offset}:${snippet}`
+      : `${manuscriptId}#s:${scene.sceneId}:${offset}`;
   }
   return `${manuscriptId}#L:${line}`;
 }
 
 /**
  * Løser et kommentar-anker tilbake til gjeldende absolutt linje. Returnerer null
- * hvis scenen er slettet (foreldreløst anker). Bakoverkompatibel med gamle
- * absolutte ankre på formen `<manusId>#<tall>`.
+ * hvis scenen er slettet (foreldreløst anker). Håndterer alle anker-formater:
+ * tekst-fingeravtrykk (`#t:`), scene-offset (`#s:`), og legacy/absolutt
+ * (`#L:<n>` / `#<n>`).
  */
 export function resolveLineCommentAnchor(content: string, manuscriptId: string, anchorRef: string): number | null {
   const prefix = `${manuscriptId}#`;
   if (!anchorRef.startsWith(prefix)) return null;
   const rest = anchorRef.slice(prefix.length);
-  if (rest.startsWith('s:')) {
-    const m = rest.match(/^s:(.+):(\d+)$/);
+  const lines = content.split('\n');
+
+  // Tekst-fingeravtrykk: finn linja i scenen som matcher snippet'en, nærmest
+  // lagret offset. Faller tilbake til ren offset hvis teksten er endret.
+  if (rest.startsWith('t:')) {
+    const m = rest.match(/^t:([^:]+):(\d+):([\s\S]*)$/);
     if (!m) return null;
     const sceneId = m[1];
     const offset = parseInt(m[2], 10);
+    const snippet = m[3];
     const scene = parseSceneAnchors(content).find((s) => s.sceneId === sceneId);
-    if (!scene) return null; // scene slettet → foreldreløst
-    return scene.startLine + offset;
+    if (!scene) return null;
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (let ln = scene.startLine; ln < scene.endLine; ln += 1) {
+      if (lineFingerprint(lines[ln - 1] ?? '') === snippet) {
+        const dist = Math.abs((ln - scene.startLine) - offset);
+        if (dist < bestDist) { bestDist = dist; best = ln; }
+      }
+    }
+    if (best != null) return best;
+    return Math.min(scene.startLine + offset, scene.endLine - 1);
   }
+
+  if (rest.startsWith('s:')) {
+    const m = rest.match(/^s:(.+):(\d+)$/);
+    if (!m) return null;
+    const scene = parseSceneAnchors(content).find((s) => s.sceneId === m[1]);
+    if (!scene) return null; // scene slettet → foreldreløst
+    return scene.startLine + parseInt(m[2], 10);
+  }
+
   // Legacy / preamble absolutt-anker: `#L:<n>` eller `#<n>`
   const n = parseInt(rest.replace(/^L:/, ''), 10);
   return Number.isFinite(n) ? n : null;
