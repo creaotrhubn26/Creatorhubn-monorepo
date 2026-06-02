@@ -203,6 +203,59 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_selection_select",
+    description:
+      "Sett aktiv selection i Photoshop. mode='all' velger hele canvas, 'none' deselect, 'invert' inverterer eksisterende selection. Brukes som forberedelse til gen.fill eller andre selection-baserte operasjoner.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["all", "none", "invert"] },
+      },
+      required: ["mode"],
+    },
+  },
+  {
+    name: "photoshop_gen_fill",
+    description:
+      "Kjør Adobe Firefly Generative Fill på nåværende selection. Tom prompt betyr 'remove/auto-fill background'. Krever Photoshop 2024+ med aktiv Firefly-konto. Resultatet kommer som ny generativ-layer over selection-området.",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Beskrivelse av hva Firefly skal generere. Tom string = auto-fill basert på omgivelser.",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  {
+    name: "photoshop_gen_expand",
+    description:
+      "Generative Expand: utvid canvas til target_width × target_height med anchor-posisjon, og auto-fill de nye områdene via Firefly. Brukes for å gjøre 16:9 → 9:16, fjerne white-space, eller utvide bakgrunn. anchor styrer hvor original komposisjon plasseres.",
+    input_schema: {
+      type: "object",
+      properties: {
+        target_width: { type: "number", description: "Ny canvas-bredde i piksler" },
+        target_height: { type: "number", description: "Ny canvas-høyde i piksler" },
+        anchor: {
+          type: "string",
+          enum: [
+            "topLeft", "topCenter", "topRight",
+            "middleLeft", "middleCenter", "middleRight",
+            "bottomLeft", "bottomCenter", "bottomRight",
+          ],
+          description: "Hvor original innhold plasseres i ny canvas. Default: middleCenter",
+        },
+        prompt: {
+          type: "string",
+          description: "Valgfri tekst-prompt for å styre auto-fill. Tom = bare utvid background.",
+        },
+      },
+      required: ["target_width", "target_height"],
+    },
+  },
+  {
     name: "photoshop_multi_aspect_export",
     description:
       "Eksporter samme master-PSD til flere aspect-ratios. Bruker fill-by-resize + center-crop: bildet skaleres så det dekker target, overflod cropper bort fra senter. Brukes for sosial-pakker (1:1 + 9:16 + 4:5 + 16:9). target_long_edge styrer outputstørrelse — lengste side blir det tallet, kort side beregnes ut fra aspect.",
@@ -383,6 +436,33 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       return photoshop.applyStyle({
         layer_name: requireString(input, "layer_name"),
         effects: effects as never,
+      });
+    }
+    case "photoshop_selection_select": {
+      const mode = requireString(input, "mode") as "all" | "none" | "invert";
+      if (mode !== "all" && mode !== "none" && mode !== "invert") {
+        throw new Error(`Ukjent selection mode: ${mode}`);
+      }
+      return photoshop.selectionSelect(mode);
+    }
+    case "photoshop_gen_fill": {
+      const prompt = typeof input.prompt === "string" ? input.prompt : "";
+      return photoshop.generativeFill(prompt);
+    }
+    case "photoshop_gen_expand": {
+      const targetW = input.target_width;
+      const targetH = input.target_height;
+      if (typeof targetW !== "number" || targetW <= 0) {
+        throw new Error('"target_width" må være et positivt tall');
+      }
+      if (typeof targetH !== "number" || targetH <= 0) {
+        throw new Error('"target_height" må være et positivt tall');
+      }
+      return photoshop.generativeExpand({
+        target_width: targetW,
+        target_height: targetH,
+        anchor: input.anchor as never,
+        prompt: typeof input.prompt === "string" ? input.prompt : undefined,
       });
     }
     case "photoshop_multi_aspect_export": {
