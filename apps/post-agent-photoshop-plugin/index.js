@@ -684,7 +684,139 @@ const COMMANDS = {
 
     return { template_path, total: items.length, succeeded: results.length, failed_count: failed.length, items: results, failed };
   },
+
+  /*
+   * Multi-aspect-eksport: fra én master-PSD, render ut N varianter
+   * med ulike aspect-ratios. Bruker "fill-by-resize + center-crop" som
+   * default — mest brukbart for sosial-pakker.
+   *
+   * `target_long_edge` (px) styrer outputstørrelsen: longest side blir
+   * dette tallet, kort side beregnes ut fra aspect.
+   *   1080 + "1:1"  → 1080×1080
+   *   1080 + "9:16" → 1080×1920
+   *   1080 + "16:9" → 1920×1080
+   *   1080 + "4:5"  → 1080×1350
+   *
+   * Hver iteration åpner master på nytt → ingen mutasjons-arv.
+   */
+  "multiAspect.export": async ({
+    master_path,
+    output_dir,
+    base_name,
+    aspects,
+    target_long_edge,
+    format,
+    quality,
+  }) => {
+    assertString(master_path, "master_path");
+    assertString(output_dir, "output_dir");
+    assertString(base_name, "base_name");
+    assertString(format, "format");
+    if (!Array.isArray(aspects) || aspects.length === 0) {
+      throw new Error('"aspects" må være en non-empty array');
+    }
+    if (typeof target_long_edge !== "number" || target_long_edge <= 0) {
+      throw new Error('"target_long_edge" må være et positivt tall (px)');
+    }
+
+    const masterEntry = await fs.getEntryWithUrl("file:" + encodeURI(master_path));
+    const outFolder = await fs.getEntryWithUrl("file:" + encodeURI(output_dir));
+    const results = [];
+    const failed = [];
+
+    await core.executeAsModal(async () => {
+      for (let i = 0; i < aspects.length; i++) {
+        const aspect = aspects[i];
+        try {
+          const target = computeTargetDimensions(aspect, target_long_edge);
+          const aspectSlug = aspect.replace(/:/g, "x");
+          const outName = `${base_name}_${aspectSlug}.${format.toLowerCase()}`;
+
+          const doc = await app.open(masterEntry);
+          try {
+            const masterW = doc.width;
+            const masterH = doc.height;
+            const masterAspect = masterW / masterH;
+            const targetAspect = target.width / target.height;
+
+            // Fill-by-resize: skalere så bildet dekker target W×H,
+            // overflod blir senter-cropped av canvas-resize etterpå.
+            let resizeW;
+            let resizeH;
+            if (targetAspect > masterAspect) {
+              // Target er bredere enn master → match bredde
+              resizeW = target.width;
+              resizeH = Math.round(masterH * (target.width / masterW));
+            } else {
+              // Target er smalere/like → match høyde
+              resizeH = target.height;
+              resizeW = Math.round(masterW * (target.height / masterH));
+            }
+
+            await doc.resizeImage(resizeW, resizeH, doc.resolution, "bicubicSharper");
+            await doc.resizeCanvas(target.width, target.height, "middleCenter");
+
+            const outFile = await outFolder.createFile(outName, { overwrite: true });
+            const fmt = format.toLowerCase();
+            if (fmt === "jpg" || fmt === "jpeg") {
+              await doc.saveAs.jpg(outFile, { quality: quality ?? 10 });
+            } else if (fmt === "png") {
+              await doc.saveAs.png(outFile, { compression: 6 });
+            } else if (fmt === "psd") {
+              await doc.saveAs.psd(outFile, { maximizeCompatibility: true });
+            } else if (fmt === "tiff" || fmt === "tif") {
+              await doc.saveAs.tif(outFile);
+            } else {
+              throw new Error(`Ukjent eksportformat: ${format}`);
+            }
+
+            results.push({
+              aspect,
+              output_path: `${output_dir}/${outName}`,
+              width: target.width,
+              height: target.height,
+            });
+          } finally {
+            await doc.closeWithoutSaving();
+          }
+        } catch (err) {
+          failed.push({ aspect, error: String(err && err.message ? err.message : err) });
+        }
+      }
+    }, { commandName: "Post Agent: multi-aspect export" });
+
+    return {
+      master_path,
+      output_dir,
+      base_name,
+      total: aspects.length,
+      succeeded: results.length,
+      failed_count: failed.length,
+      items: results,
+      failed,
+    };
+  },
 };
+
+/**
+ * Parse aspect-streng som "9:16" eller "16:9" og beregn W×H der den
+ * lengste siden blir `long_edge`.
+ */
+function computeTargetDimensions(aspectStr, long_edge) {
+  const m = /^(\d+):(\d+)$/.exec(String(aspectStr).trim());
+  if (!m) throw new Error(`Ugyldig aspect: ${aspectStr} (forventer "W:H", f.eks. "9:16")`);
+  const num = Number(m[1]);
+  const den = Number(m[2]);
+  if (!num || !den) throw new Error(`Ugyldig aspect: ${aspectStr}`);
+  const ratio = num / den;
+  if (ratio >= 1) {
+    // Landscape eller square — bredden er lengste siden
+    return { width: long_edge, height: Math.round(long_edge / ratio) };
+  } else {
+    // Portrait — høyden er lengste siden
+    return { width: Math.round(long_edge * ratio), height: long_edge };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

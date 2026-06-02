@@ -132,6 +132,22 @@ export interface BatchRenderResult {
   failed: Array<{ index: number; output_path: string | null; error: string }>;
 }
 
+export interface MultiAspectExportResult {
+  master_path: string;
+  output_dir: string;
+  base_name: string;
+  total: number;
+  succeeded: number;
+  failed_count: number;
+  items: Array<{
+    aspect: string;
+    output_path: string;
+    width: number;
+    height: number;
+  }>;
+  failed: Array<{ aspect: string; error: string }>;
+}
+
 async function send<T>(command: string, params?: unknown): Promise<T> {
   return invoke<T>("photoshop_send_command", { command, params: params ?? null });
 }
@@ -181,6 +197,16 @@ export const photoshop = {
     default_format?: ExportFormat;
     default_quality?: number;
   }) => send<BatchRenderResult>("batch.run", params),
+
+  multiAspectExport: (params: {
+    master_path: string;
+    output_dir: string;
+    base_name: string;
+    aspects: string[];
+    target_long_edge: number;
+    format: ExportFormat;
+    quality?: number;
+  }) => send<MultiAspectExportResult>("multiAspect.export", params),
 
   autoRenameTemplate: (params: {
     template_path: string;
