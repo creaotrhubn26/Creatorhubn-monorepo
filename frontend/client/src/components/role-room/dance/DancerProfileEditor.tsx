@@ -15,6 +15,7 @@
  * pågående lagring.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -218,7 +219,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
       fullWidth
       data-testid="dancer-profile-editor"
       PaperProps={{
-        sx: { bgcolor: '#0a0a0a', border: '1px solid #1e2536', color: '#e5e7eb' },
+        sx: { bgcolor: danceFlowColors.bgBase, border: '1px solid #1e2536', color: danceFlowColors.textSecondary },
       }}
     >
       <DialogTitle
@@ -231,7 +232,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
         }}
       >
         <Box>
-          <Typography sx={{ fontSize: 11, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700 }}>
+          <Typography sx={{ fontSize: 11, letterSpacing: 1.8, color: danceFlowColors.lavender, fontWeight: 700 }}>
             {initialProfile ? 'REDIGER PROFIL' : 'NY DANSERPROFIL'}
           </Typography>
           <Typography sx={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>
@@ -242,7 +243,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
           onClick={onClose}
           disabled={status === 'saving'}
           aria-label="Lukk"
-          sx={{ color: '#9ca3af' }}
+          sx={{ color: danceFlowColors.textMuted }}
         >
           <CloseIcon />
         </IconButton>
@@ -331,9 +332,9 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                             height: 20,
                             fontSize: 10,
                             cursor: 'pointer',
-                            bgcolor: active ? 'rgba(34,211,238,0.2)' : '#1e2536',
-                            color: active ? '#67e8f9' : '#9ca3af',
-                            border: `1px solid ${active ? 'rgba(34,211,238,0.5)' : '#2a3142'}`,
+                            bgcolor: active ? 'rgba(34,211,238,0.2)' : danceFlowColors.borderStrong,
+                            color: active ? '#67e8f9' : danceFlowColors.textMuted,
+                            border: `1px solid ${active ? 'rgba(34,211,238,0.5)' : danceFlowColors.borderSoft}`,
                             fontWeight: active ? 700 : 500,
                           }}
                         />
@@ -448,7 +449,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                         form.availabilityWindows.filter((_, j) => j !== i),
                       );
                     }}
-                    sx={{ color: '#9ca3af', '&:hover': { color: '#f87171' } }}
+                    sx={{ color: danceFlowColors.textMuted, '&:hover': { color: danceFlowColors.errorPrimary } }}
                   >
                     <DeleteIcon sx={{ fontSize: 16 }} />
                   </IconButton>
@@ -492,9 +493,9 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                         height: 22,
                         fontSize: 10,
                         cursor: 'pointer',
-                        bgcolor: active ? 'rgba(248,113,113,0.18)' : '#1e2536',
-                        color: active ? '#fca5a5' : '#9ca3af',
-                        border: `1px solid ${active ? 'rgba(248,113,113,0.5)' : '#2a3142'}`,
+                        bgcolor: active ? 'rgba(248,113,113,0.18)' : danceFlowColors.borderStrong,
+                        color: active ? danceFlowColors.errorSoft : danceFlowColors.textMuted,
+                        border: `1px solid ${active ? 'rgba(248,113,113,0.5)' : danceFlowColors.borderSoft}`,
                         fontWeight: active ? 700 : 500,
                       }}
                     />
@@ -537,7 +538,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                         <IconButton
                           size="small"
                           onClick={() => window.open(url, '_blank', 'noopener')}
-                          sx={{ color: '#a78bfa' }}
+                          sx={{ color: danceFlowColors.lavender }}
                         >
                           <OpenInNewIcon sx={{ fontSize: 16 }} />
                         </IconButton>
@@ -548,7 +549,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                     size="small"
                     aria-label="Fjern reel"
                     onClick={() => update('reelUrls', form.reelUrls.filter((_, j) => j !== i))}
-                    sx={{ color: '#9ca3af', '&:hover': { color: '#f87171' } }}
+                    sx={{ color: danceFlowColors.textMuted, '&:hover': { color: danceFlowColors.errorPrimary } }}
                   >
                     <DeleteIcon sx={{ fontSize: 16 }} />
                   </IconButton>
@@ -582,23 +583,23 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
         </Stack>
       </DialogContent>
 
-      <Divider sx={{ borderColor: '#1e2536' }} />
+      <Divider sx={{ borderColor: danceFlowColors.borderStrong }} />
 
       <DialogActions sx={{ p: 2, gap: 1 }}>
         {validationError && (
-          <Typography sx={{ fontSize: 11, color: '#fca5a5', mr: 'auto' }}>
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.errorSoft, mr: 'auto' }}>
             {validationError}
           </Typography>
         )}
         {errorMsg && (
-          <Typography sx={{ fontSize: 11, color: '#fca5a5', mr: 'auto' }}>
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.errorSoft, mr: 'auto' }}>
             {errorMsg}
           </Typography>
         )}
         <Button
           onClick={onClose}
           disabled={status === 'saving'}
-          sx={{ textTransform: 'none', color: '#9ca3af' }}
+          sx={{ textTransform: 'none', color: danceFlowColors.textMuted }}
         >
           Avbryt
         </Button>
@@ -609,9 +610,9 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
           data-testid="dancer-profile-save"
           sx={{
             textTransform: 'none',
-            bgcolor: '#8b5cf6',
-            '&:hover': { bgcolor: '#7c3aed' },
-            '&.Mui-disabled': { bgcolor: '#1e2536', color: '#6b7280' },
+            bgcolor: danceFlowColors.lavenderDark,
+            '&:hover': { bgcolor: danceFlowColors.lavenderDeep },
+            '&.Mui-disabled': { bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.textDisabled },
           }}
         >
           {status === 'saving' ? 'Lagrer…' : 'Lagre profil'}
@@ -631,7 +632,7 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({
       sx={{
         fontSize: 9,
         letterSpacing: 1.8,
-        color: '#6b7280',
+        color: danceFlowColors.textDisabled,
         fontWeight: 700,
         textTransform: 'uppercase',
         mb: 0.75,
@@ -695,20 +696,20 @@ function fromLocalDt(local: string): string {
 // ─── Styles ──────────────────────────────────────────────────────────────
 
 const fieldSx = {
-  '& .MuiInputLabel-root': { color: '#9ca3af', fontSize: 11 },
-  '& .MuiInputBase-input': { color: '#e5e7eb', fontSize: 12 },
+  '& .MuiInputLabel-root': { color: danceFlowColors.textMuted, fontSize: 11 },
+  '& .MuiInputBase-input': { color: danceFlowColors.textSecondary, fontSize: 12 },
   '& .MuiOutlinedInput-root': {
-    bgcolor: '#0f1318',
-    '& fieldset': { borderColor: '#1e2536' },
+    bgcolor: danceFlowColors.bgPanel,
+    '& fieldset': { borderColor: danceFlowColors.borderStrong },
     '&:hover fieldset': { borderColor: '#374151' },
-    '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+    '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;
 
 const addBtnSx = {
   textTransform: 'none' as const,
   fontSize: 11,
-  color: '#c4b5fd',
+  color: danceFlowColors.lavenderLight,
   borderColor: 'rgba(139,92,246,0.4)',
   alignSelf: 'flex-start' as const,
 };

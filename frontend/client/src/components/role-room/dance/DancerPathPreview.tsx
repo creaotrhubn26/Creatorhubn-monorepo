@@ -10,6 +10,7 @@
  * fra første formasjon — default 12×8 m).
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Stack, Typography, MenuItem, TextField } from '@mui/material';
 import type { Dancer, Formation } from './formationTypes';
@@ -70,7 +71,7 @@ export function DancerPathPreview({
       data-testid="dancer-path-preview"
       sx={{ pb: 1.5, mb: 1.5, borderBottom: '1px solid #1e2536' }}
     >
-      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 0.5 }}>
         MOVEMENT PATHS
       </Typography>
       <TextField
@@ -112,7 +113,7 @@ export function DancerPathPreview({
                 .map((p, i) => `${(i / Math.max(1, points.length - 1)) * 100},${p.y * (PREVIEW_HEIGHT - 8) + 4}`)
                 .join(' ')}
               fill="none"
-              stroke={dancer.color ?? '#a78bfa'}
+              stroke={dancer.color ?? danceFlowColors.lavender}
               strokeWidth={1.5}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -125,7 +126,7 @@ export function DancerPathPreview({
               cx={(i / Math.max(1, points.length - 1)) * 100}
               cy={p.y * (PREVIEW_HEIGHT - 8) + 4}
               r={2.5}
-              fill={dancer.color ?? '#a78bfa'}
+              fill={dancer.color ?? danceFlowColors.lavender}
               stroke="#0d0f14"
               strokeWidth={1}
             />
@@ -134,7 +135,7 @@ export function DancerPathPreview({
       </Box>
       <Stack direction="row" justifyContent="space-between" sx={{ fontSize: 10 }}>
         <Box>
-          <Typography sx={{ fontSize: 9, color: '#6b7280' }}>Path Length</Typography>
+          <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled }}>Path Length</Typography>
           <Typography
             sx={{ fontSize: 11, color: '#fff', fontWeight: 600 }}
             data-testid="dancer-path-preview-length"
@@ -143,7 +144,7 @@ export function DancerPathPreview({
           </Typography>
         </Box>
         <Box sx={{ textAlign: 'right' }}>
-          <Typography sx={{ fontSize: 9, color: '#6b7280' }}>Travel Time</Typography>
+          <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled }}>Travel Time</Typography>
           <Typography
             sx={{ fontSize: 11, color: '#fff', fontWeight: 600, fontFamily: 'monospace' }}
             data-testid="dancer-path-preview-time"

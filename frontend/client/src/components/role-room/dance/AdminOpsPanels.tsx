@@ -4,6 +4,7 @@
  * egne wrappers for spesielle UX-krav (public-share, line-items).
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Stack, Typography, Chip, IconButton, Tooltip } from '@mui/material';
 import { ContentCopy as CopyIcon, Public as PublicIcon, Warning as WarningIcon } from '@mui/icons-material';
@@ -11,7 +12,7 @@ import { EntityCrudPanel, type EntityField } from './EntityCrudPanel';
 import * as ops from './danceAdminOpsService';
 import { MusicWaveformTrack } from './MusicWaveformTrack';
 
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE_LIGHT = danceFlowColors.lavender;
 
 export interface AdminPanelProps {
   projectId: string | null;
@@ -20,11 +21,11 @@ export interface AdminPanelProps {
 // ─── Performances ──────────────────────────────────────────────────────
 
 const PERFORMANCE_STATUS_META: Record<string, { label: string; color: string }> = {
-  planned:       { label: 'Planlagt',     color: '#9ca3af' },
-  rehearsing:    { label: 'Prøver',       color: '#a78bfa' },
+  planned:       { label: 'Planlagt',     color: danceFlowColors.textMuted },
+  rehearsing:    { label: 'Prøver',       color: danceFlowColors.lavender },
   tickets_open:  { label: 'Billettsalg',  color: '#60a5fa' },
-  sold_out:      { label: 'Utsolgt',      color: '#10b981' },
-  completed:     { label: 'Avsluttet',    color: '#34d399' },
+  sold_out:      { label: 'Utsolgt',      color: danceFlowColors.successDark },
+  completed:     { label: 'Avsluttet',    color: danceFlowColors.successPrimary },
   cancelled:     { label: 'Avlyst',       color: '#ef4444' },
 };
 
@@ -42,7 +43,7 @@ const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performan
   if (sorted.length === 0) {
     return (
       <Typography
-        sx={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic', textAlign: 'center', py: 6 }}
+        sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic', textAlign: 'center', py: 6 }}
         data-testid="performance-stripboard-empty"
       >
         Ingen forestillinger lagt til ennå.
@@ -65,7 +66,7 @@ const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performan
               borderRadius: 1,
               border: '1px solid #1e2536',
               borderLeft: `4px solid ${meta.color}`,
-              bgcolor: '#0f1318',
+              bgcolor: danceFlowColors.bgPanel,
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', md: '1.6fr 1fr 1fr 0.7fr' },
               gap: 1,
@@ -77,14 +78,14 @@ const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performan
                 {p.title}
               </Typography>
               {p.venue ? (
-                <Typography sx={{ fontSize: 11, color: '#9ca3af' }} noWrap>{p.venue}</Typography>
+                <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }} noWrap>{p.venue}</Typography>
               ) : null}
             </Box>
             <Stack direction="row" spacing={0.5} alignItems="center">
               <Chip
                 size="small"
                 label={p.performanceDate ? new Date(p.performanceDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—'}
-                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
               />
               <Chip
                 size="small"
@@ -95,19 +96,19 @@ const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performan
             <Box>
               {cap > 0 ? (
                 <>
-                  <Typography sx={{ fontSize: 10, color: '#6b7280', mb: 0.25 }}>
+                  <Typography sx={{ fontSize: 10, color: danceFlowColors.textDisabled, mb: 0.25 }}>
                     {sold} / {cap} billetter ({fillPct}%)
                   </Typography>
                   <Box sx={{ height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
                     <Box sx={{
                       width: `${fillPct}%`,
                       height: '100%',
-                      bgcolor: fillPct >= 90 ? '#10b981' : fillPct >= 50 ? '#fbbf24' : '#60a5fa',
+                      bgcolor: fillPct >= 90 ? danceFlowColors.successDark : fillPct >= 50 ? danceFlowColors.gold : '#60a5fa',
                     }} />
                   </Box>
                 </>
               ) : (
-                <Typography sx={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>
+                <Typography sx={{ fontSize: 10, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
                   Kapasitet ikke satt
                 </Typography>
               )}
@@ -182,7 +183,7 @@ export const PerformancesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
               cursor: 'pointer', px: 1.5, py: 0.5, fontSize: 11, fontWeight: 700, letterSpacing: 1,
               color: mode === m ? '#fff' : 'rgba(229,231,235,0.5)',
               bgcolor: mode === m ? 'rgba(167,139,250,0.22)' : 'transparent',
-              border: `1px solid ${mode === m ? '#a78bfa' : 'rgba(255,255,255,0.12)'}`,
+              border: `1px solid ${mode === m ? danceFlowColors.lavender : 'rgba(255,255,255,0.12)'}`,
               borderRadius: 0.5,
               textTransform: 'uppercase',
             }}
@@ -229,10 +230,10 @@ interface MusicRowExpansionProps {
 const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
   const audioUrl = item.signedUrl;
   const tonoMeta: Record<string, { label: string; color: string }> = {
-    cleared: { label: 'Cleared', color: '#10b981' },
-    pending: { label: 'Venter på TONO', color: '#fbbf24' },
+    cleared: { label: 'Cleared', color: danceFlowColors.successDark },
+    pending: { label: 'Venter på TONO', color: danceFlowColors.gold },
     blocked: { label: 'Blokkert', color: '#ef4444' },
-    unknown: { label: 'Ukjent', color: '#9ca3af' },
+    unknown: { label: 'Ukjent', color: danceFlowColors.textMuted },
   };
   const meta = tonoMeta[item.tonoStatus] ?? tonoMeta.unknown;
   return (
@@ -243,18 +244,18 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
       <Stack spacing={1.5}>
         {audioUrl ? (
           <Box>
-            <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: '#fbbf24', fontWeight: 700, mb: 0.5 }}>
+            <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: danceFlowColors.gold, fontWeight: 700, mb: 0.5 }}>
               WAVEFORM
             </Typography>
             <MusicWaveformTrack musicUrl={audioUrl} />
           </Box>
         ) : item.sourceUrl ? (
-          <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }}>
             Ekstern lenke: <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{item.sourceUrl}</a>
             {' · '}<em>Last opp lydfil for waveform-preview</em>
           </Typography>
         ) : (
-          <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
             Ingen lydfil eller lenke ennå.
           </Typography>
         )}
@@ -265,7 +266,7 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
             sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}55` }}
           />
           {item.bpm ? (
-            <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }} />
+            <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }} />
           ) : null}
           {item.musicalKey ? (
             <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(96,165,250,0.18)', color: '#93c5fd' }} />
@@ -274,11 +275,11 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
             <Chip
               size="small"
               label={`${Math.floor(item.durationSec / 60)}:${String(Math.round(item.durationSec % 60)).padStart(2, '0')}`}
-              sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(255,255,255,0.08)', color: '#e5e7eb', fontFamily: 'monospace' }}
+              sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(255,255,255,0.08)', color: danceFlowColors.textSecondary, fontFamily: 'monospace' }}
             />
           ) : null}
           {(item.tags ?? []).map((t) => (
-            <Chip key={t} size="small" label={t} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(251,191,36,0.12)', color: '#fbbf24' }} />
+            <Chip key={t} size="small" label={t} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(251,191,36,0.12)', color: danceFlowColors.gold }} />
           ))}
         </Stack>
         {item.notes ? (
@@ -310,10 +311,10 @@ export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       renderInList: (value) => {
         const v = value as ops.TonoStatus;
         const map = {
-          cleared: { label: 'Cleared', color: '#10b981' },
-          pending: { label: 'Venter', color: '#fbbf24' },
+          cleared: { label: 'Cleared', color: danceFlowColors.successDark },
+          pending: { label: 'Venter', color: danceFlowColors.gold },
           blocked: { label: 'Blokkert', color: '#ef4444' },
-          unknown: { label: 'Ukjent', color: '#9ca3af' },
+          unknown: { label: 'Ukjent', color: danceFlowColors.textMuted },
         };
         return <Box component="span" sx={{ color: map[v].color, fontWeight: 700 }}>{map[v].label}</Box>;
       },
@@ -400,7 +401,7 @@ const ReelShareControls: React.FC<{ clip: ops.DanceReelClip; onToggle: () => voi
         sx={{
           height: 24, fontSize: 11, cursor: 'pointer',
           bgcolor: clip.publicShareToken ? 'rgba(16,185,129,0.18)' : 'rgba(229,231,235,0.08)',
-          color: clip.publicShareToken ? '#10b981' : 'rgba(229,231,235,0.6)',
+          color: clip.publicShareToken ? danceFlowColors.successDark : 'rgba(229,231,235,0.6)',
           fontWeight: 700,
         }}
       />
@@ -489,15 +490,15 @@ const GrantsStatStrip: React.FC<GrantsStatProps> = ({ list }) => {
     new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n);
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="grants-stat-strip">
-      <Chip size="small" label={`Utkast: ${stats.drafts}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: '#9ca3af' }} />
+      <Chip size="small" label={`Utkast: ${stats.drafts}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
       <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa' }} />
-      <Chip size="small" label={`Innvilget: ${stats.awarded}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399' }} />
-      <Chip size="small" label={`Avslått: ${stats.rejected}`} sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#f87171' }} />
+      <Chip size="small" label={`Innvilget: ${stats.awarded}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
+      <Chip size="small" label={`Avslått: ${stats.rejected}`} sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorPrimary }} />
       {stats.totalAwardedKr > 0 ? (
         <Chip
           size="small"
           label={`Tildelt totalt: ${formatNok(stats.totalAwardedKr)}`}
-          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
         />
       ) : null}
     </Stack>
@@ -583,7 +584,7 @@ export const GrantsPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
             sx={{
               height: 22, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
               bgcolor: 'rgba(167,139,250,0.12)',
-              color: '#c4b5fd',
+              color: danceFlowColors.lavenderLight,
               border: '1px solid rgba(167,139,250,0.35)',
               '&:hover': { bgcolor: 'rgba(167,139,250,0.22)' },
             }}
@@ -628,15 +629,15 @@ const InvoicesStatStrip: React.FC<{ list: ops.DanceInvoice[] }> = ({ list }) => 
     new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n);
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="invoices-stat-strip">
-      <Chip size="small" label={`Utkast: ${stats.draft}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: '#9ca3af' }} />
+      <Chip size="small" label={`Utkast: ${stats.draft}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
       <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa' }} />
-      <Chip size="small" label={`Betalt: ${stats.paid}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399' }} />
+      <Chip size="small" label={`Betalt: ${stats.paid}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {stats.overdue > 0 ? (
         <Chip
           size="small"
           icon={<WarningIcon sx={{ fontSize: 14 }} />}
           label={`Forfalt: ${stats.overdue}`}
-          sx={{ bgcolor: 'rgba(239,68,68,0.22)', color: '#fca5a5', fontWeight: 700, border: '1px solid rgba(239,68,68,0.45)' }}
+          sx={{ bgcolor: 'rgba(239,68,68,0.22)', color: danceFlowColors.errorSoft, fontWeight: 700, border: '1px solid rgba(239,68,68,0.45)' }}
         />
       ) : null}
       <Chip
@@ -648,7 +649,7 @@ const InvoicesStatStrip: React.FC<{ list: ops.DanceInvoice[] }> = ({ list }) => 
         <Chip
           size="small"
           label={`Utestående: ${formatNok(stats.totalOutstanding)}`}
-          sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: danceFlowColors.gold, fontWeight: 700 }}
         />
       ) : null}
     </Stack>
@@ -748,7 +749,7 @@ const UnionWorkDaysStrip: React.FC<{ memberships: ops.DanceUnionMembership[] }> 
         <Chip
           size="small"
           label={`${stats.totalThisYear} dager`}
-          sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+          sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
       <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
@@ -758,11 +759,11 @@ const UnionWorkDaysStrip: React.FC<{ memberships: ops.DanceUnionMembership[] }> 
           return (
             <Box key={q} sx={{ flex: 1 }} data-testid={`union-quarter-${q}`}>
               <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.25 }}>
-                <Typography sx={{ fontSize: 9.5, color: '#9ca3af', fontWeight: 700 }}>{q}</Typography>
-                <Typography sx={{ fontSize: 10, color: '#e5e7eb' }}>{count}</Typography>
+                <Typography sx={{ fontSize: 9.5, color: danceFlowColors.textMuted, fontWeight: 700 }}>{q}</Typography>
+                <Typography sx={{ fontSize: 10, color: danceFlowColors.textSecondary }}>{count}</Typography>
               </Stack>
               <Box sx={{ height: 4, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
-                <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: '#a78bfa' }} />
+                <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: danceFlowColors.lavender }} />
               </Box>
             </Box>
           );

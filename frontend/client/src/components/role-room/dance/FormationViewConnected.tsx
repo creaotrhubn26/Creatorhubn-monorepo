@@ -12,6 +12,7 @@
  * names/colors match the rest of the dance vertical.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -49,7 +50,7 @@ import {
 } from './danceTimelineItemService';
 import TimelineItemModal from './TimelineItemModal';
 
-const PURPLE = '#8b5cf6';
+const PURPLE = danceFlowColors.lavenderDark;
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 
 export interface FormationViewConnectedProps {
@@ -81,7 +82,7 @@ interface LoadState {
 }
 
 const PALETTE = [
-  '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
+  '#3b82f6', danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, '#ec4899',
   '#06b6d4', '#f97316', '#84cc16', '#a855f7', '#f43f5e',
 ];
 
@@ -397,7 +398,7 @@ export function FormationViewConnected({
         alignItems="center"
         justifyContent="center"
         spacing={2}
-        sx={{ minHeight: 320, color: '#a78bfa' }}
+        sx={{ minHeight: 320, color: danceFlowColors.lavender }}
       >
         <CircularProgress size={28} sx={{ color: PURPLE }} />
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
@@ -429,7 +430,7 @@ export function FormationViewConnected({
               icon={<SavingIcon sx={{ fontSize: 16 }} />}
               label="Lagrer…"
               size="small"
-              sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: '#a78bfa', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: danceFlowColors.lavender, fontWeight: 600 }}
             />
           ) : null}
           {saveStatus === 'saved' ? (
@@ -437,7 +438,7 @@ export function FormationViewConnected({
               icon={<SavedIcon sx={{ fontSize: 16 }} />}
               label="Lagret"
               size="small"
-              sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: danceFlowColors.successDark, fontWeight: 600 }}
             />
           ) : null}
           {saveStatus === 'error' ? (

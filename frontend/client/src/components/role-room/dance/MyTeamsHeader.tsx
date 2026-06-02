@@ -8,6 +8,7 @@
  * fra listen.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -26,7 +27,7 @@ import {
 import * as svc from './danceTeamService';
 import type { DanceTeamMembershipDetail } from './danceTeamService';
 
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE_LIGHT = danceFlowColors.lavender;
 const TEXT_DIM     = 'rgba(229,231,235,0.78)';
 const TEXT_MUTED   = 'rgba(229,231,235,0.50)';
 
