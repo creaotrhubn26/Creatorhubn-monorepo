@@ -39,10 +39,30 @@ export interface ClaudeToolUseBlock {
   input: Record<string, unknown>;
 }
 
+/**
+ * Tool result kan være string (text-only) eller array av blokker
+ * (text + image). Anthropic støtter image-content i tool_result så
+ * Claude vision-modellen kan se bildet i neste turn — brukes av
+ * `photoshop_see_canvas` for å levere thumbnail tilbake til modellen.
+ */
+export type ClaudeToolResultContent =
+  | string
+  | Array<
+      | { type: "text"; text: string }
+      | {
+          type: "image";
+          source: {
+            type: "base64";
+            media_type: "image/png" | "image/jpeg";
+            data: string;
+          };
+        }
+    >;
+
 export interface ClaudeToolResultBlock {
   type: "tool_result";
   tool_use_id: string;
-  content: string;
+  content: ClaudeToolResultContent;
   is_error?: boolean;
 }
 
@@ -128,6 +148,20 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
         visible: { type: "boolean" },
       },
       required: ["layer_name", "visible"],
+    },
+  },
+  {
+    name: "photoshop_see_canvas",
+    description:
+      "Hent et thumbnail av aktivt Photoshop-dokument og se det med vision. Returnerer bildet som image-content som du faktisk kan analysere visuelt — komposisjon, lighting, hva som er i scenen, hvor logo/text er plassert. Bruk dette FØR du foreslår endringer eller når brukeren ber om innholdsbasert hjelp.",
+    input_schema: {
+      type: "object",
+      properties: {
+        max_size: {
+          type: "number",
+          description: "Maks lengste side i piksel (default 1024). Mindre = raskere, men færre detaljer.",
+        },
+      },
     },
   },
   {
@@ -402,6 +436,27 @@ export async function runPhotoshopTool(
 ): Promise<ClaudeToolResultBlock> {
   try {
     const result = await dispatch(toolUse.name, toolUse.input);
+    // Special-case: photoshop_see_canvas returnerer image-content så
+    // Claude vision-modellen kan se bildet, ikke bare lese base64.
+    if (toolUse.name === "photoshop_see_canvas" && result && typeof result === "object") {
+      const thumb = result as { base64?: string; width?: number; height?: number; doc_width?: number; doc_height?: number };
+      if (typeof thumb.base64 === "string" && thumb.base64.length > 0) {
+        return {
+          type: "tool_result",
+          tool_use_id: toolUse.id,
+          content: [
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: thumb.base64 },
+            },
+            {
+              type: "text",
+              text: `Captured thumbnail ${thumb.width}×${thumb.height}px (from doc ${thumb.doc_width}×${thumb.doc_height}px).`,
+            },
+          ],
+        };
+      }
+    }
     return {
       type: "tool_result",
       tool_use_id: toolUse.id,
@@ -446,6 +501,10 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         layer_name: requireString(input, "layer_name"),
         visible: input.visible === true,
       });
+    case "photoshop_see_canvas":
+      return photoshop.captureThumbnail(
+        typeof input.max_size === "number" ? input.max_size : undefined,
+      );
     case "photoshop_list_layers":
       return photoshop.listLayers();
     case "photoshop_selection_info":
