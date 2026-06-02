@@ -151,6 +151,30 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_list_inbox",
+    description:
+      "List stills som DaVinci Resolve har eksportert til ~/PostAgent/inbox/ via export-still-to-postagent.lua. Hver item har path + filnavn + metadata (clip, frame, fps, project) hvis sidefil finnes. Sortert nyeste først.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_open_latest",
+    description:
+      "Åpne nyeste still fra Resolve-inbox i Photoshop. Bruk når brukeren sier 'åpne det jeg sendte fra Resolve' eller for å starte en touch-up-flyt fra video.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_export_back",
+    description:
+      "Eksporter aktivt Photoshop-dokument tilbake til ~/PostAgent/outbox/ slik at Resolve sin insert-from-postagent.lua kan importere det tilbake i Media Pool. Bruk når brukeren er ferdig med touch-up og vil tilbake til video.",
+    input_schema: {
+      type: "object",
+      properties: {
+        format: { type: "string", enum: ["png", "tiff", "jpg", "psd"] },
+        quality: { type: "number", description: "JPG-kvalitet 1-12, default 10" },
+      },
+    },
+  },
+  {
     name: "photoshop_see_canvas",
     description:
       "Hent et thumbnail av aktivt Photoshop-dokument og se det med vision. Returnerer bildet som image-content som du faktisk kan analysere visuelt — komposisjon, lighting, hva som er i scenen, hvor logo/text er plassert. Bruk dette FØR du foreslår endringer eller når brukeren ber om innholdsbasert hjelp.",
@@ -505,6 +529,15 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       return photoshop.captureThumbnail(
         typeof input.max_size === "number" ? input.max_size : undefined,
       );
+    case "photoshop_resolve_list_inbox":
+      return photoshop.resolveListInbox();
+    case "photoshop_resolve_open_latest":
+      return photoshop.resolveOpenLatest();
+    case "photoshop_resolve_export_back":
+      return photoshop.resolveExportBack({
+        format: input.format as ExportFormat | undefined,
+        quality: input.quality as number | undefined,
+      });
     case "photoshop_list_layers":
       return photoshop.listLayers();
     case "photoshop_selection_info":

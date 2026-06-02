@@ -82,6 +82,33 @@ export interface LayerListResult {
   count: number;
 }
 
+export interface ResolveStillMetadata {
+  source: "davinci-resolve";
+  clip: string;
+  frame: string;
+  fps: string;
+  project: string;
+  epoch: number;
+}
+
+export interface ResolveInboxItem {
+  path: string;
+  name: string;
+  metadata: ResolveStillMetadata | null;
+}
+
+export interface ResolveInboxResult {
+  items: ResolveInboxItem[];
+  inbox_dir: string | null;
+  count: number;
+}
+
+export interface ResolveExportBackResult {
+  exported_to: string;
+  outbox_dir: string;
+  next_step: string;
+}
+
 export interface ThumbnailResult {
   /** Base64-encoded PNG bytes (uten "data:image/png;base64,"-prefix). */
   base64: string;
@@ -278,6 +305,14 @@ export const photoshop = {
 
   captureThumbnail: (max_size?: number) =>
     send<ThumbnailResult>("doc.thumbnail", { max_size: max_size ?? 1024 }),
+
+  resolveListInbox: () => send<ResolveInboxResult>("resolve.listInbox"),
+
+  resolveOpenLatest: () =>
+    send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
+
+  resolveExportBack: (params?: { format?: ExportFormat; quality?: number }) =>
+    send<ResolveExportBackResult>("resolve.exportBack", params ?? {}),
 
   scanTemplate: (template_path: string) =>
     send<TemplateScanResult>("template.scan", { template_path }),
