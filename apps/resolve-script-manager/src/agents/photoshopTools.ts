@@ -14,6 +14,12 @@
  */
 
 import { photoshop, type ExportFormat } from "../services/photoshopBridgeService";
+import {
+  suggestPromptsLocal,
+  suggestPromptsViaClaude,
+  type FireflyIntent,
+  type FireflyContext,
+} from "../lib/fireflyPromptHelper";
 
 // Anthropic tool definition shape (matcher beta.messages.tool_use)
 export interface ClaudeToolDefinition {
@@ -256,6 +262,57 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_suggest_firefly_prompts",
+    description:
+      "Hent 1-4 best-practice Firefly-prompts for gen.fill eller gen.expand basert på intent og kontekst. Bruker Claude for målrettet generering (med lokal template-fallback). Bruk denne FØR du kaller gen.fill/gen.expand når du er usikker på hvordan prompten skal formuleres.",
+    input_schema: {
+      type: "object",
+      properties: {
+        intent: {
+          type: "string",
+          enum: [
+            "expand_background",
+            "remove_object",
+            "replace_background",
+            "add_element",
+            "fix_edges",
+            "stylize",
+            "generate_subject",
+          ],
+          description: "Hva brukeren prøver å oppnå",
+        },
+        user_intent: {
+          type: "string",
+          description: "Fri-tekst beskrivelse av hva brukeren ønsker (kan være på norsk)",
+        },
+        scene_type: {
+          type: "string",
+          enum: ["portrait", "landscape", "product", "interior", "event", "wedding", "studio", "outdoor", "urban"],
+        },
+        subject_description: {
+          type: "string",
+          description: "Hva som ER i bildet i dag (subjektet) — viktig for expand-prompts",
+        },
+        style_tags: {
+          type: "array",
+          items: { type: "string" },
+          description: 'Stil-tags som "cinematic", "moody", "warm", "vibrant"',
+        },
+        lighting: { type: "string", description: 'Lyssetting hvis kjent (f.eks. "soft window light")' },
+        time_of_day: {
+          type: "string",
+          enum: ["morning", "midday", "golden_hour", "blue_hour", "night"],
+        },
+        target_aspect: { type: "string", description: 'Aspect-ratio output ("9:16", "1:1" etc.)' },
+        use_claude: {
+          type: "boolean",
+          description: "Hvis true, kall Claude for målrettet prompt-generering. Hvis false eller utelatt, kun lokale template-prompts.",
+        },
+      },
+      required: ["intent"],
+    },
+  },
+  {
     name: "photoshop_multi_aspect_export",
     description:
       "Eksporter samme master-PSD til flere aspect-ratios. Bruker fill-by-resize + center-crop: bildet skaleres så det dekker target, overflod cropper bort fra senter. Brukes for sosial-pakker (1:1 + 9:16 + 4:5 + 16:9). target_long_edge styrer outputstørrelse — lengste side blir det tallet, kort side beregnes ut fra aspect.",
@@ -464,6 +521,25 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         anchor: input.anchor as never,
         prompt: typeof input.prompt === "string" ? input.prompt : undefined,
       });
+    }
+    case "photoshop_suggest_firefly_prompts": {
+      const intent = requireString(input, "intent") as FireflyIntent;
+      const ctx: FireflyContext = {
+        user_intent: typeof input.user_intent === "string" ? input.user_intent : undefined,
+        scene_type: input.scene_type as FireflyContext["scene_type"],
+        subject_description: typeof input.subject_description === "string" ? input.subject_description : undefined,
+        style_tags: Array.isArray(input.style_tags)
+          ? (input.style_tags.filter((t) => typeof t === "string") as string[])
+          : undefined,
+        lighting: typeof input.lighting === "string" ? input.lighting : undefined,
+        time_of_day: input.time_of_day as FireflyContext["time_of_day"],
+        target_aspect: typeof input.target_aspect === "string" ? input.target_aspect : undefined,
+      };
+      const useClaude = input.use_claude === true;
+      const suggestions = useClaude
+        ? await suggestPromptsViaClaude(intent, ctx)
+        : suggestPromptsLocal(intent, ctx);
+      return { intent, source: useClaude ? "claude" : "local", suggestions };
     }
     case "photoshop_multi_aspect_export": {
       const aspectsRaw = input.aspects;
