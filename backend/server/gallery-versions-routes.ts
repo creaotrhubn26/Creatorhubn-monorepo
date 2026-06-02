@@ -316,6 +316,82 @@ export function setupGalleryVersionsRoutes(
 
   // ─── OWNER (fotograf) ──────────────────────────────────────────
 
+  // GET versjons-liste (fotograf — inkluderer utkast som ikke er publisert)
+  app.get(
+    "/api/photographer/galleries/:galleryId/versions",
+    async (req, res) => {
+      const session = getActiveSessionFromRequest(req);
+      if (!session?.userId)
+        return res.status(401).json({ error: "not_authenticated" });
+      const { galleryId } = req.params;
+
+      try {
+        const owns = await pool.query(
+          `SELECT 1 FROM photographer_client_galleries
+            WHERE id = $1 AND photographer_id = $2`,
+          [galleryId, session.userId],
+        );
+        if ((owns.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "gallery_not_found" });
+        }
+
+        const versions = await pool.query<{
+          id: string;
+          version_label: string;
+          version_order: number;
+          is_published_to_client: boolean;
+          published_at: string | null;
+          notes: string | null;
+          image_count: string | number;
+        }>(
+          `SELECT v.id, v.version_label, v.version_order,
+                  v.is_published_to_client, v.published_at, v.notes,
+                  (SELECT COUNT(*) FROM client_gallery_image_version_links l
+                    WHERE l.version_id = v.id) AS image_count
+             FROM client_gallery_image_versions v
+            WHERE v.gallery_id = $1
+            ORDER BY v.version_order DESC`,
+          [galleryId],
+        );
+        const decisions = await pool.query<{
+          version_id: string;
+          decision: string;
+          decision_note: string | null;
+          decided_by_email: string;
+          decided_by_label: string | null;
+          decided_at: string;
+        }>(
+          `SELECT DISTINCT ON (version_id)
+                  version_id, decision, decision_note, decided_by_email,
+                  decided_by_label, decided_at
+             FROM client_gallery_version_decisions
+            WHERE version_id = ANY($1::uuid[])
+            ORDER BY version_id, decided_at DESC`,
+          [versions.rows.map((v) => v.id)],
+        );
+        const decisionByVersion = new Map(
+          decisions.rows.map((d) => [d.version_id, d]),
+        );
+        res.json({
+          success: true,
+          versions: versions.rows.map((v) => ({
+            id: v.id,
+            label: v.version_label,
+            order: v.version_order,
+            isPublished: v.is_published_to_client,
+            publishedAt: v.published_at,
+            notes: v.notes,
+            imageCount: Number(v.image_count),
+            decision: decisionByVersion.get(v.id) ?? null,
+          })),
+        });
+      } catch (err) {
+        console.error("[gallery-versions] photographer list failed:", err);
+        res.status(500).json({ error: "list_failed" });
+      }
+    },
+  );
+
   // POST opprett versjon
   app.post(
     "/api/photographer/galleries/:galleryId/versions",
@@ -335,9 +411,6 @@ export function setupGalleryVersionsRoutes(
       if (typeof versionLabel !== "string" || !versionLabel.trim()) {
         return res.status(400).json({ error: "missing_version_label" });
       }
-      if (!Array.isArray(imageIds) || imageIds.length === 0) {
-        return res.status(400).json({ error: "missing_image_ids" });
-      }
 
       try {
         // Eierskap-sjekk
@@ -350,18 +423,30 @@ export function setupGalleryVersionsRoutes(
           return res.status(403).json({ error: "not_gallery_owner" });
         }
 
-        // Verifiser at bildene tilhører galleriet
-        const owned = await pool.query<{ id: string }>(
-          `SELECT id FROM client_gallery_images
-            WHERE id = ANY($1::uuid[]) AND gallery_id = $2`,
-          [imageIds, galleryId],
-        );
-        const ownedIds = new Set(owned.rows.map((r) => r.id));
-        const missing = imageIds.filter((id: string) => !ownedIds.has(id));
-        if (missing.length > 0) {
-          return res
-            .status(400)
-            .json({ error: "image_not_in_gallery", missing });
+        // Hvis admin ikke spesifiserer imageIds — snapshot alle bilder i
+        // galleriet. Dette er den vanlige workflowen: "marker dagens
+        // tilstand som R1".
+        let effectiveImageIds: string[];
+        if (Array.isArray(imageIds) && imageIds.length > 0) {
+          const owned = await pool.query<{ id: string }>(
+            `SELECT id FROM client_gallery_images
+              WHERE id = ANY($1::uuid[]) AND gallery_id = $2`,
+            [imageIds, galleryId],
+          );
+          const ownedIds = new Set(owned.rows.map((r) => r.id));
+          const missing = imageIds.filter((id: string) => !ownedIds.has(id));
+          if (missing.length > 0) {
+            return res
+              .status(400)
+              .json({ error: "image_not_in_gallery", missing });
+          }
+          effectiveImageIds = imageIds;
+        } else {
+          const all = await pool.query<{ id: string }>(
+            `SELECT id FROM client_gallery_images WHERE gallery_id = $1`,
+            [galleryId],
+          );
+          effectiveImageIds = all.rows.map((r) => r.id);
         }
 
         // Bestem versionOrder hvis ikke gitt: max+1
@@ -407,13 +492,13 @@ export function setupGalleryVersionsRoutes(
           `DELETE FROM client_gallery_image_version_links WHERE version_id = $1`,
           [versionId],
         );
-        for (let i = 0; i < imageIds.length; i++) {
+        for (let i = 0; i < effectiveImageIds.length; i++) {
           await pool.query(
             `INSERT INTO client_gallery_image_version_links
                (version_id, image_id, sort_order)
              VALUES ($1, $2, $3)
              ON CONFLICT DO NOTHING`,
-            [versionId, imageIds[i], i],
+            [versionId, effectiveImageIds[i], i],
           );
         }
 
@@ -422,7 +507,7 @@ export function setupGalleryVersionsRoutes(
           versionId,
           versionLabel: versionLabel.trim(),
           versionOrder: order,
-          imageCount: imageIds.length,
+          imageCount: effectiveImageIds.length,
           publishedToClient: publishImmediately === true,
         });
       } catch (err: any) {
@@ -526,7 +611,18 @@ export function setupGalleryVersionsRoutes(
 
         res.json({
           success: true,
-          milestones: milestones.rows,
+          milestones: milestones.rows.map((m: any) => ({
+            id: m.id,
+            stage: m.stage,
+            order: m.stage_order,
+            label: m.display_label,
+            status: m.status,
+            estimatedAt: m.estimated_at,
+            startedAt: m.started_at,
+            completedAt: m.completed_at,
+            blockedReason: m.blocked_reason,
+            isClientVisible: m.is_client_visible,
+          })),
           versions: versions.rows,
         });
       } catch (err) {

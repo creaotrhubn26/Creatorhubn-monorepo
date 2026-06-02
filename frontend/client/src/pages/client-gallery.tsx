@@ -86,6 +86,8 @@ import GalleryChapterNav from '@/components/gallery/GalleryChapterNav';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
 import CinematicAudioPlayer from '@/components/gallery/CinematicAudioPlayer';
 import CommentsPanel from '@/components/gallery/CommentsPanel';
+import ClientDeliveryTimeline from '@/components/gallery/ClientDeliveryTimeline';
+import ClientVersionTabs from '@/components/gallery/ClientVersionTabs';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -1181,6 +1183,25 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
         {/* Gallery Content */}
         <Box sx={{ flex: 1, p: 3, bgcolor: '#0a0f1a' }}>
+          {/* Leveranse-progress + versjons-historikk.
+              Begge mountes kun når galleriet er ferdig lastet og passordet
+              er løst (samme gating som images-query bruker). */}
+          {accessToken && gallery && (!gallery.requiresPassword || !!galleryPassword) && (
+            <Stack spacing={2} sx={{ mb: 3 }}>
+              <ClientDeliveryTimeline
+                accessToken={accessToken}
+                galleryPassword={galleryPassword}
+                variant="compact"
+              />
+              <ClientVersionTabs
+                accessToken={accessToken}
+                galleryPassword={galleryPassword}
+                clientEmail={gallery?.clientEmail || ''}
+                clientName={gallery?.clientName || null}
+              />
+            </Stack>
+          )}
+
           {/* Project Connection Info */}
           {projectDetails && (
             <Alert
