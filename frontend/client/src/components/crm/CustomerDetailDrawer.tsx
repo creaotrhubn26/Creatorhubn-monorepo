@@ -10,6 +10,7 @@ import {
   IconButton, Avatar, List, ListItem, ListItemText, CircularProgress, Alert,
   Rating, FormControlLabel, Checkbox,
 } from '@mui/material';
+import { BrandScope } from './crm-brand';
 import {
   Close as CloseIcon, NoteAlt as NoteIcon, Call as CallIcon, VideoCall as MeetIcon,
   MailOutline as MailIcon, Description as ContractIcon, ReceiptLong as InvoiceIcon,
@@ -51,9 +52,10 @@ interface Props {
   customerId: string | null;
   customerName?: string;
   onClose: () => void;
+  brandColor?: string;
 }
 
-export default function CustomerDetailDrawer({ open, customerId, customerName, onClose }: Props) {
+export default function CustomerDetailDrawer({ open, customerId, customerName, onClose, brandColor }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [logType, setLogType] = useState('note');
@@ -152,6 +154,7 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
   });
 
   return (
+    <BrandScope brandColor={brandColor}>
     <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: '100%', sm: 480 } } }}>
       <Box sx={{ p: 2.5, height: '100%', overflowY: 'auto' }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
@@ -311,5 +314,6 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
         ) : null}
       </Box>
     </Drawer>
+    </BrandScope>
   );
 }

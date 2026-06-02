@@ -10,6 +10,7 @@ import {
   ToggleButtonGroup, Chip,
 } from '@mui/material';
 import { UploadFile as UploadIcon } from '@mui/icons-material';
+import { BrandScope } from './crm-brand';
 
 // Minimal RFC-ish CSV parser (handles quoted fields + embedded commas/newlines).
 function parseCsv(text: string): string[][] {
@@ -43,9 +44,9 @@ const HEADER_MAP: Record<string, string> = {
   source: 'source', kilde: 'source',
 };
 
-interface Props { open: boolean; onClose: () => void; }
+interface Props { open: boolean; onClose: () => void; brandColor?: string; }
 
-export default function CrmImportDialog({ open, onClose }: Props) {
+export default function CrmImportDialog({ open, onClose, brandColor }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [rows, setRows] = useState<any[]>([]);
@@ -90,6 +91,7 @@ export default function CrmImportDialog({ open, onClose }: Props) {
   const close = () => { reset(); onClose(); };
 
   return (
+    <BrandScope brandColor={brandColor}>
     <Dialog open={open} onClose={close} maxWidth="md" fullWidth>
       <DialogTitle>Importer kunder (CSV)</DialogTitle>
       <DialogContent dividers>
@@ -144,5 +146,6 @@ export default function CrmImportDialog({ open, onClose }: Props) {
         )}
       </DialogActions>
     </Dialog>
+    </BrandScope>
   );
 }

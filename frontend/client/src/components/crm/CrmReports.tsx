@@ -10,6 +10,7 @@ import {
   LinearProgress, CircularProgress, Alert, Chip,
 } from '@mui/material';
 import { Assessment as ReportIcon, Download as DownloadIcon } from '@mui/icons-material';
+import { BrandScope } from './crm-brand';
 
 const nok = (v: any) => `${Math.round(Number(v) || 0).toLocaleString('nb-NO')} kr`;
 const STAGE_LABEL: Record<string, string> = {
@@ -32,9 +33,9 @@ function downloadCsv(rows: any[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-interface Props { open: boolean; onClose: () => void; }
+interface Props { open: boolean; onClose: () => void; brandColor?: string; }
 
-export default function CrmReports({ open, onClose }: Props) {
+export default function CrmReports({ open, onClose, brandColor }: Props) {
   const { toast } = useToast();
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ['crm-reports'],
@@ -56,6 +57,7 @@ export default function CrmReports({ open, onClose }: Props) {
   const maxFunnel = Math.max(1, ...((data?.funnel || []).map((f: any) => f.count)));
 
   return (
+    <BrandScope brandColor={brandColor}>
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -157,5 +159,6 @@ export default function CrmReports({ open, onClose }: Props) {
       </DialogContent>
       <DialogActions><Button onClick={onClose}>Lukk</Button></DialogActions>
     </Dialog>
+    </BrandScope>
   );
 }
