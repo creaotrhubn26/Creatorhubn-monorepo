@@ -177,6 +177,7 @@ import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
+import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 import MarketingPlanWorkspace from './MarketingPlanWorkspace';
 import { useResearchProgress } from '../../hooks/useResearchProgress';
 import DataSourcesPanel from './DataSourcesPanel';
@@ -7789,7 +7790,7 @@ export default function ProducerMediaPanel({
               <Button
                 size="small"
                 variant="contained"
-                startIcon={<AutoFixHighIcon />}
+                startIcon={<RoleRoomAgentIcon size={18} working={roleRoomAgentGenerating} />}
                 onClick={() => {
                   setRoleRoomAgentError(null);
                   setRoleRoomAgentNotice(null);

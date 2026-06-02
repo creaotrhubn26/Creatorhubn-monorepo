@@ -42,6 +42,7 @@ import PostEditDialog from './PostEditDialog';
 import MarketingPlanActivityFeed from './MarketingPlanActivityFeed';
 import MarketingPlanCalendarView from './MarketingPlanCalendarView';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
+import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 
 interface Props {
   projectId: string;
@@ -250,7 +251,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
         {onOpenAdvancedEditor && (
           <Button variant="contained"
                   onClick={onOpenAdvancedEditor}
-                  startIcon={<AutoAwesomeIcon />}
+                  startIcon={<RoleRoomAgentIcon size={18} />}
                   sx={{ mt: 2.4, bgcolor: '#ec4899', '&:hover': { bgcolor: '#db2777' } }}>
             Åpne markedsplan-generator
           </Button>

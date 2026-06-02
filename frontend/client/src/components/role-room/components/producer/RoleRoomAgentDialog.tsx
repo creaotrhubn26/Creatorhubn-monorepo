@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import roleRoomAgentIcon from '@/assets/role-room-agent-icon.png';
+import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 import {
   Alert,
   Box,
@@ -496,20 +496,7 @@ export default function RoleRoomAgentDialog({
             alignItems={{ xs: 'stretch', md: 'center' }}
           >
             <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-              <Box
-                component="img"
-                src={roleRoomAgentIcon}
-                alt="The Role Room Agent"
-                sx={{
-                  width: { xs: 38, md: 46 },
-                  height: { xs: 38, md: 46 },
-                  borderRadius: 2.5,
-                  objectFit: 'cover',
-                  boxShadow: '0 0 28px rgba(168,85,247,0.35)',
-                  flexShrink: 0,
-                  display: 'block',
-                }}
-              />
+              <RoleRoomAgentIcon size={44} working={generating || progressStatus === 'streaming'} />
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
                   sx={{
@@ -1756,6 +1743,7 @@ export default function RoleRoomAgentDialog({
               companyName,
               extraContext,
             })}
+            startIcon={<RoleRoomAgentIcon size={18} working={generating} />}
             sx={{ textTransform: 'none', fontWeight: 700 }}
           >
             {generating ? 'Analyserer…' : access?.providerConfigured ? 'Analyser kunde med OpenAI' : 'Analyser kunde'}
