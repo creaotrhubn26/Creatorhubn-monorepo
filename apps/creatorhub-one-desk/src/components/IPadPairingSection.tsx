@@ -15,12 +15,16 @@ import {
   ListItem,
   ListItemText,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import LinkIcon from "@mui/icons-material/Link";
 import LinkOff from "@mui/icons-material/LinkOff";
 import Tablet from "@mui/icons-material/Tablet";
+import AddCircleOutline from "@mui/icons-material/AddCircleOutline";
 import {
+  addManualIpad,
+  BonjourStatusEvent,
   cancelPairingPin,
   confirmPairIpad,
   currentPairingPin,
@@ -33,12 +37,20 @@ import {
   unpairIpad,
 } from "../api";
 
+// Etter X sekunder uten oppdagete iPads viser vi en oppmuntring til
+// manuell input. 30s er nok til at en gjennomsnittlig WiFi-loop får
+// gitt opp og bruker ikke skal vente i blinde.
+const MANUAL_HINT_AFTER_SECS = 30;
+
 export default function IPadPairingSection() {
   const [discovered, setDiscovered] = useState<DiscoveredIpad[]>([]);
   const [paired, setPaired] = useState<PairedIpad[]>([]);
   const [pin, setPin] = useState<PendingPin | null>(null);
   const [pinDialogTarget, setPinDialogTarget] = useState<DiscoveredIpad | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bonjourStatus, setBonjourStatus] = useState<BonjourStatusEvent | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({ name: "", ip: "", port: "5050", deviceId: "" });
 
   const refreshAll = async () => {
     try {
@@ -57,20 +69,48 @@ export default function IPadPairingSection() {
 
   useEffect(() => {
     void refreshAll();
-    let cleanup: UnlistenFn | undefined;
+    const cleanups: UnlistenFn[] = [];
     void listen<DiscoveredIpad[]>("ipads-discovered", (e) => setDiscovered(e.payload)).then(
-      (un) => {
-        cleanup = un;
-      },
+      (un) => cleanups.push(un),
+    );
+    void listen<BonjourStatusEvent>("bonjour-status", (e) => setBonjourStatus(e.payload)).then(
+      (un) => cleanups.push(un),
     );
     const tick = window.setInterval(() => {
       void currentPairingPin().then(setPin);
     }, 1500);
     return () => {
-      cleanup?.();
+      cleanups.forEach((un) => un());
       window.clearInterval(tick);
     };
   }, []);
+
+  const handleAddManual = async () => {
+    setError(null);
+    const portNum = Number(manualForm.port);
+    if (!manualForm.name.trim() || !manualForm.ip.trim() || !Number.isFinite(portNum) || portNum < 1) {
+      setError("Fyll inn alle felter — navn, IP og gyldig port-nummer");
+      return;
+    }
+    try {
+      await addManualIpad({
+        deviceName: manualForm.name.trim(),
+        ip: manualForm.ip.trim(),
+        port: portNum,
+        deviceId: manualForm.deviceId.trim() || undefined,
+      });
+      await refreshAll();
+      setManualOpen(false);
+      setManualForm({ name: "", ip: "", port: "5050", deviceId: "" });
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  };
+
+  const showManualHint =
+    discovered.length === 0 &&
+    bonjourStatus !== null &&
+    bonjourStatus.elapsed_secs >= MANUAL_HINT_AFTER_SECS;
 
   const handleStartPair = async (ipad: DiscoveredIpad) => {
     setError(null);
@@ -147,9 +187,33 @@ export default function IPadPairingSection() {
             Oppdagede iPad-er (CaptureApp på samme LAN):
           </Typography>
           {discovered.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
-              Ingen iPad-er funnet. Start CaptureApp på en iPad på samme nettverk.
-            </Typography>
+            <Stack spacing={1}>
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                {bonjourStatus && bonjourStatus.elapsed_secs > 0
+                  ? `Søker via Bonjour… (${bonjourStatus.elapsed_secs} sek, 0 funnet). Sjekk at CaptureApp kjører på samme nettverk.`
+                  : "Søker etter iPad-er på samme nettverk…"}
+              </Typography>
+              {/* Manuell-input-hint vises etter 30s uten resultat. Lar
+                  Fredrik bypasse Bonjour når bedrifts-VLAN/WiFi-
+                  isolasjon blokkerer mDNS-broadcast. */}
+              {showManualHint && (
+                <Alert
+                  severity="info"
+                  action={
+                    <Button
+                      size="small"
+                      startIcon={<AddCircleOutline />}
+                      onClick={() => setManualOpen(true)}
+                    >
+                      Legg til manuelt
+                    </Button>
+                  }
+                >
+                  Bonjour kan være blokkert på dette nettverket. Du kan
+                  legge til iPad-en manuelt med IP-adressen fra CaptureApp.
+                </Alert>
+              )}
+            </Stack>
           ) : (
             <List dense>
               {discovered.map((d) => {
@@ -218,6 +282,57 @@ export default function IPadPairingSection() {
             </List>
           </Box>
         )}
+
+        {/* Manuell iPad-add dialog */}
+        <Dialog open={manualOpen} onClose={() => setManualOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Legg til iPad manuelt</DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={2}>
+              <Alert severity="info" sx={{ fontSize: 12 }}>
+                Hent IP + port + visningsnavn fra CaptureApp →
+                Innstillinger → "Vis pairing-info" på iPad-en.
+              </Alert>
+              <TextField
+                label="Visningsnavn"
+                size="small"
+                fullWidth
+                value={manualForm.name}
+                onChange={(e) => setManualForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Daniels iPad Pro"
+              />
+              <TextField
+                label="IP-adresse"
+                size="small"
+                fullWidth
+                value={manualForm.ip}
+                onChange={(e) => setManualForm((f) => ({ ...f, ip: e.target.value }))}
+                placeholder="192.168.1.42"
+              />
+              <TextField
+                label="Port"
+                size="small"
+                fullWidth
+                value={manualForm.port}
+                onChange={(e) => setManualForm((f) => ({ ...f, port: e.target.value }))}
+                placeholder="5050"
+              />
+              <TextField
+                label="device_id (valgfritt)"
+                size="small"
+                fullWidth
+                value={manualForm.deviceId}
+                onChange={(e) => setManualForm((f) => ({ ...f, deviceId: e.target.value }))}
+                helperText="UUID fra UIDevice.identifierForVendor — kreves for å pare. Hopp over hvis du bare vil teste tilkobling."
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setManualOpen(false)}>Avbryt</Button>
+            <Button variant="contained" onClick={handleAddManual}>
+              Legg til
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Dialog open={pinDialogTarget !== null && pin !== null} maxWidth="xs" fullWidth>
           <DialogTitle>Par med {pinDialogTarget?.device_name}</DialogTitle>
