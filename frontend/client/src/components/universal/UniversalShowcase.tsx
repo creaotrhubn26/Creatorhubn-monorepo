@@ -5944,7 +5944,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
             {/* Preview */}
             {shareForm.selectedShowcase && (
-              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Preview: </Typography>
                 <Typography variant="body2" color="text.secondary">

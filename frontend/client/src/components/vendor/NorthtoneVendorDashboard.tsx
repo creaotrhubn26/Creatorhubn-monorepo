@@ -584,7 +584,7 @@ export default function NorthtoneVendorDashboard() {
         </Box>
 
         {/* Quick Stats */}
-        <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1), ...theming.getThemedCardSx() }}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -592,7 +592,7 @@ export default function NorthtoneVendorDashboard() {
                   <OpenWith color="primary" sx={{ mr:  1 }} />
                   <Typography variant="h6" sx={{ color: theming.colors.primary }}>Panels</Typography>
                 </Box>
-                <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h5" color="primary" sx={{ color: theming.colors.primary }}>
                   {isLoading ? <Skeleton width={60} /> : stats.totalProducts}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -609,7 +609,7 @@ export default function NorthtoneVendorDashboard() {
                   <Receipt color="success" sx={{ mr:  1 }} />
                   <Typography variant="h6" sx={{ color: theming.colors.primary }}>Orders</Typography>
                 </Box>
-                <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h5" color="success.main" sx={{ color: theming.colors.primary }}>
                   {isLoading ? <Skeleton width={60} /> : stats.activeOrders}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -626,7 +626,7 @@ export default function NorthtoneVendorDashboard() {
                   <AttachMoney color="warning" sx={{ mr:  1 }} />
                   <Typography variant="h6" sx={{ color: theming.colors.primary }}>Revenue</Typography>
                 </Box>
-                <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h5" color="warning.main" sx={{ color: theming.colors.primary }}>
                   {isLoading ? <Skeleton width={80} /> : `$${stats.totalRevenue}`}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -643,7 +643,7 @@ export default function NorthtoneVendorDashboard() {
                   <Build color="info" sx={{ mr:  1 }} />
                   <Typography variant="h6" sx={{ color: theming.colors.primary }}>Installations</Typography>
                 </Box>
-                <Typography variant="h4" color="info.main" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h5" color="info.main" sx={{ color: theming.colors.primary }}>
                   {isLoading ? <Skeleton width={60} /> : stats.totalInstallations}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">

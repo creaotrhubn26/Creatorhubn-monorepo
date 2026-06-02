@@ -1605,7 +1605,7 @@ export default function UniversalCRMDashboard({
               <Paper
                 elevation={0}
                 sx={{
-                  p: 2.5,
+                  p: 2,
                   minHeight: 176,
                   borderRadius: 3.5,
                   color: 'white',
@@ -1620,7 +1620,7 @@ export default function UniversalCRMDashboard({
                   {metric.label}
                 </Typography>
                 <Box>
-                  <Typography variant="h2" sx={{ fontWeight: 800, lineHeight: 1, mb: 1 }}>
+                  <Typography variant="h3" sx={{ fontWeight: 800, lineHeight: 1, mb: 1 }}>
                     {metric.value}
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1634,32 +1634,32 @@ export default function UniversalCRMDashboard({
           {isMusicProducer && (
             <>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#9f7aea', 0.2)}`, bgcolor: alpha('#9f7aea', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#9f7aea', 0.2)}`, bgcolor: alpha('#9f7aea', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#7c3aed' }}>Split Sheets</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.total || 0}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.total || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">aktive fordelingsark</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#f59e0b', 0.2)}`, bgcolor: alpha('#f59e0b', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#f59e0b', 0.2)}`, bgcolor: alpha('#f59e0b', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#d97706' }}>Venter signatur</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#d97706' }}>{splitSheetStats.pendingSignatures || 0}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#d97706' }}>{splitSheetStats.pendingSignatures || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">må følges opp</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#22c55e', 0.2)}`, bgcolor: alpha('#22c55e', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#22c55e', 0.2)}`, bgcolor: alpha('#22c55e', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#16a34a' }}>Total inntekt</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#16a34a' }}>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#16a34a' }}>
                     {splitSheetStats.totalRevenue ? `${splitSheetStats.totalRevenue.toLocaleString('nb-NO')} kr` : '0 kr'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">registrert i split sheets</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#8b5cf6', 0.2)}`, bgcolor: alpha('#8b5cf6', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#8b5cf6', 0.2)}`, bgcolor: alpha('#8b5cf6', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#7c3aed' }}>Fullført</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.completed || 0}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.completed || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">klare arkivklare avtaler</Typography>
                 </Paper>
               </Grid>

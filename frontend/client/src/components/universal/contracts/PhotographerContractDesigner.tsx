@@ -784,7 +784,7 @@ export default function UniversalContractDesigner({
               sx={{
                 height: 10,
                 borderRadius: 5,
-                bgcolor: '#e3f2fd',
+                bgcolor: 'rgba(33,150,243,0.08)',
                 '& .MuiLinearProgress-bar': {
                   bgcolor: config.color,
                   borderRadius: 5
@@ -804,8 +804,8 @@ export default function UniversalContractDesigner({
                 <Grid item xs={12} sm={6} md key={index}>
                   <Card
                     sx={{
-                      border: isActive ? `2px solid ${config.color}` : isCompleted ? '2px solid #4caf50' : '1px solid #e0e0e0',
-                      bgcolor: isActive ? `${config.color}15` : isCompleted ? '#f1f8e9' : 'white',
+                      border: isActive ? `2px solid ${config.color}` : isCompleted ? '2px solid #4caf50' : '1px solid rgba(255,255,255,0.10)',
+                      bgcolor: isActive ? `${config.color}15` : isCompleted ? '#f1f8e9' : 'rgba(255,255,255,0.04)',
                       cursor: isAccessible ? 'pointer' : 'not-allowed',
                       opacity: isAccessible ? 1 : 0.6,
                       transition: 'all 0.2s ease',
@@ -862,7 +862,7 @@ export default function UniversalContractDesigner({
         <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={{ ...theming.getThemedCardSx(), p: 3 }}>
-              <Box sx={{ mb: 3, pb: 2, borderBottom: '1px solid #e0e0e0' }}>
+              <Box sx={{ mb: 3, pb: 2, borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
                 <Typography variant="overline" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                   Steg {activeStep + 1} av {steps.length}
                 </Typography>
@@ -882,7 +882,7 @@ export default function UniversalContractDesigner({
                   </Alert>
 
                   {/* Contract Title and Logo */}
-                  <Paper sx={{ p: 2.5, mb: 3, bgcolor: '#f5f5f5' }}>
+                  <Paper sx={{ p: 2.5, mb: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
                       Kontraktinformasjon
                     </Typography>
@@ -913,10 +913,10 @@ export default function UniversalContractDesigner({
                               position: 'relative',
                               width: 100,
                               height: 100,
-                              border: '2px dashed #e0e0e0',
+                              border: '2px dashed rgba(255,255,255,0.10)',
                               borderRadius: 1,
                               p: 1,
-                              bgcolor: 'white',
+                              bgcolor: 'rgba(255,255,255,0.04)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center'
@@ -1005,7 +1005,7 @@ export default function UniversalContractDesigner({
                   </Paper>
 
                   {/* Customer Type Selection */}
-                  <Paper sx={{ p: 2.5, mb: 3, bgcolor: '#f5f5f5' }}>
+                  <Paper sx={{ p: 2.5, mb: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
                       Kundetype
                     </Typography>
@@ -1035,7 +1035,7 @@ export default function UniversalContractDesigner({
 
                   {/* Business Information */}
                   {contractData.customerType === 'business' && (
-                    <Paper sx={{ p: 3, mb: 3, border: '2px solid #e3f2fd', bgcolor: '#fafffe' }}>
+                    <Paper sx={{ p: 3, mb: 3, border: '2px solid rgba(33,150,243,0.20)', bgcolor: 'rgba(255,255,255,0.04)' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 600, color: theming.colors.primary }}>
                           Bedriftsinformasjon
@@ -1076,7 +1076,7 @@ export default function UniversalContractDesigner({
 
                         {/* Search Results */}
                         {showSearchResults && searchResults.length > 0 && (
-                          <Paper sx={{ mt: 2, maxHeight: 300, overflow: 'auto', border: '1px solid #e0e0e0' }}>
+                          <Paper sx={{ mt: 2, maxHeight: 300, overflow: 'auto', border: '1px solid rgba(255,255,255,0.10)' }}>
                             <List>
                               {searchResults.map((org, index) => (
                                 <ListItem
@@ -1084,8 +1084,8 @@ export default function UniversalContractDesigner({
                                   button
                                   onClick={() => selectOrganization(org)}
                                   sx={{
-                                    borderBottom: index < searchResults.length - 1 ? '1px solid #f0f0f0' : 'none',
-                                    '&:hover': { bgcolor: '#f5f5f5' }
+                                    borderBottom: index < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.10)' : 'none',
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' }
                                   }}
                                 >
                                   <ListItemText
@@ -1425,7 +1425,7 @@ export default function UniversalContractDesigner({
                   {/* Sections List */}
                   <Box sx={{ mb: 3 }}>
                     {contractData.sections.length === 0 ? (
-                      <Paper sx={{ p: 4, textAlign: 'center', bgcolor: '#f5f5f5' }}>
+                      <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <DescriptionIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
                         <Typography variant="body1" color="text.secondary" gutterBottom>
                           Ingen seksjoner lagt til ennå
@@ -1449,9 +1449,9 @@ export default function UniversalContractDesigner({
                         >
                           <AccordionSummary 
                             expandIcon={<ExpandMoreIcon />}
-                            sx={{ 
-                              bgcolor: '#fafafa',
-                              '&:hover': { bgcolor: '#f5f5f5' }
+                            sx={{
+                              bgcolor: 'rgba(255,255,255,0.04)',
+                              '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' }
                             }}
                           >
                             <Box
@@ -1553,7 +1553,7 @@ export default function UniversalContractDesigner({
                     </Typography>
                   </Alert>
 
-                  <Paper sx={{ p: 3, mb: 3, bgcolor: '#f5f5f5' }}>
+                  <Paper sx={{ p: 3, mb: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
                       Sammendrag
                     </Typography>
@@ -1621,7 +1621,7 @@ export default function UniversalContractDesigner({
                     </Typography>
                   </Alert>
 
-                  <Paper sx={{ p: 3, mb: 3, border: '2px dashed #e0e0e0' }}>
+                  <Paper sx={{ p: 3, mb: 3, border: '2px dashed rgba(255,255,255,0.10)' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
                       Digital signatur
                     </Typography>
@@ -1636,7 +1636,7 @@ export default function UniversalContractDesigner({
                     />
                     <Box
                       sx={{
-                        border: '1px solid #e0e0e0',
+                        border: '1px solid rgba(255,255,255,0.10)',
                         borderRadius: 1,
                         bgcolor: 'white',
                         mb: 2,
@@ -1720,14 +1720,14 @@ export default function UniversalContractDesigner({
                 />
               </Box>
 
-              <Paper 
-                sx={{ 
-                  p: 4, 
-                  bgcolor: '#ffffff', 
+              <Paper
+                sx={{
+                  p: 4,
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   minHeight: 500,
                   maxHeight: 'calc(100vh - 280px)',
                   overflowY: 'auto',
-                  border: '1px solid #e0e0e0',
+                  border: '1px solid rgba(255,255,255,0.10)',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
                   ...theming.getThemedCardSx() 
                 }}
@@ -1748,7 +1748,7 @@ export default function UniversalContractDesigner({
                 )}
 
                 {verificationStatus?.isTampered && (
-                  <Box sx={{ mb: 3, p: 2, bgcolor: '#ffebee', border: '2px solid #f44336', borderRadius: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(244,67,54,0.10)', border: '2px solid #f44336', borderRadius: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
                     <CancelIcon sx={{ color: '#c62828', fontSize: 24 }} />
                     <Box>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#c62828' }}>
@@ -1797,7 +1797,7 @@ export default function UniversalContractDesigner({
                   </Typography>
                   <Grid container spacing={2}>
                     <Grid item xs={6}>
-                      <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                      <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary">Klient</Typography>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {contractData.clientName || 'Ikke utfylt'}
@@ -1808,7 +1808,7 @@ export default function UniversalContractDesigner({
                       </Paper>
                     </Grid>
                     <Grid item xs={6}>
-                      <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                      <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary">Oppdrag</Typography>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {contractData.projectDescription || 'Ikke beskrevet'}
@@ -1837,14 +1837,14 @@ export default function UniversalContractDesigner({
                     Kontraktseksjoner {contractData.sections.length > 0 && `(${contractData.sections.length})`}
                   </Typography>
                   {contractData.sections.length === 0 ? (
-                    <Paper sx={{ p: 3, textAlign: 'center', bgcolor: '#f9f9f9' }}>
+                    <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
                       <Typography variant="body2" color="text.secondary">
                         Ingen seksjoner lagt til ennå
                       </Typography>
                     </Paper>
                   ) : (
                     contractData.sections.map((section, index) => (
-                      <Paper key={section.id} sx={{ p: 2.5, mb: 2, bgcolor: '#fafafa', border: '1px solid #e0e0e0' }}>
+                      <Paper key={section.id} sx={{ p: 2.5, mb: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}>
                         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1 }}>
                           <Chip 
                             label={index + 1} 
@@ -1860,11 +1860,11 @@ export default function UniversalContractDesigner({
                             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
                               {section.title}
                             </Typography>
-                            <Typography variant="caption" sx={{ 
+                            <Typography variant="caption" sx={{
                               display: 'inline-block',
                               px: 1,
                               py: 0.25,
-                              bgcolor: '#e0e0e0',
+                              bgcolor: 'rgba(255,255,255,0.10)',
                               borderRadius: 1,
                               textTransform: 'uppercase',
                               fontSize: '0.65rem'
@@ -1882,7 +1882,7 @@ export default function UniversalContractDesigner({
                 </Box>
 
                 {(signatureData || signature) && (
-                  <Paper sx={{ p: 2.5, mt: 4, bgcolor: '#f5f5f5', border: '1px solid #e0e0e0' }}>
+                  <Paper sx={{ p: 2.5, mt: 4, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                       Signatur
                     </Typography>
@@ -1897,7 +1897,7 @@ export default function UniversalContractDesigner({
                           height: 140,
                           objectFit: 'contain',
                           bgcolor: 'white',
-                          border: '1px solid #e0e0e0',
+                          border: '1px solid rgba(255,255,255,0.10)',
                           borderRadius: 1,
                           p: 1,
                           mb: 1
@@ -1977,7 +1977,7 @@ export default function UniversalContractDesigner({
                       <ListItem
                         key={index}
                         sx={{
-                          border: '1px solid #e0e0e0',
+                          border: '1px solid rgba(255,255,255,0.10)',
                           mb:  1,
                           borderRadius:  1}}
                       >
@@ -2004,7 +2004,7 @@ export default function UniversalContractDesigner({
                   <Paper
                     sx={{
                       p:  2,
-                      bgcolor: '#f5f5f0',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                       maxHeight: 40,
                       overflow: 'auto',
                       ...theming.getThemedCardSx()

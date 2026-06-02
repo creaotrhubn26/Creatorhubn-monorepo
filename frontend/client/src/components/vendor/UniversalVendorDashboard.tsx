@@ -382,26 +382,26 @@ export default function UniversalVendorDashboard({
   return (
     <Box component="main" role="main" aria-label={`${config.name} Dashboard`} sx={{ p: 3 }}>
       {/* Universal Vendor Dashboard Header */}
-      <Paper sx={{ 
-        p: 3, 
-        mb: 3, 
+      <Paper sx={{
+        p: 2,
+        mb: 3,
         background: `linear-gradient(135deg, ${config.color}15 0%, ${config.color}05 100%)`,
         border: `1px solid ${config.color}30`
     }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-          <Avatar sx={{ 
-            bgcolor: config.color, 
-            width: 80, 
+          <Avatar sx={{
+            bgcolor: config.color,
+            width: 80,
             height: 80,
-            fontSize: '2rem',
+            fontSize: '1.75rem',
             boxShadow: `0 8px 20px ${config.color}40`
         }}>
             {config.icon}
           </Avatar>
-          
+
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h3" sx={{ 
-              fontWeight: 700, 
+            <Typography variant="h4" sx={{
+              fontWeight: 700,
               color: config.color,
               mb: 1
           }}>
@@ -485,7 +485,7 @@ export default function UniversalVendorDashboard({
       </Paper>
 
       {/* Dashboard Stats Grid */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={2} sx={{ mb: 4 }}>
         {/* Main Performance Stats */}
         <Grid size={{ xs: 12 }} md={8}>
           <Card sx={{ height: '100%', border: `1px solid ${config.color}30` }}>
@@ -493,8 +493,8 @@ export default function UniversalVendorDashboard({
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: config.color }}>
                 Performance Oversikt
               </Typography>
-              
-              <Grid container spacing={3}>
+
+              <Grid container spacing={2}>
                 <Grid size={6} md={3}>
                   <Box sx={{ textAlign: 'center' }}>
                     <Avatar sx={{ 
@@ -507,7 +507,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <Store />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.totalProducts || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -528,7 +528,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <Download />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.totalDownloads || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -549,7 +549,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <Star />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.averageRating?.toFixed(1) || '0.0'}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -570,7 +570,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <TrendingUp />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.featuredProducts || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>

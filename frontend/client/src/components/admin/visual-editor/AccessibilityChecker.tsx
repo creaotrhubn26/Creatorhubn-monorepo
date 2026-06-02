@@ -230,8 +230,8 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
             alignItems: 'center',
             justifyContent: 'space-between',
             p: 2,
-            bgcolor: '#f5f5f5',
-            borderBottom: '1px solid #e0e0e0'}}>
+            bgcolor: 'rgba(255,255,255,0.04)',
+            borderBottom: '1px solid rgba(255,255,255,0.10)'}}>
           <Typography variant="h6" sx={{ fontWeight: 600}}>
             Accessibility
           </Typography>
@@ -251,7 +251,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
         {isScanning && <LinearProgress />}
 
         {/* Score */}
-        <Box sx={{ p: 2, bgcolor: 'white', borderBottom: '1px solid #e0e0e0' }}>
+        <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
           <Box
             sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
@@ -267,7 +267,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
             sx={{
               height: 8,
               borderRadius: 4,
-              bgcolor: '#e0e0e0',
+              bgcolor: 'rgba(255,255,255,0.10)',
                             '& .MuiLinearProgress-bar': {
                 bgcolor: getScoreColor(score),
               }}}
@@ -281,7 +281,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
 
         {/* Summary */}
         {!isScanning && lastScan && (
-          <Box sx={{ p: 2, bgcolor: '#fafafa', borderBottom: '1px solid #e0e0e0' }}>
+          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
               Issues Found
             </Typography>
@@ -357,7 +357,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
                         sx={{
                           mb: 1,
                           p: 1,
-                          bgcolor: '#f5f5f5',
+                          bgcolor: 'rgba(255,255,255,0.04)',
                           borderRadius: 1,
                           fontFamily: 'monospace',
                           fontSize: '0.75rem'}}>
@@ -392,7 +392,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
         </Box>
 
         {/* Footer */}
-        <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderTop: '1px solid #e0e0e0' }}>
+        <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderTop: '1px solid rgba(255,255,255,0.10)' }}>
           <Typography variant="caption" color="text.secondary">
             Powered by axe-core • WCAG 2.2 Level AA
           </Typography>

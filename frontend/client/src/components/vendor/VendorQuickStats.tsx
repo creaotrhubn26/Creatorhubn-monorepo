@@ -293,7 +293,7 @@ export default function VendorQuickStats({
                     )}
                   </Box>
 
-                  <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5, color: stat.color }}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: stat.color }}>
                     {stat.key === 'revenue' ? `${stat.value.toLocaleString()} kr` : stat.value.toLocaleString()}
                   </Typography>
 

@@ -270,7 +270,7 @@ const VideoProgressionPanel: React.FC = () => {
         <Box sx={{
           display: 'flex', alignItems: 'flex-end', gap: 0.5,
           height: 120, p: 1.5,
-          bgcolor: '#FAFAFA', borderRadius: 1,
+          bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1,
           border: '1px solid', borderColor: 'divider',
         }}>
           {sorted.map((s, i) => {
@@ -863,7 +863,7 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
               icon={false}
               sx={{
                 py: 0.5, px: 1.5, fontSize: 12,
-                bgcolor: '#F9FAFB',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 color: 'text.secondary',
                 border: '1px solid', borderColor: 'divider',
                 '& .MuiAlert-message': { p: 0 },
@@ -921,7 +921,7 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
               />
             )}
 
-            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#FAF7F0' }}>
+            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)' }}>
               <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>
                 DIN PROMPT
               </Typography>
@@ -1004,7 +1004,7 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
 
             {/* Live-estimat-panel */}
             <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
-              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#FAFAFA' }}>
+              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1 }}>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: '#1F2937' }}>
                     Live estimat
@@ -1238,7 +1238,7 @@ export const NextRoleVideoPresentation: React.FC<Props> = ({
             )}
 
             {result.transcript && (
-              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#FAFAFA' }}>
+              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>
                   TRANSKRIPSJON
                 </Typography>
