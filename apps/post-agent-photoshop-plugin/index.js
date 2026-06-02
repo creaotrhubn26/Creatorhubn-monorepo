@@ -373,6 +373,106 @@ const COMMANDS = {
   },
 
   /*
+   * Resolve-bro: list stills i ~/PostAgent/inbox/ som er eksportert
+   * fra DaVinci Resolve via export-still-to-postagent.lua. Returnerer
+   * filer sortert nyeste først med metadata fra sidefil hvis tilgjengelig.
+   */
+  "resolve.listInbox": async () => {
+    const home = await fs.getFolder("home").catch(() => null);
+    if (!home) throw new Error("Klarte ikke åpne home-folder");
+    let inbox;
+    try {
+      const postAgent = await home.getEntry("PostAgent");
+      inbox = await postAgent.getEntry("inbox");
+    } catch {
+      return { items: [], inbox_dir: null, count: 0 };
+    }
+    if (!inbox.isFolder) return { items: [], inbox_dir: null, count: 0 };
+    const entries = await inbox.getEntries();
+    const stills = entries.filter((e) => e.isFile && /\.(png|tif|tiff|jpg|jpeg|psd)$/i.test(e.name));
+    const items = await Promise.all(
+      stills.map(async (entry) => {
+        const prefix = entry.name.replace(/\.[^.]+$/, "");
+        let metadata = null;
+        const meta = entries.find((e) => e.name === prefix + ".json");
+        if (meta) {
+          try {
+            const text = await meta.read({ format: "utf8" });
+            metadata = JSON.parse(text);
+          } catch {
+            // metadata er optional
+          }
+        }
+        return { path: entry.nativePath, name: entry.name, metadata };
+      }),
+    );
+    items.sort((a, b) => b.name.localeCompare(a.name));
+    return { items, inbox_dir: inbox.nativePath, count: items.length };
+  },
+
+  /*
+   * Åpne nyeste still fra Resolve-inbox direkte i Photoshop. Kaller
+   * doc.open under panseret.
+   */
+  "resolve.openLatest": async () => {
+    const result = await COMMANDS["resolve.listInbox"]({});
+    if (!result.items || result.items.length === 0) {
+      throw new Error("Ingen still i ~/PostAgent/inbox/. Kjør export-still-to-postagent.lua i Resolve først.");
+    }
+    const newest = result.items[0];
+    await COMMANDS["doc.open"]({ path: newest.path });
+    return { opened: newest.path, metadata: newest.metadata ?? null };
+  },
+
+  /*
+   * Eksporter aktivt dokument til ~/PostAgent/outbox/. Resolve-scriptet
+   * insert-from-postagent.lua importerer dette tilbake til Media Pool.
+   */
+  "resolve.exportBack": async ({ format, quality } = {}) => {
+    const doc = requireActiveDocument();
+    const fmt = (format || "png").toLowerCase();
+    const home = await fs.getFolder("home").catch(() => null);
+    if (!home) throw new Error("Klarte ikke åpne home-folder");
+
+    let postAgent;
+    try {
+      postAgent = await home.getEntry("PostAgent");
+    } catch {
+      postAgent = await home.createFolder("PostAgent");
+    }
+    let outbox;
+    try {
+      outbox = await postAgent.getEntry("outbox");
+    } catch {
+      outbox = await postAgent.createFolder("outbox");
+    }
+
+    const stem = (doc.name || `postagent-${Date.now()}`).replace(/\.[^.]+$/, "");
+    const fileName = `${stem}.${fmt}`;
+    const outFile = await outbox.createFile(fileName, { overwrite: true });
+
+    await core.executeAsModal(async () => {
+      if (fmt === "jpg" || fmt === "jpeg") {
+        await doc.saveAs.jpg(outFile, { quality: quality ?? 10 });
+      } else if (fmt === "png") {
+        await doc.saveAs.png(outFile, { compression: 6 });
+      } else if (fmt === "tif" || fmt === "tiff") {
+        await doc.saveAs.tif(outFile);
+      } else if (fmt === "psd") {
+        await doc.saveAs.psd(outFile, { maximizeCompatibility: true });
+      } else {
+        throw new Error(`Ukjent format: ${fmt}`);
+      }
+    }, { commandName: "Post Agent: export back to Resolve" });
+
+    return {
+      exported_to: outFile.nativePath,
+      outbox_dir: outbox.nativePath,
+      next_step: "Kjør insert-from-postagent.lua i Resolve for å hente inn igjen",
+    };
+  },
+
+  /*
    * Template-scan: åpner en .psd, leter etter alle layers med navn `{{key}}`
    * og returnerer en katalog over feltene. Text-layers blir string-felt;
    * smart objects blir file-felt. Andre layer-typer ignoreres.
