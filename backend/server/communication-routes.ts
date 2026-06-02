@@ -3230,19 +3230,48 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       if (!content) {
         return res.status(400).json({ error: 'message is required' });
       }
+      if (!recipient) {
+        return res.status(400).json({ error: 'to is required' });
+      }
 
+      // #7 — actually DELIVER via Gmail (this endpoint used to only persist a
+      // row with status:'queued' and never send — a silent no-op). A "send"
+      // that never sends is worse than an honest error.
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren. Koble Gmail i Innstillinger for å sende e-post.' });
+      }
+      if (!roleRoomGoogleConnectionHasAnyScope({ scopes: workspaceContext.connection.scopes }, GMAIL_SEND_SCOPES)) {
+        return res.status(409).json({
+          error: 'Google Workspace er koblet til, men mangler Gmail send-tilgang. Koble Gmail på nytt for å sende e-post fra CreatorHub.',
+        });
+      }
+
+      const gmail = google.gmail({ version: 'v1', auth: workspaceContext.oauthClient });
+      const rawMessage = [
+        `From: ${workspaceContext.connection.googleEmail ? `<${workspaceContext.connection.googleEmail}>` : 'CreatorHub'}`,
+        `To: ${recipient}`,
+        `Subject: ${subject}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        'MIME-Version: 1.0',
+        '',
+        content,
+      ].join('\r\n');
+      const sent = await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: Buffer.from(rawMessage, 'utf8').toString('base64url') },
+      });
+      const threadId = toNonEmptyString(sent.data.threadId);
+
+      // Persist a log row reflecting the REAL delivery (not a fake queue).
       await ensureChannelExists(conversationId, `Email ${conversationId}`, 'email');
       const persisted = await persistMessage({
         channelId: conversationId,
         senderId,
         content,
         messageType: 'email',
-        metadata: {
-          to: recipient,
-          subject,
-          deliveryStatus: 'queued',
-          transport: 'creatorhub-email',
-        },
+        metadata: { to: recipient, subject, deliveryStatus: 'sent', transport: 'gmail', gmailMessageId: toNonEmptyString(sent.data.id), threadId },
       });
 
       res.json({
@@ -3255,12 +3284,18 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           subject,
           content,
           timestamp: persisted.timestamp,
-          status: 'queued',
+          status: 'sent',
+          gmailMessageId: toNonEmptyString(sent.data.id),
+          threadId,
         },
       });
     } catch (error) {
       console.error('Error sending email:', error);
-      res.status(500).json({ error: 'Failed to send email' });
+      const reconnectIssue = deriveGoogleWorkspaceReconnectIssue(error);
+      if (reconnectIssue) {
+        return res.status(reconnectIssue.statusCode).json({ error: reconnectIssue.message, reconnectRequired: reconnectIssue.status === 'needs_reconnect' });
+      }
+      res.status(getGoogleWorkspaceApiStatus(error)).json({ error: formatGoogleWorkspaceApiError('Gmail API', error) });
     }
   };
 
