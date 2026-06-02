@@ -57,6 +57,10 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
   const queryClient = useQueryClient();
   const [logType, setLogType] = useState('note');
   const [logText, setLogText] = useState('');
+  // #22 — email composer
+  const [showEmail, setShowEmail] = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
 
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ['crm-customer-overview', customerId],
@@ -86,6 +90,48 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
 
   const c = data?.customer;
   const stale = c ? staleness(c.lastContact) : null;
+
+  // #50 — email templates with {{merge}} interpolation.
+  const { data: tplData } = useQuery<{ templates: any[] }>({
+    queryKey: ['crm-email-templates'],
+    enabled: open && showEmail,
+    queryFn: () => apiRequest('/api/universal-crm/email-templates'),
+  });
+  const templates = tplData?.templates || [];
+  const interpolate = (s: string) => (s || '')
+    .replace(/\{\{\s*name\s*\}\}/gi, c?.name || '')
+    .replace(/\{\{\s*firstName\s*\}\}/gi, (c?.name || '').split(' ')[0] || '')
+    .replace(/\{\{\s*company\s*\}\}/gi, c?.company || '')
+    .replace(/\{\{\s*email\s*\}\}/gi, c?.email || '');
+
+  const sendEmailMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest('/api/communication/email/send', {
+        method: 'POST',
+        body: JSON.stringify({ to: c?.email, subject: emailSubject || 'Melding fra CreatorHub', message: emailBody }),
+      });
+      // Log the send as a CRM activity so the timeline reflects it.
+      await apiRequest('/api/universal-crm/activities', {
+        method: 'POST',
+        body: JSON.stringify({ customerId, type: 'email', subject: emailSubject || 'E-post sendt', description: emailBody.slice(0, 500), direction: 'outbound' }),
+      }).catch(() => { /* best-effort log */ });
+      return r;
+    },
+    onSuccess: () => {
+      setShowEmail(false); setEmailSubject(''); setEmailBody('');
+      queryClient.invalidateQueries({ queryKey: ['crm-customer-overview', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
+      toast({ title: 'E-post sendt', variant: 'success' });
+    },
+    onError: (e: any) => {
+      const msg = String(e?.message || '');
+      toast({
+        title: 'Kunne ikke sende e-post',
+        description: /google|gmail|400|409|connect/i.test(msg) ? 'Koble Gmail i Innstillinger for å sende fra CRM-en.' : (msg || 'Prøv igjen.'),
+        variant: 'destructive', duration: 7000,
+      });
+    },
+  });
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: '100%', sm: 480 } } }}>
@@ -148,6 +194,43 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
                   Logg
                 </Button>
               </Stack>
+            </Stack>
+
+            <Divider />
+
+            {/* Email composer (#22/#50) */}
+            <Stack spacing={1}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>E-post</Typography>
+                <Button size="small" startIcon={<MailIcon />} onClick={() => {
+                  setShowEmail((v) => !v);
+                  if (!showEmail && !emailSubject) setEmailSubject(`Hei ${(c.name || '').split(' ')[0] || ''}`.trim());
+                }} disabled={!c.email}>
+                  {showEmail ? 'Skjul' : 'Send e-post'}
+                </Button>
+              </Stack>
+              {!c.email && <Typography variant="caption" color="text.secondary">Kunden mangler e-postadresse.</Typography>}
+              {showEmail && c.email && (
+                <Stack spacing={1}>
+                  {templates.length > 0 && (
+                    <TextField select size="small" label="Mal" value="" onChange={(e) => {
+                      const tpl = templates.find((t: any) => t.id === e.target.value);
+                      if (tpl) {
+                        setEmailSubject(interpolate(tpl.subject || tpl.title || ''));
+                        setEmailBody(interpolate(tpl.body || tpl.content || tpl.html_body || ''));
+                      }
+                    }}>
+                      <MenuItem value="">— velg mal —</MenuItem>
+                      {templates.map((t: any) => <MenuItem key={t.id} value={t.id}>{t.name || t.subject || 'Mal'}</MenuItem>)}
+                    </TextField>
+                  )}
+                  <TextField size="small" label="Emne" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} fullWidth />
+                  <TextField size="small" label={`Melding til ${c.email}`} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} fullWidth multiline rows={4} />
+                  <Button variant="contained" startIcon={<MailIcon />} disabled={!emailBody.trim() || sendEmailMutation.isPending} onClick={() => sendEmailMutation.mutate()} sx={{ alignSelf: 'flex-end' }}>
+                    {sendEmailMutation.isPending ? 'Sender…' : 'Send'}
+                  </Button>
+                </Stack>
+              )}
             </Stack>
 
             <Divider />
