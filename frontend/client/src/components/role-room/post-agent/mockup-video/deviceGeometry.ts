@@ -64,97 +64,96 @@ export interface DeviceGeometry {
 function baseGeometry(variant: DeviceVariant): DeviceGeometry {
   switch (variant) {
     case 'macbook': {
-      const width = 460;
-      const height = 310;
-      const bodyHeight = height - 24; // screen-body inset bottom 24
-      const body: RoundedRect = { x: 0, y: 0, width, height: bodyHeight, radius: 14 };
-      const padL = 14, padT = 14, padR = 14, padB = 16;
+      // MacBook Pro 14"-aktig: skjerm-lokk (16:10 m/ notch) + tynn hake +
+      // hengsel + tilspisset metall-base. Base stikker litt utenfor lokket.
+      const width = 470;
+      const lidHeight = 296;       // selve skjerm-lokket
+      const height = 316;          // inkl. base
+      const body: RoundedRect = { x: 0, y: 0, width, height: lidHeight, radius: 18 };
+      const padX = 12, padT = 12, padChin = 16; // tynn, lik bezel; litt hake under
       const screen: RoundedRect = {
-        x: padL,
-        y: padT,
-        width: width - padL - padR,
-        height: bodyHeight - padT - padB,
-        radius: 4,
+        x: padX, y: padT,
+        width: width - padX * 2,
+        height: lidHeight - padT - padChin,
+        radius: 8,
       };
       return {
-        variant,
-        width,
-        height,
-        body,
-        screen,
-        bezelFrom: '#1a1a1c',
-        bezelTo: '#0f0f12',
+        variant, width, height, body, screen,
+        bezelFrom: '#161617', bezelTo: '#0c0c0e',
         overlays: [
-          // Notch: 90×14 sentrert på topp av skjerm-kroppen.
-          { kind: 'notch', x: width / 2 - 45, y: 0, width: 90, height: 14, radius: 7 },
+          // Notch: smal, sentrert på topp av skjermen.
+          { kind: 'notch', x: width / 2 - 38, y: padT - 2, width: 76, height: 12, radius: 6 },
         ],
         accents: [
-          // Hengsel-bånd: 12px høyt, litt bredere enn rammen, ved bunn.
-          {
-            x: -width * 0.03,
-            y: height - 16,
-            width: width * 1.06,
-            height: 12,
-            radius: 6,
-            fill: '#232325',
-            gradientTo: '#131316',
-          },
+          // Hengsel/skygge mellom lokk og base.
+          { x: width * 0.16, y: lidHeight - 2, width: width * 0.68, height: 4, radius: 2, fill: '#050506' },
+          // Metall-base (bredere enn lokket, tilspisset inntrykk via gradient).
+          { x: -width * 0.035, y: lidHeight + 2, width: width * 1.07, height: 16, radius: 7, fill: '#3a3a3d', gradientTo: '#1a1a1c' },
+          // Finger-slot midt på basens forkant.
+          { x: width / 2 - 34, y: lidHeight + 2, width: 68, height: 5, radius: 3, fill: '#0a0a0b' },
         ],
       };
     }
     case 'ipad': {
-      const width = 360;
-      const height = 270;
-      const body: RoundedRect = { x: 0, y: 0, width, height, radius: 18 };
-      const pad = 12;
+      // iPad Pro 11" landscape: tynne, helt uniforme bezels, modest radius,
+      // front-kamera midt på toppkant, power + volum på toppkanten.
+      const width = 384;
+      const height = 273;          // ≈ 1.407 (11"-forhold)
+      const radius = 22;
+      const body: RoundedRect = { x: 0, y: 0, width, height, radius };
+      const pad = 9;               // tynn, uniform
       const screen: RoundedRect = {
-        x: pad,
-        y: pad,
+        x: pad, y: pad,
         width: width - pad * 2,
         height: height - pad * 2,
-        radius: 6,
+        radius: radius - pad,      // concentric
       };
       return {
-        variant,
-        width,
-        height,
-        body,
-        screen,
-        bezelFrom: '#1c1c1f',
-        bezelTo: '#111114',
+        variant, width, height, body, screen,
+        bezelFrom: '#1a1a1d', bezelTo: '#101012',
         overlays: [
-          // Front-kamera-prikk på venstre side (landscape).
-          { kind: 'camera', x: 5, y: height / 2 - 2, width: 4, height: 4, radius: 2 },
+          // Front-kamera sentrert på toppkanten (landscape).
+          { kind: 'camera', x: width / 2 - 2, y: 4, width: 4, height: 4, radius: 2 },
         ],
-        accents: [],
+        accents: [
+          // Power-knapp (toppkant, mot høyre).
+          { x: width - 70, y: -2, width: 30, height: 3, radius: 2, fill: '#141417', gradientTo: '#202024' },
+          // Volum-knapper (toppkant, mot venstre).
+          { x: 46, y: -2, width: 22, height: 3, radius: 2, fill: '#141417', gradientTo: '#202024' },
+          { x: 74, y: -2, width: 22, height: 3, radius: 2, fill: '#141417', gradientTo: '#202024' },
+        ],
       };
     }
     case 'iphone':
     default: {
-      const width = 200;
-      const height = 420;
-      const body: RoundedRect = { x: 0, y: 0, width, height, radius: 32 };
-      const pad = 10;
+      // iPhone 15 Pro-aktig: tynne uniforme bezels, stor concentric radius,
+      // Dynamic Island, og fysiske sideknapper (action+volum venstre, power høyre).
+      const width = 204;
+      const height = 430;          // ≈ 0.474 (9:19-aktig)
+      const radius = 44;           // stor, moderne
+      const body: RoundedRect = { x: 0, y: 0, width, height, radius };
+      const pad = 9;               // tynn, uniform bezel
       const screen: RoundedRect = {
-        x: pad,
-        y: pad,
+        x: pad, y: pad,
         width: width - pad * 2,
         height: height - pad * 2,
-        radius: 22,
+        radius: radius - pad,      // concentric corners
       };
       return {
-        variant: 'iphone',
-        width,
-        height,
-        body,
-        screen,
-        bezelFrom: '#1f1f22',
-        bezelTo: '#0d0d10',
+        variant: 'iphone', width, height, body, screen,
+        bezelFrom: '#1c1c20', bezelTo: '#0a0a0c',
         overlays: [
-          // Dynamic Island: 70×18 sentrert, 18px fra rammens topp.
-          { kind: 'island', x: width / 2 - 35, y: 18, width: 70, height: 18, radius: 9 },
+          // Dynamic Island: kompakt pille, sentrert nær toppen.
+          { kind: 'island', x: width / 2 - 31, y: 16, width: 62, height: 17, radius: 9 },
         ],
-        accents: [],
+        accents: [
+          // Venstre: Action-knapp + volum opp/ned.
+          { x: -2, y: 78, width: 3, height: 16, radius: 2, fill: '#141417', gradientTo: '#26262b' },
+          { x: -2, y: 104, width: 3, height: 30, radius: 2, fill: '#141417', gradientTo: '#26262b' },
+          { x: -2, y: 142, width: 3, height: 30, radius: 2, fill: '#141417', gradientTo: '#26262b' },
+          // Høyre: Power-knapp.
+          { x: width - 1, y: 120, width: 3, height: 46, radius: 2, fill: '#141417', gradientTo: '#26262b' },
+        ],
       };
     }
   }

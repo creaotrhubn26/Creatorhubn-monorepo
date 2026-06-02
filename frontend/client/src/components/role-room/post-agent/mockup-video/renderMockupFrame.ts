@@ -11,6 +11,7 @@
 
 import { fitRect, scaleToFit, type FitMode, type Size } from './fitRect';
 import { getDeviceGeometry, type DeviceGeometry, type DeviceVariant, type RoundedRect } from './deviceGeometry';
+import { DEVICE_FRAMES } from './deviceFrames';
 
 export interface MockupBackground {
   /** 'none' = transparent, 'solid' = flat, 'gradient' = lineær, 'image' = bilde. */
@@ -259,4 +260,68 @@ export function renderMockupFrame(
     }
     ctx.fill();
   }
+}
+
+/**
+ * renderRealisticFrame — tegn én komposittert frame med EKTE PNG-ramme
+ * (PommePlate, CC0). Plasserer video i det detekterte skjerm-rektangelet og
+ * legger den fotorealistiske rammen over.
+ *
+ * `frameImg` må være lastet (loadFrameImage). Canvas forventes å ha samme
+ * forhold som frame-PNG-en (se frameAspect). Tegner hele rammen til
+ * canvasWidth×canvasHeight; skjerm-rektangelet skaleres proporsjonalt.
+ */
+export function renderRealisticFrame(
+  ctx: CanvasRenderingContext2D,
+  source: DrawableSource,
+  frameImg: CanvasImageSource,
+  variant: DeviceVariant,
+  canvasWidth: number,
+  canvasHeight: number,
+  options: { fit?: FitMode; sourceInset?: SourceInset; zoom?: { scale: number; cx: number; cy: number } } = {},
+): void {
+  const { fit = 'cover', sourceInset, zoom } = options;
+  const spec = DEVICE_FRAMES[variant];
+  const k = canvasWidth / spec.frameW; // ensartet skalering frame→canvas
+
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+  // Skjerm-rektangel i canvas-koordinater. Skjerm-fyllet i PNG-en er opakt
+  // mørkt, så vi tegner rammen FØRST og legger videoen oppå i skjerm-hullet.
+  // Liten innkrymp (insetPx) skjuler evt. anti-alias-kant fra PNG-skjermen.
+  const insetPx = Math.max(1, Math.round(2 * k));
+  const screen: RoundedRect = {
+    x: spec.sx * k + insetPx, y: spec.sy * k + insetPx,
+    width: spec.sw * k - insetPx * 2, height: spec.sh * k - insetPx * 2,
+    radius: Math.max(0, spec.screenRadius * k - insetPx),
+  };
+
+  // 1) Rammen (transparent rundt; opak mørk skjerm-flate i midten).
+  ctx.drawImage(frameImg, 0, 0, canvasWidth, canvasHeight);
+
+  // 2) Video oppå skjerm-flaten, klippet til skjerm-hjørnene.
+  ctx.save();
+  roundedRectPath(ctx, screen);
+  ctx.clip();
+  const full = sourceSize(source);
+  if (full.width > 0 && full.height > 0) {
+    const top = (sourceInset?.top ?? 0) * full.height;
+    const bottom = (sourceInset?.bottom ?? 0) * full.height;
+    const left = (sourceInset?.left ?? 0) * full.width;
+    const right = (sourceInset?.right ?? 0) * full.width;
+    let srcX = left, srcY = top;
+    let srcW = Math.max(1, full.width - left - right);
+    let srcH = Math.max(1, full.height - top - bottom);
+    if (zoom && zoom.scale > 1) {
+      const zw = srcW / zoom.scale, zh = srcH / zoom.scale;
+      const cx = srcX + Math.min(Math.max(zoom.cx, 0), 1) * srcW;
+      const cy = srcY + Math.min(Math.max(zoom.cy, 0), 1) * srcH;
+      srcX = Math.min(Math.max(cx - zw / 2, srcX), srcX + srcW - zw);
+      srcY = Math.min(Math.max(cy - zh / 2, srcY), srcY + srcH - zh);
+      srcW = zw; srcH = zh;
+    }
+    const draw = fitRect({ width: srcW, height: srcH }, screen, fit);
+    try { ctx.drawImage(source, srcX, srcY, srcW, srcH, draw.x, draw.y, draw.width, draw.height); } catch { /* not ready */ }
+  }
+  ctx.restore();
 }
