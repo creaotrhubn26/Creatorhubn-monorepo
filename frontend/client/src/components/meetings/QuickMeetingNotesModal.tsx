@@ -372,10 +372,10 @@ export function QuickMeetingNotesModal({
               <MuiCard
                 sx={{
                   cursor: 'pointer',
-                  border: isPersonalNote ? '2px solid #2196F3' : '2px solid #e0e0e0',
-                  bgcolor: isPersonalNote ? '#e3f2fd' : 'transparent',
+                  border: isPersonalNote ? '2px solid #2196F3' : '2px solid rgba(255,255,255,0.10)',
+                  bgcolor: isPersonalNote ? 'rgba(33,150,243,0.12)' : 'transparent',
                   '&:hover': {
-                    borderColor: isPersonalNote ? '#2196F3' : '#bdbdbd'
+                    borderColor: isPersonalNote ? '#2196F3' : 'rgba(255,255,255,0.24)'
                   }
                 }}
                 onClick={() => {
@@ -399,9 +399,9 @@ export function QuickMeetingNotesModal({
               <MuiCard
                 sx={{
                   cursor: 'pointer',
-                  border: !isPersonalNote ? '2px solid #FF9800' : '2px solid #e0e0e0',
-                  bgcolor: !isPersonalNote ? '#fff3e0' : 'transparent', '&:hover': {
-                    borderColor: !isPersonalNote ? '#FF9800' : '#bdbdbd'
+                  border: !isPersonalNote ? '2px solid #FF9800' : '2px solid rgba(255,255,255,0.10)',
+                  bgcolor: !isPersonalNote ? 'rgba(255,152,0,0.12)' : 'transparent', '&:hover': {
+                    borderColor: !isPersonalNote ? '#FF9800' : 'rgba(255,255,255,0.24)'
               }
               }}
                 onClick={() => {
