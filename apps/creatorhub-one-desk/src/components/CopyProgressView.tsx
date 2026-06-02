@@ -25,6 +25,7 @@ import {
   CopySessionStartedEvent,
   listCopySessions,
   SessionStatus,
+  setTrayStatus,
 } from "../api";
 import { bytesToHumanGb } from "../utils/capacity";
 
@@ -128,6 +129,28 @@ export default function CopyProgressView() {
       for (const un of unlisteners) un();
     };
   }, []);
+
+  // Oppdater Mac-tray-tooltip når sessions endrer state. La oss
+  // Fredrik se "2 aktive · 87/240" uten å åpne hovedvinduet.
+  // Hopper over hvis Tauri-API ikke er tilgjengelig (web-preview/dev).
+  useEffect(() => {
+    const active = sessions.filter((s) => s.state === "running");
+    let tooltip: string;
+    if (active.length === 0) {
+      tooltip = "Creatorhub One Desk";
+    } else {
+      const totalDone = active.reduce((sum, s) => sum + s.succeeded + s.failed, 0);
+      const totalFiles = active.reduce((sum, s) => sum + s.file_count, 0);
+      tooltip =
+        active.length === 1
+          ? `Backup: ${totalDone}/${totalFiles} filer`
+          : `${active.length} aktive · ${totalDone}/${totalFiles} filer`;
+    }
+    void setTrayStatus(tooltip).catch(() => {
+      // Tray-API ikke tilgjengelig (web preview eller mobile target)
+      // — ikke kritisk, ignorér.
+    });
+  }, [sessions]);
 
   if (sessions.length === 0 && Object.keys(currentFiles).length === 0) {
     return null;

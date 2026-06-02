@@ -279,6 +279,69 @@ fn chrono_now_iso() -> String {
     )
 }
 
+// ── Menu bar mini-tray ────────────────────────────────────────────
+// Bruker Tauri 2's TrayIconBuilder. Tooltip oppdateres via
+// set_tray_status-command som frontend kaller når backup-økter
+// endrer state (start/progress/done).
+//
+// Click på tray = focus hovedvindu (eller åpne hvis lukket).
+const TRAY_ICON_ID: &str = "main-tray";
+
+fn setup_tray(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::TrayIconBuilder;
+
+    let show_main = MenuItem::with_id(handle, "show-main", "Vis Creatorhub One Desk", true, None::<&str>)?;
+    let quit = MenuItem::with_id(handle, "quit", "Avslutt", true, None::<&str>)?;
+    let menu = Menu::with_items(handle, &[&show_main, &quit])?;
+
+    TrayIconBuilder::with_id(TRAY_ICON_ID)
+        .tooltip("Creatorhub One Desk")
+        .icon(handle.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show-main" => {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            // Click på selve ikonet (utenom menu) → focus hovedvindu.
+            if let tauri::tray::TrayIconEvent::Click { button, button_state, .. } = event {
+                if matches!(button, tauri::tray::MouseButton::Left)
+                    && matches!(button_state, tauri::tray::MouseButtonState::Up)
+                {
+                    let app = tray.app_handle();
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+            }
+        })
+        .build(handle)?;
+    Ok(())
+}
+
+/// Oppdater tray-tooltip dynamisk fra frontend. Kalles av
+/// CopyProgressView når sesjoner endrer state, så Fredrik kan se
+/// "2 aktive · 87 av 240 filer" uten å åpne hovedvinduet.
+#[tauri::command]
+fn set_tray_status(app: tauri::AppHandle, tooltip: String) -> Result<(), String> {
+    use tauri::tray::TrayIcon;
+    if let Some(tray) = app.tray_by_id(TRAY_ICON_ID) {
+        TrayIcon::set_tooltip(&tray, Some(tooltip))
+            .map_err(|e| format!("set_tooltip: {}", e))?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -296,8 +359,15 @@ pub fn run() {
                 eprintln!("Mount-watcher kunne ikke starte: {err}");
             }
             let pairing_state: tauri::State<Arc<IpadPairingState>> = app.state();
-            if let Err(err) = ipad_pairing::spawn_browser(handle, pairing_state.inner().clone()) {
+            if let Err(err) = ipad_pairing::spawn_browser(handle.clone(), pairing_state.inner().clone()) {
                 eprintln!("iPad Bonjour-browser kunne ikke starte: {err}");
+            }
+            // Menu bar / status bar mini-tray. Vises kun på macOS som
+            // en liten ikon i status-baren ved siden av batterien.
+            // Tooltip oppdateres dynamisk fra frontend via
+            // set_tray_status-command når backup-økter starter/stopper.
+            if let Err(err) = setup_tray(&handle) {
+                eprintln!("Tray-icon kunne ikke starte: {err}");
             }
             Ok(())
         })
@@ -326,6 +396,7 @@ pub fn run() {
             enable_mirror_for_session,
             disable_mirror_for_session,
             enabled_mirror_sessions,
+            set_tray_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Creatorhub One Desk");

@@ -100,6 +100,12 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+/// Oppdater Mac-tray-tooltip dynamisk. Brukes av CopyProgressView for
+/// å vise "Backup: 87/240 filer" i status-baren.
+export async function setTrayStatus(tooltip: string): Promise<void> {
+  return invoke<void>("set_tray_status", { tooltip });
+}
+
 export interface DestinationSpec {
   id: string;
   label: string;
