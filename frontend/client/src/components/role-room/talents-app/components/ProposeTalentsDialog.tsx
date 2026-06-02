@@ -308,9 +308,13 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                         sx={{
                           textTransform: 'none',
                           fontWeight: 700,
-                          bgcolor: palette.accentBright,
-                          color: '#0c0a09',
-                          '&:hover': { bgcolor: palette.accent },
+                          background: palette.accentGradient,
+                          color: '#fff',
+                          boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                            boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                          },
                         }}
                       >
                         Foreslå alle valgte
@@ -381,9 +385,13 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                             sx={{
                               textTransform: 'none',
                               fontWeight: 700,
-                              bgcolor: palette.accentBright,
-                              color: '#0c0a09',
-                              '&:hover': { bgcolor: palette.accent },
+                              background: palette.accentGradient,
+                              color: '#fff',
+                              boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                              '&:hover': {
+                                background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                                boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                              },
                             }}
                           >
                             Foreslå
@@ -515,9 +523,13 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  bgcolor: palette.accentBright,
-                  color: '#0c0a09',
-                  '&:hover': { bgcolor: palette.accent },
+                  background: palette.accentGradient,
+                  color: '#fff',
+                  boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                    boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                  },
                 }}
               >
                 Send forslag
@@ -559,9 +571,13 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  bgcolor: palette.accentBright,
-                  color: '#0c0a09',
-                  '&:hover': { bgcolor: palette.accent },
+                  background: palette.accentGradient,
+                  color: '#fff',
+                  boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                    boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                  },
                 }}
               >
                 Foreslå {selectedIds.size}
