@@ -17,6 +17,7 @@
 
 import { useMemo, useState } from 'react';
 import { StoryView } from '../story/StoryView';
+import { ScriptBuilderView } from './ScriptBuilderView';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -103,6 +104,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         </div>
       </div>
     );
+  }
+
+  // Script Builder har sin egen fullskjerm-layout (egen sidebar/topbar/timeline).
+  if (nav === 'script' && !storyMode) {
+    return <ScriptBuilderView onNav={(id) => setNav(id as NavId)} />;
   }
 
   return (

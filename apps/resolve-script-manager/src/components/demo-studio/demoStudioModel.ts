@@ -68,12 +68,20 @@ export interface DemoScene {
   viewport: DemoViewport;
   /** Manus / teleprompter-tekst som leses opp. */
   narration: string;
+  /** Visuell instruks: hva som skal vises/fokuseres på (Script Builder rad 2). */
+  visualInstruction?: string;
   /** Menneske-lesbar instruks om hva som skal gjøres. */
   requiredAction: string;
+  /** Primær handlingstype for required action (Script Builder dropdown). */
+  actionType?: DemoActionType;
   /** Strukturerte browser-handlinger (valgfritt, for automasjon). */
   actions: DemoAction[];
   /** Tekst-overlay vist i videoen. */
   overlayText?: string;
+  /** Interne notater / pause-cue (Script Builder rad 5). */
+  notes?: string;
+  /** Pause i sekunder etter scenens handling. */
+  pauseSec?: number;
   /** Estimert/faktisk varighet i sekunder. */
   duration: number;
   status: SceneStatus;
@@ -82,6 +90,21 @@ export interface DemoScene {
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
 }
+
+/** Manus-meta på prosjektnivå (Script Builder Tone/Audience/Language/Length). */
+export type ScriptTone = 'professional' | 'warm' | 'investor' | 'technical' | 'sales' | 'educational' | 'concise';
+export type ScriptLength = 'short' | 'medium' | 'long';
+export interface ScriptMeta {
+  tone: ScriptTone;
+  audience: string;
+  language: string;
+  length: ScriptLength;
+}
+export const SCRIPT_TONE_LABELS: Record<ScriptTone, string> = {
+  professional: 'Professional', warm: 'Varm og menneskelig', investor: 'Investor-orientert',
+  technical: 'Teknisk', sales: 'Salgsorientert', educational: 'Pedagogisk', concise: 'Kort og direkte',
+};
+export const SCRIPT_LENGTH_LABELS: Record<ScriptLength, string> = { short: 'Short', medium: 'Medium', long: 'Long' };
 
 export interface DemoProject {
   id: string;
@@ -92,6 +115,8 @@ export interface DemoProject {
   devices: DemoDevice[];
   /** Eksport-format (aspect ratio). */
   format: '16:9' | '9:16' | '1:1' | '4:5';
+  /** Manus-meta (Script Builder Tone/Audience/Language/Length). */
+  scriptMeta?: ScriptMeta;
   scenes: DemoScene[];
   createdAt: string;
   updatedAt: string;
@@ -188,6 +213,7 @@ export function makeProject(url: string, demoType: DemoType = 'product_demo'): D
     language: 'no',
     devices: ['macbook', 'iphone'],
     format: '16:9',
+    scriptMeta: { tone: 'professional', audience: 'Healthcare Professionals', language: 'English', length: 'medium' },
     scenes: defaultSceneFlow('macbook'),
     createdAt: now,
     updatedAt: now,
