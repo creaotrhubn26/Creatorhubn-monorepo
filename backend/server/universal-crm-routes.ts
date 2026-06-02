@@ -1496,4 +1496,97 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       return res.status(500).json({ error: "Failed to run automation" });
     }
   });
+
+  // ============================================================
+  // Reporting / intelligence (#10/#25/#40/#41/#42/#43) — owner-scoped
+  // ============================================================
+  app.get("/api/universal-crm/reports", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const owner = session.userId;
+      const [funnel, forecast, sourceRoi, ltv, revenue] = await Promise.all([
+        // Funnel: deals count + value per stage (#25)
+        pool.query(
+          `SELECT stage, count(*)::int AS count, COALESCE(sum(value),0) AS value
+           FROM crm_deals WHERE owner_user_id = $1 GROUP BY stage`,
+          [owner],
+        ),
+        // Weighted forecast for OPEN deals, bucketed by expected-close month (#42)
+        pool.query(
+          `SELECT to_char(date_trunc('month', COALESCE(expected_close_date, now())), 'YYYY-MM') AS month,
+                  COALESCE(sum(value * probability / 100.0), 0) AS weighted, COALESCE(sum(value),0) AS gross, count(*)::int AS deals
+           FROM crm_deals
+           WHERE owner_user_id = $1 AND stage NOT IN ('closed_won','closed_lost')
+           GROUP BY 1 ORDER BY 1`,
+          [owner],
+        ),
+        // Source ROI: leads + won revenue + win-rate per source (#41)
+        pool.query(
+          `SELECT COALESCE(c.source,'ukjent') AS source,
+                  count(DISTINCT c.id)::int AS customers,
+                  count(d.id) FILTER (WHERE d.stage = 'closed_won')::int AS won_deals,
+                  COALESCE(sum(d.value) FILTER (WHERE d.stage = 'closed_won'),0) AS won_value
+           FROM crm_customers c LEFT JOIN crm_deals d ON d.customer_id = c.id AND d.owner_user_id = $1
+           WHERE c.owner_user_id = $1 GROUP BY 1 ORDER BY won_value DESC`,
+          [owner],
+        ),
+        // Top customers by lifetime value: won deals + paid invoices (#40/#43)
+        pool.query(
+          `SELECT c.id, c.name,
+                  COALESCE((SELECT sum(value) FROM crm_deals d WHERE d.customer_id = c.id AND d.stage='closed_won'),0)
+                  + COALESCE((SELECT sum(paid_amount) FROM crm_invoices i WHERE i.customer_id = c.id),0) AS ltv,
+                  (SELECT count(*) FROM crm_deals d WHERE d.customer_id = c.id AND d.stage='closed_won')::int AS won_count
+           FROM crm_customers c WHERE c.owner_user_id = $1
+           ORDER BY ltv DESC LIMIT 10`,
+          [owner],
+        ),
+        // Revenue: pipeline / won / realized (paid invoices) (#10)
+        pool.query(
+          `SELECT
+             (SELECT COALESCE(sum(value),0) FROM crm_deals WHERE owner_user_id=$1 AND stage NOT IN ('closed_won','closed_lost')) AS pipeline,
+             (SELECT COALESCE(sum(value),0) FROM crm_deals WHERE owner_user_id=$1 AND stage='closed_won') AS won,
+             (SELECT COALESCE(sum(paid_amount),0) FROM crm_invoices WHERE owner_user_id=$1) AS realized,
+             (SELECT COALESCE(sum(total_amount - paid_amount),0) FROM crm_invoices WHERE owner_user_id=$1 AND status<>'paid') AS outstanding`,
+          [owner],
+        ).catch(() => ({ rows: [{ pipeline: 0, won: 0, realized: 0, outstanding: 0 }] })),
+      ]);
+      const num = (v: any) => Number(v) || 0;
+      return res.json({
+        funnel: funnel.rows.map((r: any) => ({ stage: r.stage, count: r.count, value: num(r.value) })),
+        forecast: forecast.rows.map((r: any) => ({ month: r.month, weighted: Math.round(num(r.weighted)), gross: num(r.gross), deals: r.deals })),
+        sourceRoi: sourceRoi.rows.map((r: any) => ({ source: r.source, customers: r.customers, wonDeals: r.won_deals, wonValue: num(r.won_value) })),
+        topCustomers: ltv.rows.map((r: any) => ({ id: r.id, name: r.name, ltv: num(r.ltv), wonCount: r.won_count })),
+        revenue: {
+          pipeline: num(revenue.rows[0].pipeline),
+          won: num(revenue.rows[0].won),
+          realized: num(revenue.rows[0].realized),
+          outstanding: num(revenue.rows[0].outstanding),
+        },
+      });
+    } catch (error) {
+      console.error("CRM reports error:", error);
+      return res.status(500).json({ error: "Failed to build reports" });
+    }
+  });
+
+  // Owner-scoped export of customers (#29) — JSON rows; frontend builds CSV.
+  app.get("/api/universal-crm/export", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const rows = await pool.query(
+        `SELECT c.name, c.email, c.phone, c.company, c.profession, c.project_type, c.budget,
+                c.status, c.source, c.created_at, c.last_contact,
+                COALESCE((SELECT sum(d.value) FROM crm_deals d WHERE d.customer_id=c.id AND d.stage='closed_won'),0) AS won_value,
+                COALESCE((SELECT sum(i.paid_amount) FROM crm_invoices i WHERE i.customer_id=c.id),0) AS paid
+         FROM crm_customers c WHERE c.owner_user_id = $1 ORDER BY c.created_at DESC`,
+        [session.userId],
+      );
+      return res.json({ rows: rows.rows });
+    } catch (error) {
+      console.error("CRM export error:", error);
+      return res.status(500).json({ error: "Failed to export" });
+    }
+  });
 }

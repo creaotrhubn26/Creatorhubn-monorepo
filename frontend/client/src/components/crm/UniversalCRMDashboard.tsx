@@ -66,6 +66,7 @@ import CustomerDetailDrawer from './CustomerDetailDrawer';
 import CrmTaskInbox from './CrmTaskInbox';
 import DealsPipelineBoard from './DealsPipelineBoard';
 import CrmActionQueue from './CrmActionQueue';
+import CrmReports from './CrmReports';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -203,6 +204,7 @@ export default function UniversalCRMDashboard({
   const [detailCustomer, setDetailCustomer] = useState<UniversalCustomer | null>(null); // #2 kontaktdetalj-drawer
   const [showTaskInbox, setShowTaskInbox] = useState(false); // #5 task-inbox
   const [showActionQueue, setShowActionQueue] = useState(false); // #24 action queue
+  const [showReports, setShowReports] = useState(false); // Wave 3 reports
   // #42 — controlled edit-form so empty fields never corrupt into ', '
   const [editForm, setEditForm] = useState({
     name: '',
@@ -1378,6 +1380,21 @@ export default function UniversalCRMDashboard({
                   }}
                 >
                   Business Intelligence
+                </Button>
+                {/* Wave 3 — revenue intelligence reports + CSV export. */}
+                <Button
+                  variant="outlined"
+                  startIcon={<AssessmentIcon />}
+                  onClick={() => setShowReports(true)}
+                  sx={{
+                    minWidth: 140,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Rapporter
                 </Button>
                 {/* #24 — daily action queue (rebook/dormant/review/overdue). */}
                 <Button
@@ -3308,6 +3325,9 @@ export default function UniversalCRMDashboard({
         onClose={() => setShowActionQueue(false)}
         onOpenCustomer={(id, name) => setDetailCustomer({ id, name } as any)}
       />
+
+      {/* Wave 3 — reports */}
+      <CrmReports open={showReports} onClose={() => setShowReports(false)} />
     </Box>
   );
 }
