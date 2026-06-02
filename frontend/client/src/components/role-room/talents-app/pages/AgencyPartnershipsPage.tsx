@@ -29,6 +29,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -477,18 +478,140 @@ function OverviewTab(props: {
     );
   }
   const stateBadge = availability ? STATE_BADGE[availability.state] : null;
-  const KPI = ({ label, value, color }: { label: string; value: number | string; color?: string }) => (
-    <Box sx={{ ...cardSx, p: 1.8, textAlign: 'center', flex: 1, minWidth: 120 }}>
-      <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: color ?? palette.textPrimary, lineHeight: 1 }}>
-        {value}
-      </Typography>
-      <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-        {label}
-      </Typography>
-    </Box>
+  const KPI = ({ label, value, color, onClick, tooltip }: {
+    label: string;
+    value: number | string;
+    color?: string;
+    onClick?: () => void;
+    tooltip?: string;
+  }) => (
+    <Tooltip title={tooltip ?? ''} arrow placement="top" enterDelay={500}>
+      <Box
+        onClick={onClick}
+        sx={{
+          ...cardSx,
+          p: 1.8,
+          textAlign: 'center',
+          flex: 1,
+          minWidth: 120,
+          cursor: onClick ? 'pointer' : 'default',
+          transition: 'border-color 0.18s, transform 0.18s',
+          '&:hover': onClick ? {
+            borderColor: palette.accentBright,
+            transform: 'translateY(-2px)',
+          } : undefined,
+        }}
+      >
+        <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: color ?? palette.textPrimary, lineHeight: 1 }}>
+          {value}
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          {label}
+        </Typography>
+      </Box>
+    </Tooltip>
   );
+
+  // Smart "Hva nå?"-anbefaling basert på dashboard-state. Velger den
+  // viktigste handlingen brukeren bør gjøre nest, basert på prioritert
+  // hierarki: pending invitasjoner > akseptere partnerships > foreslå
+  // talenter > inngenting.
+  const nextActionHint = (() => {
+    const inv = dashboard.project_invitations;
+    const pa = dashboard.partnerships;
+    const tp = dashboard.talent_proposals;
+    if (inv.pending > 0) {
+      return {
+        text: `Du har ${inv.pending} prosjekt-invitasjon${inv.pending > 1 ? 'er' : ''} som venter svar`,
+        cta: 'Åpne Innkommende',
+        action: () => props.onJumpTab('incoming'),
+      };
+    }
+    if (pa.pending > 0) {
+      return {
+        text: `Du har ${pa.pending} partnership-forespørsel${pa.pending > 1 ? 'er' : ''} som venter svar`,
+        cta: 'Åpne Mine partnerships',
+        action: () => props.onJumpTab('mine'),
+      };
+    }
+    if (inv.accepted > 0 && tp.pending === 0 && tp.accepted === 0) {
+      return {
+        text: `Du har ${inv.accepted} aktivt prosjekt — start med å foreslå talenter`,
+        cta: 'Åpne Innkommende',
+        action: () => props.onJumpTab('incoming'),
+      };
+    }
+    if (availability?.state === 'disabled') {
+      return {
+        text: 'Slå på discoverability for å bli funnet av produksjonsselskaper',
+        cta: 'Åpne Tilgjengelighet',
+        action: () => props.onJumpTab('availability'),
+      };
+    }
+    return null;
+  })();
   return (
     <Stack spacing={2}>
+      {/* "Hva nå?"-handling-kort — smart neste-handling basert på state */}
+      {nextActionHint ? (
+        <Box
+          onClick={nextActionHint.action}
+          sx={{
+            ...cardSx,
+            cursor: 'pointer',
+            border: '1px solid rgba(168,85,247,0.42)',
+            background: 'linear-gradient(135deg, rgba(168,85,247,0.10) 0%, rgba(217,70,239,0.06) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            transition: 'transform 0.18s, border-color 0.18s',
+            '&:hover': {
+              borderColor: palette.accentBright,
+              transform: 'translateY(-2px)',
+            },
+          }}
+        >
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              bgcolor: 'rgba(168,85,247,0.18)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <HandshakeOutlinedIcon sx={{ color: palette.accentBright }} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Neste handling
+            </Typography>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.0rem', mt: 0.2 }}>
+              {nextActionHint.text}
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              background: palette.accentGradient,
+              color: '#fff',
+              px: 2,
+              boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+              },
+            }}
+          >
+            {nextActionHint.cta} →
+          </Button>
+        </Box>
+      ) : null}
+
       {/* Status-badge øverst */}
       {availability && stateBadge ? (
         <Box sx={{ ...cardSx, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -502,34 +625,76 @@ function OverviewTab(props: {
           </Box>
           <Chip
             label={stateBadge.label}
-            sx={{ bgcolor: stateBadge.bg, color: stateBadge.color, fontWeight: 700, borderRadius: radius.sm }}
+            sx={{ bgcolor: stateBadge.bg, color: stateBadge.color, fontWeight: 700, borderRadius: radius.sm, cursor: 'pointer' }}
             onClick={() => props.onJumpTab('availability')}
           />
         </Box>
       ) : null}
 
-      {/* Partnership-KPI-er */}
+      {/* Partnership-KPI-er — klikkbare hopper til Mine partnerships */}
       <Box>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
           Partnerships
         </Typography>
         <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
-          <KPI label="Aktive" value={dashboard.partnerships.active} color="#34d399" />
-          <KPI label="Venter svar" value={dashboard.partnerships.pending} color="#fbbf24" />
-          <KPI label="Pauset" value={dashboard.partnerships.paused} color="#fb923c" />
-          <KPI label="Avsluttet" value={dashboard.partnerships.revoked} color="#9ca3af" />
+          <KPI
+            label="Aktive"
+            value={dashboard.partnerships.active}
+            color="#34d399"
+            tooltip="Akseptert + ikke pauset eller avsluttet"
+            onClick={() => props.onJumpTab('mine')}
+          />
+          <KPI
+            label="Venter svar"
+            value={dashboard.partnerships.pending}
+            color="#fbbf24"
+            tooltip="Forslag som ikke er besvart av motparten"
+            onClick={() => props.onJumpTab('mine')}
+          />
+          <KPI
+            label="Pauset"
+            value={dashboard.partnerships.paused}
+            color="#fb923c"
+            tooltip="Akseptert men midlertidig pauset — nye invitasjoner blokkeres"
+            onClick={() => props.onJumpTab('mine')}
+          />
+          <KPI
+            label="Avsluttet"
+            value={dashboard.partnerships.revoked}
+            color="#9ca3af"
+            tooltip="Revokert av enten byrå eller produksjon"
+            onClick={() => props.onJumpTab('mine')}
+          />
         </Stack>
       </Box>
 
-      {/* Prosjekt-invitasjoner */}
+      {/* Prosjekt-invitasjoner — klikkbare hopper til Innkommende */}
       <Box>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
           Prosjekt-invitasjoner
         </Typography>
         <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
-          <KPI label="Venter svar" value={dashboard.project_invitations.pending} color="#fbbf24" />
-          <KPI label="Aktive" value={dashboard.project_invitations.accepted} color="#34d399" />
-          <KPI label="Lukket" value={dashboard.project_invitations.closed} color="#9ca3af" />
+          <KPI
+            label="Venter svar"
+            value={dashboard.project_invitations.pending}
+            color="#fbbf24"
+            tooltip="Prosjekter du må akseptere/avslå"
+            onClick={() => props.onJumpTab('incoming')}
+          />
+          <KPI
+            label="Aktive"
+            value={dashboard.project_invitations.accepted}
+            color="#34d399"
+            tooltip="Prosjekter du jobber på nå — kan foreslå talenter"
+            onClick={() => props.onJumpTab('incoming')}
+          />
+          <KPI
+            label="Lukket"
+            value={dashboard.project_invitations.closed}
+            color="#9ca3af"
+            tooltip="Avslått, revokert eller utløpt"
+            onClick={() => props.onJumpTab('incoming')}
+          />
         </Stack>
       </Box>
 
