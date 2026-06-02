@@ -41,6 +41,11 @@
     ]
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["creatorhub-one-desk"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/latest/download/creatorhub-one-desk-{{target}}-{{arch}}.json"

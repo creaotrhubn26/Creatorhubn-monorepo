@@ -71,6 +71,58 @@ export async function saveHelperConfig(args: {
   });
 }
 
+// ── Google OAuth / device-auth ────────────────────────────────────
+export interface DeviceTokenStatus {
+  user_email: string;
+  user_name: string;
+  api_base: string;
+}
+
+export async function deviceTokenStatus(): Promise<DeviceTokenStatus | null> {
+  return invoke<DeviceTokenStatus | null>("device_token_status");
+}
+
+export async function startGoogleLogin(apiBase?: string): Promise<string> {
+  return invoke<string>("start_google_login", { apiBase: apiBase ?? null });
+}
+
+export async function refreshProjectsFromApi(): Promise<number> {
+  return invoke<number>("refresh_projects_from_api");
+}
+
+export async function desktopLogout(): Promise<void> {
+  return invoke<void>("desktop_logout");
+}
+
+// ── Multi-project ─────────────────────────────────────────────────
+export interface ProjectEntry {
+  project_id: string;
+  label: string;
+  api_base: string;
+  token: string;
+  last_used_ms: number;
+}
+
+export async function listProjects(): Promise<ProjectEntry[]> {
+  return invoke<ProjectEntry[]>("list_projects");
+}
+
+export async function activeProjectId(): Promise<string | null> {
+  return invoke<string | null>("active_project_id");
+}
+
+export async function setActiveProject(projectId: string): Promise<void> {
+  return invoke<void>("set_active_project", { projectId });
+}
+
+export async function removeProject(projectId: string): Promise<void> {
+  return invoke<void>("remove_project", { projectId });
+}
+
+export async function updateProjectLabel(projectId: string, label: string): Promise<void> {
+  return invoke<void>("update_project_label", { projectId, label });
+}
+
 export async function clearHelperConfig(): Promise<void> {
   return invoke<void>("clear_helper_config");
 }
