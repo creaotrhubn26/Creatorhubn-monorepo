@@ -2664,8 +2664,17 @@ export default function StoryArcStudio({
     userAdjustedTimelineZoomRef.current = false;
   }, [storyArcId, storyArc?.id]);
 
+  // One-shot guard per (projectId, storyArcId)-kombinasjon for å hindre
+  // loader-effekten fra å fyre flere ganger for samme prosjekt.
+  const editorStateLoadedKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     let aborted = false;
+    const loadKey = `${storyArcId || ''}::${storyArc?.id || ''}::${projectContext?.projectId || ''}`;
+    if (editorStateLoadedKeyRef.current === loadKey) {
+      return; // Allerede lastet for denne kombinasjonen
+    }
+    editorStateLoadedKeyRef.current = loadKey;
     (async () => {
       try {
         // Resolve story arc id
@@ -3028,10 +3037,21 @@ export default function StoryArcStudio({
 
     setClips((prev) => {
       const hydrated = hydrateClipSources(prev);
-      const changed = hydrated.some((clip, index) => clip !== prev[index]);
+      // Strengere bail-out: sammenligne sourceFile-strings i tillegg til
+      // referanse. Forhindrer ping-pong med setAvailableVideoSources hvis
+      // hydrate skaper nye objekter med samme sourceFile-verdier.
+      const changed = hydrated.some((clip, index) => {
+        const p = prev[index];
+        if (clip === p) return false;
+        return clip?.sourceFile !== p?.sourceFile;
+      });
       return changed ? hydrated : prev;
     });
-  }, [availableVideoSources, hydrateClipSources]);
+    // hydrateClipSources er bevisst UTELATT fra deps. Den re-skapes hver gang
+    // availableVideoSources endrer seg (via dens useCallback-deps), så hvis
+    // den lå her ville effekten fyre to ganger pr availableVideoSources-endring.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableVideoSources]);
 
   useEffect(() => {
     if (activeSourcePreview || availableVideoSources.length === 0) {
