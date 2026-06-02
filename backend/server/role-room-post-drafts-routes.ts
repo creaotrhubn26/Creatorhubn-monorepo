@@ -27,30 +27,51 @@ export interface SetupPostDraftsRoutesDeps {
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
+type ImageResolveResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; reason: 'no_image'; error?: string }
+  | { ok: false; reason: 'fetch_failed'; error: string };
+
 /**
  * For IG-publish: vi trenger data:image/...;base64,... format. Drafts kan
  * ha enten en publicly-tilgjengelig HTTP-URL (image_url) eller en pre-
  * generert base64-string (image_data_url). Denne resolveren preferer
  * base64 og faller tilbake til å fetche+konvertere HTTP-URL.
+ *
+ * Bruker User-Agent siden mange CDN-er (Wikipedia, m.fl.) blokkerer
+ * default-fetch-agent.
  */
-async function resolveImageDataUrl(draft: Record<string, unknown>): Promise<string | null> {
+async function resolveImageDataUrl(draft: Record<string, unknown>): Promise<ImageResolveResult> {
   const dataUrl = typeof draft.image_data_url === 'string' ? draft.image_data_url.trim() : '';
-  if (dataUrl.startsWith('data:image/')) return dataUrl;
+  if (dataUrl.startsWith('data:image/')) return { ok: true, dataUrl };
 
   const httpUrl = typeof draft.image_url === 'string' ? draft.image_url.trim() : '';
-  if (!httpUrl) return null;
-  if (!/^https?:\/\//i.test(httpUrl)) return null;
+  if (!httpUrl) return { ok: false, reason: 'no_image' };
+  if (!/^https?:\/\//i.test(httpUrl)) {
+    return { ok: false, reason: 'fetch_failed', error: 'image_url må starte med http:// eller https://' };
+  }
 
   try {
-    const resp = await fetch(httpUrl);
-    if (!resp.ok) return null;
+    const resp = await fetch(httpUrl, {
+      headers: {
+        'User-Agent': 'TheRoleRoom-MarketingBot/1.0 (+https://theroleroom.com)',
+        Accept: 'image/*',
+      },
+    });
+    if (!resp.ok) {
+      return { ok: false, reason: 'fetch_failed', error: `Image URL returnerte ${resp.status}` };
+    }
     const ct = resp.headers.get('content-type') || 'image/jpeg';
-    if (!ct.startsWith('image/')) return null;
+    if (!ct.startsWith('image/')) {
+      return { ok: false, reason: 'fetch_failed', error: `Image URL returnerte ikke et bilde (content-type: ${ct})` };
+    }
     const buf = Buffer.from(await resp.arrayBuffer());
-    return `data:${ct};base64,${buf.toString('base64')}`;
+    if (buf.length === 0) {
+      return { ok: false, reason: 'fetch_failed', error: 'Image URL returnerte tomt body' };
+    }
+    return { ok: true, dataUrl: `data:${ct};base64,${buf.toString('base64')}` };
   } catch (err) {
-    console.warn('[post-drafts] resolveImageDataUrl fetch failed', err);
-    return null;
+    return { ok: false, reason: 'fetch_failed', error: String(err) };
   }
 }
 
@@ -612,18 +633,23 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
           return;
         }
 
-        const imageDataUrl = await resolveImageDataUrl(draft);
-        if (!imageDataUrl) {
-          const errMsg = 'IG-publish krever bilde. Sett image_url (offentlig HTTP-URL) eller image_data_url (base64) på draften.';
+        const imgResult = await resolveImageDataUrl(draft);
+        if (!imgResult.ok) {
+          const errMsg = imgResult.reason === 'no_image'
+            ? 'IG-publish krever bilde. Sett image_url (offentlig HTTP-URL) eller image_data_url (base64) på draften.'
+            : `Kunne ikke hente image fra image_url: ${imgResult.error}`;
           await pool.query(
             `UPDATE marketing_post_drafts
              SET status = 'failed', publish_error = $2, updated_at = now()
              WHERE id = $1`,
             [id, errMsg],
           );
-          res.status(400).json({ ok: false, status: 'failed', reason: 'image_required', error: errMsg });
+          res.status(imgResult.reason === 'no_image' ? 400 : 502).json({
+            ok: false, status: 'failed', reason: imgResult.reason, error: errMsg,
+          });
           return;
         }
+        const imageDataUrl = imgResult.dataUrl;
 
         const hashtags = Array.isArray(draft.hashtags) ? draft.hashtags as string[] : [];
         const caption = String(draft.caption || '') + (hashtags.length > 0 ? '\n\n' + hashtags.join(' ') : '');
