@@ -109,6 +109,7 @@ interface Props {
   onOpenPhotoshopScaffold: () => void;
   onOpenFireflyPrompt: () => void;
   onOpenPhotoshopWorkspace: () => void;
+  onOpenMultiAgent: () => void;
   onOpenAiImage: () => void;
   onOpenArtDirector: () => void;
   onOpenCreations: () => void;
@@ -162,6 +163,7 @@ export function HeaderBar({
   onOpenPhotoshopScaffold,
   onOpenFireflyPrompt,
   onOpenPhotoshopWorkspace,
+  onOpenMultiAgent,
   onOpenAiImage,
   onOpenArtDirector,
   onOpenCreations,
@@ -284,6 +286,18 @@ export function HeaderBar({
                   }}
                 >
                   <AutoAwesomeIcon fontSize="small" /> Photoshop Workspace…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenMultiAgent(); }}
+                  data-testid="header-multi-agent-btn"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(244,114,182,0.22), rgba(167,139,250,0.22))",
+                    border: "1px solid rgba(244,114,182,0.45)",
+                    color: "#fce7f3",
+                    fontWeight: 700,
+                  }}
+                >
+                  <AutoAwesomeIcon fontSize="small" /> Multi-Agent Director…
                 </button>
                 <button
                   onClick={() => { setMenuOpen(false); onOpenArtDirector(); }}

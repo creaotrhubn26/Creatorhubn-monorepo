@@ -59,6 +59,7 @@ import { WatchFolderModal } from "./components/WatchFolderModal";
 import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
 import { FireflyPromptDialog } from "./components/FireflyPromptDialog";
 import { PhotoshopWorkspaceDialog } from "./components/PhotoshopWorkspaceDialog";
+import { MultiAgentDirectorDialog } from "./components/MultiAgentDirectorDialog";
 import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
 import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
 import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
@@ -165,6 +166,7 @@ export default function App() {
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
   const [showFireflyPrompt, setShowFireflyPrompt] = useState(false);
   const [showPhotoshopWorkspace, setShowPhotoshopWorkspace] = useState(false);
+  const [showMultiAgent, setShowMultiAgent] = useState(false);
   const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
   const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   const [showPsdGallery, setShowPsdGallery] = useState(false);
@@ -700,6 +702,7 @@ export default function App() {
         onOpenPhotoshopBridge={() => setShowPhotoshopBridge(true)}
         onOpenFireflyPrompt={() => setShowFireflyPrompt(true)}
         onOpenPhotoshopWorkspace={() => setShowPhotoshopWorkspace(true)}
+        onOpenMultiAgent={() => setShowMultiAgent(true)}
         onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
         onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
         onOpenPsdGallery={() => setShowPsdGallery(true)}
@@ -1041,6 +1044,11 @@ export default function App() {
           setShowPhotoshopWorkspace(false);
           setShowFireflyPrompt(true);
         }}
+      />
+
+      <MultiAgentDirectorDialog
+        open={showMultiAgent}
+        onClose={() => setShowMultiAgent(false)}
       />
       {showPhotoshopTemplates && (
         <PhotoshopTemplateDialog onClose={() => setShowPhotoshopTemplates(false)} />
