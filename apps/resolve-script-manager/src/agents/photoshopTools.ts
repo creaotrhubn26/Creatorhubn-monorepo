@@ -157,6 +157,31 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_multi_aspect_export",
+    description:
+      "Eksporter samme master-PSD til flere aspect-ratios. Bruker fill-by-resize + center-crop: bildet skaleres så det dekker target, overflod cropper bort fra senter. Brukes for sosial-pakker (1:1 + 9:16 + 4:5 + 16:9). target_long_edge styrer outputstørrelse — lengste side blir det tallet, kort side beregnes ut fra aspect.",
+    input_schema: {
+      type: "object",
+      properties: {
+        master_path: { type: "string", description: "Absolutt sti til master-PSD" },
+        output_dir: { type: "string", description: "Mappe der outputs lagres" },
+        base_name: { type: "string", description: "Filnavn-prefix (uten extension). Aspect appendes automatisk: name_1x1.jpg, name_9x16.jpg" },
+        aspects: {
+          type: "array",
+          description: 'Liste av aspect-strenger som "1:1", "9:16", "16:9", "4:5"',
+          items: { type: "string" },
+        },
+        target_long_edge: {
+          type: "number",
+          description: "Lengste side i piksel (typisk 1080, 1920, 2160)",
+        },
+        format: { type: "string", enum: ["jpg", "png", "psd", "tiff"] },
+        quality: { type: "number", description: "JPG-kvalitet 1-12, default 10" },
+      },
+      required: ["master_path", "output_dir", "base_name", "aspects", "target_long_edge", "format"],
+    },
+  },
+  {
     name: "photoshop_batch_render",
     description:
       "Render samme template N ganger fra én items-liste. Hver item får sin egen data-map og output_path. Brukes for å lage variants: 10 sosial-poster med ulike navn, en serie produktkort, etc. Hver iteration åpner template på nytt → ingen verdi-arv mellom items.",
@@ -285,6 +310,29 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         items,
         default_format: input.default_format as ExportFormat | undefined,
         default_quality: input.default_quality as number | undefined,
+      });
+    }
+    case "photoshop_multi_aspect_export": {
+      const aspectsRaw = input.aspects;
+      if (!Array.isArray(aspectsRaw) || aspectsRaw.length === 0) {
+        throw new Error('"aspects" må være en non-empty array');
+      }
+      const aspects = aspectsRaw.map((a, i) => {
+        if (typeof a !== "string" || !a) throw new Error(`aspects[${i}] må være en string`);
+        return a;
+      });
+      const targetLongEdge = input.target_long_edge;
+      if (typeof targetLongEdge !== "number" || targetLongEdge <= 0) {
+        throw new Error('"target_long_edge" må være et positivt tall');
+      }
+      return photoshop.multiAspectExport({
+        master_path: requireString(input, "master_path"),
+        output_dir: requireString(input, "output_dir"),
+        base_name: requireString(input, "base_name"),
+        aspects,
+        target_long_edge: targetLongEdge,
+        format: requireString(input, "format") as ExportFormat,
+        quality: input.quality as number | undefined,
       });
     }
     default:
