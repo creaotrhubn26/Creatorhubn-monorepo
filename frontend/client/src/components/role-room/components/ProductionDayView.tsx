@@ -290,28 +290,40 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         .map((d) => (d.date ? new Date(d.date).getTime() : NaN))
         .filter((t) => Number.isFinite(t)) as number[];
       const startMs = existingDateMs.length ? Math.max(...existingDateMs) + DAY_MS : Date.now();
+      // Load-balansering: en location med mange scener deles over flere
+      // sekvensielle dager (maks scener/dag). Standard-default; produsenten
+      // kan slå sammen/justere etterpå.
+      const MAX_SCENES_PER_DAY = 8;
       let created = 0;
       for (const loc of candidates) {
-        const dayDate = new Date(startMs + created * DAY_MS).toISOString().split('T')[0];
-        const day: ProductionDay = {
-          id: `day-${Date.now()}-${created}`,
-          projectId,
-          date: dayDate,
-          locationId: loc.id,
-          scenes: Array.isArray(loc.assignedScenes) ? loc.assignedScenes : [],
-          crew: [],
-          props: [],
-          notes: `Auto-generert fra lokasjon: ${loc.name}`,
-          status: 'planned',
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        };
-        await productionPlanningService.saveProductionDay(projectId, day);
-        created += 1;
+        const locScenes = Array.isArray(loc.assignedScenes) ? loc.assignedScenes : [];
+        const chunkCount = locScenes.length > MAX_SCENES_PER_DAY
+          ? Math.ceil(locScenes.length / MAX_SCENES_PER_DAY)
+          : 1;
+        for (let ci = 0; ci < chunkCount; ci += 1) {
+          const chunkScenes = locScenes.slice(ci * MAX_SCENES_PER_DAY, (ci + 1) * MAX_SCENES_PER_DAY);
+          const dayDate = new Date(startMs + created * DAY_MS).toISOString().split('T')[0];
+          const partLabel = chunkCount > 1 ? ` (del ${ci + 1}/${chunkCount})` : '';
+          const day: ProductionDay = {
+            id: `day-${Date.now()}-${created}`,
+            projectId,
+            date: dayDate,
+            locationId: loc.id,
+            scenes: chunkScenes,
+            crew: [],
+            props: [],
+            notes: `Auto-generert fra lokasjon: ${loc.name}${partLabel}`,
+            status: 'planned',
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          };
+          await productionPlanningService.saveProductionDay(projectId, day);
+          created += 1;
+        }
       }
       const days = await productionPlanningService.getProductionDays(projectId);
       setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
-      showSuccess(`Genererte ${created} produksjonsdag(er) — én per lokasjon med sekvensielle datoer. Juster datoer/call-time eller forskyv hele planen ved behov.`);
+      showSuccess(`Genererte ${created} produksjonsdag(er) med sekvensielle datoer — gruppert per lokasjon, delt på flere dager der det er mange scener (maks ${MAX_SCENES_PER_DAY}/dag). Juster eller forskyv ved behov.`);
       onUpdate?.();
     } catch (error) {
       console.error('Generate production days failed:', error);
@@ -2301,7 +2313,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Generer én produksjonsdag per lokasjon (gruppert etter sted), med scenene som er knyttet til lokasjonen">
+          <Tooltip title="Generer produksjonsdager gruppert per lokasjon (skyt alt på ett sted samlet), med sekvensielle datoer — delt over flere dager når en lokasjon har mange scener">
             <span>
               <Button
                 variant="outlined"
