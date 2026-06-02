@@ -439,7 +439,7 @@ export function GDPRCompliancePanel() {
                         helperText="Supports Markdown and HTML. Changes will be reflected on /privacy-policy page."
                       />
                     ) : (
-                      <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', p: 2, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: 600, overflow: 'auto' }}>
+                      <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, maxHeight: 600, overflow: 'auto' }}>
                         {privacyContent || 'Ingen innhold tilgjengelig. Klikk "Rediger" for å legge til personvernerklæring.'}
                       </Box>
                     )}
@@ -555,7 +555,7 @@ export function GDPRCompliancePanel() {
                         helperText="Supports Markdown and HTML. Changes will be reflected on /terms-and-conditions page."
                       />
                     ) : (
-                      <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', p: 2, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: 600, overflow: 'auto' }}>
+                      <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, maxHeight: 600, overflow: 'auto' }}>
                         {termsContent || 'Ingen innhold tilgjengelig. Klikk "Rediger" for å legge til vilkår og betingelser.'}
                       </Box>
                     )}
@@ -726,7 +726,7 @@ export function GDPRCompliancePanel() {
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                       {DATATILSYNET_REQUIREMENTS.breachNotification.description}
                     </Typography>
-                    <Paper sx={{ p: 2, bgcolor: '#ffebee', mb: 2 }}>
+                    <Paper sx={{ p: 2, bgcolor: 'rgba(244,67,54,0.10)', mb: 2 }}>
                       <Typography variant="subtitle2" gutterBottom color="error.main">
                         📧 Rapporter databrudd til Datatilsynet:
                       </Typography>
@@ -1235,7 +1235,7 @@ export function GDPRCompliancePanel() {
                       Forhåndsvisning av GDPR-banner
                     </Typography>
                     <Divider sx={{ my: 2 }} />
-                    <Paper sx={{ p: 3, bgcolor: '#f5f5f5' }}>
+                    <Paper sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
                       <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00' }}>
                         <Info sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
                         Community Datalagring
@@ -1281,7 +1281,7 @@ export function GDPRCompliancePanel() {
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Typography variant="subtitle2" gutterBottom sx={{ color: theming.colors.primary }}>
                   📧 Generell kontakt
                 </Typography>
@@ -1294,7 +1294,7 @@ export function GDPRCompliancePanel() {
             </Grid>
 
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Typography variant="subtitle2" gutterBottom sx={{ color: theming.colors.primary }}>
                   📍 Postadresse
                 </Typography>
@@ -1307,7 +1307,7 @@ export function GDPRCompliancePanel() {
             </Grid>
 
             <Grid item xs={12}>
-              <Paper sx={{ p: 2, bgcolor: '#ffebee' }}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(244,67,54,0.10)' }}>
                 <Typography variant="subtitle2" gutterBottom color="error.main">
                   🚨 Ved databrudd (Art. 33)
                 </Typography>

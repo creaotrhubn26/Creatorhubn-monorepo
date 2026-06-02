@@ -668,7 +668,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
         </Card>
       )}
 
-      <Grid container spacing={3}>
+      <Grid container spacing={2}>
         {/* Summary Cards */}
         <Grid item xs={12} md={3}>
           <Card>
@@ -679,7 +679,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Totale Kanselleringer
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff6b6b' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#ff6b6b' }}>
                 {cancellationData?.data?.totalCancellations || 0}
               </Typography>
             </CardContent>
@@ -695,7 +695,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Refunderingsforespørsler
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#ff9800' }}>
                 {refundStats.totalRequests || 0}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
@@ -715,7 +715,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Totalt Refundert
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#f44336' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#f44336' }}>
                 {(refundStats.totalRefunded || 0).toLocaleString('nb-NO')} kr
               </Typography>
             </CardContent>
@@ -731,7 +731,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Gjennomsnittlig Refundering
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#2196f3' }}>
                 {(refundStats.avgRefundAmount || 0).toLocaleString('nb-NO')} kr
               </Typography>
             </CardContent>
@@ -748,7 +748,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Månedlig Tilbakevendende Inntekt (MRR)
                 </Typography>
               </Box>
-              <Typography variant="h3" sx={{ fontWeight: 700, color: 'white' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: 'white' }}>
                 {(revenueData?.data?.mrr || 0).toLocaleString('nb-NO')} kr
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -767,7 +767,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Churn Rate
                 </Typography>
               </Box>
-              <Typography variant="h3" sx={{ fontWeight: 700, color: 'white' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: 'white' }}>
                 {churnData?.data?.churnRate || 0}%
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -786,7 +786,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Customer Lifetime Value (CLV)
                 </Typography>
               </Box>
-              <Typography variant="h3" sx={{ fontWeight: 700, color: 'white' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: 'white' }}>
                 {(churnData?.data?.customerLifetimeValue || 0).toLocaleString('nb-NO')} kr
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>

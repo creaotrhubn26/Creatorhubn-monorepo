@@ -1591,7 +1591,7 @@ export default function FullscreenChatWidget({
                   mt: 1,
                   p: 1,
                   borderRadius: 1,
-                  bgcolor: communicationStatus.googleChatStatus === 'connected' ? '#e8f5e8' : '#ffebee',
+                  bgcolor: communicationStatus.googleChatStatus === 'connected' ? '#e8f5e8' : 'rgba(244,67,54,0.10)',
                   border: `1px solid ${communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#f44336'}20`
             }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
@@ -2128,7 +2128,7 @@ export default function FullscreenChatWidget({
                           <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.sender_type === 'vendor' ? 'flex-end' : 'flex-start', mb: 1 }}>
                             <Paper elevation={0} sx={{
                               p: 1.5, maxWidth: '75%', borderRadius: 2,
-                              bgcolor: msg.sender_type === 'vendor' ? '#E91E63' : '#f5f5f5',
+                              bgcolor: msg.sender_type === 'vendor' ? '#E91E63' : 'rgba(255,255,255,0.04)',
                               color: msg.sender_type === 'vendor' ? 'white' : 'text.primary'
                             }}>
                               <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{msg.body}</Typography>
@@ -2157,7 +2157,7 @@ export default function FullscreenChatWidget({
                     </Box>
                   ) : (
                     <Box>
-                      <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(233,30,99,0.12)', borderRadius: 2, border: '1px solid #E91E6330' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                           <img src="/evendi-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>Evendi Meldinger</Typography>
@@ -2170,7 +2170,7 @@ export default function FullscreenChatWidget({
                         <List sx={{ p: 0 }}>
                           {evendiConvs.map((conv: any) => (
                             <ListItem key={conv.id} component="div" onClick={() => fetchEvendiMsgsFull(conv.id)}
-                              sx={{ cursor: 'pointer', borderRadius: 1, mb: 0.5, '&:hover': { bgcolor: '#fce4ec' },
+                              sx={{ cursor: 'pointer', borderRadius: 1, mb: 0.5, '&:hover': { bgcolor: 'rgba(233,30,99,0.12)' },
                                 borderLeft: conv.vendor_unread_count > 0 ? '3px solid #E91E63' : 'none' }}>
                               <ListItemAvatar>
                                 <Avatar sx={{ bgcolor: '#fce4ec', width: 36, height: 36 }}>
@@ -3105,7 +3105,7 @@ export default function FullscreenChatWidget({
                 </Box>
               ))}
               
-              <Box sx={{ p: 2, bgcolor: '#f9f9f9'}}>
+              <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)'}}>
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center'}}>
                   <Security sx={{ fontSize:  16, mr: 0.5}} />
                   Kun tilgjengelig for administratorer
@@ -3336,7 +3336,7 @@ export default function FullscreenChatWidget({
             <DialogContent sx={{ p:  3}}>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap:  3 }}>
                 {/* Overview Cards */}
-                <Paper sx={{ p:  3, border: '1px solid #e0e0e0', borderRadius:  2,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                     📈 Oversikt i dag
                   </Typography>
@@ -3391,7 +3391,7 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* User Activity */}
-                <Paper sx={{ p:  3, border: '1px solid #e0e0e0', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                     👥 Brukeraktivitet
                   </Typography>
@@ -3418,7 +3418,7 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Sentiment Analysis */}
-                <Paper sx={{ p:  3, border: '1px solid #e0e0e0', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                     😊 Sentiment Analyse
                   </Typography>
@@ -3463,7 +3463,7 @@ export default function FullscreenChatWidget({
                           p: 1.5,
                           bgcolor: 'background.paper',
                           borderRadius:  1,
-                          border: '1px solid #e0e0e0'
+                          border: '1px solid rgba(255,255,255,0.10)'
                   }}>
                         <Typography sx={{ fontWeight: 500}}>{item.issue}</Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap:  2}}>
@@ -3484,7 +3484,7 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Alerts */}
-                <Paper sx={{ p:  3, border: '1px solid #e0e0e0', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                     🚨 Varsler
                   </Typography>
@@ -3499,7 +3499,7 @@ export default function FullscreenChatWidget({
                         ℹ️ Premium tilfredshet økt 12%
                       </Typography>
                     </Box>
-                    <Box sx={{ p: 1, bgcolor: '#ffebee', borderRadius: 1, border: '1px solid #f44336'}}>
+                    <Box sx={{ p: 1, bgcolor: 'rgba(244,67,54,0.10)', borderRadius: 1, border: '1px solid #f44336'}}>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#c62828'}}>
                         🚨 3 brukere venter over 10 min
                       </Typography>
@@ -3609,7 +3609,7 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* FAQ Bot Control */}
-                <Paper sx={{ p:  3, border: '1px solid #e0e0e0', borderRadius:  2,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                     ❓ FAQ-Bot
                   </Typography>
@@ -3658,7 +3658,7 @@ export default function FullscreenChatWidget({
                         justifyContent: 'space-between', 
                         alignItems: 'center',
                         p: 1.5,
-                        bgcolor: '#e3f2fd',
+                        bgcolor: 'rgba(33,150,243,0.08)',
                         borderRadius: 1}}>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
                           {item.question}
@@ -3727,7 +3727,7 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* AI Training */}
-                <Paper sx={{ p:  3, border: '1px solid #e0e0e0', borderRadius:  2,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                     🎓 AI Trening & Forbedring
                   </Typography>
@@ -3864,7 +3864,7 @@ export default function FullscreenChatWidget({
                           border: '1px solid rgba(15, 23, 42, 0.12)',
                           borderRadius:  2,
                           mb:  1,
-                          cursor: 'pointer','&:hover': { bgcolor: '#f5f5f5',}
+                          cursor: 'pointer','&:hover': { bgcolor: 'rgba(255,255,255,0.04)',}
                     }}
                       >
                         <ListItemAvatar>
@@ -3967,7 +3967,7 @@ export default function FullscreenChatWidget({
                   </Paper>
 
                   {/* Chat History & Actions */}
-                  <Paper sx={{ p:  3, mb:  3, border: '1px solid #e0e0e0', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p:  3, mb:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                     <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: '#f44336'}}>
                       💬 Chat Moderering
                     </Typography>
@@ -4000,7 +4000,7 @@ export default function FullscreenChatWidget({
                   </Paper>
 
                   {/* Analytics */}
-                  <Paper sx={{ p:  3, border: '1px solid #e0e0e0', borderRadius:  2,  ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p:  3, border: '1px solid rgba(255,255,255,0.10)', borderRadius:  2,  ...theming.getThemedCardSx() }}>
                     <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: '#4CAF50'}}>
                       📊 Bruker Analyse
                     </Typography>
@@ -4014,11 +4014,11 @@ export default function FullscreenChatWidget({
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>542</Typography>
                         <Typography variant="caption">Premium</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#ffebee', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(244,67,54,0.10)', borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>12</Typography>
                         <Typography variant="caption">Blokkerte</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#e3f2fd', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>1,247</Typography>
                         <Typography variant="caption">Totalt</Typography>
                       </Box>
@@ -4342,7 +4342,7 @@ export default function FullscreenChatWidget({
                   <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600}}>
                     📅 Neste måned prognose
                   </Typography>
-                  <Box sx={{ p: 2, bgcolor: '#ffebee', borderRadius: 1, border: '1px solid #f44336'}}>
+                  <Box sx={{ p: 2, bgcolor: 'rgba(244,67,54,0.10)', borderRadius: 1, border: '1px solid #f44336'}}>
                     <Typography variant="h6" sx={{  fontWeight: 600, color: neutralText, textAlign: 'center' }}>
                       1.2M NOK
                     </Typography>
@@ -4530,7 +4530,7 @@ export default function FullscreenChatWidget({
                       { task: 'Bug: Login problem - iOS app', priority: 'Medium', team: 'Dev',},
                       { task: 'Feature: Bulk export ønskes', priority: 'Lav', team: 'Product',}
                     ].map((item, index) => (
-                        <Paper key={index} sx={{ p: 2, bgcolor: '#e3f2fd', borderRadius: 1, border: '1px solid #2196F3',  ...theming.getThemedCardSx() }}>
+                        <Paper key={index} sx={{ p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 1, border: '1px solid #2196F3',  ...theming.getThemedCardSx() }}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                           <Box>
                             <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
@@ -4680,7 +4680,7 @@ export default function FullscreenChatWidget({
                     </Typography>
                     
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2}}>
-                      <Paper sx={{ p: 2, bgcolor: '#ffebee', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
+                      <Paper sx={{ p: 2, bgcolor: 'rgba(244,67,54,0.10)', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
                         <Typography variant="body2" sx={{ fontWeight: 600, mb:  1}}>
                           Regel 1: Høy prioritet eskalering
                         </Typography>
@@ -4693,7 +4693,7 @@ export default function FullscreenChatWidget({
                         </Box>
                       </Paper>
 
-                      <Paper sx={{ p: 2, bgcolor: '#e3f2fd', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
+                      <Paper sx={{ p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
                         <Typography variant="body2" sx={{ fontWeight: 600, mb:  1}}>
                           Regel 2: Automatisk tilbud
                         </Typography>
@@ -4752,7 +4752,7 @@ export default function FullscreenChatWidget({
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.resolutionRate || '94.2%'}</Typography>
                         <Typography variant="caption">First contact resolution</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#e3f2fd', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.satisfaction || '4.8/5'}</Typography>
                         <Typography variant="caption">Kundetilfredshet</Typography>
                       </Box>
@@ -4772,7 +4772,7 @@ export default function FullscreenChatWidget({
                         ✅ Implementer chat-bots for FAQ kan spare 2.5 timer daglig
                       </Typography>
                     </Paper>
-                    <Paper sx={{ p: 1, bgcolor: '#e3f2fd', borderRadius:  1,  ...theming.getThemedCardSx() }}>
+                    <Paper sx={{ p: 1, bgcolor: 'rgba(33,150,243,0.08)', borderRadius:  1,  ...theming.getThemedCardSx() }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#1565C0'}}>
                         📊 Peak time (14-16) kan trenge 2 ekstra agenter
                       </Typography>
@@ -5130,7 +5130,7 @@ export default function FullscreenChatWidget({
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.securityScore || '99.8%'}</Typography>
                         <Typography variant="caption">Oppetid</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#e3f2fd', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>A+</Typography>
                         <Typography variant="caption">Sikkerhetsgrad</Typography>
                       </Box>
@@ -5347,17 +5347,17 @@ export default function FullscreenChatWidget({
                       gap: 1,
                       color: theming.colors.primary}}
                   >
-                    <Paper sx={{ p: 1, bgcolor: '#E3F2FD', borderRadius: 1, ...theming.getThemedCardSx() }}>
+                    <Paper sx={{ p: 1, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 1, ...theming.getThemedCardSx() }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
                         📸 Fotografi: Norsk bransje-terminologi aktivert
                       </Typography>
                     </Paper>
-                    <Paper sx={{ p: 1, bgcolor: '#E3F2FD', borderRadius: 1, ...theming.getThemedCardSx() }}>
+                    <Paper sx={{ p: 1, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 1, ...theming.getThemedCardSx() }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
                         🎬 Video: Norsk produksjonstermer
                       </Typography>
                     </Paper>
-                    <Paper sx={{ p: 1, bgcolor: '#E3F2FD', borderRadius: 1, ...theming.getThemedCardSx() }}>
+                    <Paper sx={{ p: 1, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 1, ...theming.getThemedCardSx() }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
                         🎵 Musikk: TONO/GRAMO integrasjon
                       </Typography>
@@ -5386,7 +5386,7 @@ export default function FullscreenChatWidget({
 	                          key={index}
 	                          sx={{
 	                            p: 2,
-	                            bgcolor: '#FFF3E0',
+	                            bgcolor: 'rgba(255,152,0,0.12)',
 	                            borderRadius: 1,
 	                            border: '1px solid #ff8c00'}}
 	                        >

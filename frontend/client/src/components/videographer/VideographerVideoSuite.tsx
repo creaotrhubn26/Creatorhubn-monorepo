@@ -447,7 +447,7 @@ export default function VideographerVideoSuite({
 
           <Grid container spacing={3}>
             <Grid size={{ xs: 12 }}>
-              <Paper sx={{ p: 3, mb: 3, bgcolor: '#f8f9fa', borderLeft: '4px solid #9b59b6', ...theming.getThemedCardSx() }}>
+              <Paper sx={{ p: 3, mb: 3, bgcolor: 'rgba(255,255,255,0.04)', borderLeft: '4px solid #9b59b6', ...theming.getThemedCardSx() }}>
                 <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                   <GraphicEq />
                   AI-Drevet Lydanalyse med Avanserte Modeller
@@ -613,7 +613,7 @@ export default function VideographerVideoSuite({
                 <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
                   Lydspektrumanalyse
                 </Typography>
-                <Box sx={{ height: 200, bgcolor: '#f8f9fa', borderRadius: 1, p: 2, position: 'relative' }}>
+                <Box sx={{ height: 200, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, p: 2, position: 'relative' }}>
                   <Typography variant="body2" sx={{ position: 'absolute', top: 8, left: 8 }}>
                     Frekvensrespons (Hz)
                   </Typography>
@@ -765,7 +765,7 @@ export default function VideographerVideoSuite({
               </Grid>
 
               <Grid size={{ xs: 12 }} md={6}>
-                <Paper sx={{ ...theming.getThemedCardSx(), p: 2, bgcolor: '#f8f9fa' }}>
+                <Paper sx={{ ...theming.getThemedCardSx(), p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <Typography variant="h6" sx={{  mb:  1  }}>Behandlingsinfo</Typography>
                   <Typography variant="body2" sx={{ mb:  1 }}>
                     • AI-modell: {audioProcessingType === 'denoising' ? 'RNNoise + DCCRN' :

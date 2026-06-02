@@ -857,7 +857,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
             <PriceAdministration />
 
             {/* Simple plan upgrade CTA */}
-            <Box sx={{ mt: 3, p: 2, border: '1px solid #eee', borderRadius: 1 }}>
+            <Box sx={{ mt: 3, p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 1 }}>
               <Typography variant="subtitle1" sx={{ mb: 1, color: theming.colors.primary }}>
                 Oppgrader abonnement
               </Typography>
@@ -886,7 +886,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       const entOnly = features.filter((f) => reqRank(f.plan || 'basic') === 3);
                       const marketplace = features.filter((f) => f.plan === 'marketplace');
                       return (
-                        <Box key={p.id} sx={{ p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                        <Box key={p.id} sx={{ p: 1, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 1 }}>
                           <Typography variant="subtitle2" sx={{ color: theming.colors.primary }}>
                             {p.displayName || p.name}
                           </Typography>
@@ -974,7 +974,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                         gap: 2,
                       }}
                     >
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
+                      <Box sx={{ p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Registrerte betalinger
                         </Typography>
@@ -982,7 +982,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           {paymentHistorySummary.totalPayments}
                         </Typography>
                       </Box>
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
+                      <Box sx={{ p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Betalt totalt
                         </Typography>
@@ -990,7 +990,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           {formatPaymentAmount(paymentHistorySummary.totalVolume, latestPayment?.currency || currentSubscription?.currency || 'NOK')}
                         </Typography>
                       </Box>
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
+                      <Box sx={{ p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Kvitteringer klare
                         </Typography>
@@ -998,7 +998,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           {paymentHistorySummary.receiptsReady}
                         </Typography>
                       </Box>
-                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
+                      <Box sx={{ p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
                           Fakturaer og grunnlag
                         </Typography>
@@ -1012,7 +1012,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       <Box
                         sx={{
                           p: 2.5,
-                          border: '1px solid #e8edf3',
+                          border: '1px solid rgba(255,255,255,0.10)',
                           borderRadius: 2,
                           bgcolor: alpha(customBranding.color, 0.04),
                         }}
@@ -1053,7 +1053,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                             key={payment.id || `${payment.transactionId || 'payment'}-${idx}`}
                             sx={{
                               p: 2,
-                              border: '1px solid #e8edf3',
+                              border: '1px solid rgba(255,255,255,0.10)',
                               borderRadius: 2,
                               bgcolor: 'rgba(255,255,255,0.04)',
                             }}
@@ -1226,7 +1226,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           key={quote.id}
                           sx={{
                             p: 2,
-                            border: '1px solid #e8edf3',
+                            border: '1px solid rgba(255,255,255,0.10)',
                             borderRadius: 2,
                             bgcolor: 'rgba(255,255,255,0.04)',
                           }}
@@ -1328,7 +1328,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
                 {/* Current Subscription Status */}
                 {currentSubscription && (
-                  <Box sx={{ mb: 3, p: 3, border: '2px solid #eee', borderRadius: 2, bgcolor: '#fafafa' }}>
+                  <Box sx={{ mb: 3, p: 3, border: '2px solid rgba(255,255,255,0.10)', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                       <Box>
                         <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
@@ -1359,7 +1359,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     {currentSubscription.subscriptionSelected && (
                       <>
                         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 2, mb: 2 }}>
-                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid rgba(255,255,255,0.10)' }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600}}>
                               Månedlig beløp
                             </Typography>
@@ -1367,7 +1367,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                               {currentSubscription.amount || 0} {currentSubscription.currency || 'NOK'}
                             </Typography>
                           </Box>
-                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid rgba(255,255,255,0.10)' }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600}}>
                               Neste fakturering
                             </Typography>
@@ -1381,7 +1381,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                                 : 'Ikke tilgjengelig'}
                             </Typography>
                           </Box>
-                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                          <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, border: '1px solid rgba(255,255,255,0.10)' }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600}}>
                               Tilgang til
                             </Typography>
@@ -1458,7 +1458,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
                 {/* Refund Management */}
                 {paymentHistory?.history?.length > 0 && (
-                  <Box sx={{ p: 2, border: '1px solid #eee', borderRadius: 1 }}>
+                  <Box sx={{ p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 1 }}>
                     <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600}}>
                       Refunderingshåndtering
                     </Typography>
@@ -1485,7 +1485,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               p: 1.5,
-                              bgcolor: '#f9f9f9',
+                              bgcolor: 'rgba(255,255,255,0.04)',
                               borderRadius: 1
                             }}
                           >
@@ -1547,7 +1547,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     Betalingsmetoder
                   </Typography>
 
-                  <Box sx={{ p: 2, border: '1px solid #eee', borderRadius: 1 }}>
+                  <Box sx={{ p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 1 }}>
                     <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600}}>
                       Lagrede betalingsmetoder
                     </Typography>
@@ -1565,9 +1565,9 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               p: 1.5,
-                              bgcolor: '#f9f9f9',
+                              bgcolor: 'rgba(255,255,255,0.04)',
                               borderRadius: 1,
-                              border: method.is_default ? `2px solid ${customBranding.color}` : '1px solid #eee'
+                              border: method.is_default ? `2px solid ${customBranding.color}` : '1px solid rgba(255,255,255,0.10)'
                             }}
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1889,7 +1889,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
             {/* Suite Configuration */}
             {isProfessionSuitesEnabled && (
-              <Box sx={{ mt: 3, p: 3, bgcolor: '#f8f9fa', borderRadius: 2 }}>
+              <Box sx={{ mt: 3, p: 3, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
                 <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                   <Settings sx={{ color: customBranding.color }} />
                   Suite Konfigurasjon
@@ -2056,7 +2056,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
               <LightroomInteractiveDemo customBranding={customBranding} />
               
               {/* Quick Installation Guide */}
-              <Box sx={{ p: 3, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2, mt: 3 }}>
+              <Box sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, mt: 3 }}>
                 <Typography variant="h6" sx={{ mb: 2, color: customBranding.color, fontWeight: 600}}>
                   Installasjon (2 min)
                 </Typography>
@@ -2447,7 +2447,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
           </Alert>
 
           {/* What You'll Lose - Dynamic from profession feature matrix */}
-          <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255,186,108,0.08)', borderRadius: 1, border: '1px solid #ffb74d' }}>
+          <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255,152,0,0.12)', borderRadius: 1, border: '1px solid rgba(255,152,0,0.24)' }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Warning color="warning" />
               Hva du mister tilgang til etter {currentSubscription?.accessUntil
@@ -2499,7 +2499,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
           </Box>
 
           {/* What Happens Next */}
-          <Box sx={{ mb: 3, p: 2, bgcolor: '#e3f2fd', borderRadius: 1, border: '1px solid #64b5f6' }}>
+          <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 1, border: '1px solid rgba(33,150,243,0.20)' }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>
               Hva skjer når du kansellerer:
             </Typography>
@@ -2621,7 +2621,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
             <>
               <Alert severity="info" sx={{ mb: 2 }}>
                 Du ber om refundering for:
-                <Box sx={{ mt: 1, p: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                <Box sx={{ mt: 1, p: 1, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600}}>
                     {selectedPaymentForRefund.planName || selectedPaymentForRefund.planId}
                   </Typography>
@@ -2748,9 +2748,9 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       sx={{
                         p: 3,
                         border: '2px solid',
-                        borderColor: plan.popular ? customBranding.color : '#e0e0e0',
+                        borderColor: plan.popular ? customBranding.color : 'rgba(255,255,255,0.10)',
                         borderRadius: 2,
-                        bgcolor: plan.popular ? alpha(customBranding.color, 0.05) : 'white',
+                        bgcolor: plan.popular ? alpha(customBranding.color, 0.05) : 'rgba(255,255,255,0.04)',
                         position: 'relative',
                         transition: 'all 0.3s','&:hover': {
                           borderColor: customBranding.color,
@@ -2838,7 +2838,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
               {/* Show profession-specific features that will be unlocked */}
               {premiumFeatures.length > 0 && (
-                <Box sx={{ mt: 4, p: 3, bgcolor: '#e8f5e9', borderRadius: 2, border: '1px solid #4caf50' }}>
+                <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(76,175,80,0.12)', borderRadius: 2, border: '1px solid rgba(76,175,80,0.24)' }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: '#2e7d32' }}>
                     ✨ Premium funksjoner du får tilgang til:
                   </Typography>

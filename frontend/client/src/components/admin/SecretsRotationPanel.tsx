@@ -179,7 +179,7 @@ export const SecretsRotationPanel: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3, bgcolor: '#f8fafc', minHeight: '100%' }}>
+    <Box sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)', minHeight: '100%' }}>
       <Stack
         direction="row"
         justifyContent="space-between"

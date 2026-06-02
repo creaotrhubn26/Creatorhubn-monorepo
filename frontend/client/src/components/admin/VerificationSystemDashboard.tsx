@@ -93,7 +93,7 @@ export default function VerificationSystemDashboard() {
       {/* Header */}
       <Box sx={{ bgcolor: 'white', boxShadow: 1, mb: 3 }}>
         <Box sx={{ p: 3 }}>
-          <Typography variant="h3" gutterBottom sx={{ color: '#ff8c00', fontWeight: 'bold' }}>
+          <Typography variant="h4" gutterBottom sx={{ color: '#ff8c00', fontWeight: 'bold' }}>
             🔍 Verification System Testing Dashboard
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
@@ -103,28 +103,28 @@ export default function VerificationSystemDashboard() {
           </Typography>
           
           {/* Quick Stats */}
-          <Grid container spacing={2} sx={{ mt: 2 }}>
+          <Grid container spacing={1.5} sx={{ mt: 2 }}>
             <Grid item xs={12} sm={6} md={3}>
               <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#e3f2fd' }}>
-                <Typography variant="h4" color="primary">{demoStats.totalDemos}</Typography>
+                <Typography variant="h5" color="primary">{demoStats.totalDemos}</Typography>
                 <Typography variant="caption">Total Demos Run</Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#e8f5e8' }}>
-                <Typography variant="h4" color="success.main">{demoStats.successfulDemos}</Typography>
+                <Typography variant="h5" color="success.main">{demoStats.successfulDemos}</Typography>
                 <Typography variant="caption">Successful</Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#ffebee' }}>
-                <Typography variant="h4" color="error.main">{demoStats.failedDemos}</Typography>
+                <Typography variant="h5" color="error.main">{demoStats.failedDemos}</Typography>
                 <Typography variant="caption">Failed</Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fff3e0' }}>
-                <Typography variant="h4" color="warning.main">{demoStats.averageTime}s</Typography>
+                <Typography variant="h5" color="warning.main">{demoStats.averageTime}s</Typography>
                 <Typography variant="caption">Avg. Time</Typography>
               </Paper>
             </Grid>

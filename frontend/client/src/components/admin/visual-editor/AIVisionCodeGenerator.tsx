@@ -377,7 +377,7 @@ export default function AIVisionCodeGenerator({
                     sx={{
                       maxHeight: 500,
                       objectFit: 'contain',
-                      bgcolor: '#f5f5f5'}} />
+                      bgcolor: 'rgba(255,255,255,0.04)'}} />
                   <Box sx={{ p: 2, textAlign: 'center' }}>
                     <Button size="small" onClick={handleReset} variant="outlined">
                       Upload Different Image
@@ -392,7 +392,7 @@ export default function AIVisionCodeGenerator({
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    bgcolor: '#f5f5f5',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     border: '2px dashed #ccc',
                     borderRadius: 1,
                     p: 3,
@@ -444,7 +444,7 @@ export default function AIVisionCodeGenerator({
                 </Typography>
 
                 {/* Scene Info */}
-                <Card sx={{ p: 2, bgcolor: '#f9f9f9' }}>
+                <Card sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                     Scene Detection
                   </Typography>
@@ -461,7 +461,7 @@ export default function AIVisionCodeGenerator({
                 </Card>
 
                 {/* Detected Objects */}
-                <Card sx={{ p: 2, bgcolor: '#f9f9f9' }}>
+                <Card sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                     Detected UI Elements
                   </Typography>
@@ -483,7 +483,7 @@ export default function AIVisionCodeGenerator({
                 </Card>
 
                 {/* Composition */}
-                <Card sx={{ p: 2, bgcolor: '#f9f9f9' }}>
+                <Card sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                     Composition Analysis
                   </Typography>
@@ -508,7 +508,7 @@ export default function AIVisionCodeGenerator({
                 </Card>
 
                 {/* Quality */}
-                <Card sx={{ p: 2, bgcolor: '#f9f9f9' }}>
+                <Card sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                     Image Quality
                   </Typography>
@@ -537,7 +537,7 @@ export default function AIVisionCodeGenerator({
 
                 {/* Suggestions */}
                 {analysis.suggestions.length > 0 && (
-                  <Card sx={{ p: 2, bgcolor: '#fff3e0' }}>
+                  <Card sx={{ p: 2, bgcolor: 'rgba(255,152,0,0.12)' }}>
                     <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                       AI Suggestions
                     </Typography>
