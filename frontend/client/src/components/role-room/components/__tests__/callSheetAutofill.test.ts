@@ -26,7 +26,7 @@ const scenes: SceneBreakdown[] = [
 ];
 
 const crew: CrewMember[] = [
-  { id: 'c1', name: 'Kari Foto', role: 'DOP' as CrewMember['role'], department: 'Foto' as CrewMember['department'], contactInfo: { phone: '+47 900' } },
+  { id: 'c1', name: 'Kari Foto', role: 'DOP' as CrewMember['role'], department: 'Foto' as CrewMember['department'], contactInfo: { phone: '+47 900', email: 'kari@film.no' } },
   { id: 'c2', name: 'Per Lyd', role: 'Sound' as CrewMember['role'] }, // ikke i dagens crew
 ];
 
@@ -55,7 +55,7 @@ describe('buildDayCallSheetFields (auto-fyll call-sheet fra produksjonsdag)', ()
 
   it('tar kun dagens crew (c1) med dagens call-time', () => {
     expect(f.crew?.length).toBe(1);
-    expect(f.crew?.[0]).toMatchObject({ name: 'Kari Foto', department: 'Foto', position: 'DOP', callTime: '07:00' });
+    expect(f.crew?.[0]).toMatchObject({ name: 'Kari Foto', department: 'Foto', position: 'DOP', callTime: '07:00', email: 'kari@film.no' });
   });
 
   it('setter dato/call/wrap + værvarsel fra dagen', () => {

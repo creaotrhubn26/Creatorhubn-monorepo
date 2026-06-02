@@ -538,6 +538,7 @@ import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
 import { createCastingManuscriptsService } from "./casting-manuscripts-service";
 import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
+import { setupRoleRoomCallSheetRoutes } from "./role-room-call-sheet-routes";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import { createAISuggestionService } from "./ai-suggestion-service.js";
@@ -31712,6 +31713,7 @@ setupCastingManuscriptsRoutes({
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
 });
+setupRoleRoomCallSheetRoutes({ app, requireUserSession });
 
 // ── AI Suggestion System — substrate-routes for forslag generert av
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
