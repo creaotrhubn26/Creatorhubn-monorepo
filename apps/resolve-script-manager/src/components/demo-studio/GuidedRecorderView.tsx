@@ -18,6 +18,7 @@ import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
+import { DEVICE_FRAMES } from './deviceFrames';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -279,20 +280,15 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <span style={{ fontSize: 12, color: C.inkFaint }}>{fmt(cur?.duration ?? 0)}</span>
               </div>
             )}
-            {/* Trioen: Mac dominerende, iPad + iPhone foran */}
-            <div style={{ position: 'relative', width: '78%', maxWidth: 760 }}>
-              {/* MacBook */}
-              <div style={{ borderRadius: 14, border: `10px solid ${C.deviceFrame}`, background: '#fff', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}>
-                <iframe ref={macFrameRef} title="mac" src={project.url} style={{ width: '100%', height: 360, border: 0, display: 'block' }} />
+            {/* Trioen med EKTE rammer: Mac dominerende, iPad + iPhone foran.
+                Live <iframe> plasseres i skjerm-hullet, PNG-rammen legges over. */}
+            <div style={{ position: 'relative', width: '70%', maxWidth: 720 }}>
+              <FramedDevice variant="macbook" url={project.url} width="100%" iframeRef={macFrameRef} />
+              <div style={{ position: 'absolute', right: -52, top: '24%', width: '34%' }}>
+                <FramedDevice variant="ipad" url={project.url} width="100%" shadow="0 18px 40px rgba(0,0,0,0.22)" />
               </div>
-              <div style={{ height: 10, background: C.deviceFrame, borderRadius: '0 0 12px 12px', margin: '0 auto', width: '60%' }} />
-              {/* iPad foran-høyre */}
-              <div style={{ position: 'absolute', right: -30, top: 70, width: 220, borderRadius: 14, border: `10px solid ${C.deviceFrame}`, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 40px rgba(0,0,0,0.22)' }}>
-                <iframe title="ipad" src={project.url} style={{ width: '100%', height: 260, border: 0, display: 'block' }} />
-              </div>
-              {/* iPhone foran-høyre ytterst */}
-              <div style={{ position: 'absolute', right: -60, top: 130, width: 120, borderRadius: 20, border: `8px solid ${C.deviceFrame}`, background: '#fff', overflow: 'hidden', boxShadow: '0 14px 30px rgba(0,0,0,0.25)' }}>
-                <iframe title="iphone" src={project.url} style={{ width: '100%', height: 230, border: 0, display: 'block' }} />
+              <div style={{ position: 'absolute', right: -86, top: '40%', width: '17%' }}>
+                <FramedDevice variant="iphone" url={project.url} width="100%" shadow="0 14px 32px rgba(0,0,0,0.28)" />
               </div>
             </div>
           </div>
@@ -419,6 +415,31 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   function setSceneDeviceLocal(d: DemoDevice) {
     if (cur) updateScene(cur.id, { device: d, viewport: d === 'macbook' ? 'desktop' : d === 'ipad' ? 'tablet' : 'mobile' });
   }
+}
+
+/**
+ * FramedDevice — live <iframe> plassert i skjerm-hullet av en ekte device-
+ * ramme-PNG (samme rammer som eksporten bruker). Bredden styres av `width`;
+ * høyden følger frame-PNG-ens forhold. Skjerm-rektangelet og hjørne-radius
+ * kommer fra DEVICE_FRAMES (relativt 0..1).
+ */
+function FramedDevice({ variant, url, width, shadow, iframeRef }: {
+  variant: 'iphone' | 'ipad' | 'macbook'; url: string; width: string | number;
+  shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
+}) {
+  const f = DEVICE_FRAMES[variant];
+  const s = f.screen;
+  return (
+    <div style={{ position: 'relative', width, aspectRatio: String(f.aspect), filter: shadow ? `drop-shadow(${shadow})` : 'drop-shadow(0 22px 50px rgba(0,0,0,0.20))' }}>
+      {/* Skjerm-bakgrunn (svart bak iframe) */}
+      <div style={{ position: 'absolute', left: `${s.x * 100}%`, top: `${s.y * 100}%`, width: `${s.w * 100}%`, height: `${s.h * 100}%`, background: '#000', borderRadius: `${f.radius * 100}%`, overflow: 'hidden' }}>
+        <iframe ref={iframeRef} title={variant} src={url}
+          style={{ width: '100%', height: '100%', border: 0, display: 'block' }} />
+      </div>
+      {/* Ekte ramme over (transparent surround) */}
+      <img src={f.src} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
+    </div>
+  );
 }
 
 function SourceItem({ label, sub, onClick, active }: { label: string; sub: string; onClick: () => void; active: boolean }) {
