@@ -15,6 +15,8 @@ import {
   ArrowForward as ArrowForwardIcon,
   FactCheck as FactCheckIcon,
   Sync as SyncIcon,
+  Lightbulb as ContentLogicIcon,
+  VpnKey as AccessIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type { CastingProject, CrewMember } from '../models/casting';
@@ -53,6 +55,8 @@ import { onProjectAgreementEvent } from '../services/projectAgreementEvents';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { SimpleBudgetEstimator, computeSimpleBudgetEstimate } from './SimpleBudgetEstimator';
 import { NextClientPointsButton } from './NextClientPointsButton';
+import { NextPointsButton } from './NextPointsButton';
+import { deriveContentLogicPoints, deriveAccessPoints } from '../utils/producerNextPoints';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -2233,6 +2237,24 @@ export default function ProjectEconomyHub({
                   clientInputBeforeHandoff={deliveryManifest.pendingClientMoments.length}
                   onGoToReviews={onOpenReviews ? () => onOpenReviews() : undefined}
                   compact
+                />
+                <NextPointsButton
+                  buttonLabel="Content Logic"
+                  dialogTitle="Content Logic"
+                  icon={<ContentLogicIcon sx={{ fontSize: 16, color: '#a78bfa' }} />}
+                  compact
+                  {...deriveContentLogicPoints({
+                    ...deliveryManifest.contentLogicSummary,
+                    successSignals: deliveryManifest.successSignals,
+                  })}
+                />
+                <NextPointsButton
+                  buttonLabel="Kontotilgang"
+                  compactLabel="Tilgang"
+                  dialogTitle="Kontotilgang"
+                  icon={<AccessIcon sx={{ fontSize: 16, color: '#a78bfa' }} />}
+                  compact
+                  {...deriveAccessPoints(deliveryManifest.accountAccessSummary)}
                 />
               </Stack>
               <Typography
