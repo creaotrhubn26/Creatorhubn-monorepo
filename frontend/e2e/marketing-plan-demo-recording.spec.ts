@@ -51,28 +51,64 @@ test('demo-opptak: content-producer markedsplan-flyt', async ({ page }) => {
   const leveringStep = page.getByRole('button', { name: /Levering/ }).first();
   if (await leveringStep.isVisible().catch(() => false)) {
     await leveringStep.click();
-    await pause(page, 1500);
-    await shot(page, '04-levering-fullforing-bar');
+    // Vent eksplisitt på fullføring-baren så den fanges pålitelig.
     const markComplete = page.getByRole('button', { name: /Marker levering som fullført/i }).first();
+    await markComplete.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined);
+    await pause(page, 1200);
+    await shot(page, '04-levering-fullforing-bar');
     if (await markComplete.isVisible().catch(() => false)) {
       await markComplete.click();
-      await pause(page, 1200);
+      await page.getByRole('button', { name: /^Angre$/ }).first()
+        .waitFor({ state: 'visible', timeout: 6_000 }).catch(() => undefined);
+      await pause(page, 1000);
       await shot(page, '05-levering-markert-fullfort');
     }
   }
 
-  // Scene 3 — Markedsplan-fane (best-effort; nav-UI varierer)
-  for (const label of ['Markedsføring', 'Markedsplan']) {
-    const tab = page.getByText(label, { exact: false }).first();
-    if (await tab.isVisible().catch(() => false)) {
-      await tab.click().catch(() => undefined);
+  // Scene 3 — naviger inn i Prosjektrom (der workspace-nav-en med Markedsføring-
+  // seksjonen + Markedsplan-siden bor) og åpne Markedsplan-fanen.
+  const prosjektrom = page.getByText('Prosjektrom', { exact: true }).first();
+  if (await prosjektrom.isVisible().catch(() => false)) {
+    await prosjektrom.click().catch(() => undefined);
+    await pause(page, 1800);
+    await shot(page, '06-prosjektrom');
+  }
+
+  // Logg hvilke nav-etiketter som faktisk er synlige (hjelper feilsøking).
+  const navLabels = await page.evaluate(() => {
+    const texts = new Set<string>();
+    document.querySelectorAll('button, [role="tab"], a').forEach((el) => {
+      const t = (el.textContent ?? '').trim();
+      if (t && t.length < 30) texts.add(t);
+    });
+    return Array.from(texts);
+  });
+  console.log('NAV-LABELS:', JSON.stringify(navLabels));
+
+  // Markedsføring-seksjonen kan måtte utvides først.
+  const marketingSection = page.getByText('Markedsføring', { exact: false }).first();
+  if (await marketingSection.isVisible().catch(() => false)) {
+    await marketingSection.click().catch(() => undefined);
+    await pause(page, 800);
+    await shot(page, '07-markedsforing-seksjon');
+  }
+
+  const markedsplanTab = page.getByText('Markedsplan', { exact: true }).first();
+  if (await markedsplanTab.isVisible().catch(() => false)) {
+    await markedsplanTab.click().catch(() => undefined);
+    await pause(page, 1800);
+    await shot(page, '08-markedsplan-fane');
+
+    // Tom-tilstand → trigg generering for å vise fremdrifts-komponenten.
+    const generate = page.getByRole('button', { name: /Generer (en )?plan|Generer 30/i }).first();
+    if (await generate.isVisible().catch(() => false)) {
+      await generate.click().catch(() => undefined);
       await pause(page, 1500);
-      await shot(page, `06-markedsplan-${label.toLowerCase()}`);
-      break;
+      await shot(page, '09-generering-fremdrift');
     }
   }
 
   // Sluttbilde
   await pause(page, 800);
-  await shot(page, '07-slutt');
+  await shot(page, '10-slutt');
 });
