@@ -572,6 +572,118 @@ const COMMANDS = {
 
     return { template_path, output_path, format, applied, skipped };
   },
+
+  /*
+   * Batch-render: kjører `template.render` N ganger fra samme template,
+   * én per item i `items`. Hver item er `{data, output_path, format?, quality?}`.
+   * `default_format`/`default_quality` brukes når item ikke spesifiserer.
+   *
+   * Hver render åpner templatet på nytt og lukker uten å lagre — det
+   * garanterer at felter som ikke er med i item N ikke arver verdier fra
+   * item N-1. Trade-off: tregere enn å holde dokumentet åpent, men
+   * trivialt korrekt.
+   *
+   * Resultat: { template_path, items: [{output_path, applied[], skipped[]}], failed[] }
+   */
+  "batch.run": async ({ template_path, items, default_format, default_quality }) => {
+    assertString(template_path, "template_path");
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('"items" må være en non-empty array');
+    }
+
+    const templateEntry = await fs.getEntryWithUrl("file:" + encodeURI(template_path));
+    const results = [];
+    const failed = [];
+
+    await core.executeAsModal(async () => {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const itemFormat = item.format || default_format;
+        const itemQuality = item.quality ?? default_quality ?? 10;
+
+        try {
+          if (!item.output_path) throw new Error(`item[${i}].output_path mangler`);
+          if (!itemFormat) throw new Error(`item[${i}].format mangler (og ingen default_format)`);
+          if (!item.data || typeof item.data !== "object") {
+            throw new Error(`item[${i}].data må være et objekt`);
+          }
+
+          const outDir = item.output_path.substring(0, Math.max(item.output_path.lastIndexOf("/"), 0));
+          const outName = item.output_path.substring(item.output_path.lastIndexOf("/") + 1);
+          const outFolder = await fs.getEntryWithUrl("file:" + encodeURI(outDir));
+
+          const doc = await app.open(templateEntry);
+          const applied = [];
+          const skipped = [];
+          try {
+            const fields = collectTemplateFields(doc);
+            const fieldsByKey = new Map(fields.map((f) => [f.key, f]));
+            for (const [key, value] of Object.entries(item.data)) {
+              const field = fieldsByKey.get(key);
+              if (!field) {
+                skipped.push({ key, reason: "no matching layer" });
+                continue;
+              }
+              const layer = findLayerByName(doc, field.layer_name);
+              if (!layer) {
+                skipped.push({ key, reason: "layer disappeared" });
+                continue;
+              }
+              if (field.type === "text") {
+                if (typeof value !== "string") {
+                  skipped.push({ key, reason: "text expects string" });
+                  continue;
+                }
+                layer.textItem.contents = value;
+                applied.push({ key, type: "text" });
+              } else if (field.type === "image") {
+                if (typeof value !== "string" || !value) {
+                  skipped.push({ key, reason: "image expects file path" });
+                  continue;
+                }
+                const fileEntry = await fs.getEntryWithUrl("file:" + encodeURI(value));
+                const token = await fs.createSessionToken(fileEntry);
+                doc.activeLayers = [layer];
+                await action.batchPlay(
+                  [
+                    {
+                      _obj: "placedLayerReplaceContents",
+                      null: { _path: token, _kind: "local" },
+                      _options: { dialogOptions: "dontDisplay" },
+                    },
+                  ],
+                  {},
+                );
+                applied.push({ key, type: "image" });
+              }
+            }
+
+            const outFile = await outFolder.createFile(outName, { overwrite: true });
+            const fmt = itemFormat.toLowerCase();
+            if (fmt === "jpg" || fmt === "jpeg") {
+              await doc.saveAs.jpg(outFile, { quality: itemQuality });
+            } else if (fmt === "png") {
+              await doc.saveAs.png(outFile, { compression: 6 });
+            } else if (fmt === "psd") {
+              await doc.saveAs.psd(outFile, { maximizeCompatibility: true });
+            } else if (fmt === "tiff" || fmt === "tif") {
+              await doc.saveAs.tif(outFile);
+            } else {
+              throw new Error(`Ukjent eksportformat: ${itemFormat}`);
+            }
+
+            results.push({ index: i, output_path: item.output_path, format: fmt, applied, skipped });
+          } finally {
+            await doc.closeWithoutSaving();
+          }
+        } catch (err) {
+          failed.push({ index: i, output_path: item.output_path || null, error: String(err && err.message ? err.message : err) });
+        }
+      }
+    }, { commandName: "Post Agent: batch render" });
+
+    return { template_path, total: items.length, succeeded: results.length, failed_count: failed.length, items: results, failed };
+  },
 };
 
 // ---------------------------------------------------------------------------

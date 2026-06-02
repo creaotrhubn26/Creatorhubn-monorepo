@@ -110,6 +110,28 @@ export interface TemplateRenderResult {
   skipped: Array<{ key: string; reason: string }>;
 }
 
+export interface BatchRenderItem {
+  data: Record<string, string>;
+  output_path: string;
+  format?: ExportFormat;
+  quality?: number;
+}
+
+export interface BatchRenderResult {
+  template_path: string;
+  total: number;
+  succeeded: number;
+  failed_count: number;
+  items: Array<{
+    index: number;
+    output_path: string;
+    format: ExportFormat;
+    applied: Array<{ key: string; type: "text" | "image" }>;
+    skipped: Array<{ key: string; reason: string }>;
+  }>;
+  failed: Array<{ index: number; output_path: string | null; error: string }>;
+}
+
 async function send<T>(command: string, params?: unknown): Promise<T> {
   return invoke<T>("photoshop_send_command", { command, params: params ?? null });
 }
@@ -152,6 +174,13 @@ export const photoshop = {
     format: ExportFormat;
     quality?: number;
   }) => send<TemplateRenderResult>("template.render", params),
+
+  batchRender: (params: {
+    template_path: string;
+    items: BatchRenderItem[];
+    default_format?: ExportFormat;
+    default_quality?: number;
+  }) => send<BatchRenderResult>("batch.run", params),
 
   autoRenameTemplate: (params: {
     template_path: string;

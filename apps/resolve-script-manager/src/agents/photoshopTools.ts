@@ -156,6 +156,42 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
       required: ["template_path", "data", "output_path", "format"],
     },
   },
+  {
+    name: "photoshop_batch_render",
+    description:
+      "Render samme template N ganger fra én items-liste. Hver item får sin egen data-map og output_path. Brukes for å lage variants: 10 sosial-poster med ulike navn, en serie produktkort, etc. Hver iteration åpner template på nytt → ingen verdi-arv mellom items.",
+    input_schema: {
+      type: "object",
+      properties: {
+        template_path: { type: "string", description: "Absolutt sti til template-PSD" },
+        items: {
+          type: "array",
+          description: "Array av render-jobber. Hver jobb er {data, output_path, format?, quality?}",
+          items: {
+            type: "object",
+            properties: {
+              data: {
+                type: "object",
+                description: "Map av {key: value} for denne varianten — samme nøkler som template.scan gir",
+                additionalProperties: { type: "string" },
+              },
+              output_path: { type: "string", description: "Absolutt sti der rendret fil skal lagres" },
+              format: { type: "string", enum: ["jpg", "png", "psd", "tiff"], description: "Overstyrer default_format" },
+              quality: { type: "number", description: "Overstyrer default_quality" },
+            },
+            required: ["data", "output_path"],
+          },
+        },
+        default_format: {
+          type: "string",
+          enum: ["jpg", "png", "psd", "tiff"],
+          description: "Format brukt hvis item ikke spesifiserer eget",
+        },
+        default_quality: { type: "number", description: "JPG-kvalitet 1-12, default 10" },
+      },
+      required: ["template_path", "items"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -227,6 +263,30 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         format: requireString(input, "format") as ExportFormat,
         quality: input.quality as number | undefined,
       });
+    case "photoshop_batch_render": {
+      const itemsRaw = input.items;
+      if (!Array.isArray(itemsRaw) || itemsRaw.length === 0) {
+        throw new Error('"items" må være en non-empty array');
+      }
+      const items = itemsRaw.map((raw, i) => {
+        if (!raw || typeof raw !== "object") {
+          throw new Error(`items[${i}] må være et objekt`);
+        }
+        const item = raw as Record<string, unknown>;
+        return {
+          data: (item.data ?? {}) as Record<string, string>,
+          output_path: requireString(item, "output_path"),
+          format: item.format as ExportFormat | undefined,
+          quality: item.quality as number | undefined,
+        };
+      });
+      return photoshop.batchRender({
+        template_path: requireString(input, "template_path"),
+        items,
+        default_format: input.default_format as ExportFormat | undefined,
+        default_quality: input.default_quality as number | undefined,
+      });
+    }
     default:
       throw new Error(`Ukjent photoshop-tool: ${name}`);
   }
