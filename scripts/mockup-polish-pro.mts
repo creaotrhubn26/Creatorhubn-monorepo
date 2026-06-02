@@ -75,14 +75,17 @@ async function ffmpeg(args: string[]) { return exec(ffmpegBin, args); }
 
 async function bundle(): Promise<string> {
   const entry = `
-    import { renderMockupFrame } from './renderMockupFrame';
+    import { renderMockupFrame, renderRealisticFrame } from './renderMockupFrame';
     import { getDeviceGeometry } from './deviceGeometry';
+    import { DEVICE_FRAMES, loadFrameImage } from './deviceFrames';
     import { buildZoomTrack, zoomAt, zoomToCrop } from './autoZoom';
-    (window as any).MV = { renderMockupFrame, getDeviceGeometry, buildZoomTrack, zoomAt, zoomToCrop };
+    (window as any).MV = { renderMockupFrame, renderRealisticFrame, getDeviceGeometry, DEVICE_FRAMES, loadFrameImage, buildZoomTrack, zoomAt, zoomToCrop };
   `;
   const r = await esbuild.build({
     stdin: { contents: entry, resolveDir: MODULE_DIR, loader: 'ts' },
     bundle: true, format: 'iife', platform: 'browser', target: 'es2020', write: false,
+    // PNG-rammene bakes inn som data-URL-er så de er tilgjengelige i Chromium.
+    loader: { '.png': 'dataurl' },
   });
   return r.outputFiles[0].text;
 }
@@ -193,11 +196,12 @@ async function main() {
   const result = await page.evaluate(async (urls) => {
     const MV = (window as any).MV;
     const J = (window as any).__JOB;
-    const geom = MV.getDeviceGeometry(J.variant, J.pixelRatio);
-    const hasBg = J.background.kind !== 'none';
-    const pad = J.padding;
-    const width = Math.round(geom.width / (1 - pad * 2));
-    const height = Math.round(geom.height / (1 - pad * 2));
+    // Ekte PNG-ramme: canvas får frame-PNG-ens forhold, skalert til ~pixelRatio.
+    const spec = MV.DEVICE_FRAMES[J.variant];
+    const frameImg = await MV.loadFrameImage(J.variant);
+    const scale = (J.pixelRatio || 5) / 2.5; // ~ samme størrelsesorden som før
+    const width = Math.round(spec.frameW * scale);
+    const height = Math.round(spec.frameH * scale);
 
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
@@ -258,14 +262,14 @@ async function main() {
     let current = vids[0], curIdx = 0, raf = 0;
     const draw = () => {
       const opts: any = {
-        variant: J.variant, fit: J.fit, background: J.background, padding: J.padding,
-        shadow: J.shadow, sourceInset: J.statusCrop > 0 ? { top: J.statusCrop } : undefined,
+        fit: J.fit,
+        sourceInset: J.statusCrop > 0 ? { top: J.statusCrop } : undefined,
       };
       if (J.autoZoom && zoomTracks[curIdx]) {
-        const z = MV.zoomAt(zoomTracks[curIdx], current.currentTime);
-        opts.zoom = z; // renderMockupFrame leser zoom hvis satt
+        opts.zoom = MV.zoomAt(zoomTracks[curIdx], current.currentTime);
       }
-      MV.renderMockupFrame(ctx, current, width, height, opts);
+      // Ekte fotorealistisk ramme + video i skjerm-hullet.
+      MV.renderRealisticFrame(ctx, current, frameImg, J.variant, width, height, opts);
       raf = requestAnimationFrame(draw);
     };
     const playClip = (vid: HTMLVideoElement, idx: number) => new Promise<void>((resolve) => {
