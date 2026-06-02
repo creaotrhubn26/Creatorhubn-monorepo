@@ -13,6 +13,7 @@ mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
+mod prefs;
 
 use std::sync::Arc;
 
@@ -99,6 +100,19 @@ fn list_detected_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedM
 #[tauri::command]
 fn rescan_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
     mount_watcher::rescan(&state)
+}
+
+// ── Brukerpreferanser (prefs.json) ──────────────────────────────────
+#[tauri::command]
+fn get_prefs() -> Result<prefs::Prefs, String> {
+    prefs::load()
+}
+
+#[tauri::command]
+fn save_default_dest_ids(dest_ids: Vec<String>) -> Result<(), String> {
+    let mut p = prefs::load().unwrap_or_default();
+    p.default_dest_ids = dest_ids;
+    prefs::save(&p)
 }
 
 #[tauri::command]
@@ -308,6 +322,8 @@ pub fn run() {
             clear_helper_config,
             fetch_project_info,
             list_detected_mounts,
+            get_prefs,
+            save_default_dest_ids,
             rescan_mounts,
             start_copy_session,
             cancel_copy_session,

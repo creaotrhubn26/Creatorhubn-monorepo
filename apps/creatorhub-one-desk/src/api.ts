@@ -100,6 +100,20 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+// ── Brukerpreferanser ─────────────────────────────────────────────
+export interface Prefs {
+  auto_eject: boolean;
+  default_dest_ids: string[];
+}
+
+export async function getPrefs(): Promise<Prefs> {
+  return invoke<Prefs>("get_prefs");
+}
+
+export async function saveDefaultDestIds(destIds: string[]): Promise<void> {
+  return invoke<void>("save_default_dest_ids", { destIds });
+}
+
 export interface DestinationSpec {
   id: string;
   label: string;

@@ -25,6 +25,8 @@ import {
   DestinationSpec,
   DetectedMount,
   DitDestination,
+  getPrefs,
+  saveDefaultDestIds,
   startCopySession,
 } from "../api";
 
@@ -55,17 +57,63 @@ export default function BackupDialog({
   const [localDests, setLocalDests] = useState<PendingLocalDest[]>([]);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [defaultDestIds, setDefaultDestIds] = useState<string[]>([]);
+  const [savedDefaults, setSavedDefaults] = useState(false);
 
-  // Pre-velg alle planlagte destinasjoner med en path satt (in-place "original"
-  // destinasjoner uten path er ikke relevante for Desk)
+  // Pre-velg destinasjoner basert på prefs hvis satt — ellers fall til
+  // auto-select-all-with-path (samme som før).
   useEffect(() => {
-    if (isOpen) {
-      const initial = new Set(
-        plannedDestinations.filter((d) => d.path && d.destination_type !== "original").map((d) => d.id),
-      );
-      setCheckedPlanned(initial);
-    }
+    if (!isOpen) return;
+    void getPrefs()
+      .then((p) => {
+        setDefaultDestIds(p.default_dest_ids ?? []);
+        const eligibleIds = new Set(
+          plannedDestinations
+            .filter((d) => d.path && d.destination_type !== "original")
+            .map((d) => d.id),
+        );
+        const fromPrefs = (p.default_dest_ids ?? []).filter((id) =>
+          eligibleIds.has(id),
+        );
+        if (fromPrefs.length > 0) {
+          setCheckedPlanned(new Set(fromPrefs));
+        } else {
+          setCheckedPlanned(eligibleIds);
+        }
+      })
+      .catch(() => {
+        // Hvis prefs-load feiler, fall til klassisk auto-select-all-with-path
+        const initial = new Set(
+          plannedDestinations
+            .filter((d) => d.path && d.destination_type !== "original")
+            .map((d) => d.id),
+        );
+        setCheckedPlanned(initial);
+      });
+    setSavedDefaults(false);
   }, [isOpen, plannedDestinations]);
+
+  // Spillker prefs-savings når brukerens utvalg er ulikt det som er
+  // lagret. Brukes til å vise "Husk dette valget"-knappen kun når
+  // det faktisk er et nytt valg.
+  const currentDifferFromSaved = useMemo(() => {
+    const current = Array.from(checkedPlanned).sort();
+    const saved = [...defaultDestIds].sort();
+    if (current.length !== saved.length) return true;
+    return current.some((id, i) => id !== saved[i]);
+  }, [checkedPlanned, defaultDestIds]);
+
+  const handleSaveAsDefault = async () => {
+    try {
+      const ids = Array.from(checkedPlanned);
+      await saveDefaultDestIds(ids);
+      setDefaultDestIds(ids);
+      setSavedDefaults(true);
+      setTimeout(() => setSavedDefaults(false), 2500);
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  };
 
   const reset = () => {
     setLocalDests([]);
@@ -173,9 +221,32 @@ export default function BackupDialog({
 
           {plannedWithPath.length > 0 && (
             <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                Planlagte destinasjoner (fra Admin Room)
-              </Typography>
+              <Stack
+                direction="row"
+                sx={{ alignItems: "center", justifyContent: "space-between", mb: 1 }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Planlagte destinasjoner (fra Admin Room)
+                </Typography>
+                {/* Vis "Husk dette valget"-knapp kun når current utvalg
+                    skiller seg fra det som er lagret som default. */}
+                {currentDifferFromSaved && (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleSaveAsDefault}
+                    disabled={starting}
+                    sx={{ fontSize: 11 }}
+                  >
+                    {savedDefaults ? "✓ Lagret" : "Husk dette valget"}
+                  </Button>
+                )}
+              </Stack>
+              {defaultDestIds.length > 0 && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                  Standard-utvalg ({defaultDestIds.length}) er forhåndsvalgt.
+                </Typography>
+              )}
               <Stack spacing={0.5}>
                 {plannedWithPath.map((d) => (
                   <FormControlLabel
