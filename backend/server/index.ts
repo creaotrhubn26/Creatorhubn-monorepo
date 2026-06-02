@@ -468,6 +468,7 @@ import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
 import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-routes";
 import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
+import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
@@ -25848,6 +25849,12 @@ setupRoleRoomAgencyProposalsRoutes({
 // Agency ↔ Production team partnership-system. Per-prosjekt scope.
 // Migrasjon 222 (agency_production_partnerships + invitations + audit).
 setupRoleRoomPartnershipsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Candidate-status PATCH med partnership-callback til byrå (Phase 9.6).
+setupRoleRoomCandidateStatusRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
