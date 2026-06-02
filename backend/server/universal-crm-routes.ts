@@ -1,5 +1,6 @@
 import express from "express";
 import type { Pool } from "pg";
+import { sendSms, smsConfigured } from "./crm-sms";
 
 export interface UniversalCrmRoutesDeps {
   app: express.Application;
@@ -101,6 +102,11 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS email_normalized text;
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS referred_by_customer_id uuid;
       CREATE INDEX IF NOT EXISTS crm_customers_email_norm_idx ON crm_customers(owner_user_id, email_normalized);
+      -- #15 soft-delete + #51 inbound dedup.
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+      ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS source_message_id text;
+      ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS channel text;
+      CREATE INDEX IF NOT EXISTS crm_activities_srcmsg_idx ON crm_activities(owner_user_id, source_message_id);
       -- Wave 3c: GDPR consent metadata (#34) + reviews/NPS (#39).
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS consent_status text;
       ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS consent_at timestamptz;
@@ -136,6 +142,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         `SELECT id, owner_user_id, name FROM crm_customers
          WHERE next_rebook_due_at IS NOT NULL
            AND next_rebook_due_at <= now()
+           AND deleted_at IS NULL
            AND status <> 'archived'
            AND (last_reminded_at IS NULL OR last_reminded_at < now() - interval '30 days')`,
       );
@@ -181,8 +188,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         offset = "0",
       } = req.query as Record<string, string>;
 
-      // Wave 0 — tenant isolation: only the signed-in owner's customers.
-      let where = "WHERE owner_user_id = $1";
+      // Wave 0 — tenant isolation: only the signed-in owner's (non-deleted) customers.
+      let where = "WHERE owner_user_id = $1 AND deleted_at IS NULL";
       const params: any[] = [session.userId];
       let idx = 2;
 
@@ -246,7 +253,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     if (!session) return;
     try {
       const result = await pool.query(
-        "SELECT c.*, p.name as project_name, p.status as project_status FROM crm_customers c LEFT JOIN legacy.projects p ON c.project_id = p.id WHERE c.id = $1 AND c.owner_user_id = $2",
+        "SELECT c.*, p.name as project_name, p.status as project_status FROM crm_customers c LEFT JOIN legacy.projects p ON c.project_id = p.id WHERE c.id = $1 AND c.owner_user_id = $2 AND c.deleted_at IS NULL",
         [req.params.id, session.userId],
       );
       if (result.rows.length === 0) {
@@ -471,14 +478,29 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     const session = requireUserSession(req, res);
     if (!session) return;
     try {
+      // #15 — soft-delete: hide the record but keep history (and any FK refs).
+      // Use ?hard=true for an irreversible GDPR erasure (cascades children).
+      const hard = String((req.query as any).hard) === "true";
+      if (hard) {
+        const ids = await pool.query(
+          "SELECT id FROM crm_customers WHERE id = $1 AND owner_user_id = $2",
+          [req.params.id, session.userId],
+        );
+        if (ids.rows.length === 0) return res.status(404).json({ error: "Customer not found" });
+        for (const t of ["crm_reviews", "crm_deals", "crm_invoices", "crm_meetings", "crm_activities", "crm_tasks"]) {
+          await pool.query(`DELETE FROM ${t} WHERE customer_id = $1 AND owner_user_id = $2`, [req.params.id, session.userId]).catch(() => {});
+        }
+        await pool.query("DELETE FROM crm_customers WHERE id = $1 AND owner_user_id = $2", [req.params.id, session.userId]);
+        return res.json({ success: true, id: req.params.id, erased: true });
+      }
       const result = await pool.query(
-        "DELETE FROM crm_customers WHERE id = $1 AND owner_user_id = $2 RETURNING id",
+        "UPDATE crm_customers SET deleted_at = now(), updated_at = now() WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL RETURNING id",
         [req.params.id, session.userId],
       );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Customer not found" });
       }
-      return res.json({ success: true, id: req.params.id });
+      return res.json({ success: true, id: req.params.id, softDeleted: true });
     } catch (error) {
       console.error("CRM customer delete error:", error);
       return res.status(500).json({ error: "Failed to delete customer" });
@@ -498,7 +520,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       const id = req.params.id;
       const owner = session.userId;
       const cust = await pool.query(
-        `SELECT * FROM crm_customers WHERE id = $1 AND owner_user_id = $2`,
+        `SELECT * FROM crm_customers WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL`,
         [id, owner],
       );
       if (cust.rows.length === 0) {
@@ -567,22 +589,22 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       const custParams = profession ? [owner, profession] : [owner];
 
       const total = await pool.query(
-        `SELECT count(*) as total FROM crm_customers WHERE owner_user_id = $1${profFilter}`,
+        `SELECT count(*) as total FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL${profFilter}`,
         custParams,
       );
 
       const byStatus = await pool.query(
-        `SELECT status, count(*) as count FROM crm_customers WHERE owner_user_id = $1${profFilter} GROUP BY status`,
+        `SELECT status, count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL${profFilter} GROUP BY status`,
         custParams,
       );
 
       const recentlyAdded = await pool.query(
-        `SELECT count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND created_at > now() - interval '30 days'${profFilter}`,
+        `SELECT count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL AND created_at > now() - interval '30 days'${profFilter}`,
         custParams,
       );
 
       const byProfession = await pool.query(
-        `SELECT profession, count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND profession IS NOT NULL${profFilter} GROUP BY profession ORDER BY count DESC`,
+        `SELECT profession, count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL AND profession IS NOT NULL${profFilter} GROUP BY profession ORDER BY count DESC`,
         custParams,
       );
 
@@ -1484,7 +1506,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         pool.query(
           `SELECT id, name, email, last_delivered_at, next_rebook_due_at
            FROM crm_customers
-           WHERE owner_user_id = $1 AND status <> 'archived'
+           WHERE owner_user_id = $1 AND deleted_at IS NULL AND status <> 'archived'
              AND next_rebook_due_at IS NOT NULL AND next_rebook_due_at <= now()
            ORDER BY next_rebook_due_at ASC LIMIT 50`,
           [owner],
@@ -1492,7 +1514,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         pool.query(
           `SELECT id, name, email, last_contact
            FROM crm_customers
-           WHERE owner_user_id = $1 AND status IN ('lead','prospect','active')
+           WHERE owner_user_id = $1 AND deleted_at IS NULL AND status IN ('lead','prospect','active')
              AND (last_contact IS NULL OR last_contact < now() - interval '45 days')
            ORDER BY last_contact ASC NULLS FIRST LIMIT 50`,
           [owner],
@@ -1500,7 +1522,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         pool.query(
           `SELECT id, name, email, last_delivered_at
            FROM crm_customers
-           WHERE owner_user_id = $1 AND lifecycle_stage = 'delivered'
+           WHERE owner_user_id = $1 AND deleted_at IS NULL AND lifecycle_stage = 'delivered'
              AND last_delivered_at IS NOT NULL AND last_delivered_at > now() - interval '60 days'
            ORDER BY last_delivered_at DESC LIMIT 50`,
           [owner],
@@ -1561,7 +1583,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
                   count(d.id) FILTER (WHERE d.stage = 'closed_won')::int AS won_deals,
                   COALESCE(sum(d.value) FILTER (WHERE d.stage = 'closed_won'),0) AS won_value
            FROM crm_customers c LEFT JOIN crm_deals d ON d.customer_id = c.id AND d.owner_user_id = $1
-           WHERE c.owner_user_id = $1 GROUP BY 1 ORDER BY won_value DESC`,
+           WHERE c.owner_user_id = $1 AND c.deleted_at IS NULL GROUP BY 1 ORDER BY won_value DESC`,
           [owner],
         ),
         // Top customers by lifetime value: won deals + paid invoices (#40/#43)
@@ -1570,7 +1592,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
                   COALESCE((SELECT sum(value) FROM crm_deals d WHERE d.customer_id = c.id AND d.stage='closed_won'),0)
                   + COALESCE((SELECT sum(paid_amount) FROM crm_invoices i WHERE i.customer_id = c.id),0) AS ltv,
                   (SELECT count(*) FROM crm_deals d WHERE d.customer_id = c.id AND d.stage='closed_won')::int AS won_count
-           FROM crm_customers c WHERE c.owner_user_id = $1
+           FROM crm_customers c WHERE c.owner_user_id = $1 AND c.deleted_at IS NULL
            ORDER BY ltv DESC LIMIT 10`,
           [owner],
         ),
@@ -1613,7 +1635,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
                 c.status, c.source, c.created_at, c.last_contact,
                 COALESCE((SELECT sum(d.value) FROM crm_deals d WHERE d.customer_id=c.id AND d.stage='closed_won'),0) AS won_value,
                 COALESCE((SELECT sum(i.paid_amount) FROM crm_invoices i WHERE i.customer_id=c.id),0) AS paid
-         FROM crm_customers c WHERE c.owner_user_id = $1 ORDER BY c.created_at DESC`,
+         FROM crm_customers c WHERE c.owner_user_id = $1 AND c.deleted_at IS NULL ORDER BY c.created_at DESC`,
         [session.userId],
       );
       return res.json({ rows: rows.rows });
@@ -1648,7 +1670,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           let existing = null as any;
           if (norm) {
             const found = await pool.query(
-              `SELECT id FROM crm_customers WHERE owner_user_id = $1 AND email_normalized = $2 LIMIT 1`,
+              `SELECT id FROM crm_customers WHERE owner_user_id = $1 AND email_normalized = $2 AND deleted_at IS NULL LIMIT 1`,
               [owner, norm],
             );
             existing = found.rows[0] || null;
@@ -1719,6 +1741,97 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("CRM review create error:", error);
       return res.status(500).json({ error: "Failed to create review" });
+    }
+  });
+
+  // ============================================================
+  // SMS channel (#49) — owner-scoped, provider-gated, logged as activity
+  // ============================================================
+  app.get("/api/universal-crm/sms/status", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    return res.json({ configured: smsConfigured() });
+  });
+
+  app.post("/api/universal-crm/sms/send", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customerId, to, message } = req.body;
+      if (!to || !message) return res.status(400).json({ error: "to og message er påkrevd" });
+      const result = await sendSms(String(to), String(message));
+      // Log as a CRM activity so the timeline reflects the touch + bump last_contact.
+      if (customerId) {
+        await pool.query(
+          `INSERT INTO crm_activities (id, customer_id, type, subject, description, direction, channel, owner_user_id, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, 'sms', 'SMS sendt', $2, 'outbound', 'sms', $3, now(), now())`,
+          [customerId, String(message).slice(0, 500), session.userId],
+        ).catch((e) => console.warn("SMS activity log skipped:", e));
+        await pool.query(`UPDATE crm_customers SET last_contact = now() WHERE id = $1 AND owner_user_id = $2`, [customerId, session.userId]).catch(() => {});
+      }
+      return res.json({ ok: true, sid: result.sid, provider: result.provider });
+    } catch (error: any) {
+      if (error?.code === "sms_not_configured") {
+        return res.status(409).json({ error: error.message });
+      }
+      console.error("CRM SMS send error:", error);
+      return res.status(500).json({ error: error?.message || "Failed to send SMS" });
+    }
+  });
+
+  // ============================================================
+  // Dedupe / merge (#33) — owner-scoped
+  // ============================================================
+  app.get("/api/universal-crm/duplicates", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const groups = await pool.query(
+        `SELECT email_normalized, count(*)::int AS n,
+                json_agg(json_build_object('id', id, 'name', name, 'createdAt', created_at) ORDER BY created_at) AS members
+         FROM crm_customers
+         WHERE owner_user_id = $1 AND deleted_at IS NULL AND email_normalized IS NOT NULL
+         GROUP BY email_normalized HAVING count(*) > 1
+         ORDER BY n DESC LIMIT 100`,
+        [session.userId],
+      );
+      return res.json({ duplicates: groups.rows });
+    } catch (error) {
+      console.error("CRM duplicates error:", error);
+      return res.status(500).json({ error: "Failed to detect duplicates" });
+    }
+  });
+
+  app.post("/api/universal-crm/customers/:id/merge", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const sourceId = req.params.id;
+      const targetId = req.body?.into;
+      if (!targetId || targetId === sourceId) return res.status(400).json({ error: "Gyldig 'into'-mål kreves" });
+      // Both must belong to the owner and be live.
+      const check = await pool.query(
+        `SELECT id FROM crm_customers WHERE id = ANY($1) AND owner_user_id = $2 AND deleted_at IS NULL`,
+        [[sourceId, targetId], session.userId],
+      );
+      if (check.rows.length !== 2) return res.status(404).json({ error: "Kunde(r) ikke funnet" });
+      // Reparent children from source → target.
+      let moved = 0;
+      for (const t of ["crm_deals", "crm_invoices", "crm_meetings", "crm_activities", "crm_tasks", "crm_reviews"]) {
+        const r = await pool.query(
+          `UPDATE ${t} SET customer_id = $1 WHERE customer_id = $2 AND owner_user_id = $3`,
+          [targetId, sourceId, session.userId],
+        ).catch(() => ({ rowCount: 0 }));
+        moved += r.rowCount || 0;
+      }
+      // Retire the source via soft-delete.
+      await pool.query(
+        `UPDATE crm_customers SET deleted_at = now(), updated_at = now() WHERE id = $1 AND owner_user_id = $2`,
+        [sourceId, session.userId],
+      );
+      return res.json({ ok: true, merged: sourceId, into: targetId, movedRecords: moved });
+    } catch (error) {
+      console.error("CRM merge error:", error);
+      return res.status(500).json({ error: "Failed to merge customers" });
     }
   });
 }

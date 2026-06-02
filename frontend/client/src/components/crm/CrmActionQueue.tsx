@@ -45,6 +45,15 @@ export default function CrmActionQueue({ open, onClose, onOpenCustomer, brandCol
     onError: (e: any) => toast({ title: 'Kunne ikke kjøre automatikk', description: e?.message, variant: 'destructive' }),
   });
 
+  const syncInbox = useMutation({
+    mutationFn: async () => apiRequest('/api/universal-crm/inbound/gmail-sync', { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: (r: any) => { invalidate(); toast({ title: `Innboks synket — ${r?.imported ?? 0} svar logget`, variant: 'success' }); },
+    onError: (e: any) => {
+      const msg = String(e?.message || '');
+      toast({ title: 'Kunne ikke synke innboks', description: /google|gmail|connect|400/i.test(msg) ? 'Koble Gmail i Innstillinger for å synke svar.' : (msg || 'Prøv igjen.'), variant: 'destructive', duration: 7000 });
+    },
+  });
+
   const completeTask = useMutation({
     mutationFn: async (id: string) => apiRequest(`/api/universal-crm/tasks/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ status: 'completed', completed_at: new Date().toISOString() }) }),
     onSuccess: () => { invalidate(); toast({ title: 'Oppgave fullført', variant: 'success' }); },
@@ -66,9 +75,14 @@ export default function CrmActionQueue({ open, onClose, onOpenCustomer, brandCol
             <Typography variant="h6" sx={{ fontWeight: 700 }}>Handlingskø</Typography>
             {total > 0 && <Chip size="small" label={total} />}
           </Stack>
-          <Button size="small" variant="outlined" startIcon={<AutomationIcon />} disabled={runSweep.isPending} onClick={() => runSweep.mutate()}>
-            Kjør automatikk
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button size="small" variant="outlined" disabled={syncInbox.isPending} onClick={() => syncInbox.mutate()}>
+              Synk e-postsvar
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<AutomationIcon />} disabled={runSweep.isPending} onClick={() => runSweep.mutate()}>
+              Kjør automatikk
+            </Button>
+          </Stack>
         </Stack>
       </DialogTitle>
       <DialogContent dividers>

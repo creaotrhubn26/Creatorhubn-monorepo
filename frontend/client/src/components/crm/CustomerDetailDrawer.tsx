@@ -14,7 +14,7 @@ import { BrandScope } from './crm-brand';
 import {
   Close as CloseIcon, NoteAlt as NoteIcon, Call as CallIcon, VideoCall as MeetIcon,
   MailOutline as MailIcon, Description as ContractIcon, ReceiptLong as InvoiceIcon,
-  TrendingUp as DealIcon, Circle as DotIcon,
+  TrendingUp as DealIcon, Circle as DotIcon, Sms as SmsIcon,
 } from '@mui/icons-material';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -68,6 +68,9 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
   const [reviewRating, setReviewRating] = useState<number | null>(5);
   const [reviewText, setReviewText] = useState('');
   const [reviewPublic, setReviewPublic] = useState(false);
+  // #49 — SMS composer
+  const [showSms, setShowSms] = useState(false);
+  const [smsBody, setSmsBody] = useState('');
 
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ['crm-customer-overview', customerId],
@@ -97,6 +100,23 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
 
   const c = data?.customer;
   const stale = c ? staleness(c.lastContact) : null;
+
+  const sendSmsMutation = useMutation({
+    mutationFn: async () => apiRequest('/api/universal-crm/sms/send', {
+      method: 'POST',
+      body: JSON.stringify({ customerId, to: c?.phone, message: smsBody }),
+    }),
+    onSuccess: () => {
+      setShowSms(false); setSmsBody('');
+      queryClient.invalidateQueries({ queryKey: ['crm-customer-overview', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
+      toast({ title: 'SMS sendt', variant: 'success' });
+    },
+    onError: (e: any) => {
+      const msg = String(e?.message || '');
+      toast({ title: 'Kunne ikke sende SMS', description: /not configured|konfigurert|409/i.test(msg) ? 'SMS-provider er ikke konfigurert ennå.' : (msg || 'Prøv igjen.'), variant: 'destructive', duration: 7000 });
+    },
+  });
 
   const addReview = useMutation({
     mutationFn: async () => apiRequest('/api/universal-crm/reviews', {
@@ -223,14 +243,27 @@ export default function CustomerDetailDrawer({ open, customerId, customerName, o
             {/* Email composer (#22/#50) */}
             <Stack spacing={1}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>E-post</Typography>
-                <Button size="small" startIcon={<MailIcon />} onClick={() => {
-                  setShowEmail((v) => !v);
-                  if (!showEmail && !emailSubject) setEmailSubject(`Hei ${(c.name || '').split(' ')[0] || ''}`.trim());
-                }} disabled={!c.email}>
-                  {showEmail ? 'Skjul' : 'Send e-post'}
-                </Button>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Kommunikasjon</Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" startIcon={<MailIcon />} onClick={() => {
+                    setShowEmail((v) => !v); setShowSms(false);
+                    if (!showEmail && !emailSubject) setEmailSubject(`Hei ${(c.name || '').split(' ')[0] || ''}`.trim());
+                  }} disabled={!c.email}>
+                    {showEmail ? 'Skjul' : 'E-post'}
+                  </Button>
+                  <Button size="small" startIcon={<SmsIcon />} onClick={() => { setShowSms((v) => !v); setShowEmail(false); }} disabled={!c.phone}>
+                    {showSms ? 'Skjul' : 'SMS'}
+                  </Button>
+                </Stack>
               </Stack>
+              {showSms && c.phone && (
+                <Stack spacing={1}>
+                  <TextField size="small" label={`SMS til ${c.phone}`} value={smsBody} onChange={(e) => setSmsBody(e.target.value)} fullWidth multiline rows={3} inputProps={{ maxLength: 480 }} helperText={`${smsBody.length}/480`} />
+                  <Button variant="contained" startIcon={<SmsIcon />} disabled={!smsBody.trim() || sendSmsMutation.isPending} onClick={() => sendSmsMutation.mutate()} sx={{ alignSelf: 'flex-end' }}>
+                    {sendSmsMutation.isPending ? 'Sender…' : 'Send SMS'}
+                  </Button>
+                </Stack>
+              )}
               {!c.email && <Typography variant="caption" color="text.secondary">Kunden mangler e-postadresse.</Typography>}
               {showEmail && c.email && (
                 <Stack spacing={1}>
