@@ -40,6 +40,7 @@ import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 
 const ProposeTalentsDialog = lazy(() => import('../components/ProposeTalentsDialog'));
@@ -235,8 +236,36 @@ export default function AgencyPartnershipsPage() {
     }
   }, [reload]);
 
+  // Demo-modus deteksjon — alle requests har ?demo=1 i URL
+  const isDemoMode = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('demo') === '1';
+
   return (
     <Box sx={{ p: 3, maxWidth: 960, mx: 'auto' }}>
+      {isDemoMode ? (
+        <Box
+          sx={{
+            mb: 2.4,
+            p: 1.4,
+            borderRadius: radius.sm,
+            border: '1px solid rgba(168,85,247,0.42)',
+            bgcolor: 'rgba(168,85,247,0.10)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.4,
+          }}
+        >
+          <ScienceOutlinedIcon sx={{ color: palette.accentBright, fontSize: 24 }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>
+              Demo-modus
+            </Typography>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+              Du ser Stella Casting-demo. Alle endringer berører kun demo-data og kan trygt prøves ut.
+            </Typography>
+          </Box>
+        </Box>
+      ) : null}
       <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, mb: 0.6 }}>
         Partnerships
       </Typography>
@@ -507,7 +536,7 @@ function OverviewTab(props: {
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Box>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              Bryåets talent-pool
+              Byråets talent-pool
             </Typography>
             <Typography sx={{ color: palette.textPrimary, fontSize: '1.4rem', fontWeight: 800, mt: 0.4 }}>
               {dashboard.talent_pool_size} talenter med consent

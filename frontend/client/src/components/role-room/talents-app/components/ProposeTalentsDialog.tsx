@@ -1,7 +1,7 @@
 /**
  * ProposeTalentsDialog.tsx
  *
- * Bryå-siden av talent-foreslåelse-flyten. Brukes fra
+ * Byrå-siden av talent-foreslåelse-flyten. Brukes fra
  * AgencyPartnershipsPage når byrå-admin klikker "Foreslå talenter" på en
  * akseptert prosjekt-invitasjon.
  *
@@ -359,7 +359,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                         ) : (
                           <Box sx={{ width: 22, flexShrink: 0 }} />
                         )}
-                        <Avatar src={t.headshot_url ?? undefined} sx={{ width: 44, height: 44 }}>
+                        <Avatar src={t.headshot_url ?? undefined} sx={{ width: 52, height: 52, border: `1px solid ${palette.borderSubtle}` }}>
                           {t.display_name?.charAt(0) ?? '?'}
                         </Avatar>
                         <Box sx={{ flex: 1 }}>
@@ -373,8 +373,14 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                         {t.already_proposed ? (
                           <Chip
                             size="small"
-                            label="Allerede foreslått"
-                            sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: '#9ca3af', fontWeight: 600 }}
+                            icon={<CheckCircleOutlineIcon sx={{ fontSize: 14, color: '#34d399 !important' }} />}
+                            label="Foreslått"
+                            sx={{
+                              bgcolor: 'rgba(52,211,153,0.16)',
+                              color: '#34d399',
+                              fontWeight: 700,
+                              border: '1px solid rgba(52,211,153,0.32)',
+                            }}
                           />
                         ) : (
                           <Button

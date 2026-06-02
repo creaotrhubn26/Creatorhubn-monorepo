@@ -73,7 +73,7 @@ export async function sendPartnershipProposed(
     ? `${args.agencyName} vil samarbeide`
     : `${args.productionName} vil samarbeide`;
   const intro = isAgencyInitiated
-    ? `Bryået ${args.agencyName} har foreslått et partnership med produksjonsteamet ditt. Hvis dere godkjenner, kan dere invitere dem til spesifikke casting-prosjekter.`
+    ? `Byrået ${args.agencyName} har foreslått et partnership med produksjonsteamet ditt. Hvis dere godkjenner, kan dere invitere dem til spesifikke casting-prosjekter.`
     : `Produksjonsteamet ${args.productionName} har foreslått et partnership med byrået ditt. Hvis dere godkjenner, kan de invitere dere til spesifikke casting-prosjekter med valgte roller.`;
   const ctaUrl = `${appBaseUrl()}/talents/partnerships`;
 
@@ -134,7 +134,7 @@ export async function sendPartnershipAccepted(
   const eyebrow = "Partnership akseptert";
   const headline = `${accepterLabel} har godkjent samarbeidet`;
   const intro = args.accepterRole === "agency"
-    ? `Bryået ${args.agencyName} har akseptert partnership-forslaget. Du kan nå invitere dem til spesifikke casting-prosjekter med valgte roller.`
+    ? `Byrået ${args.agencyName} har akseptert partnership-forslaget. Du kan nå invitere dem til spesifikke casting-prosjekter med valgte roller.`
     : `Produksjonsteamet ${args.productionName} har akseptert partnership-forslaget. De kan nå invitere dere til casting-prosjekter, og dere kan foreslå talenter til prosjekt-rollene.`;
   const body = `
     <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
@@ -247,7 +247,7 @@ export async function sendProjectInvitationAccepted(
   const ctaUrl = `${appBaseUrl()}/talents/partnerships`;
   const eyebrow = "Invitasjon akseptert";
   const headline = `${args.agencyName} er med på ${args.projectName}`;
-  const intro = `Bryået har akseptert prosjekt-invitasjonen. De kan nå se rollene dere har lagt inn og begynner å foreslå talenter.`;
+  const intro = `Byrået har akseptert prosjekt-invitasjonen. De kan nå se rollene dere har lagt inn og begynner å foreslå talenter.`;
   const body = `
     <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
       ${escapeHtml(headline)}
@@ -291,7 +291,7 @@ export async function sendTalentProposedByAgency(
   const eyebrow = "Nytt talent-forslag";
   const headline = `${args.agencyName} foreslår ${args.talentDisplayName}`;
   const roleLine = args.roleName ? `Rolle: ${args.roleName}` : "Ingen spesifikk rolle valgt";
-  const intro = `Bryået har foreslått ${args.talentDisplayName} til ${args.projectName}. ${roleLine}.`;
+  const intro = `Byrået har foreslått ${args.talentDisplayName} til ${args.projectName}. ${roleLine}.`;
   const body = `
     <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
       ${escapeHtml(headline)}
@@ -300,7 +300,7 @@ export async function sendTalentProposedByAgency(
     ${
       args.agencyNotes
         ? `<div style="margin: 16px 0; padding: 14px 18px; background: #1a0f3a; border-left: 3px solid #a855f7; border-radius: 0 8px 8px 0;">
-        <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Bryåets kommentar:</div>
+        <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Byråets kommentar:</div>
         <div style="color: #c4b5fd; font-style: italic; font-size: 15px;">"${escapeHtml(args.agencyNotes)}"</div>
       </div>`
         : ""

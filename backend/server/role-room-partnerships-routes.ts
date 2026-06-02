@@ -11,9 +11,9 @@
  * Flyt:
  *  1. Agency ELLER produksjon initierer (POST /propose) — status pending.
  *  2. Motparten godkjenner/avslår (POST /:id/respond) — status accepted/declined.
- *  3. Produksjon inviterer bryået til et SPESIFIKT casting_project
+ *  3. Produksjon inviterer byrået til et SPESIFIKT casting_project
  *     (POST /:id/invite-project med role_ids).
- *  4. Bryået ser invitasjoner (GET /invitations/incoming) + foreslår talenter
+ *  4. Byrået ser invitasjoner (GET /invitations/incoming) + foreslår talenter
  *     (eksisterende agency_talent_proposals).
  *
  * Endpoints:
@@ -25,7 +25,7 @@
  *                                                  — { casting_project_id, role_ids?, notes? }
  *   GET    /api/role-room/partnerships/:id/invitations
  *   POST   /api/role-room/partnerships/invitations/:invId/respond
- *                                                  — bryået svarer på prosjekt-invitasjon
+ *                                                  — byrået svarer på prosjekt-invitasjon
  */
 
 import type express from "express";
@@ -253,7 +253,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
         return res.status(409).json({ error: unavail });
       }
     } else {
-      // Bryå selv proposer — minimum: profil + vilkår godtatt + ikke stengt
+      // Byrå selv proposer — minimum: profil + vilkår godtatt + ikke stengt
       if (!agency.logo_url || !agency.contact_email) {
         return res.status(409).json({
           error: "Byrået må fullføre sin profil (logo + kontakt-e-post) før partnership",
@@ -857,7 +857,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   });
 
   // ── POST /invitations/:invId/respond ─────────────────────────────
-  // Bryå svarer på et casting-prosjekt-invitasjon.
+  // Byrå svarer på et casting-prosjekt-invitasjon.
   app.post("/api/role-room/partnerships/invitations/:invId/respond", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -943,7 +943,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   });
 
   // ── GET /invitations/incoming ────────────────────────────────────
-  // Bryå ser prosjekt-invitasjoner.
+  // Byrå ser prosjekt-invitasjoner.
   // ?status=pending|accepted|pending,accepted (default: 'pending,accepted'
   //  så byrå-admin også ser akseptede prosjekter for å foreslå talenter).
   app.get("/api/role-room/partnerships/invitations/incoming", async (req, res) => {
@@ -1353,7 +1353,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   });
 
   // ── GET /invitations/:invId/proposable-talents ────────────────────
-  // Bryået søker i sitt EGNE register etter talenter å foreslå til
+  // Byrået søker i sitt EGNE register etter talenter å foreslå til
   // prosjektet. Filtreres på consent (talent har gitt byrået scope) +
   // valgfri q-søk.
   app.get("/api/role-room/partnerships/invitations/:invId/proposable-talents", async (req, res) => {
@@ -1432,7 +1432,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   });
 
   // ── POST /invitations/:invId/talent-proposals ─────────────────────
-  // Bryået foreslår en talent til en spesifikk rolle i prosjektet.
+  // Byrået foreslår en talent til en spesifikk rolle i prosjektet.
   // Body: { talent_id, casting_role_id?, agency_notes? }
   app.post("/api/role-room/partnerships/invitations/:invId/talent-proposals", async (req, res) => {
     const session = getActiveSession(req);
@@ -1563,7 +1563,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   });
 
   // ── GET /invitations/:invId/talent-proposals ──────────────────────
-  // Bryå-perspektivet: alle proposals jeg har sendt for denne invitasjonen.
+  // Byrå-perspektivet: alle proposals jeg har sendt for denne invitasjonen.
   app.get("/api/role-room/partnerships/invitations/:invId/talent-proposals", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -1861,7 +1861,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
 
   // ── POST /invitations/:invId/talent-proposals/bulk ───────────────
   // Bulk-foreslå opp til 50 talenter på én gang. Validerer hver:
-  // (a) Bryået har consent fra talenten
+  // (a) Byrået har consent fra talenten
   // (b) Rolle (hvis valgt) tilhører prosjektet
   // (c) Ingen aktiv duplikat-foreslåelse
   // Returnerer { successes: [{ talent_id, proposal }], failures: [{ talent_id, error }] }
