@@ -3278,9 +3278,14 @@ export default function UniversalCRMDashboard({
                         )}
                         {/* #27 — book to PowerOffice (accounting). */}
                         {!inv.externalInvoiceId && (
-                          <Button size="small" variant="text" disabled={bookInvoiceMutation.isPending} onClick={() => bookInvoiceMutation.mutate(inv.id)}>
-                            Bokfør i PowerOffice
-                          </Button>
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            <Button size="small" variant="text" disabled={bookInvoiceMutation.isPending} onClick={() => bookInvoiceMutation.mutate(inv.id)}>
+                              Bokfør i PowerOffice
+                            </Button>
+                            {/* Midlertidig: PowerOffice kjører mot demo-miljø til produksjons-
+                                tilgang er på plass (partnerskap). Fjern når live. */}
+                            <Chip size="small" variant="outlined" color="warning" label="Demo · under utvikling" sx={{ height: 20, fontSize: '0.65rem' }} />
+                          </Stack>
                         )}
                       </Stack>
                     </ListItem>
