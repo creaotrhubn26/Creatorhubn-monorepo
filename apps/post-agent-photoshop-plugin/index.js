@@ -465,10 +465,31 @@ const COMMANDS = {
       }
     }, { commandName: "Post Agent: export back to Resolve" });
 
+    // Bevar metadata fra original inbox-fil (hvis tilgjengelig) så
+    // insert-from-postagent.lua kan auto-replace timeline-clipet.
+    // Vi matcher på filnavn: doc.name "<epoch>_<project>_<timecode>" → samme prefix-.json i inbox.
+    let metadataPreserved = false;
+    try {
+      const inbox = await postAgent.getEntry("inbox");
+      const inboxEntries = await inbox.getEntries();
+      const metaCandidate = inboxEntries.find((e) => e.name === stem + ".json");
+      if (metaCandidate) {
+        const text = await metaCandidate.read({ format: "utf8" });
+        const outMetaFile = await outbox.createFile(stem + ".json", { overwrite: true });
+        await outMetaFile.write(text, { format: "utf8" });
+        metadataPreserved = true;
+      }
+    } catch {
+      // metadata er optional — auto-replace blir bare ikke tilgjengelig
+    }
+
     return {
       exported_to: outFile.nativePath,
       outbox_dir: outbox.nativePath,
-      next_step: "Kjør insert-from-postagent.lua i Resolve for å hente inn igjen",
+      metadata_preserved: metadataPreserved,
+      next_step: metadataPreserved
+        ? "Kjør insert-from-postagent.lua i Resolve — auto-replace aktivert"
+        : "Kjør insert-from-postagent.lua i Resolve (ingen original-clip-metadata → ny media-import)",
     };
   },
 
